@@ -1,9 +1,9 @@
 ---
 name: optimistic-action-mutations
-description: 'Optimistic UI y ciclo de vida de acciones. INVOCAR SIEMPRE, sin pedido explícito, al crear, modificar, corregir o refactorizar cualquier flujo de UI o su lógica en cualquier stack (pantallas, formularios, botones, handlers, hooks, caché, consultas/refetch y endpoints que alimentan esa UI), aunque no pidan optimismo. Revisar estado inicial, carga, GET/POST/PATCH/DELETE, envío, guardado, toggle, selección, reintento, reenvío de SMS/OTP, reset, cancelar, deshacer, éxito, error, timeout, offline, duplicación, concurrencia, rollback y reconciliación. Decidir entre actualización optimista, estado pending y confirmación por servidor; no anticipar éxito en pagos, autenticación, permisos ni acciones irreversibles. Aplicar cobertura incremental por subflujo con skill-coverage si existe y complementar ui-ux-flow-patterns. No en tareas sin UI ni flujo de usuario.'
+description: 'Optimistic UI y ciclo de vida de acciones. INVOCAR SIEMPRE, sin pedido explícito, al crear, modificar, corregir o refactorizar cualquier flujo de UI o su lógica en cualquier stack (pantallas, formularios, botones, handlers, hooks, caché, consultas/refetch y endpoints que alimentan esa UI), aunque no pidan optimismo. Revisar estado inicial, carga, GET/POST/PATCH/DELETE, envío, guardado, toggle, selección, reintento, reenvío de SMS/OTP, reset, cancelar, deshacer, éxito, error, timeout, offline, duplicación, concurrencia, rollback y reconciliación. Decidir entre actualización optimista, estado pending y confirmación por servidor; no anticipar éxito en pagos, autenticación, permisos ni acciones irreversibles. Registrar siempre la cobertura por subflujo con skill-coverage (crear registro y unidad si faltan) y complementar ui-ux-flow-patterns. No en tareas sin UI ni flujo de usuario.'
 license: MIT
 metadata:
-  version: "1.1.0"
+  version: "1.2.0"
   author: "Guido Modarelli"
   category: "frontend"
   tags: "optimistic-ui, mutations, concurrency, rollback, reconciliation, react, nextjs, tanstack-query"
@@ -40,13 +40,13 @@ Un cambio mínimo produce una evaluación mínima. **No en**: jobs, migraciones,
 
 ## Cobertura incremental
 
-Si el repositorio tiene `.golfo/skill-coverage/`, seguí el [protocolo de cobertura](../../references/skill-coverage.md#protocolo-de-una-skill) con `--skill optimistic-action-mutations` en cada unidad funcional que toque el trabajo: `affected` y `check` antes de evaluar, `begin`, `evidence` y `record` al cerrar. El registro decide **cuánto** trabajo repetir, nunca **si** cargar la skill: la activación de arriba manda siempre.
+Obligatorio en cada ejecución, haya o no registro: seguí el [protocolo de cobertura](../../references/skill-coverage.md#protocolo-de-una-skill) con `--skill optimistic-action-mutations` en cada unidad funcional que toque el trabajo: `affected` (y la creación de la unidad si falta) y `check` antes de evaluar, `begin`, `evidence` y `record` al cerrar. Si el repositorio no tiene `.golfo/skill-coverage/` o ninguna unidad cubre el código tocado, creálos en el paso 1 del protocolo antes de `check` (`init`; `discover --scope <carpeta> --write` en páginas del App Router o `add-unit --id --kind --module --subflow --entry <path:symbol>` para el resto; después ajustá límites, nombres e ids): proponer `discover` no alcanza. Si no se puede registrar (sin `node`, sin el CLI, falla de `add-unit` o de `record`), terminá el trabajo de la skill pero cerrá **incompleto** con el motivo concreto y qué falta para registrar ([cierre incompleto](../../references/skill-coverage.md#cierre-incompleto-o-bloqueado)), nunca como completo ni como simple limitación. Crear la unidad es parte de la skill; inventar cobertura o evidencia, nunca. El registro decide **cuánto** trabajo repetir, nunca **si** cargar la skill: la activación de arriba manda siempre.
 
 - **Decisión de `check`.** `skip`: la cobertura verificada sigue vigente para el resto de la unidad, pero lo que vos agregás o tocás se evalúa igual. `incremental`: solo el alcance que lista `check` (cada parte con su foco: handler, render, contrato del servidor, configuración de tiempos) más su contexto necesario. `full`: el inventario completo de operaciones de la unidad. Un pedido de auditoría completa usa `check --force-full`.
 - **Modo de `begin`** igual al que usaste: `lightweight`, `incremental` o `full`.
 - **Evidencia** después de `begin`: `review` con las operaciones evaluadas y su clase, y `test` con `--exec` de los tests de comportamiento que corriste (rollback, respuesta vieja, doble disparo). Sin tests ejecutables, registrá la falta con `--limitation` y el resultado queda `partial`. No hay evidencia que inventar: solo lo que se ejecutó o revisó en la sesión.
 - **No aplica.** Si la unidad no tiene operaciones (ni lecturas ni mutaciones), registrá `record --result not-applicable --summary "<motivo>"`, nunca `applicable: false` en la unidad ([por qué](../../references/skill-coverage.md#políticas-por-skill)): el registro se reevalúa cuando se agrega una operación. Una unidad de solo lecturas no es `not-applicable`: registrá `review` con los checks de lectura revisados y `test` con los tests que corriste (o la falta con `--limitation`), como cualquier otra unidad.
-- Sin registro o sin unidad para el código, la skill corre igual y no inventa cobertura.
+- **Unidad nueva.** Una operación sin unidad se registra creando la unidad del subflujo que la contiene (por ejemplo, `add-unit --kind ui-flow --entry <componente>:<Componente>/<handler>`), no salteando el registro.
 
 ## 1. Inventariar las operaciones
 
@@ -82,7 +82,7 @@ Cubrir con tests lo que la clasificación promete, siguiendo la estrategia de te
 
 ## Compatibilidad entre agentes
 
-La skill solo necesita leer y editar código y correr los tests del proyecto, igual en Claude Code, Codex y Hermes. La cobertura incremental necesita `node` en `PATH` y el CLI de `skill-coverage` instalado junto al plugin (fila «Registrar cobertura de skills» de [`agent-capabilities.md`](../../references/agent-capabilities.md)); sin ellos la skill corre igual y lo reporta en **Limitaciones del agente**. Si hace falta recorrer estados en un navegador, usar el mecanismo de la fila «Verificar en un navegador» del mismo archivo.
+La skill solo necesita leer y editar código y correr los tests del proyecto, igual en Claude Code, Codex y Hermes. El registro de cobertura obligatorio necesita `node` en `PATH` y el CLI de `skill-coverage` instalado junto al plugin (fila «Registrar cobertura de skills» de [`agent-capabilities.md`](../../references/agent-capabilities.md)); sin ellos la skill termina su trabajo pero cierra **incompleta**, con el motivo y qué falta para registrar. Si hace falta recorrer estados en un navegador, usar el mecanismo de la fila «Verificar en un navegador» del mismo archivo.
 
 ## Formato del reporte
 
@@ -99,7 +99,7 @@ En modo liviano, una línea por operación tocada: `<operación> → <clase>: <d
 <tests ejecutados y resultado>
 
 ## Cobertura
-<solo con registro: por unidad, decisión de `check`, resultado de `record` y pendientes>
+<siempre: por unidad (creada en esta ejecución o existente), decisión de `check`, resultado de `record` y pendientes; si no se pudo registrar, `incompleta` con el motivo y qué falta>
 
 ## Limitaciones del agente
 <solo si faltó una herramienta: qué se omitió y cómo verificarlo>

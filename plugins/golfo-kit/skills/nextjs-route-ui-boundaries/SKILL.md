@@ -3,7 +3,7 @@ name: nextjs-route-ui-boundaries
 description: 'Next.js App Router: decide loading.tsx con skeleton, error.tsx, layouts compartidos, Suspense, server vs client (sidebar, header, tablas, contenedores) y las APIs de Next.js que conviene usar. Usar siempre, sin pedido explícito, al crear o modificar cualquier código de un proyecto Next.js con App Router: archivos de app/ (page, layout, route), contenedores y componentes cliente que monta una ruta (app/**, components/**), hooks, formularios, server actions o next.config, aunque el cambio no toque page.tsx, loading.tsx ni error.tsx y el pedido solo diga mejorar la UI/UX, rediseñar una pantalla o agregar un botón. En un cambio de UI, cargarla junto con ui-ux-flow-patterns: esta decide boundaries y qué es server o cliente; aquella, qué muestra cada estado. No en Pages Router ni en repos sin Next.js.'
 license: MIT
 metadata:
-  version: "1.2.0"
+  version: "1.3.0"
   author: "Guido Modarelli"
   category: "frontend"
   tags: "nextjs, app-router, loading, error-boundary, layout, suspense, skeleton, server-components"
@@ -46,7 +46,7 @@ No cambiar boundaries de rutas que el cambio no toca: si se detectan problemas f
 
 ## Cobertura incremental
 
-Si el repositorio tiene `.golfo/skill-coverage/`, seguí el [protocolo de cobertura](../../references/skill-coverage.md#protocolo-de-una-skill) con `--skill nextjs-route-ui-boundaries` en cada unidad funcional que toque el trabajo: `affected` y `check` antes de decidir, `begin`, `evidence` y `record` al cerrar. El registro decide **cuánto** volver a revisar, nunca **si** cargar la skill: los disparadores de arriba mandan siempre, y sin registro o sin unidad para el código la skill corre igual y no inventa cobertura.
+Obligatorio en cada ejecución, haya o no registro: seguí el [protocolo de cobertura](../../references/skill-coverage.md#protocolo-de-una-skill) con `--skill nextjs-route-ui-boundaries` en cada unidad funcional que toque el trabajo: `affected` (y la creación de la unidad si falta) y `check` antes de decidir, `begin`, `evidence` y `record` al cerrar. Si el repositorio no tiene `.golfo/skill-coverage/` o ninguna unidad cubre el código tocado, creálos en el paso 1 del protocolo antes de `check` (`init`; `discover --scope <carpeta> --write` en páginas del App Router o `add-unit --id --kind --module --subflow --entry <path:symbol>` para el resto; después ajustá límites, nombres e ids): proponer `discover` no alcanza. Si no se puede registrar (sin `node`, sin el CLI, falla de `add-unit` o de `record`), terminá el trabajo de la skill pero cerrá **incompleto** con el motivo concreto y qué falta para registrar ([cierre incompleto](../../references/skill-coverage.md#cierre-incompleto-o-bloqueado)), nunca como completo ni como simple limitación. Crear la unidad es parte de la skill; inventar cobertura o evidencia, nunca. El registro decide **cuánto** volver a revisar, nunca **si** cargar la skill: los disparadores de arriba mandan siempre. Para una ruta sin unidad, `discover --scope <carpeta de la ruta> --write` es el punto de partida; la unidad incluye la ruta en `routes` para que el motor sume su contexto.
 
 - **Qué incluye la unidad para esta skill.** Además de su código, el motor suma lo que envuelve sus rutas: layouts y templates ancestros, `loading`/`error`/`not-found`/`forbidden`/`unauthorized` heredados, `default` de los slots paralelos, `global-error`, `next.config.*` y `middleware`/`proxy` ([detalle](../../references/skill-coverage.md#políticas-por-skill)). Por eso `affected --paths app/(platform)/layout.tsx --skill nextjs-route-ui-boundaries` lista todas las rutas bajo ese layout, y un handler aislado de una ruta no invalida las demás. Si `check` no ve una dependencia que sí decide un boundary (una ruta interceptada, una URL llamada por `fetch`), declarala en `dependsOn` de la unidad.
 - **Decisión de `check` → modo.** `skip`: la cobertura verificada respalda el resto de la unidad, pero lo que vos agregás o tocás se revisa igual con el checklist del modo liviano. `incremental`: solo el alcance que lista `check` (cada parte con su foco: directiva `"use client"`, `await` nuevo en el render, archivo de ruta movido, layout compartido, skeleton) más su contexto necesario. `full`: los pasos 0 a 5 sobre toda la unidad. Una ruta nueva, una reestructura de `app/` o un pedido de auditoría completa usan `check --force-full` y modo completo aunque la cobertura esté vigente.
@@ -111,7 +111,7 @@ Un `loading.tsx` o un fallback de `<Suspense>` que devuelve texto ("Cargando..."
    - Recargar en una ruta con datos lentos: el HTML inicial ya trae el shell server-rendered (ver código fuente o desactivar JS).
    - Revisar el bundle o las islas `"use client"`: el sidebar no debería aparecer entero como componente cliente.
 4. Actualizar o agregar tests de comportamiento que cubran los estados nuevos (render del skeleton, fallback de error con acción de reintentar, `notFound`), siguiendo la estrategia de testing del proyecto.
-5. Con registro de cobertura, cerrar con `record` por cada unidad tocada y sumar al reporte una línea por unidad: decisión de `check`, resultado registrado y pendientes.
+5. Cerrar con `record` por cada unidad tocada (creándola antes si faltaba) y sumar al reporte una línea por unidad: decisión de `check`, resultado registrado y pendientes; si no se pudo registrar, el cierre es incompleto con su motivo.
 
 ## Formato del reporte
 
@@ -127,6 +127,9 @@ Un `loading.tsx` o un fallback de `<Suspense>` que devuelve texto ("Cargando..."
 
 ## Verificación
 <comandos y comprobaciones ejecutadas, con resultado>
+
+## Cobertura
+<siempre: por unidad (creada en esta ejecución o existente), decisión de `check`, resultado de `record` y pendientes; si no se pudo registrar, `incompleta` con el motivo y qué falta>
 ```
 
 ## Límites con otras skills
