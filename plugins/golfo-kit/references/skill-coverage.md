@@ -1,6 +1,6 @@
 # Cobertura incremental de skills (`skill-coverage`)
 
-Fuente única del protocolo con el que una skill de `golfo-kit` consulta qué cubrió antes, decide si repetir el análisis y registra la cobertura que acredita. Las skills integradas (`ui-ux-flow-patterns`, `measured-performance-optimization`, `optimistic-action-mutations`, `nextjs-route-ui-boundaries`) solo agregan sus reglas propias y remiten acá.
+Fuente única del protocolo con el que una skill de `golfo-kit` consulta qué cubrió antes, decide si repetir el análisis y registra la cobertura que acredita. Para las skills integradas el protocolo es **obligatorio**: si el repositorio no tiene registro o ninguna unidad cubre el código tocado, la skill los crea, y una ejecución que termina sin `record` exitoso por unidad cierra **incompleta**. Las skills integradas (`ui-ux-flow-patterns`, `measured-performance-optimization`, `optimistic-action-mutations`, `nextjs-route-ui-boundaries`) solo agregan sus reglas propias y remiten acá.
 
 ## Contenido
 
@@ -8,6 +8,7 @@ Fuente única del protocolo con el que una skill de `golfo-kit` consulta qué cu
 - [Dónde vive cada cosa](#dónde-vive-cada-cosa)
 - [Cómo invocar el CLI](#cómo-invocar-el-cli)
 - [Protocolo de una skill](#protocolo-de-una-skill)
+- [Cierre incompleto o bloqueado](#cierre-incompleto-o-bloqueado)
 - [Unidades funcionales](#unidades-funcionales)
 - [Estados, vigencia y decisiones](#estados-vigencia-y-decisiones)
 - [Detección de impacto](#detección-de-impacto)
@@ -51,11 +52,15 @@ COVERAGE="node <skill-dir-real>/../../tools/skill-coverage/skill-coverage.mjs"
 $COVERAGE status --details
 ```
 
-El CLI no depende del agente: funciona igual en Claude Code, Codex y Hermes con una terminal y `node` en `PATH`. Si no hay `node` o el CLI no está instalado junto a la skill, la skill corre como siempre sin registrar cobertura y lo reporta en **Limitaciones del agente** (ver [agent-capabilities.md](agent-capabilities.md#tabla-de-capacidades), fila «Registrar cobertura de skills»).
+El CLI no depende del agente: funciona igual en Claude Code, Codex y Hermes con una terminal y `node` (≥ 20) en `PATH`. Si no hay `node` o el CLI no está instalado junto a la skill, la skill termina su trabajo pero el cierre queda **incompleto** (ver [Cierre incompleto o bloqueado](#cierre-incompleto-o-bloqueado) y [agent-capabilities.md](agent-capabilities.md#tabla-de-capacidades), fila «Registrar cobertura de skills»).
 
 ## Protocolo de una skill
 
-1. **Identificar la unidad.** `affected --changed --skill <skill>` (cambios staged, unstaged y untracked) o `affected --paths <archivo>...` devuelve las unidades cuyo código incluye esos archivos. Un pedido puede tocar varias unidades: el protocolo corre por cada una. Si el repositorio no tiene registro o ninguna unidad cubre el código, la skill sigue normal sin registrar y lo menciona al cierre; proponer `discover --scope <carpeta>` para crear unidades, sin inventarlas.
+1. **Identificar la unidad y crearla si falta.** `affected --changed --skill <skill>` (cambios staged, unstaged y untracked) o `affected --paths <archivo>...` devuelve las unidades cuyo código incluye esos archivos. Un pedido puede tocar varias unidades: el protocolo corre por cada una. Si el repositorio no tiene registro o ninguna unidad cubre el código tocado, crearlos es parte de la skill, no una sugerencia:
+   1. `init` crea `.golfo/skill-coverage/` con su `config.json` y su `.gitignore` (también lo hacen `add-unit` y `discover --write`).
+   2. En páginas de Next.js App Router, `discover --scope <carpeta> --write` propone y guarda unidades; revisá las creadas y ajustá a mano sus límites, nombres e ids según [Unidades funcionales](#unidades-funcionales) (son definiciones, no evidencia).
+   3. Para el resto (APIs, jobs, webhooks, backend, UI fuera de páginas del App Router o lo que `discover` no propuso), `add-unit --id <id> --kind <kind> --module <m> [--page <p>] [--section <s>] --subflow <s> --entry <path[:symbol]>...` crea la unidad validada contra el schema.
+   4. Volvé a correr `affected` para confirmar que la unidad cubre el código tocado y seguí con el paso 2. Una unidad recién creada no tiene cobertura: `check` decide `full`.
 2. **Consultar.** `check --unit <id> --skill <skill>` devuelve estado, vigencia, decisión, motivos, cambios relevantes y alcance sugerido. Un pedido explícito de auditoría completa (o de "revisá todo de nuevo") agrega `--force-full`: el cache nunca gana sobre ese pedido.
 3. **Decidir con la respuesta:**
    - `skip`: la cobertura verificada está vigente. No repetir el análisis de la unidad; decir al cierre que la cobertura vigente respalda la unidad (commit y versión). Si además hay trabajo nuevo de la skill fuera de esa unidad, aplicarlo normalmente.
@@ -70,15 +75,32 @@ El CLI no depende del agente: funciona igual en Claude Code, Codex y Hermes con 
 7. **Registrar el resultado** al terminar, sin esperar a que el usuario lo pida: `record --run <id> --result <verified|partial|blocked|not-applicable>` con `--limitation` y `--pending` repetibles. El registro es automático y parte del cierre de la skill.
    - Si el CLI rechaza el registro (exit 3) porque el código cambió después de `begin`, no se guardó nada: `abort --run <id>`, `begin` otra vez sobre el código final y repetir las verificaciones afectadas.
    - Si falta evidencia requerida, el CLI guarda `partial` en lugar de `verified` y lista lo pendiente. No es un error: reportalo así.
-8. **Reportar** en el cierre de la skill una línea por unidad: decisión tomada, resultado registrado y pendientes.
+8. **Reportar** en el cierre de la skill una línea por unidad: unidad (y si se creó en esta ejecución), decisión tomada, resultado registrado y pendientes. Si alguna unidad tocada quedó sin `record` exitoso, el cierre es incompleto: ver [Cierre incompleto o bloqueado](#cierre-incompleto-o-bloqueado).
 
 Reglas que valen siempre:
 
 - Nunca editar a mano `records/` ni `runs/`, ni fabricar evidencia: solo lo que realmente se ejecutó o se recorrió en la sesión. Una verificación que no se pudo hacer va como `--limitation` y el resultado no es `verified`.
 - `verified` exige el análisis completo de la unidad: un modo `incremental` o `lightweight` solo acredita sobre una cobertura verificada anterior; sin ella queda `partial`.
-- `blocked` es para un impedimento real (sin navegador, sin entorno, sin datos), con el motivo en `--limitation`.
-- El registro avanza solo con `record`; terminar la skill sin `record` deja la cobertura anterior intacta.
+- `partial` es para una ejecución que se hizo pero dejó verificaciones sin hacer o sin evidencia (sin tests para esa parte, sin recorrido en navegador, modo incremental sin cobertura verificada previa): el trabajo está, falta acreditarlo. Cada verificación faltante va con `--pending` (lo que queda por hacer) o `--limitation` (por qué no se hizo).
+- `blocked` es para un impedimento real que frenó la ejecución de la skill sobre la unidad (sin entorno para correrla, sin datos, sin acceso al servicio), con el motivo en `--limitation`. Una verificación que faltó pero no frenó el trabajo es `partial`, no `blocked`.
+- El registro avanza solo con `record`; terminar la skill sin `record` deja la cobertura anterior intacta y el cierre incompleto.
 - No guardar secretos, tokens, emails ni payloads en resúmenes: el CLI redacta lo que reconoce, pero la responsabilidad es de quien escribe.
+
+## Cierre incompleto o bloqueado
+
+El cierre de una skill integrada está **completo** solo si cada unidad tocada terminó con un `record` exitoso (cualquier resultado: `verified`, `partial`, `blocked` o `not-applicable`). Si no se pudo registrar, la skill igual termina su trabajo (el código, el análisis y las verificaciones no se descartan), pero el cierre se reporta como **incompleto: cobertura sin registrar**, nunca como completo ni como una simple limitación. Casos:
+
+| Situación | Qué hacer y reportar |
+|---|---|
+| No hay `node` (≥ 20) en `PATH` | Cierre incompleto. Motivo: `node` no disponible (lo que devolvió `node --version` o el shell). Falta: instalar Node ≥ 20 y correr el protocolo sobre las unidades listadas. |
+| El CLI no está junto a la skill (plugin incompleto o ruta no resuelta) | Cierre incompleto. Motivo: la ruta probada que no existe. Falta: reinstalar o actualizar `golfo-kit` (o apuntar a su `tools/skill-coverage/`) y registrar. |
+| `init`, `add-unit` o `discover --write` fallan, o no se puede definir una unidad válida | Cierre incompleto. Motivo: el error literal del CLI. Falta: la unidad a crear (id, kind, entradas propuestas) para crearla con el comando corregido. |
+| `record` falla (exit 3 por código cambiado después de `begin` que `abort` + `begin` no resolvieron, registro inválido, error de escritura) | Cierre incompleto. Motivo: el error literal. Falta: el `runId`, el resultado que se iba a registrar y la evidencia ya ejecutada para repetirla. |
+| `record` funcionó con `blocked` o `partial` | El registro está completo: se reporta el resultado registrado con sus limitaciones y pendientes. |
+
+Si el usuario pidió solo un plan o prohibió ejecutar comandos, no hay `record` posible: listá los comandos del protocolo que corresponden (incluida la creación del registro o la unidad) y cerrá incompleto con ese motivo.
+
+En el reporte final va una línea **Cobertura: incompleta** con, por cada unidad tocada, el id (o el id propuesto si no se pudo crear), el motivo concreto y qué falta para registrar. No escribir `records/` ni `runs/` a mano para "completar" el cierre.
 
 ## Unidades funcionales
 
@@ -106,6 +128,8 @@ Jerarquía: **módulo → página → sección → subflujo** (`hierarchy.module
 - `dependsOn`: dependencias que el análisis estático no ve (endpoints llamados por URL, inyección en runtime, configuración), con `reason` obligatorio.
 - `kind`: `ui-flow`, `api`, `job`, `webhook` o `backend`; una unidad puede cruzar varias pantallas o no tener interfaz.
 - `skills.<skill>.applicable: false` declara que una skill no corresponde.
+
+`add-unit --id <id> --kind <ui-flow|api|job|webhook|backend> --module <m> [--page <p>] [--section <s>] --subflow <s> --entry <path[:symbol]>... [--route <r>]... [--description <texto>]` crea una unidad en cualquier repositorio: inicializa el registro si falta, valida la definición contra el schema (id, kind, jerarquía, gramática de `symbol`), exige que cada archivo de `--entry` exista y rechaza un id que ya existe. `--entry path` sin símbolo cubre el archivo completo (`*`). No registra cobertura. `dependsOn`, `role`, `follow` y `skills` se agregan después editando `units/<id>.json`.
 
 `discover [--scope <carpeta>] [--include-api] [--write]` propone unidades desde las páginas del App Router: sigue el código de UI que cada página renderiza y propone una unidad por acción independiente de una sección (handlers internos que hacen I/O) cuando hay dos o más, una por sección con una sola acción o con carga propia, y una `view` por página que carga datos (con sus `loading`/`error`). Reutiliza ids existentes, omite componentes compartidos por varias páginas y nunca registra cobertura. Las propuestas son un punto de partida: los límites, nombres e ids definitivos se ajustan a mano.
 
@@ -202,6 +226,7 @@ Empezar en modo informativo y de solo lectura: un job que hace checkout de `golf
 
 ## Limitaciones y fallbacks
 
+- **Sin `node` o sin CLI**: no hay fallback que registre cobertura; la skill termina su trabajo y cierra incompleta con el motivo ([Cierre incompleto o bloqueado](#cierre-incompleto-o-bloqueado)).
 - **Sin parser** (proyecto sin dependencias instaladas, `GOLFO_COVERAGE_PARSER=none`, archivo que no parsea): cada archivo se hashea completo y los imports se siguen por patrón. Más conservador: un cambio en el archivo invalida a todas sus unidades. Un registro hecho con símbolos y leído sin parser (o al revés) se compara por archivo: si nada cambió sigue vigente; si algo cambió la vigencia es `unknown` y la decisión es revisar esos archivos.
 - **Estilos** (`.scss`, `.css`) se hashean por archivo: un cambio de estilos invalida la UI/UX de todas las unidades que importan ese módulo.
 - **Llamadas por URL** (`fetch('/api/...')`) no enlazan con el route handler: declararlo en `entries` o `dependsOn`.

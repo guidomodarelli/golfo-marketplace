@@ -107,7 +107,7 @@ export function openRegistry(projectRoot) {
     loadUnit(unitId) {
       assertUnitId(unitId);
       const unit = readJsonFile(at(REGISTRY_PATHS.units, `${unitId}.json`));
-      if (unit === undefined) throw new CoverageError(`registry: unit ${unitId} does not exist; list units with \`status\` or create one with \`discover --write\``);
+      if (unit === undefined) throw new CoverageError(`registry: unit ${unitId} does not exist; list units with \`status\` or create one with \`add-unit\` or \`discover --write\``);
       const errors = validateUnit(unit, `units/${unitId}.json`);
       if (errors.length) throw new CoverageError(`registry: unit ${unitId} is invalid: ${errors.join('; ')}`, { details: errors });
       return unit;

@@ -3,7 +3,7 @@ name: measured-performance-optimization
 description: 'Mide y optimiza rendimiento web: app lenta, Core Web Vitals, bundle, renders, caching, N+1 o jobs periódicos que releen toda una ventana en cada corrida. Usar también sin pedido explícito al crear un flujo nuevo o sumarle a uno existente requests, llamadas, queries o pasos nuevos; no en refactors, fixes ni cambios de copy o estilos que no agregan carga.'
 license: MIT
 metadata:
-  version: "1.4.0"
+  version: "1.5.0"
   author: "Guido Modarelli"
   category: "performance"
   tags: "performance, web-vitals, bundle, caching, n+1, incremental-sweep, cron, lazy-loading, chrome-devtools, playwright, sentry"
@@ -57,7 +57,7 @@ Si no se puede medir, no bloquear la entrega de la funcionalidad: la detención 
 
 ## Cobertura incremental
 
-Si el repositorio tiene `.golfo/skill-coverage/`, seguí el [protocolo de cobertura](../../references/skill-coverage.md#protocolo-de-una-skill) con `--skill measured-performance-optimization` en cada unidad funcional del flujo medido. El registro evita volver a medir lo que no cambió de carga; nunca reemplaza la medición.
+Obligatorio en cada ejecución, haya o no registro: seguí el [protocolo de cobertura](../../references/skill-coverage.md#protocolo-de-una-skill) con `--skill measured-performance-optimization` en cada unidad funcional del flujo medido, incluido su paso 1 cuando falta el registro o la unidad (crearlos es parte de la skill; proponer `discover` no alcanza) y el [cierre incompleto](../../references/skill-coverage.md#cierre-incompleto-o-bloqueado) cuando no se puede registrar. Nunca inventar cobertura ni evidencia. El registro evita volver a medir lo que no cambió de carga; nunca reemplaza la medición. Un endpoint, job o query sin página usa `add-unit --kind api|job|backend`.
 
 - **Cuándo consultar.** Al empezar, `check` dice si la unidad tiene cobertura y cuál es su revisión base (`baseline.commit`, que sirve como "antes" si sigue en el historial y la medición no se registró sobre cambios sin commitear; el alcance sugerido lo aclara). En la invocación automática por funcionalidad nueva, volvé a correr `check` después de implementar: lista la carga agregada por parte (`+1 requests`, `+2 awaited steps`, paquete nuevo) y es tu inventario del paso 1.
 - **Qué significa cada decisión.** `skip`: desde la última medición solo hubo cambios que no agregan carga (copy, estilos, tipos, refactors) o ninguno; no se vuelve a medir. `incremental`: medí el **flujo completo** antes y después en condiciones comparables, enfocado en la carga que lista `check`; ser incremental reduce qué investigar, no qué medir. `full`: aplicá el flujo obligatorio completo; un flujo nuevo usa `full` con su costo absoluto. Un pedido explícito de auditoría o de optimización completa usa `check --force-full`.
@@ -121,7 +121,7 @@ Cerrar con este formato:
 **Descartadas:** <cambios probados que no mejoraron y se revirtieron, con su medición>
 **Sin medir:** <qué no se pudo medir y por qué>
 **Próximos pasos:** <hallazgos pendientes ordenados por impacto>
-**Cobertura:** <solo con registro: por unidad, decisión de `check`, resultado de `record` y pendientes>
+**Cobertura:** <siempre: por unidad (creada en esta ejecución o existente), decisión de `check`, resultado de `record` y pendientes; si no se pudo registrar, `incompleta` con el motivo y qué falta>
 **Limitaciones del agente:** <solo si faltó una herramienta: qué se usó en su lugar o qué quedó sin medir y cómo obtenerlo>
 ```
 
