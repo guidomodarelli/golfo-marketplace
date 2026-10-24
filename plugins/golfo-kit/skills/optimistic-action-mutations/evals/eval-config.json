@@ -612,6 +612,70 @@
           "description": "Cierra con record"
         }
       ]
+    },
+    {
+      "id": "coverage-no-registry-creates-unit-and-records",
+      "description": "Repo sin .golfo/skill-coverage/: crea el registro y la unidad y registra con el protocolo completo, en vez de solo proponer discover.",
+      "input": "Usando optimistic-action-mutations: en mi app React agregué un toggle \"Marcar como favorito\" optimista en `src/features/courses/CourseCard.tsx` (handler `toggleFavorite` dentro de `CourseCard`) que llama a `PUT /api/courses/:id/favorite`, con rollback al baseline. Los tests de rollback y doble click pasan. El repo no tiene `.golfo/skill-coverage/` (nunca se usó el registro de cobertura) y en esta sesión tengo `node` 22 y el CLI en `~/golfo-kit/tools/skill-coverage/skill-coverage.mjs`. Contame en orden qué comandos de cobertura corrés desde que empezás hasta el cierre y qué queda en el reporte; los voy a ejecutar yo, así que no los ejecutes.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "\\binit\\b|add-unit|discover[^\\n]{0,60}--write",
+          "description": "Crea el registro (init, add-unit o discover --write) en vez de saltear la cobertura"
+        },
+        {
+          "type": "regex",
+          "pattern": "add-unit|discover[^\\n]{0,60}--write",
+          "description": "Crea la unidad que cubre el código tocado"
+        },
+        {
+          "type": "regex",
+          "pattern": "full|completo",
+          "description": "Una unidad nueva sin cobertura se analiza en modo full"
+        },
+        {
+          "type": "regex",
+          "pattern": "\\bbegin\\b",
+          "description": "Sigue el protocolo con begin"
+        },
+        {
+          "type": "regex",
+          "pattern": "\\brecord\\b",
+          "description": "Cierra con record"
+        }
+      ]
+    },
+    {
+      "id": "coverage-without-node-closes-incomplete",
+      "description": "Sin node en PATH: termina el trabajo pero cierra incompleto/bloqueado con el motivo y qué falta para registrar, no como simple limitación.",
+      "input": "Usando optimistic-action-mutations: agregué un botón \"Archivar\" con estado pending y confirmación del servidor en `components/tickets/TicketRow.tsx`; los tests pasan. En esta sesión `node --version` responde `command not found` y no puedo instalar nada, así que el CLI de skill-coverage no corre. ¿Cómo cerrás la tarea y qué ponés en el reporte sobre la cobertura? No ejecutes nada.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "incomplet|bloquead|blocked",
+          "description": "Marca el cierre como incompleto o bloqueado"
+        },
+        {
+          "type": "regex",
+          "pattern": "(sin|no hay|falta|no est|no tengo|ausencia de)[^\\n]{0,40}node|node[^\\n]{0,80}(no (est|existe|disponible|instalad|encontr)|not found|falta|ausente)",
+          "description": "Da el motivo concreto: no hay node"
+        },
+        {
+          "type": "regex",
+          "pattern": "instal[^\\n]{0,80}node|node[^\\n]{0,40}(≥|>=|20)|(pendiente|falta|faltan)[^\\n]{0,80}regist|regist[^\\n]{0,80}(después|luego|cuando|pendiente)",
+          "description": "Dice qué falta para registrar"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "tarea completa",
+            "cierre completo",
+            "quedó completo",
+            "queda completo"
+          ],
+          "description": "No da la tarea por completa"
+        }
+      ]
     }
   ]
 }

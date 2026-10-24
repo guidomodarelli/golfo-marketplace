@@ -16,6 +16,7 @@ import { discoverUnits, writeDiscoveredUnits } from './lib/discovery/next-app-ro
 import { snapshotPaths, splitInputKey } from './lib/impact/input-diff.mjs';
 import { dependencyChain } from './lib/impact/unit-inputs.mjs';
 import { describeInputKey } from './lib/policies/base-policy.mjs';
+import { buildUnitDefinition } from './lib/persistence/unit-definition.mjs';
 import { builtInPolicySkills } from './lib/policies/index.mjs';
 import { validateRegistry } from './lib/report/registry-validation.mjs';
 import { buildStatus, displayStatus, renderStatus } from './lib/report/status-report.mjs';
@@ -27,6 +28,10 @@ Registry: .golfo/skill-coverage/ in the repository of the current directory (or 
 
 Commands
   init                                   Create the registry layout and default config.
+  add-unit --id <id> --kind <ui-flow|api|job|webhook|backend> --module <m> --subflow <s>
+           [--page <p>] [--section <s>] --entry <path[:symbol]>... [--route <r>]... [--description <text>]
+                                         Create one unit in any repository (initializes the registry);
+                                         validated against the schema, never coverage.
   discover [--scope <dir>] [--include-api] [--write]
                                          Propose functional units from Next.js App Router pages
                                          (and API routes); --write saves new ones, never coverage.
@@ -62,10 +67,13 @@ const OPTIONS = {
   'baseline-kind': { type: 'string' },
   changed: { type: 'boolean' },
   conditions: { type: 'string' },
+  description: { type: 'string' },
   details: { type: 'boolean' },
+  entry: { multiple: true, type: 'string' },
   exec: { type: 'string' },
   'force-full': { type: 'boolean' },
   help: { short: 'h', type: 'boolean' },
+  id: { type: 'string' },
   'include-api': { type: 'boolean' },
   informative: { type: 'boolean' },
   json: { type: 'boolean' },
@@ -83,10 +91,13 @@ const OPTIONS = {
   report: { type: 'string' },
   result: { type: 'string' },
   root: { type: 'string' },
+  route: { multiple: true, type: 'string' },
   run: { type: 'string' },
   scope: { type: 'string' },
+  section: { type: 'string' },
   skill: { multiple: true, type: 'string' },
   'skills-dir': { type: 'string' },
+  subflow: { type: 'string' },
   summary: { type: 'string' },
   'timeout-ms': { type: 'string' },
   tool: { type: 'string' },
@@ -203,6 +214,24 @@ const COMMANDS = {
     output({ registry: context.registry.root }, values.json, () => `Registry ready at ${context.registry.root}`);
   },
 
+  'add-unit'(context, values) {
+    if (!values.entry?.length) throw usageError('add-unit: pass at least one --entry <path[:symbol]>');
+    const unit = buildUnitDefinition({
+      description: values.description,
+      entries: values.entry,
+      id: requireSingle(values, 'id'),
+      kind: requireSingle(values, 'kind'),
+      module: requireSingle(values, 'module'),
+      page: values.page?.length ? requireSingle(values, 'page') : undefined,
+      routes: values.route,
+      section: values.section,
+      subflow: requireSingle(values, 'subflow'),
+    }, context.projectRoot);
+    context.registry.initialize();
+    if (!context.registry.saveUnit(unit)) throw new CoverageError(`add-unit: unit ${unit.id} already exists; adjust units/${unit.id}.json or pick another id`);
+    output({ unit }, values.json, () => `Created unit ${unit.id} (${unit.kind}) with ${unit.entries.length} entr${unit.entries.length === 1 ? 'y' : 'ies'}. No coverage was recorded.`);
+  },
+
   discover(context, values) {
     const discovery = discoverUnits(context, { includeApi: values['include-api'], scope: values.scope });
     const written = values.write ? writeDiscoveredUnits(context, discovery) : null;
@@ -297,7 +326,7 @@ const COMMANDS = {
     }
     output({ affected, paths: [...paths].sort() }, values.json, () => (affected.length
       ? affected.map((item) => `${item.unit}  ${item.skill}: ${displayStatus(item.state, item.freshness)} → ${item.decision}  (${item.files.join(', ')})`).join('\n')
-      : `No unit includes ${[...paths].join(', ')}. If the files belong to a functionality, add or adjust its unit (discover --scope <dir>).`));
+      : `No unit includes ${[...paths].join(', ')}. If the files belong to a functionality, create its unit (add-unit, or discover --scope <dir> --write in a Next.js App Router app) or adjust an existing one.`));
   },
 
   begin(context, values) {
