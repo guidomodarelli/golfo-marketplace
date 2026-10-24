@@ -45,6 +45,20 @@ describe('add-unit in a repository without registry', () => {
     assert.equal(created.json.unit.hierarchy.section, 'List');
   });
 
+  test('saves entry paths in the canonical form that affected compares against', () => {
+    const created = fixture.run([...JOB_UNIT_ARGS.slice(0, -1), `./${JOB_FILE}:syncInvoices`]);
+    assert.equal(created.status, 0, created.stderr);
+    assert.deepEqual(created.json.unit.entries, [{ path: JOB_FILE, symbol: 'syncInvoices' }]);
+    assert.deepEqual(fixture.run(['affected', '--paths', JOB_FILE, '--skill', UI_SKILL]).json.affected.map((item) => item.unit), [JOB_UNIT]);
+  });
+
+  test('rejects a directory as entry, since the engine only fingerprints files', () => {
+    const directory = fixture.run([...JOB_UNIT_ARGS.slice(0, -1), 'lib']);
+    assert.equal(directory.status, 2);
+    assert.match(directory.stderr, /directories are not entries/);
+    assert.equal(fs.existsSync(path.join(fixture.root, REGISTRY)), false);
+  });
+
   test('refuses an existing id without touching the saved unit', () => {
     assert.equal(fixture.run(JOB_UNIT_ARGS).status, 0);
     const before = fixture.read(`${REGISTRY}/units/${JOB_UNIT}.json`);
@@ -59,7 +73,7 @@ describe('add-unit in a repository without registry', () => {
     assert.equal(invalid.status, 2);
     assert.match(invalid.stderr, /lowercase dotted kebab-case/);
     assert.match(invalid.stderr, /kind: must be one of/);
-    assert.match(invalid.stderr, /not found in the repository: lib\/jobs\/missing\.ts/);
+    assert.match(invalid.stderr, /not found in the repository.*: lib\/jobs\/missing\.ts/);
     assert.equal(fs.existsSync(path.join(fixture.root, REGISTRY)), false);
 
     const withoutEntry = fixture.run(['add-unit', '--id', JOB_UNIT, '--kind', 'job', '--module', 'Billing', '--subflow', 'Sync']);
