@@ -176,6 +176,32 @@ return browserPreference === null
 
 If server already knows device/context, serialize it and use same value on client instead of waiting for effect. Prefer the project's existing media-query helper that receives server device context.
 
+### Preferences visible on first paint (theme, density, locale UI)
+
+The effect-based fallback above is correct but flashes the default before the stored value applies. For a preference that changes the whole page's look, pick the first option that works:
+
+1. **Server already knows it.** Store the preference in a cookie when the user changes it and read it during SSR, so the HTML ships final (`<html data-theme="dark">`). No script, no flash, no mismatch.
+2. **Server cannot know it** (first visit, value only in `localStorage`, system `prefers-color-scheme`). Inline a tiny blocking script in `<head>` that runs before first paint and before hydration, reads the value and sets an attribute or class on `document.documentElement`. CSS keys off that attribute, so React-rendered markup stays identical on server and client.
+
+```tsx
+const THEME_BOOTSTRAP_SCRIPT = `(function(){try{var stored=localStorage.getItem('${THEME_STORAGE_KEY}');var theme=stored||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');document.documentElement.dataset.theme=theme;}catch(error){}})();`;
+
+<html lang={locale} suppressHydrationWarning>
+  <head>
+    <script nonce={cspNonce} dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP_SCRIPT }} />
+  </head>
+  <body>{children}</body>
+</html>
+```
+
+- Touch only `<html>`/`<body>` attributes, never text or elements React renders: changing React-owned markup before hydration recreates the mismatch.
+- `suppressHydrationWarning` goes on `<html>` only, because the script changes its attributes on purpose; it applies one level deep and does not cover children.
+- Script content is a static constant: never interpolate user data, request values or server responses into it. Pass the CSP nonce if the project uses one. Wrap storage access in `try/catch` (private mode, disabled storage).
+- Components that need the value in JS read it after hydration (from the attribute or storage) behind the stable fallback above; prefer the project's existing theme provider if it already implements this script.
+- Write the cookie as well when the user changes the preference, so later visits use option 1.
+
+Source: rules `rendering-hydration-no-flicker` and `rendering-hydration-suppress-warning` from vercel-labs/agent-skills `react-best-practices` (MIT, Vercel), adapted.
+
 ## Time, randomness, IDs, locale, and timezone
 
 Avoid values generated independently during render:
@@ -230,7 +256,7 @@ Do not convert whole page to CSR when only one widget is client-only.
 
 ## `suppressHydrationWarning`
 
-Use only when difference is unavoidable, local, harmless, and intentionally not reconciled—for example externally controlled timestamp text. Apply at smallest element and document reason.
+Use only when difference is unavoidable, local, harmless, and intentionally not reconciled—for example externally controlled timestamp text, or the `<html>` attributes set by a pre-hydration preference script (see "Preferences visible on first paint"). Apply at smallest element and document reason. It silences only that element's own attributes and text, one level deep: children still warn, and the DOM still keeps the server value until something re-renders it.
 
 Never use it to hide:
 
@@ -319,6 +345,7 @@ This skill owns consistency between SSR HTML and first client render.
 - HTML nesting valid.
 - Client-only libraries have stable minimal boundary.
 - `suppressHydrationWarning` absent or narrowly justified.
+- First-paint preferences come from a cookie read on the server; a pre-hydration script, if used, only touches `<html>`/`<body>` attributes and interpolates no user data.
 - `renderToString` + `hydrateRoot` regression passes with zero recoverable errors.
 - Project build passes.
 - Browser hard reload checked and result reported with evidence.

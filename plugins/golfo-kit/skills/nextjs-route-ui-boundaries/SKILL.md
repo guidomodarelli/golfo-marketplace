@@ -94,7 +94,7 @@ Registrar cada decisión en la tabla del reporte y reportar los [anti-patrones](
 
 ## 3. Decidir qué renderiza el server
 
-Por defecto todo es Server Component y solo baja a cliente **la hoja interactiva**, nunca el contenedor entero. Leer [server-client-split.md](references/server-client-split.md) y, para cada elemento de la pantalla, aplicar el reparto, las preguntas y el catálogo (sidebar, header, tablas, filtros, formularios, gráficos y demás), con sus [patrones de composición](references/server-client-split.md#patrones-de-composición), y registrar cada cambio en la tabla "Server vs cliente" del reporte.
+Por defecto todo es Server Component y solo baja a cliente **la hoja interactiva**, nunca el contenedor entero. Leer [server-client-split.md](references/server-client-split.md) y, para cada elemento de la pantalla, aplicar el reparto, las preguntas y el catálogo (sidebar, header, tablas, filtros, formularios, gráficos y demás), con sus [patrones de composición](references/server-client-split.md#patrones-de-composición) y, cuando un Server Component awaitea lecturas independientes o pasa datos a cliente, la sección [Datos en Server Components](references/server-client-split.md#datos-en-server-components), y registrar cada cambio en la tabla "Server vs cliente" del reporte.
 
 ## 4. Skeletons en vez de texto plano
 

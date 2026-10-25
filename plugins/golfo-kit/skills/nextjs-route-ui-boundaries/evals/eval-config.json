@@ -212,6 +212,33 @@
       ]
     },
     {
+      "id": "rsc-sequential-awaits-and-duplicate-props",
+      "description": "Detecta un page.tsx que awaitea en serie lecturas independientes antes de renderizar hijos y que serializa el mismo arreglo dos veces; propone Server Components hermanos y derivar en cliente.",
+      "input": "Next.js 15 App Router. En `app/teams/[teamId]/page.tsx`:\n```tsx\nexport default async function TeamPage({ params }) {\n  const { teamId } = await params;\n  const header = await getTeamHeader(teamId);\n  const members = await getTeamMembers(teamId);\n  const activity = await getTeamActivity(teamId);\n  return (\n    <>\n      <TeamHeader data={header} />\n      <MembersTable members={members} membersByName={members.toSorted(byName)} />\n      <ActivityFeed items={activity} />\n    </>\n  );\n}\n```\n`MembersTable` es `\"use client\"`. Las tres lecturas no dependen entre sí y la página tarda en aparecer. ¿Qué cambiarías? Sin ejecutar nada.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "paralel|parallel|Promise[.]all|hermanos|siblings",
+          "description": "Hace que las lecturas independientes corran en paralelo"
+        },
+        {
+          "type": "regex",
+          "pattern": "(Server Component|componente server|componentes async|async (component|componente)).{0,200}(propio|own|su dato|sus datos|cada uno|each)|(cada|each) (region|región|uno|componente).{0,120}(pide|fetch|lee|await)",
+          "description": "Propone que cada región sea un Server Component que pide sus propios datos"
+        },
+        {
+          "type": "contains",
+          "value": "Suspense",
+          "description": "Usa Suspense para streamear las regiones lentas"
+        },
+        {
+          "type": "regex",
+          "pattern": "(dos veces|twice|duplic|referencia|reference).{0,200}(membersByName|toSorted|orden|sort)|(membersByName|toSorted).{0,200}(dos veces|twice|duplic|referencia|reference|cliente|client)",
+          "description": "Señala que pasar members y members.toSorted serializa los datos dos veces y deriva el orden en el cliente"
+        }
+      ]
+    },
+    {
       "id": "light-mode-small-component-change",
       "description": "Ante un cambio puntual (agregar un botón con estado a una página server) aplica el modo liviano: deja 'use client' en la hoja, no convierte la página y no re-audita rutas ajenas.",
       "input": "Proyecto Next.js 16 con App Router. En `app/(platform)/[slug]/courses/page.tsx` (Server Component que hace `await getCourses(slug)` y renderiza la lista) quiero agregar un botón 'Marcar como favorito' en cada curso que cambie de ícono al clickearlo y llame a una Server Action. Mi idea es poner `\"use client\"` arriba de page.tsx y usar useState. Escribí el cambio.",

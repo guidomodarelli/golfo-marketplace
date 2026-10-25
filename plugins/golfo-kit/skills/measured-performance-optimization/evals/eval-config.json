@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "skill": "measured-performance-optimization",
-  "description": "Evalúa optimización de rendimiento guiada por medición: línea base antes del cambio, una optimización por vez, medición posterior con las mismas condiciones, uso de Chrome DevTools/Playwright/Sentry, corrección de N+1 con JOIN o WHERE IN, lazy loading, caching y assets. También evalúa el modo automático ante funcionalidad nueva: inventaria la carga agregada y la mide contra la revisión sin esa funcionalidad. Suma casos de memoria y leaks, SSR/TTFB y streaming, main thread y long tasks, y listas/DOM grande, que verifican la referencia cargada y la medición antes/después.",
+  "description": "Evalúa optimización de rendimiento guiada por medición: línea base antes del cambio, una optimización por vez, medición posterior con las mismas condiciones, uso de Chrome DevTools/Playwright/Sentry, corrección de N+1 con JOIN o WHERE IN, lazy loading, caching y assets. También evalúa el modo automático ante funcionalidad nueva: inventaria la carga agregada y la mide contra la revisión sin esa funcionalidad. Suma casos de memoria y leaks, SSR/TTFB y streaming, main thread y long tasks, y listas/DOM grande, que verifican la referencia cargada y la medición antes/después. Agrega barrel files, deduplicación con la capa de datos existente del proyecto y listeners/storage en el hilo principal.",
   "test_cases": [
     {
       "id": "n-plus-one-users-orders",
@@ -10,12 +10,17 @@
       "assertions": [
         {
           "type": "contains_any",
-          "values": ["N+1", "n+1"],
+          "values": [
+            "N+1",
+            "n+1"
+          ],
           "description": "Identifica el problema como N+1"
         },
         {
           "type": "contains_any",
-          "values": ["101"],
+          "values": [
+            "101"
+          ],
           "description": "Cuantifica las 101 queries"
         },
         {
@@ -47,7 +52,12 @@
       "assertions": [
         {
           "type": "contains_any",
-          "values": ["Chrome DevTools", "Lighthouse", "performance trace", "trace"],
+          "values": [
+            "Chrome DevTools",
+            "Lighthouse",
+            "performance trace",
+            "trace"
+          ],
           "description": "Mide con Chrome DevTools o Lighthouse"
         },
         {
@@ -118,7 +128,15 @@
         },
         {
           "type": "contains_any",
-          "values": ["pendiente", "Pendiente", "sin medir", "Sin medir", "pending", "N/A", "—"],
+          "values": [
+            "pendiente",
+            "Pendiente",
+            "sin medir",
+            "Sin medir",
+            "pending",
+            "N/A",
+            "—"
+          ],
           "description": "Marca las mediciones como pendientes en vez de inventarlas, con los mismos placeholders que acepta la aserción de celda exacta (pendiente, pending, sin medir, N/A o —)"
         },
         {
@@ -576,6 +594,98 @@
           "type": "regex",
           "pattern": "despu[ée]s|after",
           "description": "Plantea medir después del cambio con las mismas condiciones"
+        }
+      ]
+    },
+    {
+      "id": "barrel-imports-slow-cold-start",
+      "description": "Ante un cold start y un bundle inflados por imports desde barrels, carga la referencia de bundle, mide módulos y KB antes y propone optimizePackageImports o imports directos y un mapa explícito para import() dinámico.",
+      "input": "Next.js 15. El dev server tarda 40 s en arrancar y el cold start de producción de `/dashboard` es lento. En casi todos los componentes hay `import { Check, X } from 'lucide-react'` y `import { Button, Dialog } from '@mui/material'`, y el panel de reportes hace `const Panel = await import(`./panels/${panelName}`)`. No ejecutes nada: decí cómo medirías, qué cambiarías y qué compararías después.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "barrel|reexport|re-export|index",
+          "description": "Identifica los barrel files como causa"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "optimizePackageImports",
+            "@mui/material/Button",
+            "import directo",
+            "imports directos",
+            "direct import"
+          ],
+          "description": "Propone optimizePackageImports o imports directos al subpath"
+        },
+        {
+          "type": "regex",
+          "pattern": "mapa|map|analizab|analyzab|literal",
+          "description": "Reemplaza el import() con template string por un mapa explícito o path literal"
+        },
+        {
+          "type": "regex",
+          "pattern": "antes|baseline|línea base|before",
+          "description": "Mide antes del cambio"
+        },
+        {
+          "type": "regex",
+          "pattern": "módulos|modules|KB|cold start|arranque",
+          "description": "Compara módulos cargados, KB o tiempo de arranque antes y después"
+        }
+      ]
+    },
+    {
+      "id": "dedupe-with-existing-data-layer",
+      "description": "Ante requests duplicados, detecta la capa de datos que ya usa el proyecto y deduplica con ella o con la caché del framework, sin sumar una librería nueva por defecto.",
+      "input": "En una app Next.js App Router, el panel Network muestra que `/api/me` se pide 4 veces al abrir `/settings` porque `Header`, `Sidebar`, `ProfileForm` y `PlanBadge` hacen cada uno su `fetch` en un `useEffect`. El `package.json` ya tiene `@tanstack/react-query` y hay un `useCurrentUserQuery` en `hooks/`. Un compañero propone instalar SWR para deduplicar. No ejecutes nada: proponé el cambio y cómo medirlo.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "useCurrentUserQuery|TanStack|react-query|ya (usa|tiene|existe)|already",
+          "description": "Reusa la capa de datos que el proyecto ya tiene"
+        },
+        {
+          "type": "regex",
+          "pattern": "(no|sin|evitar|innecesari|unnecessary).{0,80}SWR|SWR.{0,120}(no|innecesari|unnecessary|duplic|otra librer|segunda)",
+          "description": "Rechaza sumar SWR como librería nueva por defecto"
+        },
+        {
+          "type": "regex",
+          "pattern": "cantidad de (requests|llamadas|peticiones)|requests (a|duplicad|repetid)|requests? to|duplicad|número de (requests|llamadas)|request count|duplicate requests",
+          "description": "Mide la cantidad de requests duplicados antes y después"
+        }
+      ]
+    },
+    {
+      "id": "touch-listeners-and-storage-hot-path",
+      "description": "Ante scroll con lag en mobile, detecta listeners de touch/wheel no pasivos y por instancia, y lecturas de localStorage en cada render; propone passive, un listener compartido y caché de storage versionada, midiendo antes y después.",
+      "input": "En la lista de productos de una PWA React, el scroll en mobile se traba. Cada `ProductCard` (hay 200) registra en un `useEffect` `window.addEventListener('touchmove', trackSwipe)` y `trackSwipe` nunca llama a `preventDefault`. Además cada card hace `JSON.parse(localStorage.getItem('userPrefs'))` en el render para saber la moneda; `userPrefs` guarda el objeto de usuario completo con el token. No ejecutes nada: decí cómo lo medirías y qué cambiarías.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "passive",
+          "description": "Marca el listener de touchmove como passive"
+        },
+        {
+          "type": "regex",
+          "pattern": "un (solo )?listener|single listener|one listener|compartid|shared|por instancia|per instance",
+          "description": "Comparte un solo listener global en vez de uno por card"
+        },
+        {
+          "type": "regex",
+          "pattern": "cache|caché|una vez|once|memoria",
+          "description": "Lee localStorage una vez y lo cachea en memoria"
+        },
+        {
+          "type": "regex",
+          "pattern": "token",
+          "description": "Señala que no se debe guardar el token en storage"
+        },
+        {
+          "type": "regex",
+          "pattern": "antes|baseline|línea base|before",
+          "description": "Mide antes del cambio"
         }
       ]
     }

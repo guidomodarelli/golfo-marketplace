@@ -93,14 +93,14 @@ Ordenar los hallazgos por impacto medido en el flujo crítico, no por facilidad.
 | Área | Alcance | Referencia |
 |---|---|---|
 | Renders innecesarios | Trabajo de render y commits de componentes en el cliente | [references/unnecessary-renders.md](references/unnecessary-renders.md) |
-| Bundle y lazy loading | Tamaño y división del JavaScript que se descarga y ejecuta | [references/bundle-lazy-loading.md](references/bundle-lazy-loading.md) |
-| Requests y caching | Orden, cantidad y cacheo de requests entre cliente, red y servidor | [references/requests-caching.md](references/requests-caching.md) |
+| Bundle y lazy loading | Tamaño y división del JavaScript que se descarga y ejecuta, barrel files e `import()` no analizables | [references/bundle-lazy-loading.md](references/bundle-lazy-loading.md) |
+| Requests y caching | Orden, cantidad y cacheo de requests entre cliente, red y servidor, deduplicando con la capa de datos que ya usa el proyecto | [references/requests-caching.md](references/requests-caching.md) |
 | Queries lentas y N+1 | Acceso a base de datos desde el backend | [references/database-queries-n-plus-one.md](references/database-queries-n-plus-one.md) |
-| Imágenes, fuentes y scripts | Carga de imágenes, fuentes web y scripts de terceros | [references/images-fonts-scripts.md](references/images-fonts-scripts.md) |
+| Imágenes, fuentes y scripts | Carga de imágenes, fuentes web, scripts de terceros y resource hints (`preconnect`, `preload`, `preinit`) | [references/images-fonts-scripts.md](references/images-fonts-scripts.md) |
 | Memoria y leaks | Heap que crece al repetir un flujo, detached DOM, listeners/timers/observers sin limpiar y caches sin límite, en cliente y Node | [references/memory-leaks.md](references/memory-leaks.md) |
 | SSR, TTFB y streaming | Tiempo hasta el primer byte, streaming con Suspense, tamaño del HTML/payload RSC y costo de la hidratación | [references/ssr-ttfb-streaming.md](references/ssr-ttfb-streaming.md) |
-| Main thread y long tasks | Trabajo CPU sincrónico que bloquea el hilo principal del navegador o el event loop de Node | [references/main-thread-long-tasks.md](references/main-thread-long-tasks.md) |
-| Listas y DOM grande | Cantidad de nodos, virtualización, layout thrashing, estilos y animaciones caras | [references/large-lists-dom.md](references/large-lists-dom.md) |
+| Main thread y long tasks | Trabajo CPU sincrónico que bloquea el hilo principal del navegador o el event loop de Node, listeners de scroll/touch no pasivos o duplicados y storage síncrono en hot paths | [references/main-thread-long-tasks.md](references/main-thread-long-tasks.md) |
+| Listas y DOM grande | Cantidad de nodos, virtualización, layout thrashing, estilos y animaciones caras (incluido SVG animado) | [references/large-lists-dom.md](references/large-lists-dom.md) |
 | Jobs periódicos con barrido completo | Cron o driver que relee una ventana entera en cada corrida y cuya demora crece con la ventana, no con lo nuevo | [references/incremental-sweep-jobs.md](references/incremental-sweep-jobs.md) |
 
 ### 5. Aplicar una optimización a la vez

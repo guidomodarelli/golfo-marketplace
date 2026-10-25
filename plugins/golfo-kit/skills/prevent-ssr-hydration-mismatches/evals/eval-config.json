@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "skill": "prevent-ssr-hydration-mismatches",
-  "description": "Evalúa diagnóstico y prevención de hydration mismatches en React SSR: fuente única de verdad serializada, allowlist de query, valores no deterministas (fecha, random, locale, timezone), APIs browser-only y librerías client-only, nesting HTML inválido, rechazo de suppressHydrationWarning y tests con renderToString + hydrateRoot.",
+  "description": "Evalúa diagnóstico y prevención de hydration mismatches en React SSR: fuente única de verdad serializada, allowlist de query, valores no deterministas (fecha, random, locale, timezone), APIs browser-only y librerías client-only, nesting HTML inválido, rechazo de suppressHydrationWarning y tests con renderToString + hydrateRoot, y preferencias de primer pintado (tema) sin flicker: cookie leída en SSR y, si no, script previo a la hidratación.",
   "test_cases": [
     {
       "id": "query-dual-source-of-truth",
@@ -291,6 +291,33 @@
             "Status: PASS"
           ],
           "description": "Does not present the blocked check as PASS"
+        }
+      ]
+    },
+    {
+      "id": "theme-flicker-cookie-then-inline-script",
+      "description": "Ante un flash de tema claro en carga, prefiere leer la preferencia de una cookie en SSR y, cuando el server no la conoce, usa un script inline previo a la hidratación que solo toca atributos de <html>, con suppressHydrationWarning acotado a <html>.",
+      "input": "En una app Next.js App Router el tema oscuro se guarda en `localStorage` y un `ThemeProvider` lo aplica en un `useEffect`. Cada vez que se recarga la página se ve un flash del tema claro. Alguien propone leer `localStorage` directamente en el render del provider y poner `suppressHydrationWarning` en el `<body>` para que no se queje. No ejecutes nada: proponé la solución.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "cookie",
+          "description": "Prefiere guardar la preferencia en una cookie que el server lee en SSR"
+        },
+        {
+          "type": "regex",
+          "pattern": "script.{0,160}(antes|before).{0,60}(hidrat|hydrat|paint|pintar|render)|(blocking|bloqueante|inline).{0,40}script|script inline",
+          "description": "Usa un script inline que corre antes de hidratar cuando el server no conoce el valor"
+        },
+        {
+          "type": "regex",
+          "pattern": "documentElement|<html|data-theme",
+          "description": "El script solo cambia atributos de <html> y no markup que renderiza React"
+        },
+        {
+          "type": "regex",
+          "pattern": "localStorage.{0,160}(server|servidor|SSR|render)|(render|SSR).{0,160}localStorage",
+          "description": "Rechaza leer localStorage durante el render"
         }
       ]
     }

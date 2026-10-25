@@ -28,3 +28,12 @@
   - Cargar terceros en idle o tras interacción (facade para chats y videos embebidos).
   - Eliminar scripts sin uso y revisar tags duplicados.
 - Medir: TBT/INP, cantidad de long tasks atribuidas a terceros, KB de JS de terceros.
+
+## Resource hints de React DOM
+
+Fuente: regla `rendering-resource-hints` de vercel-labs/agent-skills `react-best-practices` (MIT, Vercel), adaptada.
+
+- Detectar: en el waterfall de la carga, el DNS/TCP/TLS de un origen crítico (API, CDN, fuentes) arranca recién cuando el JS lo pide; recursos que el server ya sabe que se van a usar se descubren tarde (fuente referenciada desde CSS, stylesheet o script cargado por un componente).
+- Corregir: con React 19 (o el App Router), llamar las APIs de `react-dom` desde el componente que conoce el recurso, también desde Server Components, en vez de escribir `<link>` a mano: `prefetchDNS(origin)` para un origen que se usará más tarde; `preconnect(origin)` para uno que se usa enseguida (pocos: cada conexión abierta compite); `preload(href, { as, ... })` para un recurso crítico de esta página (fuente con `crossOrigin`, imagen LCP con las reglas de [Imágenes](#imágenes)); `preinit(href, { as: 'style' })` o `{ as: 'script' }` para un stylesheet o script que tiene que ejecutarse temprano; `preloadModule`/`preinitModule` para módulos ES, por ejemplo en hover de un link a la próxima ruta. React deduplica los hints repetidos.
+- No preloadear lo que la página no usa (consume ancho de banda del camino crítico y Chrome avisa que el recurso se precargó sin usarse) ni duplicar con un `<link>` manual del mismo recurso.
+- Medir: inicio de la conexión o de la descarga del recurso en el waterfall, LCP y tiempo hasta texto visible con el mismo throttling.

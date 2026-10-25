@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "skill": "refactor-ssr-data-fetching",
-  "description": "Evalúa decisiones de arquitectura de red en React SSR: datos del primer render server-side sin loopback, requests posteriores por BFF same-origin, mutations con validación/authz/ownership, excepción browser→upstream documentada y reconocimiento del scope negativo en CSR puro.",
+  "description": "Evalúa decisiones de arquitectura de red en React SSR: datos del primer render server-side sin loopback, requests posteriores por BFF same-origin, mutations con validación/authz/ownership, excepción browser→upstream documentada y reconocimiento del scope negativo en CSR puro, Server Actions protegidas como endpoints públicos, estado de módulo sin datos por request y orden de await en route handlers BFF.",
   "test_cases": [
     {
       "id": "initial-data-ssr-without-loopback",
@@ -180,6 +180,65 @@
             "no logear"
           ],
           "description": "Devuelve error seguro y mantiene logs sanitizados"
+        }
+      ]
+    },
+    {
+      "id": "server-action-authenticated-inside",
+      "description": "Trata una Server Action como endpoint público: valida schema, autentica, autoriza y verifica ownership dentro de la action, sin confiar en el guard de la página.",
+      "input": "En un proyecto Next.js App Router, la página `/orders/[id]` ya redirige al login si no hay sesión y solo muestra el botón Archivar a los supervisores. El botón llama a esta Server Action:\n```ts\n'use server';\nexport async function archiveOrder(orderId: string) {\n  await db.order.update({ where: { id: orderId }, data: { archived: true } });\n  return { ok: true };\n}\n```\nEl equipo dice que como la página ya está protegida no hace falta nada más. No ejecutes nada: revisá la action, decí si alcanza la protección de la página y proponé la versión correcta con sus tests.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "endpoint|invoc[a-z]* direct|directly invo|llamad[a-z]* direct|POST",
+          "description": "Explica que la Server Action es un endpoint invocable directamente, sin pasar por la página"
+        },
+        {
+          "type": "regex",
+          "pattern": "dentro de (la|cada|la propia) (action|funci)|inside (the|each) action|en la propia action|const (session|identity|user|viewer)[a-zA-Z]* = await|await (requireAuth|verifySession|getSession|auth[(])",
+          "description": "Ubica las verificaciones dentro de la propia action"
+        },
+        {
+          "type": "regex",
+          "pattern": "ownership|propietari|pertenec|dueñ",
+          "description": "Verifica ownership de la orden además del rol"
+        },
+        {
+          "type": "regex",
+          "pattern": "schema|zod|valid",
+          "description": "Valida el input de la action con schema antes de usarlo"
+        },
+        {
+          "type": "regex",
+          "pattern": "sin sesi|without (a )?session|no autenticad|unauthenticated|otro usuario|ajen|another user",
+          "description": "Incluye tests que invocan la action sin sesión o con identidad ajena"
+        }
+      ]
+    },
+    {
+      "id": "module-state-and-bff-await-order",
+      "description": "Detecta estado mutable de módulo con datos por request y reordena los await del route handler sin adelantar lecturas protegidas antes de la autorización.",
+      "input": "Revisá este route handler de un BFF Next.js. A veces un usuario ve el tenant de otro y además el endpoint tarda bastante:\n```ts\nlet currentTenant: Tenant | null = null;\n\nexport async function GET(request: Request) {\n  currentTenant = await resolveTenant(request);\n  const config = await loadPublicConfig();\n  const flags = await loadFlags(currentTenant.id);\n  const url = new URL(request.url);\n  if (!url.searchParams.get('warehouseId')) {\n    return Response.json({ error: 'warehouseId required' }, { status: 400 });\n  }\n  await requireWarehouseOwnership(currentTenant, url.searchParams.get('warehouseId'));\n  const items = await searchItems(currentTenant, url.searchParams);\n  return Response.json({ config, flags, items });\n}\n```\nNo ejecutes nada: explicá los problemas y proponé la versión corregida.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "concurren|entre requests|between requests|cross-request|otro usuario|another user|compartid",
+          "description": "Explica que la variable de módulo se comparte entre requests concurrentes y filtra datos"
+        },
+        {
+          "type": "regex",
+          "pattern": "early return|antes de (cualquier|esperar|awaitear)|validar .{0,40}primero|400 .{0,60}antes|before any",
+          "description": "Valida warehouseId y hace el early return antes de esperar trabajo que esa rama descarta"
+        },
+        {
+          "type": "regex",
+          "pattern": "Promise[.]all|en paralelo|in parallel|arranc|start .{0,20}(early|immediately)",
+          "description": "Paraleliza las lecturas independientes como la config pública"
+        },
+        {
+          "type": "regex",
+          "pattern": "autoriz|authoriz|ownership",
+          "description": "Mantiene la autorización/ownership antes de la lectura de items protegidos"
         }
       ]
     },
