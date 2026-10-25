@@ -1238,6 +1238,33 @@
       ]
     },
     {
+      "id": "frontend-style-lets-design-explain-instead-of-secondary-copy",
+      "description": "Quita subtítulos, eslóganes y textos de ayuda innecesarios y resuelve la ambigüedad con diseño, sin eliminar nombres accesibles ni avisos de consecuencias.",
+      "input": "Leé la regla frontend de agent-ready-setup sobre copy de interfaz. Una pantalla de configuración de notificaciones tiene el título `Notificaciones`, el subtítulo `Tu centro de control para mantenerte siempre informado`, un párrafo `Usá los interruptores de abajo para activar o desactivar cada canal`, un helper bajo cada interruptor (`Activá esta opción para recibir emails`), un botón de ícono sin texto con `aria-label=\"Eliminar canal\"` y un aviso `Eliminar un canal borra su historial y no se puede deshacer`. Decí qué textos sacás, qué textos mantenés y cómo resolvés con diseño lo que explicaban. No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["subtítulo", "subtitle", "eslogan", "slogan", "centro de control"],
+          "description": "Saca el subtítulo tipo eslogan"
+        },
+        {
+          "type": "contains_any",
+          "values": ["jerarquía", "hierarchy", "agrup", "group", "layout"],
+          "description": "Resuelve la explicación con diseño en vez de texto"
+        },
+        {
+          "type": "contains_any",
+          "values": ["aria-label", "nombre accesible", "accessible name"],
+          "description": "Mantiene el nombre accesible del botón de ícono"
+        },
+        {
+          "type": "contains_any",
+          "values": ["deshacer", "irreversible", "historial"],
+          "description": "Mantiene el aviso de consecuencia irreversible"
+        }
+      ]
+    },
+    {
       "id": "frontend-style-uses-lodash-es-only-where-it-adds-value",
       "description": "Exige lodash-es con imports nombrados en los casos que reducen código y prohíbe wrappers de funciones nativas.",
       "input": "Leé la regla frontend de agent-ready-setup sobre lodash. En un componente con lodash-es instalado alguien escribió un debounce manual con `setTimeout`, un deep equal recursivo propio, un loop con `slice` que arma lotes de 50 ids para enviarlos al backend, un `debounce` creado directamente en el cuerpo del componente, `[...new Set(ids)]` para deduplicar, chequeos `typeof name === 'string'` y `Array.isArray(items)`, `_.each(items, render)` y `_.get(user, 'profile.name')`, importando `import _ from 'lodash'`. Explicá qué cambiarías en cada caso y cómo deben quedar los imports. No ejecutes Bash ni escribas archivos.",
