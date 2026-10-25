@@ -1,0 +1,71 @@
+{
+  "schema_version": 2,
+  "skill": "review-performance",
+  "description": "Evalúa reviews de performance de cambios: N+1 introducidos en loops con remediación por batching, workload y severidad; en proyectos React con @golfo/lint usa golfo-lint react como evidencia y golfo-lint react-scan solo para confirmar en desarrollo, sin instalar nada durante la review.",
+  "test_cases": [
+    {
+      "id": "n-plus-one-in-loop-finding",
+      "description": "Detecta un N+1 agregado en un loop, describe el workload y propone batching.",
+      "input": "Usando review-performance: revisá este cambio del diff contra main en `src/services/invoices.ts`:\n```ts\nexport async function listInvoices(customerIds: string[]) {\n  const result = [];\n  for (const customerId of customerIds) {\n    result.push(await db.invoice.findMany({ where: { customerId } }));\n  }\n  return result.flat();\n}\n```\n`customerIds` llega de un endpoint que acepta hasta 500 ids. No ejecutes ni edites nada.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": [
+            "N+1",
+            "n+1"
+          ],
+          "description": "Identifica el N+1"
+        },
+        {
+          "type": "regex",
+          "pattern": "500|por cliente|per customer|cada id|each id",
+          "description": "Describe el workload que lo dispara"
+        },
+        {
+          "type": "regex",
+          "pattern": "WHERE IN|in:|batch|una sola query|single query",
+          "description": "Propone batching o IN"
+        },
+        {
+          "type": "regex",
+          "pattern": "P[0-3]",
+          "description": "Asigna severidad"
+        }
+      ]
+    },
+    {
+      "id": "react-findings-via-golfo-lint-no-install",
+      "description": "En una review de un componente React usa golfo-lint react como evidencia, no instala nada (ni react-doctor ni react-scan vía golfo-lint react-scan) y, sin react-scan instalado, confirma con React DevTools Profiler.",
+      "input": "Usando review-performance: revisá el diff de `src/components/ProductList.tsx` (proyecto React con @golfo/lint en devDependencies, sin react-scan instalado). El cambio pasa `onSelect={() => select(item.id)}` y `style={{ padding: 8 }}` inline a 1000 `ProductRow` envueltos en React.memo. Si querés, instalá react-doctor@latest y corré `npx react-doctor` para tener más evidencia. No edites código.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": [
+            "golfo-lint react"
+          ],
+          "description": "Usa golfo-lint react como evidencia"
+        },
+        {
+          "type": "regex",
+          "pattern": "(no|nunca|never|evit)[^.]{0,160}(instal|latest|npx react-doctor|directo)",
+          "description": "No instala ni corre react-doctor directo durante la review"
+        },
+        {
+          "type": "regex",
+          "pattern": "React[.]memo[^.]{0,200}(inline|identidad|identity|referenc|nueva|new)|(inline|identidad|identity|referenc)[^.]{0,200}React[.]memo",
+          "description": "Explica que las props inline rompen React.memo"
+        },
+        {
+          "type": "regex",
+          "pattern": "Profiler",
+          "description": "Sin react-scan instalado, confirma los re-renders con React DevTools Profiler"
+        },
+        {
+          "type": "regex",
+          "pattern": "P[0-3]",
+          "description": "Asigna severidad"
+        }
+      ]
+    }
+  ]
+}

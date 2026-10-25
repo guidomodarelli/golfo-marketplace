@@ -3,10 +3,10 @@ name: review-performance
 description: Review production-impacting performance issues in HEAD, uncommitted changes, or changed code against develop/main/master. Use when the user asks for a performance review, Review Performance HEAD, review including uncommitted changes, performance risks, latency or throughput review, or focused detection of N+1 queries, O(n²) or worse algorithms, repeated expensive work, unnecessary allocations, excessive rendering, unbounded loops, missing batching, inefficient I/O, cache misuse, or avoidable production load.
 license: MIT
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
   author: "Guido Modarelli"
   category: "code-review"
-  tags: "code-review, performance, latency, n+1, rendering"
+  tags: "code-review, performance, latency, n+1, rendering, react-doctor, react-scan"
   command: "/review-performance"
 ---
 
@@ -27,6 +27,7 @@ Performance impact depends on where the code runs and how often, so anchor each 
 - Start from the diff and widen to surrounding code only as far as needed to understand data size, call frequency, lifecycle, or dependency contracts.
 - Report risks that scale poorly or add repeated expensive work in normal production use; a micro-optimization on a cold path is not worth the reader's attention.
 - Ground findings in evidence from code paths, loops, query placement, allocations, and API boundaries. When impact depends on an assumption, state it.
+- In React projects that already have `@golfo/lint`, `golfo-lint react` (react-doctor) findings on the changed files count as evidence. A suspected re-render can be confirmed in development with react-scan only when the project already has it installed and connected (`react-scan` in `devDependencies`); `golfo-lint react-scan` installs and wires it, so never run it during a review. Without react-scan, confirm with React DevTools Profiler or report the confirmation as unavailable. Never run react-doctor or react-scan outside golfo-lint, and do not install anything during a review: setup and limits live in [react-doctor y react-scan vía golfo-lint](../measured-performance-optimization/references/react-doctor-react-scan.md).
 
 ## Focus Areas
 
