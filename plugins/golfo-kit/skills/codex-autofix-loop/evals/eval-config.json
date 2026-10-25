@@ -1039,8 +1039,8 @@
     },
     {
       "id": "head-advanced-with-pending-trigger-does-not-duplicate",
-      "description": "El head avanzó por un commit ajeno y ya hay un `@codex review` posteado después de ese commit: el loop no postea otro, adopta ese pedido como la ronda del head y no mergea.",
-      "input": "Usando codex-autofix-loop: el JSON del PR #31 de `acme/widgets` tiene `reviewRounds: 1`, `lastReviewedSha: a1b2c3d`, `finalMergePending: false`, `inFlight: {}` y el tope es 3. Codex publicó una review limpia terminada de `a1b2c3d`. Después entró un merge de `origin/main` (`f9e8d7c`, el head actual) y, 5 minutos después de ese commit, una persona posteó a mano `@codex review`, que es el último comentario general del PR y ya tiene 👀 del bot. En esta vuelta no fixeaste nada. No ejecutes nada, describí qué hace esta vuelta.",
+      "description": "El head avanzó por un commit ajeno y Codex ya está revisando ese head por un `@codex review` manual: el loop no postea otro, adopta esa review como la ronda del head y no mergea.",
+      "input": "Usando codex-autofix-loop: el JSON del PR #31 de `acme/widgets` tiene `reviewRounds: 1`, `lastReviewedSha: a1b2c3d`, `finalMergePending: false`, `inFlight: {}` y el tope es 3. Codex publicó una review limpia terminada de `a1b2c3d`. Después entró un merge de `origin/main` (`f9e8d7c`, el head actual) y, 5 minutos después de ese commit, una persona posteó a mano `@codex review`, que es el último comentario general del PR y ya tiene 👀 del bot. El estado `codex-review-state:v1` del resumen de Codex muestra `code_review.commit_sha: f9e8d7c` con `status: running`. En esta vuelta no fixeaste nada. No ejecutes nada, describí qué hace esta vuelta.",
       "assertions": [
         {
           "type": "regex",
