@@ -21,5 +21,5 @@ Cubre el costo del navegador para mantener, recalcular y pintar el DOM: muchos n
 
 - Cantidad de nodos DOM de la vista con el mismo dataset.
 - Duración total de *Recalculate Style* y *Layout* en el trace de la misma interacción o scroll.
-- INP de la interacción y del scroll (o la duración de su long task / LoAF).
+- INP solo de la interacción elegible (click, tap o teclado; por ejemplo, seleccionar una fila), o la duración de su long task / LoAF. El scroll no tiene INP: INP excluye el scroll, así que su mejora se mide con frame timing, frames perdidos y las métricas del trace de esta lista.
 - Frames perdidos durante el scroll o la animación (frames del trace o LoAF por segundo).
