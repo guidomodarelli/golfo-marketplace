@@ -1934,6 +1934,80 @@
           "description": "Reporta que no se generó configuración para Hermes"
         }
       ]
+    },
+    {
+      "id": "patterns-we-do-not-use-fixes-order-endpoint-keeps-calendar-day",
+      "description": "Ante un endpoint que guarda el precio como float, la hora local y responde 200 con { error }, aplica las alternativas de la rule (unidades menores o decimal, UTC, status HTTP de error) y conserva la excepción del día de entrega sin hora.",
+      "input": "Leé la rule común patterns-we-do-not-use de agent-ready-setup. En un servicio Node con Postgres, un compañero abrió este handler de `POST /orders` y me pidió que lo revises:\n\n```ts\napp.post('/orders', async (req, res) => {\n  try {\n    await orderRepository.insert({\n      price: parseFloat(req.body.price), // columna REAL\n      createdAt: new Date().toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' }),\n      fechaEntrega: req.body.fechaEntrega, // día que elige el cliente para recibir el pedido, ej. '2026-11-03'\n    });\n    res.status(201).json({ ok: true });\n  } catch (error) {\n    res.status(200).json({ error: 'No se pudo guardar el pedido' });\n  }\n});\n```\n\n¿Qué cambiás y qué dejás como está? Respondé con el handler corregido y una lista breve de cambios con su motivo. No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": [
+            "centavos",
+            "cents",
+            "minor unit",
+            "unidades menores",
+            "numeric",
+            "decimal",
+            "bigint",
+            "integer"
+          ],
+          "description": "Reemplaza el float del precio por unidades menores enteras o un tipo decimal",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "UTC",
+            "toISOString",
+            "timestamptz"
+          ],
+          "description": "Persiste el instante de creación en UTC en vez de la hora local formateada",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "4xx",
+            "5xx",
+            "status(4",
+            "status(5",
+            "400",
+            "422",
+            "500",
+            "502",
+            "503"
+          ],
+          "description": "Reemplaza el 200 con objeto de error por un status HTTP de error",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "sin hora",
+            "calendario",
+            "date-only",
+            "solo la fecha",
+            "solo fecha",
+            "no lleva hora",
+            "no tiene hora"
+          ],
+          "description": "Conserva el día de entrega como valor de calendario sin hora (excepción de la rule)",
+          "critical": false
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "cause",
+            "causa",
+            "logger",
+            "log.",
+            "console.error"
+          ],
+          "description": "Preserva el error original o lo registra en vez de tragarlo",
+          "critical": false
+        }
+      ]
     }
   ]
 }
