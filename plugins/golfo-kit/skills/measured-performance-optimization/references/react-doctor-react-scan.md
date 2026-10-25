@@ -33,9 +33,10 @@ En proyectos que dependen de `react`, esta skill usa dos herramientas y las dos 
 
 ## 3. react-scan: `golfo-lint react-scan` (solo desarrollo)
 
-- `pnpm exec golfo-lint react-scan` instala `react-scan` con versión exacta como devDependency si falta y lo conecta cargándolo desde el paquete local, solo en desarrollo, en Next.js App Router, Pages Router o Vite.
+- `pnpm exec golfo-lint react-scan` es el camino por defecto: instala `react-scan` con versión exacta como devDependency si falta y escribe en el entry de la app el import del helper `@golfo/lint/react-scan`, que activa react-scan solo en desarrollo con un import dinámico del paquete local, sin CDN. Detecta Next.js App Router, Pages Router y Vite.
+- Si el comando no detecta el framework, la alternativa manual es importar ese mismo helper `@golfo/lint/react-scan` en el entry de la app, con `react-scan` como devDependency en la versión exacta que instala golfo-lint.
 - Si responde con código `2` (análisis desconocido), la versión instalada de golfo-lint no trae el comando: actualizarla a la publicada con el paso 1.2. Si la publicada tampoco lo trae, react-scan queda bloqueado y los renders se cuentan con React DevTools Profiler.
-- **Nunca** `npx react-scan init` (carga el script desde unpkg sin versión y ofrece instalar `react-doctor@latest`), un `<script src="https://unpkg.com/react-scan...">`, ni una integración escrita a mano: golfo-lint es la única vía. react-scan **nunca** corre en CI ni en un build de producción.
+- **Nunca** `npx react-scan init` (carga el script desde unpkg sin versión y ofrece instalar `react-doctor@latest`), un `<script src="https://unpkg.com/react-scan...">`, ni una integración escrita a mano que no sea el import del helper: golfo-lint es la única vía. react-scan **nunca** corre en CI ni en un build de producción.
 - Antes de cerrar, correr el build de producción del proyecto y confirmar que react-scan no quedó en el output (`grep -rl react-scan .next/static` o `dist/`). Si aparece, es un defecto: no se entrega así.
 
 ### Medir con react-scan

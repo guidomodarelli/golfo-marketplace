@@ -742,7 +742,7 @@
         },
         {
           "type": "regex",
-          "pattern": "(no usar(í|i)a|nunca|never|evit|tampoco|prohib|prohíb).{0,200}(react-scan init|unpkg|README|script|v(í|i)as?)",
+          "pattern": "(no usar(í|i)a|nunca|never|evit|tampoco|prohib|prohíb).{0,200}(react-scan init|unpkg|README|script|v(í|i)as?)|sin (fijar )?versi(ó|o)n|sin CDN",
           "description": "Descarta npx react-scan init y el script de unpkg"
         },
         {
@@ -815,6 +815,35 @@
           "type": "regex",
           "pattern": "(sin CI|no tiene CI|no hay CI).{0,300}(silencio|propon|decisi(ó|o)n|pr(ó|o)ximos pasos)|(propon|decisi(ó|o)n).{0,200}CI|CI.{0,200}(en silencio|decisi(ó|o)n expl)",
           "description": "Propone CI como decisión explícita en vez de crearlo"
+        }
+      ]
+    },
+    {
+      "id": "react-scan-helper-when-framework-not-detected",
+      "description": "Si golfo-lint react-scan no detecta el framework, usa como alternativa manual el import del helper @golfo/lint/react-scan en el entry, sin CDN ni npx react-scan init.",
+      "input": "Usando measured-performance-optimization: nuestra app React usa un webpack propio (no Next.js ni Vite), con pnpm y @golfo/lint instalado. Corrí `pnpm exec golfo-lint react-scan` y dijo que no detectó el framework. Quiero contar los re-renders del `InventoryBoard` al cambiar de filtro. Pensaba pegar el script de react-scan desde un CDN en el index.html. No ejecutes ni edites nada: decime qué harías, con qué comandos y por qué.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": [
+            "@golfo/lint/react-scan"
+          ],
+          "description": "Usa el helper @golfo/lint/react-scan como alternativa manual"
+        },
+        {
+          "type": "regex",
+          "pattern": "entry|punto de entrada|index[.](t|j)sx?|main[.](t|j)sx?",
+          "description": "Lo importa en el entry de la app"
+        },
+        {
+          "type": "regex",
+          "pattern": "(no|nunca|never|evit|tampoco).{0,160}(CDN|unpkg|script)",
+          "description": "Descarta el script por CDN"
+        },
+        {
+          "type": "regex",
+          "pattern": "desarrollo|development|dev",
+          "description": "Lo limita a desarrollo"
         }
       ]
     }
