@@ -14,7 +14,7 @@ Cubre el costo del navegador para mantener, recalcular y pintar el DOM: muchos n
 - **Virtualizar** listas y tablas largas para renderizar solo las filas visibles más un margen (`@tanstack/react-virtual`, `react-window`, o la virtualización del componente de grid). Conservar la accesibilidad: `aria-rowcount`/`aria-rowindex` en grids y búsqueda dentro de la página si el usuario la necesita.
 - **`content-visibility: auto`** con `contain-intrinsic-size` en secciones largas fuera de pantalla cuando virtualizar es demasiado; `contain: layout paint` (o `strict`) en widgets cuyo contenido no afecta al resto.
 - **Agrupar lecturas y escrituras** de layout: leer todo primero, escribir después, o escribir dentro de `requestAnimationFrame`; usar `ResizeObserver`/`IntersectionObserver` en lugar de medir en cada scroll.
-- **Animar con `transform` y `opacity`** (compositor) y reservar `will-change` para el elemento que efectivamente anima.
+- **Animar con `transform` y `opacity`** (compositor) y reservar `will-change` para el elemento que efectivamente anima. Si el que anima es un `<svg>` (spinner, ícono) y el trace muestra *Paint* en cada frame, animar un wrapper (`<span>` o `<div>`) que lo contiene en vez del `<svg>`: varios navegadores no componen en GPU las animaciones CSS aplicadas al elemento SVG (regla `rendering-animate-svg-wrapper` de vercel-labs/agent-skills `react-best-practices`, MIT).
 - Simplificar selectores caros y paginar o cargar progresivamente lo que no necesita estar en el DOM desde el inicio.
 
 ## Métricas antes/después

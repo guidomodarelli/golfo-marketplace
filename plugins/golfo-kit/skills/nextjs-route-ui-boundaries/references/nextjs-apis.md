@@ -95,7 +95,7 @@ Usarlos dentro de islas cliente pequeñas, nunca para convertir el contenedor en
 
 | API | Aporta valor cuando |
 |---|---|
-| Server Actions (`"use server"`) | Mutaciones desde formularios o botones sin crear un `route.ts`; funcionan sin JS en formularios. |
+| Server Actions (`"use server"`) | Mutaciones desde formularios o botones sin crear un `route.ts`; funcionan sin JS en formularios. Son endpoints públicos: validación, authentication, authorization y ownership van dentro de cada action ([«Server Actions son endpoints públicos»](../../refactor-ssr-data-fetching/SKILL.md#server-actions-son-endpoints-públicos) de `refactor-ssr-data-fetching`). |
 | `updateTag()` | Read-your-own-writes: después de crear o editar, la UI muestra el dato nuevo en la misma respuesta. Solo en Server Actions. |
 | `revalidateTag(tag, profile)` | Contenido donde una demora breve es aceptable (stale-while-revalidate). Usar la firma de dos argumentos; la de uno está deprecada. |
 | `revalidatePath()` | Invalidar una ruta entera cuando no hay tags. |

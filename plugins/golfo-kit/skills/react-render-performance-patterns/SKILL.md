@@ -1,6 +1,6 @@
 ---
 name: react-render-performance-patterns
-description: Apply React render-performance and update-priority patterns (startTransition/useDeferredValue for input responsiveness, useMemo/useCallback/React.memo to cut re-renders, equality guards before setState, stable identities, and library-specific reset/identity gotchas). Use this skill whenever the user reports or wants to prevent UI jank, typing lag, frozen pages, "Maximum update depth exceeded", slow tables/lists/grids/filters, or asks to optimize, memoize, speed up, or reduce re-renders in any React/Next.js component — even when they don't name a specific API. Also use when porting these optimizations to other components or projects.
+description: Apply React render-performance and update-priority patterns (startTransition/useDeferredValue for input responsiveness, useMemo/useCallback/React.memo to cut re-renders, equality guards before setState, stable identities, library-specific reset/identity gotchas, plus state and effect hygiene such as derived state computed in render instead of effects, components defined inside components, useEffectEvent, lazy useState, useRef for transient values, Activity, useTransition loading, immutable sorts in memos, and React Compiler awareness). Use this skill whenever the user reports or wants to prevent UI jank, typing lag, frozen pages, "Maximum update depth exceeded", slow tables/lists/grids/filters, or asks to optimize, memoize, speed up, or reduce re-renders in any React/Next.js component — even when they don't name a specific API. Also use when porting these optimizations to other components or projects.
 license: MIT
 metadata:
   version: "1.0.0"
@@ -23,6 +23,8 @@ Memoization is not free — it adds dependency arrays, allocates closures, and o
 1. **What feels slow?** Typing lag, slow filter/sort, janky scroll, frozen click. The symptom points to the fix: input lag → update priority (transitions); slow derived data → memoize the computation; child re-renders → stable props + `React.memo`.
 2. **What re-renders on each interaction, and is the work necessary?** Use React DevTools Profiler (or "Highlight updates"). A component re-rendering is only a problem if its render is expensive or it cascades to expensive children.
 3. **Is the same value being recomputed or the same state being set to an equal value?** That is the cheapest win — guard it (see Equality guards).
+
+4. **Is React Compiler on?** Check `next.config.*` (`reactCompiler: true`, or `experimental.reactCompiler` in older Next.js), the Babel/Vite config (`babel-plugin-react-compiler`) and `package.json`. With the compiler active, the manual memoization of Patterns 2–4 (`useMemo`, `useCallback`, `React.memo`, hoisted JSX) is usually redundant: profile first and add it only where the compiler bailed out (the React DevTools "Memo ✨" badge is missing, or the compiler's lint reports a skipped component). Patterns 1, 5, 6, 7 and the correctness rules in [state-and-effects.md](references/state-and-effects.md) still apply.
 
 Order of attack that usually works: **fix update priority → memoize the expensive derived data → stabilize identities so memo/`React.memo` actually hold → add equality guards for no-op updates → fix library-specific reset/identity gotchas.**
 
@@ -85,6 +87,8 @@ const rowsExcluding        = useMemo(() => exclude(rowsMatchingFilter, excluded)
 const rowsForTable         = useMemo(() => sort(rowsExcluding, sorting),          [rowsExcluding, sorting]);
 ```
 
+Every stage must return a new value and leave its input untouched. The `sort` helper above has to use `rowsExcluding.toSorted(compare)` (or copy first: `[...rowsExcluding].sort(compare)`), never `rowsExcluding.sort(compare)`: an in-place `sort`/`reverse`/`splice` reorders the previous stage's memoized array (or the prop/state it came from), so upstream data changes behind React's back and the memo returns the same, now-mutated reference. Use `toSorted`/`toReversed`/`toSpliced`/`with` for the same reason anywhere in a derivation.
+
 Each `useMemo` returns a stable reference when its inputs are unchanged, which keeps the *next* stage's memo (and any `React.memo` child consuming it) from invalidating. The chain is only as good as its weakest reference — one stage that rebuilds an array every render breaks every memo below it.
 
 ## Pattern 4 — Stabilize identities with `useCallback` and `React.memo`
@@ -144,11 +148,15 @@ Headless data libraries keep internal reactive state; two recurring traps:
 - **Auto-reset feedback loops.** Without pagination/expansion, leaving auto-resets on means each filter change calls `resetPageIndex` → `setPagination` → re-render → reset again: `Maximum update depth exceeded` and a frozen page while typing. Disable the resets you don't need: `autoResetPageIndex: false`, `autoResetExpanded: false`.
 - **Don't depend on the library instance identity.** In TanStack Table v8 the `table` object returned by `useReactTable` keeps the same reference across renders while its internal state changes, so a memo keyed on `[table]` never invalidates and renders stale output. Depend on what actually changes instead: the state slices you render from (`table.getState().columnVisibility`, `sorting`, …) or the row model read into a local before the memo (`const rowModelRows = table.getRowModel().rows`).
 
+## State, effects and render shape
+
+Many re-render and correctness problems are not memoization problems: state mirrored by an effect, interaction logic modeled as state + effect, components defined inside components, effects re-subscribing because of unstable callbacks or object deps, `&&` rendering `0`, expensive `useState` initializers, manual loading flags, toggled panels that remount. Read [state-and-effects.md](references/state-and-effects.md) when the symptom involves `useEffect`, `useState` initialization, refs, `useEffectEvent`, `<Activity>`, `useTransition` for loading, or lost input focus/state on each render. Its correctness rules apply always; its re-render patterns follow the measure-first rule above.
+
 ## Applying these to other components / projects
 
 When porting these patterns elsewhere:
 1. Reproduce and locate the bottleneck first (Diagnose section). Don't memoize blindly.
-2. Match the symptom to the pattern: input lag → Pattern 1; expensive derived value → Patterns 2–3; child re-renders → Pattern 4; no-op updates → Pattern 5; "max update depth"/headless lib → Pattern 6.
+2. Match the symptom to the pattern: input lag → Pattern 1; expensive derived value → Patterns 2–3; child re-renders → Pattern 4; no-op updates → Pattern 5; O(n) lookups in hot paths → Pattern 6; "max update depth"/headless lib → Pattern 7; effects, state init, remounts or lost focus → [state-and-effects.md](references/state-and-effects.md).
 3. Keep the urgent path outside transitions and the heavy path inside them.
 4. Leave a one-line comment on every non-obvious dependency-array choice and every intentional lint suppression — these are the lines that get silently reverted into regressions.
 5. Verify: re-profile and confirm the re-render count / interaction latency actually dropped. A memo that doesn't reduce renders is just complexity.
@@ -160,4 +168,6 @@ When porting these patterns elsewhere:
 - `JSON.stringify` as an equality check in a hot path — allocates and is key-order sensitive.
 - Suppressing `exhaustive-deps` without a comment — the next reader can't tell a deliberate exclusion from a bug.
 - Wrapping the urgent UI update inside `startTransition` — it loses priority and the input lags anyway.
+- Adding `useMemo`/`useCallback`/`React.memo` in a project where React Compiler already memoizes the component.
+- `sort()`/`reverse()`/`splice()` on props or state inside a memo or derivation.
 - Reaching for these patterns before measuring — premature memoization hides data flow and rarely targets the real cost.

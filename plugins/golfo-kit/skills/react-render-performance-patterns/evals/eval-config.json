@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "skill": "react-render-performance-patterns",
-  "description": "Evalúa optimizaciones de render en React: diagnóstico con Profiler antes de memoizar, separación de updates urgentes y no urgentes con startTransition, identidades estables con useCallback/useMemo/React.memo, equality guards y gotchas de reset de TanStack Table.",
+  "description": "Evalúa optimizaciones de render en React: diagnóstico con Profiler antes de memoizar, separación de updates urgentes y no urgentes con startTransition, identidades estables con useCallback/useMemo/React.memo, equality guards y gotchas de reset de TanStack Table, higiene de estado y effects (estado derivado, componentes inline, useEffectEvent, && con números), inmutabilidad en memos y detección de React Compiler.",
   "test_cases": [
     {
       "id": "typing-lag-filter-start-transition",
@@ -10,7 +10,11 @@
       "assertions": [
         {
           "type": "contains_any",
-          "values": ["startTransition", "useTransition", "useDeferredValue"],
+          "values": [
+            "startTransition",
+            "useTransition",
+            "useDeferredValue"
+          ],
           "description": "Usa transitions o valores diferidos para la parte costosa"
         },
         {
@@ -20,12 +24,22 @@
         },
         {
           "type": "contains_any",
-          "values": ["Profiler", "DevTools", "medir", "measure", "perfil", "profil"],
+          "values": [
+            "Profiler",
+            "DevTools",
+            "medir",
+            "measure",
+            "perfil",
+            "profil"
+          ],
           "description": "Mide o perfila antes de optimizar"
         },
         {
           "type": "contains_any",
-          "values": ["interrump", "interrupt"],
+          "values": [
+            "interrump",
+            "interrupt"
+          ],
           "description": "Explica que la transition es interrumpible por la siguiente tecla"
         }
       ]
@@ -47,7 +61,14 @@
         },
         {
           "type": "contains_any",
-          "values": ["identidad", "identity", "referencia", "reference", "referential", "referencial"],
+          "values": [
+            "identidad",
+            "identity",
+            "referencia",
+            "reference",
+            "referential",
+            "referencial"
+          ],
           "description": "Explica que las props inline rompen la igualdad referencial"
         },
         {
@@ -64,7 +85,12 @@
       "assertions": [
         {
           "type": "contains_any",
-          "values": ["autoResetPageIndex", "autoResetExpanded", "auto-reset", "autoReset"],
+          "values": [
+            "autoResetPageIndex",
+            "autoResetExpanded",
+            "auto-reset",
+            "autoReset"
+          ],
           "description": "Desactiva los auto-resets que generan el loop"
         },
         {
@@ -74,7 +100,13 @@
         },
         {
           "type": "contains_any",
-          "values": ["getRowModel().rows", "rowModelRows", "getState()", "columnVisibility", "sorting"],
+          "values": [
+            "getRowModel().rows",
+            "rowModelRows",
+            "getState()",
+            "columnVisibility",
+            "sorting"
+          ],
           "description": "Depende de los slices de estado o del row model reales"
         },
         {
@@ -84,8 +116,65 @@
         },
         {
           "type": "not_contains_any",
-          "values": ["JSON.stringify(prev) === JSON.stringify", "usar JSON.stringify para comparar"],
+          "values": [
+            "JSON.stringify(prev) === JSON.stringify",
+            "usar JSON.stringify para comparar"
+          ],
           "description": "No propone JSON.stringify como chequeo de igualdad en el hot path"
+        }
+      ]
+    },
+    {
+      "id": "state-effects-hygiene-review",
+      "description": "Revisa un componente con estado espejado por effect, componente definido adentro, Effect Event en deps y && con un número, y los corrige como reglas de correctitud.",
+      "input": "Usando react-render-performance-patterns: el input de nombre de `OrderEditor` pierde el foco en cada tecla y a veces aparece un `0` suelto en pantalla. El código:\n```tsx\nfunction OrderEditor({ order, onSaved }) {\n  const [total, setTotal] = useState(0);\n  useEffect(() => setTotal(order.lines.reduce((sum, line) => sum + line.amount, 0)), [order]);\n  const onSavedEvent = useEffectEvent(onSaved);\n  useEffect(() => subscribeToSave(order.id, onSavedEvent), [order.id, onSavedEvent]);\n  const NameField = () => <input value={order.name} onChange={(event) => rename(event.target.value)} />;\n  return (<div><NameField />{order.warnings.length && <Warnings items={order.warnings} />}<span>{total}</span></div>);\n}\n```\nNo ejecutes ni edites nada: explicá cada problema y cómo lo corregirías.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "(deriv|calcul|comput).{0,80}(render)|(render).{0,80}(deriv|calcul|comput)",
+          "description": "Calcula el total durante el render en vez de copiarlo a estado con un effect"
+        },
+        {
+          "type": "regex",
+          "pattern": "remont|remount|desmont|vuelve a montar|unmount|nuevo tipo|new (component )?type|fuera del componente|module scope|scope del m|nivel de m",
+          "description": "Explica que NameField definido adentro se remonta y pierde el foco, y lo saca a nivel de módulo"
+        },
+        {
+          "type": "regex",
+          "pattern": "onSavedEvent.{0,160}(dependenc|deps)|(dependenc|deps).{0,160}onSavedEvent",
+          "description": "Saca el Effect Event del array de dependencias"
+        },
+        {
+          "type": "regex",
+          "pattern": "[?] *<Warnings|> *0 *[?]|ternar|Boolean[(]",
+          "description": "Reemplaza el && con número por un condicional explícito"
+        }
+      ]
+    },
+    {
+      "id": "immutable-sort-and-react-compiler",
+      "description": "Detecta sort() mutando un prop dentro de useMemo y verifica si el proyecto usa React Compiler antes de agregar memoización manual.",
+      "input": "Usando react-render-performance-patterns: en un proyecto Next.js con `reactCompiler: true` en `next.config.ts`, un compañero propone envolver todos los handlers de `CustomersTable` en `useCallback` y agregar esto:\n```tsx\nconst sortedCustomers = useMemo(() => customers.sort(byLastName), [customers]);\n```\nDespués de ese cambio el orden de la lista del componente padre también cambió. No ejecutes ni edites nada: revisá la propuesta.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "mut",
+          "description": "Explica que sort() muta el array del prop"
+        },
+        {
+          "type": "regex",
+          "pattern": "toSorted|[[][.][.][.]customers[]]",
+          "description": "Usa toSorted o copia el array antes de ordenar"
+        },
+        {
+          "type": "regex",
+          "pattern": "(React )?Compiler",
+          "description": "Tiene en cuenta que React Compiler está activo"
+        },
+        {
+          "type": "regex",
+          "pattern": "(redundant|sobra|innecesari|unnecessary|no hace falta|not needed|already memoiz|ya memoiz)",
+          "description": "Señala que la memoización manual con useCallback suele sobrar con el compilador"
         }
       ]
     }
