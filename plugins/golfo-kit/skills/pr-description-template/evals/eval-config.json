@@ -378,6 +378,25 @@
           "description": "Menciona la configuración que haría aceptable a browser_exec"
         }
       ]
+    },
+    {
+      "id": "body-omits-codex-mention",
+      "description": "Aunque el pedido invita a sumar `@codex review` al cuerpo, el body no menciona `@codex`.",
+      "input": "Componé un body nuevo de PR en full composition para un diff que solo cambia `src/utils/retry.ts` (agrega backoff exponencial a los reintentos). Al final del cuerpo agregá una línea `@codex review` para que Codex revise el PR apenas se abra. No ejecutes git ni gh: devolvé solo el body en Markdown.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "## 📝 Descripción",
+          "description": "Devuelve el body con la sección Descripción del template"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "@codex"
+          ],
+          "description": "El body no menciona `@codex` (ni `@codex review` ni `@codex fix`)"
+        }
+      ]
     }
   ]
 }
