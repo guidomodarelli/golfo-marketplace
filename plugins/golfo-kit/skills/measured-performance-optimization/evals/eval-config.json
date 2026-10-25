@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "skill": "measured-performance-optimization",
-  "description": "Evalúa optimización de rendimiento guiada por medición: línea base antes del cambio, una optimización por vez, medición posterior con las mismas condiciones, uso de Chrome DevTools/Playwright/Sentry, corrección de N+1 con JOIN o WHERE IN, lazy loading, caching y assets. También evalúa el modo automático ante funcionalidad nueva: inventaria la carga agregada y la mide contra la revisión sin esa funcionalidad.",
+  "description": "Evalúa optimización de rendimiento guiada por medición: línea base antes del cambio, una optimización por vez, medición posterior con las mismas condiciones, uso de Chrome DevTools/Playwright/Sentry, corrección de N+1 con JOIN o WHERE IN, lazy loading, caching y assets. También evalúa el modo automático ante funcionalidad nueva: inventaria la carga agregada y la mide contra la revisión sin esa funcionalidad. Suma casos de memoria y leaks, SSR/TTFB y streaming, main thread y long tasks, y listas/DOM grande, que verifican la referencia cargada y la medición antes/después.",
   "test_cases": [
     {
       "id": "n-plus-one-users-orders",
@@ -398,6 +398,184 @@
             "queda completo"
           ],
           "description": "No da la tarea por completa"
+        }
+      ]
+    },
+    {
+      "id": "memory-leak-modal-heap-snapshots",
+      "description": "Ante un heap que crece cada vez que se abre y cierra un modal, carga memory-leaks.md, usa la técnica de 3 snapshots, busca listeners/observers sin cleanup o detached DOM y mide heap retenido antes y después.",
+      "input": "Usando measured-performance-optimization: en nuestro dashboard React, cada vez que abro y cierro el modal `ReportPreview` la pestaña usa más memoria; después de unas 30 veces Chrome se pone lento. El modal hace `window.addEventListener('resize', onResize)` y crea un `ResizeObserver` en un `useEffect` sin return. No ejecutes ni edites nada: decime qué referencia de la skill usás, cómo confirmarías el leak, qué cambiarías y qué métricas compararías antes y después.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": [
+            "memory-leaks"
+          ],
+          "description": "Carga la referencia memory-leaks.md"
+        },
+        {
+          "type": "regex",
+          "pattern": "(3|tres) snapshots|snapshots? ?(1|2|3)|heap snapshot",
+          "description": "Usa heap snapshots comparados (técnica de 3 snapshots)"
+        },
+        {
+          "type": "regex",
+          "pattern": "cleanup|removeEventListener|disconnect|AbortController",
+          "description": "Propone limpiar listener y observer en el cleanup del efecto"
+        },
+        {
+          "type": "regex",
+          "pattern": "detached|listeners? (activos|registrados)|JSEventListeners|heap retenido|retained|heap (usado|used)",
+          "description": "Usa heap retenido, detached nodes o listeners activos como métrica"
+        },
+        {
+          "type": "regex",
+          "pattern": "repeti|[0-9]+ veces|N veces|ciclos",
+          "description": "Mide tras N repeticiones del flujo"
+        },
+        {
+          "type": "regex",
+          "pattern": "antes|before|l[íi]nea base|baseline",
+          "description": "Plantea medir antes del cambio"
+        },
+        {
+          "type": "regex",
+          "pattern": "despu[ée]s|after",
+          "description": "Plantea medir después del cambio con las mismas condiciones"
+        }
+      ]
+    },
+    {
+      "id": "slow-ssr-ttfb-serial-awaits",
+      "description": "Ante una página SSR con TTFB alto por awaits seriales, carga ssr-ttfb-streaming.md, propone paralelizar y streaming con Suspense y mide TTFB antes y después.",
+      "input": "Usando measured-performance-optimization: la página `/orders/[id]` de nuestro Next.js App Router tarda 1,8 s en mandar el primer byte. El Server Component hace `const order = await getOrder(id); const customer = await getCustomer(order.customerId); const recommendations = await getRecommendations(id); const history = await getHistory(id);` y recién después renderiza; las recomendaciones están abajo de todo. No ejecutes ni edites nada: decime qué referencia de la skill usás, qué cambiarías y cómo medirías antes y después.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": [
+            "ssr-ttfb-streaming"
+          ],
+          "description": "Carga la referencia ssr-ttfb-streaming.md"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "TTFB",
+            "time to first byte",
+            "time_starttransfer"
+          ],
+          "description": "Usa TTFB como métrica"
+        },
+        {
+          "type": "regex",
+          "pattern": "Promise\\.all|paralel",
+          "description": "Propone paralelizar las llamadas independientes"
+        },
+        {
+          "type": "regex",
+          "pattern": "Suspense|streaming",
+          "description": "Propone streaming con Suspense para lo lento"
+        },
+        {
+          "type": "regex",
+          "pattern": "FCP|LCP|tama[ñn]o del HTML|payload|hidrataci|TBT",
+          "description": "Suma FCP/LCP, tamaño del HTML/payload o costo de hidratación"
+        },
+        {
+          "type": "regex",
+          "pattern": "antes|before|l[íi]nea base|baseline",
+          "description": "Plantea medir antes del cambio"
+        },
+        {
+          "type": "regex",
+          "pattern": "despu[ée]s|after",
+          "description": "Plantea medir después del cambio con las mismas condiciones"
+        }
+      ]
+    },
+    {
+      "id": "main-thread-long-task-csv-parse",
+      "description": "Ante un parseo y sort síncronos que congelan la UI, carga main-thread-long-tasks.md, mide con LoAF/long tasks e INP y propone yield/chunking o Web Worker.",
+      "input": "Usando measured-performance-optimization: al subir un CSV de 50.000 filas, nuestra app React se congela unos 900 ms: en el `onChange` del input hacemos `const rows = parseCsv(text); rows.sort(byDate); setRows(rows)` todo de una. Los clics no responden mientras tanto. No ejecutes ni edites nada: decime qué referencia de la skill usás, cómo lo medirías y qué cambiarías.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": [
+            "main-thread-long-tasks"
+          ],
+          "description": "Carga la referencia main-thread-long-tasks.md"
+        },
+        {
+          "type": "regex",
+          "pattern": "long[- ]animation[- ]frame|LoAF|long ?tasks?",
+          "description": "Detecta con Long Tasks o Long Animation Frames"
+        },
+        {
+          "type": "regex",
+          "pattern": "Web ?Worker|new Worker|scheduler\\.yield|chunk|setTimeout|requestIdleCallback",
+          "description": "Propone mover a un Web Worker o partir el trabajo cediendo el hilo"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "INP",
+            "TBT"
+          ],
+          "description": "Usa INP o TBT como métrica"
+        },
+        {
+          "type": "regex",
+          "pattern": "antes|before|l[íi]nea base|baseline",
+          "description": "Plantea medir antes del cambio"
+        },
+        {
+          "type": "regex",
+          "pattern": "despu[ée]s|after",
+          "description": "Plantea medir después del cambio con las mismas condiciones"
+        }
+      ]
+    },
+    {
+      "id": "large-table-virtualization-dom",
+      "description": "Ante una tabla que renderiza 10.000 filas y un scroll trabado, carga large-lists-dom.md, propone virtualizar y mide nodos DOM, Recalculate Style/Layout y frames perdidos del scroll antes y después.",
+      "input": "Usando measured-performance-optimization: la tabla de movimientos renderiza las 10.000 filas de una (`rows.map(row => <tr>…</tr>)`), el scroll va a los saltos y además cada fila resaltada anima `top` y `height` al seleccionarse. No ejecutes ni edites nada: decime qué referencia de la skill usás, qué cambiarías y qué medirías antes y después.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": [
+            "large-lists-dom"
+          ],
+          "description": "Carga la referencia large-lists-dom.md"
+        },
+        {
+          "type": "regex",
+          "pattern": "virtualiz|react-virtual|react-window",
+          "description": "Propone virtualizar la tabla"
+        },
+        {
+          "type": "regex",
+          "pattern": "transform|opacity",
+          "description": "Propone animar con transform/opacity"
+        },
+        {
+          "type": "regex",
+          "pattern": "(cantidad|n[úu]mero|count)[^\\n]{0,40}nodos|nodos (del )?DOM|DOM nodes|tama[ñn]o del DOM",
+          "description": "Mide la cantidad de nodos DOM"
+        },
+        {
+          "type": "regex",
+          "pattern": "Recalculate Style|Layout|frames? perdidos|dropped frames|frame timing",
+          "description": "Mide el scroll con Recalculate Style/Layout, frame timing o frames perdidos"
+        },
+        {
+          "type": "regex",
+          "pattern": "antes|before|l[íi]nea base|baseline",
+          "description": "Plantea medir antes del cambio"
+        },
+        {
+          "type": "regex",
+          "pattern": "despu[ée]s|after",
+          "description": "Plantea medir después del cambio con las mismas condiciones"
         }
       ]
     }

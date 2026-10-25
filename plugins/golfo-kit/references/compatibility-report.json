@@ -3504,7 +3504,7 @@
       "purpose": "Mide y optimiza rendimiento web con evidencia.",
       "main_features": [
         "medición antes/después",
-        "optimizaciones de bundle, renders, caching y N+1"
+        "optimizaciones de bundle, renders, caching, N+1, memoria y leaks, SSR/TTFB y streaming, main thread y long tasks, y listas/DOM grande"
       ],
       "declared_agents": null,
       "dependencies": [

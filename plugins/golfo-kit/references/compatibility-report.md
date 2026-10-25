@@ -1273,7 +1273,7 @@ Pendiente de verificar:
 
 - Nombre: Measured Performance Optimization; versión: 1.3.0; SKILL.md: `plugins/golfo-kit/skills/measured-performance-optimization/SKILL.md`.
 - Propósito: Mide y optimiza rendimiento web con evidencia.
-- Funcionalidades principales: medición antes/después; optimizaciones de bundle, renders, caching y N+1.
+- Funcionalidades principales: medición antes/después; optimizaciones de bundle, renders, caching, N+1, memoria y leaks, SSR/TTFB y streaming, main thread y long tasks, y listas/DOM grande.
 - Agentes soportados declarados: no declara.
 
 **Dependencias**

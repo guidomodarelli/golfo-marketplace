@@ -1,12 +1,12 @@
 ---
 name: measured-performance-optimization
-description: 'Mide y optimiza rendimiento web: app lenta, Core Web Vitals, bundle, renders, caching, N+1 o jobs periódicos que releen toda una ventana en cada corrida. Usar también sin pedido explícito al crear un flujo nuevo o sumarle a uno existente requests, llamadas, queries o pasos nuevos; no en refactors, fixes ni cambios de copy o estilos que no agregan carga.'
+description: 'Mide y optimiza rendimiento web: app lenta, Core Web Vitals, bundle, renders, caching, N+1, memoria que crece o leaks, SSR lento o TTFB alto, long tasks o main thread bloqueado, event loop de Node trabado, listas o DOM grande y jobs periódicos que releen toda una ventana en cada corrida. Usar también sin pedido explícito al crear un flujo nuevo o sumarle a uno existente requests, llamadas, queries o pasos nuevos; no en refactors, fixes ni cambios de copy o estilos que no agregan carga.'
 license: MIT
 metadata:
-  version: "1.5.0"
+  version: "1.6.0"
   author: "Guido Modarelli"
   category: "performance"
-  tags: "performance, web-vitals, bundle, caching, n+1, incremental-sweep, cron, lazy-loading, chrome-devtools, playwright, sentry"
+  tags: "performance, web-vitals, bundle, caching, n+1, memory-leaks, ttfb, ssr-streaming, long-tasks, loaf, virtualization, dom-size, incremental-sweep, cron, lazy-loading, chrome-devtools, playwright, sentry"
   command: "/measured-performance-optimization"
 ---
 
@@ -19,6 +19,7 @@ Optimiza una aplicación web de punta a punta (frontend, red, backend y base de 
 - Revisar un diff buscando riesgos de performance sin optimizar ni medir: `review-performance`.
 - Detalle de patrones de render en React (`startTransition`, `useMemo`, `React.memo`, equality guards): `react-render-performance-patterns`. Esta skill decide *si* el render es el cuello de botella y mide; esa define *cómo* arreglarlo.
 - Arquitectura de fetching SSR/BFF: `refactor-ssr-data-fetching`.
+- Mismatches de hidratación: `prevent-ssr-hydration-mismatches`; qué `loading.tsx`, `error.tsx` o `<Suspense>` lleva cada ruta de Next.js App Router: `nextjs-route-ui-boundaries`. Esta skill mide TTFB, streaming e hidratación y enlaza esas reglas en lugar de repetirlas.
 
 ## Compatibilidad entre agentes
 
@@ -26,6 +27,7 @@ Las mediciones en navegador (pasos 3 y 6) y el recorrido del flujo (paso 5) usan
 
 - **Web Vitals de carga**: Lighthouse por terminal sirve en cualquier agente ([comando](../../references/agent-capabilities.md#verificación-en-navegador-por-terminal)); un MCP de Chrome DevTools conectado también.
 - **Interacciones, renders y requests**: hace falta evaluar JavaScript con `performance` en la página: Claude in Chrome, un MCP de Playwright o DevTools, `browser_exec` de Hermes o Playwright por terminal. El plugin Chrome de Codex **no mide**: su `evaluate` no expone `performance`; usalo solo para confirmar el flujo (paso 5) y medí por terminal.
+- **Memoria, long tasks y event loop**: heap snapshots y contadores de nodos y listeners necesitan CDP (MCP de DevTools o Playwright); en Node, `--inspect` o `process.memoryUsage()` desde cualquier shell. Detalle por agente en [Memoria, long tasks y event loop](references/measurement-tools.md#memoria-long-tasks-y-event-loop).
 - Medí antes y después **con el mismo mecanismo y las mismas condiciones**: cambiar de herramienta entre mediciones invalida el delta.
 
 Si no hay ningún mecanismo, aplican la detención del paso 3 y **Sin medir**. Si usaste un fallback o algo quedó sin verificar, sumá **Limitaciones del agente** al reporte.
@@ -95,6 +97,10 @@ Ordenar los hallazgos por impacto medido en el flujo crítico, no por facilidad.
 | Requests y caching | Orden, cantidad y cacheo de requests entre cliente, red y servidor | [references/requests-caching.md](references/requests-caching.md) |
 | Queries lentas y N+1 | Acceso a base de datos desde el backend | [references/database-queries-n-plus-one.md](references/database-queries-n-plus-one.md) |
 | Imágenes, fuentes y scripts | Carga de imágenes, fuentes web y scripts de terceros | [references/images-fonts-scripts.md](references/images-fonts-scripts.md) |
+| Memoria y leaks | Heap que crece al repetir un flujo, detached DOM, listeners/timers/observers sin limpiar y caches sin límite, en cliente y Node | [references/memory-leaks.md](references/memory-leaks.md) |
+| SSR, TTFB y streaming | Tiempo hasta el primer byte, streaming con Suspense, tamaño del HTML/payload RSC y costo de la hidratación | [references/ssr-ttfb-streaming.md](references/ssr-ttfb-streaming.md) |
+| Main thread y long tasks | Trabajo CPU sincrónico que bloquea el hilo principal del navegador o el event loop de Node | [references/main-thread-long-tasks.md](references/main-thread-long-tasks.md) |
+| Listas y DOM grande | Cantidad de nodos, virtualización, layout thrashing, estilos y animaciones caras | [references/large-lists-dom.md](references/large-lists-dom.md) |
 | Jobs periódicos con barrido completo | Cron o driver que relee una ventana entera en cada corrida y cuya demora crece con la ventana, no con lo nuevo | [references/incremental-sweep-jobs.md](references/incremental-sweep-jobs.md) |
 
 ### 5. Aplicar una optimización a la vez
@@ -116,7 +122,7 @@ Cerrar con este formato:
 
 | # | Optimización | Métrica | Antes | Después | Delta | Herramienta |
 |---|---|---|---|---|---|---|
-| 1 | <cambio> | <LCP / INP / KB JS / queries por request / p95 ms> | <valor> | <valor> | <%> | <MCP o comando> |
+| 1 | <cambio> | <LCP / INP / TTFB / KB JS / queries por request / heap retenido / p95 ms> | <valor> | <valor> | <%> | <MCP o comando> |
 
 **Descartadas:** <cambios probados que no mejoraron y se revirtieron, con su medición>
 **Sin medir:** <qué no se pudo medir y por qué>

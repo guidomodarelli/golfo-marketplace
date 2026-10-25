@@ -1,7 +1,7 @@
 {
   "name": "golfo-kit",
   "description": "Colección de skills de Golfo para agentes AI: setup Agent Ready con rules de plataforma y otros artefactos reutilizables.",
-  "version": "0.18.2",
+  "version": "0.19.0",
   "author": {
     "name": "Guido Modarelli"
   },
