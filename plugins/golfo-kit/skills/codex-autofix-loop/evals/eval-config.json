@@ -1007,6 +1007,89 @@
           "description": "No promete escucha continua"
         }
       ]
+    },
+    {
+      "id": "head-advanced-after-clean-review-requests-review",
+      "description": "Tras una review limpia, el head avanza por un merge de la rama base sin fixes del loop en la vuelta: el loop pide `@codex review` del head nuevo como ronda nueva y no mergea el head sin revisar.",
+      "input": "Usando codex-autofix-loop: el JSON del PR #31 de `acme/widgets` tiene `reviewRounds: 1`, `lastReviewedSha: a1b2c3d`, `finalMergePending: false`, `testOnlyRounds: 0`, `inFlight: {}` y el tope de rondas es 3. Codex publicó una review limpia terminada de `a1b2c3d`. Después alguien pusheó a la rama un merge de `origin/main` (commit `f9e8d7c`, ahora es el head). En esta vuelta no hay hallazgos nuevos ni fixeaste nada, y el último comentario general del PR es el `@codex review` viejo de `a1b2c3d`, con 👀 del bot. No ejecutes nada, describí qué hace esta vuelta.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "gh pr comment.{0,80}@codex review|(poste|pido|public|dispar)[a-záéíóú]*[^.]{0,60}@codex review",
+          "description": "Pide `@codex review` del head nuevo"
+        },
+        {
+          "type": "regex",
+          "pattern": "reviewRounds[^.]{0,40}([+]= ?1|2|sum|increment)",
+          "description": "Cuenta la review como ronda nueva"
+        },
+        {
+          "type": "regex",
+          "pattern": "lastReviewedSha[^.]{0,40}f9e8d7c",
+          "description": "Guarda el head nuevo en `lastReviewedSha`"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "gh pr merge 31"
+          ],
+          "description": "No mergea el head sin revisar"
+        }
+      ]
+    },
+    {
+      "id": "head-advanced-with-pending-trigger-does-not-duplicate",
+      "description": "El head avanzó por un commit ajeno y Codex ya está revisando ese head por un `@codex review` manual: el loop no postea otro, adopta esa review como la ronda del head y no mergea.",
+      "input": "Usando codex-autofix-loop: el JSON del PR #31 de `acme/widgets` tiene `reviewRounds: 1`, `lastReviewedSha: a1b2c3d`, `finalMergePending: false`, `inFlight: {}` y el tope es 3. Codex publicó una review limpia terminada de `a1b2c3d`. Después entró un merge de `origin/main` (`f9e8d7c`, el head actual) y, 5 minutos después de ese commit, una persona posteó a mano `@codex review`, que es el último comentario general del PR y ya tiene 👀 del bot. El estado `codex-review-state:v1` del resumen de Codex muestra `code_review.commit_sha: f9e8d7c` con `status: running`. En esta vuelta no fixeaste nada. No ejecutes nada, describí qué hace esta vuelta.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "no (postea|posteo|duplic|vuelvo a postear|pido otr)|sin postear|ya (hay|existe) un[^.]{0,40}(pedido|@codex review)|adopt",
+          "description": "Reconoce el pedido pendiente y no duplica el trigger"
+        },
+        {
+          "type": "regex",
+          "pattern": "lastReviewedSha[^.]{0,40}f9e8d7c",
+          "description": "Ata la ronda al head nuevo"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "gh pr merge 31"
+          ],
+          "description": "No mergea mientras falta la review del head"
+        }
+      ]
+    },
+    {
+      "id": "head-advanced-with-cap-exhausted-cancels-without-merge",
+      "description": "Con el tope de rondas agotado, el head avanzó por un commit ajeno que no figura en `outcomes`: el loop no pide review ni mergea el commit sin revisar; avisa y se auto-cancela.",
+      "input": "Usando codex-autofix-loop: el JSON del PR #31 de `acme/widgets` tiene `reviewRounds: 3` (tope 3), `lastReviewedSha: a1b2c3d`, `finalMergePending: false`, `inFlight: {}` y `outcomes` sin fixes en esta ronda. La review de Codex de `a1b2c3d` terminó y todos sus hallazgos están cerrados. Después alguien pusheó un merge de `origin/main` (`f9e8d7c`, el head actual), que no es un fix del loop. La CI del head está verde. En esta vuelta no fixeaste nada. No ejecutes nada, describí qué hace esta vuelta.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "no (mergeo|mergea|se mergea|hago merge)|sin mergear",
+          "description": "No mergea el commit ajeno sin review"
+        },
+        {
+          "type": "regex",
+          "pattern": "auto-?cancel|cancel[oa] el loop",
+          "description": "Se auto-cancela"
+        },
+        {
+          "type": "regex",
+          "pattern": "PushNotification|aviso|notific",
+          "description": "Avisa el motivo"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "gh pr merge 31",
+            "gh pr comment 31 --repo acme/widgets --body \"@codex review\""
+          ],
+          "description": "No mergea ni pide otra review"
+        }
+      ]
     }
   ]
 }
