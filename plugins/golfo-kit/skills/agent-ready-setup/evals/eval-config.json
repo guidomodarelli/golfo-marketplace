@@ -1249,7 +1249,7 @@
         },
         {
           "type": "contains_any",
-          "values": ["jerarquía", "hierarchy", "agrup", "layout", "diseño", "design"],
+          "values": ["jerarquía", "hierarchy", "agrup", "group", "layout"],
           "description": "Resuelve la explicación con diseño en vez de texto"
         },
         {
