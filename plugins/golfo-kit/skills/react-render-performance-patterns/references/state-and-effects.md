@@ -54,7 +54,7 @@ useEffect(() => {
 }, [startedAt]);
 ```
 
-Use `useEffectEvent` (or, on React versions without it, a ref updated with the latest handler) when an effect must read the latest callback or value without re-subscribing whenever it changes.
+Use `useEffectEvent` (stable since React 19.2; on older versions, a ref updated with the latest handler in an effect) when an effect must read the latest callback or value without re-subscribing whenever it changes.
 
 ### Use a functional update when the next state depends on the previous one
 
@@ -86,8 +86,8 @@ Apply these when the Profiler shows the component re-rendering or recomputing of
 | One `useMemo`/`useEffect` does independent jobs with different deps | Split it: one hook per job, so a change in one input reruns only its job (the SKILL.md Pattern 3 pipeline). |
 | `React.memo` child keeps re-rendering although callers pass nothing new | A non-primitive default param (`onSelect = () => {}`, `items = []`) is a new value every render: hoist it to a module constant (`const NO_ITEMS: Item[] = []`). |
 | Large static JSX or SVG rebuilt on every render | Hoist the element to module scope. React Compiler does this automatically. |
-| Expensive panel, tab or menu toggles often and loses state or remounts slowly | Wrap it in `<Activity mode={isOpen ? 'visible' : 'hidden'}>` to keep state and DOM while hidden. Effects are cleaned up while hidden, so subscriptions resume on show. |
-| Manual `isLoading` flag around a non-urgent update, flipping in `try/finally` | `const [isPending, startTransition] = useTransition()` and run the update inside `startTransition`; `isPending` covers the whole async action and resets even when it throws. Transitions make rendering interruptible, not responses ordered: two overlapping async actions can finish out of order and the older one can overwrite newer state, so keep an ordering guard (request id or `AbortController` checked before the `setState` after the `await`). Request lifecycle, abort and error states follow `react-data-fetching-best-practices`. |
+| Expensive panel, tab or menu toggles often and loses state or remounts slowly | On React 19.2+, wrap it in `<Activity mode={isOpen ? 'visible' : 'hidden'}>` to keep state and DOM while hidden (older versions: keep it mounted and hide it with CSS, or lift its state). Effects are cleaned up while hidden, so subscriptions resume on show. |
+| Manual `isLoading` flag around a non-urgent update, flipping in `try/finally` | React 19+ only (check `react` in `package.json`): `const [isPending, startTransition] = useTransition()` and run the update inside `startTransition`; `isPending` covers the whole async action. On React 18, `startTransition` takes only a sync callback and `isPending` resets before the `await` finishes, so keep the explicit loading state there and resets even when it throws. Transitions make rendering interruptible, not responses ordered: two overlapping async actions can finish out of order and the older one can overwrite newer state, so keep an ordering guard (request id or `AbortController` checked before the `setState` after the `await`). Request lifecycle, abort and error states follow `react-data-fetching-best-practices`. |
 
 ## Out of scope here
 
