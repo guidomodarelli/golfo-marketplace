@@ -1,12 +1,12 @@
 ---
 name: measured-performance-optimization
-description: 'Mide y optimiza rendimiento web: app lenta, Core Web Vitals, bundle, renders, caching, N+1, memoria que crece o leaks, SSR lento o TTFB alto, long tasks o main thread bloqueado, event loop de Node trabado, listas o DOM grande y jobs periódicos que releen toda una ventana en cada corrida. Usar también sin pedido explícito al crear un flujo nuevo o sumarle a uno existente requests, llamadas, queries o pasos nuevos; no en refactors, fixes ni cambios de copy o estilos que no agregan carga.'
+description: 'Mide y optimiza rendimiento web: app lenta, Core Web Vitals, bundle, renders (también con react-scan o react-doctor vía golfo-lint), caching, N+1, memoria que crece o leaks, SSR lento o TTFB alto, long tasks o main thread bloqueado, event loop de Node trabado, listas o DOM grande y jobs periódicos que releen toda una ventana en cada corrida. Usar también sin pedido explícito al crear un flujo nuevo o sumarle a uno existente requests, llamadas, queries o pasos nuevos; no en refactors, fixes ni cambios de copy o estilos que no agregan carga.'
 license: MIT
 metadata:
-  version: "1.6.0"
+  version: "1.7.0"
   author: "Guido Modarelli"
   category: "performance"
-  tags: "performance, web-vitals, bundle, caching, n+1, memory-leaks, ttfb, ssr-streaming, long-tasks, loaf, virtualization, dom-size, incremental-sweep, cron, lazy-loading, chrome-devtools, playwright, sentry"
+  tags: "performance, web-vitals, bundle, caching, n+1, memory-leaks, ttfb, ssr-streaming, long-tasks, loaf, virtualization, dom-size, incremental-sweep, cron, lazy-loading, chrome-devtools, playwright, sentry, react-scan, react-doctor, golfo-lint"
   command: "/measured-performance-optimization"
 ---
 
@@ -76,7 +76,7 @@ Identificar qué flujo real importa (página, interacción, endpoint, job) y qu�
 
 ### 2. Elegir herramientas de medición
 
-Detectar qué MCPs y herramientas hay disponibles y usar la más directa para cada área. Leer [references/measurement-tools.md](references/measurement-tools.md) para saber qué mide cada una (Chrome DevTools MCP, Playwright MCP, Sentry MCP) y sus alternativas sin MCP. Si no hay forma de medir algo, decirlo explícitamente: no inventar números ni presentar estimaciones como mediciones.
+Detectar qué MCPs y herramientas hay disponibles y usar la más directa para cada área. Leer [references/measurement-tools.md](references/measurement-tools.md) para saber qué mide cada una (Chrome DevTools MCP, Playwright MCP, Sentry MCP) y sus alternativas sin MCP. En proyectos React, react-doctor (chequeo estático y gate de CI) y react-scan (re-renders en desarrollo) se usan solo vía golfo-lint, según [references/react-doctor-react-scan.md](references/react-doctor-react-scan.md). Si no hay forma de medir algo, decirlo explícitamente: no inventar números ni presentar estimaciones como mediciones.
 
 ### 3. Medir la línea base
 
@@ -101,6 +101,7 @@ Ordenar los hallazgos por impacto medido en el flujo crítico, no por facilidad.
 | SSR, TTFB y streaming | Tiempo hasta el primer byte, streaming con Suspense, tamaño del HTML/payload RSC y costo de la hidratación | [references/ssr-ttfb-streaming.md](references/ssr-ttfb-streaming.md) |
 | Main thread y long tasks | Trabajo CPU sincrónico que bloquea el hilo principal del navegador o el event loop de Node, listeners de scroll/touch no pasivos o duplicados y storage síncrono en hot paths | [references/main-thread-long-tasks.md](references/main-thread-long-tasks.md) |
 | Listas y DOM grande | Cantidad de nodos, virtualización, layout thrashing, estilos y animaciones caras (incluido SVG animado) | [references/large-lists-dom.md](references/large-lists-dom.md) |
+| react-doctor y react-scan vía golfo-lint | Proyectos React: chequeo estático y gate de CI con `golfo-lint react`, conteo de re-renders en desarrollo con `golfo-lint react-scan` e instalación de `@golfo/lint` si falta | [references/react-doctor-react-scan.md](references/react-doctor-react-scan.md) |
 | Jobs periódicos con barrido completo | Cron o driver que relee una ventana entera en cada corrida y cuya demora crece con la ventana, no con lo nuevo | [references/incremental-sweep-jobs.md](references/incremental-sweep-jobs.md) |
 
 ### 5. Aplicar una optimización a la vez

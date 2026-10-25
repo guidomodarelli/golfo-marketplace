@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "skill": "measured-performance-optimization",
-  "description": "Evalúa optimización de rendimiento guiada por medición: línea base antes del cambio, una optimización por vez, medición posterior con las mismas condiciones, uso de Chrome DevTools/Playwright/Sentry, corrección de N+1 con JOIN o WHERE IN, lazy loading, caching y assets. También evalúa el modo automático ante funcionalidad nueva: inventaria la carga agregada y la mide contra la revisión sin esa funcionalidad. Suma casos de memoria y leaks, SSR/TTFB y streaming, main thread y long tasks, y listas/DOM grande, que verifican la referencia cargada y la medición antes/después. Agrega barrel files, deduplicación con la capa de datos existente del proyecto y listeners/storage en el hilo principal.",
+  "description": "Evalúa optimización de rendimiento guiada por medición: línea base antes del cambio, una optimización por vez, medición posterior con las mismas condiciones, uso de Chrome DevTools/Playwright/Sentry, corrección de N+1 con JOIN o WHERE IN, lazy loading, caching y assets. También evalúa el modo automático ante funcionalidad nueva: inventaria la carga agregada y la mide contra la revisión sin esa funcionalidad. Suma casos de memoria y leaks, SSR/TTFB y streaming, main thread y long tasks, y listas/DOM grande, que verifican la referencia cargada y la medición antes/después. Agrega barrel files, deduplicación con la capa de datos existente del proyecto y listeners/storage en el hilo principal. Suma react-scan (solo desarrollo) y react-doctor (CI) vía golfo-lint: casos que tientan a react-scan en CI o producción, npx react-scan init/unpkg, react-doctor directo y @golfo/lint desde git cuando no está en npm.",
   "test_cases": [
     {
       "id": "n-plus-one-users-orders",
@@ -686,6 +686,135 @@
           "type": "regex",
           "pattern": "antes|baseline|línea base|before",
           "description": "Mide antes del cambio"
+        }
+      ]
+    },
+    {
+      "id": "react-scan-not-in-ci-or-production",
+      "description": "Ante el pedido de dejar react-scan en CI y en producción, lo usa solo en desarrollo vía golfo-lint react-scan y se niega a CI y producción.",
+      "input": "Usando measured-performance-optimization: nuestra app Next.js (App Router, pnpm, ya tiene @golfo/lint en devDependencies) re-renderiza de más el `CheckoutSummary` al tipear el cupón. Quiero sumar react-scan en el workflow de CI y dejarlo activo en producción para ver los re-renders de usuarios reales. No ejecutes ni edites nada: decime qué harías, con qué comandos y por qué.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": [
+            "golfo-lint react-scan"
+          ],
+          "description": "Usa el comando golfo-lint react-scan"
+        },
+        {
+          "type": "regex",
+          "pattern": "(no|nunca|never)[^.]{0,120}(CI|producci(ó|o)n|production)",
+          "description": "Rechaza correr react-scan en CI o en producción"
+        },
+        {
+          "type": "regex",
+          "pattern": "desarrollo|development|dev server|modo dev",
+          "description": "Lo limita a desarrollo"
+        },
+        {
+          "type": "regex",
+          "pattern": "(build de producci(ó|o)n|production build)[^.]{0,200}(react-scan|INP|tiempo|latencia|commit)|(react-scan|INP|tiempo|latencia)[^.]{0,200}(build de producci(ó|o)n|production build)",
+          "description": "Mide tiempos en build de producción o verifica que react-scan no quede en ese build"
+        },
+        {
+          "type": "regex",
+          "pattern": "antes|before|l(í|i)nea base|baseline",
+          "description": "Mide antes del cambio"
+        }
+      ]
+    },
+    {
+      "id": "react-scan-init-unpkg-temptation",
+      "description": "Ante la sugerencia de correr npx react-scan init o pegar el script de unpkg, usa golfo-lint react-scan y explica por qué no.",
+      "input": "Usando measured-performance-optimization: en mi app Vite + React (pnpm, con @golfo/lint instalado) la lista de `OrdersPage` se siente pesada al filtrar. El README de react-scan dice que corra `npx react-scan init` o que pegue `<script src=\"https://unpkg.com/react-scan/dist/auto.global.js\">` en el index.html, que es lo más rápido. No ejecutes ni edites nada: decime qué harías, con qué comandos y por qué.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": [
+            "golfo-lint react-scan"
+          ],
+          "description": "Usa golfo-lint react-scan como única vía"
+        },
+        {
+          "type": "regex",
+          "pattern": "unpkg[^.]{0,160}(sin versi(ó|o)n|versi(ó|o)n|latest|fij)|(sin versi(ó|o)n|latest)[^.]{0,160}unpkg",
+          "description": "Explica que init o unpkg cargan sin versión fija"
+        },
+        {
+          "type": "regex",
+          "pattern": "(no usar(í|i)a|nunca|never|evit|tampoco|prohib|prohíb).{0,200}(react-scan init|unpkg|README|script|v(í|i)as?)",
+          "description": "Descarta npx react-scan init y el script de unpkg"
+        },
+        {
+          "type": "regex",
+          "pattern": "renders?|re-render",
+          "description": "Mide la cantidad de renders"
+        }
+      ]
+    },
+    {
+      "id": "react-doctor-direct-install-temptation",
+      "description": "Ante el pedido de instalar react-doctor@latest y correrlo con npx en CI, lo corre vía golfo-lint react y lo suma al CI que todavía no corre golfo-lint all.",
+      "input": "Usando measured-performance-optimization: en nuestro repo React (pnpm, ya tiene @golfo/lint 1.2.0 y react-doctor@0.9.18 exactos; el workflow `.github/workflows/ci.yml` corre `pnpm exec eslint .` y `pnpm test`) quiero chequear performance de React. Pensaba hacer `pnpm add -D react-doctor@latest` y agregar `npx react-doctor . --fail-on warning` al CI. No ejecutes ni edites nada: decime qué harías, con qué comandos y por qué.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": [
+            "golfo-lint react"
+          ],
+          "description": "Corre react-doctor vía golfo-lint react"
+        },
+        {
+          "type": "regex",
+          "pattern": "(no|nunca|never|evit)[^.]{0,120}(latest|npx react-doctor|directo|directamente|por fuera)",
+          "description": "Rechaza instalar latest o correr react-doctor directo"
+        },
+        {
+          "type": "regex",
+          "pattern": "telemetr|--blocking|flags|supply-chain",
+          "description": "Explica que golfo-lint aplica los flags de react-doctor"
+        },
+        {
+          "type": "regex",
+          "pattern": "(ci[.]yml|workflow|CI)[^.]{0,200}golfo-lint react|golfo-lint react[^.]{0,200}(ci[.]yml|workflow|CI|paso|step)",
+          "description": "Suma el paso golfo-lint react al workflow de CI"
+        }
+      ]
+    },
+    {
+      "id": "golfo-lint-not-published-blocked",
+      "description": "Si @golfo/lint no está en npm (404), no lo instala desde git ni cae a react-doctor directo: cierra esa parte como bloqueada y propone CI como decisión.",
+      "input": "Usando measured-performance-optimization: el proyecto React `admin-panel` (pnpm, sin CI configurado) no tiene @golfo/lint. Corrí `npm view @golfo/lint version` y dio `npm error 404 Not Found - GET https://registry.npmjs.org/@golfo%2flint`. Para no frenar, instalalo desde `github:guidomodarelli/golfo-lint` o, si no, poné react-doctor directo con npx. Quiero ver por qué el `UsersTable` re-renderiza. No ejecutes ni edites nada: decime qué harías, con qué comandos y por qué.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "bloquead|blocked",
+          "description": "Declara la parte de golfo-lint como bloqueada"
+        },
+        {
+          "type": "regex",
+          "pattern": "publicar|publicad|publish",
+          "description": "Explica que falta publicar @golfo/lint en npm"
+        },
+        {
+          "type": "regex",
+          "pattern": "(no|nunca|never)[^.]{0,120}(git|github|tarball|clon)",
+          "description": "No instala desde git"
+        },
+        {
+          "type": "regex",
+          "pattern": "(no|nunca|never)[^.]{0,160}(react-doctor|npx)",
+          "description": "No cae a react-doctor directo"
+        },
+        {
+          "type": "regex",
+          "pattern": "Profiler|DevTools",
+          "description": "Sigue midiendo renders con React DevTools Profiler"
+        },
+        {
+          "type": "regex",
+          "pattern": "(sin CI|no tiene CI|no hay CI).{0,300}(silencio|propon|decisi(ó|o)n|pr(ó|o)ximos pasos)|(propon|decisi(ó|o)n).{0,200}CI|CI.{0,200}(en silencio|decisi(ó|o)n expl)",
+          "description": "Propone CI como decisión explícita en vez de crearlo"
         }
       ]
     }

@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "skill": "react-render-performance-patterns",
-  "description": "Evalúa optimizaciones de render en React: diagnóstico con Profiler antes de memoizar, separación de updates urgentes y no urgentes con startTransition, identidades estables con useCallback/useMemo/React.memo, equality guards y gotchas de reset de TanStack Table, higiene de estado y effects (estado derivado, componentes inline, useEffectEvent, && con números), inmutabilidad en memos y detección de React Compiler.",
+  "description": "Evalúa optimizaciones de render en React: diagnóstico con Profiler antes de memoizar, separación de updates urgentes y no urgentes con startTransition, identidades estables con useCallback/useMemo/React.memo, equality guards y gotchas de reset de TanStack Table, higiene de estado y effects (estado derivado, componentes inline, useEffectEvent, && con números), inmutabilidad en memos y detección de React Compiler. Suma react-scan (solo desarrollo) y react-doctor (CI) vía golfo-lint: casos que tientan a react-scan en CI o producción, npx react-scan init/unpkg, react-doctor directo y @golfo/lint desde git cuando no está en npm.",
   "test_cases": [
     {
       "id": "typing-lag-filter-start-transition",
@@ -175,6 +175,40 @@
           "type": "regex",
           "pattern": "(redundant|sobra|innecesari|unnecessary|no hace falta|not needed|already memoiz|ya memoiz)",
           "description": "Señala que la memoización manual con useCallback suele sobrar con el compilador"
+        }
+      ]
+    },
+    {
+      "id": "measure-renders-with-golfo-lint-react-scan",
+      "description": "Para medir renders antes y después usa golfo-lint react-scan solo en desarrollo, no npx react-scan init, y la latencia en build de producción.",
+      "input": "Usando react-render-performance-patterns: en nuestra app Next.js (pnpm, con @golfo/lint) el `ProductGrid` de 800 cards re-renderiza entero al marcar un favorito. Voy a aplicar React.memo y useCallback. ¿Cómo mido los renders antes y después? Un compañero sugiere `npx react-scan init`. No ejecutes ni edites nada: decime qué harías, con qué comandos y por qué.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": [
+            "golfo-lint react-scan"
+          ],
+          "description": "Usa golfo-lint react-scan"
+        },
+        {
+          "type": "regex",
+          "pattern": "unpkg|sin (fijar )?versi(ó|o)n|react-doctor@latest",
+          "description": "Explica por qué no usar npx react-scan init (unpkg sin versión o react-doctor@latest)"
+        },
+        {
+          "type": "regex",
+          "pattern": "antes[^.]{0,200}despu(é|e)s|before[^.]{0,200}after",
+          "description": "Cuenta renders antes y después"
+        },
+        {
+          "type": "regex",
+          "pattern": "React Compiler|reactCompiler",
+          "description": "Chequea si React Compiler está activo antes de memoizar"
+        },
+        {
+          "type": "regex",
+          "pattern": "producci(ó|o)n|production",
+          "description": "Distingue desarrollo de producción"
         }
       ]
     }

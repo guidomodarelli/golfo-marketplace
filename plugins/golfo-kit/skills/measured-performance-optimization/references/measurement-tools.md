@@ -49,7 +49,7 @@ Los heap snapshots pueden contener datos de usuarios, tokens o respuestas comple
 | Web Vitals de laboratorio | `npx lighthouse <url> --output=json`, con las repeticiones y la agregación del [paso 3 del flujo](../SKILL.md#3-medir-la-línea-base). Comando completo y flags verificados en [Verificación en navegador por terminal](../../../references/agent-capabilities.md#verificación-en-navegador-por-terminal) |
 | Interacciones y recorrido del flujo sin MCP | Playwright por terminal con el Chrome instalado (misma sección): `performance.mark()`/`measure()` y `PerformanceObserver` dentro de `page.evaluate` |
 | Tamaño de bundle | Output del build del framework, `source-map-explorer`, `@next/bundle-analyzer`, `rollup-plugin-visualizer`, `webpack-bundle-analyzer` |
-| Renders | Ver [Renders innecesarios → Detectar](unnecessary-renders.md#detectar) |
+| Renders | Ver [Renders innecesarios → Detectar](unnecessary-renders.md#detectar); en proyectos React, conteo de re-renders en desarrollo con `golfo-lint react-scan` según [react-doctor y react-scan vía golfo-lint](react-doctor-react-scan.md) |
 | Queries | Ver [Queries lentas y N+1 → Detectar](database-queries-n-plus-one.md#detectar), [Queries lentas que no son N+1](database-queries-n-plus-one.md#queries-lentas-que-no-son-n1) y [Métricas antes/después](database-queries-n-plus-one.md#métricas-antesdespués) |
 | Tiempos de endpoint | `autocannon`, `k6`, `hey`, o `curl -w '%{time_total}'` repetido |
 | TTFB, streaming y tamaño del HTML | `curl -s -o /dev/null -w '%{time_starttransfer} %{size_download}' <url>` repetido (con `--compressed` para el tamaño comprimido) y `curl -N` para ver si los chunks llegan progresivamente; ver [SSR, TTFB y streaming](ssr-ttfb-streaming.md#detectar) |
