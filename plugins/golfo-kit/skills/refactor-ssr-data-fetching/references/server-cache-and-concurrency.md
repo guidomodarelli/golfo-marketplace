@@ -83,12 +83,15 @@ Font, logo, template o config que no cambia en runtime y es igual para todos los
 
 ```ts
 const emailTemplatePromise = readFile(EMAIL_TEMPLATE_PATH, 'utf-8');
+emailTemplatePromise.catch(() => {}); // rechazo manejado al importar; sendReceipt lo sigue recibiendo al awaitear
 
 export async function sendReceipt(order) {
   const template = await emailTemplatePromise;
   return render(template, toReceiptDTO(order));
 }
 ```
+
+La promesa se crea al importar el módulo, antes de que exista un request que la awaitee: si el archivo falta, rechaza sin handler y Node termina con unhandled rejection. Por eso lleva su `.catch(() => {})` en la misma línea de creación (mismo criterio que en [Orden de await](#orden-de-await-en-route-handlers-bff)), o se awaitea explícitamente en el arranque antes de aceptar requests.
 
 Es caso distinto del estado por request: valor inmutable y compartible. No aplicar a archivos que cambian en runtime (usar caché con TTL), a datos por usuario, a secretos que no deben quedar en memoria ni a archivos grandes que inflan memoria del proceso.
 
