@@ -3,7 +3,7 @@ name: codex-autofix-loop
 description: "Lanza y opera el loop que auto-fixea comentarios de Codex (chatgpt-codex-connector[bot]) en un PR: clone efímero → fix → push → closeout del hilo, o `@codex fix` en el propio hilo (modos `codex`/`auto` con fallback local), con dedup por PR, tope de rondas, timeout por ronda, guard de auto-cancelación y merge sin preguntar ni esperar revisión humana tras el gate de CI, también al terminar la última ronda. Lanzarlo solo, sin que lo pidan, apenas el agente abre un PR con `gh pr create`. Adapta la espera a cada agente (Monitor en Claude Code, watcher en background en Hermes, en foreground en Codex, o una ronda por invocación). Para un solo comentario de Codex alcanza con `codex-comment-closeout`. Use when the user asks to relaunch/start the Codex auto-fix loop for a PR, right after the agent opens a pull request (gh pr create) even if nobody asked, set up Codex comment auto-fixing, mentions docs/codex-autofix-loop.md, processed-PR.json, or the codex-autofix workflow."
 license: MIT
 metadata:
-  version: "1.6.1"
+  version: "1.6.2"
   author: "Guido Modarelli"
   category: "code-review"
   tags: "code-review, codex, pull-request, autofix, convergence"
@@ -670,6 +670,10 @@ regla de paridad con el step «Cerrar comentario» del Action
   loop lo repostea (paso 2-bis). El chequeo corre una vez por iteración, así que
   el propio intervalo del loop lo rate-limitea y no spamea; si el comentario ya
   tiene 👀, no hace nada.
+- **Sin `@codex` en el cuerpo del PR**: una mención `@codex` en el body hace que Codex
+  conteste «create an environment» en vez de revisar; por eso la review inicial se pide
+  con un comentario aparte (paso 2-ter). La regla vive en «Full-composition rules» de
+  [`pr-description-template`](../pr-description-template/SKILL.md).
 - **Convergencia**: el triage del paso 3-pre (realista / borde razonable / borde
   rebuscado / preexistente / nit) evita que cada review agregue fixes de casos cada vez
   más improbables o de código viejo. Los no fixeables se cierran como «Sin cambios» con
