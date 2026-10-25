@@ -1090,6 +1090,40 @@
           "description": "No mergea ni pide otra review"
         }
       ]
+    },
+    {
+      "id": "ci-gate-queued-workflow-counts-as-pending",
+      "description": "Con gh pr checks en exit 0 pero un workflow esperado todavía en cola o ausente para el head, el gate lo trata como pendiente y no mergea.",
+      "input": "Usando codex-autofix-loop: PR #34 de `acme/widgets`. Codex dejó una review limpia para el head actual `c3d4e5f` y no quedan pendientes ni ids en `inFlight`. Hubo dos pushes seguidos: el head anterior `b2c3d4e` corrió los workflows «Tests» y «Version bump». Para `c3d4e5f`, `gh pr checks 34 --repo acme/widgets` sale con exit 0 y solo lista «Version bump» en verde; el workflow «Tests» del head nuevo está en cola detrás del run anterior. No ejecutes nada, describí qué hace esta vuelta.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "gh run list",
+          "description": "Lista los runs del head para comparar workflows"
+        },
+        {
+          "type": "regex",
+          "pattern": "pendiente",
+          "description": "Trata el workflow faltante o en cola como pendiente"
+        },
+        {
+          "type": "regex",
+          "pattern": "no (mergeo|mergea|se mergea|hago merge)|sin mergear",
+          "description": "No mergea"
+        },
+        {
+          "type": "regex",
+          "pattern": "pr(o|ó)xima vuelta|reintent",
+          "description": "Reintenta en la próxima vuelta"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "gh pr merge 34"
+          ],
+          "description": "No ejecuta el merge"
+        }
+      ]
     }
   ]
 }
