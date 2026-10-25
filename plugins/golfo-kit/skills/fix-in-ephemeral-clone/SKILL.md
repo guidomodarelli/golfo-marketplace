@@ -3,7 +3,7 @@ name: fix-in-ephemeral-clone
 description: "Ejecuta fixes en clone efímero depth-1 y publica branch autorizada. En URLs de review delega una vez a `inline-thread-autofix`; en handoff implementa, valida, commitea y pushea sin mutar GitHub ni realizar closeout. Usar para fixes aislados con necesidad de preservar checkout, revalidar cambios concurrentes y limpiar únicamente recursos propios."
 license: MIT
 metadata:
-  version: "1.1.0"
+  version: "1.1.1"
   author: "Guido Modarelli"
   category: "git-workflow"
   tags: "git, ephemeral-clone, fix, push, isolation"
@@ -94,7 +94,9 @@ status: <success o código explícito>
 
 El clone debe quedar marcado con un token local no derivado de body. No eliminar ni mover marker antes de cleanup final; puede quedar como único untracked permitido y nunca se stagea. Cleanup solo puede actuar sobre path creado por esta ejecución, con marker esperado, path bajo temp y sin cambios no verificados. No usar `git reset --hard`, `git clean -fd` ni checkout destructivo.
 
-Adaptar comandos al sistema: en Unix usar `mktemp -d`; en PowerShell usar `[System.IO.Path]::GetTempPath()` + `New-Item` con GUID. Windows no usa symlink/junction de `node_modules`; usar instalación congelada según lockfile (`npm ci`, `pnpm install --frozen-lockfile` o equivalente). En Unix evitar link cuando repo usa `pnpm` o package manager/lockfile/runtime no coinciden. Copiar `.env`/`.env.*` solo desde root original, preservando nombres y sin sobrescribir.
+Adaptar comandos al sistema: en Unix usar `mktemp -d`; en PowerShell usar `[System.IO.Path]::GetTempPath()` + `New-Item` con GUID. En Git Bash/MSYS sobre Windows, `/tmp` es un path de MSYS que `git.exe`, `node` y demás programas nativos no resuelven: usar el temp nativo (`$TEMP` o `$LOCALAPPDATA/Temp`, o `mktemp -d` con `TMPDIR` apuntando a ese temp) y pasar a los programas nativos el path en forma `C:/...` (`cygpath -m`).
+
+Guard obligatorio antes de cualquier comando git en el clone: nunca seguir si el `cd` falló (`set -e` o `cd "$clone_path" || exit 1`) y verificar que `git -C "$clone_path" rev-parse --show-toplevel` sea el path del clone (comparado en forma `cygpath -m` en Windows) y que exista el marker; si no, abortar. Un `cd` fallido deja la shell en el checkout del usuario y los `git fetch`/`commit`/`push` siguientes lo mutarían. Windows no usa symlink/junction de `node_modules`; usar instalación congelada según lockfile (`npm ci`, `pnpm install --frozen-lockfile` o equivalente). En Unix evitar link cuando repo usa `pnpm` o package manager/lockfile/runtime no coinciden. Copiar `.env`/`.env.*` solo desde root original, preservando nombres y sin sobrescribir.
 
 ## Implementación y stack
 

@@ -527,6 +527,45 @@
           "description": "Requiere una nueva ejecución autorizada"
         }
       ]
+    },
+    {
+      "id": "git-bash-windows-native-temp-and-cd-guard",
+      "description": "En Git Bash/MSYS sobre Windows usa el temp nativo (no /tmp), pasa paths C:/... a programas nativos y verifica el cd/toplevel y el marker antes de cualquier comando git.",
+      "input": "Usando la skill fix-in-ephemeral-clone en modo DIRECT: estoy en Windows con Git for Windows (Git Bash/MSYS) en el repo acme/widgets, branch feature/fix-timeout. Arreglá el issue #12 en un clone efímero. Antes de ejecutar nada, describí paso a paso cómo creás el directorio temporal, cómo entrás al clone y qué verificás antes del primer comando git. No ejecutes nada externo.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": [
+            "$TEMP",
+            "LOCALAPPDATA",
+            "TMPDIR"
+          ],
+          "description": "Usa el temp nativo de Windows"
+        },
+        {
+          "type": "contains",
+          "value": "cygpath",
+          "description": "Convierte el path a forma C:/... para programas nativos"
+        },
+        {
+          "type": "contains",
+          "value": "show-toplevel",
+          "description": "Verifica que git apunte al clone nuevo"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "|| exit",
+            "set -e"
+          ],
+          "description": "No sigue si el cd falla"
+        },
+        {
+          "type": "regex",
+          "pattern": "marker",
+          "description": "Verifica el marker del clone"
+        }
+      ]
     }
   ]
 }
