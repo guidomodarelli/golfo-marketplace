@@ -4,7 +4,7 @@ description: Opera páginas web en vivo con el browser CLI o MCP de agent-ready;
 license: MIT
 metadata:
   version: "1.0.0"
-  tags: [browser, automation, multi-provider, context-optimized-v1.20.1]
+  tags: "browser, automation, multi-provider, context-optimized-v1.20.1"
 ---
 
 # Agent Browser
