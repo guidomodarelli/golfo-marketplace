@@ -87,7 +87,7 @@ Apply these when the Profiler shows the component re-rendering or recomputing of
 | `React.memo` child keeps re-rendering although callers pass nothing new | A non-primitive default param (`onSelect = () => {}`, `items = []`) is a new value every render: hoist it to a module constant (`const NO_ITEMS: Item[] = []`). |
 | Large static JSX or SVG rebuilt on every render | Hoist the element to module scope. React Compiler does this automatically. |
 | Expensive panel, tab or menu toggles often and loses state or remounts slowly | Wrap it in `<Activity mode={isOpen ? 'visible' : 'hidden'}>` to keep state and DOM while hidden. Effects are cleaned up while hidden, so subscriptions resume on show. |
-| Manual `isLoading` flag around a non-urgent update, flipping in `try/finally` | `const [isPending, startTransition] = useTransition()` and run the update inside `startTransition`; `isPending` resets even when it throws, and a newer transition supersedes an older one. Request lifecycle, abort and error states still follow `react-data-fetching-best-practices`. |
+| Manual `isLoading` flag around a non-urgent update, flipping in `try/finally` | `const [isPending, startTransition] = useTransition()` and run the update inside `startTransition`; `isPending` covers the whole async action and resets even when it throws. Transitions make rendering interruptible, not responses ordered: two overlapping async actions can finish out of order and the older one can overwrite newer state, so keep an ordering guard (request id or `AbortController` checked before the `setState` after the `await`). Request lifecycle, abort and error states follow `react-data-fetching-best-practices`. |
 
 ## Out of scope here
 

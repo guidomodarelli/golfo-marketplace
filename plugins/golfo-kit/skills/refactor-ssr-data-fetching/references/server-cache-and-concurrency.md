@@ -108,6 +108,7 @@ export async function GET(request: Request) {
 
   const identityPromise = requireAuthenticatedIdentity(request);
   const publicConfigPromise = loadPublicFeatureConfig(); // no depende de identidad
+  publicConfigPromise.catch(() => {}); // marca el rechazo como manejado; Promise.all lo sigue propagando
   const identity = await identityPromise;
   await requireEntityOwnership(identity, query.data.facilityId);
 
@@ -117,7 +118,7 @@ export async function GET(request: Request) {
 }
 ```
 
-Nunca iniciar lectura de datos del usuario o mutation antes de autorizar para "ganar tiempo": abre carrera donde trabajo no autorizado ya ocurrió cuando falla el check. Si una promesa arrancada temprano puede quedar sin awaitear por early return, capturar su rechazo (`promise.catch(...)`) para no generar unhandled rejection.
+Nunca iniciar lectura de datos del usuario o mutation antes de autorizar para "ganar tiempo": abre carrera donde trabajo no autorizado ya ocurrió cuando falla el check. Toda promesa arrancada antes de un `await` que puede lanzar (authentication, ownership, early return) necesita un handler de rechazo desde que se crea, como `publicConfigPromise.catch(() => {})` en el ejemplo: si falla mientras el check sigue pendiente y el check corta el handler, nadie la awaitea y Node termina con unhandled rejection en vez de devolver un error controlado. Ese `.catch` no traga el error: awaitear la promesa original (directo o en `Promise.all`) lo sigue lanzando donde se consume.
 
 Mismo criterio aplica a Server Actions y loaders SSR. Para paralelizar por composición de Server Components en App Router, ver `nextjs-route-ui-boundaries` → [server-client-split.md](../../nextjs-route-ui-boundaries/references/server-client-split.md).
 
