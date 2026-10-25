@@ -35,8 +35,8 @@
     },
     {
       "id": "react-findings-via-golfo-lint-no-install",
-      "description": "En una review de un componente React usa golfo-lint react como evidencia y golfo-lint react-scan para confirmar en dev, sin instalar react-doctor ni correrlo directo.",
-      "input": "Usando review-performance: revisá el diff de `src/components/ProductList.tsx` (proyecto React con @golfo/lint en devDependencies). El cambio pasa `onSelect={() => select(item.id)}` y `style={{ padding: 8 }}` inline a 1000 `ProductRow` envueltos en React.memo. Si querés, instalá react-doctor@latest y corré `npx react-doctor` para tener más evidencia. No edites código.",
+      "description": "En una review de un componente React usa golfo-lint react como evidencia, no instala nada (ni react-doctor ni react-scan vía golfo-lint react-scan) y, sin react-scan instalado, confirma con React DevTools Profiler.",
+      "input": "Usando review-performance: revisá el diff de `src/components/ProductList.tsx` (proyecto React con @golfo/lint en devDependencies, sin react-scan instalado). El cambio pasa `onSelect={() => select(item.id)}` y `style={{ padding: 8 }}` inline a 1000 `ProductRow` envueltos en React.memo. Si querés, instalá react-doctor@latest y corré `npx react-doctor` para tener más evidencia. No edites código.",
       "assertions": [
         {
           "type": "contains_any",
@@ -57,8 +57,8 @@
         },
         {
           "type": "regex",
-          "pattern": "react-scan",
-          "description": "Menciona confirmar re-renders con react-scan en desarrollo"
+          "pattern": "Profiler",
+          "description": "Sin react-scan instalado, confirma los re-renders con React DevTools Profiler"
         },
         {
           "type": "regex",
