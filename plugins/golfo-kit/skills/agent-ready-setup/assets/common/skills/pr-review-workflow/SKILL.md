@@ -4,7 +4,7 @@ description: Procedimiento común de review de PR para todos los stacks; obtiene
 license: MIT
 metadata:
   version: "1.0.0"
-  tags: [review, pull-request, multi-provider]
+  tags: "review, pull-request, multi-provider"
 ---
 
 # PR Review Workflow
