@@ -16,10 +16,16 @@ For local development, skills symlink into each provider's own skills folder (`~
 2. **Every skill must have `evals/eval-config.json`** (test cases + assertions). Use the central `run-evals` CLI to execute them — no per-skill `run-evals.sh` needed. Use `/skill-creator` to generate evals. (Legacy skills may use `evals/evals.json` — prefer `eval-config.json` for new work.)
 3. **All names in kebab-case** — plugins, skills, directories, commands. Names should convey expertise (e.g., `api-docs-expert` not `api-doc-guidelines`).
 4. **Run `/skill-optimizer` after every skill creation or modification.** Once `/skill-creator` finishes creating or changing a skill (its `SKILL.md`, references, scripts or evals), run `/skill-optimizer` on that skill with `mode=audit` before reporting the work as done, and include its status and findings in the report. Escalate to `mode=quick` or `mode=full` only if the audit finds a measurable problem and the user agrees. Exceptions: edits made by `/skill-optimizer` itself (it must not invoke itself recursively) and changes limited to metadata such as the `version` field.
+5. **Every `SKILL.md` follows the [Agent Skills specification](https://agentskills.io/specification)**, the format that Claude Code, Codex and Hermes read. Frontmatter constraints:
+   - `name` (required): 1-64 characters, lowercase letters, digits and hyphens only, no leading, trailing or consecutive hyphens, and equal to the skill directory name.
+   - `description` (required): 1-1024 characters, non-empty, saying what the skill does and when to use it. Quote it when it contains `: `, or the YAML frontmatter fails to parse.
+   - Optional fields: `license`, `compatibility` (at most 500 characters), `metadata` (string keys to string values, so lists such as `tags` are written as a comma-separated string) and `allowed-tools` (experimental).
+
+   Portable runtimes such as Hermes silently drop a skill whose `name` or `description` breaks these limits. `pnpm validate-portable-plugins` enforces `name` and `description` in CI; the other constraints are checked in review. If the specification changes, it wins over this summary.
 
 ## Conventions
 
-- **SKILL.md frontmatter**: `name`, `description` (include trigger keywords), `license`, `metadata` (version, author, category, tags, command). The `description` field drives skill activation — make it count.
+- **SKILL.md frontmatter**: `name`, `description` (include trigger keywords), `license`, `metadata` (version, author, category, tags, command), within the limits of rule 5. The `description` field drives skill activation — make it count.
 - **Branch naming**: `feature/<plugin-or-skill-name>`
 - **Commit format**: `feat(marketplace): add <name>` or `feat(skills): add <name>`
 - **Reference files are loaded on-demand** — skills declare them but only load when the relevant command executes.
