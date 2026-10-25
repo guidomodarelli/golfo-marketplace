@@ -47,6 +47,9 @@ export const EVIDENCE_KINDS = ['review', 'test', 'browser', 'accessibility', 'me
 
 export const EVIDENCE_OUTCOMES = ['pass', 'fail', 'measured', 'skipped'];
 
+/** Prefixes of the input keys that do not name a project file: an npm package and an import nobody could resolve. */
+export const INPUT_KEY_PREFIXES = { package: 'pkg:', unresolved: 'unresolved:' };
+
 /** Extensions parsed as JavaScript or TypeScript modules. */
 export const SOURCE_EXTENSIONS = ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs'];
 

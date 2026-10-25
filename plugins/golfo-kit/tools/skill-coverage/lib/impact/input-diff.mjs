@@ -6,7 +6,7 @@
  * same content is reported as relocated, not as a change.
  */
 
-import { PACKAGE_METADATA_FILES } from '../constants.mjs';
+import { INPUT_KEY_PREFIXES, PACKAGE_METADATA_FILES } from '../constants.mjs';
 
 /**
  * @param {string} key Input key (`path#Part`, `pkg:name`, ...).
@@ -16,6 +16,48 @@ export function splitInputKey(key) {
   const hashIndex = key.indexOf('#');
   if (hashIndex === -1) return { part: key, path: null };
   return { part: key.slice(hashIndex + 1), path: key.slice(0, hashIndex) };
+}
+
+/**
+ * @param {string} key
+ * @returns {string | undefined} Package name of a `pkg:<name>` key.
+ */
+export function packageOfInputKey(key) {
+  return key.startsWith(INPUT_KEY_PREFIXES.package) ? key.slice(INPUT_KEY_PREFIXES.package.length) : undefined;
+}
+
+/**
+ * @param {string} key
+ * @returns {string | undefined} Import specifier of an `unresolved:<specifier>` key.
+ */
+export function unresolvedSpecifierOfInputKey(key) {
+  return key.startsWith(INPUT_KEY_PREFIXES.unresolved) ? key.slice(INPUT_KEY_PREFIXES.unresolved.length) : undefined;
+}
+
+/** Separators the module analyzer puts after a top-level name: `/inner`, `.member`, `~shell`, `~frame`. */
+const PART_SEPARATOR_PATTERN = /[/~.]/;
+
+/**
+ * @typedef {{ kind: 'file' | 'module' | 'handler' | 'member' | 'shell' | 'frame' | 'declaration', owner: string, member?: string }} PartShape
+ */
+
+/**
+ * Classifies the part of a file input key by the names the module analyzer
+ * gives it: `*` (whole file), `<module>`, `Name/inner` (handler),
+ * `Name.member`, `Name~shell`, `Name~frame` or a top-level declaration.
+ *
+ * @param {string} part
+ * @returns {PartShape} `owner` is the top-level name (a JS identifier, so it never holds `/`, `~` or `.`); `member` is set for members.
+ */
+export function partShape(part) {
+  if (part === '*') return { kind: 'file', owner: part };
+  if (part === '<module>') return { kind: 'module', owner: part };
+  const owner = part.split(PART_SEPARATOR_PATTERN)[0];
+  if (part.includes('/')) return { kind: 'handler', owner };
+  if (part.includes('.')) return { kind: 'member', member: part.slice(part.indexOf('.') + 1), owner };
+  if (part.endsWith('~shell')) return { kind: 'shell', owner };
+  if (part.endsWith('~frame')) return { kind: 'frame', owner };
+  return { kind: 'declaration', owner };
 }
 
 /**
@@ -31,7 +73,7 @@ export function splitInputKey(key) {
 export function snapshotPaths(snapshot) {
   const inputKeys = Object.keys(snapshot.inputs);
   const inputPaths = inputKeys.map((key) => splitInputKey(key).path).filter(Boolean);
-  const packageMetadataPaths = inputKeys.some((key) => key.startsWith('pkg:')) ? Object.values(PACKAGE_METADATA_FILES) : [];
+  const packageMetadataPaths = inputKeys.some((key) => packageOfInputKey(key) !== undefined) ? Object.values(PACKAGE_METADATA_FILES) : [];
   return [...new Set([...Object.keys(snapshot.files), ...inputPaths, ...packageMetadataPaths])].sort();
 }
 

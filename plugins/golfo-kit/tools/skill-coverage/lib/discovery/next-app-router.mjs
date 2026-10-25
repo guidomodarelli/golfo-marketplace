@@ -18,7 +18,7 @@
 import path from 'node:path';
 
 import { ROUTE_BOUNDARY_FILES, SCHEMA_VERSION } from '../constants.mjs';
-import { splitInputKey } from '../impact/input-diff.mjs';
+import { partShape, splitInputKey } from '../impact/input-diff.mjs';
 import { computeUnitInputs } from '../impact/unit-inputs.mjs';
 import { PAGE_FILE_PATTERN, ROUTE_HANDLER_FILE_PATTERN, appDirectoryOf, nearestSegmentFiles, routeOfFile } from '../source/next-route-tree.mjs';
 
@@ -131,8 +131,9 @@ export function discoverUnits(context, options = {}) {
   for (const { closure, pagePath } of pageClosures) {
     for (const key of Object.keys(closure.inputs)) {
       const { path: filePath, part } = splitInputKey(key);
-      if (!filePath || part === '<module>' || part === '*') continue;
-      const symbolKey = `${filePath}#${part.split(/[/~.]/)[0]}`;
+      const shape = partShape(part);
+      if (!filePath || shape.kind === 'module' || shape.kind === 'file') continue;
+      const symbolKey = `${filePath}#${shape.owner}`;
       if (!pagesBySymbol.has(symbolKey)) pagesBySymbol.set(symbolKey, new Set());
       pagesBySymbol.get(symbolKey).add(pagePath);
     }
@@ -170,8 +171,9 @@ export function discoverUnits(context, options = {}) {
     const symbols = new Map();
     for (const key of Object.keys(closure.inputs)) {
       const { path: filePath, part } = splitInputKey(key);
-      if (!filePath || !isUiFile(filePath) || filePath === pagePath || part === '<module>' || part === '*') continue;
-      const name = part.split(/[/~.]/)[0];
+      const shape = partShape(part);
+      if (!filePath || !isUiFile(filePath) || filePath === pagePath || shape.kind === 'module' || shape.kind === 'file') continue;
+      const name = shape.owner;
       const symbolKey = `${filePath}#${name}`;
       const analysisSymbol = index.analyze(filePath)?.symbols?.get(name);
       if (!/^[A-Z]/.test(name) || !analysisSymbol?.callable) continue;
@@ -179,7 +181,7 @@ export function discoverUnits(context, options = {}) {
       if (sharedAcrossPages) continue;
       if (!symbols.has(symbolKey)) symbols.set(symbolKey, { filePath, loads: false, name });
       const signals = closure.signals[key];
-      if (!part.includes('/') && (hasSignal(signals, ['effects']) && hasSignal(signals, DATA_LOADING_SIGNALS) || hasSignal(signals, ACTION_SIGNALS))) symbols.get(symbolKey).loads = true;
+      if (shape.kind !== 'handler' && (hasSignal(signals, ['effects']) && hasSignal(signals, DATA_LOADING_SIGNALS) || hasSignal(signals, ACTION_SIGNALS))) symbols.get(symbolKey).loads = true;
     }
 
     const pageProposals = [];

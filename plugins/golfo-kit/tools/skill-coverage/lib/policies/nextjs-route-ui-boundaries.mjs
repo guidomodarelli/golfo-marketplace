@@ -15,13 +15,12 @@
  */
 import path from 'node:path';
 
-import { splitInputKey } from '../impact/input-diff.mjs';
+import { packageOfInputKey, partShape, splitInputKey, unresolvedSpecifierOfInputKey } from '../impact/input-diff.mjs';
 import { isRouteConventionFile, routeContextFiles } from '../source/next-route-tree.mjs';
-import { describeInputKey, increasedSignals } from './base-policy.mjs';
+import { DEFAULT_DEFINITION_FILES, scopeByReviewFocus, signalIncreases, STYLE_FILE_PATTERN } from './base-policy.mjs';
 import { isPresentationMember } from './presentation-members.mjs';
 
 const NO_BOUNDARY_FILE_PATTERN = /\.(?:po|pot|md)$/;
-const STYLE_FILE_PATTERN = /\.(?:s?css|sass|less)$/;
 const PROJECT_FILE_PATTERN = /^(?:next\.config\.[cm]?[jt]s|(?:src\/)?(?:middleware|proxy)\.[jt]s)$/;
 const APP_DIRECTORIES = ['app', 'src/app'];
 
@@ -130,43 +129,32 @@ function conventionName(filePath) {
 
 /**
  * @param {{ key: string, change: string }} change
- * @param {Record<string, any>} previousSignals
- * @param {Record<string, any>} currentSignals
- * @returns {string[]} Increases of the signals that make a route wait, described.
- */
-function addedRenderWaits(change, previousSignals, currentSignals) {
-  const previous = change.change === 'added' ? {} : previousSignals[change.key];
-  const waits = (signals = {}) => Object.fromEntries(Object.entries(signals).filter(([name]) => RENDER_WAIT_SIGNALS.has(name)));
-  return increasedSignals(waits(previous), waits(currentSignals[change.key]));
-}
-
-/**
- * @param {{ key: string, change: string }} change
  * @returns {string} What the next run must look at for this change.
  */
 function reviewFocus(change) {
   const { part, path: filePath } = splitInputKey(change.key);
   if (change.change === 'relocated') return 'the segment and convention the file now has: URL, layouts it renders inside, loading, error or template boundary it defines, inherits or replaces';
   if (change.change === 'removed') return 'what the route lost: a layout, a boundary, a Suspense fallback or a client island; check that each state still has its boundary';
-  if (change.key.startsWith('pkg:')) {
-    const name = change.key.slice(4);
-    return FRAMEWORK_PACKAGES.has(name)
+  const packageName = packageOfInputKey(change.key);
+  if (packageName !== undefined) {
+    return FRAMEWORK_PACKAGES.has(packageName)
       ? 'App Router APIs and conventions used by the route against the installed version (installed docs in node_modules/next/dist/docs/)'
       : 'whether what the route imports from this package runs on the server or needs a client island';
   }
-  if (change.key.startsWith('unresolved:')) return 'import that cannot be resolved: review the file that imports it as a whole';
+  if (unresolvedSpecifierOfInputKey(change.key) !== undefined) return 'import that cannot be resolved: review the file that imports it as a whole';
   if (filePath && PROJECT_FILE_PATTERN.test(filePath)) return 'rendering, caching and navigation options that apply to every route (cacheComponents, partial prefetching, redirects, middleware or proxy matchers)';
   if (filePath && STYLE_FILE_PATTERN.test(filePath)) return 'skeleton that uses these styles: final shape, reserved heights and reduced motion';
-  if (part === '<module>') return 'where the server/client boundary falls ("use client", "use server") and what the client bundle imports through it';
+  const { kind } = partShape(part);
+  if (kind === 'module') return 'where the server/client boundary falls ("use client", "use server") and what the client bundle imports through it';
   if (isRouteFile(filePath)) return 'segment decisions of this file: layout chrome, Suspense, loading and error boundaries, route segment config and the data it awaits';
-  if (part.includes('/')) return 'this handler: client leaf, Next.js navigation (Link, Form, router), server action calls and revalidation';
-  if (part.endsWith('~shell')) return 'what this component renders: hooks that force a client island, awaited data, Suspense and the client components it imports';
-  if (part.includes('.')) return 'route configuration read from this member, in every segment that uses it';
+  if (kind === 'handler') return 'this handler: client leaf, Next.js navigation (Link, Form, router), server action calls and revalidation';
+  if (kind === 'shell') return 'what this component renders: hooks that force a client island, awaited data, Suspense and the client components it imports';
+  if (kind === 'member') return 'route configuration read from this member, in every segment that uses it';
   return 'server/client split and awaited work of this code in every route of the unit';
 }
 
 export const nextjsRouteUiBoundariesPolicy = {
-  definitionFiles: ['SKILL.md', 'references/**/*.md'],
+  definitionFiles: DEFAULT_DEFINITION_FILES,
   label: 'Next.js',
   // Route context (layouts, boundaries, configuration) is followed two hops:
   // the chrome or skeleton components it renders and their styles or leaves.
@@ -214,32 +202,32 @@ export const nextjsRouteUiBoundariesPolicy = {
       return { reason: 'moved without changes outside the route tree', relevant: false };
     }
     if (change.change === 'removed') return { reason: 'code no longer reached by the route: a layout, boundary or client island may have been removed', relevant: true };
-    if (change.key.startsWith('pkg:')) {
-      const name = change.key.slice(4);
-      if (FRAMEWORK_PACKAGES.has(name)) return { reason: `framework package ${change.change === 'added' ? 'added' : 'version changed'} (${name}): App Router APIs may differ`, relevant: true };
+    const packageName = packageOfInputKey(change.key);
+    if (packageName !== undefined) {
+      if (FRAMEWORK_PACKAGES.has(packageName)) return { reason: `framework package ${change.change === 'added' ? 'added' : 'version changed'} (${packageName}): App Router APIs may differ`, relevant: true };
       return { reason: change.change === 'added' ? 'new package in the route: it may need a client island' : 'package version changed: its server or client requirements may differ', relevant: true };
     }
-    if (change.key.startsWith('unresolved:')) return { reason: 'import that cannot be resolved: boundary impact unknown, reviewed conservatively', relevant: true };
+    if (unresolvedSpecifierOfInputKey(change.key) !== undefined) return { reason: 'import that cannot be resolved: boundary impact unknown, reviewed conservatively', relevant: true };
     if (filePath && PROJECT_FILE_PATTERN.test(filePath)) return { reason: 'project configuration of rendering, caching or navigation changed: applies to every route', relevant: true };
     if (filePath && STYLE_FILE_PATTERN.test(filePath)) {
       if (stylesLoadingUi(change.key, currentImporters)) return { reason: 'styles of a skeleton or loading boundary changed', relevant: true };
       return { reason: 'styles outside skeletons and loading boundaries: no route boundary or server/client decision depends on them', relevant: false };
     }
-    const member = part.includes('.') && !part.includes('/') ? part.slice(part.indexOf('.') + 1) : undefined;
+    const shape = partShape(part);
     const hasSignals = Boolean(currentSignals[change.key] || previousSignals[change.key]);
-    if (member !== undefined && !isRouteFile(filePath)) {
+    if (shape.kind === 'member' && !isRouteFile(filePath)) {
       // A member named as loading UI (`content.fallback`) can hold the JSX of a
       // Suspense fallback even inside a copy dictionary: it stays relevant.
-      if (!hasSignals && !LOADING_UI_PATTERN.test(member) && isPresentationMember(part.slice(0, part.indexOf('.')), member)) return { reason: 'copy or display member: no route boundary depends on it', relevant: false };
+      if (!hasSignals && !LOADING_UI_PATTERN.test(shape.member) && isPresentationMember(shape.owner, shape.member)) return { reason: 'copy or display member: no route boundary depends on it', relevant: false };
       return { reason: 'object member read by the route changed: route configuration impact unknown', relevant: true };
     }
-    if (part === '<module>') return { reason: 'module directives ("use client", "use server") or side-effect imports changed', relevant: true };
-    const waits = part.includes('/') ? [] : addedRenderWaits(change, previousSignals, currentSignals);
+    if (shape.kind === 'module') return { reason: 'module directives ("use client", "use server") or side-effect imports changed', relevant: true };
+    const waits = shape.kind === 'handler' ? [] : signalIncreases(change, previousSignals, currentSignals, RENDER_WAIT_SIGNALS);
     if (waits.length) return { reason: `adds awaited work to the render path (${waits.join(', ')}): navigation may wait without a loading boundary`, relevant: true };
     if (isRouteFile(filePath)) return { reason: change.change === 'added' ? 'new route file: segment, layout or boundary added' : 'route file changed: segment layout, boundary or page', relevant: true };
-    if (part === '*') return { reason: 'file tracked as a whole: boundary impact cannot be classified', relevant: true };
-    if (part.includes('/')) return { reason: change.change === 'added' ? 'new interactive handler in the route' : 'interactive handler changed: navigation or server action calls may differ', relevant: true };
-    if (part.endsWith('~shell')) return { reason: 'component render changed: hooks, Suspense or client imports may differ', relevant: true };
+    if (shape.kind === 'file') return { reason: 'file tracked as a whole: boundary impact cannot be classified', relevant: true };
+    if (shape.kind === 'handler') return { reason: change.change === 'added' ? 'new interactive handler in the route' : 'interactive handler changed: navigation or server action calls may differ', relevant: true };
+    if (shape.kind === 'shell') return { reason: 'component render changed: hooks, Suspense or client imports may differ', relevant: true };
     return { reason: change.change === 'added' ? 'new code rendered by the route' : 'code rendered by the route changed', relevant: true };
   },
 
@@ -278,6 +266,6 @@ export const nextjsRouteUiBoundariesPolicy = {
       const routes = unit.routes?.length ? ` (${unit.routes.join(', ')})` : '';
       return [`whole unit ${unit.id}${routes}: map the segments that wrap it (layouts, templates, loading, error, not-found), decide the server/client split of each element and the skeleton of each loading state, check the Next.js APIs against the installed version, and verify build, sibling navigation, error containment with retry and the server-rendered shell`];
     }
-    return relevantChanges.map((change) => `${describeInputKey(change.key)} — ${reviewFocus(change)}`);
+    return scopeByReviewFocus(relevantChanges, reviewFocus);
   },
 };

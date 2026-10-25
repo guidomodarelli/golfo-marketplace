@@ -4,13 +4,13 @@
  * is computed on every read from the current inputs and skill definition
  * and is never written to disk.
  */
-import { FRESHNESS } from '../constants.mjs';
+import { FRESHNESS, INPUT_KEY_PREFIXES } from '../constants.mjs';
 import { diffFiles, diffInputs } from '../impact/input-diff.mjs';
 import { missingEvidence } from '../policies/base-policy.mjs';
 import { compareVersions } from '../support.mjs';
 
 /** Input key prefixes whose value does not depend on the module analyzer (package versions, unresolved imports). */
-const ANALYZER_INDEPENDENT_INPUT_PREFIXES = ['pkg:', 'unresolved:'];
+const ANALYZER_INDEPENDENT_INPUT_PREFIXES = Object.values(INPUT_KEY_PREFIXES);
 
 /**
  * Keeps the analyzer-independent inputs present in both maps. Each analyzer

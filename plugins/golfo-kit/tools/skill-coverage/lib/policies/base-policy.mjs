@@ -27,7 +27,16 @@
  * `signalsRecorded` and `currentImporters` (every part or entry that reaches
  * each current file, `entry:`/`context:` labels included).
  */
-import { splitInputKey } from '../impact/input-diff.mjs';
+import { packageOfInputKey, partShape, splitInputKey, unresolvedSpecifierOfInputKey } from '../impact/input-diff.mjs';
+
+/** Files, relative to the skill directory, that hold a skill's normative definition. */
+export const DEFAULT_DEFINITION_FILES = ['SKILL.md', 'references/**/*.md'];
+
+/** Stylesheets. */
+export const STYLE_FILE_PATTERN = /\.(?:s?css|sass|less)$/;
+
+/** Files that run no code: stylesheets, translation catalogs and docs. */
+export const NON_EXECUTABLE_FILE_PATTERN = /\.(?:s?css|sass|less|po|pot|md|mdx)$/;
 
 /**
  * Turns an input key into a short human description.
@@ -36,14 +45,29 @@ import { splitInputKey } from '../impact/input-diff.mjs';
  * @returns {string}
  */
 export function describeInputKey(key) {
-  if (key.startsWith('pkg:')) return `package ${key.slice(4)}`;
-  if (key.startsWith('unresolved:')) return `unresolved import ${key.slice(11)}`;
+  const packageName = packageOfInputKey(key);
+  if (packageName !== undefined) return `package ${packageName}`;
+  const specifier = unresolvedSpecifierOfInputKey(key);
+  if (specifier !== undefined) return `unresolved import ${specifier}`;
   const { path, part } = splitInputKey(key);
-  if (part === '*') return `${path} (whole file)`;
-  if (part === '<module>') return `${path} (module directives and side effects)`;
-  if (part.endsWith('~shell')) return `${path} › ${part.slice(0, -6)} (component body outside its handlers)`;
-  if (part.endsWith('~frame')) return `${path} › ${part.slice(0, -6)} (object structure)`;
+  const shape = partShape(part);
+  if (shape.kind === 'file') return `${path} (whole file)`;
+  if (shape.kind === 'module') return `${path} (module directives and side effects)`;
+  if (shape.kind === 'shell') return `${path} › ${shape.owner} (component body outside its handlers)`;
+  if (shape.kind === 'frame') return `${path} › ${shape.owner} (object structure)`;
   return `${path} › ${part.replace('/', ' › ')}`;
+}
+
+/**
+ * Incremental scope shared by the policies: each relevant change, described,
+ * with what the next run must look at for it.
+ *
+ * @param {{ key: string }[]} relevantChanges
+ * @param {(change: any) => string} reviewFocus
+ * @returns {string[]}
+ */
+export function scopeByReviewFocus(relevantChanges, reviewFocus) {
+  return relevantChanges.map((change) => `${describeInputKey(change.key)} — ${reviewFocus(change)}`);
 }
 
 /** Human description of each load signal the module analyzer counts. */
@@ -60,13 +84,18 @@ const SIGNAL_LABELS = {
 };
 
 /**
- * @param {Record<string, number> | undefined} previous
- * @param {Record<string, number> | undefined} current
+ * Load signals a change increased; an added part is compared with no load.
+ *
+ * @param {{ key: string, change: string }} change
+ * @param {Record<string, Record<string, number>>} previousSignals Signals of the baseline, by input key.
+ * @param {Record<string, Record<string, number>>} currentSignals Current signals, by input key.
+ * @param {Set<string>} [countedSignals] Signals to compare; every signal when omitted.
  * @returns {string[]} Increased signals, described.
  */
-export function increasedSignals(previous = {}, current = {}) {
-  return Object.entries(current)
-    .filter(([name, count]) => count > (previous[name] ?? 0))
+export function signalIncreases(change, previousSignals = {}, currentSignals = {}, countedSignals) {
+  const previous = change.change === 'added' ? {} : previousSignals[change.key] ?? {};
+  return Object.entries(currentSignals[change.key] ?? {})
+    .filter(([name, count]) => (!countedSignals || countedSignals.has(name)) && count > (previous[name] ?? 0))
     .map(([name, count]) => `+${count - (previous[name] ?? 0)} ${SIGNAL_LABELS[name] ?? name}`);
 }
 

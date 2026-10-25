@@ -6,13 +6,11 @@
  * activation rule. Every accredited run needs a real before/after
  * measurement under comparable conditions.
  */
-import { splitInputKey } from '../impact/input-diff.mjs';
-import { describeInputKey, increasedSignals } from './base-policy.mjs';
-
-const NON_LOAD_FILE_PATTERN = /\.(?:s?css|sass|less|po|pot|md|mdx)$/;
+import { packageOfInputKey, splitInputKey, unresolvedSpecifierOfInputKey } from '../impact/input-diff.mjs';
+import { DEFAULT_DEFINITION_FILES, NON_EXECUTABLE_FILE_PATTERN, scopeByReviewFocus, signalIncreases } from './base-policy.mjs';
 
 export const measuredPerformanceOptimizationPolicy = {
-  definitionFiles: ['SKILL.md', 'references/**/*.md'],
+  definitionFiles: DEFAULT_DEFINITION_FILES,
   label: 'Performance',
   maxDepthByRole: {},
   modes: ['incremental', 'full'],
@@ -20,7 +18,7 @@ export const measuredPerformanceOptimizationPolicy = {
   tracksLoadSignals: true,
 
   /** @param {string} filePath */
-  excludesFile: (filePath) => NON_LOAD_FILE_PATTERN.test(filePath),
+  excludesFile: (filePath) => NON_EXECUTABLE_FILE_PATTERN.test(filePath),
 
   /**
    * @param {{ key: string, change: string }} change
@@ -31,13 +29,13 @@ export const measuredPerformanceOptimizationPolicy = {
     const { part } = splitInputKey(change.key);
     if (change.change === 'relocated') return { reason: 'moved without changes', relevant: false };
     if (change.change === 'removed') return { reason: 'removes work: not a performance trigger', relevant: false };
-    if (change.key.startsWith('pkg:')) {
+    if (packageOfInputKey(change.key) !== undefined) {
       return { reason: change.change === 'added' ? 'new package in the flow (bundle or server cost)' : 'package version changed', relevant: true };
     }
-    if (change.key.startsWith('unresolved:')) return { reason: 'import that cannot be resolved: load unknown', relevant: true };
+    if (unresolvedSpecifierOfInputKey(change.key) !== undefined) return { reason: 'import that cannot be resolved: load unknown', relevant: true };
     if (part === '*') return { reason: 'file tracked as a whole: load cannot be classified', relevant: true };
     if (!signalsRecorded) return { reason: 'baseline has no load signals: load cannot be compared', relevant: true };
-    const increases = increasedSignals(change.change === 'added' ? {} : previousSignals?.[change.key], currentSignals[change.key]);
+    const increases = signalIncreases(change, previousSignals, currentSignals);
     if (increases.length) return { reason: `adds load: ${increases.join(', ')}`, relevant: true };
     return { reason: change.change === 'added' ? 'new code without load signals' : 'same load (copy, style, types or refactor)', relevant: false };
   },
@@ -78,7 +76,7 @@ export const measuredPerformanceOptimizationPolicy = {
     else before = `before = revision ${baselineCommit.slice(0, 12)} (last measured)`;
     return [
       `measure the complete flow ${flow}: ${before}, after = working tree`,
-      ...relevantChanges.map((change) => `${describeInputKey(change.key)} — ${change.reason}`),
+      ...scopeByReviewFocus(relevantChanges, (change) => change.reason),
     ];
   },
 };

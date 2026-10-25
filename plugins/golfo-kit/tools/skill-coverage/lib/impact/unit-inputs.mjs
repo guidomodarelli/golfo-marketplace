@@ -18,7 +18,7 @@
  * A literal `import('./x')` is followed as a whole-module import from the
  * part that contains it, like a static import of `* from './x'`.
  */
-import { ANALYZER_VERSION, FILE_LEVEL_ANALYZER, MAX_UNIT_INPUT_ENTRIES, PACKAGE_METADATA_FILES } from '../constants.mjs';
+import { ANALYZER_VERSION, FILE_LEVEL_ANALYZER, INPUT_KEY_PREFIXES, MAX_UNIT_INPUT_ENTRIES, PACKAGE_METADATA_FILES } from '../constants.mjs';
 import { fingerprintOf } from '../support.mjs';
 
 const MISSING_HASH = 'missing';
@@ -133,7 +133,7 @@ export function computeUnitInputs({ index, unit, config, policy }) {
     // runs its routes) is tracked at the version the project declares.
     if (entry.package) {
       const resolution = index.resolver.resolve(PACKAGE_MANIFEST_FILE, entry.package);
-      if (resolution.kind === 'package') addInput(`pkg:${resolution.name}`, resolution.versionHash, undefined, `context:pkg:${entry.package}`);
+      if (resolution.kind === 'package') addInput(`${INPUT_KEY_PREFIXES.package}${resolution.name}`, resolution.versionHash, undefined, `context:${INPUT_KEY_PREFIXES.package}${entry.package}`);
       continue;
     }
     queue.push({ depth: 0, explicit: false, follow: entry.follow !== false, from: `context:${entry.path}#${entry.symbol ?? '*'}`, path: entry.path, reference: entry.symbol ?? '*', role: entry.role ?? entryRole(entry) });
@@ -149,10 +149,10 @@ export function computeUnitInputs({ index, unit, config, policy }) {
    */
   const followImport = (context, specifier, targetReference, options = {}) => {
     const resolution = index.resolver.resolve(context.path, specifier);
-    if (resolution.kind === 'package') addInput(`pkg:${resolution.name}`, resolution.versionHash, undefined, context.from);
+    if (resolution.kind === 'package') addInput(`${INPUT_KEY_PREFIXES.package}${resolution.name}`, resolution.versionHash, undefined, context.from);
     else if (resolution.kind === 'unresolved') {
       unresolved.add(`${specifier} (from ${context.path})`);
-      addInput(`unresolved:${specifier}`, MISSING_HASH, undefined, context.from);
+      addInput(`${INPUT_KEY_PREFIXES.unresolved}${specifier}`, MISSING_HASH, undefined, context.from);
     } else if (resolution.kind === 'file') {
       const depth = options.sameDepth ? context.depth : context.depth + 1;
       if (depth > maxDepth(context.role)) return;

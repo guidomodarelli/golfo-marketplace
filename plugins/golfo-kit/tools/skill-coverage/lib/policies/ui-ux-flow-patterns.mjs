@@ -4,10 +4,8 @@
  * Server code matters only at its boundary (the route handler that returns
  * the errors and states the UI shows), not deep inside repositories.
  */
-import { splitInputKey } from '../impact/input-diff.mjs';
-import { describeInputKey } from './base-policy.mjs';
-
-const STYLE_FILE_PATTERN = /\.(?:s?css|sass|less)$/;
+import { packageOfInputKey, partShape, splitInputKey } from '../impact/input-diff.mjs';
+import { DEFAULT_DEFINITION_FILES, scopeByReviewFocus, STYLE_FILE_PATTERN } from './base-policy.mjs';
 
 /**
  * @param {{ key: string, change: string }} change
@@ -15,17 +13,18 @@ const STYLE_FILE_PATTERN = /\.(?:s?css|sass|less)$/;
  */
 function reviewFocus(change) {
   const { part, path } = splitInputKey(change.key);
-  if (change.key.startsWith('pkg:')) return 'components and hooks used from this package: states, feedback and accessibility after the upgrade';
+  if (packageOfInputKey(change.key) !== undefined) return 'components and hooks used from this package: states, feedback and accessibility after the upgrade';
   if (path && STYLE_FILE_PATTERN.test(path)) return 'visual states that use the changed classes (contrast, focus, loading and error styles)';
-  if (part.includes('/')) return 'the action of this handler: pending state, double submit, feedback channel, error recovery and stale errors, with its component states as context';
-  if (part.endsWith('~shell')) return 'the states this component renders (loading, empty, data, error, partial, no permission) and their copy';
-  if (part.includes('.')) return 'copy or configuration read from this member, in every state that shows it';
-  if (part === '<module>') return 'client/server boundary and side effects of the module';
+  const { kind } = partShape(part);
+  if (kind === 'handler') return 'the action of this handler: pending state, double submit, feedback channel, error recovery and stale errors, with its component states as context';
+  if (kind === 'shell') return 'the states this component renders (loading, empty, data, error, partial, no permission) and their copy';
+  if (kind === 'member') return 'copy or configuration read from this member, in every state that shows it';
+  if (kind === 'module') return 'client/server boundary and side effects of the module';
   return 'behavior of this code in every state of the unit that uses it';
 }
 
 export const uiUxFlowPatternsPolicy = {
-  definitionFiles: ['SKILL.md', 'references/**/*.md'],
+  definitionFiles: DEFAULT_DEFINITION_FILES,
   label: 'UI/UX',
   maxDepthByRole: { contract: Infinity, server: 1, ui: Infinity },
   modes: ['lightweight', 'incremental', 'full'],
@@ -65,6 +64,6 @@ export const uiUxFlowPatternsPolicy = {
     if (decision === 'full') {
       return [`whole unit ${unit.id}: state matrix of every region (loading, empty, data, error, partial, no permission), feedback channel per event, copy and browser walk-through`];
     }
-    return relevantChanges.map((change) => `${describeInputKey(change.key)} — ${reviewFocus(change)}`);
+    return scopeByReviewFocus(relevantChanges, reviewFocus);
   },
 };
