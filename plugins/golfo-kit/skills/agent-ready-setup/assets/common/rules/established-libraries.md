@@ -3,6 +3,7 @@
 Prefer an established, well-maintained library over a custom implementation when it solves the need.
 
 - Before writing a utility, parser, validator, date or number handling, retry logic, or any other general-purpose mechanism, check whether a dependency already declared in the project, or shipped by its framework, covers it. Reuse it with its supported API.
+- Do not add a dependency for what the standard library or the framework already covers; see `Architecture and dependencies` in `patterns-we-do-not-use.md`.
 - When no declared dependency covers the need, prefer a widely adopted library with active maintenance, recent releases, and a compatible license over hand-rolling the behavior.
 - Never install a new library without asking first, including dev dependencies and libraries a skill's preflight would otherwise add (for example `express`, `zod`, `pino`, `axios`, `config`, `nock`). State the library, the need it covers, and the alternative already in the project (or that there is none), then wait for the user's confirmation before adding it. If the user declines, use the existing alternative or stop and report what is missing.
 - A type package for the library being added (for example `@types/express`) is part of the same question; do not ask for it separately.

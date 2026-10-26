@@ -7,7 +7,7 @@ When correcting an error, bug, crash, regression, or similar failure, diagnose a
 - Reproduce the failure when possible. Trace the failing operation, its caller, the relevant contract, and the boundary responsible for handling it. Read installed dependency behavior or authoritative documentation when the diagnosis depends on framework semantics.
 - Distinguish confirmed causes from hypotheses. A stack trace, request, failing test, or controlled reproduction must support the diagnosis; without that evidence, explain what remains unverified.
 - Correct the invalid operation, missing validation, incorrect ordering, or broken error propagation in the component that owns it. Cover the causal path and affected consumers without expanding into unrelated hardening or refactors.
-- Do not fix a problem with a fallback that hides it (a default value, a retry, a catch that substitutes a result, a guard that skips the failing path). Use the debugger or a controlled reproduction when needed to find the cause.
+- Do not fix a problem with a fallback that hides it (a default value, a retry, a catch that substitutes a result, a guard that skips the failing path). Use the debugger or a controlled reproduction when needed to find the cause. See also `Errors and responses` in `patterns-we-do-not-use.md`.
 - When the owning component is a library, the backend, or another repository, make the change there. If you do not know where the change belongs or do not have access, ask the user for the location or the access instead of patching the consumer.
 
 ## Preserve framework contracts

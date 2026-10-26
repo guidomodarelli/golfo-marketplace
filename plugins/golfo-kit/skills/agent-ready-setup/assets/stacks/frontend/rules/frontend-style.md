@@ -9,6 +9,7 @@ Coding conventions for this stack. Always consult the documentation of the proje
 - Use function components with hooks — no class components.
 - Keep components small and single-responsibility. Extract when a component has more than one reason to change.
 - Extract complex logic into custom hooks (`use<Name>`).
+- Do not use `useEffect` to derive state; see `Security and UI` in `patterns-we-do-not-use.md`.
 - Avoid prop drilling beyond two levels — use context or a state manager.
 - Never use rest props (`...rest`) — declare all props explicitly.
 - **One component per file** — never export more than one component from a single file. A file named `user-card.tsx` exports only `UserCard`.

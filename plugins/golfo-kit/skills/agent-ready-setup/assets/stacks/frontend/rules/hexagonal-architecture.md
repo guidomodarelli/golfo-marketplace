@@ -22,6 +22,7 @@ Dependencies always point inward.
 
 - Allowed: route entrypoints → `application`; route entrypoints → `infrastructure` only for framework wiring, adapter selection, and dependency composition; `application` → `domain`; `infrastructure` → `application` and `domain`.
 - Forbidden: `domain` → `application` or `infrastructure`; `application` → `infrastructure` or a generic `lib`; UI or route entrypoints importing external DTOs; any import from a generic `src/server` folder.
+- Do not access the database from route handlers; see `Architecture and dependencies` in `patterns-we-do-not-use.md`.
 
 ## Layer responsibilities
 

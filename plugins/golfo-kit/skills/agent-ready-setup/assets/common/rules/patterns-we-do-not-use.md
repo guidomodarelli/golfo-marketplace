@@ -1,6 +1,6 @@
 # Patterns We Do Not Use
 
-Each entry names a pattern to avoid, what to do instead, and why. A ban without an alternative leaves a gap that gets filled with the most familiar default, so apply the alternative, not only the ban. When an entry links another rule, that rule owns the procedure.
+Each entry names a pattern to avoid, what to do instead, and why. A ban without an alternative leaves a gap that gets filled with the most familiar default, so apply the alternative, not only the ban. When an entry links another rule, that rule owns the procedure. Rules that link back here only point to the banned pattern; this file owns the entry: its alternative, reason, and exceptions.
 
 ## Architecture and dependencies
 

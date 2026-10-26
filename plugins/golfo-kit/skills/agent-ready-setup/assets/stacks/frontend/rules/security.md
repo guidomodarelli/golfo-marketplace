@@ -84,9 +84,11 @@ Treat the middleend/BFF as an error-origin boundary: preserve statuses received 
 - When a shared helper extracts an HTTP status from a caught error to report it as the upstream status, never let it read that status from the BFF's own typed/domain error classes — a malformed-payload error, a domain validation error, or a rule/eligibility classification carries a `status` the BFF assigned for its own public contract, not a fact the dependency reported. Give any error that legitimately wraps a real dependency failure its own explicit `upstreamStatus` field, populated only from that failure, and have the shared helper trust that field (an `instanceof` check on the BFF's own error hierarchy, or equivalent) instead of falling back to `status`/`response.status` for those classes; reserve that fallback for raw, unclassified transport rejections. Test both origins: a raw upstream failure and a BFF-owned typed-error failure must never produce the same reported upstream status.
 - Never expose stack traces or internal error details to users — return generic messages.
 - Never log sensitive data in error handlers; log the error type, its stable code, and the opaque identifiers of the operation instead (see `error-handling.md`).
+- Do not return `200` responses that carry an error object; see `Errors and responses` in `patterns-we-do-not-use.md`.
 
 ## Authorization
 
 - Use the project's approved authentication and authorization libraries for all new auth/authz implementations; never hand-roll them.
 - Always validate that user actions follow valid business workflows server-side.
 - Never enforce critical business logic validations from user-controlled input.
+- Do not put authorization logic in the client; see `Security and UI` in `patterns-we-do-not-use.md`.

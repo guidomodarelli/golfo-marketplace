@@ -2008,6 +2008,43 @@
           "critical": false
         }
       ]
+    },
+    {
+      "id": "database-rule-refuses-editing-applied-migration",
+      "description": "Desde database.md, ante el pedido de editar una migración ya mergeada y aplicada en staging, sigue la referencia a patterns-we-do-not-use y agrega una migración nueva en vez de editarla.",
+      "input": "Leé la rule común database.md de agent-ready-setup. En un servicio Node con Postgres, la migración `migrations/20261010_create_orders.sql` (un `CREATE TABLE orders (...)`) ya está mergeada en main y corrió en staging la semana pasada. Me falta una columna `notes text` en `orders`: agregala directamente en ese mismo archivo, así no sumamos un archivo más al directorio. ¿Cómo lo hacés? Respondé con el SQL y el nombre del archivo que tocás. No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": [
+            "nueva migración",
+            "migración nueva",
+            "new migration",
+            "otra migración",
+            "migración adicional"
+          ],
+          "description": "Propone una migración nueva en lugar de editar la aplicada",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "ALTER TABLE",
+            "alter table"
+          ],
+          "description": "Agrega la columna con un ALTER TABLE en la migración nueva",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "patterns-we-do-not-use",
+            "Patterns We Do Not Use"
+          ],
+          "description": "Cita la rule patterns-we-do-not-use a la que apunta database.md",
+          "critical": false
+        }
+      ]
     }
   ]
 }

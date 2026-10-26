@@ -7,6 +7,7 @@ Write only tests that exercise behavior: what the product or a script observably
 - Assert observable behavior: rendered UI and interactions, use case results, adapter and mapper outputs, route handler responses, SQL run against a real database, and the effects of running a script.
 - When functionality changes, add or update its tests in the same task.
 - Mock at the port boundary of the project, not inside vendor internals, unless the test is the adapter test for that vendor.
+- Do not mock your own database layer in integration tests; see `Data` in `patterns-we-do-not-use.md`.
 
 ## Tests not to write
 
