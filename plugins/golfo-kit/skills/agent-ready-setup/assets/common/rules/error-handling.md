@@ -5,7 +5,7 @@ Every failure must end in a deliberate outcome that someone can see and trace.
 ## Catch blocks
 
 - Every `catch` (or error branch, in languages without exceptions) does at least one intentional thing: map an expected failure to a stable result, log an unexpected failure with context, trigger safe user feedback, or return or rethrow it to the boundary that owns the response.
-- Do not add an error handler that only swallows the error or redirects control flow without classification, logging, or feedback.
+- Do not add an error handler that only swallows the error or redirects control flow without classification, logging, or feedback. See also `Errors and responses` in `patterns-we-do-not-use.md`.
 - When wrapping or rethrowing, keep the original error attached with your language's mechanism (for example `cause` in JavaScript or `%w` in Go).
 
 ## Diagnosable failures
@@ -16,6 +16,7 @@ A failure must say why it happened in the first log line someone reads, without 
 - The boundary logs that cause chain as error type names and closed codes only, next to the opaque identifiers of the operation (see `Logs`): never messages, stacks, or values. A boundary that hides the cause entirely turns every failure into the same anonymous "unexpected" entry; fix the boundary rather than adding ad-hoc logs.
 - Wrap configuration reads, provider calls, and database calls in the feature's typed error, with the cause, at the place they can fail. An untyped error that escapes an operation becomes an unclassified 500.
 - An expected business rejection (4xx) that has a domain reason carries that reason as a typed cause with its code, so the log names the unmet requirement instead of a generic code. The client keeps receiving only its own safe contract.
+- Do not answer a failure with a `200` response that carries an error object; see `Errors and responses` in `patterns-we-do-not-use.md`.
 - When reproducing a reported server error, read the logged cause chain first. If a failure still logs without it, adding the missing cause is part of the fix.
 
 ## Logs

@@ -5,6 +5,8 @@ Applies to projects that talk to a relational database. If the project has no da
 ## Schema changes
 
 - Every change to database structure (schema, tables, columns, constraints, indexes, relationships, or row-level security) ships with a versioned migration in the same task, written in the format the project's migration tool runs (SQL files, or framework-native migrations such as TypeORM, Liquibase, or Django). A dashboard SQL editor is for experiments only and never replaces the migration.
+- Do not edit a migration that may have been applied; see `Data` in `patterns-we-do-not-use.md`.
+- Do not store money in floating-point columns or persist local timestamps; see `Data` in `patterns-we-do-not-use.md`.
 - Validate migrations, SQL functions, and policies on a disposable database (an ephemeral branch or a local Postgres) before closing the task. Run the committed migration through the project's configured migrator (or, for SQL files, the committed SQL as written), not an ad-hoc rewrite. When fixing a bug, reproduce the failing case first.
 - Never experiment on, seed, or mutate the default or production database. Applying migrations there needs an explicit request.
 - Never print or persist secrets, connection strings, or sensitive row data while debugging; prefer metadata queries.
