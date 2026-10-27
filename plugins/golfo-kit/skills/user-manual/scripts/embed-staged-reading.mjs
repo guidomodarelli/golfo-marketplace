@@ -12,7 +12,8 @@
  *                  run, so running it again after updating the assets refreshes them. Written in place
  *                  unless --out is given.
  *   --viewer document  also embeds the document viewer adapter (public URL /d/<doc_id>/view?href=<id>,
- *                  manual in an iframe /d/<doc_id>/raw).
+ *                  manual in an iframe /d/<doc_id>/raw). A refresh without --viewer keeps the adapter
+ *                  already embedded.
  *   --example      builds assets/staged-reading/template.html on top of the DESIGN.md boilerplate;
  *                  --linear builds the same content as a linear manual (top TOC, no stages).
  *
@@ -50,7 +51,16 @@ export const readBoilerplate = (designSource) => {
 };
 
 /** Inserts (or refreshes) the staged reading assets and the viewer adapter into a manual's HTML. */
-export const embedStagedReading = (html, { viewer = null } = {}) => {
+/** The viewer whose adapter is already embedded, so a refresh without --viewer keeps it. */
+const embeddedViewer = (html) => {
+	const start = html.indexOf(BLOCK_START(VIEWER_BLOCK));
+	if (start === -1) return null;
+	const embedded = html.slice(start, html.indexOf(BLOCK_END(VIEWER_BLOCK), start));
+	return Object.keys(VIEWER_ADAPTER_PATHS).find((name) => embedded.includes(readText(VIEWER_ADAPTER_PATHS[name]).split('\n')[0])) || null;
+};
+
+export const embedStagedReading = (html, { viewer: requestedViewer = null } = {}) => {
+	const viewer = requestedViewer || embeddedViewer(html);
 	const staged = STAGED_MODE_META.test(html);
 	if (!staged && !viewer) throw new Error('embed-staged-reading: nothing to embed (no <meta name="heritage:reading-mode" content="stages"> and no --viewer)');
 	if (viewer && !VIEWER_ADAPTER_PATHS[viewer]) throw new Error(`embed-staged-reading: unknown viewer "${viewer}" (known: ${Object.keys(VIEWER_ADAPTER_PATHS).join(', ')})`);

@@ -132,6 +132,13 @@ describe('embed-staged-reading CLI', () => {
 		assert.equal(fs.readFileSync(file, 'utf8'), staged);
 	});
 
+	test('keeps an embedded viewer adapter when refreshing without --viewer', () => {
+		const withViewer = buildExample({ viewer: 'document' });
+		const file = writeManual('embed-viewer-twice.html', withViewer);
+		assert.equal(run(EMBED, file).status, 0);
+		assert.equal(fs.readFileSync(file, 'utf8'), withViewer);
+	});
+
 	test('fails clearly on manuals it cannot extend and on unknown viewers', () => {
 		const withoutNavigation = run(EMBED, writeManual('no-navigation.html', staged.replace(/\/\/ Navegación e interacciones Heritage/, '// otro script')));
 		assert.equal(withoutNavigation.status, 1);
