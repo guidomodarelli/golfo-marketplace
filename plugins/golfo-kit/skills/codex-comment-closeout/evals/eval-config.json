@@ -1,0 +1,29 @@
+{
+  "schema_version": 2,
+  "skill": "codex-comment-closeout",
+  "description": "Evalúa el cierre de comentarios de Codex: variante y reacción correctas, y uso del script de cierre en lugar de comandos sueltos.",
+  "test_cases": [
+    {
+      "id": "resolved-inline-uses-closeout-script",
+      "description": "Cierra un hallazgo inline ya fixeado con el script, la variante Resuelto y el sha completo.",
+      "input": "Usando codex-comment-closeout: en el PR #12 de acme/docs, el comentario inline 4401 de Codex ya está resuelto por el commit 0123456789abcdef0123456789abcdef01234567, que pusheaste hace unos segundos. El fix hace que el enlace copiado use la URL pública. No ejecutes nada: decí exactamente cómo lo cerrás.",
+      "assertions": [
+        { "type": "contains", "value": "closeout.sh", "description": "Usa el script de cierre" },
+        { "type": "contains", "value": "--variant resolved", "description": "Elige la variante Resuelto" },
+        { "type": "contains", "value": "0123456789abcdef0123456789abcdef01234567", "description": "Pasa el sha completo" },
+        { "type": "contains_any", "values": ["head del PR", "esté en el head", "espera"], "description": "Sabe que el script espera el commit en el head" }
+      ]
+    },
+    {
+      "id": "edge-case-closes-without-changes",
+      "description": "Un borde rebuscado se cierra como Sin cambios, con 👎 y motivo, sin presentarlo como falla del flujo.",
+      "input": "Usando codex-comment-closeout: el comentario general 777 de Codex en el PR #12 de acme/docs pide soportar rutas de checkout con %VAR% pasando por un shim .cmd. Lo evaluaste y es un caso rebuscado que no vas a fixear. No ejecutes nada: decí cómo lo cerrás y qué reacción lleva.",
+      "assertions": [
+        { "type": "contains_any", "values": ["--variant no-change", "Sin cambios"], "description": "Elige la variante Sin cambios" },
+        { "type": "contains_any", "values": ["👎", "-1", "THUMBS_DOWN"], "description": "Reacciona con 👎" },
+        { "type": "contains_any", "values": ["--reason", "Motivo"], "description": "Incluye el motivo" },
+        { "type": "not_contains_any", "values": ["No pude aplicar el fix"], "description": "No lo presenta como falla del flujo" }
+      ]
+    }
+  ]
+}

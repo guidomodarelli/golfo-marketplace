@@ -3,7 +3,7 @@ name: codex-comment-closeout
 description: "Plantilla y checklist obligatorios para responder, reaccionar o resolver cualquier comentario, hilo inline o review de Codex (chatgpt-codex-connector[bot]) en un PR: variantes ✅ Resuelto, ℹ️ Sin cambios y ⚠️ No pude aplicar, reacción, resolución del hilo y verificación del body publicado. Cargarla SIEMPRE antes de publicar una respuesta a Codex, en cualquier flujo (codex-autofix-loop, el Action codex-autofix.yml, el Auto-fix de la app de escritorio con eventos `ci-monitor-event`, inline-thread-autofix o un fix manual), aunque el usuario no la mencione. Use whenever you are about to reply to, react to, or close out a chatgpt-codex-connector[bot] comment or review."
 license: MIT
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
   author: "Guido Modarelli"
   category: "code-review"
   tags: "code-review, codex, pull-request, closeout, template"
@@ -31,6 +31,24 @@ Antes de publicar, completá:
 7. **Verificar** después de publicar: releé el body publicado (`gh api repos/<owner>/<repo>/pulls/comments/<reply_id> --jq .body`) y confirmá que empieza con el encabezado de la variante (`✅ **Resuelto** en [`…) y contiene el pie. Si no, editalo con `gh api -X PATCH …/pulls/comments/<reply_id> -f body=…` en lugar de publicar otro reply.
 
 Si ya publicaste una respuesta libre, corregila editándola (PATCH) con la plantilla y agregá la reacción que falte; no publiques un segundo reply.
+
+## Script de cierre
+
+Fuera del Action, usá `scripts/closeout.sh` en lugar de armar los comandos a mano: aplica este
+checklist completo (pasos 2 a 7) y es la forma recomendada de cerrar cada comentario.
+
+```bash
+bash scripts/closeout.sh --repo <owner>/<repo> --pr <n> --comment <id> --kind inline|general|review \
+  --variant resolved|no-change|failed [--sha <sha completo>] [--summary "<qué cambió>"] \
+  [--reason "<motivo>"] [--review-node-id <node_id>]
+```
+
+- `resolved` espera hasta que el commit esté en el head del PR antes de responder (GitHub puede tardar
+  unos segundos en mostrar un push), así el link nunca apunta a un commit que el PR todavía no tiene.
+- Reacciona según la variante, responde con la plantilla, relee el body publicado y lo edita si perdió
+  el encabezado o el pie, y resuelve el hilo inline.
+- Imprime `closeout: comment <id> <variante> reply=<id> resolved=<true|false>`; sale con 1 si GitHub
+  falla o la verificación no pasa, y con 2 si faltan argumentos.
 
 ## Plantilla de comentario de cierre
 

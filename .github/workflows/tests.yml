@@ -40,6 +40,7 @@ jobs:
           tests/validate-compatibility-report.bats
           tests/validate-portable-plugins.bats
           plugins/golfo-kit/skills/codex-autofix-loop/tests/wait-for-pr-event.bats
+          plugins/golfo-kit/skills/codex-comment-closeout/tests/closeout.bats
           plugins/golfo-kit/skills/user-manual/tests/check-design-tokens.bats
           plugins/golfo-kit/skills/agent-ready-setup/tests/merge-instructions.bats
           skill-eval-runner/tests/run-evals-env-contract.bats

@@ -1,6 +1,6 @@
 # Modos de ejecución por capacidades del agente
 
-El prompt del loop (`SKILL.md`, «Prompt») está escrito para Claude Code: `Monitor` como disparador, cron de `/loop` como respaldo, `Agent` para subagentes y `PushNotification` para avisos. Este archivo define cómo correr **el mismo prompt** cuando faltan esas herramientas, con alternativas que conservan la escucha del PR siempre que el agente pueda esperar un comando acotado. Las equivalencias generales y el protocolo detectar → verificar → alternativa → desactivar y reportar viven en [`agent-capabilities.md`](../../../references/agent-capabilities.md).
+El prompt del loop (`references/prompt-template.md`) está escrito para Claude Code: `Monitor` como disparador, cron de `/loop` como respaldo, `Agent` para subagentes y `PushNotification` para avisos. Este archivo define cómo correr **el mismo prompt** cuando faltan esas herramientas, con alternativas que conservan la escucha del PR siempre que el agente pueda esperar un comando acotado. Las equivalencias generales y el protocolo detectar → verificar → alternativa → desactivar y reportar viven en [`agent-capabilities.md`](../../../references/agent-capabilities.md).
 
 ## Elegir el modo (por capacidades, no por nombre del agente)
 

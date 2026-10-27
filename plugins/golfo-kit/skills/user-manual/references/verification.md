@@ -40,8 +40,10 @@ not exist in the app's translations (obsolete or misquoted strings). It warns wh
 source (an outdated copy: replace it with the current one), or the share URL is a document viewer
 one (`/d/<doc_id>/view`) without its adapter.
 
-Then serve the manual, inject `scripts/check-rendered.js` and run `await __umCheckRendered()` at
-1280 px and at 390 px (inside an iframe viewer: `__umCheckRendered(iframe.contentWindow)`). It must return
+Then run the rendered checks at 1280 px and at 390 px: `node scripts/check-rendered.mjs <manual.html>`
+runs them in headless Chromium and exits with 1 when any width fails (Playwright: `playwright-core` from
+`pnpm install`, or `PLAYWRIGHT_MODULE`). In the destination viewer, inject `scripts/check-rendered.js` and
+run `await __umCheckRendered(iframe.contentWindow)` from the viewer page. Both must return
 `ok: true`: every capture rendered, none cut, every anchored pin next to its element, inside the
 capture and within 24 px of what the reader sees in it (a pin on a wide cell fails: anchor it to the
 icon, text or button inside). Also look at each pin: it must read as pointing at its element.

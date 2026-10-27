@@ -71,7 +71,13 @@ case "$*" in
   *)
     printf '%s\n' "$*" >> "$CLAUDE_ARGS_LOG"
     if [[ -n "${CLAUDE_RESPONSE_FILE:-}" ]]; then
-      if [[ -f "$CLAUDE_RESPONSE_FILE" ]]; then
+      # Repeated runs: call N answers with "$CLAUDE_RESPONSE_FILE.N" when that file exists.
+      calls_file="${CLAUDE_RESPONSE_FILE}.calls"
+      call_number=$(( $(cat "$calls_file" 2>/dev/null || echo 0) + 1 ))
+      printf '%s\n' "$call_number" > "$calls_file"
+      if [[ -f "${CLAUDE_RESPONSE_FILE}.${call_number}" ]]; then
+        response_text="$(cat "${CLAUDE_RESPONSE_FILE}.${call_number}")"
+      elif [[ -f "$CLAUDE_RESPONSE_FILE" ]]; then
         response_text="$(cat "$CLAUDE_RESPONSE_FILE")"
       else
         printf 'ERROR: CLAUDE_RESPONSE_FILE not found: %s\n' "$CLAUDE_RESPONSE_FILE" >&2
