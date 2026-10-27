@@ -104,3 +104,32 @@ FAKE_GH
   [[ "$output" == *"--variant resolved needs --sha and --summary"* ]]
   [ ! -s "$FAKE_DIR/calls" ]
 }
+
+@test "renders the reply from the skill templates, so editing a template changes what is published" {
+  local copy="${BATS_TEST_TMPDIR}/closeout-copy"
+  mkdir -p "$copy/scripts"
+  cp "$CLOSEOUT" "$copy/scripts/closeout.sh"
+  cp -r "${BATS_TEST_DIRNAME}/../templates" "$copy/templates"
+  printf '%s\n' 'ℹ️ **Sin cambios.** Texto editado en la plantilla.' '' '<sub>🤖 Auto-fix de Codex · [run]({{run_url}})</sub>' > "$copy/templates/no-change.md"
+
+  run bash "$copy/scripts/closeout.sh" --repo acme/docs --pr 7 --comment 66 --kind general --variant no-change
+
+  [ "$status" -eq 0 ]
+  [[ "$(cat "$FAKE_DIR/published")" == *'Texto editado en la plantilla.'* ]]
+}
+
+@test "drops the reason line and its blank line when there is no reason" {
+  run bash "$CLOSEOUT" --repo acme/docs --pr 7 --comment 66 --kind general --variant no-change
+
+  [ "$status" -eq 0 ]
+  published=$(cat "$FAKE_DIR/published")
+  [[ "$published" != *'Motivo'* ]]
+  [ "$published" = $'ℹ️ **Sin cambios.** Revisé la sugerencia pero no requería cambios de código.\n\n<sub>🤖 Auto-fix de Codex</sub>' ]
+}
+
+@test "keeps the run link only when a run URL is given" {
+  CLOSEOUT_RUN_URL="https://github.com/acme/docs/actions/runs/1" run bash "$CLOSEOUT" --repo acme/docs --pr 7 --comment 55 --kind inline --variant failed
+
+  [ "$status" -eq 0 ]
+  [[ "$(cat "$FAKE_DIR/published")" == *'<sub>🤖 Auto-fix de Codex · [run](https://github.com/acme/docs/actions/runs/1)</sub>' ]]
+}

@@ -20,9 +20,9 @@ set -euo pipefail
 readonly EXIT_FAILURE=1
 readonly EXIT_USAGE=2
 readonly SHORT_SHA_LENGTH=7
-readonly FOOTER_RESOLVED='<sub>🤖 Fix automático en respuesta a este comentario de Codex</sub>'
-readonly FOOTER_REVIEW='<sub>🤖 Fix automático en respuesta a esta review de Codex</sub>'
-readonly FOOTER_OTHER='<sub>🤖 Auto-fix de Codex</sub>'
+# The templates of SKILL.md live in these files, the single source for the skill and this script.
+TEMPLATE_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")/../templates" && pwd)"
+readonly TEMPLATE_DIRECTORY
 wait_attempts="${CLOSEOUT_WAIT_ATTEMPTS:-12}"
 wait_seconds="${CLOSEOUT_WAIT_SECONDS:-5}"
 
@@ -67,37 +67,55 @@ wait_for_commit_in_head() {
   fail "commit ${sha:0:$SHORT_SHA_LENGTH} is not in the head of PR #$pr after $wait_attempts attempts (repo $repo)"
 }
 
-build_body() {
-  local short_sha commit_url footer quote=""
+template_file() {
   case "$variant" in
-    resolved)
-      short_sha="${sha:0:$SHORT_SHA_LENGTH}"
-      commit_url="https://github.com/$repo/commit/$sha"
-      footer="$FOOTER_RESOLVED"
-      if [ "$kind" = "review" ]; then
-        quote=$(gh api "repos/$repo/pulls/$pr/reviews/$comment" --jq .body | sed 's/^/> /')
-        printf '%s\n\n✅ **Resuelto** en [`%s`](%s) (en respuesta a esta review).\n\n**Qué cambió:** %s\n\n%s' "$quote" "$short_sha" "$commit_url" "$summary" "$FOOTER_REVIEW"
-        return
-      fi
-      printf '✅ **Resuelto** en [`%s`](%s).\n\n**Qué cambió:** %s\n\n%s' "$short_sha" "$commit_url" "$summary" "$footer"
-      ;;
-    no-change)
-      printf 'ℹ️ **Sin cambios.** Revisé la sugerencia pero no requería cambios de código.\n\n'
-      if [ -n "$reason" ]; then printf '**Motivo:** %s\n\n' "$reason"; fi
-      printf '%s' "$FOOTER_OTHER"
-      ;;
-    failed)
-      printf '⚠️ **No pude aplicar el fix** (falla del Action, no de la sugerencia).\n\n%s' "$FOOTER_OTHER"
-      ;;
+    resolved) [ "$kind" = "review" ] && printf '%s/resolved-review.md' "$TEMPLATE_DIRECTORY" || printf '%s/resolved.md' "$TEMPLATE_DIRECTORY" ;;
+    no-change) printf '%s/no-change.md' "$TEMPLATE_DIRECTORY" ;;
+    failed) printf '%s/failed.md' "$TEMPLATE_DIRECTORY" ;;
   esac
 }
 
+# Fills the variant's template like SKILL.md says: outside the Action there is no run link, a line whose
+# value is empty (no reason) is dropped, and the review body is quoted line by line. Values reach awk
+# through the environment, so their text is never read as escapes or regex replacements.
+build_body() {
+  local template quote=""
+  template=$(template_file)
+  [ -r "$template" ] || fail "template $template is missing"
+  if [ "$kind" = "review" ] && [ "$variant" = "resolved" ]; then
+    quote=$(gh api "repos/$repo/pulls/$pr/reviews/$comment" --jq .body)
+  fi
+  CLOSEOUT_SHORT_SHA="${sha:0:$SHORT_SHA_LENGTH}" CLOSEOUT_COMMIT_URL="https://github.com/$repo/commit/$sha" \
+    CLOSEOUT_SUMMARY="$summary" CLOSEOUT_REASON="$reason" CLOSEOUT_QUOTE="$quote" CLOSEOUT_RUN_URL="${CLOSEOUT_RUN_URL:-}" \
+    awk '
+      function fill(text, name, value,    start) {
+        while ((start = index(text, "{{" name "}}")) > 0) text = substr(text, 1, start - 1) value substr(text, start + length(name) + 4)
+        return text
+      }
+      {
+        line = $0
+        if (ENVIRON["CLOSEOUT_RUN_URL"] == "") { run = index(line, " · [run]({{run_url}})"); if (run > 0) line = substr(line, 1, run - 1) substr(line, run + length(" · [run]({{run_url}})")) }
+        if (index(line, "{{resumen}}") && ENVIRON["CLOSEOUT_SUMMARY"] == "") { skip_blank = 1; next }
+        if (index(line, "{{motivo}}") && ENVIRON["CLOSEOUT_REASON"] == "") { skip_blank = 1; next }
+        if (skip_blank && line == "") { skip_blank = 0; next }
+        skip_blank = 0
+        if (index(line, "{{body_review_citado}}")) {
+          count = split(ENVIRON["CLOSEOUT_QUOTE"], quoted, "\n")
+          for (position = 1; position <= count; position++) print "> " quoted[position]
+          next
+        }
+        line = fill(line, "sha_corto", ENVIRON["CLOSEOUT_SHORT_SHA"])
+        line = fill(line, "commit_url", ENVIRON["CLOSEOUT_COMMIT_URL"])
+        line = fill(line, "resumen", ENVIRON["CLOSEOUT_SUMMARY"])
+        line = fill(line, "motivo", ENVIRON["CLOSEOUT_REASON"])
+        line = fill(line, "run_url", ENVIRON["CLOSEOUT_RUN_URL"])
+        print line
+      }' "$template"
+}
+
+# The variant's first line (after the quote of a review) is the header the published reply must keep.
 expected_header() {
-  case "$variant" in
-    resolved) printf '✅ **Resuelto** en [`%s`]' "${sha:0:$SHORT_SHA_LENGTH}" ;;
-    no-change) printf 'ℹ️ **Sin cambios.**' ;;
-    failed) printf '⚠️ **No pude aplicar el fix**' ;;
-  esac
+  printf '%s\n' "$1" | grep -v '^>' | grep -v '^$' | head -n 1
 }
 
 react() {
@@ -127,7 +145,7 @@ verify_reply() {
   local reply_id="$1" body="$2" endpoint published header
   case "$kind" in inline) endpoint="repos/$repo/pulls/comments/$reply_id" ;; *) endpoint="repos/$repo/issues/comments/$reply_id" ;; esac
   published=$(gh api "$endpoint" --jq .body)
-  header=$(expected_header)
+  header=$(expected_header "$body")
   if [[ "$published" != *"$header"* ]] || [[ "$published" != *"<sub>🤖 "* ]]; then
     gh api -X PATCH "$endpoint" -f body="$body" >/dev/null
     published=$(gh api "$endpoint" --jq .body)

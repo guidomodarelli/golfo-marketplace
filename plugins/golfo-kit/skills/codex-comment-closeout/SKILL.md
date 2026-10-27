@@ -52,50 +52,27 @@ bash scripts/closeout.sh --repo <owner>/<repo> --pr <n> --comment <id> --kind in
 
 ## Plantilla de comentario de cierre
 
-Placeholders: `{{sha_corto}}` (7 caracteres), `{{commit_url}}`, `{{resumen}}` (una línea), `{{run_url}}` (solo el Action).
+Las plantillas viven en `templates/`, una por variante: son la única fuente del formato. Las
+leen `scripts/closeout.sh` y quien cierre a mano; no las copies en otro lugar.
 
-- **Éxito (fix aplicado) → 👍**
-  ```text
-  ✅ **Resuelto** en [`{{sha_corto}}`]({{commit_url}}).
+| Variante | Archivo | Reacción |
+|---|---|---|
+| Éxito (fix aplicado) | [`templates/resolved.md`](templates/resolved.md) | 👍 |
+| Éxito sobre un review-body (quote reply; después se minimiza la review como `RESOLVED` cuando ella y sus inline estén resueltos) | [`templates/resolved-review.md`](templates/resolved-review.md) | 👍 |
+| Sin cambios (no hacía falta tocar código, borde rebuscado o defecto preexistente) | [`templates/no-change.md`](templates/no-change.md) | 👎 |
+| Falla del flujo (problema del Action o del loop, no de la sugerencia) | [`templates/failed.md`](templates/failed.md) | ninguna |
 
-  **Qué cambió:** {{resumen}}
+Placeholders: `{{sha_corto}}` (7 caracteres), `{{commit_url}}`, `{{resumen}}` (una línea),
+`{{motivo}}` (una línea), `{{body_review_citado}}` (cada línea del body con `> `) y `{{run_url}}`
+(solo el Action).
 
-  <sub>🤖 Fix automático en respuesta a este comentario de Codex · [run]({{run_url}})</sub>
-  ```
-  (Si no hay resumen disponible, omitir la línea «Qué cambió».)
-
-- **Éxito sobre un review-body → 👍 + quote reply** (cita el body original; luego se minimiza la review como `RESOLVED` cuando ella y sus inline estén resueltos)
-  ```text
-  > {{body_review_citado}}
-
-  ✅ **Resuelto** en [`{{sha_corto}}`]({{commit_url}}) (en respuesta a esta review).
-
-  **Qué cambió:** {{resumen}}
-
-  <sub>🤖 Fix automático en respuesta a esta review de Codex · [run]({{run_url}})</sub>
-  ```
-
-- **Sin cambios (el agente evaluó y no hacía falta tocar código, es un borde rebuscado o es preexistente) → 👎**
-  ```text
-  ℹ️ **Sin cambios.** Revisé la sugerencia pero no requería cambios de código.
-
-  **Motivo:** {{motivo}}
-
-  <sub>🤖 Auto-fix de Codex · [run]({{run_url}})</sub>
-  ```
-  `{{motivo}}` es UNA línea en español. Es obligatorio cuando el cierre es por borde rebuscado o por defecto preexistente. Ejemplos:
+- Fuera del Action no hay run: se quita ` · [run]({{run_url}})` del pie.
+- Sin resumen, se omite la línea «Qué cambió»; sin motivo, la línea `**Motivo:**`.
+- `{{motivo}}` es obligatorio cuando el cierre es por borde rebuscado o por defecto preexistente.
+  Ejemplos:
   - «caso de borde poco realista: requiere una ruta de checkout con `%VAR%` y un shim `.cmd`».
   - «defecto preexistente: estas líneas ya estaban en la base del PR; queda como follow-up fuera de este alcance».
 
-  Si no hay motivo disponible, como en el Action, omití la línea.
-
-- **Falla del flujo (no se pudo aplicar; problema del Action o del loop, no de la sugerencia) → sin reacción final**
-  ```text
-  ⚠️ **No pude aplicar el fix** (falla del Action, no de la sugerencia).
-
-  <sub>🤖 Auto-fix de Codex · [run]({{run_url}})</sub>
-  ```
-
 ## Regla de paridad
 
-Cualquier cambio a esta plantilla debe reflejarse en el step «Cerrar comentario» del workflow `.github/workflows/codex-autofix.yml`. La línea `**Motivo:**` de «Sin cambios» es opcional, así que el Action sigue siendo compatible aunque no la emita; agregarla allí queda como follow-up. El soporte de **review-bodies** (👍 vía GraphQL + quote reply + minimize `RESOLVED`) por ahora vive solo en el loop local; portarlo al Action queda como follow-up pendiente.
+Cualquier cambio a `templates/` debe reflejarse en el step «Cerrar comentario» del workflow `.github/workflows/codex-autofix.yml`. La línea `**Motivo:**` de «Sin cambios» es opcional, así que el Action sigue siendo compatible aunque no la emita; agregarla allí queda como follow-up. El soporte de **review-bodies** (👍 vía GraphQL + quote reply + minimize `RESOLVED`) por ahora vive solo en el loop local; portarlo al Action queda como follow-up pendiente.

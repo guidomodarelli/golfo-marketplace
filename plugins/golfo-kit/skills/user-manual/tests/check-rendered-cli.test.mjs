@@ -49,6 +49,21 @@ describe('check-rendered CLI', { skip: hasPlaywright ? false : 'Playwright not f
 	});
 });
 
+describe('check-rendered CLI when Chromium cannot start', { skip: hasPlaywright ? false : 'Playwright not found; run pnpm install or set PLAYWRIGHT_MODULE' }, () => {
+	test('fails and exits instead of hanging on the open server', () => {
+		const file = path.join(workspace, 'no-browser.html');
+		fs.writeFileSync(file, buildExample());
+		const result = spawnSync(process.execPath, [CHECK_RENDERED, file], {
+			encoding: 'utf8',
+			timeout: CLI_TIMEOUT_MS,
+			env: { ...process.env, PLAYWRIGHT_CHROMIUM_EXECUTABLE: path.join(workspace, 'no-such-chromium') },
+		});
+		assert.equal(result.error, undefined, 'the CLI hung until the timeout');
+		assert.equal(result.status, 1, `${result.stdout}${result.stderr}`);
+		assert.match(result.stderr, /check-rendered: /);
+	});
+});
+
 describe('check-rendered CLI usage', () => {
 	test('rejects missing files and invalid widths before launching a browser', () => {
 		assert.equal(run(path.join(os.tmpdir(), 'no-such-manual.html')).status, 2);

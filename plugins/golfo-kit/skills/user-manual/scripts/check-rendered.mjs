@@ -73,9 +73,12 @@ const main = async () => {
 	}
 	const manualPath = path.resolve(options.manual);
 	const server = await serveFolder(path.dirname(manualPath));
-	const browser = await playwright.chromium.launch({ executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || undefined });
+	let browser = null;
 	let allOk = true;
+	// The browser starts inside the cleanup scope: if Chromium fails to launch, the server still closes
+	// and the CLI exits instead of staying alive on an open port.
 	try {
+		browser = await playwright.chromium.launch({ executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || undefined });
 		const url = `http://${LOOPBACK_HOST}:${server.address().port}/${encodeURIComponent(path.basename(manualPath))}`;
 		for (const width of options.widths) {
 			const page = await browser.newPage({ viewport: { width, height: VIEWPORT_HEIGHT_PX } });
@@ -89,7 +92,7 @@ const main = async () => {
 			problems.forEach((problem) => console.log(`  ERROR ${problem}`));
 		}
 	} finally {
-		await browser.close();
+		if (browser) await browser.close();
 		server.close();
 	}
 	return allOk ? 0 : 1;
