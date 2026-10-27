@@ -12,7 +12,7 @@ description: >
 metadata:
   tags: "context-optimized-v1.20.1"
   author: "Guido Modarelli"
-  version: "2.8.0"
+  version: "2.9.0"
 ---
 
 # User Manual Generator
@@ -463,7 +463,8 @@ goes to the section, not to the pin (DESIGN.md, "Referencias a secciones"); `che
 
 ## Step 5 — Verify alignment
 
-Before reporting done, run `check-manual.mjs` and `__umCheckRendered()` and cross-check the manual
+Before reporting done, run `check-manual.mjs` and `check-rendered.mjs` (or `__umCheckRendered()` in the
+destination viewer) and cross-check the manual
 against the code as described in [references/verification.md](references/verification.md). Fix the
 HTML before reporting done.
 
@@ -497,6 +498,7 @@ pointed to is authorized by the request; any other document needs confirmation.
 | `scripts/embed-app-frames.mjs` | Terminal | Embeds captures into the manual (lazy shadow-root frames, fit, fixed-layer containment, responsive layout, anchored pins) |
 | `scripts/check-manual.mjs` | Terminal | Static checks of the final HTML (structure, navigation, pins, hosts, secrets, real values, quoted texts vs translations, change markers, source metas, outdated navigation script) |
 | `scripts/check-rendered.js` | Manual page / viewer tab | `__umCheckRendered(view)`: captures rendered, fit, anchored pin distance; staged contract (`stages`) |
+| `scripts/check-rendered.mjs` | Terminal | Runs `check-rendered.js` in headless Chromium at 1280 and 390 px (`--widths` to change them); exit 1 when any width fails |
 | `scripts/build-manual.mjs` | Terminal | `--boilerplate <out>` writes the starting document from `assets/boilerplate/`; `<manual.html>` refreshes its navigation script and embeds `assets/staged-reading/` (staged manuals) and, with `--viewer document`, `assets/viewer-adapters/document-viewer-adapter.js`; `--example <out>` builds the staged template |
 | `scripts/check-layout-tokens.mjs` | Terminal | Spacing, layout and breakpoint values of the asset CSS and scripts against the DESIGN.md tokens |
 | `scripts/source-trace.py` | Terminal | `record` writes the source metas and "Código:" line; `diff` lists what changed in the documented paths since then |

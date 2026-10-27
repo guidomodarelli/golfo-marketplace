@@ -218,3 +218,71 @@ run_wrapped_phrase_assertions() {
     run jq -e 'select(.event == "summary" and .passed == 0 and .failed == 1)' <<< "$output"
     [ "$status" -eq 0 ]
 }
+
+run_repeated_contract() {
+    local response_file="${TEST_ROOT}/response.txt"
+    printf 'ok\n' > "$response_file"
+    CLAUDE_RESPONSE_FILE="$response_file"
+    run_eval_runner "$@"
+}
+
+@test "--repeat passes a case only when every run passes" {
+    run_repeated_contract --repeat 3
+
+    [ "$status" -eq 0 ]
+    run jq -e 'select(.event == "summary" and .passed == 1 and .failed == 0 and .flaky == 0 and .runs == 3)' <<< "$output"
+    [ "$status" -eq 0 ]
+    [ "$(cat "${TEST_ROOT}/response.txt.calls")" -eq 3 ]
+}
+
+@test "--repeat reports a case that passes some runs as flaky and fails the suite" {
+    printf 'ok\n' > "${TEST_ROOT}/response.txt.1"
+    printf 'nothing useful\n' > "${TEST_ROOT}/response.txt.2"
+
+    run_repeated_contract --repeat 2
+
+    [ "$status" -eq 1 ]
+    local report="$output"
+    run jq -e 'select(.event == "case" and .status == "flaky" and .runs == 2 and .passes == 1)' <<< "$report"
+    [ "$status" -eq 0 ]
+    run jq -e 'select(.event == "summary" and .passed == 0 and .failed == 1 and .flaky == 1)' <<< "$report"
+    [ "$status" -eq 0 ]
+}
+
+@test "--repeat rejects a value that is not a positive integer" {
+    run_repeated_contract --repeat 0
+
+    [ "$status" -eq 2 ]
+    [[ "$stderr" == *"--repeat needs a positive integer"* ]]
+}
+
+@test "--repeat keeps the failing run's assertions and response for a flaky case" {
+    printf 'nothing useful\n' > "${TEST_ROOT}/response.txt.1"
+    printf 'ok\n' > "${TEST_ROOT}/response.txt.2"
+
+    run_repeated_contract --repeat 2
+
+    [ "$status" -eq 1 ]
+    local report="$output" case_line
+    case_line=$(jq -c 'select(.event == "case")' <<< "$report")
+    run jq -e '.status == "flaky" and (.failed_assertions | length) > 0 and (.run_results | length) == 2 and .run_results[0].status == "failed" and .run_results[1].status == "passed"' <<< "$case_line"
+    [ "$status" -eq 0 ]
+    local failing_artifact passing_artifact
+    failing_artifact=$(jq -r '.artifacts.with_skill' <<< "$case_line")
+    passing_artifact=$(jq -r '.run_results[1].artifacts.with_skill' <<< "$case_line")
+    [ "$failing_artifact" != "$passing_artifact" ]
+    grep -q 'nothing useful' "$failing_artifact"
+    grep -qx 'ok' "$passing_artifact"
+}
+
+@test "--repeat still reports a case whose worker died before writing the first run's result" {
+    CLAUDE_KILL_CASE_ON_CALL=1 run_repeated_contract --repeat 2
+    unset CLAUDE_KILL_CASE_ON_CALL
+
+    [ "$status" -eq 1 ]
+    local report="$output" case_line
+    case_line=$(jq -c 'select(.event == "case")' <<< "$report")
+    [ -n "$case_line" ]
+    run jq -e '.status == "flaky" and .id == "contract" and .failed_assertions[0].type == "infrastructure" and .run_results[0].status == "failed" and .run_results[1].status == "passed"' <<< "$case_line"
+    [ "$status" -eq 0 ]
+}

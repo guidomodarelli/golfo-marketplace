@@ -188,6 +188,9 @@ run-evals --all
 # Optional human-readable colored report
 run-evals plugins/<plugin-name>/skills/<skill-name> --pretty
 
+# Run every case N times and report flaky cases (passed some runs) apart from broken ones
+run-evals plugins/<plugin-name>/skills/<skill-name> --repeat 3
+
 # Optional provider override (default: auto-detect Codex or Claude)
 run-evals plugins/<plugin-name>/skills/<skill-name> --provider codex
 

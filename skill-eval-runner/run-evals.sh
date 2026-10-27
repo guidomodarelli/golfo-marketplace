@@ -10,6 +10,7 @@
 #   run-evals --jobs N [...]          Run N cases in parallel (default: 4, env: EVAL_JOBS)
 #   run-evals --provider codex [...]    Run evals with Codex instead of auto-detecting
 #   run-evals --baseline [...]        Also run a no-skill baseline per case (env: EVAL_BASELINE=1)
+#   run-evals --repeat N [...]        Run every case N times and report flaky cases (env: EVAL_REPEAT)
 #
 # Each skill only needs evals/eval-config.json — this script handles the rest.
 
@@ -30,6 +31,10 @@ EVAL_JOBS="${EVAL_JOBS:-4}"
 # The no-skill baseline is opt-in: assertions only score the with-skill
 # response, so the baseline is a manual comparison artifact that doubles cost.
 EVAL_BASELINE="${EVAL_BASELINE:-0}"
+# Runs per case: with more than one, a case passes only when every run passes, and one that
+# passes some runs is reported as flaky, so a variable eval is not mistaken for a broken one. The case
+# line then shows the first failing run and lists every run in run_results, each with its own artifacts.
+EVAL_REPEAT="${EVAL_REPEAT:-1}"
 GOLFO_MARKETPLACE_EVAL_MODEL="${GOLFO_MARKETPLACE_EVAL_MODEL:-}"
 GOLFO_MARKETPLACE_EVAL_REASONING_EFFORT="${GOLFO_MARKETPLACE_EVAL_REASONING_EFFORT:-}"
 # Machine-readable JSONL is the default so CI, tests, and real eval runs are
@@ -75,6 +80,9 @@ usage() {
     echo "  --baseline, -B               Also run each case without the skill for manual"
     echo "                               comparison. Not scored; doubles agent calls."
     echo "                               Equivalent to EVAL_BASELINE=1."
+    echo "  --repeat N, -r N             Run every case N times (default: 1). A case passes"
+    echo "                               only when every run passes; mixed runs are reported"
+    echo "                               as flaky. Equivalent to EVAL_REPEAT=N."
     echo ""
 }
 
@@ -518,6 +526,29 @@ write_case_result_jsonl() {
         > "$result_dir/$case_idx.jsonl"
 }
 
+# Every repetition writes the same response files, so with --repeat each run's responses are copied to
+# run-N/ and that run's results point to the copies: a failing run keeps its own evidence.
+preserve_run_artifacts() {
+    local workspace="$1"
+    local run="$2"
+    local run_result_dir="$3"
+    local total="$4"
+    local i id variant result_file
+    for i in $(seq 0 $((total - 1))); do
+        result_file="$run_result_dir/$i.jsonl"
+        [ -f "$result_file" ] || continue
+        id=$(jq -r '.id' "$result_file")
+        for variant in with-skill without-skill; do
+            [ -f "$workspace/$variant/$id.txt" ] || continue
+            mkdir -p "$workspace/run-$run/$variant"
+            cp "$workspace/$variant/$id.txt"* "$workspace/run-$run/$variant/"
+        done
+        jq -c --arg from "$workspace/" --arg to "$workspace/run-$run/" \
+            '.artifacts |= with_entries(if (.value | type) == "string" and (.value | startswith($from)) then .value = $to + (.value | ltrimstr($from)) else . end)' \
+            "$result_file" > "$result_file.tmp" && mv "$result_file.tmp" "$result_file"
+    done
+}
+
 record_case_setup_failure() {
     local result_dir="$1"
     local case_idx="$2"
@@ -845,29 +876,40 @@ run_skill_evals() {
         else
             echo -e "  Baseline:  off (use --baseline to compare)"
         fi
+        echo -e "  Runs:      $EVAL_REPEAT per case"
         echo -e "  Results:   $workspace"
         echo ""
     } >&"$header_fd"
 
-    # ── Dispatch phase: spawn cases in parallel, pool-limited ──
-    local pids=()
-    for i in $(seq 0 $((total - 1))); do
-        # Drain finished PIDs until pool has room
-        while [ ${#pids[@]} -ge "$EVAL_JOBS" ]; do
-            local running=()
-            for pid in "${pids[@]}"; do
-                kill -0 "$pid" 2>/dev/null && running+=("$pid")
+    # ── Dispatch phase: spawn cases in parallel, pool-limited; once per run with --repeat ──
+    # Runs go one after another (each in its own result dir), so a case never races itself
+    # for its response file; the last run's responses stay as the reviewable artifacts.
+    local run
+    for run in $(seq 1 "$EVAL_REPEAT"); do
+        local run_output_dir="$output_dir/run-$run" run_result_dir="$result_dir/run-$run"
+        mkdir -p "$run_output_dir" "$run_result_dir"
+        [ "$EVAL_REPEAT" -gt 1 ] && echo -e "  ${BLUE}Run $run/$EVAL_REPEAT${NC}" >&2
+        local pids=()
+        for i in $(seq 0 $((total - 1))); do
+            # Drain finished PIDs until pool has room
+            while [ ${#pids[@]} -ge "$EVAL_JOBS" ]; do
+                local running=()
+                for pid in "${pids[@]}"; do
+                    kill -0 "$pid" 2>/dev/null && running+=("$pid")
+                done
+                pids=("${running[@]}")
+                [ ${#pids[@]} -ge "$EVAL_JOBS" ] && sleep 0.2
             done
-            pids=("${running[@]}")
-            [ ${#pids[@]} -ge "$EVAL_JOBS" ] && sleep 0.2
+
+            run_single_case "$i" "$config_file" "$workspace" "$total" "$run_output_dir" "$run_result_dir" "$skill_cwd" "$baseline_cwd" "$skill_codex_home" "$baseline_codex_home" "$canonical_skill_path" &
+            pids+=($!)
         done
 
-        run_single_case "$i" "$config_file" "$workspace" "$total" "$output_dir" "$result_dir" "$skill_cwd" "$baseline_cwd" "$skill_codex_home" "$baseline_codex_home" "$canonical_skill_path" &
-        pids+=($!)
+        # Wait for all remaining jobs (|| true: pass/fail handled via result files)
+        wait || true
+        [ "$EVAL_REPEAT" -gt 1 ] && preserve_run_artifacts "$workspace" "$run" "$run_result_dir" "$total"
     done
-
-    # Wait for all remaining jobs (|| true: pass/fail handled via result files)
-    wait || true
+    local last_output_dir="$output_dir/run-$EVAL_REPEAT" last_result_dir="$result_dir/run-$EVAL_REPEAT"
 
     # ── Print phase: output in original order, aggregate counts ──
     if [ "$EVAL_JSONL" != "1" ]; then
@@ -878,30 +920,59 @@ run_skill_evals() {
     fi
     local passed=0
     local failed=0
+    local flaky=0
     for i in $(seq 0 $((total - 1))); do
-        if [ ! -f "$result_dir/$i.txt" ]; then
-            mkdir -p "$result_dir" 2>/dev/null || true
-            local missing_id missing_input missing_description missing_elapsed missing_failed_json
-            missing_id=$(jq -r ".test_cases[$i].id" "$config_file")
-            missing_input=$(jq -r ".test_cases[$i].input" "$config_file")
-            missing_description=$(jq -r ".test_cases[$i].description" "$config_file")
-            missing_elapsed=$(( SECONDS - suite_start ))
-            missing_failed_json=$(jq -nc \
-                '[{type: "infrastructure", description: "Eval runner did not write a case result", detail: "case finished before writing result files"}]')
-            printf '1\n' > "$result_dir/$i.txt" 2>/dev/null || true
-            write_case_result_jsonl "$result_dir" "$i" "$skill_name" "$missing_id" "$missing_description" "$missing_input" "$total" "failed" "$missing_elapsed" "$missing_failed_json" "$workspace" 2>/dev/null || true
-        fi
-        if [ "$EVAL_JSONL" = "1" ]; then
-            cat "$result_dir/$i.jsonl" 2>/dev/null || true
-        else
-            cat "$output_dir/$i.txt"
-        fi
-        local result
-        result=$(cat "$result_dir/$i.txt" 2>/dev/null || echo "1")
-        if [ "$result" -eq 0 ]; then
+        # Every run whose worker died before writing its result gets an infrastructure failure, so the
+        # run picked for the report below always has a case line.
+        local missing_run_dir
+        for run in $(seq 1 "$EVAL_REPEAT"); do
+            missing_run_dir="$result_dir/run-$run"
+            if [ ! -f "$missing_run_dir/$i.txt" ] || [ ! -f "$missing_run_dir/$i.jsonl" ]; then
+                mkdir -p "$missing_run_dir" 2>/dev/null || true
+                local missing_id missing_input missing_description missing_elapsed missing_failed_json
+                missing_id=$(jq -r ".test_cases[$i].id" "$config_file")
+                missing_input=$(jq -r ".test_cases[$i].input" "$config_file")
+                missing_description=$(jq -r ".test_cases[$i].description" "$config_file")
+                missing_elapsed=$(( SECONDS - suite_start ))
+                missing_failed_json=$(jq -nc --argjson run "$run" \
+                    '[{type: "infrastructure", description: "Eval runner did not write a case result", detail: "run \($run) finished before writing result files"}]')
+                printf '1\n' > "$missing_run_dir/$i.txt" 2>/dev/null || true
+                write_case_result_jsonl "$missing_run_dir" "$i" "$skill_name" "$missing_id" "$missing_description" "$missing_input" "$total" "failed" "$missing_elapsed" "$missing_failed_json" "$workspace" 2>/dev/null || true
+            fi
+        done
+        # A case passes only when every run passes; mixed runs are flaky (and still count as failed).
+        # The report shows the first failing run, so a flaky case keeps the evidence of its failure.
+        local passes=0 run_result report_run=""
+        for run in $(seq 1 "$EVAL_REPEAT"); do
+            run_result=$(cat "$result_dir/run-$run/$i.txt" 2>/dev/null || echo "1")
+            if [ "$run_result" -eq 0 ]; then passes=$((passes + 1)); elif [ -z "$report_run" ]; then report_run="$run"; fi
+        done
+        report_run="${report_run:-$EVAL_REPEAT}"
+        local case_status="passed"
+        if [ "$passes" -eq "$EVAL_REPEAT" ]; then
             passed=$((passed + 1))
         else
             failed=$((failed + 1))
+            case_status="failed"
+            if [ "$passes" -gt 0 ]; then
+                case_status="flaky"
+                flaky=$((flaky + 1))
+            fi
+        fi
+        if [ "$EVAL_JSONL" = "1" ]; then
+            local run_results="[]"
+            if [ "$EVAL_REPEAT" -gt 1 ]; then
+                run_results=$(for run in $(seq 1 "$EVAL_REPEAT"); do
+                    jq -c --argjson run "$run" '{run: $run, status, failed_assertions, artifacts}' "$result_dir/run-$run/$i.jsonl" 2>/dev/null \
+                        || jq -nc --argjson run "$run" '{run: $run, status: "failed", failed_assertions: [{type: "infrastructure", description: "Eval runner did not write a case result"}], artifacts: null}'
+                done | jq -cs '.')
+            fi
+            jq -c --argjson runs "$EVAL_REPEAT" --argjson passes "$passes" --arg status "$case_status" --argjson run_results "$run_results" \
+                '. + {status: $status, runs: $runs, passes: $passes} + (if $runs > 1 then {run_results: $run_results} else {} end)' \
+                "$result_dir/run-$report_run/$i.jsonl" 2>/dev/null || true
+        else
+            cat "$output_dir/run-$report_run/$i.txt" 2>/dev/null || cat "$last_output_dir/$i.txt"
+            [ "$EVAL_REPEAT" -gt 1 ] && echo -e "  Runs: $passes/$EVAL_REPEAT passed ($case_status)" && echo ""
         fi
     done
 
@@ -922,7 +993,9 @@ run_skill_evals() {
             --argjson passed "$passed" \
             --argjson failed "$failed" \
             --argjson duration "$suite_elapsed" \
-            '{event: "summary", provider: $provider, skill: $skill, total: $total, passed: $passed, failed: $failed, duration_seconds: $duration}'
+            --argjson runs "$EVAL_REPEAT" \
+            --argjson flaky "$flaky" \
+            '{event: "summary", provider: $provider, skill: $skill, total: $total, passed: $passed, failed: $failed, flaky: $flaky, runs: $runs, duration_seconds: $duration}'
     else
         echo -e "${BLUE}════════════════════════════════════════${NC}"
         echo -e "${BLUE}  Summary: ${BOLD}$skill_name${NC}"
@@ -931,6 +1004,9 @@ run_skill_evals() {
         echo -e "  Total:   $total"
         echo -e "  Passed:  ${GREEN}$passed ✅${NC}"
         echo -e "  Failed:  ${RED}$failed ❌${NC}"
+        if [ "$EVAL_REPEAT" -gt 1 ]; then
+            echo -e "  Flaky:   ${YELLOW}$flaky${NC} (of the failed: passed some of the $EVAL_REPEAT runs)"
+        fi
         echo -e "  Time:    $suite_duration"
         echo ""
 
@@ -1080,6 +1156,10 @@ while [ $# -gt 0 ]; do
             EVAL_BASELINE=1
             shift
             ;;
+        --repeat|-r)
+            EVAL_REPEAT="${2:-}"
+            shift 2 || shift
+            ;;
         *)
             args+=("$1")
             shift
@@ -1087,6 +1167,11 @@ while [ $# -gt 0 ]; do
     esac
 done
 set -- "${args[@]+"${args[@]}"}"
+
+if ! [[ "$EVAL_REPEAT" =~ ^[1-9][0-9]*$ ]]; then
+    echo -e "${RED}ERROR: --repeat needs a positive integer (got \"$EVAL_REPEAT\")${NC}" >&2
+    exit 2
+fi
 
 if target_requires_provider "$@"; then
     check_dependencies

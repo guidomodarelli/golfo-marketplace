@@ -71,7 +71,25 @@ case "$*" in
   *)
     printf '%s\n' "$*" >> "$CLAUDE_ARGS_LOG"
     if [[ -n "${CLAUDE_RESPONSE_FILE:-}" ]]; then
-      if [[ -f "$CLAUDE_RESPONSE_FILE" ]]; then
+      # Repeated runs: call N answers with "$CLAUDE_RESPONSE_FILE.N" when that file exists.
+      calls_file="${CLAUDE_RESPONSE_FILE}.calls"
+      call_number=$(( $(cat "$calls_file" 2>/dev/null || echo 0) + 1 ))
+      printf '%s\n' "$call_number" > "$calls_file"
+      if [[ "${CLAUDE_KILL_CASE_ON_CALL:-}" == "$call_number" ]]; then
+        # Simulates a case worker that dies before writing its result: kill the runner's
+        # background case subshell, the ancestor right below the top-level run-evals.sh.
+        ancestor=$PPID case_worker=""
+        while [[ "$ancestor" -gt 1 ]] && tr '\0' ' ' < "/proc/$ancestor/cmdline" 2>/dev/null | grep -q 'run-evals.sh'; do
+          parent=$(awk '{print $4}' "/proc/$ancestor/stat" 2>/dev/null)
+          tr '\0' ' ' < "/proc/$parent/cmdline" 2>/dev/null | grep -q 'run-evals.sh' || break
+          case_worker=$ancestor ancestor=$parent
+        done
+        [[ -n "$case_worker" ]] && kill -9 "$case_worker"
+        exit 1
+      fi
+      if [[ -f "${CLAUDE_RESPONSE_FILE}.${call_number}" ]]; then
+        response_text="$(cat "${CLAUDE_RESPONSE_FILE}.${call_number}")"
+      elif [[ -f "$CLAUDE_RESPONSE_FILE" ]]; then
         response_text="$(cat "$CLAUDE_RESPONSE_FILE")"
       else
         printf 'ERROR: CLAUDE_RESPONSE_FILE not found: %s\n' "$CLAUDE_RESPONSE_FILE" >&2
@@ -118,6 +136,9 @@ run_eval_runner() {
     fi
     if [[ -n "${CLAUDE_RESPONSE_FILE:-}" ]]; then
         environment+=("CLAUDE_RESPONSE_FILE=${CLAUDE_RESPONSE_FILE}")
+    fi
+    if [[ -n "${CLAUDE_KILL_CASE_ON_CALL:-}" ]]; then
+        environment+=("CLAUDE_KILL_CASE_ON_CALL=${CLAUDE_KILL_CASE_ON_CALL}")
     fi
 
     run --separate-stderr env "${environment[@]}" \

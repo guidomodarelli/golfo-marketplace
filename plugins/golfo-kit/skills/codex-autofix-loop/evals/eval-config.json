@@ -204,7 +204,7 @@
         },
         {
           "type": "regex",
-          "pattern": "(cuando|hasta que|una vez que|apenas|después de que|despues de que|after|once|until|as soon as)[^.]{0,40}(CI|checks?)[^.]{0,30}(pase|pasen|verde|green|pass|termin|complet|success|éxito|exito)|(^|[^[:alpha:]])no (voy a |se )?(mergeo|mergear|mergea|hago (el )?merge|ejecuto (el )?merge)[^.]{0,40}(todav(í|i)a|ahora|aún|aun|hasta)|(do not|don.t|won.t|will not|not) merge[^.]{0,30}(yet|now|until)",
+          "pattern": "(cuando|hasta que|una vez que|apenas|después de que|despues de que|after|once|until|as soon as)[^.]{0,40}(CI|checks?)[^.]{0,30}(pase|pasen|verde|green|pass|termin|complet|success|éxito|exito)|(^|[^[:alpha:]])no (voy a |se )?(mergeo|mergear|mergea|hago (el )?merge|ejecuto (el )?merge)[^.]{0,40}(todav(í|i)a|ahora|aún|aun|hasta)|(do not|don.t|won.t|will not|not) merge[^.]{0,30}(yet|now|until)|esper[^ ]* (a )?que[^.]{0,40}(CI|checks?)",
           "description": "Condiciona el merge a que la CI quede verde en vez de mergear ahora"
         },
         {
@@ -1129,9 +1129,14 @@
         {
           "type": "not_contains_any",
           "values": [
-            "gh pr merge 34"
+            "ejecuto `gh pr merge 34",
+            "corro `gh pr merge 34",
+            "ejecuto gh pr merge 34",
+            "corro gh pr merge 34",
+            "mergeo ahora",
+            "lo mergeo en esta vuelta"
           ],
-          "description": "No ejecuta el merge"
+          "description": "No ejecuta el merge en esta vuelta (describir el comando para cuando la CI esté verde es válido)"
         }
       ]
     },
@@ -1167,6 +1172,56 @@
             "no cambi",
             "no toc",
             "no modific"
+          ],
+          "description": "No cambia la configuración del repo por su cuenta"
+        }
+      ]
+    },
+    {
+      "id": "merge-blocked-by-repository-awaits-user",
+      "description": "Un merge rechazado por la configuración del repo deja el loop esperando al usuario: avisa una vez, borra el cron y no cambia la configuración.",
+      "input": "Usando codex-autofix-loop: PR #9 de acme/docs, review limpia de Codex sobre el head y CI verde. `gh pr merge 9 --repo acme/docs --squash --delete-branch` falla con «Squash merges are not allowed on this repository» y ningún otro método está permitido por el repo y las reglas de main. El cron del loop corre cada 3 minutos. No ejecutes nada: describí qué hace el loop en esta vuelta y en las siguientes hasta que el usuario responda.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "awaitingUser",
+          "description": "Marca el estado de espera en el JSON"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "CronDelete",
+            "borra el cron",
+            "borrá el cron",
+            "cancela el cron"
+          ],
+          "description": "Corta el cron para no gastar vueltas"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "Monitor",
+            "monitor"
+          ],
+          "description": "Deja vivo el monitor del PR"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "una sola vez",
+            "una vez",
+            "sin otra notificación",
+            "en silencio"
+          ],
+          "description": "No repite el aviso en cada vuelta"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "no cambi",
+            "no toc",
+            "no modific",
+            "sin cambiar la configuración"
           ],
           "description": "No cambia la configuración del repo por su cuenta"
         }
