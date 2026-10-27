@@ -922,18 +922,24 @@ run_skill_evals() {
     local failed=0
     local flaky=0
     for i in $(seq 0 $((total - 1))); do
-        if [ ! -f "$last_result_dir/$i.txt" ]; then
-            mkdir -p "$last_result_dir" 2>/dev/null || true
-            local missing_id missing_input missing_description missing_elapsed missing_failed_json
-            missing_id=$(jq -r ".test_cases[$i].id" "$config_file")
-            missing_input=$(jq -r ".test_cases[$i].input" "$config_file")
-            missing_description=$(jq -r ".test_cases[$i].description" "$config_file")
-            missing_elapsed=$(( SECONDS - suite_start ))
-            missing_failed_json=$(jq -nc \
-                '[{type: "infrastructure", description: "Eval runner did not write a case result", detail: "case finished before writing result files"}]')
-            printf '1\n' > "$last_result_dir/$i.txt" 2>/dev/null || true
-            write_case_result_jsonl "$last_result_dir" "$i" "$skill_name" "$missing_id" "$missing_description" "$missing_input" "$total" "failed" "$missing_elapsed" "$missing_failed_json" "$workspace" 2>/dev/null || true
-        fi
+        # Every run whose worker died before writing its result gets an infrastructure failure, so the
+        # run picked for the report below always has a case line.
+        local missing_run_dir
+        for run in $(seq 1 "$EVAL_REPEAT"); do
+            missing_run_dir="$result_dir/run-$run"
+            if [ ! -f "$missing_run_dir/$i.txt" ] || [ ! -f "$missing_run_dir/$i.jsonl" ]; then
+                mkdir -p "$missing_run_dir" 2>/dev/null || true
+                local missing_id missing_input missing_description missing_elapsed missing_failed_json
+                missing_id=$(jq -r ".test_cases[$i].id" "$config_file")
+                missing_input=$(jq -r ".test_cases[$i].input" "$config_file")
+                missing_description=$(jq -r ".test_cases[$i].description" "$config_file")
+                missing_elapsed=$(( SECONDS - suite_start ))
+                missing_failed_json=$(jq -nc --argjson run "$run" \
+                    '[{type: "infrastructure", description: "Eval runner did not write a case result", detail: "run \($run) finished before writing result files"}]')
+                printf '1\n' > "$missing_run_dir/$i.txt" 2>/dev/null || true
+                write_case_result_jsonl "$missing_run_dir" "$i" "$skill_name" "$missing_id" "$missing_description" "$missing_input" "$total" "failed" "$missing_elapsed" "$missing_failed_json" "$workspace" 2>/dev/null || true
+            fi
+        done
         # A case passes only when every run passes; mixed runs are flaky (and still count as failed).
         # The report shows the first failing run, so a flaky case keeps the evidence of its failure.
         local passes=0 run_result report_run=""

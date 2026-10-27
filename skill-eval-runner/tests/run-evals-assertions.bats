@@ -274,3 +274,15 @@ run_repeated_contract() {
     grep -q 'nothing useful' "$failing_artifact"
     grep -qx 'ok' "$passing_artifact"
 }
+
+@test "--repeat still reports a case whose worker died before writing the first run's result" {
+    CLAUDE_KILL_CASE_ON_CALL=1 run_repeated_contract --repeat 2
+    unset CLAUDE_KILL_CASE_ON_CALL
+
+    [ "$status" -eq 1 ]
+    local report="$output" case_line
+    case_line=$(jq -c 'select(.event == "case")' <<< "$report")
+    [ -n "$case_line" ]
+    run jq -e '.status == "flaky" and .id == "contract" and .failed_assertions[0].type == "infrastructure" and .run_results[0].status == "failed" and .run_results[1].status == "passed"' <<< "$case_line"
+    [ "$status" -eq 0 ]
+}

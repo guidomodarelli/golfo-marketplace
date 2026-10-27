@@ -11,7 +11,7 @@ GUARD DE AUTO-CANCELACIÓN (hacelo SIEMPRE primero). Obtené el estado del PR:
 Auto-cancelar = CronList, identificá el job de ESTE loop (cron `{{CRON}}`, auto-fix de Codex en PR #{{PR}}), borralo con CronDelete por id, detené con TaskStop el Monitor `Monitor codex-autofix PR #{{PR}}` si está vivo, PushNotification de una línea avisando el motivo, y terminá sin procesar.
 
 Si OPEN, procesá:
-(0-pre) ESPERANDO AL USUARIO: si el JSON trae `awaitingUser`, aplicá «Esperando al usuario» del skill: reevaluá solo lo que lo frenó y, si sigue igual y esta vuelta no trae un evento con trabajo nuevo del monitor, terminá en silencio. Si se destrabó, borrá `awaitingUser`, recreá el cron y seguí con los pasos de abajo.
+(0-pre) ESPERANDO AL USUARIO: si el JSON trae `awaitingUser`, aplicá «Esperando al usuario» del skill. Antes de cualquier salida, hacé el mantenimiento del paso (0): si el Monitor no está vivo (por ejemplo, esta vuelta es el aviso de que venció), rearmalo. En este estado no hay cron, así que el monitor es el único que puede despertar al loop. Después reevaluá solo lo que lo frenó y, si sigue igual y esta vuelta no trae un evento con trabajo nuevo del monitor, terminá en silencio. Si se destrabó, borrá `awaitingUser`, recreá el cron y seguí con los pasos de abajo.
 (0) MONITOR DEL PR (disparador principal; el cron `{{CRON}}` es solo respaldo para timeouts y por si el monitor muere). Mientras el PR esté `OPEN` tiene que haber UN `Monitor` vivo con `description` = `Monitor codex-autofix PR #{{PR}}` (así lo reconocés entre tus tareas en background y no armás dos). Si no existe, armalo con `timeout_ms: 1800000` (el máximo) y este `command`:
    ```bash
    pr={{PR}}; repo={{OWNER}}/{{REPO}}; bot='chatgpt-codex-connector[bot]'

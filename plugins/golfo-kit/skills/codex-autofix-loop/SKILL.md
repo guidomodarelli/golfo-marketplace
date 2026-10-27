@@ -191,7 +191,9 @@ aviso. Por eso, en ese caso:
   mandá una PushNotification de una línea con el motivo y qué decisión hace falta, y borrá el
   cron del loop con `CronDelete`. El `Monitor` del PR sigue vivo (rearmalo al vencer): un head
   nuevo, un comentario o review de Codex, o el PR cerrado disparan una vuelta como siempre.
-- **En cada vuelta con `awaitingUser`**: reevaluá solo lo que lo frenó (por ejemplo, volvé a
+- **En cada vuelta con `awaitingUser`**: primero rearmá el `Monitor` si no está vivo (también
+  cuando la vuelta es el aviso de que venció), porque sin cron es lo único que despierta al
+  loop. Después reevaluá solo lo que lo frenó (por ejemplo, volvé a
   intentar el merge con el método que corresponda hoy). Si sigue igual, terminá la vuelta en
   silencio, sin otra notificación. Si se destrabó o el monitor trajo un evento con trabajo
   nuevo, borrá `awaitingUser`, recreá el cron (paso 3 de «Cómo relanzarlo») y seguí normal.
