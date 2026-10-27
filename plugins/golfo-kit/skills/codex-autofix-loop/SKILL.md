@@ -306,7 +306,7 @@ No lo lances, y decí en una línea por qué, cuando:
    permite de verdad, también **sin preguntar**. Un flag fijo rompe el merge final en repos que
    desactivan ese método, y el loop se entera recién al final.
    - Métodos del repo: `gh api repos/{{OWNER}}/{{REPO}} --jq '[(select(.allow_squash_merge) | "squash"), (select(.allow_merge_commit) | "merge"), (select(.allow_rebase_merge) | "rebase")] | join(" ")'`.
-   - Reglas de la rama base: `gh api repos/{{OWNER}}/{{REPO}}/rules/branches/<base> --jq '{methods: ([.[] | select(.type=="pull_request") | .parameters.allowed_merge_methods // empty | .[]] | unique), linear: any(.[]; .type=="required_linear_history")}'`. Si `methods` no está vacío, el método también tiene que estar ahí. Con `linear: true`, `merge` no vale.
+   - Reglas de la rama base: `gh api repos/{{OWNER}}/{{REPO}}/rules/branches/<base> --jq '[.[] | select(.type=="pull_request") | .parameters.allowed_merge_methods // empty] as $sets | {restricted: ($sets | length > 0), methods: (if ($sets | length) == 0 then [] else reduce $sets[1:][] as $set ($sets[0]; map(select(. as $method | $set | index($method)))) end), linear: any(.[]; .type=="required_linear_history")}'`. GitHub aplica todas las reglas que caen sobre la rama, así que los métodos permitidos son la **intersección** de cada `allowed_merge_methods` (no la unión). Con `restricted: true`, el método tiene que estar en `methods` (si queda vacía, ninguno vale). Con `linear: true`, `merge` no vale.
    - Elegí el primero válido en este orden: el que pida el usuario, las instrucciones del repo o
      una memoria de ese repo; si no, `squash`, `merge`, `rebase`.
    - Si ninguno vale, lanzá el loop igual y avisá en una línea que el PR no se va a poder mergear

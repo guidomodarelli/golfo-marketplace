@@ -70,11 +70,15 @@ export const MANUAL_SCRIPTS = [
 	{ name: 'document links', marker: '// Navegación entre documentos Heritage', path: path.join(BOILERPLATE_DIR, 'document-links.js'), required: false },
 ];
 
+// A menu of manuals (DESIGN.md, "Menú de manuales") is one screen without section navigation: its scripts
+// are the language and document-link ones only.
+const MENU_KIND_META = /<meta name="heritage:kind" content="menu">/;
+
 /** Replaces each script the manual carries (from its marker to </script>) with the current asset. */
 const refreshScripts = (html) => MANUAL_SCRIPTS.reduce((output, script) => {
 	const start = output.indexOf(script.marker);
 	if (start === -1) {
-		if (script.required) throw new Error(`build-manual: the manual has no Heritage ${script.name} script; start from node build-manual.mjs --boilerplate`);
+		if (script.required && !MENU_KIND_META.test(output)) throw new Error(`build-manual: the manual has no Heritage ${script.name} script; start from node build-manual.mjs --boilerplate`);
 		return output;
 	}
 	const end = output.indexOf('</script>', start);
@@ -95,8 +99,11 @@ export const refreshManual = (html, { viewer: requestedViewer = null } = {}) => 
 	const staged = STAGED_MODE_META.test(html);
 	if (viewer && !VIEWER_ADAPTER_PATHS[viewer]) throw new Error(`build-manual: unknown viewer "${viewer}" (known: ${Object.keys(VIEWER_ADAPTER_PATHS).join(', ')})`);
 	let output = refreshScripts([STAGED_STYLE_BLOCK, STAGED_SCRIPT_BLOCK, VIEWER_BLOCK].reduce(removeBlock, html));
-	const navigationEnd = output.indexOf('</script>', output.indexOf(NAVIGATION_SCRIPT_MARKER)) + '</script>'.length;
-	// After the navigation script: the adapter first, so the staged script reads the viewer's initial target.
+	// After the navigation script (a menu has none: before </body>): the adapter first, so the staged script
+	// reads the viewer's initial target.
+	const navigationStart = output.indexOf(NAVIGATION_SCRIPT_MARKER);
+	const navigationEnd = navigationStart === -1 ? output.lastIndexOf('</body>') : output.indexOf('</script>', navigationStart) + '</script>'.length;
+	if (navigationEnd === -1) throw new Error('build-manual: the document has no </body>');
 	const scripts = [
 		viewer ? block(VIEWER_BLOCK, `<script>\n${readText(VIEWER_ADAPTER_PATHS[viewer]).trim()}\n</script>`) : '',
 		// The contract goes in its own <script>, before the staged script that reads it.

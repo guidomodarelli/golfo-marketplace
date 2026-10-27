@@ -179,6 +179,18 @@ describe('build-manual CLI', () => {
 		assert.doesNotMatch(linear, new RegExp(LANGUAGE_MARKER));
 	});
 
+	test('fills the scripts of a menu of manuals, which has no section navigation', () => {
+		const menu = `<!DOCTYPE html>\n<html lang="es">\n<head>\n<meta name="heritage:kind" content="menu">\n</head>\n<body>\n<script>\n${DOCUMENT_LINKS_MARKER}\n</script>\n</body>\n</html>\n`;
+		const file = writeManual('menu.html', menu);
+		const result = run(BUILD, file);
+		assert.equal(result.status, 0, result.output);
+		assert.ok(fs.readFileSync(file, 'utf8').includes(fs.readFileSync(DOCUMENT_LINKS_SCRIPT, 'utf8').trim()));
+		// Outside a menu, a document without the navigation script still fails clearly.
+		const notMenu = run(BUILD, writeManual('not-menu.html', menu.replace('content="menu"', 'content="manual"')));
+		assert.equal(notMenu.status, 1);
+		assert.match(notMenu.output, /has no Heritage navigation script/);
+	});
+
 	test('warns when an embedded document-link script is outdated', () => {
 		const link = '<a class="menu-back" href="https://docs.example.com/d/menu/view" data-document-link>Ir al menú</a>';
 		const html = linear.replace('<body>\n', `<body>\n${link}\n`).replace('</body>', `<script>\n${fs.readFileSync(DOCUMENT_LINKS_SCRIPT, 'utf8').trim()} // old copy\n</script>\n</body>`);
