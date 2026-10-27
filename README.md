@@ -283,6 +283,11 @@ temporales.
 `pnpm run test:skill-coverage` corre con `node --test` la suite del motor de cobertura incremental de
 skills (`plugins/golfo-kit/tools/skill-coverage/`) sobre repos git temporales; usa `@babel/parser`
 de las devDependencies para el análisis por símbolos.
+`pnpm run test:user-manual` corre con `node --test` las suites de `user-manual`: el contrato CLI de
+`check-manual.mjs` y `embed-staged-reading.mjs` (sin dependencias) y la prueba de navegador de la
+lectura por etapas y del adaptador de visor. Esta última necesita Playwright con Chromium y, sin él,
+se marca como omitida: apuntá `PLAYWRIGHT_MODULE` a un paquete `playwright` o `playwright-core`
+instalado y, si su Chromium no está descargado, `PLAYWRIGHT_CHROMIUM_EXECUTABLE` a un binario.
 
 Cada test tiene un timeout de 30 segundos: `test:shell` usa `BATS_TEST_TIMEOUT=30` y las suites
 bash de `review-fix-loop` y `sibling-worktree` corren cada test bajo `timeout` (`gtimeout` en macOS).
@@ -306,6 +311,7 @@ lo que cubre el cambio y dejá la suite completa a la CI:
 | Scripts compartidos de `agent-ready-setup` (`scripts/*.sh`, `sync-marketplace.sh`) | `pnpm run test:bootstrap` completo |
 | `review-fix-loop`, `sibling-worktree`, `create-version`, `check-version-bump`, `validate-portable-plugins` o el eval runner | Su suite (`pnpm run test:review-fix-loop`, `pnpm run test:sibling-worktree`, `pnpm exec bats tests/create-version.bats tests/check-version-bump.bats tests/validate-portable-plugins.bats`, `pnpm exec bats skill-eval-runner/tests/*.bats`) |
 | Motor de cobertura de skills (`plugins/golfo-kit/tools/skill-coverage/**`) | `pnpm run test:skill-coverage` |
+| `user-manual`: navegación de `DESIGN.md`, `scripts/check-*`, `embed-staged-reading.mjs` o `assets/` | `pnpm run test:user-manual` (con Playwright para la suite de navegador) y, si se tocó la paleta, `pnpm exec bats plugins/golfo-kit/skills/user-manual/tests/check-design-tokens.bats` |
 | Frontmatter de una skill o `plugin.json` de un plugin | `pnpm validate-portable-plugins` |
 
 Anteponé `LC_ALL=C.UTF-8` a cada `bats` (ver más abajo). En Windows, `bats --jobs` no funciona:

@@ -19,6 +19,10 @@
  * A menu of manuals (<meta name="heritage:kind" content="menu">, DESIGN.md "Menú de manuales") is one
  * screen: no TOC, section map, standard order or audience; it is checked for its capture and its links.
  *
+ * A staged manual (<meta name="heritage:reading-mode" content="stages">, DESIGN.md "Lectura por etapas") has
+ * no top TOC (the pill sheet is the complete index); its stages are checked instead: intro, contiguous
+ * sections and recap with three key concepts, plus the embedded staged script (embed-staged-reading.mjs).
+ *
  * Exit code: 0 when there are no errors (warnings do not fail), 1 with errors, 2 on bad usage.
  * The rendered checks (frame fit, pin distance) run in the browser with check-rendered.js.
  */
@@ -27,8 +31,20 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const DEFAULT_ALLOWED_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com', 'www.w3.org'];
-const DEFAULT_DESIGN_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'DESIGN.md');
+const SKILL_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+const DEFAULT_DESIGN_PATH = path.join(SKILL_DIR, 'DESIGN.md');
+const STAGED_SCRIPT_PATH = path.join(SKILL_DIR, 'assets', 'staged-reading', 'staged-reading.js');
+const DOCUMENT_VIEWER_ADAPTER_PATH = path.join(SKILL_DIR, 'assets', 'viewer-adapters', 'document-viewer-adapter.js');
 const NAVIGATION_SCRIPT_MARKER = '// Navegación e interacciones Heritage';
+const STAGED_SCRIPT_MARKER = '// Lectura por etapas Heritage';
+const DOCUMENT_VIEWER_ADAPTER_MARKER = '// Adaptador de visor de documentos Heritage';
+const READING_MODES = ['linear', 'stages'];
+const STAGED_MODE = 'stages';
+const KEY_CONCEPTS_PER_STAGE = 3;
+const MIN_STAGES = 2;
+const MIN_SECTIONS_PER_CHAPTER = 2;
+const STAGE_ID_PATTERN = /^[a-z][a-z0-9-]*$/;
+const DOCUMENT_VIEW_PATH = /^\/d\/[^/]+\/view\/?$/;
 const DOCUMENT_LINKS_SCRIPT_MARKER = '// Navegación entre documentos Heritage';
 const LANGUAGE_SCRIPT_MARKER = '// Idioma: el documento se escribe en español';
 const ENVIRONMENT_MARKERS = [':8443', 'localhost', '127.0.0.1'];
@@ -257,6 +273,72 @@ const splitLanguages = (html, options) => {
 	};
 };
 
+/**
+ * Stage structure (DESIGN.md, "Lectura por etapas"), the same rules the staged script validates before hiding
+ * anything: each stage is a .stage-intro, its contiguous sections with data-stage and a .stage-recap. A stage
+ * may group its sections in chapters (.stage-chapter): then every section follows a chapter, and each chapter
+ * holds at least two sections.
+ */
+const checkStages = (visible) => {
+	const problems = [];
+	const blocks = [...visible.matchAll(/<(?:div|section|aside)\b[^>]*\bclass="(stage-intro|stage-chapter|section|stage-recap)"[^>]*>/g)];
+	const stageIds = [];
+	const chapterIds = [];
+	let open = null;
+	const closeChapter = () => {
+		const chapter = open && open.chapters[open.chapters.length - 1];
+		if (chapter && chapter.sections < MIN_SECTIONS_PER_CHAPTER) problems.push(`chapter "${chapter.id}" has ${chapter.sections} section(s); it needs at least ${MIN_SECTIONS_PER_CHAPTER}`);
+	};
+	blocks.forEach((block, index) => {
+		const content = visible.slice(block.index, index + 1 < blocks.length ? blocks[index + 1].index : visible.length);
+		const attribute = (name) => (block[0].match(new RegExp(`\\s${name}="([^"]*)"`)) || [])[1];
+		if (block[1] === 'stage-intro') {
+			const id = attribute('data-stage-intro') || '';
+			if (open) problems.push(`stage "${open.id}" has no .stage-recap before stage "${id}"`);
+			if (!STAGE_ID_PATTERN.test(id)) problems.push(`stage id "${id}" is not a kebab-case slug`);
+			if (stageIds.includes(id)) problems.push(`stage "${id}" is repeated`);
+			if (attribute('id') !== `stage-${id}`) problems.push(`stage "${id}" intro needs id="stage-${id}"`);
+			for (const part of ['stage-title', 'stage-objective', 'stage-reading']) if (!content.includes(`class="${part}"`)) problems.push(`stage "${id}" intro has no .${part}`);
+			stageIds.push(id);
+			open = { id, sections: 0, chapters: [] };
+		} else if (block[1] === 'stage-chapter') {
+			const id = attribute('data-chapter') || '';
+			if (!open) { problems.push(`chapter "${id}" is outside a stage`); return; }
+			if (attribute('data-stage') !== open.id) problems.push(`chapter "${id}" has data-stage="${attribute('data-stage') || ''}" inside stage "${open.id}"`);
+			if (!STAGE_ID_PATTERN.test(id)) problems.push(`chapter id "${id}" is not a kebab-case slug`);
+			if (chapterIds.includes(id)) problems.push(`chapter "${id}" is repeated`);
+			if (attribute('id') !== `chapter-${id}`) problems.push(`chapter "${id}" needs id="chapter-${id}"`);
+			if (!content.includes('class="stage-chapter-title"')) problems.push(`chapter "${id}" has no .stage-chapter-title`);
+			if (!open.chapters.length && open.sections) problems.push(`stage "${open.id}" has sections before its first chapter`);
+			closeChapter();
+			chapterIds.push(id);
+			open.chapters.push({ id, sections: 0 });
+		} else if (block[1] === 'stage-recap') {
+			const id = attribute('data-stage-recap');
+			if (!open || id !== open.id) { problems.push(`recap "${id}" does not close the open stage`); return; }
+			if (!open.sections) problems.push(`stage "${open.id}" has no sections`);
+			const concepts = (content.match(/<ul class="stage-concepts">([\s\S]*?)<\/ul>/) || [])[1] || '';
+			const conceptCount = (concepts.match(/<li\b/g) || []).length;
+			if (conceptCount !== KEY_CONCEPTS_PER_STAGE) problems.push(`stage "${open.id}" recap has ${conceptCount} key concepts; it needs exactly ${KEY_CONCEPTS_PER_STAGE} in ul.stage-concepts`);
+			if (!content.includes('class="stage-next"')) problems.push(`stage "${open.id}" recap has no .stage-next ("Qué sigue")`);
+			closeChapter();
+			open = null;
+		} else {
+			const sectionId = attribute('aria-labelledby');
+			const stage = attribute('data-stage');
+			if (!open) problems.push(`section "${sectionId}" is outside a stage (between a .stage-intro and its .stage-recap)`);
+			else if (stage !== open.id) problems.push(`section "${sectionId}" has data-stage="${stage || ''}" inside stage "${open.id}"`);
+			else {
+				open.sections += 1;
+				if (open.chapters.length) open.chapters[open.chapters.length - 1].sections += 1;
+			}
+		}
+	});
+	if (open) problems.push(`stage "${open.id}" has no .stage-recap`);
+	if (stageIds.length < MIN_STAGES) problems.push(`a staged manual needs at least ${MIN_STAGES} stages (found ${stageIds.length})`);
+	return problems.map((problem) => `stages: ${problem}`);
+};
+
 const main = () => {
 	const options = parseArguments(process.argv.slice(2));
 	const source = fs.readFileSync(options.manual, 'utf8');
@@ -342,18 +424,36 @@ const checkDocument = (html, options, label, source) => {
 	}
 
 	const isMenu = metaContent(html, 'heritage:kind') === 'menu';
-	// The scripts travel inside each document: compare them with the current boilerplate.
+	// The scripts travel inside each document: compare them with the current boilerplate or asset.
 	const extractScript = (text, marker) => {
 		const start = text.indexOf(marker);
-		return start === -1 ? null : text.slice(start, text.indexOf('</script>', start)).trim();
+		return start === -1 ? null : text.slice(start, text.indexOf('</script>', start) === -1 ? text.length : text.indexOf('</script>', start)).replace(/\r\n/g, '\n').trim();
 	};
-	const designSource = fs.existsSync(options.design) ? fs.readFileSync(options.design, 'utf8') : null;
-	const compareScript = (marker, name) => {
+	const readSource = (file) => (fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null);
+	const designSource = readSource(options.design);
+	const compareScript = (marker, name, referenceSource = designSource, referenceName = 'the DESIGN.md boilerplate') => {
 		const embedded = extractScript(body, marker);
-		const current = designSource && extractScript(designSource, marker);
-		if (embedded && current && embedded !== current) warnings.push(`${name}: the script differs from the DESIGN.md boilerplate (outdated); copy the current one`);
+		const current = referenceSource && extractScript(referenceSource, marker);
+		if (embedded && current && embedded !== current) warnings.push(`${name}: the script differs from ${referenceName} (outdated); copy the current one`);
 		return embedded;
 	};
+
+	// Reading mode: linear (default) or by stages (DESIGN.md, "Lectura por etapas").
+	const readingMode = metaContent(html, 'heritage:reading-mode');
+	if (readingMode !== null && !READING_MODES.includes(readingMode)) errors.push(`stages: unknown heritage:reading-mode "${readingMode}" (use "${STAGED_MODE}", or omit it for a linear manual)`);
+	const isStaged = readingMode === STAGED_MODE;
+	if (isStaged) {
+		errors.push(...checkStages(visible));
+		if (!compareScript(STAGED_SCRIPT_MARKER, 'stages', readSource(STAGED_SCRIPT_PATH), 'assets/staged-reading/staged-reading.js')) errors.push('stages: the staged reading script is missing (run scripts/embed-staged-reading.mjs on the manual)');
+		if (!/\.stage-drawer\{/.test(document)) errors.push('stages: the staged reading styles are missing (run scripts/embed-staged-reading.mjs on the manual)');
+	} else if (/\sdata-stage(?:-intro|-recap)?="/.test(visible)) {
+		errors.push(`stages: stage markup without <meta name="heritage:reading-mode" content="${STAGED_MODE}"> (the stages would never show)`);
+	}
+	// A document viewer that shows /d/<doc_id>/view?href=<id> needs its adapter: without it, copied links use
+	// the generic #<id>.
+	const shareUrl = (() => { try { return new URL(metaContent(html, 'heritage:share-url')); } catch (invalidUrlError) { return null; } })();
+	const hasViewerAdapter = compareScript(DOCUMENT_VIEWER_ADAPTER_MARKER, 'viewer adapter', readSource(DOCUMENT_VIEWER_ADAPTER_PATH), 'assets/viewer-adapters/document-viewer-adapter.js');
+	if (shareUrl && DOCUMENT_VIEW_PATH.test(shareUrl.pathname) && !hasViewerAdapter) warnings.push('share-url: it is a document viewer URL (/d/<doc_id>/view) but the document viewer adapter is missing; copied links and the viewer URL keep the generic #<id> format (embed-staged-reading.mjs --viewer document)');
 	if (/id="heritage-translations"/.test(html) && !compareScript(LANGUAGE_SCRIPT_MARKER, 'language')) errors.push('language: the language script (HeritageLanguage) is missing');
 
 	// Links to other published documents (menu ↔ manuals, DESIGN.md "Navegación entre documentos").
@@ -382,12 +482,15 @@ const checkDocument = (html, options, label, source) => {
 		for (const text of new Set(cardTexts)) if (cardTexts.filter((other) => other === text).length > 1) errors.push(`menu: two links over the card «${text}»`);
 	}
 
-	if (isMenu) { /* one screen: no TOC */ } else if (!tocEntries.length) errors.push('toc: no nav.toc entries found');
+	if (isMenu) { /* one screen: no TOC */ } else if (isStaged) {
+		// With stages the pill sheet is the complete index, built from every section by the navigation script.
+		if (/<nav class="toc"/.test(visible)) errors.push('toc: a staged manual has no top nav.toc; the pill sheet is the complete index');
+	} else if (!tocEntries.length) errors.push('toc: no nav.toc entries found');
 	for (const [, id, label] of tocEntries) {
 		if (!titles.has(id)) errors.push(`toc: link #${id} has no section`);
 		else if (stripTags(label) !== titles.get(id)) errors.push(`toc: "${stripTags(label)}" differs from the title of #${id} ("${titles.get(id)}")`);
 	}
-	for (const id of titles.keys()) if (!tocEntries.some((entry) => entry[1] === id)) errors.push(`toc: section #${id} is missing from the TOC`);
+	if (!isStaged) for (const id of titles.keys()) if (!tocEntries.some((entry) => entry[1] === id)) errors.push(`toc: section #${id} is missing from the TOC`);
 	if (!isMenu) {
 		for (const required of ['class="section-rail"', 'class="section-pill"', 'class="toc-sheet"', 'class="back-to-top"']) {
 			if (!visible.includes(required)) errors.push(`navigation: ${required} missing`);
