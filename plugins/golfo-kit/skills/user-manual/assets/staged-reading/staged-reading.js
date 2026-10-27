@@ -332,7 +332,8 @@
   if (window.IntersectionObserver) {
     var recapObserver = new IntersectionObserver(function (observed) {
       observed.forEach(function (entry) {
-        if (!entry.isIntersecting) return;
+        // El observer también avisa cuando el recap apenas entra (cambio de isIntersecting): exigir la proporción.
+        if (!entry.isIntersecting || entry.intersectionRatio < RECAP_READ_RATIO) return;
         var stage = stageOf(entry.target);
         if (!stage || stage.read) return;
         stage.read = true;

@@ -63,7 +63,10 @@
       var query = new URLSearchParams(viewer.location.search);
       if (id && id !== START_ID) query.set(TARGET_PARAM, id); else query.delete(TARGET_PARAM);
       var search = query.toString() ? '?' + query.toString() : '';
-      viewer.history.replaceState(viewer.history.state, '', viewer.location.pathname + search + viewer.location.hash);
+      // Un hash de sección heredado de un enlace viejo (…/view#faq) se quita: la URL pública dice solo el destino actual.
+      var hash = viewer.location.hash;
+      if (hash.length > 1 && document.getElementById(decodeURIComponent(hash.slice(1)))) hash = '';
+      viewer.history.replaceState(viewer.history.state, '', viewer.location.pathname + search + hash);
       return true;
     },
     initialTargetId: function () {

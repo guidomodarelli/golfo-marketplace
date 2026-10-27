@@ -136,6 +136,10 @@ describe('staged reading in a real browser', { skip: skipReason, timeout: SUITE_
 		assert.match(await recap.locator('.stage-recap-meta').textContent(), /^Etapa 1 de 3 · [1-9]\d* min$/);
 		assert.equal(await recap.locator('.stage-pager-previous').count(), 0);
 		assert.equal(await page.locator('.stage-menu .stage-option[data-read]').count(), 0);
+		// A recap that barely enters the window is not read yet.
+		await recap.evaluate((element) => window.scrollTo({ top: element.getBoundingClientRect().top + window.scrollY - window.innerHeight + 8, behavior: 'instant' }));
+		await page.waitForTimeout(400);
+		assert.deepEqual(await page.evaluate(() => window.HeritageStages.progress()), []);
 		await recap.scrollIntoViewIfNeeded();
 		await page.waitForFunction(() => window.HeritageStages.progress().includes('orientation'), null, { timeout: STEP_TIMEOUT_MS });
 		const orientationOption = page.locator('.stage-menu .stage-option', { hasText: 'Antes de empezar' });
@@ -389,11 +393,16 @@ describe('staged reading in a real browser', { skip: skipReason, timeout: SUITE_
 		await context.close();
 	});
 
-	test('document viewer adapter keeps old viewer hash links working', async () => {
+	test('document viewer adapter keeps old viewer hash links working and then drops the old hash', async () => {
 		const { page, context } = await openPage(`/d/${DOCUMENT_ID}/view#faq`);
 		const frame = await manualFrame(page);
 		await waitForLanding(frame, 'faq');
 		assert.equal((await stageState(frame)).stage, 'reference');
+		await frame.locator('section[aria-labelledby="limits"] .section-link').click();
+		await frame.locator('section[aria-labelledby="limits"] .section-link.is-copied').waitFor();
+		const viewerUrl = new URL(page.url());
+		assert.equal(viewerUrl.search, '?href=limits');
+		assert.equal(viewerUrl.hash, '');
 		await context.close();
 	});
 
