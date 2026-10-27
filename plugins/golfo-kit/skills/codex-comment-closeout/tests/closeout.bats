@@ -11,6 +11,7 @@ setup() {
   printf 'abcdef1234567890abcdef1234567890abcdef12\n' > "${FAKE_DIR}/head"
   printf 'identical\n' > "${FAKE_DIR}/compare"
   : > "${FAKE_DIR}/calls"
+  echo THREAD_1 > "${FAKE_DIR}/threads"
   cat > "${FAKE_DIR}/bin/gh" <<'FAKE_GH'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$FAKE_DIR/calls"
@@ -26,7 +27,7 @@ case "$*" in
   "api repos/acme/docs/pulls/comments/900"*|"api repos/acme/docs/issues/comments/900"*)
     if [ -f "$FAKE_DIR/mangle" ]; then rm "$FAKE_DIR/mangle"; echo 'Corregido.'; else cat "$FAKE_DIR/published"; fi ;;
   "api graphql"*"resolveReviewThread"*) echo true ;;
-  "api graphql"*"reviewThreads"*) echo THREAD_1 ;;
+  "api graphql"*"reviewThreads"*) cat "$FAKE_DIR/threads" ;;
   "api graphql"*) echo '{}' ;;
   *) echo "fake gh: unexpected call: $*" >&2; exit 64 ;;
 esac
@@ -132,4 +133,24 @@ FAKE_GH
 
   [ "$status" -eq 0 ]
   [[ "$(cat "$FAKE_DIR/published")" == *'<sub>🤖 Auto-fix de Codex · [run](https://github.com/acme/docs/actions/runs/1)</sub>' ]]
+}
+
+@test "fails before publishing anything when no review thread holds the comment" {
+  : > "$FAKE_DIR/threads"
+
+  run bash "$CLOSEOUT" --repo acme/docs --pr 7 --comment 55 --kind inline --variant resolved --sha "$SHA" --summary "fix"
+
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"no review thread holds comment 55 in PR #7 (repo acme/docs); nothing was published"* ]]
+  ! grep -q 'reactions\|/replies' "$FAKE_DIR/calls"
+}
+
+@test "resolves the first thread the paginated lookup returns" {
+  printf 'THREAD_A\nTHREAD_B\n' > "$FAKE_DIR/threads"
+
+  run bash "$CLOSEOUT" --repo acme/docs --pr 7 --comment 55 --kind inline --variant no-change --reason "nit no bloqueante"
+
+  [ "$status" -eq 0 ]
+  grep -q 'resolveReviewThread.*threadId=THREAD_A' "$FAKE_DIR/calls"
+  ! grep -q 'threadId=THREAD_B' "$FAKE_DIR/calls"
 }

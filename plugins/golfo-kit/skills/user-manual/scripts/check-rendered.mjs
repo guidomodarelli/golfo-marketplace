@@ -49,10 +49,14 @@ const loadPlaywright = () => {
 };
 
 /** Serves the manual's folder; only files inside it are reachable. */
-const serveFolder = (folder) => new Promise((resolve) => {
+export const serveFolder = (folder) => new Promise((resolve) => {
 	const server = http.createServer((request, response) => {
 		const requested = path.normalize(path.join(folder, decodeURIComponent(new URL(request.url, `http://${LOOPBACK_HOST}`).pathname)));
-		if (!requested.startsWith(folder) || !fs.existsSync(requested) || fs.statSync(requested).isDirectory()) { response.writeHead(404).end(); return; }
+		// Containment by relative path, not by string prefix: a sibling folder that shares the prefix
+		// ("render" and "render-private") stays out.
+		const relative = path.relative(folder, requested);
+		const outside = relative.startsWith('..') || path.isAbsolute(relative);
+		if (outside || !fs.existsSync(requested) || fs.statSync(requested).isDirectory()) { response.writeHead(404).end(); return; }
 		response.writeHead(200, { 'content-type': CONTENT_TYPES[path.extname(requested)] || 'application/octet-stream' }).end(fs.readFileSync(requested));
 	});
 	server.listen(0, LOOPBACK_HOST, () => resolve(server));
@@ -98,7 +102,9 @@ const main = async () => {
 	return allOk ? 0 : 1;
 };
 
-main().then((code) => { process.exitCode = code; }, (runError) => {
-	console.error(`check-rendered: ${runError.message}`);
-	process.exitCode = 1;
-});
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+	main().then((code) => { process.exitCode = code; }, (runError) => {
+		console.error(`check-rendered: ${runError.message}`);
+		process.exitCode = 1;
+	});
+}

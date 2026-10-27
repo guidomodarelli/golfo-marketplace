@@ -153,15 +153,29 @@ verify_reply() {
   fi
 }
 
+needs_thread() { [ "$kind" = "inline" ] && [ "$variant" != "failed" ]; }
+
+# The thread of an inline comment, through every page of review threads ($endCursor, as `gh api
+# --paginate` requires for GraphQL). It runs before anything is published: a comment without a thread
+# fails without a reaction or reply, so a retry never posts a duplicate reply.
+find_thread() {
+  local owner="${repo%%/*}" name="${repo#*/}"
+  gh api graphql --paginate -f query='query($owner:String!,$repo:String!,$pr:Int!,$endCursor:String){repository(owner:$owner,name:$repo){pullRequest(number:$pr){reviewThreads(first:100,after:$endCursor){pageInfo{hasNextPage endCursor} nodes{id comments(first:100){nodes{databaseId}}}}}}}' -F owner="$owner" -F repo="$name" -F pr="$pr" --jq ".data.repository.pullRequest.reviewThreads.nodes[] | select(any(.comments.nodes[]; .databaseId == $comment)) | .id"
+}
+
 resolve_thread() {
-  [ "$kind" = "inline" ] && [ "$variant" != "failed" ] || { printf 'false'; return 0; }
-  local owner="${repo%%/*}" name="${repo#*/}" thread_id
-  thread_id=$(gh api graphql -f query='query($owner:String!,$repo:String!,$pr:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$pr){reviewThreads(first:100){nodes{id comments(first:100){nodes{databaseId}}}}}}}' -F owner="$owner" -F repo="$name" -F pr="$pr" --jq "[.data.repository.pullRequest.reviewThreads.nodes[] | select(any(.comments.nodes[]; .databaseId == $comment)) | .id] | first // empty")
-  [ -n "$thread_id" ] || fail "no review thread holds comment $comment in PR #$pr (repo $repo)"
+  needs_thread || { printf 'false'; return 0; }
   gh api graphql -f query='mutation($threadId:ID!){resolveReviewThread(input:{threadId:$threadId}){thread{isResolved}}}' -F threadId="$thread_id" --jq .data.resolveReviewThread.thread.isResolved
 }
 
 [ "$variant" = "resolved" ] && wait_for_commit_in_head
+thread_id=""
+if needs_thread; then
+  thread_id=$(find_thread) || true
+  # A comment belongs to one thread; keep the first line if the lookup printed more.
+  thread_id=$(printf '%s\n' "$thread_id" | sed -n '1p')
+  [ -n "$thread_id" ] || fail "no review thread holds comment $comment in PR #$pr (repo $repo); nothing was published"
+fi
 body=$(build_body)
 react
 reply_id=$(publish_reply "$body")

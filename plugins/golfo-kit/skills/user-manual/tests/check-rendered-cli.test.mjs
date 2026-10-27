@@ -12,6 +12,7 @@ import { createRequire } from 'node:module';
 import { after, before, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { buildExample } from '../scripts/build-manual.mjs';
+import { serveFolder } from '../scripts/check-rendered.mjs';
 
 const CHECK_RENDERED = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'scripts', 'check-rendered.mjs');
 const PLAYWRIGHT_CANDIDATES = [process.env.PLAYWRIGHT_MODULE, 'playwright', 'playwright-core'].filter(Boolean);
@@ -61,6 +62,28 @@ describe('check-rendered CLI when Chromium cannot start', { skip: hasPlaywright 
 		assert.equal(result.error, undefined, 'the CLI hung until the timeout');
 		assert.equal(result.status, 1, `${result.stdout}${result.stderr}`);
 		assert.match(result.stderr, /check-rendered: /);
+	});
+});
+
+describe('check-rendered manual server', () => {
+	test('serves files of the manual folder and nothing from a sibling that shares its prefix', async () => {
+		const folder = path.join(workspace, 'render');
+		const sibling = path.join(workspace, 'render-private');
+		fs.mkdirSync(folder, { recursive: true });
+		fs.mkdirSync(sibling, { recursive: true });
+		fs.writeFileSync(path.join(folder, 'manual.html'), '<!DOCTYPE html><title>manual</title>');
+		fs.writeFileSync(path.join(sibling, 'secret.txt'), 'secret');
+		const server = await serveFolder(folder);
+		try {
+			const base = `http://127.0.0.1:${server.address().port}`;
+			assert.equal((await fetch(`${base}/manual.html`)).status, 200);
+			for (const escape of ['/..%2frender-private/secret.txt', '/../render-private/secret.txt', '/%2e%2e%2frender-private%2fsecret.txt']) {
+				const response = await fetch(`${base}${escape}`);
+				assert.equal(response.status, 404, `${escape} escaped the manual folder`);
+			}
+		} finally {
+			server.close();
+		}
 	});
 });
 
