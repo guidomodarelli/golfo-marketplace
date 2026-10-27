@@ -8,36 +8,19 @@
   var STAGED_MODE = 'stages';
   var WORDS_PER_MINUTE = 200;
   var DESKTOP_QUERY = '(min-width: 820px)';
+  // Nivel anunciado de un capítulo: debajo de la etapa (h2).
+  var CHAPTER_HEADING_LEVEL = 3;
   // Una etapa cuenta como leída cuando se ve la mitad de su recapitulación.
   var RECAP_READ_RATIO = 0.5;
   // Texto que no se lee como contenido: controles que agrega el script y piezas decorativas.
   var NOT_READ = 'script, style, button, [aria-hidden="true"], .visually-hidden';
   var BLOCKS = '.stage-intro, .stage-chapter, section.section, .stage-recap';
-  var UI_TEXT = {
-    es: {
-      stages: 'Etapas', viewAll: 'Ver todo', close: 'Cerrar', stage: 'Etapa ', wholeManual: 'Todo el manual',
-      openStages: 'Abrir el selector de etapas. ', minutes: ' min', read: 'leída', previous: 'Etapa anterior: ', next: 'Etapa siguiente: ',
-      outline: 'Contenido de la etapa ',
-      position: function (number, total, minutes) { return 'Etapa ' + number + ' de ' + total + ' · ' + minutes + ' min'; },
-      reading: function (minutes) { return 'Lectura estimada: ' + minutes + ' min (referencia de ' + WORDS_PER_MINUTE + ' palabras por minuto; no incluye ejercicios ni simuladores).'; },
-      chapterReading: function (minutes) { return 'Lectura estimada del capítulo: ' + minutes + ' min.'; }
-    },
-    pt: {
-      stages: 'Etapas', viewAll: 'Ver tudo', close: 'Fechar', stage: 'Etapa ', wholeManual: 'Manual completo',
-      openStages: 'Abrir o seletor de etapas. ', minutes: ' min', read: 'lida', previous: 'Etapa anterior: ', next: 'Próxima etapa: ',
-      outline: 'Conteúdo da etapa ',
-      position: function (number, total, minutes) { return 'Etapa ' + number + ' de ' + total + ' · ' + minutes + ' min'; },
-      reading: function (minutes) { return 'Leitura estimada: ' + minutes + ' min (referência de ' + WORDS_PER_MINUTE + ' palavras por minuto; não inclui exercícios nem simuladores).'; },
-      chapterReading: function (minutes) { return 'Leitura estimada do capítulo: ' + minutes + ' min.'; }
-    }
-  };
-
   var modeMeta = document.querySelector('meta[name="heritage:reading-mode"]');
   if (!modeMeta || modeMeta.content !== STAGED_MODE) return;
   var root = document.documentElement;
-  var language = root.getAttribute('data-language') || 'es';
-  var ui = UI_TEXT[language] || UI_TEXT.es;
   var navigation = window.HeritageNavigation;
+  // Textos de interfaz: el diccionario único del script de navegación (UI_TEXT), en el idioma actual.
+  function text(key, values) { return navigation.text(key, values); }
 
   // —— Modelo único: las reglas viven en el contrato de etapas (window.HeritageStageContract), el mismo que
   // usa check-manual.mjs. Acá solo se describen los bloques del DOM y se arma el modelo con sus índices.
@@ -63,7 +46,7 @@
       };
     });
     var result = contract.validate(descriptors);
-    if (!navigation) result.problems.push('window.HeritageNavigation is missing (copy the current boilerplate navigation script)');
+    if (!navigation || !navigation.text) result.problems.push('window.HeritageNavigation is missing or outdated (refresh the manual with scripts/build-manual.mjs)');
     var stages = result.stages.map(function (stage) {
       var model = { id: stage.id, intro: elements[stage.intro], recap: elements[stage.recap], sections: stage.sections.map(function (index) { return elements[index]; }), chapters: [] };
       model.chapters = stage.chapters.map(function (chapter) {
@@ -124,8 +107,16 @@
     stage.chapters.forEach(function (chapter) {
       chapter.minutes = minutesFor(chapter.sections);
       if (!chapter.element.hasAttribute('tabindex')) chapter.element.setAttribute('tabindex', '-1');
+      chapter.element.querySelector('.stage-chapter-title').setAttribute('aria-level', String(CHAPTER_HEADING_LEVEL));
     });
     if (!stage.intro.hasAttribute('tabindex')) stage.intro.setAttribute('tabindex', '-1');
+    // Jerarquía para lectores de pantalla: etapa (h2) > capítulo > sección. Los títulos de sección siguen
+    // siendo h2 (contrato de clases y del índice); solo cambia el nivel que se anuncia.
+    var sectionLevel = stage.chapters.length ? CHAPTER_HEADING_LEVEL + 1 : CHAPTER_HEADING_LEVEL;
+    stage.sections.forEach(function (section) {
+      var heading = sectionHeading(section);
+      if (heading) heading.setAttribute('aria-level', String(sectionLevel));
+    });
   });
 
   // —— Controles: los mismos nodos van al menú (escritorio) o al sidebar modal (pantallas angostas).
@@ -259,7 +250,7 @@
     sheetGroupLabels.push({ element: label, text: text });
   }
   stages.forEach(function (stage, stageIndex) {
-    groupStart(sectionId(stage.sections[0]), 'stage-sheet-stage', function () { return ui.stage + stage.number + ' · ' + stageTitle(stage); }, stageIndex > 0);
+    groupStart(sectionId(stage.sections[0]), 'stage-sheet-stage', function () { return text('stage') + stage.number + ' · ' + stageTitle(stage); }, stageIndex > 0);
     stage.chapters.forEach(function (chapter, chapterIndex) {
       groupStart(sectionId(chapter.sections[0]), 'stage-sheet-chapter', function () { return chapterTitle(chapter); }, chapterIndex > 0);
     });
@@ -294,32 +285,32 @@
     render();
   }
   function writeStatus() {
-    barStatus.textContent = state.mode === 'all' ? ui.wholeManual : ui.stage + state.stage.number + '/' + stages.length + ' · ' + stageTitle(state.stage);
+    barStatus.textContent = state.mode === 'all' ? text('stageWholeManual') : text('stage') + state.stage.number + '/' + stages.length + ' · ' + stageTitle(state.stage);
     barStatus.title = barStatus.textContent;
-    barToggle.setAttribute('aria-label', ui.openStages + barStatus.textContent);
+    barToggle.setAttribute('aria-label', text('stageOpenSelector') + barStatus.textContent);
   }
   function writeProgress(stage) {
     stage.optionStatus.hidden = !stage.read;
-    stage.optionStatus.textContent = ui.read;
+    stage.optionStatus.textContent = text('stageRead');
     stage.option.toggleAttribute('data-read', stage.read);
   }
   function writeTexts() {
-    menuLabel.textContent = ui.stages;
-    drawerLabel.textContent = ui.stages;
-    drawerClose.textContent = ui.close;
-    barToggle.textContent = ui.stages;
-    allOption.textContent = ui.viewAll;
+    menuLabel.textContent = text('stages');
+    drawerLabel.textContent = text('stages');
+    drawerClose.textContent = text('close');
+    barToggle.textContent = text('stages');
+    allOption.textContent = text('stageViewAll');
     stages.forEach(function (stage, index) {
       stage.optionTitle.textContent = stageTitle(stage);
-      stage.optionMeta.textContent = stage.minutes + ui.minutes;
-      stage.outline.setAttribute('aria-label', ui.outline + stageTitle(stage));
-      stage.intro.querySelector('.stage-reading').textContent = ui.reading(stage.minutes);
-      stage.position.textContent = ui.position(stage.number, stages.length, stage.minutes);
-      if (stage.previousButton) stage.previousButton.textContent = ui.previous + stageTitle(stages[index - 1]);
-      if (stage.nextButton) stage.nextButton.textContent = ui.next + stageTitle(stages[index + 1]);
+      stage.optionMeta.textContent = stage.minutes + text('stageMinutes');
+      stage.outline.setAttribute('aria-label', text('stageOutline') + stageTitle(stage));
+      stage.intro.querySelector('.stage-reading').textContent = text('stageReading', { minutes: stage.minutes, rate: WORDS_PER_MINUTE });
+      stage.position.textContent = text('stagePosition', { number: stage.number, total: stages.length, minutes: stage.minutes });
+      if (stage.previousButton) stage.previousButton.textContent = text('stagePrevious') + stageTitle(stages[index - 1]);
+      if (stage.nextButton) stage.nextButton.textContent = text('stageNext') + stageTitle(stages[index + 1]);
       stage.chapters.forEach(function (chapter) {
         var reading = chapter.element.querySelector('.stage-chapter-reading');
-        if (reading) reading.textContent = ui.chapterReading(chapter.minutes);
+        if (reading) reading.textContent = text('chapterReading', { minutes: chapter.minutes });
         if (chapter.outlineLink) chapter.outlineLink.querySelector('.stage-outline-title').textContent = chapterTitle(chapter);
       });
       writeProgress(stage);
@@ -424,11 +415,8 @@
     setState(previous.mode, previous.stage);
   });
 
-  document.addEventListener('heritage:language-change', function (event) {
-    language = event.detail.language;
-    ui = UI_TEXT[language] || UI_TEXT.es;
-    writeTexts();
-  });
+  // El script de navegación ya cambió su diccionario: solo hay que reescribir los textos.
+  document.addEventListener('heritage:language-change', writeTexts);
 
   // Estado inicial: la etapa del destino del enlace (propio o del visor), o la primera.
   var adapter = window.HeritageViewer;

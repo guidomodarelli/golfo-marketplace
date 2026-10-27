@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildExample } from '../../scripts/embed-staged-reading.mjs';
+import { buildExample } from '../../scripts/build-manual.mjs';
 
 const TESTS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const VIEWER_TEMPLATE_PATH = path.join(TESTS_DIR, 'fixtures', 'local-viewer.html');

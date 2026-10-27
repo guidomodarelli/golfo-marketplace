@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>[Título del documento]</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap">
+<style>
+/* heritage:base-style */
+</style>
+</head>
+<body>
+<header class="doc-header" id="top" tabindex="-1">
+  <div class="doc-label">[Etiqueta — proyecto o área]</div>
+  <h1 class="doc-title">[Título principal]</h1>
+  <p class="doc-sub">[Subtítulo descriptivo]</p>
+  <div class="doc-meta"><span>Fecha: …</span></div>
+</header>
+
+<!-- id: slug fijo de la sección (kebab-case, en inglés), no su número ni su título -->
+<section class="section" aria-labelledby="[slug]">
+  <div class="section-num">01</div>
+  <h2 class="section-title" id="[slug]">[Título de la sección]</h2>
+  <p>…</p>
+</section>
+
+<!-- Solo en documentos que describen código; lo escribe source-trace.py del skill user-manual. -->
+<footer class="doc-footer">Para el equipo técnico · Código: <a href="https://github.com/[org]/[repo]/commit/[sha]" target="_blank" rel="noopener noreferrer">[rama] @ [commit corto]</a></footer>
+
+<a class="back-to-top" href="#top" aria-label="Volver al inicio" hidden><span aria-hidden="true">↑</span> Inicio</a>
+<nav class="section-rail" aria-label="Mapa de secciones" hidden></nav>
+<button class="section-pill" type="button" aria-haspopup="dialog" aria-controls="toc-sheet" hidden><span class="section-pill-num"></span><span class="section-pill-title"></span></button>
+<dialog class="toc-sheet" id="toc-sheet" aria-labelledby="toc-sheet-label">
+  <div class="toc-sheet-body">
+    <div class="toc-sheet-head"><div class="toc-label" id="toc-sheet-label">Contenido</div><button class="toc-sheet-close" type="button">Cerrar</button></div>
+  </div>
+</dialog>
+<script>
+// heritage:navigation-script
+</script>
+<script>
+// Abre los accordions al imprimir para que el PDF no oculte contenido.
+window.addEventListener('beforeprint', () => {
+  document.querySelectorAll('details.acc').forEach((accordion) => { accordion.open = true; });
+});
+</script>
+</body>
+</html>

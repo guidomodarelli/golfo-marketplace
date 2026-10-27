@@ -1,30 +1,34 @@
 #!/usr/bin/env bash
 # Verifica que la paleta y los tokens de motion del front matter de DESIGN.md
-# (fuente de verdad) y las variables CSS del :root del boilerplate declaren los
-# mismos valores: colors.<token> -> --<token>, motion.<token> -> --motion-<token>.
+# (fuente de verdad) y las variables CSS del :root de assets/boilerplate/base.css
+# declaren los mismos valores: colors.<token> -> --<token>, motion.<token> -> --motion-<token>.
 #
-# Uso: check-design-tokens.sh [ruta/a/DESIGN.md]
+# Uso: check-design-tokens.sh [ruta/a/DESIGN.md] [ruta/a/base.css]
 # Exit: 0 sincronizado, 1 desalineado, 2 archivo ilegible o bloques ausentes.
 set -euo pipefail
 
 SCRIPT_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_DIRECTORY
 readonly DEFAULT_DESIGN_FILE="${SCRIPT_DIRECTORY}/../DESIGN.md"
+readonly DEFAULT_STYLE_FILE="${SCRIPT_DIRECTORY}/../assets/boilerplate/base.css"
 readonly EXIT_INVALID_INPUT=2
 
 design_file="${1:-${DEFAULT_DESIGN_FILE}}"
+style_file="${2:-${DEFAULT_STYLE_FILE}}"
 
-if [[ ! -r "${design_file}" ]]; then
-  printf 'check-design-tokens: no se puede leer el archivo "%s".\n' "${design_file}" >&2
-  exit "${EXIT_INVALID_INPUT}"
-fi
+for input_file in "${design_file}" "${style_file}"; do
+  if [[ ! -r "${input_file}" ]]; then
+    printf 'check-design-tokens: no se puede leer el archivo "%s".\n' "${input_file}" >&2
+    exit "${EXIT_INVALID_INPUT}"
+  fi
+done
 
-# Estados: el front matter va entre los dos primeros "---"; dentro de él solo
-# interesan los bloques "colors:" y "motion:". Después, el primer ":root{" del
-# boilerplate. Los colores se comparan en minúsculas y expandiendo hex cortos
+# Estados: el front matter de DESIGN.md va entre los dos primeros "---"; dentro de
+# él solo interesan los bloques "colors:" y "motion:". Del CSS base, el primer
+# ":root{". Los colores se comparan en minúsculas y expandiendo hex cortos
 # (#ccc -> #cccccc); los valores de motion, en minúsculas y sin espacios.
 # El bloque "motion:" es opcional, pero si existe debe coincidir con el :root.
-awk -v design_file="${design_file}" '
+awk -v design_file="${design_file}" -v style_file="${style_file}" '
 function normalize_hex(hex_value) {
   hex_value = tolower(hex_value)
   if (length(hex_value) == 4) {
@@ -44,7 +48,7 @@ BEGIN { front_matter_state = 0; inside_colors = 0; inside_motion = 0; inside_roo
 # Los checkouts con finales de línea CRLF (Windows) se leen igual que los LF.
 { sub(/\r$/, "") }
 
-NR == 1 && $0 == "---" { front_matter_state = 1; next }
+FNR == 1 && FILENAME == design_file && $0 == "---" { front_matter_state = 1; next }
 front_matter_state == 1 && $0 == "---" { front_matter_state = 2; next }
 
 front_matter_state == 1 {
@@ -73,7 +77,7 @@ front_matter_state == 1 {
   next
 }
 
-front_matter_state == 2 && !root_done && $0 ~ /^:root[ ]*\{/ { inside_root = 1; next }
+FILENAME == style_file && !root_done && $0 ~ /^:root[ ]*\{/ { inside_root = 1; next }
 
 inside_root {
   if ($0 ~ /^\}/) { inside_root = 0; root_done = 1; next }
@@ -105,7 +109,7 @@ END {
     exit 2
   }
   if (variable_count == 0) {
-    printf "check-design-tokens: no se encontraron variables de color en el \":root{\" del boilerplate de \"%s\".\n", design_file > "/dev/stderr"
+    printf "check-design-tokens: no se encontraron variables de color en el \":root{\" de \"%s\".\n", style_file > "/dev/stderr"
     exit 2
   }
   problem_count = 0
@@ -144,11 +148,11 @@ END {
     }
   }
   if (problem_count > 0) {
-    printf "check-design-tokens: %d diferencia(s) entre front matter y :root en \"%s\".\n", problem_count, design_file
+    printf "check-design-tokens: %d diferencia(s) entre el front matter de \"%s\" y el :root de \"%s\".\n", problem_count, design_file, style_file
     exit 1
   }
   printf "check-design-tokens: %d colores sincronizados", token_count
   if (motion_token_count > 0) printf " y %d tokens de motion", motion_token_count
   printf " en \"%s\".\n", design_file
 }
-' "${design_file}"
+' "${design_file}" "${style_file}"

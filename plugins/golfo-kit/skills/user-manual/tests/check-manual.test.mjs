@@ -1,5 +1,5 @@
 /**
- * Public contract of the static validator (check-manual.mjs) and the embedder (embed-staged-reading.mjs),
+ * Public contract of the static validator (check-manual.mjs) and the builder (build-manual.mjs),
  * through their CLIs, on manuals built from the real template and DESIGN.md boilerplate.
  */
 import assert from 'node:assert/strict';
@@ -9,11 +9,12 @@ import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { buildExample } from '../scripts/embed-staged-reading.mjs';
+import { buildExample } from '../scripts/build-manual.mjs';
 
 const SCRIPTS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'scripts');
 const CHECK_MANUAL = path.join(SCRIPTS_DIR, 'check-manual.mjs');
-const EMBED = path.join(SCRIPTS_DIR, 'embed-staged-reading.mjs');
+const BUILD = path.join(SCRIPTS_DIR, 'build-manual.mjs');
+const NAVIGATION_SCRIPT = path.join(SCRIPTS_DIR, '..', 'assets', 'boilerplate', 'navigation.js');
 const VIEWER_ADAPTER_WARNING = 'the document viewer adapter is missing';
 
 let workspace;
@@ -125,30 +126,52 @@ describe('check-manual: viewer links', () => {
 	});
 });
 
-describe('embed-staged-reading CLI', () => {
+describe('build-manual CLI', () => {
 	test('refreshes the embedded assets instead of duplicating them', () => {
 		const file = writeManual('embed-twice.html', staged);
-		assert.equal(run(EMBED, file).status, 0);
+		assert.equal(run(BUILD, file).status, 0);
 		assert.equal(fs.readFileSync(file, 'utf8'), staged);
 	});
 
 	test('keeps an embedded viewer adapter when refreshing without --viewer', () => {
 		const withViewer = buildExample({ viewer: 'document' });
 		const file = writeManual('embed-viewer-twice.html', withViewer);
-		assert.equal(run(EMBED, file).status, 0);
+		assert.equal(run(BUILD, file).status, 0);
 		assert.equal(fs.readFileSync(file, 'utf8'), withViewer);
 	});
 
 	test('fails clearly on manuals it cannot extend and on unknown viewers', () => {
-		const withoutNavigation = run(EMBED, writeManual('no-navigation.html', staged.replace(/\/\/ Navegación e interacciones Heritage/, '// otro script')));
+		const withoutNavigation = run(BUILD, writeManual('no-navigation.html', staged.replace(/\/\/ Navegación e interacciones Heritage/, '// otro script')));
 		assert.equal(withoutNavigation.status, 1);
 		assert.match(withoutNavigation.output, /has no Heritage navigation script/);
-		const unknownViewer = run(EMBED, writeManual('unknown-viewer.html', staged), '--viewer', 'other');
+		const unknownViewer = run(BUILD, writeManual('unknown-viewer.html', staged), '--viewer', 'other');
 		assert.equal(unknownViewer.status, 1);
 		assert.match(unknownViewer.output, /unknown viewer "other"/);
-		const nothing = run(EMBED, writeManual('linear-nothing.html', linear));
-		assert.equal(nothing.status, 1);
-		assert.match(nothing.output, /nothing to embed/);
-		assert.equal(run(EMBED).status, 2);
+		assert.equal(run(BUILD).status, 2);
+		assert.equal(run(BUILD, '--boilerplate', path.join(workspace, 'a.html'), '--example', path.join(workspace, 'b.html')).status, 2);
+	});
+
+	test('refreshes an outdated navigation script, also in a linear manual', () => {
+		const outdated = linear.replace('var SHOW_AFTER_PX = 480;', 'var SHOW_AFTER_PX = 480; // old copy');
+		assert.notEqual(outdated, linear);
+		const before = checkManual('linear-outdated.html', outdated);
+		assert.match(before.output, /warn {2}navigation: the script differs from assets\/boilerplate\/navigation\.js/);
+		const file = writeManual('linear-refresh.html', outdated);
+		assert.equal(run(BUILD, file).status, 0);
+		assert.equal(fs.readFileSync(file, 'utf8'), linear);
+		assert.doesNotMatch(checkManual('linear-refreshed.html', fs.readFileSync(file, 'utf8')).output, /navigation: the script differs/);
+	});
+
+	test('writes the starting boilerplate with the base styles and the navigation script embedded', () => {
+		const file = path.join(workspace, 'boilerplate.html');
+		const result = run(BUILD, '--boilerplate', file);
+		assert.equal(result.status, 0, result.output);
+		const html = fs.readFileSync(file, 'utf8');
+		assert.ok(html.includes(fs.readFileSync(NAVIGATION_SCRIPT, 'utf8').trim()));
+		assert.match(html, /<style>\n\/\* Heritage Spec: estilos base[\s\S]*:root\{/);
+		assert.doesNotMatch(html, /heritage:base-style|heritage:navigation-script/);
+		// Refreshing the starting document changes nothing: it already is current.
+		assert.equal(run(BUILD, file).status, 0);
+		assert.equal(fs.readFileSync(file, 'utf8'), html);
 	});
 });

@@ -121,6 +121,14 @@ describe('staged reading in a real browser', { skip: skipReason, timeout: SUITE_
 			{ id: 'practice-and-errors', sections: ['practice', 'unhappy-paths'] },
 		]);
 		assert.match(await page.locator('#chapter-create .stage-chapter-reading').textContent(), /^Lectura estimada del capítulo: [1-9]\d* min\.$/);
+		// Screen readers hear stage > chapter > section, although section titles stay h2.
+		const levels = await page.evaluate(() => ({
+			chapter: document.querySelector('#chapter-create .stage-chapter-title').getAttribute('aria-level'),
+			chapterSection: document.getElementById('access').getAttribute('aria-level'),
+			stageSection: document.getElementById('purpose').getAttribute('aria-level'),
+			sectionTag: document.getElementById('access').tagName,
+		}));
+		assert.deepEqual(levels, { chapter: '3', chapterSection: '4', stageSection: '3', sectionTag: 'H2' });
 		await page.locator('.section-pill').click();
 		const groups = await page.locator('#toc-sheet .stage-sheet-group .toc-label').allTextContents();
 		assert.deepEqual(groups, ['Etapa 1 · Antes de empezar', 'Etapa 2 · Usar el flujo', 'Crear una solicitud', 'Practicar y resolver errores', 'Etapa 3 · Resolver y consultar']);
