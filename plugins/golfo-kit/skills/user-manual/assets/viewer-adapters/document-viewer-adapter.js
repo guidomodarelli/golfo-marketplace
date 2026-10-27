@@ -45,9 +45,10 @@
   }
 
   function publicUrl(id) {
-    var base = viewer ? parseUrl(viewer.location.origin + '/d/' + inspection.documentId + '/view') : shareMatch ? parseUrl(shareUrl.origin + shareUrl.pathname) : null;
+    // Se conservan los demás parámetros de la URL pública (por ejemplo ?lang=pt): solo cambia el destino.
+    var base = viewer ? parseUrl(viewer.location.origin + '/d/' + inspection.documentId + '/view' + viewer.location.search) : shareMatch ? parseUrl(shareUrl.origin + shareUrl.pathname + shareUrl.search) : null;
     if (!base) return null;
-    if (id && id !== START_ID) base.searchParams.set(TARGET_PARAM, id);
+    if (id && id !== START_ID) base.searchParams.set(TARGET_PARAM, id); else base.searchParams.delete(TARGET_PARAM);
     return base.href;
   }
 

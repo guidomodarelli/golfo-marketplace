@@ -393,6 +393,16 @@ describe('staged reading in a real browser', { skip: skipReason, timeout: SUITE_
 		await context.close();
 	});
 
+	test('document viewer adapter keeps the viewer language in copied links', async () => {
+		const { page, context } = await openPage(`/d/${DOCUMENT_ID}/view?lang=pt`);
+		const frame = await manualFrame(page);
+		await frame.locator('section[aria-labelledby="purpose"] .section-link').click();
+		await frame.locator('section[aria-labelledby="purpose"] .section-link.is-copied').waitFor();
+		assert.equal(await page.evaluate(() => navigator.clipboard.readText()), `${servers.origin}/d/${DOCUMENT_ID}/view?lang=pt&href=purpose`);
+		assert.equal(new URL(page.url()).search, '?lang=pt&href=purpose');
+		await context.close();
+	});
+
 	test('document viewer adapter keeps old viewer hash links working and then drops the old hash', async () => {
 		const { page, context } = await openPage(`/d/${DOCUMENT_ID}/view#faq`);
 		const frame = await manualFrame(page);
