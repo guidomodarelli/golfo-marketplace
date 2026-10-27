@@ -88,9 +88,24 @@ build_body() {
   CLOSEOUT_SHORT_SHA="${sha:0:$SHORT_SHA_LENGTH}" CLOSEOUT_COMMIT_URL="https://github.com/$repo/commit/$sha" \
     CLOSEOUT_SUMMARY="$summary" CLOSEOUT_REASON="$reason" CLOSEOUT_QUOTE="$quote" CLOSEOUT_RUN_URL="${CLOSEOUT_RUN_URL:-}" \
     awk '
-      function fill(text, name, value,    start) {
-        while ((start = index(text, "{{" name "}}")) > 0) text = substr(text, 1, start - 1) value substr(text, start + length(name) + 4)
-        return text
+      BEGIN {
+        values["sha_corto"] = ENVIRON["CLOSEOUT_SHORT_SHA"]; values["commit_url"] = ENVIRON["CLOSEOUT_COMMIT_URL"]
+        values["resumen"] = ENVIRON["CLOSEOUT_SUMMARY"]; values["motivo"] = ENVIRON["CLOSEOUT_REASON"]
+        values["run_url"] = ENVIRON["CLOSEOUT_RUN_URL"]
+      }
+      # One left-to-right pass over the template line: an inserted value is never scanned again, so a
+      # summary or reason that mentions "{{motivo}}" stays literal instead of expanding forever.
+      function fill(text,    output, start, finish, name) {
+        output = ""
+        while ((start = index(text, "{{")) > 0) {
+          output = output substr(text, 1, start - 1)
+          text = substr(text, start + 2)
+          finish = index(text, "}}")
+          name = finish ? substr(text, 1, finish - 1) : ""
+          if (finish && (name in values)) { output = output values[name]; text = substr(text, finish + 2) }
+          else output = output "{{"
+        }
+        return output text
       }
       {
         line = $0
@@ -104,12 +119,7 @@ build_body() {
           for (position = 1; position <= count; position++) print "> " quoted[position]
           next
         }
-        line = fill(line, "sha_corto", ENVIRON["CLOSEOUT_SHORT_SHA"])
-        line = fill(line, "commit_url", ENVIRON["CLOSEOUT_COMMIT_URL"])
-        line = fill(line, "resumen", ENVIRON["CLOSEOUT_SUMMARY"])
-        line = fill(line, "motivo", ENVIRON["CLOSEOUT_REASON"])
-        line = fill(line, "run_url", ENVIRON["CLOSEOUT_RUN_URL"])
-        print line
+        print fill(line)
       }' "$template"
 }
 

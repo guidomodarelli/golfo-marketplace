@@ -32,7 +32,8 @@ EVAL_JOBS="${EVAL_JOBS:-4}"
 # response, so the baseline is a manual comparison artifact that doubles cost.
 EVAL_BASELINE="${EVAL_BASELINE:-0}"
 # Runs per case: with more than one, a case passes only when every run passes, and one that
-# passes some runs is reported as flaky, so a variable eval is not mistaken for a broken one.
+# passes some runs is reported as flaky, so a variable eval is not mistaken for a broken one. The case
+# line then shows the first failing run and lists every run in run_results, each with its own artifacts.
 EVAL_REPEAT="${EVAL_REPEAT:-1}"
 GOLFO_MARKETPLACE_EVAL_MODEL="${GOLFO_MARKETPLACE_EVAL_MODEL:-}"
 GOLFO_MARKETPLACE_EVAL_REASONING_EFFORT="${GOLFO_MARKETPLACE_EVAL_REASONING_EFFORT:-}"
@@ -525,6 +526,29 @@ write_case_result_jsonl() {
         > "$result_dir/$case_idx.jsonl"
 }
 
+# Every repetition writes the same response files, so with --repeat each run's responses are copied to
+# run-N/ and that run's results point to the copies: a failing run keeps its own evidence.
+preserve_run_artifacts() {
+    local workspace="$1"
+    local run="$2"
+    local run_result_dir="$3"
+    local total="$4"
+    local i id variant result_file
+    for i in $(seq 0 $((total - 1))); do
+        result_file="$run_result_dir/$i.jsonl"
+        [ -f "$result_file" ] || continue
+        id=$(jq -r '.id' "$result_file")
+        for variant in with-skill without-skill; do
+            [ -f "$workspace/$variant/$id.txt" ] || continue
+            mkdir -p "$workspace/run-$run/$variant"
+            cp "$workspace/$variant/$id.txt"* "$workspace/run-$run/$variant/"
+        done
+        jq -c --arg from "$workspace/" --arg to "$workspace/run-$run/" \
+            '.artifacts |= with_entries(if (.value | type) == "string" and (.value | startswith($from)) then .value = $to + (.value | ltrimstr($from)) else . end)' \
+            "$result_file" > "$result_file.tmp" && mv "$result_file.tmp" "$result_file"
+    done
+}
+
 record_case_setup_failure() {
     local result_dir="$1"
     local case_idx="$2"
@@ -883,6 +907,7 @@ run_skill_evals() {
 
         # Wait for all remaining jobs (|| true: pass/fail handled via result files)
         wait || true
+        [ "$EVAL_REPEAT" -gt 1 ] && preserve_run_artifacts "$workspace" "$run" "$run_result_dir" "$total"
     done
     local last_output_dir="$output_dir/run-$EVAL_REPEAT" last_result_dir="$result_dir/run-$EVAL_REPEAT"
 
@@ -910,11 +935,13 @@ run_skill_evals() {
             write_case_result_jsonl "$last_result_dir" "$i" "$skill_name" "$missing_id" "$missing_description" "$missing_input" "$total" "failed" "$missing_elapsed" "$missing_failed_json" "$workspace" 2>/dev/null || true
         fi
         # A case passes only when every run passes; mixed runs are flaky (and still count as failed).
-        local passes=0 run_result
+        # The report shows the first failing run, so a flaky case keeps the evidence of its failure.
+        local passes=0 run_result report_run=""
         for run in $(seq 1 "$EVAL_REPEAT"); do
             run_result=$(cat "$result_dir/run-$run/$i.txt" 2>/dev/null || echo "1")
-            [ "$run_result" -eq 0 ] && passes=$((passes + 1))
+            if [ "$run_result" -eq 0 ]; then passes=$((passes + 1)); elif [ -z "$report_run" ]; then report_run="$run"; fi
         done
+        report_run="${report_run:-$EVAL_REPEAT}"
         local case_status="passed"
         if [ "$passes" -eq "$EVAL_REPEAT" ]; then
             passed=$((passed + 1))
@@ -927,10 +954,18 @@ run_skill_evals() {
             fi
         fi
         if [ "$EVAL_JSONL" = "1" ]; then
-            jq -c --argjson runs "$EVAL_REPEAT" --argjson passes "$passes" --arg status "$case_status" \
-                '. + {status: $status, runs: $runs, passes: $passes}' "$last_result_dir/$i.jsonl" 2>/dev/null || true
+            local run_results="[]"
+            if [ "$EVAL_REPEAT" -gt 1 ]; then
+                run_results=$(for run in $(seq 1 "$EVAL_REPEAT"); do
+                    jq -c --argjson run "$run" '{run: $run, status, failed_assertions, artifacts}' "$result_dir/run-$run/$i.jsonl" 2>/dev/null \
+                        || jq -nc --argjson run "$run" '{run: $run, status: "failed", failed_assertions: [{type: "infrastructure", description: "Eval runner did not write a case result"}], artifacts: null}'
+                done | jq -cs '.')
+            fi
+            jq -c --argjson runs "$EVAL_REPEAT" --argjson passes "$passes" --arg status "$case_status" --argjson run_results "$run_results" \
+                '. + {status: $status, runs: $runs, passes: $passes} + (if $runs > 1 then {run_results: $run_results} else {} end)' \
+                "$result_dir/run-$report_run/$i.jsonl" 2>/dev/null || true
         else
-            cat "$last_output_dir/$i.txt"
+            cat "$output_dir/run-$report_run/$i.txt" 2>/dev/null || cat "$last_output_dir/$i.txt"
             [ "$EVAL_REPEAT" -gt 1 ] && echo -e "  Runs: $passes/$EVAL_REPEAT passed ($case_status)" && echo ""
         fi
     done

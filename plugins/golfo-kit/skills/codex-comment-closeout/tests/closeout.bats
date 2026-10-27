@@ -154,3 +154,15 @@ FAKE_GH
   grep -q 'resolveReviewThread.*threadId=THREAD_A' "$FAKE_DIR/calls"
   ! grep -q 'threadId=THREAD_B' "$FAKE_DIR/calls"
 }
+
+@test "keeps placeholders written in the reason or summary as literal text instead of expanding them" {
+  run timeout 10 bash "$CLOSEOUT" --repo acme/docs --pr 7 --comment 66 --kind general --variant no-change --reason 'El placeholder {{motivo}} ya se completa y {{run_url}} queda igual.'
+
+  [ "$status" -eq 0 ]
+  [[ "$(cat "$FAKE_DIR/published")" == *'**Motivo:** El placeholder {{motivo}} ya se completa y {{run_url}} queda igual.'* ]]
+
+  run timeout 10 bash "$CLOSEOUT" --repo acme/docs --pr 7 --comment 55 --kind inline --variant resolved --sha "$SHA" --summary 'el texto {{resumen}} y {{sha_corto}} no se reemplazan.'
+
+  [ "$status" -eq 0 ]
+  [[ "$(cat "$FAKE_DIR/published")" == *'**Qué cambió:** el texto {{resumen}} y {{sha_corto}} no se reemplazan.'* ]]
+}

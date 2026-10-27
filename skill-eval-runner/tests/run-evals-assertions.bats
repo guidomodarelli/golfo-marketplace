@@ -255,3 +255,22 @@ run_repeated_contract() {
     [ "$status" -eq 2 ]
     [[ "$stderr" == *"--repeat needs a positive integer"* ]]
 }
+
+@test "--repeat keeps the failing run's assertions and response for a flaky case" {
+    printf 'nothing useful\n' > "${TEST_ROOT}/response.txt.1"
+    printf 'ok\n' > "${TEST_ROOT}/response.txt.2"
+
+    run_repeated_contract --repeat 2
+
+    [ "$status" -eq 1 ]
+    local report="$output" case_line
+    case_line=$(jq -c 'select(.event == "case")' <<< "$report")
+    run jq -e '.status == "flaky" and (.failed_assertions | length) > 0 and (.run_results | length) == 2 and .run_results[0].status == "failed" and .run_results[1].status == "passed"' <<< "$case_line"
+    [ "$status" -eq 0 ]
+    local failing_artifact passing_artifact
+    failing_artifact=$(jq -r '.artifacts.with_skill' <<< "$case_line")
+    passing_artifact=$(jq -r '.run_results[1].artifacts.with_skill' <<< "$case_line")
+    [ "$failing_artifact" != "$passing_artifact" ]
+    grep -q 'nothing useful' "$failing_artifact"
+    grep -qx 'ok' "$passing_artifact"
+}
