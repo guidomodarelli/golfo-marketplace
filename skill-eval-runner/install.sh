@@ -38,13 +38,25 @@ if [ -f "$TARGET_SCRIPT" ] || [ -L "$TARGET_SCRIPT" ]; then
     rm -f "$TARGET_SCRIPT"
 fi
 
-ln -sf "$SOURCE_SCRIPT" "$TARGET_SCRIPT"
 chmod +x "$SOURCE_SCRIPT"
+ln -sf "$SOURCE_SCRIPT" "$TARGET_SCRIPT" 2>/dev/null || true
 
-if [ -L "$TARGET_SCRIPT" ] && [ -x "$TARGET_SCRIPT" ]; then
-    echo -e "${GREEN}✓ run-evals installed → $TARGET_SCRIPT${NC}"
+# Without real symlinks (Git Bash on Windows copies the file instead), a copy would stay frozen at
+# the version installed and miss every later fix. A launcher that runs the repo script stays current.
+if [ ! -L "$TARGET_SCRIPT" ]; then
+    rm -f "$TARGET_SCRIPT"
+    printf '#!/usr/bin/env bash\n# run-evals launcher written by skill-eval-runner/install.sh: runs the repo script, never a copy.\nexec bash %q "$@"\n' "$SOURCE_SCRIPT" > "$TARGET_SCRIPT"
+    chmod +x "$TARGET_SCRIPT"
+fi
+
+if [ -x "$TARGET_SCRIPT" ]; then
+    if [ -L "$TARGET_SCRIPT" ]; then
+        echo -e "${GREEN}✓ run-evals installed → $TARGET_SCRIPT (symlink to $SOURCE_SCRIPT)${NC}"
+    else
+        echo -e "${GREEN}✓ run-evals installed → $TARGET_SCRIPT (launcher for $SOURCE_SCRIPT)${NC}"
+    fi
 else
-    echo -e "${RED}✗ Error during installation${NC}"
+    echo -e "${RED}✗ Error during installation: $TARGET_SCRIPT is not executable${NC}"
     exit 1
 fi
 

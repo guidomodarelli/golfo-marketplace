@@ -44,12 +44,15 @@ jobs:
           plugins/golfo-kit/skills/agent-ready-setup/tests/merge-instructions.bats
           skill-eval-runner/tests/run-evals-env-contract.bats
           skill-eval-runner/tests/run-evals-assertions.bats
+          skill-eval-runner/tests/install.bats
       - run: pnpm run compat:validate
       - run: pnpm run test:review-fix-loop
       - run: pnpm run test:sibling-worktree
       - name: Skill coverage engine (temporary git repositories)
         run: pnpm run test:skill-coverage
-      - name: User manual validators (browser suite skips without Playwright)
+      - name: Install Chromium for the user-manual browser suite
+        run: pnpm exec playwright-core install --with-deps chromium
+      - name: User manual suites (validators and real browser)
         run: pnpm run test:user-manual
 
   bootstrap:

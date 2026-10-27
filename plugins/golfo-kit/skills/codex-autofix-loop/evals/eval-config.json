@@ -47,9 +47,14 @@
           "description": "Pasa por el gate de CI antes de mergear"
         },
         {
-          "type": "contains",
-          "value": "squash",
-          "description": "Mergea con estrategia squash"
+          "type": "contains_any",
+          "description": "Mergea con el método que permite el repo",
+          "values": [
+            "squash",
+            "--merge",
+            "--rebase",
+            "MERGE_FLAG"
+          ]
         },
         {
           "type": "regex",
@@ -188,9 +193,14 @@
           "description": "Evalúa el tope persistido en cada vuelta en vez de recalcularlo desde cero"
         },
         {
-          "type": "contains",
-          "value": "squash",
-          "description": "Cuando la CI quede verde mergea con squash"
+          "type": "contains_any",
+          "description": "Cuando la CI quede verde mergea con el método que permite el repo",
+          "values": [
+            "squash",
+            "--merge",
+            "--rebase",
+            "MERGE_FLAG"
+          ]
         },
         {
           "type": "regex",
@@ -577,8 +587,8 @@
         },
         {
           "type": "regex",
-          "pattern": "gh pr merge.{0,120}--squash",
-          "description": "Mergea con `gh pr merge --squash`"
+          "pattern": "gh pr merge.{0,120}(--squash|--merge|--rebase|MERGE_FLAG)",
+          "description": "Mergea con `gh pr merge` y el método que permite el repo"
         },
         {
           "type": "contains",
@@ -741,8 +751,8 @@
         },
         {
           "type": "regex",
-          "pattern": "gh pr merge.{0,120}--squash",
-          "description": "Mergea con squash"
+          "pattern": "gh pr merge.{0,120}(--squash|--merge|--rebase|MERGE_FLAG)",
+          "description": "Mergea con `gh pr merge` y el método que permite el repo"
         },
         {
           "type": "regex",
@@ -1122,6 +1132,43 @@
             "gh pr merge 34"
           ],
           "description": "No ejecuta el merge"
+        }
+      ]
+    },
+    {
+      "id": "merge-method-follows-repository-rules",
+      "description": "Elige el método de merge que permiten el repo y las reglas de la rama base, sin cambiar la configuración.",
+      "input": "Usando codex-autofix-loop: vas a lanzar el loop para el PR #12 de acme/docs (base main). `gh api repos/acme/docs` devuelve allow_squash_merge false, allow_merge_commit true y allow_rebase_merge false. Las reglas de main permiten allowed_merge_methods [\"squash\", \"merge\"] y no exigen historia lineal. No ejecutes nada: decí con qué comando vas a mergear cuando la review salga limpia y la CI esté verde, y qué harías si ningún método fuera válido.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "gh pr merge.{0,120}--merge",
+          "description": "Mergea con merge commit, el único método válido"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "gh pr merge.{0,120}--squash"
+          ],
+          "description": "No usa squash, que el repo desactivó"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "avis",
+            "notific"
+          ],
+          "description": "Avisa si ningún método es válido"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "sin cambiar la configuración",
+            "no cambi",
+            "no toc",
+            "no modific"
+          ],
+          "description": "No cambia la configuración del repo por su cuenta"
         }
       ]
     }

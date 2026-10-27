@@ -12,7 +12,7 @@ description: >
 metadata:
   tags: "context-optimized-v1.20.1"
   author: "Guido Modarelli"
-  version: "2.7.0"
+  version: "2.8.0"
 ---
 
 # User Manual Generator
@@ -385,54 +385,9 @@ document; its history lives in the destination (the viewer's versions).
 
 ### Navigation (always)
 
-TOC, section map, section pill, "Inicio" button, copy-link buttons and keyboard shortcuts come from
-DESIGN.md ("Índice (TOC)", "Mapa de secciones", "Píldora de sección", "Copiar enlace a una sección",
-"Atajos de teclado", "Botón Inicio") and the boilerplate. When to use them:
-
-- **TOC in every linear manual**, right after `</header>`, even with fewer than 5 sections. One entry
-  per numbered section and, before the first section of each `part-header`, a non-link `toc-label`.
-  Regenerate it after any edit that adds, removes, renames or renumbers a section. A staged manual
-  has no top TOC: its pill sheet already lists every section, hidden stages included, and a second
-  index would compete with the stage menu.
-- **Stages, when chosen:** start from `assets/staged-reading/template.html` (its opening comment is the
-  markup contract) and, once the manual is written on the boilerplate, run
-  `node scripts/build-manual.mjs <manual.html>` to embed the staged CSS and script (run it
-  again after updating them). The script reuses the boilerplate navigation instead of adding its own,
-  so keep the boilerplate's navigation script current. Each stage opens with its objective and a
-  reading estimate the script computes (200 words per minute) and closes with three key concepts and
-  «Qué sigue». When a stage gathers several topics, group its sections in **chapters**
-  (`div.stage-chapter`, at least two sections each); chapters order a stage, they do not hide parts
-  of it. The script adds the active stage's outline to the menu, the reading progress, previous / next
-  stage buttons in each recap and stage / chapter labels in the index sheet: do not write them by hand.
-- **"Inicio" button always**, with the navigation script just before `</body>`.
-- **Section map always**: never write its ticks by hand. Start each section with a paragraph that
-  works as a one-line summary, because the map preview shows it. The map hides below 1024 px.
-- **Section pill and TOC sheet always**: visible at every width and from the first screen (at the top
-  it shows the document title), the only shortcut below 1024 px. The map, the sheet and the pill
-  start with the document title, which leads back to the start. The header needs `id="top"` and a
-  `.doc-title`, as in the boilerplate.
-- **The URL follows the reader:** jumps and "Copiar enlace" write `#<slug>` (the start clears it), also in
-  the address bar of an embedding viewer, so a reload lands on the same section.
-- **Keyboard shortcuts** come with the script and are listed at the foot of the map preview:
-  `⌥`/`Alt` + `↑` `↓` previous / next section, `⌥`/`Alt` + `I` table of contents, `Escape` closes
-  previews. Nothing to add per manual; verify them.
-- **Share URL** when the manual is published inside an iframe viewer: add
-  `<meta name="heritage:share-url" content="<public document URL>">`, the URL readers open in the
-  viewer; `<share URL>#<slug>` opens the manual at that section. When the viewer has its own link
-  format (`/d/<doc_id>/view?href=<slug>` around an iframe `/d/<doc_id>/raw`), embed its adapter with
-  `node scripts/build-manual.mjs <manual.html> --viewer document` (linear manuals too). It only
-  updates the viewer's address bar after checking same origin and same document; otherwise
-  navigation stays inside the manual and the limitation is logged, so never report the external URL
-  as synchronized without checking it in the published viewer.
-
-Verify on a **fresh load** and in the destination viewer: TOC links land with the section 16 px
-below the top (16 px below the language switch when it covers the text column) about 2 s later; the button brings `scrollY` to `0`; at ≥ 1024 px a map tick magnifies
-its neighbours and its preview shows number, title and first paragraph; at 375 px the pill opens the
-sheet and its links land; `Alt`+`↓` moves to the next section; opening a copied section link
-(`<share URL>#add-collaborators`) in a new tab, and reloading it, lands on that section in the viewer. Scroll with `behavior: 'instant'`
-before screenshots. A browser tab in the background does not run `requestAnimationFrame` nor
-dispatch scroll events: if "current section" checks fail in automation, check
-`document.visibilityState` before blaming the script.
+TOC (linear manuals), section map, section pill and sheet, "Inicio" button, copy-link buttons,
+keyboard shortcuts, reading by stages and viewer links: read [references/navigation.md](references/navigation.md)
+before writing them. They all come from the boilerplate and the skill assets, never written by hand.
 
 ### Glossary terms — ask
 
@@ -452,65 +407,9 @@ with the one-line definition you would write. Then:
 
 ### Pins, before / after and glossary
 
-- **Pins, as many as make sense — always.** A manual is a practical guide: every element the text
-  tells the reader to look at, tap, fill or read on a capture gets a pin, not only the ones in a
-  `steps` list. On each capture, pin every button, field, tab, filter, badge, message or value the
-  prose names, and put the matching `hotspot-ref` where the prose names it ("Tocá «Confirmar» (2)").
-  When a section describes a screen element by element, turn that description into a short `steps`
-  list or a list of references, so each pin has its text. Only skip a pin when it would point at
-  nothing the reader acts on or reads (decoration, layout). Before closing a manual, walk every
-  capture and ask "what does the text ask the reader to find here?"; each answer needs a pin.
-- **Steps before their capture:** an `ol.steps` linked to a capture always goes **before** that
-  `.mockup` and its `figcap`, never after (DESIGN.md, "Puntos sobre capturas").
-- **Pins in reading order:** number the pins of each capture top to bottom and, on the same row, left to
-  right; across several captures of a section the numbering continues. Steps and references take the same
-  numbers, so steps are written in that order; an action that must come before one placed higher goes in a
-  separate steps list. Inline references are mentioned in that same order inside each paragraph, list or
-  table ("(5) … (6) … (7)"); when a sentence names the elements in another order, rewrite it following the
-  capture. `check-rendered.js` reports captures out of order (`order`) and `check-manual.mjs` reports
-  references out of order in the text.
-- **Inline references before their capture, too:** the paragraph, list or table holding `hotspot-ref`s
-  goes right before the capture with those pins: steps → text with references → capture → figcap. A list
-  that names pins of several consecutive captures is split, one list before each capture. `check-manual.mjs`
-  reports references that come after their capture.
-- **Pins on steps:** on the capture of every screen with a `steps` walkthrough, one pin per step that
-  touches a visible element, same number as the step. On real captures **always anchor the pin**:
-  `data-target="<selector inside the capture>"` plus `data-target-text="<exact text>"` when the
-  selector matches several elements. The capture runtime places it 14 px left of the element after
-  every fit and resize, so it never drifts. Keep `--x`/`--y` as the initial position. Then check, at
-  1280 px and 390 px, that every pin sits next to its element. Up to 6 pins per capture: when a
-  screen needs more, split the text in two groups and repeat the capture for the second one.
-- **Anchor to a compact element** (icon, button, input, a short label), never to a full-width cell or
-  row: the pin sits 14 px left of the element, so on a cell that starts at the frame's edge it ends up
-  cut or outside the capture. For repeated elements without own text, use a structural selector
-  (`.card:first-of-type .card__icon`).
-- The runtime places the pin next to what the reader **sees** of the target: its text and media, or
-  the whole box when it has a visible background or border (a button, a chip, a message). So a
-  centered title or a transparent link works as a target. When a row starts with a badge or an icon,
-  anchor to that first item (the pin would otherwise sit on top of it), and to the whole message box
-  rather than its title (the icon inside would be covered).
-- When there is no room on the left (the target starts at the capture's edge) the runtime puts the pin
-  on the right, or just inside a full-width button. When the target is glued to text on its left (a
-  "+2" right after a value), add `data-side="right"`. Switches and checkboxes: anchor to the control
-  (the switch element with its text), not to its label, or the pin covers the toggle.
-- **Pins live with their steps, one per number per section.** A section never shows two pins with
-  the same number, and never pins a capture for steps written in another section. When a step
-  happens on a screen already shown elsewhere (the main screen in its own section, the steps in
-  "Cómo agregar…"), repeat that capture (same `data-cap`, no extra payload) inside the step's
-  section with its pin, and leave the original without pins. Write "en esta pantalla", never
-  "marcado en la sección NN". The navigation script links them both ways, always scrolling: tapping a
-  step or a reference centers its pin, and tapping the pin centers its step's circle; the destination
-  then pulses 3 times under a short blur spotlight so the reader sees what it points to (a pin's "back" bubble leaves with the last beat). Check both directions in the browser, in
-  a section with pins on several captures: after the jump, only the destination stays highlighted.
-  The script also signals that the circles can be tapped (a small hand on each step circle that keeps
-  tapping while the pointer is on the step, a "back" bubble on each pin shown on hover and on arrival, hover growth, a tooltip with the action and,
-  under the first capture with pins of each section, «Hacé click en un número para ir a su paso.»
-  with a mouse or «Tocá un número para ir a su paso.» on touch screens, chosen by the pointer), so
-  never write that hint by hand.
-- **Before / after:** only when both captures have the same width and framing. Give each
-  `app-frame` its own `aria-label`. Otherwise show two separate mockups.
-- **Glossary:** link only the first use of each term per section; every `a.term` points to an
-  existing `<dt>`; plain-word definitions.
+Numbered pins on captures, before / after comparisons and glossary links: read
+[references/pins-and-glossary.md](references/pins-and-glossary.md) when a section uses any of them
+(order, numbering, anchoring and their checks).
 
 ### Mockups
 
@@ -564,65 +463,9 @@ goes to the section, not to the pin (DESIGN.md, "Referencias a secciones"); `che
 
 ## Step 5 — Verify alignment
 
-**Record the source** the manual was written from, so the next update can start from a diff:
-
-```bash
-python3 scripts/source-trace.py record <manual.html> --repo <repo> --ref origin/<base> \
-  --files <every file or directory read: pages, components, hooks, API routes, validations, constants, translations>
-```
-
-It writes the `heritage:source-repo|ref|commit|files|commit-url` metas into the `<head>` and, at the
-end of the document, a `doc-footer` "Para el equipo técnico · Código: <base> @ <commit>" linked to the
-commit on GitHub (only maintainers need it, so it stays out of the header; new tab; inside an
-iframe viewer the host must allow links to the repository's GitHub organization). Prefer directories over single files where the
-flow lives in one, so files added later are covered.
-
-The `doc-meta` carries only what tells the reader something: `Fecha`, audience, device and
-`Capturas`. No `Estado` (a published manual is always the current one), no app version (the package
-version means nothing to the reader) and no `Código` (it lives in the `doc-footer`).
-
-**Run the checks** and fix everything they report before publishing:
-
-```bash
-node scripts/check-manual.mjs <manual.html> \
-  --translations <app>/i18n/<locale>/messages.po --translations <app>/app/translations/<locale>/messages.json \
-  --forbidden "<every real value seen while capturing, comma-separated>"
-```
-
-It fails on: TOC links or titles that do not match the sections (in a staged manual: a top TOC, or
-stages that are not intro → contiguous sections → recap with three key concepts, chapters with fewer
-than two sections or sections before a stage's first chapter, or the staged
-script and styles missing), missing navigation pieces, glossary
-links without `<dt>`, pins on captures without `data-target`, a section with two pins of the same
-number or with steps/references whose pin is not in that section, hosts in `mockup-url`, any change
-marker, missing source metas, unexpected hosts or environment markers (`:8443`, `localhost`, …),
-secrets (hidden inputs, CSRF, session ids), real values, and any text quoted between «…» that does
-not exist in the app's translations (obsolete or misquoted strings). It warns when a mockup has no
-`figcap`, the share URL is missing, the embedded navigation, staged or viewer script differs from its
-source (an outdated copy: replace it with the current one), or the share URL is a document viewer
-one (`/d/<doc_id>/view`) without its adapter.
-
-Then serve the manual, inject `scripts/check-rendered.js` and run `await __umCheckRendered()` at
-1280 px and at 390 px (inside an iframe viewer: `__umCheckRendered(iframe.contentWindow)`). It must return
-`ok: true`: every capture rendered, none cut, every anchored pin next to its element, inside the
-capture and within 24 px of what the reader sees in it (a pin on a wide cell fails: anchor it to the
-icon, text or button inside). Also look at each pin: it must read as pointing at its element.
-In a staged manual its `stages` list must be empty: shown sections match the chosen stage, print
-shows everything and restores the stage, no horizontal scroll, menu and map off the content, pill in
-the bottom left corner. Check also, in the published viewer, the items of DESIGN.md "Validación de la
-variante por etapas" that a local page cannot prove (viewer URL, copy, reload, Back/Forward).
-
-Cross-check against the code what the scripts cannot see:
-
-- Every permission flag the code checks appears in **Permisos y prerrequisitos**, with its exact
-  identifier and everything it enables, and no other section repeats what a permission enables.
-- Every visible label, notice and error text appears in the prose or a table, and every one of them
-  exists in the code (no obsolete strings).
-- Every conditional render, redirect and guard maps to a rule in the doc.
-- Every limit, format and timer matches the constant in the code.
-- No fabricated behavior — only what the code actually does, confirmed on the running app.
-
-Fix the HTML before reporting done.
+Before reporting done, run `check-manual.mjs` and `__umCheckRendered()` and cross-check the manual
+against the code as described in [references/verification.md](references/verification.md). Fix the
+HTML before reporting done.
 
 ---
 

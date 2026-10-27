@@ -285,9 +285,12 @@ skills (`plugins/golfo-kit/tools/skill-coverage/`) sobre repos git temporales; u
 de las devDependencies para el análisis por símbolos.
 `pnpm run test:user-manual` corre con `node --test` las suites de `user-manual`: el contrato CLI de
 `check-manual.mjs` y `build-manual.mjs` (sin dependencias) y la prueba de navegador de la
-lectura por etapas y del adaptador de visor. Esta última necesita Playwright con Chromium y, sin él,
-se marca como omitida: apuntá `PLAYWRIGHT_MODULE` a un paquete `playwright` o `playwright-core`
-instalado y, si su Chromium no está descargado, `PLAYWRIGHT_CHROMIUM_EXECUTABLE` a un binario.
+lectura por etapas y del adaptador de visor. Esta última usa `playwright-core` (devDependency) y
+necesita su Chromium: `pnpm exec playwright-core install chromium` lo descarga, o
+`PLAYWRIGHT_CHROMIUM_EXECUTABLE` apunta a un binario ya instalado. En local, sin Playwright, se marca
+como omitida; en la CI (`CI` definido) es obligatoria y falla si no puede correr.
+`skill-eval-runner/install.sh` instala `run-evals` como symlink al script del repo o, donde no hay
+symlinks reales (Git Bash en Windows), como un lanzador que lo ejecuta: nunca una copia que quede vieja.
 
 Cada test tiene un timeout de 30 segundos: `test:shell` usa `BATS_TEST_TIMEOUT=30` y las suites
 bash de `review-fix-loop` y `sibling-worktree` corren cada test bajo `timeout` (`gtimeout` en macOS).

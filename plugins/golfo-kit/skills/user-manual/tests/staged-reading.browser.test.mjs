@@ -2,10 +2,11 @@
  * Staged reading and viewer links in a real browser (DESIGN.md, "Lectura por etapas" and "Copiar enlace a
  * una sección"), on the example manual built from the template and the DESIGN.md boilerplate.
  *
- * Needs Playwright with a Chromium build. Resolution order: PLAYWRIGHT_MODULE (path or package name), then
- * the packages playwright and playwright-core. PLAYWRIGHT_CHROMIUM_EXECUTABLE points to a Chromium binary
- * when the one bundled with that Playwright version is not installed. Without Playwright the suite is skipped
- * and says so. The local viewer does not certify a published viewer: that check is manual.
+ * Needs Playwright with a Chromium build: playwright-core is a devDependency, and CI installs Chromium with
+ * `pnpm exec playwright-core install --with-deps chromium`. Resolution order: PLAYWRIGHT_MODULE (path or package
+ * name), then the packages playwright and playwright-core. PLAYWRIGHT_CHROMIUM_EXECUTABLE points to a Chromium
+ * binary when the one of that Playwright version is not installed. Without Playwright the suite is skipped
+ * locally and fails in CI. The local viewer does not certify a published viewer: that check is manual.
  */
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
@@ -34,7 +35,10 @@ const loadPlaywright = () => {
 	return null;
 };
 const playwright = loadPlaywright();
-const skipReason = playwright ? false : `Playwright not found (tried ${PLAYWRIGHT_CANDIDATES.join(', ')}); set PLAYWRIGHT_MODULE to run the staged reading browser tests`;
+const missingPlaywright = `Playwright not found (tried ${PLAYWRIGHT_CANDIDATES.join(', ')}); run pnpm install or set PLAYWRIGHT_MODULE to run the staged reading browser tests`;
+// In CI the browser suite is mandatory: a silent skip would hide navigation regressions.
+if (!playwright && process.env.CI) throw new Error(`staged-reading.browser.test.mjs: ${missingPlaywright}`);
+const skipReason = playwright ? false : missingPlaywright;
 
 describe('staged reading in a real browser', { skip: skipReason, timeout: SUITE_TIMEOUT_MS }, () => {
 	let browser;

@@ -15,6 +15,10 @@ const SCRIPTS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..'
 const CHECK_MANUAL = path.join(SCRIPTS_DIR, 'check-manual.mjs');
 const BUILD = path.join(SCRIPTS_DIR, 'build-manual.mjs');
 const NAVIGATION_SCRIPT = path.join(SCRIPTS_DIR, '..', 'assets', 'boilerplate', 'navigation.js');
+const LANGUAGE_SCRIPT = path.join(SCRIPTS_DIR, '..', 'assets', 'boilerplate', 'language.js');
+const DOCUMENT_LINKS_SCRIPT = path.join(SCRIPTS_DIR, '..', 'assets', 'boilerplate', 'document-links.js');
+const LANGUAGE_MARKER = '// Idioma: el documento se escribe en español';
+const DOCUMENT_LINKS_MARKER = '// Navegación entre documentos Heritage';
 const VIEWER_ADAPTER_WARNING = 'the document viewer adapter is missing';
 
 let workspace;
@@ -160,6 +164,26 @@ describe('build-manual CLI', () => {
 		assert.equal(run(BUILD, file).status, 0);
 		assert.equal(fs.readFileSync(file, 'utf8'), linear);
 		assert.doesNotMatch(checkManual('linear-refreshed.html', fs.readFileSync(file, 'utf8')).output, /navigation: the script differs/);
+	});
+
+	test('fills the language and document-link scripts from their marker lines and keeps them current', () => {
+		const withMarkers = linear.replace('</body>', `<script>\n${LANGUAGE_MARKER}\n</script>\n<script>\n${DOCUMENT_LINKS_MARKER}\n</script>\n</body>`);
+		const file = writeManual('marker-scripts.html', withMarkers);
+		assert.equal(run(BUILD, file).status, 0);
+		const filled = fs.readFileSync(file, 'utf8');
+		assert.ok(filled.includes(fs.readFileSync(LANGUAGE_SCRIPT, 'utf8').trim()));
+		assert.ok(filled.includes(fs.readFileSync(DOCUMENT_LINKS_SCRIPT, 'utf8').trim()));
+		// A second refresh changes nothing, and a manual without those scripts does not get them.
+		assert.equal(run(BUILD, file).status, 0);
+		assert.equal(fs.readFileSync(file, 'utf8'), filled);
+		assert.doesNotMatch(linear, new RegExp(LANGUAGE_MARKER));
+	});
+
+	test('warns when an embedded document-link script is outdated', () => {
+		const link = '<a class="menu-back" href="https://docs.example.com/d/menu/view" data-document-link>Ir al menú</a>';
+		const html = linear.replace('<body>\n', `<body>\n${link}\n`).replace('</body>', `<script>\n${fs.readFileSync(DOCUMENT_LINKS_SCRIPT, 'utf8').trim()} // old copy\n</script>\n</body>`);
+		const result = checkManual('document-links-outdated.html', html);
+		assert.match(result.output, /warn {2}document links: the script differs from assets\/boilerplate\/document-links\.js/);
 	});
 
 	test('writes the starting boilerplate with the base styles and the navigation script embedded', () => {

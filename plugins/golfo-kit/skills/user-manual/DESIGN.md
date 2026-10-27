@@ -1314,7 +1314,8 @@ integración. Declarar `heritage:share-url` no implementa por sí solo un adapta
 ### Selector de idioma
 
 Solo en documentos que tienen versión en portugués: un documento **solo en español no lleva
-selector**. Cuando la tiene, puede leerse en **español (por defecto) y portugués**. El lector elige con una píldora
+selector**. El script de idioma vive en `assets/boilerplate/language.js`: el documento lleva la línea
+marcador del snippet y `build-manual.mjs` la completa y la actualiza. Cuando la tiene, puede leerse en **español (por defecto) y portugués**. El lector elige con una píldora
 segmentada **fija arriba a la derecha** (`Español · Português`), visible en todo el recorrido como el
 botón "Inicio" y la píldora de sección; la opción activa lleva fondo `surface-card`, borde `1.5px` `link`
 y peso 600, y las demás quedan en `muted`. En pantallas angostas se achica y se acerca al borde
@@ -1395,7 +1396,8 @@ nunca una grilla dibujada a mano. El lector reconoce la pantalla que ya usa y to
 ### Navegación entre documentos
 
 El menú y los manuales se enlazan con `a[data-document-link]` y el script "Navegación entre
-documentos" del boilerplate:
+documentos" (`assets/boilerplate/document-links.js`; en el documento basta con la línea marcador del
+snippet y `build-manual.mjs` la completa):
 
 - **Abre en la página entera**, también dentro de un visor embebido: el sandbox de su iframe puede no permitir navegar la
   página de arriba (ni con `target="_top"`), así que el script crea el link en el documento del visor,
@@ -1728,11 +1730,14 @@ scripts y las pruebas.
 | `assets/boilerplate/skeleton.html` | Esqueleto del documento: `<head>` con fuentes, `doc-header`, una sección de ejemplo, `doc-footer`, botón «Inicio», mapa, píldora, hoja del índice y el script que abre los accordions al imprimir. |
 | `assets/boilerplate/base.css` | CSS de **todos** los componentes, con los tokens como variables en `:root`; los que no se usen pueden quedarse. |
 | `assets/boilerplate/navigation.js` | Script de navegación e interacciones (índice, mapa, píldora, «Inicio», atajos, copiar enlace, glosario, puntos sobre capturas, comparación antes/después). |
+| `assets/boilerplate/language.js` | Script de idioma (selector es/pt con la tabla `heritage-translations`); solo en documentos con versión en portugués. |
+| `assets/boilerplate/document-links.js` | Script de navegación entre documentos (menú de manuales ↔ manuales, «Ir al menú»). |
 
 - `node scripts/build-manual.mjs --boilerplate <manual.html>` escribe el esqueleto con el CSS y el
   script incrustados: es el punto de partida de un documento nuevo.
-- `node scripts/build-manual.mjs <manual.html>` actualiza un manual existente: reemplaza su script
-  de navegación por el actual y, según corresponda, los assets de [lectura por etapas](#lectura-por-etapas)
+- `node scripts/build-manual.mjs <manual.html>` actualiza un manual existente: reemplaza sus scripts
+  de navegación, idioma y navegación entre documentos (los que tenga; una línea marcador se completa)
+  por los actuales y, según corresponda, los assets de [lectura por etapas](#lectura-por-etapas)
   y del adaptador de visor. `check-manual.mjs` avisa cuando la copia de un manual quedó vieja.
 - El `:root` de `base.css` declara la paleta y los tokens de motion del front matter
   (`check-design-tokens.sh`); sus breakpoints, espaciados y medidas de layout salen de los tokens
@@ -1759,102 +1764,7 @@ otras skills (por ejemplo `user-manual`) dependen de ellos.
   "captureTemplates": {}}}
 </script>
 <script>
-// Idioma: el documento se escribe en español y se traduce en la misma página con la tabla de
-// heritage-translations (textos y atributos), sin duplicar el markup. Siempre abre en español;
-// en portugués solo si la URL lo pide (?lang=pt, la propia o la del visor). No se guarda ninguna preferencia.
-(function () {
-  var source = document.getElementById('heritage-translations');
-  var tables = source ? JSON.parse(source.textContent) : {};
-  var ATTRIBUTES = ['aria-label', 'title', 'alt', 'placeholder', 'data-tooltip', 'data-target', 'data-target-text'];
-  // Nunca se traducen: código, estilos, scripts y el selector (cada opción ya está en su idioma).
-  var SKIPPED = 'script, style, code, template, .lang-switch';
-  var spanishLang = document.documentElement.lang || 'es';
-  var spanishTitle = document.title;
-  // Español de cada texto o atributo traducido, para volver; lo que no está en la tabla no se toca.
-  var spanishTexts = new WeakMap();
-  var spanishAttributes = new WeakMap();
-  var current = 'es';
-  function lookup(dictionary, value) {
-    var key = value.trim();
-    if (!dictionary || !key || !Object.prototype.hasOwnProperty.call(dictionary, key)) return null;
-    return value.replace(key, function () { return dictionary[key]; });
-  }
-  // Portugués → español, para lo que se copió ya traducido (la hoja del índice copia el índice al iniciar).
-  var reverseTables = {};
-  function reverseOf(kind) {
-    if (!reverseTables[kind]) {
-      reverseTables[kind] = {};
-      Object.keys(tables).forEach(function (language) {
-        var dictionary = tables[language][kind] || {};
-        Object.keys(dictionary).forEach(function (spanish) {
-          if (!Object.prototype.hasOwnProperty.call(reverseTables[kind], dictionary[spanish])) reverseTables[kind][dictionary[spanish]] = spanish;
-        });
-      });
-    }
-    return reverseTables[kind];
-  }
-  function translate(root, kind) {
-    var dictionary = current === 'es' ? reverseOf(kind) : (tables[current] || {})[kind];
-    var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    for (var node = walker.nextNode(); node; node = walker.nextNode()) {
-      if (node.parentElement && node.parentElement.closest(SKIPPED)) continue;
-      if (spanishTexts.has(node)) {
-        // Ya traducido: vuelve a su español y, si el idioma nuevo no es español, se traduce de nuevo desde ahí.
-        node.nodeValue = spanishTexts.get(node);
-        spanishTexts.delete(node);
-      }
-      var translated = lookup(dictionary, node.nodeValue);
-      if (translated === null) continue;
-      if (current !== 'es') spanishTexts.set(node, node.nodeValue);
-      node.nodeValue = translated;
-    }
-    root.querySelectorAll('[' + ATTRIBUTES.join('],[') + ']').forEach(function (element) {
-      if (element.closest(SKIPPED)) return;
-      var saved = spanishAttributes.get(element) || {};
-      ATTRIBUTES.forEach(function (name) {
-        if (!element.hasAttribute(name)) return;
-        if (Object.prototype.hasOwnProperty.call(saved, name)) {
-          element.setAttribute(name, saved[name]);
-          delete saved[name];
-        }
-        var value = element.getAttribute(name);
-        var translated = lookup(dictionary, value);
-        if (translated === null) return;
-        if (current !== 'es') saved[name] = value;
-        element.setAttribute(name, translated);
-      });
-      spanishAttributes.set(element, saved);
-    });
-  }
-  function set(language) {
-    current = tables[language] ? language : 'es';
-    translate(document.body, 'document');
-    var table = tables[current];
-    document.documentElement.lang = table ? table.htmlLang || current : spanishLang;
-    document.title = table && table.title ? table.title : spanishTitle;
-    document.documentElement.setAttribute('data-language', current);
-    document.dispatchEvent(new CustomEvent('heritage:language-change', { detail: { language: current } }));
-  }
-  window.HeritageLanguage = {
-    get current() { return current; },
-    set: set,
-    // Las capturas se traducen al renderizarse (embed-app-frames.mjs) con la parte "captures".
-    translate: translate,
-    captureTemplate: function (name) {
-      var table = tables[current];
-      return (table && table.captureTemplates && table.captureTemplates[name]) || null;
-    }
-  };
-  // Dentro de un visor con iframe cuenta también la URL del visor: carga el iframe sin su ?lang.
-  function requestedLanguage() {
-    var own = new URLSearchParams(location.search).get('lang');
-    if (own) return own;
-    try { return window.parent !== window ? new URLSearchParams(window.parent.location.search).get('lang') : null; } catch (error) { return null; }
-  }
-  var requested = requestedLanguage();
-  if (requested && tables[requested]) set(requested);
-  else document.documentElement.setAttribute('data-language', 'es');
-})();
+// Idioma: el documento se escribe en español — contenido en assets/boilerplate/language.js; build-manual.mjs lo completa.
 </script>
 <!-- …y después el script de navegación -->
 
@@ -1879,147 +1789,7 @@ otras skills (por ejemplo `user-manual`) dependen de ellos.
 <!-- Script de navegación entre documentos: después del script de idioma (si lo hay), en el menú y en
      cada documento con "Ir al menú". Es independiente del script de navegación del documento. -->
 <script>
-// Navegación entre documentos Heritage: links a otros documentos publicados (menú de manuales ↔ manuales)
-// que abren en la página entera también dentro de un visor con iframe, llevan el idioma que se lee,
-// funden la salida y la llegada y, en un menú, ubican cada link sobre su tarjeta de la captura.
-(function () {
-  var root = document.documentElement;
-  var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
-  // Lo que dura el desvanecimiento de salida del CSS (motion.duration-base).
-  var LEAVE_MS = 200;
-  function viewerDocument() {
-    try { return window.parent !== window ? window.parent.document : null; } catch (error) { return null; }
-  }
-  // El idioma viaja en la URL de destino (?lang=pt); el español no lleva parámetro.
-  function withLanguage(href) {
-    var language = window.HeritageLanguage ? window.HeritageLanguage.current : 'es';
-    var url = new URL(href, location.href);
-    if (language !== 'es') url.searchParams.set('lang', language);
-    else url.searchParams.delete('lang');
-    return url.href;
-  }
-  // El sandbox de un visor puede no dejar que el iframe navegue la página de arriba (ni con target="_top"); un link
-  // creado en el documento del visor, que es del mismo origen, sí la navega.
-  function go(href) {
-    var viewer = viewerDocument();
-    if (!viewer) { location.href = href; return; }
-    var link = viewer.createElement('a');
-    link.href = href;
-    link.hidden = true;
-    viewer.body.appendChild(link);
-    link.click();
-    link.remove();
-  }
-  document.addEventListener('click', function (event) {
-    var link = event.target.closest ? event.target.closest('a[data-document-link]') : null;
-    if (!link) return;
-    if (link.getAttribute('aria-disabled') === 'true') { event.preventDefault(); return; }
-    var href = withLanguage(link.href);
-    // Con modificadores (pestaña nueva) decide el navegador, con el idioma ya puesto en el link.
-    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) { link.href = href; return; }
-    event.preventDefault();
-    if (reduceMotion.matches) { go(href); return; }
-    root.classList.add('is-leaving');
-    setTimeout(function () { go(href); }, LEAVE_MS);
-  });
-  // Al volver con "atrás" (bfcache) el documento no queda desvanecido.
-  window.addEventListener('pageshow', function () { root.classList.remove('is-leaving'); });
-  // Llegada desde otro documento del mismo visor: aparece con un fundido (una recarga no lo repite).
-  try {
-    var page = viewerDocument() || document;
-    var from = page.referrer ? new URL(page.referrer) : null;
-    if (from && from.origin === page.location.origin && from.pathname !== page.location.pathname && !reduceMotion.matches) {
-      root.classList.add('is-arriving');
-      document.body.addEventListener('animationend', function done(event) {
-        if (event.target !== document.body) return;
-        root.classList.remove('is-arriving');
-        document.body.removeEventListener('animationend', done);
-      });
-    }
-  } catch (error) { /* referrer ilegible: llega sin fundido */ }
-  // Documento de una sola pantalla (menú de manuales), sin el script de navegación del documento: el
-  // selector de idioma cambia en el lugar, con el mismo fundido; no hay sección a la que volver.
-  var languageSwitch = document.querySelector('.lang-switch');
-  if (languageSwitch && window.HeritageLanguage && !document.querySelector('.section-rail')) {
-    var markChosen = function () {
-      languageSwitch.querySelectorAll('[data-lang]').forEach(function (option) {
-        option.setAttribute('aria-checked', String(option.getAttribute('data-lang') === window.HeritageLanguage.current));
-      });
-    };
-    markChosen();
-    languageSwitch.querySelectorAll('[data-lang]').forEach(function (option) {
-      option.addEventListener('click', function () {
-        var chosen = option.getAttribute('data-lang');
-        if (chosen === window.HeritageLanguage.current) return;
-        var change = function () {
-          window.HeritageLanguage.set(chosen);
-          markChosen();
-          var query = new URLSearchParams(location.search);
-          if (chosen === 'es') query.delete('lang');
-          else query.set('lang', chosen);
-          var search = query.toString() ? '?' + query.toString() : '';
-          history.replaceState(history.state, '', location.pathname + search + location.hash);
-        };
-        if (document.startViewTransition && !reduceMotion.matches) document.startViewTransition(change);
-        else change();
-      });
-    });
-  }
-  // Menú: la tarjeta de la captura crece al pasar el puntero o enfocar su link (1.05: entre tarjetas hay
-  // pocos píxeles). La regla vive dentro de cada captura, porque la tarjeta está en su shadow root.
-  // Tarjeta sin manual: su ícono (imagen o dibujo) en gris y al 45%, para que se lea como no disponible.
-  var CARD_ACTIVE_RULES = '[data-menu-card]{transform-origin:center;}[data-menu-card][data-menu-active]{scale:1.05;}'
-    + '[data-menu-card][data-menu-pending] :is(img,svg,picture,canvas){filter:grayscale(1);opacity:0.45;}'
-    + '@media (prefers-reduced-motion:no-preference){[data-menu-card]{transition:scale var(--motion-duration-fast) var(--motion-easing-standard);}}';
-  function setActive(link, active) {
-    if (!link.__menuCard || link.getAttribute('aria-disabled') === 'true') return;
-    link.classList.toggle('is-active', active);
-    if (active) link.__menuCard.setAttribute('data-menu-active', '');
-    else link.__menuCard.removeAttribute('data-menu-active');
-  }
-  document.querySelectorAll('.menu-link').forEach(function (link) {
-    link.addEventListener('pointerenter', function () { setActive(link, true); });
-    link.addEventListener('pointerleave', function () { if (document.activeElement !== link) setActive(link, false); });
-    link.addEventListener('focus', function () { setActive(link, true); });
-    link.addEventListener('blur', function () { setActive(link, false); });
-  });
-  // Cada .menu-link[data-target] cubre su tarjeta después de cada ajuste de la captura
-  // (evento heritage:frame-fit del runtime de capturas), también al cambiar de idioma.
-  document.addEventListener('heritage:frame-fit', function (event) {
-    var host = event.target;
-    var stage = host.closest && host.closest('.menu-stage');
-    if (!stage || !host.shadowRoot) return;
-    if (!host.shadowRoot.querySelector('style[data-menu-rules]')) {
-      var rules = document.createElement('style');
-      rules.setAttribute('data-menu-rules', '');
-      rules.textContent = CARD_ACTIVE_RULES;
-      host.shadowRoot.appendChild(rules);
-    }
-    var stageBox = stage.getBoundingClientRect();
-    stage.querySelectorAll('.menu-link[data-target]').forEach(function (link) {
-      var text = link.getAttribute('data-target-text');
-      var target = Array.prototype.filter.call(host.shadowRoot.querySelectorAll(link.getAttribute('data-target')), function (element) {
-        return !text || element.textContent.trim() === text;
-      })[0];
-      link.hidden = !target;
-      if (!target) return;
-      // Al cambiar de idioma la captura se vuelve a llenar: la tarjeta es otro nodo y hereda el estado.
-      if (link.__menuCard && link.__menuCard !== target && link.__menuCard.hasAttribute('data-menu-active')) target.setAttribute('data-menu-active', '');
-      link.__menuCard = target;
-      target.setAttribute('data-menu-card', '');
-      if (link.getAttribute('aria-disabled') === 'true') target.setAttribute('data-menu-pending', '');
-      // Medida sin la escala del hover, para que el link cubra la tarjeta en reposo.
-      var active = target.hasAttribute('data-menu-active');
-      if (active) target.removeAttribute('data-menu-active');
-      var box = target.getBoundingClientRect();
-      if (active) target.setAttribute('data-menu-active', '');
-      link.style.left = (box.left - stageBox.left) + 'px';
-      link.style.top = (box.top - stageBox.top) + 'px';
-      link.style.width = box.width + 'px';
-      link.style.height = box.height + 'px';
-    });
-  });
-})();
+// Navegación entre documentos Heritage — contenido en assets/boilerplate/document-links.js; build-manual.mjs lo completa.
 </script>
 
 <!-- Índice (TOC): después del doc-header, solo con 5+ secciones -->

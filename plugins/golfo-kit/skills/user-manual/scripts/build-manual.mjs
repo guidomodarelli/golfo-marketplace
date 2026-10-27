@@ -10,7 +10,9 @@
  *
  *   --boilerplate  writes assets/boilerplate/skeleton.html with base.css and navigation.js embedded: the
  *                  starting point of a new document.
- *   <manual.html>  refreshes an existing manual: replaces its navigation script with the current one and,
+ *   <manual.html>  refreshes an existing manual: replaces its navigation, language and document-link scripts
+ *                  (the ones it has; a script holding just its marker line gets filled) with the current
+ *                  assets and,
  *                  with <meta name="heritage:reading-mode" content="stages">, embeds the staged CSS, contract
  *                  and script. The blocks are replaced on every run. Written in place unless --out is given.
  *   --viewer document  also embeds the document viewer adapter (public URL /d/<doc_id>/view?href=<id>,
@@ -59,13 +61,25 @@ export const readBoilerplate = () => {
 	return replaceLiteral(replaceLiteral(skeleton, BASE_STYLE_PLACEHOLDER, readText(BASE_STYLE_PATH).trim()), NAVIGATION_SCRIPT_PLACEHOLDER, readText(NAVIGATION_SCRIPT_PATH).trim());
 };
 
-/** Replaces the manual's navigation script (from its marker to </script>) with the current asset. */
-const refreshNavigation = (html) => {
-	const start = html.indexOf(NAVIGATION_SCRIPT_MARKER);
-	if (start === -1) throw new Error('build-manual: the manual has no Heritage navigation script; start from node build-manual.mjs --boilerplate');
-	const end = html.indexOf('</script>', start);
-	return `${html.slice(0, start)}${readText(NAVIGATION_SCRIPT_PATH).trim()}\n${html.slice(end)}`;
-};
+// Scripts a manual carries inline, found by the marker on their first line. Navigation is required; the
+// language and document-link scripts only when the manual uses them. A script holding just its marker line
+// (as in the DESIGN.md snippets) gets filled with the asset.
+export const MANUAL_SCRIPTS = [
+	{ name: 'navigation', marker: NAVIGATION_SCRIPT_MARKER, path: NAVIGATION_SCRIPT_PATH, required: true },
+	{ name: 'language', marker: '// Idioma: el documento se escribe en español', path: path.join(BOILERPLATE_DIR, 'language.js'), required: false },
+	{ name: 'document links', marker: '// Navegación entre documentos Heritage', path: path.join(BOILERPLATE_DIR, 'document-links.js'), required: false },
+];
+
+/** Replaces each script the manual carries (from its marker to </script>) with the current asset. */
+const refreshScripts = (html) => MANUAL_SCRIPTS.reduce((output, script) => {
+	const start = output.indexOf(script.marker);
+	if (start === -1) {
+		if (script.required) throw new Error(`build-manual: the manual has no Heritage ${script.name} script; start from node build-manual.mjs --boilerplate`);
+		return output;
+	}
+	const end = output.indexOf('</script>', start);
+	return `${output.slice(0, start)}${readText(script.path).trim()}\n${output.slice(end)}`;
+}, html);
 
 /** The viewer whose adapter is already embedded, so a refresh without --viewer keeps it. */
 const embeddedViewer = (html) => {
@@ -80,7 +94,7 @@ export const refreshManual = (html, { viewer: requestedViewer = null } = {}) => 
 	const viewer = requestedViewer || embeddedViewer(html);
 	const staged = STAGED_MODE_META.test(html);
 	if (viewer && !VIEWER_ADAPTER_PATHS[viewer]) throw new Error(`build-manual: unknown viewer "${viewer}" (known: ${Object.keys(VIEWER_ADAPTER_PATHS).join(', ')})`);
-	let output = refreshNavigation([STAGED_STYLE_BLOCK, STAGED_SCRIPT_BLOCK, VIEWER_BLOCK].reduce(removeBlock, html));
+	let output = refreshScripts([STAGED_STYLE_BLOCK, STAGED_SCRIPT_BLOCK, VIEWER_BLOCK].reduce(removeBlock, html));
 	const navigationEnd = output.indexOf('</script>', output.indexOf(NAVIGATION_SCRIPT_MARKER)) + '</script>'.length;
 	// After the navigation script: the adapter first, so the staged script reads the viewer's initial target.
 	const scripts = [

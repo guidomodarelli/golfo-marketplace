@@ -14,8 +14,6 @@
  *                   table's app texts must hold the catalogs' msgstr.
  *   --forbidden     real values seen while capturing (names, usernames, user ids). Zero hits allowed.
  *   --allow-host    extra hosts allowed in the file besides fonts, the app CDN and the share URL.
- *   --design        DESIGN.md to compare the language and document-link snippets with (default: the skill's
- *                   DESIGN.md). The navigation script is compared with assets/boilerplate/navigation.js.
  *
  * A menu of manuals (<meta name="heritage:kind" content="menu">, DESIGN.md "Menú de manuales") is one
  * screen: no TOC, section map, standard order or audience; it is checked for its capture and its links.
@@ -34,7 +32,6 @@ import { fileURLToPath } from 'node:url';
 
 const DEFAULT_ALLOWED_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com', 'www.w3.org'];
 const SKILL_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const DEFAULT_DESIGN_PATH = path.join(SKILL_DIR, 'DESIGN.md');
 const STAGE_CONTRACT_PATH = path.join(SKILL_DIR, 'assets', 'staged-reading', 'stage-contract.js');
 // Same rules as the staged script in the browser: one contract for activation and validation.
 const stageContract = createRequire(import.meta.url)(STAGE_CONTRACT_PATH);
@@ -49,6 +46,8 @@ const READING_MODES = ['linear', 'stages'];
 const STAGED_MODE = 'stages';
 const DOCUMENT_VIEW_PATH = /^\/d\/[^/]+\/view\/?$/;
 const DOCUMENT_LINKS_SCRIPT_MARKER = '// Navegación entre documentos Heritage';
+const DOCUMENT_LINKS_SCRIPT_PATH = path.join(SKILL_DIR, 'assets', 'boilerplate', 'document-links.js');
+const LANGUAGE_SCRIPT_PATH = path.join(SKILL_DIR, 'assets', 'boilerplate', 'language.js');
 const LANGUAGE_SCRIPT_MARKER = '// Idioma: el documento se escribe en español';
 const ENVIRONMENT_MARKERS = [':8443', 'localhost', '127.0.0.1'];
 const SECRET_PATTERNS = [/type=\\?"hidden\\?"/i, /_csrf/i, /csrf-token/i, /session-id/i, /authorization:/i];
@@ -57,14 +56,13 @@ const HEADER_NOISE = [/<span>Estado:/, /Capturas: [0-9-]+ · App v/];
 const SOURCE_META_NAMES = ['heritage:source-repo', 'heritage:source-ref', 'heritage:source-commit', 'heritage:source-files', 'heritage:source-commit-url'];
 
 const parseArguments = (argv) => {
-	const options = { manual: null, translations: [], translationsPt: [], forbidden: [], allowHosts: [], design: DEFAULT_DESIGN_PATH };
+	const options = { manual: null, translations: [], translationsPt: [], forbidden: [], allowHosts: [] };
 	for (let index = 0; index < argv.length; index += 1) {
 		const argument = argv[index];
 		if (argument === '--translations') options.translations.push(argv[(index += 1)]);
 		else if (argument === '--translations-pt') options.translationsPt.push(argv[(index += 1)]);
 		else if (argument === '--forbidden') options.forbidden.push(...argv[(index += 1)].split(',').map((value) => value.trim()).filter(Boolean));
 		else if (argument === '--allow-host') options.allowHosts.push(argv[(index += 1)]);
-		else if (argument === '--design') options.design = argv[(index += 1)];
 		else if (!options.manual) options.manual = argument;
 		else throw new Error(`check-manual: unexpected argument ${argument}`);
 	}
@@ -394,8 +392,7 @@ const checkDocument = (html, options, label, source) => {
 		return start === -1 ? null : text.slice(start, text.indexOf('</script>', start) === -1 ? text.length : text.indexOf('</script>', start)).replace(/\r\n/g, '\n').trim();
 	};
 	const readSource = (file) => (fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null);
-	const designSource = readSource(options.design);
-	const compareScript = (marker, name, referenceSource = designSource, referenceName = 'its DESIGN.md snippet') => {
+	const compareScript = (marker, name, referenceSource, referenceName) => {
 		const embedded = extractScript(body, marker);
 		const current = referenceSource && extractScript(referenceSource, marker);
 		if (embedded && current && embedded !== current) warnings.push(`${name}: the script differs from ${referenceName} (outdated); copy the current one`);
@@ -419,11 +416,11 @@ const checkDocument = (html, options, label, source) => {
 	const shareUrl = (() => { try { return new URL(metaContent(html, 'heritage:share-url')); } catch (invalidUrlError) { return null; } })();
 	const hasViewerAdapter = compareScript(DOCUMENT_VIEWER_ADAPTER_MARKER, 'viewer adapter', readSource(DOCUMENT_VIEWER_ADAPTER_PATH), 'assets/viewer-adapters/document-viewer-adapter.js');
 	if (shareUrl && DOCUMENT_VIEW_PATH.test(shareUrl.pathname) && !hasViewerAdapter) warnings.push('share-url: it is a document viewer URL (/d/<doc_id>/view) but the document viewer adapter is missing; copied links and the viewer URL keep the generic #<id> format (build-manual.mjs --viewer document)');
-	if (/id="heritage-translations"/.test(html) && !compareScript(LANGUAGE_SCRIPT_MARKER, 'language')) errors.push('language: the language script (HeritageLanguage) is missing');
+	if (/id="heritage-translations"/.test(html) && !compareScript(LANGUAGE_SCRIPT_MARKER, 'language', readSource(LANGUAGE_SCRIPT_PATH), 'assets/boilerplate/language.js (refresh it with scripts/build-manual.mjs)')) errors.push('language: the language script (HeritageLanguage) is missing');
 
 	// Links to other published documents (menu ↔ manuals, DESIGN.md "Navegación entre documentos").
 	const documentLinks = [...visible.matchAll(/<a\b[^>]*data-document-link[^>]*>/g)].map((match) => match[0]);
-	if (documentLinks.length && !compareScript(DOCUMENT_LINKS_SCRIPT_MARKER, 'document links')) errors.push('document links: data-document-link without the "Navegación entre documentos" script (links would not leave the viewer iframe)');
+	if (documentLinks.length && !compareScript(DOCUMENT_LINKS_SCRIPT_MARKER, 'document links', readSource(DOCUMENT_LINKS_SCRIPT_PATH), 'assets/boilerplate/document-links.js (refresh it with scripts/build-manual.mjs)')) errors.push('document links: data-document-link without the "Navegación entre documentos" script (links would not leave the viewer iframe)');
 	for (const link of [...visible.matchAll(/<a class="menu-back"[^>]*>/g)].map((match) => match[0])) {
 		if (!/href="https:\/\/[^"]+"/.test(link)) errors.push('menu-back: "Ir al menú" needs the public URL of the menu');
 		if (!link.includes('data-document-link')) errors.push('menu-back: "Ir al menú" needs data-document-link');
