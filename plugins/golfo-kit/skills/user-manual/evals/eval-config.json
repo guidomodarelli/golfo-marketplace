@@ -183,7 +183,8 @@
             "no.*tocar.*parent",
             "no.*manipular.*parent",
             "parent.*no son accesibles",
-            "parent.*inaccesible"
+            "parent.*inaccesible",
+            "descartad.*parent"
           ],
           "description": "No prescribe acceso cross-origin al parent"
         },
@@ -306,6 +307,46 @@
             "una sola recap"
           ],
           "description": "Mantiene la recapitulación por etapa"
+        }
+      ]
+    },
+    {
+      "id": "start-manual-from-boilerplate-assets",
+      "description": "Arranca un manual nuevo desde los assets del boilerplate en vez de copiar CSS o JS a mano, y sabe actualizar uno viejo.",
+      "input": "Usando user-manual: vas a escribir un manual nuevo para el flujo de alta de proveedores y además tenemos un manual viejo cuyo script de navegación check-manual.mjs marca como desactualizado. No ejecutes herramientas salvo lectura de SKILL.md y DESIGN.md: explicá con qué comando arrancás el HTML nuevo, cómo actualizás el viejo y qué validás después.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "build-manual.mjs",
+          "description": "Usa el script que arma y actualiza manuales"
+        },
+        {
+          "type": "contains",
+          "value": "build-manual.mjs --boilerplate",
+          "description": "Arranca el documento nuevo con --boilerplate"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "assets/boilerplate",
+            "navigation.js",
+            "base.css"
+          ],
+          "description": "Sabe que el boilerplate vive en assets"
+        },
+        {
+          "type": "contains",
+          "value": "check-manual",
+          "description": "Valida el resultado con check-manual.mjs"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "copiá el bloque",
+            "copiar el bloque html",
+            "pegá el boilerplate"
+          ],
+          "description": "No propone copiar el boilerplate a mano desde DESIGN.md"
         }
       ]
     }

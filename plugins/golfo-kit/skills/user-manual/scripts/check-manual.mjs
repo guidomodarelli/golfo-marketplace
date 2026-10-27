@@ -14,14 +14,15 @@
  *                   table's app texts must hold the catalogs' msgstr.
  *   --forbidden     real values seen while capturing (names, usernames, user ids). Zero hits allowed.
  *   --allow-host    extra hosts allowed in the file besides fonts, the app CDN and the share URL.
- *   --design        DESIGN.md to compare the navigation script with (default: the skill's DESIGN.md).
+ *   --design        DESIGN.md to compare the language and document-link snippets with (default: the skill's
+ *                   DESIGN.md). The navigation script is compared with assets/boilerplate/navigation.js.
  *
  * A menu of manuals (<meta name="heritage:kind" content="menu">, DESIGN.md "Menú de manuales") is one
  * screen: no TOC, section map, standard order or audience; it is checked for its capture and its links.
  *
  * A staged manual (<meta name="heritage:reading-mode" content="stages">, DESIGN.md "Lectura por etapas") has
  * no top TOC (the pill sheet is the complete index); its stages are checked instead: intro, contiguous
- * sections and recap with three key concepts, plus the embedded staged script (embed-staged-reading.mjs).
+ * sections and recap with three key concepts, plus the embedded staged script (build-manual.mjs).
  *
  * Exit code: 0 when there are no errors (warnings do not fail), 1 with errors, 2 on bad usage.
  * The rendered checks (frame fit, pin distance) run in the browser with check-rendered.js.
@@ -40,6 +41,7 @@ const stageContract = createRequire(import.meta.url)(STAGE_CONTRACT_PATH);
 const STAGED_SCRIPT_PATH = path.join(SKILL_DIR, 'assets', 'staged-reading', 'staged-reading.js');
 const DOCUMENT_VIEWER_ADAPTER_PATH = path.join(SKILL_DIR, 'assets', 'viewer-adapters', 'document-viewer-adapter.js');
 const NAVIGATION_SCRIPT_MARKER = '// Navegación e interacciones Heritage';
+const NAVIGATION_SCRIPT_PATH = path.join(SKILL_DIR, 'assets', 'boilerplate', 'navigation.js');
 const STAGED_SCRIPT_MARKER = '// Lectura por etapas Heritage';
 const STAGE_CONTRACT_MARKER = '// Contrato de etapas Heritage';
 const DOCUMENT_VIEWER_ADAPTER_MARKER = '// Adaptador de visor de documentos Heritage';
@@ -393,7 +395,7 @@ const checkDocument = (html, options, label, source) => {
 	};
 	const readSource = (file) => (fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null);
 	const designSource = readSource(options.design);
-	const compareScript = (marker, name, referenceSource = designSource, referenceName = 'the DESIGN.md boilerplate') => {
+	const compareScript = (marker, name, referenceSource = designSource, referenceName = 'its DESIGN.md snippet') => {
 		const embedded = extractScript(body, marker);
 		const current = referenceSource && extractScript(referenceSource, marker);
 		if (embedded && current && embedded !== current) warnings.push(`${name}: the script differs from ${referenceName} (outdated); copy the current one`);
@@ -406,9 +408,9 @@ const checkDocument = (html, options, label, source) => {
 	const isStaged = readingMode === STAGED_MODE;
 	if (isStaged) {
 		errors.push(...checkStages(visible));
-		if (!compareScript(STAGED_SCRIPT_MARKER, 'stages', readSource(STAGED_SCRIPT_PATH), 'assets/staged-reading/staged-reading.js')) errors.push('stages: the staged reading script is missing (run scripts/embed-staged-reading.mjs on the manual)');
-		if (!compareScript(STAGE_CONTRACT_MARKER, 'stage contract', readSource(STAGE_CONTRACT_PATH), 'assets/staged-reading/stage-contract.js')) errors.push('stages: the stage contract script is missing (run scripts/embed-staged-reading.mjs on the manual)');
-		if (!/\.stage-drawer\{/.test(document)) errors.push('stages: the staged reading styles are missing (run scripts/embed-staged-reading.mjs on the manual)');
+		if (!compareScript(STAGED_SCRIPT_MARKER, 'stages', readSource(STAGED_SCRIPT_PATH), 'assets/staged-reading/staged-reading.js')) errors.push('stages: the staged reading script is missing (run scripts/build-manual.mjs on the manual)');
+		if (!compareScript(STAGE_CONTRACT_MARKER, 'stage contract', readSource(STAGE_CONTRACT_PATH), 'assets/staged-reading/stage-contract.js')) errors.push('stages: the stage contract script is missing (run scripts/build-manual.mjs on the manual)');
+		if (!/\.stage-drawer\{/.test(document)) errors.push('stages: the staged reading styles are missing (run scripts/build-manual.mjs on the manual)');
 	} else if (/\sdata-stage(?:-intro|-recap)?="/.test(visible)) {
 		errors.push(`stages: stage markup without <meta name="heritage:reading-mode" content="${STAGED_MODE}"> (the stages would never show)`);
 	}
@@ -416,7 +418,7 @@ const checkDocument = (html, options, label, source) => {
 	// the generic #<id>.
 	const shareUrl = (() => { try { return new URL(metaContent(html, 'heritage:share-url')); } catch (invalidUrlError) { return null; } })();
 	const hasViewerAdapter = compareScript(DOCUMENT_VIEWER_ADAPTER_MARKER, 'viewer adapter', readSource(DOCUMENT_VIEWER_ADAPTER_PATH), 'assets/viewer-adapters/document-viewer-adapter.js');
-	if (shareUrl && DOCUMENT_VIEW_PATH.test(shareUrl.pathname) && !hasViewerAdapter) warnings.push('share-url: it is a document viewer URL (/d/<doc_id>/view) but the document viewer adapter is missing; copied links and the viewer URL keep the generic #<id> format (embed-staged-reading.mjs --viewer document)');
+	if (shareUrl && DOCUMENT_VIEW_PATH.test(shareUrl.pathname) && !hasViewerAdapter) warnings.push('share-url: it is a document viewer URL (/d/<doc_id>/view) but the document viewer adapter is missing; copied links and the viewer URL keep the generic #<id> format (build-manual.mjs --viewer document)');
 	if (/id="heritage-translations"/.test(html) && !compareScript(LANGUAGE_SCRIPT_MARKER, 'language')) errors.push('language: the language script (HeritageLanguage) is missing');
 
 	// Links to other published documents (menu ↔ manuals, DESIGN.md "Navegación entre documentos").
@@ -458,7 +460,7 @@ const checkDocument = (html, options, label, source) => {
 		for (const required of ['class="section-rail"', 'class="section-pill"', 'class="toc-sheet"', 'class="back-to-top"']) {
 			if (!visible.includes(required)) errors.push(`navigation: ${required} missing`);
 		}
-		if (!compareScript(NAVIGATION_SCRIPT_MARKER, 'navigation')) errors.push('navigation: the Heritage navigation script is missing');
+		if (!compareScript(NAVIGATION_SCRIPT_MARKER, 'navigation', readSource(NAVIGATION_SCRIPT_PATH), 'assets/boilerplate/navigation.js (refresh it with scripts/build-manual.mjs)')) errors.push('navigation: the Heritage navigation script is missing');
 	}
 
 	// Glossary terms resolve.

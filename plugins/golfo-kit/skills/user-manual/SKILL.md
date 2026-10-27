@@ -12,7 +12,7 @@ description: >
 metadata:
   tags: "context-optimized-v1.20.1"
   author: "Guido Modarelli"
-  version: "2.6.0"
+  version: "2.7.0"
 ---
 
 # User Manual Generator
@@ -327,7 +327,14 @@ Write the file to `user-guides/<feature-slug>.html` under the project root (e.g.
 `user-guides/.gitignore` exists and contains exactly `*`; create or overwrite it otherwise. When the
 manual only lives in its destination (for example a document in a hosted viewer being updated), work in `/tmp`.
 
-### HTML skeleton (copy from DESIGN.md boilerplate exactly)
+### HTML skeleton (from the skill assets)
+
+Start every new manual with `node scripts/build-manual.mjs --boilerplate <manual.html>`: it writes
+`assets/boilerplate/skeleton.html` with `base.css` and `navigation.js` embedded, the same files the
+validators and tests use. Never retype or paste the CSS or the navigation script by hand. To bring an
+existing manual up to date (`check-manual.mjs` warns when its navigation script is outdated), run
+`node scripts/build-manual.mjs <manual.html>`.
+
 
 - Encoding `UTF-8`; viewport `width=device-width, initial-scale=1.0`.
 - Google Fonts via `<link>` + `preconnect`: `DM Sans` (400/500/600) + `DM Mono` (400/500).
@@ -389,7 +396,7 @@ DESIGN.md ("Índice (TOC)", "Mapa de secciones", "Píldora de sección", "Copiar
   index would compete with the stage menu.
 - **Stages, when chosen:** start from `assets/staged-reading/template.html` (its opening comment is the
   markup contract) and, once the manual is written on the boilerplate, run
-  `node scripts/embed-staged-reading.mjs <manual.html>` to embed the staged CSS and script (run it
+  `node scripts/build-manual.mjs <manual.html>` to embed the staged CSS and script (run it
   again after updating them). The script reuses the boilerplate navigation instead of adding its own,
   so keep the boilerplate's navigation script current. Each stage opens with its objective and a
   reading estimate the script computes (200 words per minute) and closes with three key concepts and
@@ -413,7 +420,7 @@ DESIGN.md ("Índice (TOC)", "Mapa de secciones", "Píldora de sección", "Copiar
   `<meta name="heritage:share-url" content="<public document URL>">`, the URL readers open in the
   viewer; `<share URL>#<slug>` opens the manual at that section. When the viewer has its own link
   format (`/d/<doc_id>/view?href=<slug>` around an iframe `/d/<doc_id>/raw`), embed its adapter with
-  `node scripts/embed-staged-reading.mjs <manual.html> --viewer document` (linear manuals too). It only
+  `node scripts/build-manual.mjs <manual.html> --viewer document` (linear manuals too). It only
   updates the viewer's address bar after checking same origin and same document; otherwise
   navigation stays inside the manual and the limitation is logged, so never report the external URL
   as synchronized without checking it in the published viewer.
@@ -647,7 +654,8 @@ pointed to is authorized by the request; any other document needs confirmation.
 | `scripts/embed-app-frames.mjs` | Terminal | Embeds captures into the manual (lazy shadow-root frames, fit, fixed-layer containment, responsive layout, anchored pins) |
 | `scripts/check-manual.mjs` | Terminal | Static checks of the final HTML (structure, navigation, pins, hosts, secrets, real values, quoted texts vs translations, change markers, source metas, outdated navigation script) |
 | `scripts/check-rendered.js` | Manual page / viewer tab | `__umCheckRendered(view)`: captures rendered, fit, anchored pin distance; staged contract (`stages`) |
-| `scripts/embed-staged-reading.mjs` | Terminal | Embeds `assets/staged-reading/` CSS + script and, with `--viewer document`, `assets/viewer-adapters/document-viewer-adapter.js`; `--example <out>` builds the template on the boilerplate |
+| `scripts/build-manual.mjs` | Terminal | `--boilerplate <out>` writes the starting document from `assets/boilerplate/`; `<manual.html>` refreshes its navigation script and embeds `assets/staged-reading/` (staged manuals) and, with `--viewer document`, `assets/viewer-adapters/document-viewer-adapter.js`; `--example <out>` builds the staged template |
+| `scripts/check-layout-tokens.mjs` | Terminal | Spacing, layout and breakpoint values of the asset CSS and scripts against the DESIGN.md tokens |
 | `scripts/source-trace.py` | Terminal | `record` writes the source metas and "Código:" line; `diff` lists what changed in the documented paths since then |
 
 Write one-off scripts (migrations, fixture generators) in the moment for the manual at hand; do not
