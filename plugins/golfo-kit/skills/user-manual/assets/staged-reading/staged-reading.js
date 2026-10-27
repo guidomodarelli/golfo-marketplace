@@ -344,14 +344,19 @@
     var pressed = controls.querySelector('[aria-pressed="true"]');
     if (pressed) pressed.focus();
   }
-  function closeDrawer(restoreFocus) {
-    if (drawer.open) drawer.close();
-    if (restoreFocus) barToggle.focus();
-  }
-  drawer.addEventListener('close', function () {
+  // El bloqueo de scroll se libera en el mismo momento del cierre: el evento close llega después, como
+  // tarea aparte, y mientras tanto la página seguiría sin scroll.
+  function releaseDrawer() {
     root.classList.remove('has-open-stage-drawer');
     barToggle.setAttribute('aria-expanded', 'false');
-  });
+  }
+  function closeDrawer(restoreFocus) {
+    if (drawer.open) drawer.close();
+    releaseDrawer();
+    if (restoreFocus) barToggle.focus();
+  }
+  // Respaldo para cierres que no pasan por closeDrawer.
+  drawer.addEventListener('close', releaseDrawer);
   drawer.addEventListener('cancel', function (event) { event.preventDefault(); closeDrawer(true); });
   // showModal deja el fondo inerte, pero Tab puede salir a la interfaz del navegador: el foco da la vuelta.
   drawer.addEventListener('keydown', function (event) {

@@ -244,7 +244,9 @@
             "sin.*zoom",
             "no.*zoom",
             "sin.*amplia",
-            "no.*amplia"
+            "no.*amplia",
+            "zoom.*no agreg",
+            "amplia.*no agreg"
           ],
           "description": "No agrega visor de ampliación por defecto"
         },

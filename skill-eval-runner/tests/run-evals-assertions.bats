@@ -172,3 +172,49 @@ run_dash_prefixed_assertions() {
     run jq -e 'select(.event == "summary" and .passed == 0 and .failed == 1)' <<< "$output"
     [ "$status" -eq 0 ]
 }
+
+write_wrapped_phrase_config() {
+    local config_file="${SKILL_DIR}/evals/eval-config.json"
+
+    cat > "$config_file" <<JSON
+{
+  "skill": "${SKILL_NAME}",
+  "test_cases": [
+    {
+      "id": "wrapped-phrases",
+      "input": "Explain what to keep",
+      "assertions": [
+        { "type": "contains_any", "values": ["conservar.*diagramas"], "description": "Phrase split across a wrapped paragraph" },
+        { "type": "regex", "pattern": "no.*parent.history", "description": "Pattern split across a wrapped list item" }
+      ]
+    }
+  ]
+}
+JSON
+}
+
+run_wrapped_phrase_assertions() {
+    local response="$1"
+    local response_file="${TEST_ROOT}/response.txt"
+
+    write_wrapped_phrase_config
+    printf '%s\n' "$response" > "$response_file"
+    CLAUDE_RESPONSE_FILE="$response_file"
+    run_eval_runner
+}
+
+@test "matches positive assertions split across the lines of one paragraph or list item" {
+    run_wrapped_phrase_assertions $'Hay que conservar los\ndiagramas originales.\n\n- No hace falta tocar\n  parent.history en ningún caso.'
+
+    [ "$status" -eq 0 ]
+    run jq -e 'select(.event == "summary" and .passed == 1 and .failed == 0)' <<< "$output"
+    [ "$status" -eq 0 ]
+}
+
+@test "does not join separate paragraphs to satisfy a positive assertion" {
+    run_wrapped_phrase_assertions $'Hay que conservar.\n\nLos diagramas cambian.\n\nNo.\n\nparent.history'
+
+    [ "$status" -eq 1 ]
+    run jq -e 'select(.event == "summary" and .passed == 0 and .failed == 1)' <<< "$output"
+    [ "$status" -eq 0 ]
+}

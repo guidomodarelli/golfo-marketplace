@@ -330,13 +330,33 @@ validate_eval_config() {
     ' "$config_file" >/dev/null 2>&1
 }
 
+# One line per paragraph, list item or heading: consecutive lines join, and a blank line, a new list item
+# or a heading starts a new one. Stricter than normalize_response_continuations, which also carries text
+# past blank lines (useful to catch mixed steps, wrong for a positive match).
+join_wrapped_lines() {
+    awk '
+        function flush() { if (buffer != "") print buffer; buffer = "" }
+        /^[[:space:]]*$/ { flush(); next }
+        /^[[:space:]]*#/ { flush(); print; next }
+        /^[[:space:]]*([0-9]+[.)]|[-*])[[:space:]]/ { flush(); buffer = $0; next }
+        { buffer = (buffer == "") ? $0 : buffer " " $0 }
+        END { flush() }
+    ' <<< "$1"
+}
+
+# Positive assertions match the raw response or the same text with each paragraph and list item on one
+# line: a model often wraps a sentence, and a line-based grep would miss a phrase split across lines.
+response_matches() {
+    local response="$1"
+    shift
+    printf '%s\n' "$response" | grep -qi "$@" && return 0
+    join_wrapped_lines "$response" | grep -qi "$@"
+}
+
 validate_assertion_contains() {
     local response="$1"
     local value="$2"
-    if printf '%s\n' "$response" | grep -qi -- "$value"; then
-        return 0
-    fi
-    return 1
+    response_matches "$response" -- "$value"
 }
 
 validate_assertion_contains_any() {
@@ -351,7 +371,7 @@ validate_assertion_contains_any() {
     for k in $(seq 0 $((values_count - 1))); do
         local v
         v=$(jq -r ".test_cases[$case_idx].assertions[$assert_idx].values[$k]" "$config_file")
-        if printf '%s\n' "$response" | grep -qi -- "$v"; then
+        if response_matches "$response" -- "$v"; then
             return 0
         fi
     done
@@ -432,10 +452,7 @@ validate_assertion_not_contains_any() {
 validate_assertion_regex() {
     local response="$1"
     local pattern="$2"
-    if printf '%s\n' "$response" | grep -qiE -- "$pattern"; then
-        return 0
-    fi
-    return 1
+    response_matches "$response" -E -- "$pattern"
 }
 
 # Records a failed assertion as one JSON object into the failures file (if set),
