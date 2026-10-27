@@ -28,22 +28,23 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
 const DEFAULT_ALLOWED_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com', 'www.w3.org'];
 const SKILL_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DEFAULT_DESIGN_PATH = path.join(SKILL_DIR, 'DESIGN.md');
+const STAGE_CONTRACT_PATH = path.join(SKILL_DIR, 'assets', 'staged-reading', 'stage-contract.js');
+// Same rules as the staged script in the browser: one contract for activation and validation.
+const stageContract = createRequire(import.meta.url)(STAGE_CONTRACT_PATH);
 const STAGED_SCRIPT_PATH = path.join(SKILL_DIR, 'assets', 'staged-reading', 'staged-reading.js');
 const DOCUMENT_VIEWER_ADAPTER_PATH = path.join(SKILL_DIR, 'assets', 'viewer-adapters', 'document-viewer-adapter.js');
 const NAVIGATION_SCRIPT_MARKER = '// Navegación e interacciones Heritage';
 const STAGED_SCRIPT_MARKER = '// Lectura por etapas Heritage';
+const STAGE_CONTRACT_MARKER = '// Contrato de etapas Heritage';
 const DOCUMENT_VIEWER_ADAPTER_MARKER = '// Adaptador de visor de documentos Heritage';
 const READING_MODES = ['linear', 'stages'];
 const STAGED_MODE = 'stages';
-const KEY_CONCEPTS_PER_STAGE = 3;
-const MIN_STAGES = 2;
-const MIN_SECTIONS_PER_CHAPTER = 2;
-const STAGE_ID_PATTERN = /^[a-z][a-z0-9-]*$/;
 const DOCUMENT_VIEW_PATH = /^\/d\/[^/]+\/view\/?$/;
 const DOCUMENT_LINKS_SCRIPT_MARKER = '// Navegación entre documentos Heritage';
 const LANGUAGE_SCRIPT_MARKER = '// Idioma: el documento se escribe en español';
@@ -274,69 +275,30 @@ const splitLanguages = (html, options) => {
 };
 
 /**
- * Stage structure (DESIGN.md, "Lectura por etapas"), the same rules the staged script validates before hiding
- * anything: each stage is a .stage-intro, its contiguous sections with data-stage and a .stage-recap. A stage
- * may group its sections in chapters (.stage-chapter): then every section follows a chapter, and each chapter
- * holds at least two sections.
+ * Stage structure (DESIGN.md, "Lectura por etapas"), with the same contract the staged script validates
+ * before hiding anything (assets/staged-reading/stage-contract.js): the HTML blocks become descriptors and the
+ * contract decides. Block classes are matched as tokens, like the browser selectors.
  */
 const checkStages = (visible) => {
-	const problems = [];
-	const blocks = [...visible.matchAll(/<(?:div|section|aside)\b[^>]*\bclass="(stage-intro|stage-chapter|section|stage-recap)"[^>]*>/g)];
-	const stageIds = [];
-	const chapterIds = [];
-	let open = null;
-	const closeChapter = () => {
-		const chapter = open && open.chapters[open.chapters.length - 1];
-		if (chapter && chapter.sections < MIN_SECTIONS_PER_CHAPTER) problems.push(`chapter "${chapter.id}" has ${chapter.sections} section(s); it needs at least ${MIN_SECTIONS_PER_CHAPTER}`);
-	};
-	blocks.forEach((block, index) => {
-		const content = visible.slice(block.index, index + 1 < blocks.length ? blocks[index + 1].index : visible.length);
-		const attribute = (name) => (block[0].match(new RegExp(`\\s${name}="([^"]*)"`)) || [])[1];
-		if (block[1] === 'stage-intro') {
-			const id = attribute('data-stage-intro') || '';
-			if (open) problems.push(`stage "${open.id}" has no .stage-recap before stage "${id}"`);
-			if (!STAGE_ID_PATTERN.test(id)) problems.push(`stage id "${id}" is not a kebab-case slug`);
-			if (stageIds.includes(id)) problems.push(`stage "${id}" is repeated`);
-			if (attribute('id') !== `stage-${id}`) problems.push(`stage "${id}" intro needs id="stage-${id}"`);
-			for (const part of ['stage-title', 'stage-objective', 'stage-reading']) if (!content.includes(`class="${part}"`)) problems.push(`stage "${id}" intro has no .${part}`);
-			stageIds.push(id);
-			open = { id, sections: 0, chapters: [] };
-		} else if (block[1] === 'stage-chapter') {
-			const id = attribute('data-chapter') || '';
-			if (!open) { problems.push(`chapter "${id}" is outside a stage`); return; }
-			if (attribute('data-stage') !== open.id) problems.push(`chapter "${id}" has data-stage="${attribute('data-stage') || ''}" inside stage "${open.id}"`);
-			if (!STAGE_ID_PATTERN.test(id)) problems.push(`chapter id "${id}" is not a kebab-case slug`);
-			if (chapterIds.includes(id)) problems.push(`chapter "${id}" is repeated`);
-			if (attribute('id') !== `chapter-${id}`) problems.push(`chapter "${id}" needs id="chapter-${id}"`);
-			if (!content.includes('class="stage-chapter-title"')) problems.push(`chapter "${id}" has no .stage-chapter-title`);
-			if (!open.chapters.length && open.sections) problems.push(`stage "${open.id}" has sections before its first chapter`);
-			closeChapter();
-			chapterIds.push(id);
-			open.chapters.push({ id, sections: 0 });
-		} else if (block[1] === 'stage-recap') {
-			const id = attribute('data-stage-recap');
-			if (!open || id !== open.id) { problems.push(`recap "${id}" does not close the open stage`); return; }
-			if (!open.sections) problems.push(`stage "${open.id}" has no sections`);
-			const concepts = (content.match(/<ul class="stage-concepts">([\s\S]*?)<\/ul>/) || [])[1] || '';
-			const conceptCount = (concepts.match(/<li\b/g) || []).length;
-			if (conceptCount !== KEY_CONCEPTS_PER_STAGE) problems.push(`stage "${open.id}" recap has ${conceptCount} key concepts; it needs exactly ${KEY_CONCEPTS_PER_STAGE} in ul.stage-concepts`);
-			if (!content.includes('class="stage-next"')) problems.push(`stage "${open.id}" recap has no .stage-next ("Qué sigue")`);
-			closeChapter();
-			open = null;
-		} else {
-			const sectionId = attribute('aria-labelledby');
-			const stage = attribute('data-stage');
-			if (!open) problems.push(`section "${sectionId}" is outside a stage (between a .stage-intro and its .stage-recap)`);
-			else if (stage !== open.id) problems.push(`section "${sectionId}" has data-stage="${stage || ''}" inside stage "${open.id}"`);
-			else {
-				open.sections += 1;
-				if (open.chapters.length) open.chapters[open.chapters.length - 1].sections += 1;
-			}
-		}
+	const blocks = [...visible.matchAll(/<([a-z]+)\b[^>]*\bclass="([^"]*)"[^>]*>/g)]
+		.map((match) => ({ match, kind: stageContract.kindOf(match[1], match[2]) }))
+		.filter((block) => block.kind);
+	const descriptors = blocks.map(({ match, kind }, index) => {
+		const content = visible.slice(match.index, index + 1 < blocks.length ? blocks[index + 1].match.index : visible.length);
+		const attribute = (name) => (match[0].match(new RegExp(`\\s${name}="([^"]*)"`)) || [])[1];
+		const hasClass = (name) => new RegExp(`class="(?:[^"]*\\s)?${name}(?:\\s[^"]*)?"`).test(content);
+		const concepts = (content.match(/<ul class="(?:[^"]*\s)?stage-concepts(?:\s[^"]*)?">([\s\S]*?)<\/ul>/) || [])[1] || '';
+		return {
+			kind,
+			id: attribute('id'),
+			stage: attribute('data-stage-intro') || attribute('data-stage') || attribute('data-stage-recap'),
+			chapter: attribute('data-chapter'),
+			sectionId: attribute('aria-labelledby'),
+			parts: { title: hasClass('stage-title'), objective: hasClass('stage-objective'), reading: hasClass('stage-reading'), chapterTitle: hasClass('stage-chapter-title'), next: hasClass('stage-next') },
+			concepts: (concepts.match(/<li\b/g) || []).length,
+		};
 	});
-	if (open) problems.push(`stage "${open.id}" has no .stage-recap`);
-	if (stageIds.length < MIN_STAGES) problems.push(`a staged manual needs at least ${MIN_STAGES} stages (found ${stageIds.length})`);
-	return problems.map((problem) => `stages: ${problem}`);
+	return stageContract.validate(descriptors).problems.map((problem) => `stages: ${problem}`);
 };
 
 const main = () => {
@@ -445,6 +407,7 @@ const checkDocument = (html, options, label, source) => {
 	if (isStaged) {
 		errors.push(...checkStages(visible));
 		if (!compareScript(STAGED_SCRIPT_MARKER, 'stages', readSource(STAGED_SCRIPT_PATH), 'assets/staged-reading/staged-reading.js')) errors.push('stages: the staged reading script is missing (run scripts/embed-staged-reading.mjs on the manual)');
+		if (!compareScript(STAGE_CONTRACT_MARKER, 'stage contract', readSource(STAGE_CONTRACT_PATH), 'assets/staged-reading/stage-contract.js')) errors.push('stages: the stage contract script is missing (run scripts/embed-staged-reading.mjs on the manual)');
 		if (!/\.stage-drawer\{/.test(document)) errors.push('stages: the staged reading styles are missing (run scripts/embed-staged-reading.mjs on the manual)');
 	} else if (/\sdata-stage(?:-intro|-recap)?="/.test(visible)) {
 		errors.push(`stages: stage markup without <meta name="heritage:reading-mode" content="${STAGED_MODE}"> (the stages would never show)`);

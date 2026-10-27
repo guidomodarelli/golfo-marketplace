@@ -150,6 +150,34 @@ describe('staged reading in a real browser', { skip: skipReason, timeout: SUITE_
 		await context.close();
 	});
 
+	test('Alt+I opens the index sheet when there is no top index', async () => {
+		const { page, context } = await openPage('/manual.html');
+		await page.locator('body').click({ position: { x: 5, y: 5 } });
+		await page.keyboard.press('Alt+KeyI');
+		await page.locator('#toc-sheet').waitFor({ state: 'visible' });
+		await context.close();
+	});
+
+	test('the compact stage bar stays below the fixed language switch', async () => {
+		const { page, context } = await openPage('/manual.html', { viewport: PHONE });
+		await page.evaluate(() => {
+			const languageSwitch = document.createElement('div');
+			languageSwitch.className = 'lang-switch';
+			languageSwitch.innerHTML = '<button type="button" data-lang="es">ES</button><button type="button" data-lang="pt">PT</button>';
+			document.body.prepend(languageSwitch);
+			window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'instant' });
+		});
+		const layout = await page.evaluate(() => {
+			const switchBox = document.querySelector('.lang-switch').getBoundingClientRect();
+			const barBox = document.querySelector('.stage-bar').getBoundingClientRect();
+			const center = document.elementFromPoint(switchBox.left + switchBox.width / 2, switchBox.top + switchBox.height / 2);
+			return { barTop: barBox.top, switchBottom: switchBox.bottom, switchReachable: Boolean(center && center.closest('.lang-switch')) };
+		});
+		assert.ok(layout.barTop >= layout.switchBottom, JSON.stringify(layout));
+		assert.equal(layout.switchReachable, true);
+		await context.close();
+	});
+
 	test('the index reaches a section of a hidden stage and shows the full current title', async () => {
 		const { page, context } = await openPage('/manual.html#practice', { viewport: PHONE });
 		await waitForLanding(page, 'practice');
@@ -358,6 +386,14 @@ describe('staged reading in a real browser', { skip: skipReason, timeout: SUITE_
 		await page.goBack();
 		await waitForLanding(frame, 'permissions');
 		assert.equal((await stageState(frame)).stage, 'orientation');
+		await context.close();
+	});
+
+	test('document viewer adapter keeps old viewer hash links working', async () => {
+		const { page, context } = await openPage(`/d/${DOCUMENT_ID}/view#faq`);
+		const frame = await manualFrame(page);
+		await waitForLanding(frame, 'faq');
+		assert.equal((await stageState(frame)).stage, 'reference');
 		await context.close();
 	});
 

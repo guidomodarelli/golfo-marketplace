@@ -26,6 +26,7 @@ const SKILL_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const DEFAULT_DESIGN_PATH = path.join(SKILL_DIR, 'DESIGN.md');
 export const STAGED_STYLE_PATH = path.join(SKILL_DIR, 'assets', 'staged-reading', 'staged-reading.css');
 export const STAGED_SCRIPT_PATH = path.join(SKILL_DIR, 'assets', 'staged-reading', 'staged-reading.js');
+export const STAGE_CONTRACT_PATH = path.join(SKILL_DIR, 'assets', 'staged-reading', 'stage-contract.js');
 export const STAGED_TEMPLATE_PATH = path.join(SKILL_DIR, 'assets', 'staged-reading', 'template.html');
 export const VIEWER_ADAPTER_PATHS = { document: path.join(SKILL_DIR, 'assets', 'viewer-adapters', 'document-viewer-adapter.js') };
 const NAVIGATION_SCRIPT_MARKER = '// Navegación e interacciones Heritage';
@@ -60,7 +61,8 @@ export const embedStagedReading = (html, { viewer = null } = {}) => {
 	// After the navigation script: the adapter first, so the staged script reads the viewer's initial target.
 	const scripts = [
 		viewer ? block(VIEWER_BLOCK, `<script>\n${readText(VIEWER_ADAPTER_PATHS[viewer]).trim()}\n</script>`) : '',
-		staged ? block(STAGED_SCRIPT_BLOCK, `<script>\n${readText(STAGED_SCRIPT_PATH).trim()}\n</script>`) : '',
+		// The contract goes in its own <script>, before the staged script that reads it.
+		staged ? block(STAGED_SCRIPT_BLOCK, `<script>\n${readText(STAGE_CONTRACT_PATH).trim()}\n</script>\n<script>\n${readText(STAGED_SCRIPT_PATH).trim()}\n</script>`) : '',
 	].join('');
 	output = output.slice(0, navigationEnd) + scripts + output.slice(navigationEnd);
 	if (staged) {

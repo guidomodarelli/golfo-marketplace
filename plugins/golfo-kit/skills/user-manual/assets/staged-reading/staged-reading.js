@@ -7,11 +7,7 @@
 (function () {
   var STAGED_MODE = 'stages';
   var WORDS_PER_MINUTE = 200;
-  var KEY_CONCEPTS_PER_STAGE = 3;
-  var MIN_STAGES = 2;
-  var MIN_SECTIONS_PER_CHAPTER = 2;
   var DESKTOP_QUERY = '(min-width: 820px)';
-  var STAGE_ID_PATTERN = /^[a-z][a-z0-9-]*$/;
   // Una etapa cuenta como leída cuando se ve la mitad de su recapitulación.
   var RECAP_READ_RATIO = 0.5;
   // Texto que no se lee como contenido: controles que agrega el script y piezas decorativas.
@@ -43,67 +39,39 @@
   var ui = UI_TEXT[language] || UI_TEXT.es;
   var navigation = window.HeritageNavigation;
 
-  // —— Modelo único: por etapa, intro, capítulos opcionales con sus secciones contiguas y recapitulación,
-  // en el orden del documento. Menú, hoja del índice, mapa y enlaces salen de acá.
+  // —— Modelo único: las reglas viven en el contrato de etapas (window.HeritageStageContract), el mismo que
+  // usa check-manual.mjs. Acá solo se describen los bloques del DOM y se arma el modelo con sus índices.
   function readStages() {
-    var stages = [];
-    var chapterIds = [];
-    var problems = [];
-    var open = null;
-    var closeChapter = function () {
-      var chapter = open && open.chapters[open.chapters.length - 1];
-      if (chapter && chapter.sections.length < MIN_SECTIONS_PER_CHAPTER) problems.push('chapter "' + chapter.id + '" needs at least ' + MIN_SECTIONS_PER_CHAPTER + ' sections');
-    };
-    document.querySelectorAll(BLOCKS).forEach(function (block) {
-      if (block.matches('.stage-intro')) {
-        var id = block.getAttribute('data-stage-intro') || '';
-        if (open) problems.push('stage "' + open.id + '" has no .stage-recap before stage "' + id + '"');
-        if (!STAGE_ID_PATTERN.test(id)) problems.push('stage id "' + id + '" is not a kebab-case slug');
-        if (stages.some(function (stage) { return stage.id === id; })) problems.push('stage "' + id + '" is repeated');
-        if (block.id !== 'stage-' + id) problems.push('stage "' + id + '" intro needs id="stage-' + id + '"');
-        if (!block.querySelector('.stage-title') || !block.querySelector('.stage-objective') || !block.querySelector('.stage-reading')) problems.push('stage "' + id + '" intro needs .stage-title, .stage-objective and .stage-reading');
-        open = { id: id, intro: block, chapters: [], sections: [], recap: null };
-        stages.push(open);
-        return;
-      }
-      if (block.matches('.stage-chapter')) {
-        var chapterId = block.getAttribute('data-chapter') || '';
-        if (!open) { problems.push('chapter "' + chapterId + '" is outside a stage'); return; }
-        if (block.getAttribute('data-stage') !== open.id) problems.push('chapter "' + chapterId + '" has data-stage="' + block.getAttribute('data-stage') + '" inside stage "' + open.id + '"');
-        if (!STAGE_ID_PATTERN.test(chapterId)) problems.push('chapter id "' + chapterId + '" is not a kebab-case slug');
-        if (chapterIds.indexOf(chapterId) !== -1) problems.push('chapter "' + chapterId + '" is repeated');
-        if (block.id !== 'chapter-' + chapterId) problems.push('chapter "' + chapterId + '" needs id="chapter-' + chapterId + '"');
-        if (!block.querySelector('.stage-chapter-title')) problems.push('chapter "' + chapterId + '" needs .stage-chapter-title');
-        if (!open.chapters.length && open.sections.length) problems.push('stage "' + open.id + '" has sections before its first chapter');
-        closeChapter();
-        chapterIds.push(chapterId);
-        open.chapters.push({ id: chapterId, element: block, stage: open, sections: [] });
-        return;
-      }
-      if (block.matches('.stage-recap')) {
-        var recapId = block.getAttribute('data-stage-recap');
-        if (!open || recapId !== open.id) { problems.push('recap "' + recapId + '" does not close the open stage'); return; }
-        if (!open.sections.length) problems.push('stage "' + open.id + '" has no sections');
-        if (block.querySelectorAll('.stage-concepts > li').length !== KEY_CONCEPTS_PER_STAGE) problems.push('stage "' + open.id + '" recap needs exactly ' + KEY_CONCEPTS_PER_STAGE + ' key concepts');
-        if (!block.querySelector('.stage-next')) problems.push('stage "' + open.id + '" recap needs .stage-next');
-        closeChapter();
-        open.recap = block;
-        open = null;
-        return;
-      }
-      var sectionId = block.getAttribute('aria-labelledby');
-      var sectionStage = block.getAttribute('data-stage');
-      if (!open) problems.push('section "' + sectionId + '" is outside a stage');
-      else if (sectionStage !== open.id) problems.push('section "' + sectionId + '" has data-stage="' + sectionStage + '" inside stage "' + open.id + '"');
-      else {
-        open.sections.push(block);
-        if (open.chapters.length) open.chapters[open.chapters.length - 1].sections.push(block);
-      }
+    var contract = window.HeritageStageContract;
+    if (!contract) return { stages: [], problems: ['window.HeritageStageContract is missing (embed assets/staged-reading/stage-contract.js)'] };
+    var elements = [].slice.call(document.querySelectorAll(BLOCKS));
+    var descriptors = elements.map(function (element) {
+      return {
+        kind: contract.kindOf(element.tagName.toLowerCase(), element.className),
+        id: element.id,
+        stage: element.getAttribute('data-stage-intro') || element.getAttribute('data-stage') || element.getAttribute('data-stage-recap'),
+        chapter: element.getAttribute('data-chapter'),
+        sectionId: element.getAttribute('aria-labelledby'),
+        parts: {
+          title: Boolean(element.querySelector('.stage-title')),
+          objective: Boolean(element.querySelector('.stage-objective')),
+          reading: Boolean(element.querySelector('.stage-reading')),
+          chapterTitle: Boolean(element.querySelector('.stage-chapter-title')),
+          next: Boolean(element.querySelector('.stage-next'))
+        },
+        concepts: element.querySelectorAll('.stage-concepts > li').length
+      };
     });
-    if (open) problems.push('stage "' + open.id + '" has no .stage-recap');
-    if (stages.length < MIN_STAGES) problems.push('a staged manual needs at least ' + MIN_STAGES + ' stages');
-    if (!navigation) problems.push('window.HeritageNavigation is missing (copy the current boilerplate navigation script)');
-    return { stages: stages, problems: problems };
+    var result = contract.validate(descriptors);
+    if (!navigation) result.problems.push('window.HeritageNavigation is missing (copy the current boilerplate navigation script)');
+    var stages = result.stages.map(function (stage) {
+      var model = { id: stage.id, intro: elements[stage.intro], recap: elements[stage.recap], sections: stage.sections.map(function (index) { return elements[index]; }), chapters: [] };
+      model.chapters = stage.chapters.map(function (chapter) {
+        return { id: chapter.id, element: elements[chapter.element], stage: model, sections: chapter.sections.map(function (index) { return elements[index]; }) };
+      });
+      return model;
+    });
+    return { stages: stages, problems: result.problems };
   }
   var model = readStages();
   if (model.problems.length) {

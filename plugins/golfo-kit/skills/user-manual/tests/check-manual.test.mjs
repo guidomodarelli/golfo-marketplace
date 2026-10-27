@@ -96,8 +96,21 @@ describe('check-manual: stage structure', () => {
 		});
 	}
 
+	test('recognizes stage blocks with extra classes, like the browser selectors', () => {
+		const result = checkManual('extra-classes.html', replaceOnce(replaceOnce(staged, 'class="stage-intro" id="stage-orientation"', 'class="stage-intro is-featured" id="stage-orientation"'), 'class="stage-recap" data-stage-recap="orientation"', 'class="stage-recap is-compact" data-stage-recap="orientation"'));
+		assert.equal(result.status, 0, result.output);
+	});
+
+	test('rejects a manual without the embedded stage contract', () => {
+		const withoutContract = staged.replace(/<script>\n\/\/ Contrato de etapas Heritage[\s\S]*?<\/script>\n/, '');
+		assert.notEqual(withoutContract, staged);
+		const result = checkManual('no-contract.html', withoutContract);
+		assert.equal(result.status, 1);
+		assert.match(result.output, /stages: the stage contract script is missing/);
+	});
+
 	test('warns when the embedded staged script is outdated', () => {
-		const result = checkManual('outdated.html', replaceOnce(staged, "var MIN_STAGES = 2;", "var MIN_STAGES = 2; // old copy"));
+		const result = checkManual('outdated.html', replaceOnce(staged, "var WORDS_PER_MINUTE = 200;", "var WORDS_PER_MINUTE = 200; // old copy"));
 		assert.equal(result.status, 0);
 		assert.match(result.output, /warn {2}stages: the script differs from assets\/staged-reading\/staged-reading\.js/);
 	});

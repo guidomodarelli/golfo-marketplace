@@ -720,8 +720,10 @@ Volver a correrlo actualiza los bloques incrustados. El marcado:
   después de un capítulo y cada capítulo tiene al menos dos secciones; con menos, sobra el capítulo.
   La etapa se sigue mostrando entera: los capítulos ordenan, no ocultan. La recapitulación sigue
   siendo por etapa; el capítulo lleva solo título y lectura estimada.
-- El script valida ese marcado antes de ocultar nada: si algo falla deja el manual lineal y avisa con
-  `console.warn`. Oculta con `hidden` (nunca recrea ni mueve nodos) y avisa con
+- El script valida ese marcado antes de ocultar nada, con las reglas de
+  `assets/staged-reading/stage-contract.js`, las mismas que aplica `check-manual.mjs` (una sola
+  definición: activar y validar no pueden divergir). Si algo falla deja el manual lineal y avisa con
+  `console.warn`. Sin índice superior, `Alt`+`I` abre la hoja del índice. Oculta con `hidden` (nunca recrea ni mueve nodos) y avisa con
   `heritage:visibility-change`; el script de navegación reusa su scroll y su URL
   (`window.HeritageNavigation`) y revela destinos con `heritage:before-scroll`, así que no hay una
   segunda navegación. Expone `window.HeritageStages` (estado, secciones y capítulos de cada etapa y
@@ -2427,7 +2429,7 @@ dt.is-text-revealed{width:fit-content;}
     var previewTitle = createElement('div', 'section-rail-preview-title');
     var previewSummary = createElement('div', 'section-rail-preview-summary');
     var previewHint = createElement('div', 'section-rail-preview-hint');
-    whenLanguage(function () { previewHint.textContent = modifierLabel + ui.shortcutSections + (toc ? ' · ' + modifierLabel + ui.shortcutIndex : ''); });
+    whenLanguage(function () { previewHint.textContent = modifierLabel + ui.shortcutSections + (toc || document.querySelector('.toc-sheet') ? ' · ' + modifierLabel + ui.shortcutIndex : ''); });
     previewMeta.append(previewNumber);
     preview.append(previewMeta, previewTitle, previewSummary, previewHint);
     preview.setAttribute('aria-hidden', 'true');
@@ -2746,6 +2748,8 @@ dt.is-text-revealed{width:fit-content;}
     if (event.key === 'ArrowDown' && navigable[currentIndex + 1]) destination = navigable[currentIndex + 1].heading;
     else if (event.key === 'ArrowUp' && navigable[currentIndex - 1]) destination = navigable[currentIndex - 1].heading;
     else if (event.code === 'KeyI' && toc) destination = toc;
+    // Sin índice superior (lectura por etapas), Alt+I abre la hoja, que es el índice completo.
+    else if (event.code === 'KeyI' && sheetReady) { event.preventDefault(); pill.click(); return; }
     if (!destination) return;
     event.preventDefault();
     scrollToTarget(destination, destination !== toc);
@@ -3079,13 +3083,16 @@ dt.is-text-revealed{width:fit-content;}
     if (target) scrollToTarget(target, false);
   }
   function openDeepLinkId(id) { if (id) openDeepLink('#' + encodeURIComponent(id)); }
-  // Con adaptador de visor, el destino también sale de la URL pública (al cargar y con Atrás/Adelante del visor).
+  // Con adaptador de visor, el destino también sale de la URL pública (al cargar y con Atrás/Adelante del
+  // visor). El hash del visor sigue valiendo como respaldo: los enlaces copiados antes del adaptador
+  // (…/view#faq) no dejan de llegar a su sección.
   var openInitialLink = function () {
     var adapter = viewerAdapter();
+    var adapterTarget = adapter && adapter.initialTargetId();
     if (location.hash.length > 1) openDeepLink(location.hash);
-    else if (adapter) openDeepLinkId(adapter.initialTargetId());
+    else if (adapterTarget) openDeepLinkId(adapterTarget);
     else openDeepLink(parentHash());
-    if (adapter) { adapter.onNavigate(openDeepLinkId); return; }
+    if (adapter) adapter.onNavigate(openDeepLinkId);
     // El visor copia a su barra el hash que deja el índice; solo un hash distinto (pegado por el lector) mueve el documento.
     try {
       if (window.parent !== window) window.parent.addEventListener('hashchange', function () { if (parentHash() !== location.hash) openDeepLink(parentHash()); });
