@@ -12,7 +12,7 @@ description: >
 metadata:
   tags: "context-optimized-v1.20.1"
   author: "Guido Modarelli"
-  version: "2.5.0"
+  version: "2.6.0"
 ---
 
 # User Manual Generator
@@ -210,9 +210,16 @@ Build a complete visibility matrix before writing prose. For each UI element ans
 
 ## Step 3 — Structure the document
 
-Right after the doc header always goes the **table of contents** (`Contenido`), and the page always
-ends with the floating **Inicio** button, the **section map** and the **section pill**. See
-"Navigation (always)" in Step 4.
+Right after the doc header goes the **table of contents** (`Contenido`) in a linear manual, and the
+page always ends with the floating **Inicio** button, the **section map** and the **section pill**.
+See "Navigation (always)" in Step 4.
+
+**Reading mode: linear or by stages.** Linear is the default and fits most manuals. Group the
+sections into **stages** (DESIGN.md, "Lectura por etapas") only when a long manual overwhelms when
+read top to bottom (many sections that serve different learning goals) and the user agrees; never
+for short documents. Stages only change what is shown at a time: the standard order below, the slugs
+and the sections themselves stay the same, and the pill sheet replaces the top TOC as the complete
+index (a staged manual has no `nav.toc`; `check-manual.mjs` rejects one).
 
 **Audience, always, confirmed by the user.** Before writing, deduce the roles that use or take part
 in the flow:
@@ -341,7 +348,8 @@ manual only lives in its destination (for example a document in a hosted viewer 
 | Need | Component |
 |---|---|
 | Document header | `doc-header` + `doc-label` + `doc-title` + `doc-sub` + `doc-meta` |
-| Table of contents (**always**) | `nav.toc` + `toc-label` + `toc-num`, right after the header |
+| Table of contents (**linear manuals**) | `nav.toc` + `toc-label` + `toc-num`, right after the header |
+| Reading by stages (**long manuals, when agreed**) | `div.stage-intro` + sections with `data-stage` + `aside.stage-recap`, from `assets/staged-reading/template.html` |
 | Section map (**always**) | empty `nav.section-rail`, next to the "Inicio" button |
 | Section pill + TOC sheet (**always**) | `button.section-pill` + `dialog.toc-sheet` |
 | Numbered section | `section` + `section-num` + `section-title` |
@@ -374,9 +382,21 @@ TOC, section map, section pill, "Inicio" button, copy-link buttons and keyboard 
 DESIGN.md ("Índice (TOC)", "Mapa de secciones", "Píldora de sección", "Copiar enlace a una sección",
 "Atajos de teclado", "Botón Inicio") and the boilerplate. When to use them:
 
-- **TOC always**, right after `</header>`, even with fewer than 5 sections. One entry per numbered
-  section and, before the first section of each `part-header`, a non-link `toc-label`. Regenerate it
-  after any edit that adds, removes, renames or renumbers a section.
+- **TOC in every linear manual**, right after `</header>`, even with fewer than 5 sections. One entry
+  per numbered section and, before the first section of each `part-header`, a non-link `toc-label`.
+  Regenerate it after any edit that adds, removes, renames or renumbers a section. A staged manual
+  has no top TOC: its pill sheet already lists every section, hidden stages included, and a second
+  index would compete with the stage menu.
+- **Stages, when chosen:** start from `assets/staged-reading/template.html` (its opening comment is the
+  markup contract) and, once the manual is written on the boilerplate, run
+  `node scripts/embed-staged-reading.mjs <manual.html>` to embed the staged CSS and script (run it
+  again after updating them). The script reuses the boilerplate navigation instead of adding its own,
+  so keep the boilerplate's navigation script current. Each stage opens with its objective and a
+  reading estimate the script computes (200 words per minute) and closes with three key concepts and
+  «Qué sigue». When a stage gathers several topics, group its sections in **chapters**
+  (`div.stage-chapter`, at least two sections each); chapters order a stage, they do not hide parts
+  of it. The script adds the active stage's outline to the menu, the reading progress, previous / next
+  stage buttons in each recap and stage / chapter labels in the index sheet: do not write them by hand.
 - **"Inicio" button always**, with the navigation script just before `</body>`.
 - **Section map always**: never write its ticks by hand. Start each section with a paragraph that
   works as a one-line summary, because the map preview shows it. The map hides below 1024 px.
@@ -391,7 +411,12 @@ DESIGN.md ("Índice (TOC)", "Mapa de secciones", "Píldora de sección", "Copiar
   previews. Nothing to add per manual; verify them.
 - **Share URL** when the manual is published inside an iframe viewer: add
   `<meta name="heritage:share-url" content="<public document URL>">`, the URL readers open in the
-  viewer; `<share URL>#<slug>` opens the manual at that section.
+  viewer; `<share URL>#<slug>` opens the manual at that section. When the viewer has its own link
+  format (`/d/<doc_id>/view?href=<slug>` around an iframe `/d/<doc_id>/raw`), embed its adapter with
+  `node scripts/embed-staged-reading.mjs <manual.html> --viewer document` (linear manuals too). It only
+  updates the viewer's address bar after checking same origin and same document; otherwise
+  navigation stays inside the manual and the limitation is logged, so never report the external URL
+  as synchronized without checking it in the published viewer.
 
 Verify on a **fresh load** and in the destination viewer: TOC links land with the section 16 px
 below the top (16 px below the language switch when it covers the text column) about 2 s later; the button brings `scrollY` to `0`; at ≥ 1024 px a map tick magnifies
@@ -557,20 +582,28 @@ node scripts/check-manual.mjs <manual.html> \
   --forbidden "<every real value seen while capturing, comma-separated>"
 ```
 
-It fails on: TOC links or titles that do not match the sections, missing navigation pieces, glossary
+It fails on: TOC links or titles that do not match the sections (in a staged manual: a top TOC, or
+stages that are not intro → contiguous sections → recap with three key concepts, chapters with fewer
+than two sections or sections before a stage's first chapter, or the staged
+script and styles missing), missing navigation pieces, glossary
 links without `<dt>`, pins on captures without `data-target`, a section with two pins of the same
 number or with steps/references whose pin is not in that section, hosts in `mockup-url`, any change
 marker, missing source metas, unexpected hosts or environment markers (`:8443`, `localhost`, …),
 secrets (hidden inputs, CSRF, session ids), real values, and any text quoted between «…» that does
 not exist in the app's translations (obsolete or misquoted strings). It warns when a mockup has no
-`figcap`, the share URL is missing, or the embedded navigation script differs from the DESIGN.md
-boilerplate (the manual carries an outdated copy: replace it with the current one).
+`figcap`, the share URL is missing, the embedded navigation, staged or viewer script differs from its
+source (an outdated copy: replace it with the current one), or the share URL is a document viewer
+one (`/d/<doc_id>/view`) without its adapter.
 
 Then serve the manual, inject `scripts/check-rendered.js` and run `await __umCheckRendered()` at
 1280 px and at 390 px (inside an iframe viewer: `__umCheckRendered(iframe.contentWindow)`). It must return
 `ok: true`: every capture rendered, none cut, every anchored pin next to its element, inside the
 capture and within 24 px of what the reader sees in it (a pin on a wide cell fails: anchor it to the
 icon, text or button inside). Also look at each pin: it must read as pointing at its element.
+In a staged manual its `stages` list must be empty: shown sections match the chosen stage, print
+shows everything and restores the stage, no horizontal scroll, menu and map off the content, pill in
+the bottom left corner. Check also, in the published viewer, the items of DESIGN.md "Validación de la
+variante por etapas" that a local page cannot prove (viewer URL, copy, reload, Back/Forward).
 
 Cross-check against the code what the scripts cannot see:
 
@@ -613,7 +646,8 @@ pointed to is authorized by the request; any other document needs confirmation.
 | `scripts/capture-bridge.py` | Terminal | Serves files with CORS for one origin and stores POSTed JSON exports (127.0.0.1 only) |
 | `scripts/embed-app-frames.mjs` | Terminal | Embeds captures into the manual (lazy shadow-root frames, fit, fixed-layer containment, responsive layout, anchored pins) |
 | `scripts/check-manual.mjs` | Terminal | Static checks of the final HTML (structure, navigation, pins, hosts, secrets, real values, quoted texts vs translations, change markers, source metas, outdated navigation script) |
-| `scripts/check-rendered.js` | Manual page / viewer tab | `__umCheckRendered(view)`: captures rendered, fit, anchored pin distance |
+| `scripts/check-rendered.js` | Manual page / viewer tab | `__umCheckRendered(view)`: captures rendered, fit, anchored pin distance; staged contract (`stages`) |
+| `scripts/embed-staged-reading.mjs` | Terminal | Embeds `assets/staged-reading/` CSS + script and, with `--viewer document`, `assets/viewer-adapters/document-viewer-adapter.js`; `--example <out>` builds the template on the boilerplate |
 | `scripts/source-trace.py` | Terminal | `record` writes the source metas and "Código:" line; `diff` lists what changed in the documented paths since then |
 
 Write one-off scripts (migrations, fixture generators) in the moment for the manual at hand; do not
@@ -648,8 +682,9 @@ add them to `scripts/`.
 - [ ] File is `.html`, under `user-guides/` (or `/tmp` for destination-only manuals), with
       `user-guides/.gitignore` = `*` when written in a repo.
 - [ ] All CSS inline; colors, fonts and radii from DESIGN.md; passes its "Checklist de conformidad".
-- [ ] TOC right after the header, one working link per section, titles identical to the `<h2>`, part
-      labels before each `part-header` group.
+- [ ] Linear: TOC right after the header, one working link per section, titles identical to the
+      `<h2>`, part labels before each `part-header` group. Staged: no top TOC, stage assets embedded
+      and `stages` empty in `__umCheckRendered()`.
 - [ ] Section map, section pill + sheet and "Inicio" button present and working on a fresh load,
       also inside the destination viewer; shortcuts verified.
 - [ ] `heritage:share-url` set when the manual is published inside an iframe viewer.

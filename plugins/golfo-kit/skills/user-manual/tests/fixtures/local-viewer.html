@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<!--
+  Visor local de ejemplo: imita a un document viewer que muestra el manual en un iframe y tiene su propia
+  URL pública. Solo sirve para probar el adaptador de visor; no reproduce las restricciones de un visor
+  publicado, que se validan en el visor real.
+-->
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Visor local de ejemplo</title>
+<style>
+html,body{height:100%;margin:0;}
+body{display:flex;flex-direction:column;font-family:system-ui,sans-serif;}
+header{padding:8px 16px;border-bottom:1px solid #ccc;font-size:13px;}
+iframe{flex:1;width:100%;border:0;}
+</style>
+</head>
+<body>
+<header>Visor local de ejemplo</header>
+<iframe title="Manual" src="{{MANUAL_SRC}}" allow="clipboard-write"></iframe>
+</body>
+</html>

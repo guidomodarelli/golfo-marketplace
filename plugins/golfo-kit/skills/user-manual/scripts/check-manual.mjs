@@ -19,16 +19,33 @@
  * A menu of manuals (<meta name="heritage:kind" content="menu">, DESIGN.md "Menú de manuales") is one
  * screen: no TOC, section map, standard order or audience; it is checked for its capture and its links.
  *
+ * A staged manual (<meta name="heritage:reading-mode" content="stages">, DESIGN.md "Lectura por etapas") has
+ * no top TOC (the pill sheet is the complete index); its stages are checked instead: intro, contiguous
+ * sections and recap with three key concepts, plus the embedded staged script (embed-staged-reading.mjs).
+ *
  * Exit code: 0 when there are no errors (warnings do not fail), 1 with errors, 2 on bad usage.
  * The rendered checks (frame fit, pin distance) run in the browser with check-rendered.js.
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
 const DEFAULT_ALLOWED_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com', 'www.w3.org'];
-const DEFAULT_DESIGN_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'DESIGN.md');
+const SKILL_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+const DEFAULT_DESIGN_PATH = path.join(SKILL_DIR, 'DESIGN.md');
+const STAGE_CONTRACT_PATH = path.join(SKILL_DIR, 'assets', 'staged-reading', 'stage-contract.js');
+// Same rules as the staged script in the browser: one contract for activation and validation.
+const stageContract = createRequire(import.meta.url)(STAGE_CONTRACT_PATH);
+const STAGED_SCRIPT_PATH = path.join(SKILL_DIR, 'assets', 'staged-reading', 'staged-reading.js');
+const DOCUMENT_VIEWER_ADAPTER_PATH = path.join(SKILL_DIR, 'assets', 'viewer-adapters', 'document-viewer-adapter.js');
 const NAVIGATION_SCRIPT_MARKER = '// Navegación e interacciones Heritage';
+const STAGED_SCRIPT_MARKER = '// Lectura por etapas Heritage';
+const STAGE_CONTRACT_MARKER = '// Contrato de etapas Heritage';
+const DOCUMENT_VIEWER_ADAPTER_MARKER = '// Adaptador de visor de documentos Heritage';
+const READING_MODES = ['linear', 'stages'];
+const STAGED_MODE = 'stages';
+const DOCUMENT_VIEW_PATH = /^\/d\/[^/]+\/view\/?$/;
 const DOCUMENT_LINKS_SCRIPT_MARKER = '// Navegación entre documentos Heritage';
 const LANGUAGE_SCRIPT_MARKER = '// Idioma: el documento se escribe en español';
 const ENVIRONMENT_MARKERS = [':8443', 'localhost', '127.0.0.1'];
@@ -257,6 +274,33 @@ const splitLanguages = (html, options) => {
 	};
 };
 
+/**
+ * Stage structure (DESIGN.md, "Lectura por etapas"), with the same contract the staged script validates
+ * before hiding anything (assets/staged-reading/stage-contract.js): the HTML blocks become descriptors and the
+ * contract decides. Block classes are matched as tokens, like the browser selectors.
+ */
+const checkStages = (visible) => {
+	const blocks = [...visible.matchAll(/<([a-z]+)\b[^>]*\bclass="([^"]*)"[^>]*>/g)]
+		.map((match) => ({ match, kind: stageContract.kindOf(match[1], match[2]) }))
+		.filter((block) => block.kind);
+	const descriptors = blocks.map(({ match, kind }, index) => {
+		const content = visible.slice(match.index, index + 1 < blocks.length ? blocks[index + 1].match.index : visible.length);
+		const attribute = (name) => (match[0].match(new RegExp(`\\s${name}="([^"]*)"`)) || [])[1];
+		const hasClass = (name) => new RegExp(`class="(?:[^"]*\\s)?${name}(?:\\s[^"]*)?"`).test(content);
+		const concepts = (content.match(/<ul class="(?:[^"]*\s)?stage-concepts(?:\s[^"]*)?">([\s\S]*?)<\/ul>/) || [])[1] || '';
+		return {
+			kind,
+			id: attribute('id'),
+			stage: attribute('data-stage-intro') || attribute('data-stage') || attribute('data-stage-recap'),
+			chapter: attribute('data-chapter'),
+			sectionId: attribute('aria-labelledby'),
+			parts: { title: hasClass('stage-title'), objective: hasClass('stage-objective'), reading: hasClass('stage-reading'), chapterTitle: hasClass('stage-chapter-title'), next: hasClass('stage-next') },
+			concepts: (concepts.match(/<li\b/g) || []).length,
+		};
+	});
+	return stageContract.validate(descriptors).problems.map((problem) => `stages: ${problem}`);
+};
+
 const main = () => {
 	const options = parseArguments(process.argv.slice(2));
 	const source = fs.readFileSync(options.manual, 'utf8');
@@ -342,18 +386,37 @@ const checkDocument = (html, options, label, source) => {
 	}
 
 	const isMenu = metaContent(html, 'heritage:kind') === 'menu';
-	// The scripts travel inside each document: compare them with the current boilerplate.
+	// The scripts travel inside each document: compare them with the current boilerplate or asset.
 	const extractScript = (text, marker) => {
 		const start = text.indexOf(marker);
-		return start === -1 ? null : text.slice(start, text.indexOf('</script>', start)).trim();
+		return start === -1 ? null : text.slice(start, text.indexOf('</script>', start) === -1 ? text.length : text.indexOf('</script>', start)).replace(/\r\n/g, '\n').trim();
 	};
-	const designSource = fs.existsSync(options.design) ? fs.readFileSync(options.design, 'utf8') : null;
-	const compareScript = (marker, name) => {
+	const readSource = (file) => (fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null);
+	const designSource = readSource(options.design);
+	const compareScript = (marker, name, referenceSource = designSource, referenceName = 'the DESIGN.md boilerplate') => {
 		const embedded = extractScript(body, marker);
-		const current = designSource && extractScript(designSource, marker);
-		if (embedded && current && embedded !== current) warnings.push(`${name}: the script differs from the DESIGN.md boilerplate (outdated); copy the current one`);
+		const current = referenceSource && extractScript(referenceSource, marker);
+		if (embedded && current && embedded !== current) warnings.push(`${name}: the script differs from ${referenceName} (outdated); copy the current one`);
 		return embedded;
 	};
+
+	// Reading mode: linear (default) or by stages (DESIGN.md, "Lectura por etapas").
+	const readingMode = metaContent(html, 'heritage:reading-mode');
+	if (readingMode !== null && !READING_MODES.includes(readingMode)) errors.push(`stages: unknown heritage:reading-mode "${readingMode}" (use "${STAGED_MODE}", or omit it for a linear manual)`);
+	const isStaged = readingMode === STAGED_MODE;
+	if (isStaged) {
+		errors.push(...checkStages(visible));
+		if (!compareScript(STAGED_SCRIPT_MARKER, 'stages', readSource(STAGED_SCRIPT_PATH), 'assets/staged-reading/staged-reading.js')) errors.push('stages: the staged reading script is missing (run scripts/embed-staged-reading.mjs on the manual)');
+		if (!compareScript(STAGE_CONTRACT_MARKER, 'stage contract', readSource(STAGE_CONTRACT_PATH), 'assets/staged-reading/stage-contract.js')) errors.push('stages: the stage contract script is missing (run scripts/embed-staged-reading.mjs on the manual)');
+		if (!/\.stage-drawer\{/.test(document)) errors.push('stages: the staged reading styles are missing (run scripts/embed-staged-reading.mjs on the manual)');
+	} else if (/\sdata-stage(?:-intro|-recap)?="/.test(visible)) {
+		errors.push(`stages: stage markup without <meta name="heritage:reading-mode" content="${STAGED_MODE}"> (the stages would never show)`);
+	}
+	// A document viewer that shows /d/<doc_id>/view?href=<id> needs its adapter: without it, copied links use
+	// the generic #<id>.
+	const shareUrl = (() => { try { return new URL(metaContent(html, 'heritage:share-url')); } catch (invalidUrlError) { return null; } })();
+	const hasViewerAdapter = compareScript(DOCUMENT_VIEWER_ADAPTER_MARKER, 'viewer adapter', readSource(DOCUMENT_VIEWER_ADAPTER_PATH), 'assets/viewer-adapters/document-viewer-adapter.js');
+	if (shareUrl && DOCUMENT_VIEW_PATH.test(shareUrl.pathname) && !hasViewerAdapter) warnings.push('share-url: it is a document viewer URL (/d/<doc_id>/view) but the document viewer adapter is missing; copied links and the viewer URL keep the generic #<id> format (embed-staged-reading.mjs --viewer document)');
 	if (/id="heritage-translations"/.test(html) && !compareScript(LANGUAGE_SCRIPT_MARKER, 'language')) errors.push('language: the language script (HeritageLanguage) is missing');
 
 	// Links to other published documents (menu ↔ manuals, DESIGN.md "Navegación entre documentos").
@@ -382,12 +445,15 @@ const checkDocument = (html, options, label, source) => {
 		for (const text of new Set(cardTexts)) if (cardTexts.filter((other) => other === text).length > 1) errors.push(`menu: two links over the card «${text}»`);
 	}
 
-	if (isMenu) { /* one screen: no TOC */ } else if (!tocEntries.length) errors.push('toc: no nav.toc entries found');
+	if (isMenu) { /* one screen: no TOC */ } else if (isStaged) {
+		// With stages the pill sheet is the complete index, built from every section by the navigation script.
+		if (/<nav class="toc"/.test(visible)) errors.push('toc: a staged manual has no top nav.toc; the pill sheet is the complete index');
+	} else if (!tocEntries.length) errors.push('toc: no nav.toc entries found');
 	for (const [, id, label] of tocEntries) {
 		if (!titles.has(id)) errors.push(`toc: link #${id} has no section`);
 		else if (stripTags(label) !== titles.get(id)) errors.push(`toc: "${stripTags(label)}" differs from the title of #${id} ("${titles.get(id)}")`);
 	}
-	for (const id of titles.keys()) if (!tocEntries.some((entry) => entry[1] === id)) errors.push(`toc: section #${id} is missing from the TOC`);
+	if (!isStaged) for (const id of titles.keys()) if (!tocEntries.some((entry) => entry[1] === id)) errors.push(`toc: section #${id} is missing from the TOC`);
 	if (!isMenu) {
 		for (const required of ['class="section-rail"', 'class="section-pill"', 'class="toc-sheet"', 'class="back-to-top"']) {
 			if (!visible.includes(required)) errors.push(`navigation: ${required} missing`);

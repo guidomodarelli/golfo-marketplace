@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "skill": "user-manual",
-  "description": "Evalúa la elección de la herramienta JavaScript de navegador para las capturas reales de la app según el agente (Claude in Chrome, runtime de navegador de Codex con el plugin Chrome o el navegador in-app, browser_exec de Hermes) y el fallback a mockups dibujados cuando ningún navegador puede evaluar scripts en la app.",
+  "description": "Evalúa capturas reales y su fallback según capacidades del agente, además de navegación por etapas, enlaces seguros en visores embebidos y conservación de diagramas y advertencias específicas de Heritage Spec.",
   "test_cases": [
     {
       "id": "codex-browser-runtime-for-captures",
@@ -67,6 +67,245 @@
           "type": "regex",
           "pattern": "computer_use[^.]{0,120}(no puede|no evalúa|no permite|cannot|no sirve|no reemplaza)",
           "description": "Explica que computer_use no evalúa scripts en la página"
+        }
+      ]
+    },
+    {
+      "id": "long-manual-reading-navigation",
+      "description": "Propone etapas sin duplicar índices ni perder secciones, con layout responsive y orientación de lectura.",
+      "input": "Usando Heritage Spec de user-manual: manual técnico existente con 27 secciones abruma al leerlo. Piden agruparlo por objetivos sin perder enlaces, un mapa lateral y acceso permanente al índice. Se leerá a 390, 820 y 1048 px. Ya eligieron español y ambos dispositivos. No ejecutes herramientas salvo lectura de DESIGN.md; describí decisiones de navegación, disposición y orientación. Incluí cómo comprobarlas sin generar HTML.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "Ver todo",
+          "description": "Conserva acceso al documento completo"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "menú.*derecha",
+            "derecha.*menú"
+          ],
+          "description": "Sitúa menú de escritorio a la derecha"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "drawer.*derecha",
+            "sidebar.*derecha",
+            "lateral.*derecha",
+            "modal.*derecha",
+            "dialog.*derecha"
+          ],
+          "description": "Reemplaza listado móvil por panel lateral derecho"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "inferior izquierda",
+            "abajo a la izquierda",
+            "left:.*bottom:"
+          ],
+          "description": "Mantiene píldora en esquina del viewport"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "sin duplic",
+            "omitir.*superior",
+            "eliminar.*superior",
+            "no duplic",
+            "no.*índice superior",
+            "sin.*índice superior",
+            "sin.*nav.toc",
+            "no.*TOC superior",
+            "sin.*TOC superior"
+          ],
+          "description": "Evita índice superior redundante"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "200 palabras",
+            "200.*minuto"
+          ],
+          "description": "Explicita referencia de lectura, no duración medida"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "recapitul",
+            "tres conceptos",
+            "3 conceptos"
+          ],
+          "description": "Incluye cierre orientativo de etapa"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "Escape",
+            "Tab"
+          ],
+          "description": "Incluye validación de teclado del modal"
+        }
+      ]
+    },
+    {
+      "id": "embedded-cross-phase-link-safety",
+      "description": "No da por válida una URL del iframe ni intenta modificar un parent cross-origin.",
+      "input": "Leé DESIGN.md de user-manual. Manual agrupado abre embebido en un visor: iframe y página contenedora tienen distinto origen. Copiar un enlace cambia el hash interno pero la barra externa queda igual; el destino pertenece a otro grupo actualmente oculto. El host no ofrece mensajes documentados. No ejecutes cambios: explicá solución segura, límites y validación antes de reportar que funciona.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": [
+            "revel",
+            "activar.*etapa",
+            "mostrar.*destino",
+            "mostrar.*sección"
+          ],
+          "description": "Revela destino antes del salto"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "limitación",
+            "no.*afirmar",
+            "no.*garantizar"
+          ],
+          "description": "Reconoce imposibilidad de actualizar barra externa sin contrato"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "no.*parent.history",
+            "no.*acceder.*parent",
+            "no.*modificar.*parent",
+            "no.*tocar.*parent",
+            "no.*manipular.*parent",
+            "parent.*no son accesibles",
+            "parent.*inaccesible"
+          ],
+          "description": "No prescribe acceso cross-origin al parent"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "visor publicado",
+            "visor real",
+            "destino real"
+          ],
+          "description": "No confunde preview local con integración publicada"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "popstate",
+            "Atrás",
+            "Adelante"
+          ],
+          "description": "Incluye restauración por historial"
+        }
+      ]
+    },
+    {
+      "id": "preserve-diagrams-specific-warnings",
+      "description": "Conserva diagramas y estado; reduce ruido sin eliminar incertidumbres reales.",
+      "input": "Leé DESIGN.md de user-manual. Tenemos diez esquemas HTML/SVG legibles, íconos y dos simuladores funcionando. Quieren limpiar ruido visual de un manual técnico existente, sin rediseñar diagramas ni pedir herramientas nuevas. Hay rótulos genéricos repetidos sobre alcance teórico, avisos puntuales de integraciones no contrastadas y ejercicios ficticios. No ejecutes cambios: describí qué conservar y retirar, y pruebas de regresión relevantes.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": [
+            "conservar.*original",
+            "mantener.*original",
+            "preservar.*diagrama",
+            "conservar.*diagrama",
+            "conservar.*representaciones",
+            "conservar.*esquemas",
+            "mantener.*esquemas",
+            "sin rediseñar",
+            "no rediseñ",
+            "tal cual"
+          ],
+          "description": "No sustituye diagramas sin necesidad"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "sin.*Pele",
+            "no.*Pele",
+            "no.*biblioteca"
+          ],
+          "description": "No agrega dependencia para diagramas existentes"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "sin.*zoom",
+            "no.*zoom",
+            "sin.*amplia",
+            "no.*amplia"
+          ],
+          "description": "No agrega visor de ampliación por defecto"
+        },
+        {
+          "type": "contains",
+          "value": "Verificar implementación",
+          "description": "Conserva advertencia específica"
+        },
+        {
+          "type": "contains",
+          "value": "Ejemplo didáctico",
+          "description": "Distingue ejemplos de contratos verificados"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "estado",
+            "listeners"
+          ],
+          "description": "Incluye integridad del simulador en regresión"
+        }
+      ]
+    },
+    {
+      "id": "stage-chapters-structure",
+      "description": "Agrupa una etapa en capítulos con el marcado de la skill, sin ocultar partes de la etapa ni duplicar el recap.",
+      "input": "Usando user-manual: manual por etapas existente. La etapa «Operar» tiene 8 secciones sobre tres temas distintos (alta, edición y cierre) y se lee como una lista larga. Quieren subdividirla sin crear más etapas. No ejecutes herramientas salvo lectura de SKILL.md y DESIGN.md: describí el marcado, qué agrega el script y qué valida check-manual.mjs.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "stage-chapter",
+          "description": "Usa el componente de capítulo de la skill"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "al menos dos",
+            "dos secciones",
+            "2 secciones"
+          ],
+          "description": "Respeta el mínimo de secciones por capítulo"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "no ocult",
+            "no esconde",
+            "etapa entera",
+            "etapa completa",
+            "se sigue mostrando"
+          ],
+          "description": "Los capítulos ordenan sin ocultar parte de la etapa"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "recap.*por etapa",
+            "recapitulación.*por etapa",
+            "recapitulación.*etapa",
+            "una sola recap"
+          ],
+          "description": "Mantiene la recapitulación por etapa"
         }
       ]
     }

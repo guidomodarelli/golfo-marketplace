@@ -1,0 +1,187 @@
+<!--
+  Plantilla de lectura por etapas (DESIGN.md, "Lectura por etapas"). No es un documento completo: el
+  generador (scripts/embed-staged-reading.mjs --example) la monta sobre el boilerplate de DESIGN.md e
+  incrusta el CSS y el JS de etapas. Reemplazar el contenido de ejemplo; mantener el contrato:
+  - <meta name="heritage:reading-mode" content="stages"> activa la variante.
+  - Cada etapa: .stage-intro (id="stage-<id>", data-stage-intro) con .stage-title, .stage-objective y
+    .stage-reading vacío (lo completa el script); sus secciones contiguas con data-stage="<id>"; y
+    .stage-recap (data-stage-recap) con exactamente tres .stage-concepts > li y .stage-next.
+  - Capítulos, opcionales por etapa: si una etapa los usa, cada sección va después de un .stage-chapter
+    (id="chapter-<id>", data-chapter="<id>", data-stage="<etapa>") con .stage-chapter-title y
+    .stage-chapter-reading vacío; al menos dos secciones por capítulo. Los ids de capítulo no se repiten.
+  - Sin nav.toc superior: la hoja de la píldora es el índice completo.
+  Los bloques heritage:stage-only y los data-stage se quitan para generar la variante lineal.
+-->
+<!-- heritage:head -->
+<meta name="heritage:reading-mode" content="stages">
+<meta name="heritage:share-url" content="https://docs.example.com/d/example-manual/view">
+<meta name="heritage:source-repo" content="example-org/example-app">
+<meta name="heritage:source-ref" content="main">
+<meta name="heritage:source-commit" content="0123456789abcdef0123456789abcdef01234567">
+<meta name="heritage:source-files" content="src/requests/RequestForm.tsx">
+<meta name="heritage:source-commit-url" content="https://github.com/example-org/example-app/commit/0123456789abcdef0123456789abcdef01234567">
+<!-- /heritage:head -->
+<!-- heritage:body -->
+<header class="doc-header" id="top" tabindex="-1">
+  <div class="doc-label">Manual de usuario</div>
+  <h1 class="doc-title">Solicitudes de ejemplo</h1>
+  <p class="doc-sub">Cómo crear, revisar y resolver solicitudes, agrupado en etapas para leerlo de a partes.</p>
+  <div class="doc-meta"><span>Fecha: 26/10/2026</span><span>Audiencia: Operador / Supervisor</span></div>
+</header>
+
+<!-- heritage:stage-only -->
+<div class="stage-intro" id="stage-orientation" data-stage-intro="orientation">
+  <div class="stage-label">Etapa 1</div>
+  <h2 class="stage-title">Antes de empezar</h2>
+  <p class="stage-objective"><strong>Objetivo:</strong> entender para qué sirve el flujo, quién lo usa y qué permisos necesita.</p>
+  <p class="stage-reading"></p>
+</div>
+<!-- /heritage:stage-only -->
+
+<section class="section" aria-labelledby="purpose" data-section="purpose" data-stage="orientation">
+  <div class="section-num">01</div>
+  <h2 class="section-title" id="purpose">Para qué sirve</h2>
+  <p>Una <a class="term" href="#term-request">solicitud</a> reúne un pedido, su responsable y su estado. Este manual explica cómo crearla, cómo revisarla y qué hacer cuando algo no sale como se esperaba.</p>
+  <p>Si ya conocés el flujo y buscás una respuesta puntual, pasá a la <a href="#faq">sección Preguntas frecuentes</a>.</p>
+</section>
+
+<section class="section" aria-labelledby="audience" data-section="audience" data-stage="orientation">
+  <div class="section-num">02</div>
+  <h2 class="section-title" id="audience">Quién lo usa</h2>
+  <p>El operador crea y completa las solicitudes de su equipo. El supervisor las revisa, las aprueba o las devuelve con un comentario para que el operador las corrija.</p>
+</section>
+
+<section class="section" aria-labelledby="permissions" data-section="permissions" data-stage="orientation">
+  <div class="section-num">03</div>
+  <h2 class="section-title" id="permissions">Permisos y prerrequisitos</h2>
+  <p>Para crear solicitudes hace falta el permiso de edición del equipo. Para aprobarlas, el de supervisión. Sin permisos, la pantalla muestra las solicitudes en modo lectura.</p>
+</section>
+
+<!-- heritage:stage-only -->
+<aside class="stage-recap" data-stage-recap="orientation" aria-label="Conceptos clave de Antes de empezar">
+  <div class="stage-recap-label">Conceptos clave</div>
+  <ul class="stage-concepts">
+    <li>Una solicitud tiene pedido, responsable y estado.</li>
+    <li>El operador crea; el supervisor aprueba o devuelve.</li>
+    <li>Sin permiso de edición, todo se ve en modo lectura.</li>
+  </ul>
+  <p class="stage-next"><strong>Qué sigue:</strong> en la etapa Usar el flujo vas a crear una solicitud paso a paso.</p>
+</aside>
+
+<div class="stage-intro" id="stage-workflow" data-stage-intro="workflow">
+  <div class="stage-label">Etapa 2</div>
+  <h2 class="stage-title">Usar el flujo</h2>
+  <p class="stage-objective"><strong>Objetivo:</strong> crear una solicitud, practicar con el simulador y reconocer los errores más comunes.</p>
+  <p class="stage-reading"></p>
+</div>
+
+<div class="stage-chapter" id="chapter-create" data-chapter="create" data-stage="workflow">
+  <div class="stage-chapter-label">Capítulo 1</div>
+  <h2 class="stage-chapter-title">Crear una solicitud</h2>
+  <p class="stage-chapter-reading"></p>
+</div>
+<!-- /heritage:stage-only -->
+
+<section class="section" aria-labelledby="access" data-section="access" data-stage="workflow">
+  <div class="section-num">04</div>
+  <h2 class="section-title" id="access">Cómo entrar</h2>
+  <p>Desde el menú principal, elegí la tarjeta Solicitudes. La lista muestra primero las solicitudes pendientes de tu equipo, ordenadas por fecha de creación.</p>
+</section>
+
+<section class="section" aria-labelledby="happy-path" data-section="happy-path" data-stage="workflow">
+  <div class="section-num">05</div>
+  <h2 class="section-title" id="happy-path">Crear una solicitud paso a paso</h2>
+  <ol class="steps">
+    <li class="step-item"><div class="step-circle">1</div><div class="step-body"><div class="step-label">Abrí el formulario</div><div class="step-desc">Usá el botón de nueva solicitud, arriba a la derecha de la lista.</div></div></li>
+    <li class="step-item"><div class="step-circle">2</div><div class="step-body"><div class="step-label">Completá el pedido</div><div class="step-desc">Escribí qué necesitás, elegí el responsable y la fecha límite.</div></div></li>
+    <li class="step-item"><div class="step-circle">3</div><div class="step-body"><div class="step-label">Enviá</div><div class="step-desc">La solicitud queda pendiente hasta que un supervisor la revise.</div></div></li>
+  </ol>
+</section>
+
+<!-- heritage:stage-only -->
+<div class="stage-chapter" id="chapter-practice-and-errors" data-chapter="practice-and-errors" data-stage="workflow">
+  <div class="stage-chapter-label">Capítulo 2</div>
+  <h2 class="stage-chapter-title">Practicar y resolver errores</h2>
+  <p class="stage-chapter-reading"></p>
+</div>
+<!-- /heritage:stage-only -->
+
+<section class="section" aria-labelledby="practice" data-stage="workflow">
+  <div class="section-num">06</div>
+  <h2 class="section-title" id="practice">Práctica guiada con un simulador de solicitudes pendientes de revisión</h2>
+  <p><span class="badge b-gray">Ejemplo didáctico</span> El simulador cuenta cuántas solicitudes enviaste en esta práctica. No crea solicitudes reales.</p>
+  <div class="example-box" id="request-simulator">
+    <p>Solicitudes enviadas en la práctica: <output class="simulator-count">0</output></p>
+    <button class="simulator-send" type="button">Enviar una solicitud de práctica</button>
+  </div>
+</section>
+
+<section class="section" aria-labelledby="unhappy-paths" data-section="unhappy-paths" data-stage="workflow">
+  <div class="section-num">07</div>
+  <h2 class="section-title" id="unhappy-paths">Flujos no felices</h2>
+  <div class="callout c-warn"><p><strong>Verificar implementación:</strong> el aviso de fecha límite vencida depende de la zona horaria del servidor; falta contrastarlo con la integración real.</p></div>
+  <p>Si falta un campo obligatorio, el formulario lo marca y no se envía. Si la solicitud vuelve con un comentario, corregila y enviala de nuevo.</p>
+</section>
+
+<!-- heritage:stage-only -->
+<aside class="stage-recap" data-stage-recap="workflow" aria-label="Conceptos clave de Usar el flujo">
+  <div class="stage-recap-label">Conceptos clave</div>
+  <ul class="stage-concepts">
+    <li>Una solicitud enviada queda pendiente de revisión.</li>
+    <li>Los campos obligatorios se marcan antes de enviar.</li>
+    <li>Una solicitud devuelta se corrige y se reenvía.</li>
+  </ul>
+  <p class="stage-next"><strong>Qué sigue:</strong> en la etapa Resolver y consultar están los límites, las preguntas frecuentes y el glosario.</p>
+</aside>
+
+<div class="stage-intro" id="stage-reference" data-stage-intro="reference">
+  <div class="stage-label">Etapa 3</div>
+  <h2 class="stage-title">Resolver y consultar</h2>
+  <p class="stage-objective"><strong>Objetivo:</strong> saber qué no hace el flujo y dónde buscar una respuesta puntual.</p>
+  <p class="stage-reading"></p>
+</div>
+<!-- /heritage:stage-only -->
+
+<section class="section" aria-labelledby="limits" data-section="limits" data-stage="reference">
+  <div class="section-num">08</div>
+  <h2 class="section-title" id="limits">Límites</h2>
+  <p>Una solicitud aprobada no se puede editar. Para cambiarla, creá una nueva y mencioná la anterior en el pedido.</p>
+</section>
+
+<section class="section" aria-labelledby="faq" data-section="faq" data-stage="reference">
+  <div class="section-num">09</div>
+  <h2 class="section-title" id="faq">Preguntas frecuentes</h2>
+  <p><strong>¿Puedo borrar una solicitud?</strong> Solo mientras está pendiente y si la creaste vos.</p>
+</section>
+
+<section class="section" aria-labelledby="glossary" data-section="glossary" data-stage="reference">
+  <div class="section-num">10</div>
+  <h2 class="section-title" id="glossary">Glosario</h2>
+  <dl class="glossary">
+    <dt id="term-request">Solicitud</dt>
+    <dd>Pedido con un responsable y un estado que un supervisor revisa.</dd>
+  </dl>
+</section>
+
+<!-- heritage:stage-only -->
+<aside class="stage-recap" data-stage-recap="reference" aria-label="Conceptos clave de Resolver y consultar">
+  <div class="stage-recap-label">Conceptos clave</div>
+  <ul class="stage-concepts">
+    <li>Una solicitud aprobada ya no se edita.</li>
+    <li>Solo se borra una solicitud pendiente propia.</li>
+    <li>El glosario define los términos del flujo.</li>
+  </ul>
+  <p class="stage-next"><strong>Qué sigue:</strong> repasá los conceptos clave de cada etapa o volvé a esta guía como consulta cuando lo necesites.</p>
+</aside>
+<!-- /heritage:stage-only -->
+
+<script>
+// Simulador de ejemplo: conserva su estado aunque cambie la etapa visible (los nodos no se recrean).
+document.querySelectorAll('#request-simulator').forEach(function (simulator) {
+  var count = simulator.querySelector('.simulator-count');
+  simulator.querySelector('.simulator-send').addEventListener('click', function () { count.value = String(Number(count.value) + 1); });
+});
+</script>
+
+<footer class="doc-footer">Para el equipo técnico · Código: <a href="https://github.com/example-org/example-app/commit/0123456789abcdef0123456789abcdef01234567" target="_blank" rel="noopener noreferrer">main @ 0123456</a></footer>
+<!-- /heritage:body -->

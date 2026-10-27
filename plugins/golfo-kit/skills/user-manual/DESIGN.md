@@ -696,6 +696,82 @@ Si es un identificador, número, label, código o estado, va en **DM Mono**.
 - Fondo `{colors.background}` sólido (no gradientes).
 - En mobile (`<720px`) el padding lateral baja a `16px` y las tablas scrollean horizontalmente dentro de `.table-wrap`; la tipografía se mantiene en los mismos tamaños. Nunca debe haber scroll horizontal de la página.
 
+### Lectura por etapas
+
+Para manuales extensos cuya lectura lineal abruma, agrupar secciones por objetivo de
+aprendizaje en **etapas**. No imponer etapas a documentos breves ni fijar una cantidad
+universal. El boilerplate mínimo de abajo sigue siendo lineal: esta variante se activa con
+los assets de la skill, no agregando clases o escondiendo secciones con CSS a mano.
+
+**Implementación.** Partir de `assets/staged-reading/template.html` (contrato de marcado en su
+comentario inicial) y, con el manual armado sobre el boilerplate, incrustar el CSS y el script con
+`node scripts/embed-staged-reading.mjs <manual.html>` (`--viewer document` suma el
+[adaptador de visor](#copiar-enlace-a-una-sección); `--example <out.html>` genera el ejemplo).
+Volver a correrlo actualiza los bloques incrustados. El marcado:
+
+- `<meta name="heritage:reading-mode" content="stages">` en el `<head>`.
+- Por etapa, en orden: `div.stage-intro` con `id="stage-<id>"` y `data-stage-intro="<id>"`
+  (`.stage-label`, `h2.stage-title`, `p.stage-objective` y `p.stage-reading` vacío, que completa el
+  script); sus secciones contiguas con `data-stage="<id>"`; y `aside.stage-recap` con
+  `data-stage-recap="<id>"`, `ul.stage-concepts` de tres `li` y `p.stage-next`.
+- **Capítulos** (opcionales, por etapa): cuando una etapa reúne varios temas, `div.stage-chapter` con
+  `id="chapter-<id>"`, `data-chapter="<id>"` y `data-stage="<etapa>"` (`.stage-chapter-label`,
+  `h2.stage-chapter-title` y `p.stage-chapter-reading` vacío). Si una etapa los usa, toda sección va
+  después de un capítulo y cada capítulo tiene al menos dos secciones; con menos, sobra el capítulo.
+  La etapa se sigue mostrando entera: los capítulos ordenan, no ocultan. La recapitulación sigue
+  siendo por etapa; el capítulo lleva solo título y lectura estimada.
+- El script valida ese marcado antes de ocultar nada, con las reglas de
+  `assets/staged-reading/stage-contract.js`, las mismas que aplica `check-manual.mjs` (una sola
+  definición: activar y validar no pueden divergir). Si algo falla deja el manual lineal y avisa con
+  `console.warn`. Sin índice superior, `Alt`+`I` abre la hoja del índice. Oculta con `hidden` (nunca recrea ni mueve nodos) y avisa con
+  `heritage:visibility-change`; el script de navegación reusa su scroll y su URL
+  (`window.HeritageNavigation`) y revela destinos con `heritage:before-scroll`, así que no hay una
+  segunda navegación. Expone `window.HeritageStages` (estado, secciones y capítulos de cada etapa y
+  progreso) para `check-rendered.js` y las pruebas.
+- Lo que agrega el script, sin escribirlo a mano:
+  - En el menú, debajo de la etapa activa, sus capítulos y secciones como enlaces: se va directo a
+    una sección sin abrir la hoja del índice.
+  - Progreso de la visita: la etapa cuya recapitulación se leyó dice «leída» en el menú (texto, no
+    solo color). No se guarda nada entre visitas.
+  - En cada recapitulación, «Etapa N de M · X min» y botones a la etapa anterior y a la siguiente
+    (no en la primera ni en la última, respectivamente).
+  - En la hoja del índice, etiquetas de etapa y de capítulo antes de su primera sección; en el
+    mapa, un respiro entre grupos.
+  - La lectura estimada de cada capítulo, con la misma tasa que la etapa.
+
+- Mantener las secciones originales, sus IDs y su orden. Una etapa visible por vez y
+  opción **«Ver todo»**; cambiar de etapa no recrea nodos ni reinicia simuladores.
+- Usar un único modelo de etapas y secciones para menú, mapa, hoja de índice y enlaces.
+  El índice completo incluye también las secciones de etapas ocultas. El mapa representa
+  las visibles; cualquier salto a una oculta activa su etapa **antes** de medir o scrollear.
+- En escritorio (`≥820px`), menú de etapas fijo a la **derecha** y mapa de marcas a la
+  **izquierda**. Para esta variante, ampliar el layout hasta `1180px`, reservar `224px`
+  para el menú y `32px` de separación; reservar también espacio para el mapa. El mapa
+  conserva su breakpoint `rail`: ocultarlo cuando no haya margen, no forzar su aparición
+  desde el breakpoint del menú. Nunca superponer navegación y contenido.
+- Por debajo de `820px`, reemplazar el menú fijo por una barra sticky compacta con
+  «etapa actual / total · título» y botón **«Etapas»**. El listado no se despliega en el
+  flujo superior: abre un sidebar modal desde la **derecha**, de hasta `340px` de ancho
+  y como máximo `calc(100vw - 32px)`, con scroll propio y fondo atenuado.
+- Implementar el sidebar con `<dialog>` y `showModal()`: nombre accesible, botón «Cerrar»,
+  cierre por `Escape`, toque fuera y elección de etapa; foco confinado y fondo inerte.
+  Devolver el foco al disparador al cancelar; al navegar, dirigirlo al destino visible.
+  Reubicar los mismos controles entre menú y dialog, sin duplicar IDs, listeners ni estado.
+  Al cruzar el breakpoint, cerrar el modal y liberar el bloqueo de scroll.
+- Usar los tokens de Motion para la entrada lateral; sin animación con reduced motion.
+  En impresión mostrar todas las etapas y ocultar barras, menú y dialogs.
+- Con etapas y hoja inferior, omitir el índice superior redundante. La hoja sigue siendo
+  el índice completo; no confundirla con el selector de etapas. Ver [Píldora de sección](#píldora-de-sección).
+- Abrir cada etapa con título, objetivo breve y **lectura estimada**. Calcularla desde
+  sus palabras con una tasa explícita de referencia (`200 palabras/minuto`), redondeada
+  hacia arriba y con mínimo de un minuto. Aclarar que no incluye ejercicios ni simuladores;
+  no presentarla como duración medida de la tarea. Cerrar con tres conceptos clave y
+  **«Qué sigue»**; la última etapa propone síntesis o consulta, no una etapa inexistente.
+- Al elegir etapa, mostrar su orientación inicial y actualizar el enlace a su primera
+  sección. Un enlace directo a una sección, en cambio, lleva a esa sección y no al
+  encabezado de etapa. Aplicar el contrato de [Copiar enlace](#copiar-enlace-a-una-sección)
+  también a carga inicial, recarga, historial y navegación desde cualquier índice.
+
 ### Densidad
 
 - Separación entre secciones: **`40px`**.
@@ -836,8 +912,9 @@ contra qué versión del código se escribió y permiten saber qué cambió desd
 
 ### Índice (TOC)
 
-Navegación para documentos con **5 o más secciones**; con menos, sobra. Va
-inmediatamente después del `doc-header`. Estructura:
+Navegación para documentos con **5 o más secciones**; con menos, sobra. En lectura
+lineal va inmediatamente después del `doc-header`. Con [lectura por etapas](#lectura-por-etapas),
+la hoja inferior cumple esta función y se omite el índice superior duplicado. Estructura lineal:
 
 ```
 [toc-label]   "CONTENIDO" — mono uppercase
@@ -892,6 +969,22 @@ Empezar el callout con una palabra clave en `<strong>` (`Importante:`,
 `Ojo:`, `Resultado:`) para que el tono no dependa solo del color.
 **Nunca anidar callouts**. Si un callout contiene una lista, usar `<ul>` o
 `<ol>` normales — el callout ya provee el énfasis.
+
+### Diagramas y alcance del contenido
+
+- Conservar las representaciones originales cuando ya explican bien el flujo: HTML/CSS
+  o SVG semántico, íconos y simuladores incluidos. No agregar Pele u otra biblioteca por
+  defecto ni sustituir un diagrama legible por una segunda representación equivalente.
+  Si se solicita otra tecnología, justificarla por una necesidad concreta y respetar
+  las restricciones del destino y el carácter autocontenido del documento.
+- No agregar por defecto «Ampliar diagrama», visor de zoom ni disclosure de una copia
+  original. Priorizar lectura inline responsive, texto legible y descripción accesible;
+  evitar que un modal clone IDs o pierda listeners y estado de un simulador.
+- No repetir badges genéricos **«Modelo conceptual»** por todo el documento. Un aviso
+  inicial de alcance basta para el contexto general; no significa certificación contra
+  producción. Mantener etiquetas **«Ejemplo didáctico»** para simulaciones y advertencias
+  **«Verificar implementación»** donde exista una incertidumbre concreta, explicando qué
+  contrato o integración falta contrastar. No borrar avisos específicos para limpiar la UI.
 
 ### Tables
 
@@ -1066,8 +1159,9 @@ tenga que scrollear todo de nuevo. Usarlo junto con el índice.
 Atajo lateral para documentos largos: una marca corta por sección, fija a la
 izquierda de la página. Al pasar el mouse o enfocar una marca aparece una vista
 previa con el número, el título y el comienzo de la sección; al hacer click,
-salta a ella. Complementa al índice: el índice se lee una vez arriba, el mapa
-queda a mano mientras se lee. Usarlo junto con el índice y el botón "Inicio".
+salta a ella. Complementa al índice completo (superior en lectura lineal o en hoja
+inferior con etapas): el mapa queda a mano mientras se lee. Usarlo junto con ese
+índice y el botón "Inicio".
 
 ```
  ─
@@ -1116,8 +1210,16 @@ queda a mano mientras se lee. Usarlo junto con el índice y el botón "Inicio".
 
 Píldora fija abajo a la izquierda con la sección actual (`03 · Quién ve qué`); al tocarla abre el
 índice en una hoja inferior. Se ve en todos los anchos: en desktop acompaña al mapa (dice dónde
-estás sin pasar el mouse) y por debajo de `1024px`, incluido el iframe angosto de un visor embebido, es el único
-atajo de navegación.
+estás sin pasar el mouse) y por debajo de `1024px`, incluido el iframe angosto de un visor embebido,
+conserva el acceso al índice completo aunque el mapa se oculte. Con etapas, convive con
+la barra compacta: cada control cumple una función distinta.
+
+- Anclarla al **viewport**, no al contenedor centrado ni al menú: `left:24px; bottom:24px`,
+  y `16px` en ambos bordes por debajo de `720px`. Mantener libre el botón «Inicio».
+- El título compacto puede truncarse, pero `title` y nombre accesible lo conservan completo.
+  En la hoja mostrar **«Sección actual · número · título completo»**, sin ellipsis, y
+  exactamente una entrada con `aria-current="location"`, reconocible sin depender del color.
+  Al abrir, dejar visible ese encabezado; la lista puede tener scroll propio.
 
 ```
 ┌─────────────────────────────────────┐
@@ -1146,12 +1248,15 @@ atajo de navegación.
 ### Copiar enlace a una sección
 
 Cada `section-num` suma un botón "Copiar enlace" a la derecha. Sirve para responder un ticket con
-el link directo a la sección.
+el link directo a la sección. El boilerplate mínimo resuelve hashes genéricos; los formatos
+específicos de un visor requieren adaptar generación, lectura y sincronización, y probar esa
+integración. Declarar `heritage:share-url` no implementa por sí solo un adaptador del host.
 
 - Lo agrega el script; no se escribe a mano. Visible al pasar por la sección o al enfocarlo, y
   siempre en pantallas táctiles (`hover: none`).
-- Copia `<URL base>#<id del section-title>`. En visores embebidos la URL del iframe no es
-  la que ve el lector: declarar la pública con `<meta name="heritage:share-url" content="…">`.
+- En una página directa copia `<URL base>#<id del section-title>`. En visores embebidos la
+  URL del iframe no es la que ve el lector: declarar la pública con
+  `<meta name="heritage:share-url" content="…">` y aplicar el formato del host descrito abajo.
 - **El id es un slug fijo de la sección**, no su número ni su título: corto, en kebab-case, en
   inglés (el mismo para todos los idiomas) y que diga de qué trata (`permissions`,
   `add-collaborators`). Se elige al crear la sección y no cambia nunca: ni al renumerar, ni al agregar
@@ -1159,8 +1264,27 @@ el link directo a la sección.
   sección. Un id de una sección eliminada no se reusa.
 - Confirma con "Enlace copiado" en el botón y en una región `role="status"`. Si el visor bloquea
   el portapapeles, dice "No se pudo copiar" y deja un `console.warn` con el `id` de la sección.
-- Al copiar, la URL de la barra también pasa a `#<id>` (sin agregar una entrada al historial); en
-  un visor embebido llega a su barra si el visor sincroniza la URL del iframe.
+- Al copiar, actualizar también la URL pública visible, sin agregar una entrada al historial.
+  No asumir que el visor sincroniza el hash del iframe: comprobar su contrato. Por ejemplo,
+  un visor puede usar `/d/<doc_id>/view?href=<id>` en la barra y `/d/<doc_id>/raw#<id>` dentro.
+  Adaptar la generación y lectura del enlace a ese formato, sin copiar la URL local de preview.
+- Si hace falta sincronizar `parent.history`, hacerlo únicamente tras verificar **mismo origen
+  y mismo documento**; no tocar el DOM ni el estado interno del visor. En cross-origin usar
+  solo un protocolo documentado del host. Si no existe, conservar la navegación interna y
+  comunicar la limitación: no afirmar que la barra externa quedó actualizada.
+- Resolver el destino desde la URL pública al cargar y al recibir `popstate` o `hashchange`,
+  además del hash propio. Con etapas, revelar el destino antes del scroll. Validar el enlace
+  copiado abriéndolo en otra pestaña del visor, recargando y usando Atrás/Adelante.
+- **Adaptador de visor.** El script de navegación consulta `window.HeritageViewer` si existe
+  (`shareUrl(id)`, `syncLocation(id)`, `initialTargetId()`, `onNavigate(callback)`); sin él conserva
+  el comportamiento genérico de hash. Para visores con ese formato,
+  `assets/viewer-adapters/document-viewer-adapter.js` (incrustarlo con
+  `embed-staged-reading.mjs --viewer document`, también en un manual lineal) solo
+  sincroniza `?href=` cuando el visor es del mismo origen y su `/d/<doc_id>/view` coincide con el
+  `/d/<doc_id>/raw` del iframe y con `heritage:share-url`. Si no, la navegación queda local,
+  `HeritageViewer.reason` dice por qué (`cross-origin`, `unrecognized-host`, `different-document`,
+  `share-url-mismatch`) y un `console.warn` lo declara la primera vez; el enlace copiado sigue
+  usando el formato público de `heritage:share-url`.
 - **Abrir el enlace lleva a la sección**, también al recargar: el script lee el hash propio o, en un
   visor embebido del mismo origen (que puede no pasar el hash al iframe), el de la página que lo envuelve,
   y salta como desde el índice, renderizando antes las capturas de arriba. Un hash nuevo pegado en
@@ -1464,7 +1588,7 @@ Antes de entregar o aprobar un documento con este sistema:
 - [ ] Solo colores del front matter, referenciados por variable CSS; `check-design-tokens.sh` pasa si se tocó la paleta.
 - [ ] Solo DM Sans (400/500/600) y DM Mono (400/500), con su stack de fallback; ningún peso 700 ni texto <11px.
 - [ ] Paddings, margins y gaps dentro de la escala `spacing`.
-- [ ] Índice (TOC) presente si hay 5 o más secciones.
+- [ ] Índice completo si hay 5 o más secciones: superior en lectura lineal, hoja inferior sin duplicado superior con etapas.
 - [ ] Toda tabla dentro de `.table-wrap`, headers con `scope="col"`.
 - [ ] Callouts elegidos por significado y con palabra clave inicial; ninguno anidado.
 - [ ] Badges con texto legible sin color; sin emojis.
@@ -1487,10 +1611,48 @@ Antes de entregar o aprobar un documento con este sistema:
 - [ ] En cada captura, los puntos están numerados de arriba hacia abajo y de izquierda a derecha. En el texto, las referencias se mencionan en ese mismo orden.
 - [ ] Toda mención a otra sección es un link con su título ("sección Permisos y prerrequisitos"), nunca un número suelto; dentro de un paso con punto, el link lleva a la sección y no al punto.
 
+### Validación de la variante por etapas
+
+Además del checklist general, comprobar comportamiento observable en el documento generado.
+`check-manual.mjs` valida el marcado de etapas y los scripts incrustados; `check-rendered.js`
+devuelve `stages` con lo que no cumple el contrato visible (secciones de otra etapa, marcas del mapa,
+impresión y su restauración, scroll horizontal, menú o mapa sobre el contenido, píldora fuera de la
+esquina). `pnpm run test:user-manual` recorre lo de abajo en Chromium sobre el ejemplo y un visor
+local, salvo el visor publicado.
+
+- A `390`, `740`, `820`, `1048` y `1600px`: sin overflow horizontal ni solapamiento con el
+  menú; píldora en la esquina inferior izquierda. Probar también a ambos lados del breakpoint.
+- Abrir sidebar con interacción real, recorrer foco con Tab, cancelar con Escape y comprobar
+  foco restaurado; probar toque fuera, selección y resize con el dialog abierto. No queda
+  bloqueo de scroll al cerrarlo. Con reduced motion no hay entrada animada.
+- Recorrer todas las etapas y «Ver todo»: secciones e IDs preservados, objetivo, estimación
+  y cierre correctos, simuladores funcionales al salir y volver. La impresión incluye todo.
+- Abrir el índice desde un título largo: encabezado completo y una única entrada actual.
+  Elegir una sección de otra etapa: se revela, recibe foco y queda visible bajo la barra sticky.
+- Comprobar carga directa, recarga, URL visible, copia y Atrás/Adelante **en el visor publicado**.
+  En un visor embebido, validar dentro de su iframe real; localhost no prueba sincronización ni restricciones
+  del host. Si no se puede acceder, informar exactamente qué quedó sin validar.
+
 ## Changelog
 
 Cambios que alteran cómo se ve o se escribe un documento. Los documentos
 viejos siguen funcionando: los nombres de clase no cambiaron.
+
+### 2026-10-26
+
+- **Lectura por etapas:** variante para manuales largos con menú derecho, sidebar móvil,
+  orientación y recapitulación, conservando el boilerplate lineal para documentos breves. CSS,
+  script y plantilla en `assets/staged-reading/`, incrustados con `scripts/embed-staged-reading.mjs`.
+  Capítulos opcionales dentro de cada etapa, contenido de la etapa activa en el menú, progreso de
+  lectura, etapa anterior y siguiente en la recapitulación y grupos en la hoja del índice.
+- **Navegación:** índice sin duplicación, título completo de sección actual, píldora anclada
+  a la esquina y enlaces adaptados al contrato del visor, verificados en destino. El script de
+  navegación suma puntos de extensión (`window.HeritageNavigation`, `window.HeritageViewer`,
+  `heritage:visibility-change`, barras con `data-heritage-offset`), el adaptador de visor en
+  `assets/viewer-adapters/`, el foco al destino al elegirlo en la hoja del índice y el destino de
+  un salto como sección actual aunque no llegue a la línea activa.
+- **Diagramas y alcance:** conservar representaciones legibles, evitar ampliación y librerías
+  por defecto, y distinguir advertencias específicas de badges conceptuales repetitivos.
 
 ### 2026-10-02
 
@@ -1703,15 +1865,18 @@ code{font-family:var(--mono);background:var(--surface-alt);color:var(--primary);
 .section-pill-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .toc-sheet{position:fixed;inset:auto 0 0 0;width:100%;max-width:none;max-height:70vh;margin:0;padding:0;border:0;border-top:1px solid var(--border-strong);border-radius:10px 10px 0 0;background:var(--surface-card);color:var(--primary);}
 .toc-sheet::backdrop{background:rgba(26,26,46,0.32);}
-.toc-sheet-body{max-height:70vh;overflow-y:auto;padding:20px 24px 24px;}
-.toc-sheet-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+.toc-sheet-body{max-height:70vh;overflow-y:auto;padding:0 24px 24px;}
+/* El encabezado queda fijo arriba de la hoja: la sección actual se lee completa aunque la lista scrollee. */
+.toc-sheet-head{position:sticky;top:0;z-index:1;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:4px 16px;padding:20px 0 12px;background:var(--surface-card);border-bottom:1px solid var(--border);}
 .toc-sheet-head .toc-label{margin:0;}
+.toc-sheet-current{flex-basis:100%;font-size:14px;font-weight:600;line-height:1.4;color:var(--primary);}
+.toc-sheet-current-label{font-family:var(--mono);font-size:11px;font-weight:500;letter-spacing:0.12em;color:var(--label);}
 .toc-sheet-close{padding:4px 8px;border:0;background:none;font-family:var(--mono);font-size:12px;font-weight:500;color:var(--link);text-decoration:underline;text-underline-offset:2px;cursor:pointer;}
 .toc-sheet ol{list-style:none;padding:0;margin:0;}
 .toc-sheet li{margin:0;}
 .toc-sheet li .toc-label{margin:16px 0 4px;}
 .toc-sheet a{display:flex;align-items:baseline;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);font-size:14px;line-height:1.5;color:var(--primary);text-decoration:none;}
-.toc-sheet a[aria-current="location"]{font-weight:600;}
+.toc-sheet a[aria-current="location"]{font-weight:600;box-shadow:inset 2px 0 0 var(--border-ink);padding-left:8px;}
 .toc-sheet-start{font-weight:500;}
 .section-pill-num[hidden]{display:none;}
 .term{color:inherit;text-decoration:underline dotted;text-decoration-color:var(--label);text-decoration-thickness:1px;text-underline-offset:3px;cursor:help;}
@@ -1836,7 +2001,7 @@ dt.is-text-revealed{width:fit-content;}
   body{padding-left:16px;padding-right:16px;}
   .back-to-top{right:16px;bottom:16px;}
   .section-pill{left:16px;bottom:16px;max-width:calc(100vw - 152px);}
-  .toc-sheet-body{padding:20px 16px 24px;}
+  .toc-sheet-body{padding:0 16px 24px;}
   .toc ol{columns:1;}
   .code-block{padding:16px;}
 }
@@ -1911,6 +2076,7 @@ dt.is-text-revealed{width:fit-content;}
     es: {
       copyLink: 'Copiar enlace', copyLinkTo: 'Copiar enlace a la sección ', linkCopied: 'Enlace copiado', copyFailed: 'No se pudo copiar',
       shortcutSections: ' ↑ ↓ secciones', shortcutIndex: ' I índice', start: 'Inicio: ', currentSection: 'Sección actual: ', openIndex: '. Abrir índice',
+      startHeading: 'Inicio', currentSectionHeading: 'Sección actual',
       hintSteps: 'Tocá un número para ir a su paso.', hintMentions: 'Tocá un número para ir a su mención en el texto.',
       hintStepsPointer: 'Hacé click en un número para ir a su paso.', hintMentionsPointer: 'Hacé click en un número para ir a su mención en el texto.',
       goToStep: 'Ir al paso ', goToMention: 'Ir a su mención en el texto', seeInCapture: 'Ver en la captura', mentionIn: 'Mención en ',
@@ -1920,6 +2086,7 @@ dt.is-text-revealed{width:fit-content;}
     pt: {
       copyLink: 'Copiar link', copyLinkTo: 'Copiar link da seção ', linkCopied: 'Link copiado', copyFailed: 'Não foi possível copiar',
       shortcutSections: ' ↑ ↓ seções', shortcutIndex: ' I índice', start: 'Início: ', currentSection: 'Seção atual: ', openIndex: '. Abrir índice',
+      startHeading: 'Início', currentSectionHeading: 'Seção atual',
       hintSteps: 'Toque em um número para ir ao passo.', hintMentions: 'Toque em um número para ir à menção no texto.',
       hintStepsPointer: 'Clique em um número para ir ao passo.', hintMentionsPointer: 'Clique em um número para ir à menção no texto.',
       goToStep: 'Ir ao passo ', goToMention: 'Ir à menção no texto', seeInCapture: 'Ver na captura', mentionIn: 'Menção em ',
@@ -2015,6 +2182,11 @@ dt.is-text-revealed{width:fit-content;}
   var stopSettling = null;
   var frameRequested = false;
   var currentEntry = null;
+  // Sección a la que llevó el último salto; se olvida cuando el lector scrollea por su cuenta.
+  var landedEntry = null;
+  ['wheel', 'touchstart', 'keydown'].forEach(function (type) {
+    window.addEventListener(type, function () { landedEntry = null; }, { capture: true, passive: true });
+  });
 
   // —— Scroll a un destino
   // Inicio: arriba de todo (0). Título de sección: la sección completa, número incluido, con aire.
@@ -2023,15 +2195,20 @@ dt.is-text-revealed{width:fit-content;}
     var anchor = (target.matches('.section-title') && target.closest('section')) || target;
     return Math.max(0, anchor.getBoundingClientRect().top + window.scrollY - landingOffset(anchor));
   }
-  // El selector de idioma y "Ir al menú" son fijos: si alguno cae sobre la columna del destino, el
-  // destino queda debajo de él (si no, taparía el número de la sección y su "Copiar enlace").
+  // El selector de idioma, "Ir al menú" y las barras marcadas con data-heritage-offset (la barra de
+  // etapas) quedan sobre el contenido: si alguno cae sobre la columna del destino, el destino queda debajo
+  // de él (si no, taparía el número de la sección y su "Copiar enlace"). Una barra sticky se mide por
+  // donde queda pegada, no por donde está antes del salto.
   function landingOffset(anchor) {
     var anchorBox = anchor.getBoundingClientRect();
     var offset = TARGET_OFFSET_PX;
-    document.querySelectorAll('.lang-switch, .menu-back').forEach(function (control) {
-      if (getComputedStyle(control).position !== 'fixed') return;
+    document.querySelectorAll('.lang-switch, .menu-back, [data-heritage-offset]').forEach(function (control) {
+      var style = getComputedStyle(control);
+      if (style.position !== 'fixed' && style.position !== 'sticky') return;
       var box = control.getBoundingClientRect();
-      if (box.left < anchorBox.right && box.right > anchorBox.left) offset = Math.max(offset, box.bottom + TARGET_OFFSET_PX);
+      if (!box.height || box.left >= anchorBox.right || box.right <= anchorBox.left) return;
+      var bottom = style.position === 'sticky' ? (parseFloat(style.top) || 0) + box.height : box.bottom;
+      offset = Math.max(offset, bottom + TARGET_OFFSET_PX);
     });
     return offset;
   }
@@ -2069,11 +2246,19 @@ dt.is-text-revealed{width:fit-content;}
     return null;
   }
 
-  // La URL sigue a la sección: el inicio la deja sin hash. En un visor del mismo origen también se
-  // actualiza su barra, porque un script de sincronización puede recibir el hash sin escribirlo.
+  // Adaptador de visor opcional (window.HeritageViewer, por ejemplo el de un visor de documentos): traduce entre la sección y
+  // la URL pública del visor. Se busca al usarlo, así puede cargarse después de este script.
+  function viewerAdapter() { return window.HeritageViewer || null; }
+
+  // La URL sigue a la sección: el inicio la deja sin hash. Con adaptador, él decide si puede actualizar la
+  // URL pública (mismo origen y mismo documento) y si no, solo cambia la propia. Sin adaptador, en un visor
+  // del mismo origen también se actualiza su barra, porque un script de sincronización puede recibir el
+  // hash sin escribirlo.
   function setHash(id) {
     var hash = id === 'top' ? '' : '#' + id;
     history.replaceState(null, '', location.pathname + location.search + hash);
+    var adapter = viewerAdapter();
+    if (adapter) { adapter.syncLocation(id); return; }
     try {
       var viewer = window.parent !== window ? window.parent : null;
       if (viewer && viewer.location.hash !== hash) viewer.history.replaceState(viewer.history.state, '', viewer.location.pathname + viewer.location.search + hash);
@@ -2098,7 +2283,11 @@ dt.is-text-revealed{width:fit-content;}
     if (!target.hasAttribute('tabindex')) target.setAttribute('tabindex', '-1');
     target.focus({ preventScroll: true });
     if (updateHash && target.id) setHash(target.id);
+    landedEntry = entries.filter(function (entry) { return entry.heading === target; })[0] || null;
   }
+  // Punto de extensión para variantes como la lectura por etapas: reusan este scroll y esta URL en vez
+  // de reimplementarlos.
+  window.HeritageNavigation = { scrollTo: scrollToTarget, setLocation: setHash };
 
   // —— Utilidades
   function createElement(tagName, className, text) {
@@ -2162,9 +2351,14 @@ dt.is-text-revealed{width:fit-content;}
     entry.summary = summary ? summary.textContent.replace(/\s+/g, ' ').trim() : '';
   }
 
-  // —— Copiar enlace a una sección. En visores embebidos, <meta name="heritage:share-url"> da la URL pública.
+  // —— Copiar enlace a una sección. En visores embebidos, <meta name="heritage:share-url"> da la URL pública
+  // y el adaptador del visor, si lo hay, su formato (por ejemplo …/view?href=<id>).
   var shareMeta = document.querySelector('meta[name="heritage:share-url"]');
   var shareBase = (shareMeta && shareMeta.content) || location.href.split('#')[0];
+  function shareUrlFor(id) {
+    var adapter = viewerAdapter();
+    return (adapter && adapter.shareUrl(id)) || shareBase + '#' + id;
+  }
   function copyWithSelection(text) {
     return new Promise(function (resolve, reject) {
       var field = createElement('textarea', 'visually-hidden');
@@ -2194,7 +2388,7 @@ dt.is-text-revealed{width:fit-content;}
       copyButton.setAttribute('aria-label', ui.copyLinkTo + (entry.number || entry.title));
     });
     copyButton.addEventListener('click', function () {
-      var url = shareBase + '#' + entry.heading.id;
+      var url = shareUrlFor(entry.heading.id);
       // La barra de direcciones también pasa a la sección, también la del visor.
       setHash(entry.heading.id);
       var showFeedback = function (message) {
@@ -2215,6 +2409,12 @@ dt.is-text-revealed{width:fit-content;}
     entry.numberElement.appendChild(copyButton);
   });
 
+  // Una sección oculta (por ejemplo, de otra etapa) no cuenta para el mapa, la sección actual ni los atajos;
+  // la hoja del índice sigue listándolas todas. Quien oculta o muestra secciones avisa con
+  // heritage:visibility-change.
+  function isRendered(entry) { return entry.section.getClientRects().length > 0; }
+  function renderedEntries() { return entries.filter(isRendered); }
+
   // —— Mapa de secciones: una marca por sección, lupa, vista previa y progreso.
   var rail = document.querySelector('.section-rail');
   var preview = null;
@@ -2229,7 +2429,7 @@ dt.is-text-revealed{width:fit-content;}
     var previewTitle = createElement('div', 'section-rail-preview-title');
     var previewSummary = createElement('div', 'section-rail-preview-summary');
     var previewHint = createElement('div', 'section-rail-preview-hint');
-    whenLanguage(function () { previewHint.textContent = modifierLabel + ui.shortcutSections + (toc ? ' · ' + modifierLabel + ui.shortcutIndex : ''); });
+    whenLanguage(function () { previewHint.textContent = modifierLabel + ui.shortcutSections + (toc || document.querySelector('.toc-sheet') ? ' · ' + modifierLabel + ui.shortcutIndex : ''); });
     previewMeta.append(previewNumber);
     preview.append(previewMeta, previewTitle, previewSummary, previewHint);
     preview.setAttribute('aria-hidden', 'true');
@@ -2296,6 +2496,7 @@ dt.is-text-revealed{width:fit-content;}
   var pill = document.querySelector('.section-pill');
   var sheet = document.querySelector('.toc-sheet');
   var sheetReady = Boolean(pill && sheet && sheet.showModal && entries.length >= MIN_RAIL_SECTIONS);
+  var focusAfterSheet = null;
   // Cierra la hoja bajándola; sin animación (o con "reducir movimiento") cierra al instante.
   function closeSheet() {
     if (!sheet || !sheet.open || sheet.classList.contains('is-closing')) return;
@@ -2313,6 +2514,13 @@ dt.is-text-revealed{width:fit-content;}
   }
   if (sheetReady) {
     var sheetBody = sheet.querySelector('.toc-sheet-body');
+    var sheetHead = sheet.querySelector('.toc-sheet-head');
+    // Sección actual con su título completo (la píldora puede truncarlo).
+    var sheetCurrent = createElement('div', 'toc-sheet-current');
+    var sheetCurrentLabel = createElement('span', 'toc-sheet-current-label');
+    var sheetCurrentTitle = createElement('span');
+    sheetCurrent.append(sheetCurrentLabel, sheetCurrentTitle);
+    if (sheetHead) sheetHead.appendChild(sheetCurrent);
     var sheetList = toc ? toc.querySelector('ol').cloneNode(true) : createElement('ol');
     if (!toc) {
       entries.forEach(function (entry) {
@@ -2335,13 +2543,34 @@ dt.is-text-revealed{width:fit-content;}
     }
     sheetBody.appendChild(sheetList);
     pill.addEventListener('click', function () {
+      // Exactamente una entrada actual, aunque el índice repita un destino.
+      var currentLink = null;
       sheetList.querySelectorAll('a').forEach(function (link) {
-        if (currentEntry && link.getAttribute('href') === '#' + currentEntry.heading.id) link.setAttribute('aria-current', 'location');
-        else link.removeAttribute('aria-current');
+        if (!currentLink && currentEntry && link.getAttribute('href') === '#' + currentEntry.heading.id) {
+          link.setAttribute('aria-current', 'location');
+          currentLink = link;
+        } else link.removeAttribute('aria-current');
       });
+      if (currentEntry) {
+        sheetCurrentLabel.textContent = (currentEntry.isStart ? ui.startHeading : ui.currentSectionHeading) + ' · ' + (currentEntry.number ? currentEntry.number + ' · ' : '');
+        sheetCurrentTitle.textContent = currentEntry.title;
+      }
+      sheetCurrent.hidden = !currentEntry;
       sheet.showModal();
+      // La entrada actual queda a la vista, debajo del encabezado fijo de la hoja.
+      if (currentLink) {
+        var linkTop = currentLink.getBoundingClientRect().top - sheetBody.getBoundingClientRect().top + sheetBody.scrollTop;
+        var headHeight = sheetHead ? sheetHead.offsetHeight : 0;
+        if (linkTop < sheetBody.scrollTop + headHeight || linkTop + currentLink.offsetHeight > sheetBody.scrollTop + sheetBody.clientHeight) sheetBody.scrollTop = Math.max(0, linkTop - headHeight);
+      }
     });
     sheet.querySelector('.toc-sheet-close').addEventListener('click', closeSheet);
+    // Al cerrarse, el <dialog> devuelve el foco a la píldora: si se eligió un destino, el foco va a él.
+    sheet.addEventListener('close', function () {
+      if (!focusAfterSheet) return;
+      focusAfterSheet.focus({ preventScroll: true });
+      focusAfterSheet = null;
+    });
     // Click en el fondo (fuera de .toc-sheet-body) cierra la hoja; Escape también, con la misma animación.
     sheet.addEventListener('click', function (event) { if (event.target === sheet) closeSheet(); });
     sheet.addEventListener('cancel', function (event) { event.preventDefault(); closeSheet(); });
@@ -2364,19 +2593,27 @@ dt.is-text-revealed{width:fit-content;}
       pillNumber.textContent = current.number;
       pillNumber.hidden = !current.number;
       pill.querySelector('.section-pill-title').textContent = current.title;
+      pill.title = current.title;
       pill.setAttribute('aria-label', (current.isStart ? ui.start : ui.currentSection + (current.number ? current.number + ' ' : '')) + current.title + ui.openIndex);
     }
   }
   function updateCurrent() {
     frameRequested = false;
-    if (!entries.length) return;
+    var visibleEntries = renderedEntries();
+    if (!visibleEntries.length) return;
     var activeLine = window.innerHeight * ACTIVE_LINE_RATIO;
     var atBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 1;
-    var current = entries[0];
-    entries.forEach(function (entry) {
+    var current = visibleEntries[0];
+    visibleEntries.forEach(function (entry) {
       if (entry.section.getBoundingClientRect().top <= activeLine) current = entry;
     });
-    if (atBottom) current = entries[entries.length - 1];
+    if (atBottom) current = visibleEntries[visibleEntries.length - 1];
+    // Tras un salto, el destino es la sección actual mientras se vea, aunque no llegue a la línea activa
+    // (las últimas secciones no pueden subir tanto); el lector scrolleando vuelve a la regla general.
+    if (landedEntry && isRendered(landedEntry)) {
+      var landedBox = landedEntry.section.getBoundingClientRect();
+      if (landedBox.top < window.innerHeight && landedBox.bottom > 0) current = landedEntry;
+    }
     var rect = current.section.getBoundingClientRect();
     var progress = atBottom ? 1 : Math.min(Math.max((activeLine - rect.top) / rect.height, 0), 1);
     currentEntry = current;
@@ -2398,6 +2635,11 @@ dt.is-text-revealed{width:fit-content;}
   window.addEventListener('scroll', toggleFloating, { passive: true });
   window.addEventListener('scroll', hidePreview, { passive: true });
   window.addEventListener('resize', requestUpdate);
+  document.addEventListener('heritage:visibility-change', function () {
+    entries.forEach(function (entry) { if (entry.link) entry.link.parentElement.hidden = !isRendered(entry); });
+    hidePreview();
+    updateCurrent();
+  });
   toggleFloating();
   updateCurrent();
 
@@ -2478,7 +2720,7 @@ dt.is-text-revealed{width:fit-content;}
       var target = document.getElementById(link.getAttribute('href').slice(1));
       if (!target) return;
       event.preventDefault();
-      if (sheet && sheet.open) closeSheet();
+      if (sheet && sheet.open) { focusAfterSheet = target; closeSheet(); }
       hideTermCard();
       if (link.matches('a.term')) { revealText(target); return; }
       scrollToTarget(target, true);
@@ -2500,11 +2742,14 @@ dt.is-text-revealed{width:fit-content;}
     if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
     if (event.target.closest && event.target.closest('input, textarea, select, [contenteditable]')) return;
     if (sheet && sheet.open) return;
-    var currentIndex = entries.indexOf(currentEntry);
+    var navigable = renderedEntries();
+    var currentIndex = navigable.indexOf(currentEntry);
     var destination = null;
-    if (event.key === 'ArrowDown' && entries[currentIndex + 1]) destination = entries[currentIndex + 1].heading;
-    else if (event.key === 'ArrowUp' && entries[currentIndex - 1]) destination = entries[currentIndex - 1].heading;
+    if (event.key === 'ArrowDown' && navigable[currentIndex + 1]) destination = navigable[currentIndex + 1].heading;
+    else if (event.key === 'ArrowUp' && navigable[currentIndex - 1]) destination = navigable[currentIndex - 1].heading;
     else if (event.code === 'KeyI' && toc) destination = toc;
+    // Sin índice superior (lectura por etapas), Alt+I abre la hoja, que es el índice completo.
+    else if (event.code === 'KeyI' && sheetReady) { event.preventDefault(); pill.click(); return; }
     if (!destination) return;
     event.preventDefault();
     scrollToTarget(destination, destination !== toc);
@@ -2615,6 +2860,8 @@ dt.is-text-revealed{width:fit-content;}
   // —— Saltos a un texto (de un término a su definición y de la definición a cada mención): abre los
   // accordions que lo contienen, lo centra, lo resalta y lo hace latir 3 veces bajo el foco temporal.
   function revealText(target) {
+    // Antes de abrir accordions y enfocar: un destino oculto (otra etapa) se muestra primero.
+    document.dispatchEvent(new CustomEvent('heritage:before-scroll', { detail: { target: target } }));
     var closed = [];
     for (var node = target.parentElement; node; node = node.parentElement) {
       if (node.matches('details.acc') && (!node.open || node.classList.contains('is-closing'))) closed.unshift(node);
@@ -2835,15 +3082,26 @@ dt.is-text-revealed{width:fit-content;}
     var target = hash && hash.length > 1 && document.getElementById(decodeURIComponent(hash.slice(1)));
     if (target) scrollToTarget(target, false);
   }
-  var openInitialLink = function () { openDeepLink(location.hash.length > 1 ? location.hash : parentHash()); };
-  // DOMContentLoaded: después de todos los scripts, así las capturas diferidas ya escuchan heritage:before-scroll.
+  function openDeepLinkId(id) { if (id) openDeepLink('#' + encodeURIComponent(id)); }
+  // Con adaptador de visor, el destino también sale de la URL pública (al cargar y con Atrás/Adelante del
+  // visor). El hash del visor sigue valiendo como respaldo: los enlaces copiados antes del adaptador
+  // (…/view#faq) no dejan de llegar a su sección.
+  var openInitialLink = function () {
+    var adapter = viewerAdapter();
+    var adapterTarget = adapter && adapter.initialTargetId();
+    if (location.hash.length > 1) openDeepLink(location.hash);
+    else if (adapterTarget) openDeepLinkId(adapterTarget);
+    else openDeepLink(parentHash());
+    if (adapter) adapter.onNavigate(openDeepLinkId);
+    // El visor copia a su barra el hash que deja el índice; solo un hash distinto (pegado por el lector) mueve el documento.
+    try {
+      if (window.parent !== window) window.parent.addEventListener('hashchange', function () { if (parentHash() !== location.hash) openDeepLink(parentHash()); });
+    } catch (crossOriginError) { /* fallback deliberado: visor de otro origen, solo el hash propio */ }
+  };
+  // DOMContentLoaded: después de todos los scripts, así las capturas diferidas y el adaptador del visor ya están.
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', openInitialLink, { once: true });
   else setTimeout(openInitialLink, 0);
   window.addEventListener('hashchange', function () { openDeepLink(location.hash); });
-  // El visor copia a su barra el hash que deja el índice; solo un hash distinto (pegado por el lector) mueve el documento.
-  try {
-    if (window.parent !== window) window.parent.addEventListener('hashchange', function () { if (parentHash() !== location.hash) openDeepLink(parentHash()); });
-  } catch (crossOriginError) { /* fallback deliberado: visor de otro origen, solo el hash propio */ }
 
   // —— Cambio de idioma en la misma página: el script de idioma ya tradujo el contenido.
   document.addEventListener('heritage:language-change', function (event) {

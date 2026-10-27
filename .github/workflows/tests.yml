@@ -49,6 +49,8 @@ jobs:
       - run: pnpm run test:sibling-worktree
       - name: Skill coverage engine (temporary git repositories)
         run: pnpm run test:skill-coverage
+      - name: User manual validators (browser suite skips without Playwright)
+        run: pnpm run test:user-manual
 
   bootstrap:
     name: Agent Ready bootstrap (shard ${{ matrix.shard }}/3)
