@@ -57,7 +57,7 @@ Si no conocés el campo lo suficiente para responder alguna pregunta, decilo exp
 
 ## Cierre
 
-Terminá después de la reescritura con una sola línea que ofrezca ejecutarla ahora. No empieces la tarea, no abras archivos ni corras comandos para resolverla hasta que el usuario lo confirme.
+Terminá después de la reescritura con una sola línea que ofrezca ejecutarla ahora. No empieces la tarea hasta que el usuario lo confirme: no edites archivos, no corras tests ni comandos que la resuelvan o cambien estado. Sí podés hacer lecturas baratas y de solo lectura para responder bien las preguntas (por ejemplo `package.json` o la config de tests, para saber qué herramientas ya usa el proyecto).
 
 ## Formato de salida
 
