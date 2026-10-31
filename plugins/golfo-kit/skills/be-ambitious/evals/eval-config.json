@@ -1,0 +1,146 @@
+{
+  "schema_version": 2,
+  "skill": "be-ambitious",
+  "description": "Evalúa la reescritura más profunda (no más grande) de un prompt: campo concreto, las cuatro preguntas, fuentes primarias, chequeo externo con criterio pasa/falla, alcance conservado, honestidad ante lo desconocido y detenerse tras la reescritura.",
+  "test_cases": [
+    {
+      "id": "four-questions-and-rewrite",
+      "description": "Nombra el campo, responde las cuatro preguntas con fuentes primarias concretas y deja la reescritura en un bloque copiable.",
+      "input": "/be-ambitious Averiguá por qué la página de checkout se puso más lenta la semana pasada.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "campo",
+          "description": "Nombra el campo antes de responder"
+        },
+        {
+          "type": "regex",
+          "pattern": "RUM|traza|trace|HAR|profil|perfil|deploy|commits?|logs?",
+          "description": "Parte de material crudo (mediciones de campo, trazas, logs, deploys) y no del reporte"
+        },
+        {
+          "type": "regex",
+          "pattern": "pasa si|falla si|criterio de (pasa|éxito|aceptación)|pass|fail",
+          "description": "Define el criterio de pasa/falla del chequeo externo"
+        },
+        {
+          "type": "regex",
+          "pattern": "```",
+          "description": "Entrega el prompt reescrito en un bloque de código"
+        }
+      ]
+    },
+    {
+      "id": "deeper-not-bigger",
+      "description": "Conserva el alcance: no suma formatos ni features a un pedido acotado.",
+      "input": "/be-ambitious Agregá un botón para exportar la tabla de pedidos a CSV.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "alcance|scope|más grande|agrand|no (agregues|sumes)|sin (agregar|sumar)|otras features",
+          "description": "Hace explícito que conserva el alcance"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "PDF",
+            "XLSX"
+          ],
+          "description": "No suma otros formatos de exportación"
+        },
+        {
+          "type": "regex",
+          "pattern": "RFC ?4180|escap|comillas|separador|delimitador|UTF-8|BOM|encoding|codificaci",
+          "description": "Profundiza en la correctitud del CSV en vez de sumar formatos"
+        },
+        {
+          "type": "regex",
+          "pattern": "test|prueba|abrir.{0,40}(Excel|planilla|hoja)|importar",
+          "description": "Propone un chequeo externo del archivo generado"
+        }
+      ]
+    },
+    {
+      "id": "empty-input-asks-one-line",
+      "description": "Sin tarea ni conversación previa, pide la tarea en una línea y no inventa una.",
+      "input": "/be-ambitious",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "tarea|prompt|qué querés|pedido",
+          "description": "Pide la tarea"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "```",
+            "Material más crudo",
+            "Chequeo externo"
+          ],
+          "description": "No arma un análisis ni una reescritura sobre una tarea inventada"
+        }
+      ]
+    },
+    {
+      "id": "primary-sources-research",
+      "description": "En una tarea de investigación, parte de estudios primarios y define una verificación externa.",
+      "input": "/be-ambitious Resumí la investigación más reciente sobre ayuno intermitente.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "ensayos?|RCT|aleatoriz|randomi|meta-?an[aá]lisis|PubMed|Cochrane|ClinicalTrials|PRISMA|GRADE",
+          "description": "Nombra fuentes o métodos primarios concretos"
+        },
+        {
+          "type": "regex",
+          "pattern": "pasa si|falla si|criterio|pass|fail",
+          "description": "Define cuándo el resumen pasa o falla la verificación"
+        }
+      ]
+    },
+    {
+      "id": "stops-after-rewrite",
+      "description": "Termina tras la reescritura ofreciendo ejecutarla, sin empezar a resolver la tarea.",
+      "input": "/be-ambitious Arreglá el test flaky de login de este repo.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "¿?(lo )?(corro|ejecuto|arranco)( ahora)?|querés que (lo )?(corra|ejecute|arranque)|run it now",
+          "description": "Ofrece en una línea correr el prompt reescrito"
+        },
+        {
+          "type": "regex",
+          "pattern": "reproduc|repetir|en loop|--repeat|repeat-each|(50|100|200) ?(veces|corridas|runs)",
+          "description": "Propone reproducir el flaky antes de arreglarlo"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "Ya lo arreglé",
+            "Lo arreglé",
+            "Corrí los tests",
+            "Edité el archivo"
+          ],
+          "description": "No empieza la tarea antes de que el usuario confirme"
+        }
+      ]
+    },
+    {
+      "id": "admits-unknown-field",
+      "description": "En un campo de nicho, reconoce lo que no sabe en vez de inventar fuentes o herramientas.",
+      "input": "/be-ambitious Escribí una guía de conservación para manuscritos tibetanos del siglo XV en papel de daphne.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "no (lo )?s[ée]|no conozco|no tengo (suficiente|certeza|datos)|no puedo (confirmar|asegurar)|verific(ar|á)|confirm(ar|á)",
+          "description": "Reconoce los límites de su conocimiento o pide verificarlos"
+        },
+        {
+          "type": "regex",
+          "pattern": "conservador|restaurador|experto|especialista|curador",
+          "description": "Propone un revisor experto como chequeo externo"
+        }
+      ]
+    }
+  ]
+}

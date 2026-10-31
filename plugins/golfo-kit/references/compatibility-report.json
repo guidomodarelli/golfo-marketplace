@@ -44,7 +44,7 @@
     }
   ],
   "summary": {
-    "total_skills": 43,
+    "total_skills": 44,
     "agents": [
       "claude_code",
       "codex",
@@ -56,21 +56,21 @@
         "adapted": 0,
         "partial": 0,
         "incompatible": 0,
-        "unverified": 39
+        "unverified": 40
       },
       "codex": {
         "compatible": 0,
         "adapted": 1,
         "partial": 0,
         "incompatible": 0,
-        "unverified": 42
+        "unverified": 43
       },
       "hermes": {
         "compatible": 0,
         "adapted": 1,
         "partial": 0,
         "incompatible": 0,
-        "unverified": 42
+        "unverified": 43
       }
     },
     "disabled_features": 0,
@@ -547,6 +547,128 @@
           "command": "grep -rE \"AskUserQuestion|request_user_input|Monitor|Cron(Create|List|Delete)|PushNotification|TaskStop|Agent|subagent|mcp__|claude -p|codex exec|~/.claude|~/.codex|apply_patch|update_plan\" plugins/golfo-kit/skills/<skill>",
           "result": "passed",
           "evidence": "Inspección de SKILL.md, references y scripts del 2026-10-23; las coincidencias de \"hook\" son hooks de React o de git, no hooks de agente."
+        }
+      ],
+      "pending_verification": [
+        "Ejecutar la skill en Claude Code con un caso real.",
+        "Ejecutar la skill en Codex CLI con un caso real.",
+        "Ejecutar la skill en Hermes Agent con un caso real."
+      ]
+    },
+    {
+      "id": "be-ambitious",
+      "name": "Be Ambitious",
+      "version": "1.0.0",
+      "path": "plugins/golfo-kit/skills/be-ambitious/SKILL.md",
+      "purpose": "Reescribe una tarea o prompt en una versión más profunda (no más grande): campo, prácticas expertas, fuentes primarias, métodos y chequeo externo con criterio pasa/falla.",
+      "main_features": [
+        "análisis de cuatro preguntas",
+        "reescritura del prompt",
+        "cierre sin ejecutar"
+      ],
+      "declared_agents": null,
+      "dependencies": [],
+      "agents": {
+        "claude_code": {
+          "status": "unverified",
+          "summary": "Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Claude Code durante esta auditoría, así que su funcionamiento no está verificado.",
+          "missing_capabilities": [],
+          "alternatives_investigated": [],
+          "features": [
+            {
+              "id": "core-workflow",
+              "status": "unverified",
+              "resolution": "native",
+              "required": true,
+              "adaptation": false,
+              "required_capabilities": [
+                "respuesta en texto"
+              ],
+              "implementation": "Instrucciones de la skill; no usa herramientas específicas de agente.",
+              "fallback": "",
+              "reason": "Sin dependencias específicas detectadas por inspección; no ejecutada en Claude Code en esta auditoría.",
+              "alternatives_investigated": [],
+              "evidence": [
+                "Inspección estática (prueba static-inspection)."
+              ],
+              "tests": [
+                "static-inspection"
+              ]
+            }
+          ]
+        },
+        "codex": {
+          "status": "unverified",
+          "summary": "Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Codex CLI durante esta auditoría, así que su funcionamiento no está verificado.",
+          "missing_capabilities": [],
+          "alternatives_investigated": [],
+          "features": [
+            {
+              "id": "core-workflow",
+              "status": "unverified",
+              "resolution": "native",
+              "required": true,
+              "adaptation": false,
+              "required_capabilities": [
+                "respuesta en texto"
+              ],
+              "implementation": "Instrucciones de la skill; no usa herramientas específicas de agente.",
+              "fallback": "",
+              "reason": "Sin dependencias específicas detectadas por inspección; no ejecutada en Codex CLI en esta auditoría.",
+              "alternatives_investigated": [],
+              "evidence": [
+                "Inspección estática (prueba static-inspection)."
+              ],
+              "tests": [
+                "static-inspection"
+              ]
+            }
+          ]
+        },
+        "hermes": {
+          "status": "unverified",
+          "summary": "Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Hermes Agent durante esta auditoría, así que su funcionamiento no está verificado.",
+          "missing_capabilities": [],
+          "alternatives_investigated": [],
+          "features": [
+            {
+              "id": "core-workflow",
+              "status": "unverified",
+              "resolution": "native",
+              "required": true,
+              "adaptation": false,
+              "required_capabilities": [
+                "respuesta en texto"
+              ],
+              "implementation": "Instrucciones de la skill; no usa herramientas específicas de agente.",
+              "fallback": "",
+              "reason": "Sin dependencias específicas detectadas por inspección; no ejecutada en Hermes Agent en esta auditoría.",
+              "alternatives_investigated": [],
+              "evidence": [
+                "Inspección estática (prueba static-inspection)."
+              ],
+              "tests": [
+                "static-inspection"
+              ]
+            }
+          ]
+        }
+      },
+      "implementation": {
+        "adaptations": [],
+        "files_modified": [],
+        "fallback": "",
+        "behavior_changes": ""
+      },
+      "issues": [],
+      "tests": [
+        {
+          "id": "static-inspection",
+          "agent": "any",
+          "kind": "static",
+          "command": "grep -rE \"AskUserQuestion|request_user_input|Monitor|Cron(Create|List|Delete)|PushNotification|TaskStop|Agent|subagent|mcp__|claude -p|codex exec|~/.claude|~/.codex|apply_patch|update_plan\" plugins/golfo-kit/skills/<skill>",
+          "result": "passed",
+          "evidence": "Inspección de SKILL.md y evals del 2026-10-30: la skill solo produce texto y no usa herramientas específicas de agente."
         }
       ],
       "pending_verification": [
