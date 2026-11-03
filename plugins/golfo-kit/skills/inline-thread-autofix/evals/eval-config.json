@@ -1034,7 +1034,9 @@
         {
           "type": "contains_any",
           "values": [
-            "marker"
+            "marker",
+            "marcador",
+            "inline-thread-autofix: issue:"
           ],
           "description": "Usa marker en el comentario de issue"
         }
@@ -1084,35 +1086,50 @@
       ]
     },
     {
-      "id": "28-issue-reference-missing",
-      "description": "Sin referencia a issue: ISSUE_REFERENCE_MISSING sin inventar ni buscar por similitud.",
-      "input": "Escenario hipotético de evaluación para inline-thread-autofix. Ya respondí la pregunta de entorno: Checkout actual.\nhttps://github.com/acme/widgets/pull/42#discussion_r123456809\nEl comentario describe un bug, pero no contiene URL, owner/repo#N ni referencia #N a una issue. Aplicá el fix y no inventes una issue.\nNo ejecutes comandos ni consultes GitHub: describí el plan, las verificaciones que harías, las mutaciones que harías u omitirías y el estado o código que reportás.",
+      "id": "28-inline-without-issue",
+      "description": "Thread de PR sin issue referenciada: la issue es opcional, así que aplica el fix, responde y resuelve el thread sin detenerse ni buscar una issue.",
+      "input": "Escenario hipotético de evaluación para inline-thread-autofix. Ya respondí la pregunta de entorno: Checkout actual.\nhttps://github.com/acme/widgets/pull/42#discussion_r123456809\nEl comentario describe un bug concreto del PR y no menciona ninguna issue (ni URL, ni owner/repo#N, ni #N). Aplicá el fix y cerrá el feedback.\nNo ejecutes comandos ni consultes GitHub: describí el plan, las verificaciones que harías, las mutaciones que harías u omitirías y el estado o código que reportás.",
       "assertions": [
         {
-          "type": "contains",
-          "value": "ISSUE_REFERENCE_MISSING",
-          "description": "Reporta ISSUE_REFERENCE_MISSING"
+          "type": "not_contains_any",
+          "values": [
+            "ISSUE_REFERENCE_MISSING"
+          ],
+          "description": "No trata la falta de issue como código de parada"
         },
         {
           "type": "contains_any",
           "values": [
-            "no invent",
-            "sin inventar",
-            "no voy a inventar",
-            "no se inventa",
-            "inventar",
-            "similitud",
-            "no busco"
+            "issue: none",
+            "issue: `none`",
+            "sin issue asociada",
+            "no hay issue asociada"
           ],
-          "description": "No inventa ni busca issue por similitud"
+          "description": "Registra que no hay issue asociada y sigue"
         },
         {
           "type": "contains_any",
           "values": [
-            "inline",
-            "thread"
+            "in_reply_to"
           ],
-          "description": "Conserva el closeout inline normal"
+          "description": "Responde el comentario inline"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "resolveReviewThread",
+            "isResolved"
+          ],
+          "description": "Resuelve el thread"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "inline-thread-autofix: comment:",
+            "comment:123456809",
+            "comment:<comment_id>"
+          ],
+          "description": "Deja el marker del reply aunque no haya issue"
         }
       ]
     },
@@ -2138,6 +2155,84 @@
             "inmediat"
           ],
           "description": "No hace polling ni deja estado pendiente"
+        }
+      ]
+    },
+    {
+      "id": "53-inline-ambiguous-issue-reference",
+      "description": "El comment menciona dos issues sin decir cuál: ISSUE_REFERENCE_AMBIGUOUS solo omite los destinos de issue; fix, reply y resolución del thread siguen.",
+      "input": "Escenario hipotético de evaluación para inline-thread-autofix. Ya respondí la pregunta de entorno: Checkout actual.\nhttps://github.com/acme/widgets/pull/42#discussion_r123456827\nEl body del comment menciona #901 y #905 como posibles issues relacionadas, sin decir cuál corresponde. Aplicá el fix y cerrá el feedback.\nNo ejecutes comandos ni consultes GitHub: describí el plan, las verificaciones que harías, las mutaciones que harías u omitirías y el estado o código que reportás.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "ISSUE_REFERENCE_AMBIGUOUS",
+          "description": "Reporta ISSUE_REFERENCE_AMBIGUOUS"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "in_reply_to"
+          ],
+          "description": "Responde el comentario inline igual"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "resolveReviewThread",
+            "isResolved"
+          ],
+          "description": "Resuelve el thread igual"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "omit",
+            "no cierro",
+            "no cerrar",
+            "sin cerrar",
+            "no comento"
+          ],
+          "description": "Omite comentario y cierre de ambas issues"
+        }
+      ]
+    },
+    {
+      "id": "54-merged-source-without-issue",
+      "description": "PR fuente mergeado y sin issue: trabaja en #44 y deja el comentario de trazabilidad con el marker sin issue.",
+      "input": "Escenario hipotético de evaluación para inline-thread-autofix. Ya respondí la pregunta de entorno: Checkout actual.\nhttps://github.com/acme/widgets/pull/42#discussion_r123456828\nEl PR #42 está merged y el comment no menciona ninguna issue. Hay un único PR #44 abierto en la branch relacionada donde corresponde el fix. Modificá ese PR en checkout local y dejá trazabilidad completa.\nNo ejecutes comandos ni consultes GitHub: describí el plan, las verificaciones que harías, las mutaciones que harías u omitirías y el estado o código que reportás.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": [
+            "#44"
+          ],
+          "description": "Trabaja en PR #44"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "ISSUE_REFERENCE_MISSING"
+          ],
+          "description": "No se detiene por la falta de issue"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "pr:44:comment",
+            "pr:<implementation_pr>:comment",
+            "pr:{{implementation_pr}}:comment"
+          ],
+          "description": "Usa el marker de PR destino sin issue"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "issue: none",
+            "issue: `none`",
+            "sin issue asociada",
+            "no hay issue asociada"
+          ],
+          "description": "Registra que no hay issue asociada"
         }
       ]
     }
