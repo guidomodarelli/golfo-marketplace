@@ -71,7 +71,7 @@
 | Thread | `thread.id` exacto; `isResolved: false` para implementación, `true` solo habilita fast path con closeout/evidencia verificados |
 | Estado | `isOutdated` evaluado sin invalidación automática |
 | Duplicados | no existe reply previo del usuario para comment ID |
-| Reply | creado en endpoint de comments con `in_reply_to` exacto; body enlaza SHA de `implementation_pr` y `commit_id` devuelto puede conservar commit de ancla |
+| Reply | creado en endpoint de comments con `in_reply_to` exacto; body enlaza SHA de `implementation_pr` y lleva marker `comment:<comment_id>`, haya o no issue; `commit_id` devuelto puede conservar commit de ancla |
 | Resolve | `resolveReviewThread` confirma `isResolved: true` |
 | Issue reply | solo con issue validada: comentario en `issues/<issue_number>/comments` incluye comment URL original, PR de implementación, SHA y marker único |
 | Issue close | solo con issue validada: `PATCH` seguido de releer confirma `state == closed`; nunca reabre issue |

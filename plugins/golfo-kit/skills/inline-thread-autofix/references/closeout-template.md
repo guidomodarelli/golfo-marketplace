@@ -11,9 +11,11 @@ Usar después de fix validado y commit pusheado/verificado en head de PR. Elegir
 > {{resumen_de_una_linea}}
 
 <sub>🤖 Fix aplicado en respuesta a este comentario inline.</sub>
+
+<!-- inline-thread-autofix: comment:{{comment_id}} -->
 ```
 
-Usar `Resuelto` solo cuando reply fue creado en `in_reply_to` correcto y `resolveReviewThread` confirmó `isResolved: true`. Usar SHA de `implementation_pr`, aunque `source_pr` sea otro PR. Si existe issue asociada, agregar `Issue asociada: [{{owner}}/{{repo}}#{{issue_number}}]({{issue_url}})` al reply; con `issue: none`, omitir esa línea: reply y resolución del thread completan el closeout. El body debe enlazar SHA completo de implementación; GitHub puede conservar en metadata `commit_id` de comment de ancla para replies, lo que no justifica duplicar reply si `in_reply_to`, body, head remoto y thread están verificados.
+Usar `Resuelto` solo cuando reply fue creado en `in_reply_to` correcto y `resolveReviewThread` confirmó `isResolved: true`. El marker `comment:{{comment_id}}` va siempre, haya o no issue: es la señal que el fast path usa para reconocer el closeout del thread en una invocación posterior, también cuando la issue y el PR alternativo no aportan markers propios. Usar SHA de `implementation_pr`, aunque `source_pr` sea otro PR. Si existe issue asociada, agregar `Issue asociada: [{{owner}}/{{repo}}#{{issue_number}}]({{issue_url}})` al reply; con `issue: none`, omitir esa línea: reply y resolución del thread completan el closeout. El body debe enlazar SHA completo de implementación; GitHub puede conservar en metadata `commit_id` de comment de ancla para replies, lo que no justifica duplicar reply si `in_reply_to`, body, head remoto y thread están verificados.
 
 ## Comentario inline eliminado
 

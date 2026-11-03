@@ -1121,6 +1121,15 @@
             "isResolved"
           ],
           "description": "Resuelve el thread"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "inline-thread-autofix: comment:",
+            "comment:123456809",
+            "comment:<comment_id>"
+          ],
+          "description": "Deja el marker del reply aunque no haya issue"
         }
       ]
     },
