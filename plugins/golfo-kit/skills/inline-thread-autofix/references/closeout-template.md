@@ -13,7 +13,7 @@ Usar después de fix validado y commit pusheado/verificado en head de PR. Elegir
 <sub>🤖 Fix aplicado en respuesta a este comentario inline.</sub>
 ```
 
-Usar `Resuelto` solo cuando reply fue creado en `in_reply_to` correcto y `resolveReviewThread` confirmó `isResolved: true`. Si existe issue asociada, agregar `Issue asociada: [{{owner}}/{{repo}}#{{issue_number}}]({{issue_url}})` al reply y usar SHA de `implementation_pr`, aunque `source_pr` sea otro PR. El body debe enlazar SHA completo de implementación; GitHub puede conservar en metadata `commit_id` de comment de ancla para replies, lo que no justifica duplicar reply si `in_reply_to`, body, head remoto y thread están verificados.
+Usar `Resuelto` solo cuando reply fue creado en `in_reply_to` correcto y `resolveReviewThread` confirmó `isResolved: true`. Usar SHA de `implementation_pr`, aunque `source_pr` sea otro PR. Si existe issue asociada, agregar `Issue asociada: [{{owner}}/{{repo}}#{{issue_number}}]({{issue_url}})` al reply; con `issue: none`, omitir esa línea: reply y resolución del thread completan el closeout. El body debe enlazar SHA completo de implementación; GitHub puede conservar en metadata `commit_id` de comment de ancla para replies, lo que no justifica duplicar reply si `in_reply_to`, body, head remoto y thread están verificados.
 
 ## Comentario inline eliminado
 
@@ -36,7 +36,7 @@ No publicar comentarios adicionales ni asumir identidad de otro thread. Si la is
 
 ## Issue asociada a inline comment
 
-Publicar en `repos/{{owner}}/{{repo}}/issues/{{issue_number}}/comments`, después de verificar reply y resolución del thread:
+Solo con issue validada; con `issue: none` omitir esta sección y el cierre. Publicar en `repos/{{owner}}/{{repo}}/issues/{{issue_number}}/comments`, después de verificar reply y resolución del thread:
 
 ```markdown
 ✅ **Resuelto** en [PR #{{implementation_pr}}]({{implementation_pr_url}}), commit [`{{sha_corto}}`]({{commit_url}}).
@@ -60,7 +60,7 @@ Reglas:
 
 ## PR de implementación alternativo
 
-Publicar como comentario general en `repos/{{owner}}/{{repo}}/issues/{{implementation_pr}}/comments`, sin `in_reply_to`, solo cuando `implementation_pr != source_pr`:
+Publicar como comentario general en `repos/{{owner}}/{{repo}}/issues/{{implementation_pr}}/comments`, sin `in_reply_to`, solo cuando `implementation_pr != source_pr`. Con issue validada:
 
 ```markdown
 ✅ **Issue resuelta**: [{{owner}}/{{repo}}#{{issue_number}}]({{issue_url}}).
@@ -72,7 +72,17 @@ Origen: [comentario inline original]({{source_comment_url}}).
 <!-- inline-thread-autofix: pr:{{implementation_pr}}:issue:{{issue_number}}:comment:{{comment_id}} -->
 ```
 
-Verificar que `html_url` pertenece al PR de implementación y contiene links a issue y comment original. Este comentario completa la dirección `PR destino → issue → comment`; no reemplaza reply/resolución del thread ni comentario/cierre de issue.
+Con `issue: none`:
+
+```markdown
+✅ **Feedback resuelto** a partir del [comentario inline original]({{source_comment_url}}).
+
+El fix quedó aplicado en este [PR #{{implementation_pr}}]({{implementation_pr_url}}), commit [`{{sha_corto}}`]({{commit_url}}).
+
+<!-- inline-thread-autofix: pr:{{implementation_pr}}:comment:{{comment_id}} -->
+```
+
+Verificar que `html_url` pertenece al PR de implementación y contiene link al comment original y a la issue si existe. Este comentario completa la dirección `PR destino → issue → comment` (o `PR destino → comment` sin issue); no reemplaza reply/resolución del thread ni comentario/cierre de issue.
 
 ## Review body editada
 

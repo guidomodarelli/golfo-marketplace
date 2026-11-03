@@ -7,7 +7,7 @@
 | URL | host, owner, repo, PR y fragment válidos |
 | PR | estado, branch y head conocidos; `OPEN` requerido para implementar en source |
 | PR fuente cerrado | solo ancla histórica; existe un único `implementation_pr` abierto, relacionado y con ownership verificable |
-| Issue asociada | referencia explícita; mismo repo; `number`, `html_url`, `state` y `pull_request == null` verificados |
+| Issue asociada | opcional; sin referencia explícita, `issue: none` y el flujo sigue; con referencia, mismo repo y `number`, `html_url`, `state` y `pull_request == null` verificados; referencia ambigua o inválida solo omite los destinos de issue |
 | Identidad | usuario autenticado leído con `gh api user` |
 | Duplicados | no existe closeout previo del destino |
 | Árbol | limpio o aislado antes de editar |
@@ -73,11 +73,11 @@
 | Duplicados | no existe reply previo del usuario para comment ID |
 | Reply | creado en endpoint de comments con `in_reply_to` exacto; body enlaza SHA de `implementation_pr` y `commit_id` devuelto puede conservar commit de ancla |
 | Resolve | `resolveReviewThread` confirma `isResolved: true` |
-| Issue reply | comentario en `issues/<issue_number>/comments` incluye comment URL original, PR de implementación, SHA y marker único |
-| Issue close | `PATCH` seguido de releer confirma `state == closed`; nunca reabre issue |
-| PR alternativo | cuando `implementation_pr != source_pr`, comentario general en `issues/<implementation_pr>/comments` incluye links a issue y comment original, sin `in_reply_to` |
-| Cadena | `implementation_pr → issue → source_comment` verificable con URLs canónicas |
-| Salida | `Thread: resuelto`, `Issue: resuelta y cerrada`, y URL de reply; agregar `PR destino: comentario publicado` si aplica |
+| Issue reply | solo con issue validada: comentario en `issues/<issue_number>/comments` incluye comment URL original, PR de implementación, SHA y marker único |
+| Issue close | solo con issue validada: `PATCH` seguido de releer confirma `state == closed`; nunca reabre issue |
+| PR alternativo | cuando `implementation_pr != source_pr`, comentario general en `issues/<implementation_pr>/comments` incluye link al comment original y a la issue si existe, sin `in_reply_to` |
+| Cadena | `implementation_pr → issue → source_comment` con issue, o `implementation_pr → source_comment` con `issue: none`, verificable con URLs canónicas |
+| Salida | `Thread: resuelto`, URL de reply e `Issue: resuelta y cerrada` o `Issue: sin issue asociada`; agregar `PR destino: comentario publicado` si aplica |
 
 ## Destino review-body (`#pullrequestreview-<review_id>`)
 
@@ -104,7 +104,6 @@ Detener sin commit/push/closeout si:
 - se intenta aceptar o rechazar branch/base por nombre o prefijo sin verificar repo, PR, OIDs, relación del stack y autorización derivada del target/handoff;
 - URL no coincide con formato inline o review-body válido;
 - PR está cerrado/mergeado y no existe `implementation_pr` abierto inequívoco de branch relacionada;
-- se exige closeout compuesto y referencia de issue falta, es ambigua, inválida, pertenece a otro repo o apunta a pull request;
 - destino no pertenece a PR/repo indicado;
 - stack está `STACK_INCOMPLETE` o `STACK_AMBIGUOUS` y se pretende elegir otra capa;
 - hallazgo queda `FINDING_ANCHOR_AMBIGUOUS` o `UNKNOWN`;
@@ -125,12 +124,14 @@ Detener sin commit/push/closeout si:
 - sugerencia no es reproducible o exige decisión funcional no dada;
 - typecheck, tests o build fallan sin causa preexistente demostrada;
 - SHA publicado no coincide con head remoto y refresh/revalidación no demuestra que el commit esperado pertenezca a la cadena autorizada;
-- comentario, review, reply, issue reply o comentario de PR alternativo no pueden dirigirse inequívocamente;
-- comentario de issue, cierre de issue o estado final no pueden verificarse;
-- la cadena final `PR destino → issue → comment` no contiene links canónicos o queda incompleta;
+- comentario, review, reply o comentario de PR alternativo no pueden dirigirse inequívocamente;
+- con issue validada, su comentario o su cierre no pueden verificarse, o el estado final no puede verificarse;
+- la cadena final `PR destino → [issue →] comment` no contiene links canónicos o queda incompleta;
 - PUT de review permanece ambiguo después de reread y retry idempotente acotado;
 - body actualizado no conserva body original completo;
 - fallback no contiene URL inequívoca a review y marker estable;
 - se intenta `resolveReviewThread` sobre review-body.
+
+Una issue ausente, ambigua (`ISSUE_REFERENCE_AMBIGUOUS`) o inválida (`ISSUE_REFERENCE_INVALID`: otro repo, pull request o datos que no validan) no es motivo de parada: deja `issue: none`, omite comentario y cierre de issue y el fix y el closeout del thread siguen.
 
 No usar `git reset --hard`, `git clean -fd`, `git push --force`, `--force` en uploads ni desactivar tests como recuperación.
