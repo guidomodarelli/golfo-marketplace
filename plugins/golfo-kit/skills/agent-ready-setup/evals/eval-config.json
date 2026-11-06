@@ -2145,6 +2145,35 @@
       ]
     },
     {
+      "id": "business-flows-profile-composes-with-any-stack",
+      "description": "El profile de flujos se suma a cualquier stack por --profiles y no se detecta solo.",
+      "input": "Tengo una app web en React y una app Android, en repos separados, y en las dos quiero que los agentes diseñen bien los flujos de negocio de varios pasos. ¿Qué le pido a agent-ready-setup en cada repo y qué recibe cada uno? ¿Lo detecta solo? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "business-flows",
+          "description": "Elige el profile de flujos",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["--profiles frontend,business-flows", "--profiles android,business-flows"],
+          "description": "Lo combina con el stack de cada repo",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "business-flow-design",
+          "description": "Reporta la skill que recibe"
+        },
+        {
+          "type": "contains_any",
+          "values": ["no se detecta", "no lo detecta", "no la detecta", "no se selecciona"],
+          "description": "Aclara que no se detecta solo"
+        }
+      ]
+    },
+    {
       "id": "project-file-at-managed-path-is-preserved",
       "description": "Un archivo del proyecto que ningún apply escribió no se pisa aunque una versión nueva publique ese path.",
       "input": "Mi repo ya tiene lockfile de agent-ready-setup. Escribí yo mismo `.agents/rules/billing.md`, que nunca vino del template, y ahora una versión nueva de la skill empieza a publicar una rule con ese mismo nombre. ¿Qué pasa con mi archivo en el próximo apply y qué tengo que hacer para recibir la rule? No ejecutes Bash ni escribas archivos.",

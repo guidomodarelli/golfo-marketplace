@@ -1,0 +1,77 @@
+{
+  "schema_version": 2,
+  "skill": "business-flow-design",
+  "test_cases": [
+    {
+      "id": "definition-covers-resume-and-irreversible-step",
+      "description": "Una definición de un flujo con pago cubre reanudación, idempotencia y qué hace volver atrás.",
+      "input": "Usá la skill business-flow-design para diseñar un flujo de compra en tres pantallas para web y Android: elegir envío, pagar y ver la confirmación. No hay nada escrito todavía. No ejecutes Bash ni escribas archivos: mostrame la definición que escribirías y en qué archivo la guardarías.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "docs/flows/",
+          "description": "Guarda la definición donde la encuentra el equipo",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["idempoten"],
+          "description": "Hace idempotente el pago",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["process death", "muerte del proceso", "restaur", "recarga", "reload", "reanud"],
+          "description": "Define qué pasa al retomar el flujo"
+        },
+        {
+          "type": "contains_any",
+          "values": ["volver atrás", "back"],
+          "description": "Define qué hace volver atrás después del pago"
+        }
+      ]
+    },
+    {
+      "id": "review-finds-dead-end-and-missing-entry-check",
+      "description": "Al revisar un flujo encuentra el callejón sin salida y la entrada directa sin validar.",
+      "input": "Usá la skill business-flow-design para revisar este flujo de reclamos. Paso 1, elegir pedido. Paso 2, describir el problema. Paso 3, enviar. Si el envío falla, se muestra el texto 'Ocurrió un error' y no hay ningún botón. Además, el paso 2 tiene un deep link que abre directo la pantalla y usa el pedido que quedó en memoria del paso 1. No ejecutes Bash ni escribas archivos: decime qué está mal y cómo lo corregirías.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["callejón", "dead end", "sin salida", "reintent"],
+          "description": "Marca la falla sin siguiente paso",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["prerrequisit", "precondici", "prerequisite", "sin el paso 1", "no corrió", "no existe en memoria", "memoria vací"],
+          "description": "Marca que la entrada directa no valida lo que necesita",
+          "critical": true
+        }
+      ]
+    },
+    {
+      "id": "does-not-add-a-new-flow-engine",
+      "description": "Respeta el motor que ya usa el proyecto en lugar de proponer uno nuevo.",
+      "input": "Usá la skill business-flow-design. Mi proyecto Android ya usa Navigation Compose para todos los flujos. Quiero agregar un paso de verificación de identidad a un onboarding. ¿Conviene sumar XState o alguna librería de máquinas de estado para modelarlo? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["no conviene", "no sumaría", "no agregaría", "no hace falta", "no la sumaría", "no lo sumaría", "no sumes", "no agregues"],
+          "description": "No suma un motor nuevo",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "Navigation Compose",
+          "description": "Se apoya en lo que el proyecto ya usa"
+        },
+        {
+          "type": "contains_any",
+          "values": ["usuarios que ya", "ya están", "ya estan", "en curso", "a mitad", "versiones viejas", "versión anterior"],
+          "description": "Considera a los usuarios que ya están dentro del flujo"
+        }
+      ]
+    }
+  ]
+}
