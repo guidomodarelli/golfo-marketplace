@@ -822,6 +822,7 @@ sync_claude_settings() {
   local template="$1"
   local destination="$CLAUDE_DIR/settings.json"
   local temporary_settings
+  local destination_snapshot
   local merge_status=0
 
   if [[ -L "$destination" ]]; then
@@ -833,26 +834,29 @@ sync_claude_settings() {
     return 0
   fi
   if [[ ! -f "$destination" ]]; then
-    sync_file "$template" "$destination" "$template"
+    sync_file "$template" "$destination" "$template" absent
     return 0
   fi
 
+  # Settings hold project content: a save during the merge must not be lost.
   temporary_settings="$(mktemp "${TMPDIR:-/tmp}/agent-ready-settings.XXXXXX")"
-  merge_managed_settings "$template" "$destination" nested > "$temporary_settings" || merge_status=$?
+  destination_snapshot="$(mktemp "${TMPDIR:-/tmp}/agent-ready-current-settings.XXXXXX")"
+  cp -- "$destination" "$destination_snapshot"
+  merge_managed_settings "$template" "$destination_snapshot" nested > "$temporary_settings" || merge_status=$?
 
   case "$merge_status" in
     0)
-      sync_file "$temporary_settings" "$destination" "$template"
+      sync_file "$temporary_settings" "$destination" "$template" "$destination_snapshot"
       ;;
     10)
       cp -- "$template" "$temporary_settings"
-      sync_file "$temporary_settings" "$destination" "$template"
+      sync_file "$temporary_settings" "$destination" "$template" "$destination_snapshot"
       ;;
     *)
       record_cleanup_conflict "$destination contains invalid JSON; preserved"
       ;;
   esac
-  rm -f -- "$temporary_settings"
+  rm -f -- "$temporary_settings" "$destination_snapshot"
 }
 
 # The centralization rule is part of the managed AGENTS.md block, which

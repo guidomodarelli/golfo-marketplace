@@ -388,6 +388,29 @@ lock_value() {
   [ "$(lock_value 'lock["assets"][".agents/rules/security.md"]["state"]')" = "applied" ]
 }
 
+@test "a project file in a Claude view stays preserved after its asset could not be written" {
+  copy_skill
+  run_bootstrap_with "$source_copy" --stack node
+  [ "$status" -eq 0 ]
+  printf '%s
+' '# New upstream rule' > "$source_copy/assets/stacks/node/rules/new-upstream.md"
+  printf '%s
+' 'project view content' > .claude/rules/new-upstream.md
+  run_bootstrap_with "$source_copy"
+  [ "$status" -eq 0 ]
+
+  rm .agents/rules/new-upstream.md
+  mkdir .agents/rules/new-upstream.md
+  run_bootstrap_with "$source_copy"
+  [ "$status" -eq 0 ]
+  rmdir .agents/rules/new-upstream.md
+
+  run_bootstrap_with "$source_copy"
+  [ "$status" -eq 0 ]
+  [ "$(cat .claude/rules/new-upstream.md)" = "project view content" ]
+  [[ "$output" == *".claude/rules/new-upstream.md: never applied by agent-ready-setup; preserved"* ]]
+}
+
 @test "a project file that a release starts publishing is preserved until it is renamed" {
   copy_skill
   run_bootstrap_with "$source_copy" --stack node
@@ -580,7 +603,50 @@ EOF
   cmp -s .agents/rules/testing.md "$source_copy/assets/stacks/node/rules/testing.md"
   cmp -s .agents/rules/security.md "$source_copy/assets/stacks/node/rules/security.md"
   [[ "$output" == *"Local backups directory:"* ]]
+  backup_directory="$(sed -n 's/^Local backups directory: //p' <<< "$output")"
+  grep -rq 'edited locally' "$backup_directory"
+  grep -rq 'local view policy' "$backup_directory"
   [ -z "$(find "$TMPDIR" -name 'agent-ready-plan*' -print -quit)" ]
+}
+
+@test "settings saved during the merge are preserved, by bootstrap and by the hook" {
+  run_bootstrap_with "$skill_dir" --stack node --updates auto
+  [ "$status" -eq 0 ]
+  # Saves a project setting right when the merger ends, before its output is written.
+  mkdir -p "$test_root/edit-during-merge"
+  cat > "$test_root/edit-during-merge/sitecustomize.py" <<'EOF'
+import atexit
+import json
+import sys
+
+
+def save_concurrent_setting():
+    with open(".claude/settings.json", encoding="utf-8") as settings_file:
+        settings = json.load(settings_file)
+    settings["concurrentSetting"] = True
+    with open(".claude/settings.json", "w", encoding="utf-8") as settings_file:
+        json.dump(settings, settings_file)
+
+
+if sys.argv[0].endswith("merge-managed-settings.py"):
+    atexit.register(save_concurrent_setting)
+EOF
+  export PYTHONPATH="$test_root/edit-during-merge"
+
+  run_bootstrap_with "$skill_dir"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *".claude/settings.json changed during synchronization"* ]]
+  grep -q 'concurrentSetting' .claude/settings.json
+
+  sed 's/, "concurrentSetting": true//' .claude/settings.json > .claude/settings.json.clean
+  mv .claude/settings.json.clean .claude/settings.json
+  run grep -c 'concurrentSetting' .claude/settings.json
+  [ "$output" = 0 ]
+  run env PATH="$fake_bin:$PATH" AGENT_READY_SETUP_SKILL_DIR="$skill_dir" AGENT_READY_SETUP_MARKETPLACE_UPGRADED=1 \
+    bash .agents/hooks/sync-marketplace.sh --provider claude
+  [ "$status" -eq 0 ]
+  [[ "$output" == *".claude/settings.json changed during synchronization"* ]]
+  grep -q 'concurrentSetting' .claude/settings.json
 }
 
 @test "review mode never synchronizes, even with automatic updates" {
