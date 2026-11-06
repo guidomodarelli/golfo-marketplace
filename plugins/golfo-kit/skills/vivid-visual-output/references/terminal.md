@@ -106,7 +106,9 @@ Restaurar cursor y línea en toda salida: normal, error y Ctrl+C. El estado de s
 
 - **Node:** en Windows las escrituras a una TTY son asíncronas, así que `process.exit()` puede perderlas. En el handler de `exit` usar `fs.writeSync`. En el flujo normal, asignar `process.exitCode` en vez de llamar a `process.exit()`, que también puede cortar datos en un pipe en POSIX.
 - **PowerShell:** usar `try/finally`. `trap` no corre en Ctrl+C.
-- **bash y zsh:** usar `trap` en el nivel superior del script, porque en zsh un `trap ... EXIT` dentro de una función es local a esa función. Terminar también el proceso hijo, porque en un script los jobs en background ignoran SIGINT.
+- **bash y zsh:** usar `trap` en el nivel superior del script, porque en zsh un `trap ... EXIT` dentro de una función es local a esa función.
+
+Cancelar también corta el trabajo, no solo el dibujo. Si la espera corre en un proceso hijo, terminarlo con todos sus descendientes, para que no sigan teniendo efectos después de cancelar. En un script de shell, además, los jobs en background ignoran SIGINT. El kit de bash lo resuelve con `kill_process_tree`. En Node, usar `spawn` con `detached: true` y `process.kill(-child.pid)`; en Windows, `taskkill /T /F /PID`, igual que en PowerShell.
 
 ## 7. Kit de Node
 
@@ -212,9 +214,21 @@ function padVisible(text, width, { alignRight = false } = {}) {
   return alignRight ? `${padding}${text}` : `${text}${padding}`;
 }
 
+/** Prefijo que entra en maximumWidth celdas. Siempre lleva un grapheme, para que el ajuste avance. */
+function sliceVisible(text, maximumWidth) {
+  let usedWidth = 0;
+  let prefix = '';
+  for (const { segment } of graphemeSegmenter.segment(text)) {
+    usedWidth += WIDE_CHARACTER.test(segment) ? 2 : 1;
+    if (prefix && usedWidth > maximumWidth) break;
+    prefix += segment;
+  }
+  return prefix;
+}
+
 function truncateVisible(text, maximumWidth) {
   if (visibleWidth(text) <= maximumWidth) return text;
-  return `${[...text].slice(0, Math.max(maximumWidth - 1, 0)).join('')}…`;
+  return `${sliceVisible(text, Math.max(maximumWidth - 1, 1))}…`;
 }
 
 function wrapText(text, width) {
@@ -229,12 +243,12 @@ function wrapText(text, width) {
     if (line) lines.push(line);
     line = word;
     while (visibleWidth(line) > width) {
-      const characters = [...line];
-      lines.push(characters.slice(0, width).join(''));
-      line = characters.slice(width).join('');
+      const fittingPart = sliceVisible(line, width);
+      lines.push(fittingPart);
+      line = line.slice(fittingPart.length);
     }
   }
-  lines.push(line);
+  if (line || lines.length === 0) lines.push(line);
   return lines;
 }
 
@@ -363,6 +377,7 @@ $script:CanPaintData = (-not [Console]::IsOutputRedirected) -and (
 $script:Escape = [string][char]27
 $script:ClearLine = "`r$($script:Escape)[2K"
 $script:ColumnGap = '  '
+$script:WideCharacter = '^([\u1100-\u115F\u2E80-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE6F\uFF00-\uFF60\uFFE0-\uFFE6]|[\uD83C-\uD83E][\uDC00-\uDFFF])'
 
 # El caracter del proyecto vive aca. Reemplazar estos valores: solo muestran la forma.
 $script:Theme = @{
@@ -461,7 +476,29 @@ function Get-VisibleWidth {
   param([AllowEmptyString()][string]$Text = '')
 
   if (-not $Text) { return 0 }
-  return (New-Object System.Globalization.StringInfo $Text).LengthInTextElements
+  $usedCells = 0
+  $elements = [System.Globalization.StringInfo]::GetTextElementEnumerator($Text)
+  while ($elements.MoveNext()) {
+    if ($elements.GetTextElement() -match $script:WideCharacter) { $usedCells += 2 } else { $usedCells += 1 }
+  }
+  return $usedCells
+}
+
+# Prefijo que entra en $Width celdas. Siempre lleva un grapheme, para que el ajuste avance.
+function Get-FittingPrefix {
+  param([AllowEmptyString()][string]$Text = '', [int]$Width)
+
+  if (-not $Text) { return '' }
+  $usedCells = 0
+  $prefix = ''
+  $elements = [System.Globalization.StringInfo]::GetTextElementEnumerator($Text)
+  while ($elements.MoveNext()) {
+    $element = $elements.GetTextElement()
+    if ($element -match $script:WideCharacter) { $usedCells += 2 } else { $usedCells += 1 }
+    if ($prefix -and $usedCells -gt $Width) { break }
+    $prefix += $element
+  }
+  return $prefix
 }
 
 function Format-Pad {
@@ -486,12 +523,13 @@ function Split-TextToWidth {
     }
     if ($line) { $lines.Add($line) }
     $line = $word
-    while ($line.Length -gt $Width) {
-      $lines.Add($line.Substring(0, $Width))
-      $line = $line.Substring($Width)
+    while ((Get-VisibleWidth $line) -gt $Width) {
+      $fittingPart = Get-FittingPrefix -Text $line -Width $Width
+      $lines.Add($fittingPart)
+      $line = $line.Substring($fittingPart.Length)
     }
   }
-  $lines.Add($line)
+  if ($line -or $lines.Count -eq 0) { $lines.Add($line) }
   return , $lines.ToArray()
 }
 
@@ -595,7 +633,7 @@ function Wait-WithSpinner {
       $frameIndex++
       $text = "{0} {1:mm\:ss}" -f $Label, $stopwatch.Elapsed
       $maximumWidth = [Math]::Max((Get-OutputWidth -Output $Output) - 3, 1)
-      if ($text.Length -gt $maximumWidth) { $text = $text.Substring(0, $maximumWidth) }
+      $text = Get-FittingPrefix -Text $text -Width $maximumWidth
       Write-Ui "$($script:ClearLine)$(Format-Paint -Output $Output -ColorName accent -Text $frame) $text" -NoNewline
       Start-Sleep -Milliseconds $script:Theme.SpinnerIntervalMs
     }
@@ -633,6 +671,8 @@ function Invoke-WithConsole {
 ## 9. Kit de bash y zsh
 
 Sin arrays ni separación implícita de palabras, que es donde bash y zsh se diferencian. Las tablas las arma `awk`: `printf '%-10s'` cuenta bytes en bash, así que `ñ` desalinea.
+
+El kit mide caracteres, no celdas: con texto de doble ancho (CJK, emoji) las columnas se desalinean. Si el proyecto muestra ese texto, medirlo en un lenguaje que conozca el ancho, como en los kits de Node o PowerShell.
 
 ```bash
 #!/usr/bin/env bash
@@ -737,6 +777,24 @@ render_table() { # profundidad, ancho (0 = sin límite), número de la columna d
       return depth <= 1 ? text : esc "[" code[status_name] "m" text esc "[0m"
     }
     function bold(text) { return depth <= 1 ? text : esc "[1m" text esc "[0m" }
+    # Parte el texto antes de pintarlo, en un espacio si hay uno: un dato largo no se trunca ni rompe la fila.
+    function print_stacked(text, style, cut, position) {
+      while (length(text) > width) {
+        cut = width
+        for (position = width + 1; position > 3; position--) {
+          if (substr(text, position, 1) == " ") { cut = position - 1; break }
+        }
+        print_styled(substr(text, 1, cut), style)
+        text = substr(text, cut + 1)
+        sub(/^ +/, "", text)
+      }
+      print_styled(text, style)
+    }
+    function print_styled(text, style) {
+      if (style == "title") print bold(text)
+      else if (style != "") print paint(style, text)
+      else print text
+    }
     {
       for (i = 1; i <= NF; i++) {
         value = (NR > 1 && i == status_column) ? label[$i] : $i
@@ -751,10 +809,9 @@ render_table() { # profundidad, ancho (0 = sin límite), número de la columna d
       for (i = 1; i <= column_count; i++) total += widest[i]
       if (width > 0 && total > width) {
         for (row = 2; row <= NR; row++) {
-          print bold(cell[row, 1])
+          print_stacked(cell[row, 1], "title")
           for (i = 2; i <= column_count; i++) {
-            line = "  " cell[1, i] ": " cell[row, i]
-            print (i == status_column) ? paint(status[row], line) : line
+            print_stacked("  " cell[1, i] ": " cell[row, i], (i == status_column) ? status[row] : "")
           }
           if (row < NR) print ""
         }
@@ -823,8 +880,20 @@ UI_ANIMATES=0
 if [ "$UI_DEPTH" -gt 1 ] && [ "$UI_IS_TTY" = 1 ]; then UI_ANIMATES=1; fi
 WORK_PID=''
 
+# Matar solo el PID deja corriendo lo que el trabajo lanzó, con sus efectos después de cancelar.
+# Git Bash no entiende `ps -o`, por eso el fallback a `ps -ef`.
+kill_process_tree() { # pid
+  local child_pids child_pid
+  child_pids=$({ ps -A -o pid= -o ppid= 2>/dev/null || ps -ef 2>/dev/null | awk 'NR > 1 { print $2, $3 }'; } |
+    awk -v parent="$1" '$2 == parent { print $1 }')
+  kill "$1" 2>/dev/null
+  for child_pid in $(printf '%s\n' "$child_pids"); do
+    kill_process_tree "$child_pid"
+  done
+}
+
 restore_terminal() {
-  if [ -n "$WORK_PID" ]; then kill "$WORK_PID" 2>/dev/null; fi
+  if [ -n "$WORK_PID" ]; then kill_process_tree "$WORK_PID"; fi
   if [ "$UI_ANIMATES" = 1 ]; then printf '\r%s[2K%s[?25h' "$ESC" "$ESC" >&2; fi
 }
 
@@ -836,7 +905,11 @@ trap 'exit 143' TERM
 run_with_spinner() { # etiqueta, comando...
   spinner_label=$1
   shift
-  "$@" &
+  # Con set -e, un trabajo de varios pasos no sigue con el próximo si Ctrl+C cortó el actual.
+  (
+    set -e
+    "$@"
+  ) &
   WORK_PID=$!
   spinner_started_at=$SECONDS
   next_heartbeat=$HEARTBEAT_SECONDS
@@ -848,6 +921,10 @@ run_with_spinner() { # etiqueta, comando...
       frame=${SPINNER_FRAMES:$((frame_index % SPINNER_FRAME_COUNT)):1}
       spinner_columns=$(($(terminal_width "$UI_IS_TTY") - 3))
       spinner_text=$(printf '%s %02d:%02d' "$spinner_label" $((spinner_elapsed / 60)) $((spinner_elapsed % 60)))
+      # Con texto no ASCII se corta a la mitad: alcanza aunque cada carácter ocupe dos celdas.
+      case "$spinner_text" in
+        *[!\ -~]*) spinner_columns=$((spinner_columns / 2)) ;;
+      esac
       printf '\r%s[2K%s %s' "$ESC" "$(paint "$UI_DEPTH" accent "$frame")" "${spinner_text:0:$spinner_columns}" >&2
       frame_index=$((frame_index + 1))
     elif [ "$spinner_elapsed" -ge "$next_heartbeat" ]; then
