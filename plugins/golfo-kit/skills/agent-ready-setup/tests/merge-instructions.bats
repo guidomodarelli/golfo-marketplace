@@ -500,11 +500,24 @@ EOF
 }
 
 @test "directory lock protects against pathname replacement during atomic update" {
-  python3 - <<'PY'
-with open('AGENTS.md', 'w', encoding='utf-8') as agents_file:
-    agents_file.write('# Original instructions\n\n')
-    for index in range(250000):
-        agents_file.write(f'Project line {index}\n')
+  printf '%s\n' '# Original instructions' '' 'Project line' > AGENTS.md
+  # Keeps the merge inside its locked section long enough for the writer to see the
+  # temporary file, which otherwise lives for a few milliseconds on a fast disk.
+  slow_fsync_directory="$test_root/slow-fsync"
+  mkdir -p "$slow_fsync_directory"
+  cat > "$slow_fsync_directory/sitecustomize.py" <<'PY'
+import os
+import time
+
+original_fsync = os.fsync
+
+
+def slow_fsync(file_descriptor):
+    time.sleep(0.5)
+    original_fsync(file_descriptor)
+
+
+os.fsync = slow_fsync
 PY
   cat > "$fake_bin/claude" <<'EOF'
 #!/bin/bash
@@ -531,11 +544,10 @@ race_marker = sys.argv[1]
 windows_lock_path = sys.argv[2]
 open(sys.argv[3], 'w').close()
 deadline = time.monotonic() + 30
-# No sleep here: on a fast disk the temporary file lives for a few milliseconds
-# (write, fsync, rename), less than a short sleep can take on a macOS runner.
 while not glob.glob('.AGENTS.md.agent-ready-merge.*'):
     if time.monotonic() >= deadline:
         sys.exit('merge temporary file was not created')
+    time.sleep(0.001)
 
 directory_descriptor = None
 windows_lock_file = None
@@ -580,7 +592,7 @@ PY
     [ -e "$ready_marker" ] && break
     sleep 0.1
   done
-  PATH="$fake_bin:$PATH" bash "$skill_dir/scripts/merge-instructions.sh" \
+  PATH="$fake_bin:$PATH" PYTHONPATH="$slow_fsync_directory" bash "$skill_dir/scripts/merge-instructions.sh" \
     --provider claude --stack node --skill-dir "$skill_dir" \
     > "$test_root/merge-output.log" 2>&1 3>&- &
   merge_pid=$!
@@ -598,7 +610,7 @@ PY
   fi
 
   # bats shows this output only when the test fails.
-  cat "$test_root/writer-output.log"
+  cat "$test_root/merge-output.log" "$test_root/writer-output.log"
   [ "$merge_status" -eq 0 ]
   [ "$writer_status" -eq 0 ]
   [ ! -e "$race_marker" ]
