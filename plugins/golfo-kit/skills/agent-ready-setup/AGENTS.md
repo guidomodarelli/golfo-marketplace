@@ -10,7 +10,7 @@ Al agregar o modificar una rule, skill, agent, command, template de instruccione
    - bloque gestionado de `AGENTS.md` (`assets/stacks/<stack>/CLAUDE.md` y `assets/instruction-centralization.md`);
    - proxy `assets/claude-proxy.md`;
    - `SKILL.md`.
-2. Revisar el mismo cambio en todos los stacks (`frontend`, `node`, `java`, `go`) cuando aplique. Si una rule aplica igual a todos los stacks, publicarla una sola vez en `assets/common/rules/` en lugar de copiarla en cada stack.
+2. Revisar el mismo cambio en todos los stacks (`frontend`, `node`, `java`, `go`, `android`) cuando aplique. Si una rule aplica igual a todos los stacks, publicarla una sola vez en `assets/common/rules/` en lugar de copiarla en cada stack.
 3. Verificar que cada referencia a un archivo o sección apunte a uno existente. Al agregar, renombrar o quitar un asset de `assets/`, actualizar el catálogo de «Step 4 — Report» en `SKILL.md`.
 4. Reportar al usuario cada inconsistencia encontrada (contradicción, duplicado o referencia rota) con paths, fragmentos afectados y una recomendación. No resolver en silencio contradicciones que requieran decidir precedencia.
 

@@ -11,7 +11,7 @@
 # .agents/agent-ready.lock.json (lockfile).
 #
 # Usage:
-#   bash bootstrap.sh --skill-dir <path> [--profiles <a,b> | --stack <frontend|node|java|go>]
+#   bash bootstrap.sh --skill-dir <path> [--profiles <a,b> | --stack <frontend|node|java|go|android>]
 #     [--provider <claude|codex>] [--updates <pinned|auto>] [--plan | --status]
 #
 # Without --profiles or --stack, the profiles come from .agents/agent-ready.json.
@@ -116,9 +116,9 @@ if [[ -n "$STACK" && -n "$PROFILES" ]]; then
 fi
 
 case "$STACK" in
-  ""|frontend|node|java|go) ;;
+  ""|frontend|node|java|go|android) ;;
   *)
-    echo "ERROR: Unsupported stack '$STACK'. Expected frontend, node, java, or go." >&2
+    echo "ERROR: Unsupported stack '$STACK'. Expected frontend, node, java, go, or android." >&2
     exit 1
     ;;
 esac

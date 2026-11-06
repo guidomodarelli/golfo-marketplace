@@ -35,11 +35,12 @@ directorio tal cual; con varios, `resolve` los compone en
 la normalización y el bloque gestionado leen ese árbol (variable
 `AGENT_READY_SETUP_STACK_DIR`). Si dos profiles (o un profile y la base)
 publican el mismo destino, la resolución falla **antes de escribir** y nombra
-los dos profiles: hoy las cuatro stacks comparten nombres (`rules/security.md`,
+los dos profiles: hoy las stacks comparten nombres (`rules/security.md`,
 `agents/perf-analyzer.md`), así que no se combinan entre sí.
 
 `--stack <s>` sigue funcionando como alias de `stackDefaults[s]` (la stack más
-`browser`). Un profile nuevo que extiende una stack (por ejemplo, testing
+`browser`, salvo `android`, porque una app nativa no usa esas herramientas: para una
+que prueba un `WebView`, usar `--profiles android,browser`). Un profile nuevo que extiende una stack (por ejemplo, testing
 específico de una plataforma) declara `requires: ["<stack>"]` y publica solo
 assets con nombres propios; no copia los de la stack.
 

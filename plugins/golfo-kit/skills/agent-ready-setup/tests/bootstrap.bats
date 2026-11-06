@@ -327,7 +327,7 @@ EOF
 }
 
 @test "bootstrap installs shared GitHub PR template for every stack" {
-  for stack in frontend node java go; do
+  for stack in frontend node java go android; do
     run_bootstrap "$stack"
     [ "$status" -eq 0 ]
     cmp -s .github/pull_request_template.md "$skill_dir/assets/common/github/pull_request_template.md"
@@ -717,7 +717,7 @@ EOF
 
 @test "browser rule is discoverable through both providers for every stack" {
   for provider in claude codex; do
-    for stack in frontend go java node; do
+    for stack in frontend go java node android; do
       stack_project="$test_root/$provider-$stack-browser"
       mkdir -p "$stack_project"
       git -C "$stack_project" -c init.defaultBranch=main init -q
@@ -737,7 +737,7 @@ EOF
 }
 
 @test "common rules and skill adapters are projected verbatim for every stack" {
-  for stack in frontend go java node; do
+  for stack in frontend go java node android; do
     stack_project="$test_root/$stack-adapters"
     mkdir -p "$stack_project"
     git -C "$stack_project" -c init.defaultBranch=main init -q
@@ -882,8 +882,8 @@ EOF
   [[ "$output" == *"↻ .agents/skills/karpathy-guidelines/SKILL.md"* ]]
 }
 
-@test "backend stacks project common rules, hooks, and settings for every provider" {
-  for stack in go java node; do
+@test "stacks without frontend assets project common rules, hooks, and settings for every provider" {
+  for stack in go java node android; do
     stack_project="$test_root/$stack-project"
     mkdir -p "$stack_project"
     git -C "$stack_project" -c init.defaultBranch=main init -q
@@ -1286,7 +1286,7 @@ EOF
   chmod +x "$fake_bin/claude"
   mkdir -p .claude .agents
 
-  for stack in frontend node java go; do
+  for stack in frontend node java go android; do
     hook="$skill_dir/assets/common/hooks/check-harness-consistency.sh"
     for provider_root in .claude .agents; do
       : > "$invocation_log"
@@ -1310,7 +1310,7 @@ EOF
   chmod +x "$fake_bin/claude"
   mkdir -p .claude .agents
 
-  for stack in frontend node java go; do
+  for stack in frontend node java go android; do
     hook="$skill_dir/assets/common/hooks/check-harness-consistency.sh"
     for provider_root in .claude .agents; do
       : > "$invocation_log"
@@ -1342,7 +1342,7 @@ EOF
 
 
 @test "Codex hooks install at discoverable project path on bootstrap and sync" {
-  for stack in frontend node java go; do
+  for stack in frontend node java go android; do
     rm -f .codex/hooks.json
     run_bootstrap "$stack"
     [ "$status" -eq 0 ]
@@ -1380,7 +1380,7 @@ EOF
 *** End Patch'
   payload="$(jq -n --arg command "$patch" '{tool_name:"apply_patch",tool_input:{command:$command}}')"
 
-  for stack in frontend node java go; do
+  for stack in frontend node java go android; do
     run_bootstrap "$stack"
     [ "$status" -eq 0 ]
     : > "$invocation_log"
@@ -2631,7 +2631,7 @@ EOF
   [ -f "$skill_dir/scripts/asset-sync-common.sh" ]
   [ -f "$skill_dir/scripts/merge-managed-settings.py" ]
 
-  for stack in frontend node java go; do
+  for stack in frontend node java go android; do
     [ ! -e "$skill_dir/assets/stacks/$stack/settings.json" ]
     [ ! -e "$skill_dir/assets/stacks/$stack/hooks/sync-marketplace.sh" ]
     [ ! -e "$skill_dir/assets/stacks/$stack/rules/language-consistency.md" ]
