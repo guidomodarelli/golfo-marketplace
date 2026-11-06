@@ -88,7 +88,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     --stack)
       if [[ $# -lt 2 || -z "${2:-}" ]]; then
-        printf 'ERROR: --stack requires frontend, node, java, or go\n' >&2
+        printf 'ERROR: --stack requires frontend, node, java, go, or android\n' >&2
         exit 1
       fi
       stack_override="$2"
@@ -502,6 +502,17 @@ refresh_missing_asset_sync_helper() {
   fi
 }
 
+# An Android module keeps its manifest under src/main; a root Gradle file alone
+# cannot tell it apart from a JVM service.
+has_android_manifest() {
+  local manifest
+
+  for manifest in src/main/AndroidManifest.xml */src/main/AndroidManifest.xml */*/src/main/AndroidManifest.xml; do
+    [[ -f "$manifest" ]] && return 0
+  done
+  return 1
+}
+
 detect_stack() {
   if [[ -n "$stack_override" ]]; then
     printf '%s\n' "$stack_override"
@@ -511,6 +522,8 @@ detect_stack() {
     else
       printf '%s\n' "node"
     fi
+  elif has_android_manifest; then
+    printf '%s\n' "android"
   elif [[ -f pom.xml || -f build.gradle || -f build.gradle.kts ]]; then
     printf '%s\n' "java"
   elif [[ -f go.mod ]]; then
@@ -519,7 +532,7 @@ detect_stack() {
 }
 
 case "$stack_override" in
-  ""|frontend|node|java|go) ;;
+  ""|frontend|node|java|go|android) ;;
   *)
     printf 'ERROR: unsupported stack: %s\n' "$stack_override" >&2
     exit 1
@@ -598,7 +611,7 @@ elif [[ -z "$manifest_profiles" ]]; then
   stack="$(detect_stack || true)"
   if [[ -z "$stack" ]]; then
     printf 'WARNING: could not detect project stack; local projection skipped.\n' >&2
-    printf 'Rerun with --stack frontend|node|java|go or --profiles <a,b>.\n' >&2
+    printf 'Rerun with --stack frontend|node|java|go|android or --profiles <a,b>.\n' >&2
     exit 0
   fi
   profile_selection=(--stack "$stack")

@@ -130,7 +130,7 @@ bash .agents/hooks/sync-marketplace.sh --provider codex
 
 Si la fuente instalada no se puede resolver o el stack no se detecta, el hook
 conserva el upgrade global y muestra cómo indicar `AGENT_READY_SETUP_SKILL_DIR`,
-`--stack frontend|node|java|go` o `--profiles <a,b>`. Sin flags, el hook usa los
+`--stack frontend|node|java|go|android` o `--profiles <a,b>`. Sin flags, el hook usa los
 profiles del manifest y solo detecta el stack cuando no hay manifest.
 `AGENT_READY_SETUP_STACK=<stack>` y `AGENT_READY_SETUP_PROFILES=<a,b>` equivalen a
 las flags (las flags tienen precedencia). En un repositorio `pinned`, solo las

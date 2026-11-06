@@ -510,9 +510,9 @@ EOF
 }
 
 @test "unknown profiles and profile sets without a stack are rejected with the catalog" {
-  run_bootstrap_with "$skill_dir" --profiles android
+  run_bootstrap_with "$skill_dir" --profiles cobol
   [ "$status" -ne 0 ]
-  [[ "$output" == *"unknown profile 'android'; available profiles: browser, frontend, go, java, node"* ]]
+  [[ "$output" == *"unknown profile 'cobol'; available profiles: android, browser, frontend, go, java, node"* ]]
 
   run_bootstrap_with "$skill_dir" --profiles browser
   [ "$status" -ne 0 ]
@@ -610,6 +610,56 @@ EOF
   run python3 "$skill_dir/scripts/agent-ready-state.py" status --project . --skill-dir "$skill_dir" --check
   [ "$status" -eq 4 ]
   [[ "$output" == *"missing: .agents/rules/security.md"* ]]
+}
+
+@test "the android stack projects its own assets and does not select browser tools" {
+  run_bootstrap_with "$skill_dir" --stack android
+  [ "$status" -eq 0 ]
+  [ "$(lock_value 'lock["primaryStack"]')" = "android" ]
+  [ "$(lock_value 'lock["profileOrder"]')" = "['android']" ]
+  for asset in rules/coding-style.md rules/security.md rules/testing.md agents/perf-analyzer.md agents/security-scanner.md commands/review-pr.md; do
+    cmp -s ".agents/$asset" "$skill_dir/assets/stacks/android/$asset"
+    [ -L ".claude/$asset" ] || [ ".claude/$asset" -ef ".agents/$asset" ]
+  done
+  grep -Fq -- '- Read and follow `.agents/rules/coding-style.md`.' AGENTS.md
+  [ ! -e .mcp.json ]
+}
+
+@test "SessionStart detects Android modules before the generic Gradle stack" {
+  mkdir -p .agents/hooks
+  cp "$skill_dir/assets/common/hooks/sync-marketplace.sh" .agents/hooks/sync-marketplace.sh
+  printf '%s\n' 'plugins {}' > build.gradle.kts
+  mkdir -p feature/login/src/main
+  printf '%s\n' '<manifest />' > feature/login/src/main/AndroidManifest.xml
+
+  run env PATH="$fake_bin:$PATH" AGENT_READY_SETUP_SKILL_DIR="$skill_dir" AGENT_READY_SETUP_MARKETPLACE_UPGRADED=1 \
+    bash .agents/hooks/sync-marketplace.sh --provider claude
+  [ "$status" -eq 0 ]
+  [ "$(lock_value 'lock["primaryStack"]')" = "android" ]
+}
+
+@test "SessionStart keeps a Gradle service without an Android manifest on the java stack" {
+  mkdir -p .agents/hooks
+  cp "$skill_dir/assets/common/hooks/sync-marketplace.sh" .agents/hooks/sync-marketplace.sh
+  printf '%s\n' 'plugins {}' > build.gradle.kts
+
+  run env PATH="$fake_bin:$PATH" AGENT_READY_SETUP_SKILL_DIR="$skill_dir" AGENT_READY_SETUP_MARKETPLACE_UPGRADED=1 \
+    bash .agents/hooks/sync-marketplace.sh --provider claude
+  [ "$status" -eq 0 ]
+  [ "$(lock_value 'lock["primaryStack"]')" = "java" ]
+}
+
+@test "SessionStart keeps a React Native project with an android directory on the frontend stack" {
+  mkdir -p .agents/hooks
+  cp "$skill_dir/assets/common/hooks/sync-marketplace.sh" .agents/hooks/sync-marketplace.sh
+  printf '%s\n' '{"dependencies": {"react": "19.0.0"}}' > package.json
+  mkdir -p android/app/src/main
+  printf '%s\n' '<manifest />' > android/app/src/main/AndroidManifest.xml
+
+  run env PATH="$fake_bin:$PATH" AGENT_READY_SETUP_SKILL_DIR="$skill_dir" AGENT_READY_SETUP_MARKETPLACE_UPGRADED=1 \
+    bash .agents/hooks/sync-marketplace.sh --provider claude
+  [ "$status" -eq 0 ]
+  [ "$(lock_value 'lock["primaryStack"]')" = "frontend" ]
 }
 
 @test "profiles without browser never install browser tools" {

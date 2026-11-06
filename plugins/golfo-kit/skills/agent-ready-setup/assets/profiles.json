@@ -22,6 +22,11 @@
       "description": "Go services.",
       "assets": "assets/stacks/go"
     },
+    "android": {
+      "kind": "stack",
+      "description": "Android apps in Kotlin or Java built with Gradle and the Android Gradle Plugin.",
+      "assets": "assets/stacks/android"
+    },
     "browser": {
       "kind": "capability",
       "description": "Browser automation tools (agent-browser, Playwright and Chrome DevTools MCP) installed in the user cache and registered for the project.",
@@ -32,6 +37,7 @@
     "frontend": ["frontend", "browser"],
     "node": ["node", "browser"],
     "java": ["java", "browser"],
-    "go": ["go", "browser"]
+    "go": ["go", "browser"],
+    "android": ["android"]
   }
 }

@@ -2097,6 +2097,54 @@
       ]
     },
     {
+      "id": "android-detected-before-generic-gradle",
+      "description": "Un proyecto Gradle con manifest de Android usa el stack android, no java, y no instala herramientas de browser.",
+      "input": "Tengo una app con `settings.gradle.kts`, `build.gradle.kts` en la raíz y un módulo `app/` con Compose. Quiero prepararla con agent-ready-setup. ¿Qué stack va a elegir y por qué? ¿Qué rules, agents y comandos propios del stack recibe? ¿Se instalan las herramientas de automatización de navegador? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["`android`", "stack android", "stack `android`"],
+          "description": "Elige el stack android",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "AndroidManifest.xml",
+          "description": "Explica que la señal es el manifest",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "security-scanner",
+          "description": "Reporta los agents del stack"
+        },
+        {
+          "type": "contains_any",
+          "values": ["--profiles android,browser", "no instala", "no se instalan", "no las instala"],
+          "description": "Aclara que no instala herramientas de browser por defecto"
+        }
+      ]
+    },
+    {
+      "id": "android-rule-rejects-secret-in-buildconfig",
+      "description": "La rule de seguridad de Android no acepta una API key en BuildConfig aunque se ofusque.",
+      "input": "Leé la rule de seguridad del stack android de agent-ready-setup. En mi app Android quiero guardar la API key privada de un proveedor de pagos en `BuildConfig`, leída de `local.properties`, y ofuscarla con R8 para que no se pueda sacar del APK. ¿Lo hago así? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["servidor", "backend", "server"],
+          "description": "Mueve el secreto a un servidor",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["extra", "descompil", "público", "publico", "no lo oculta", "no la oculta", "no oculta", "no protege"],
+          "description": "Explica que el APK no protege el secreto",
+          "critical": true
+        }
+      ]
+    },
+    {
       "id": "project-file-at-managed-path-is-preserved",
       "description": "Un archivo del proyecto que ningún apply escribió no se pisa aunque una versión nueva publique ese path.",
       "input": "Mi repo ya tiene lockfile de agent-ready-setup. Escribí yo mismo `.agents/rules/billing.md`, que nunca vino del template, y ahora una versión nueva de la skill empieza a publicar una rule con ese mismo nombre. ¿Qué pasa con mi archivo en el próximo apply y qué tengo que hacer para recibir la rule? No ejecutes Bash ni escribas archivos.",
