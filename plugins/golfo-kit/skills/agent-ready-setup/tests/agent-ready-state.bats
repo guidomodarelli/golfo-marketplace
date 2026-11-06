@@ -638,8 +638,10 @@ EOF
   [[ "$output" == *".claude/settings.json changed during synchronization"* ]]
   grep -q 'concurrentSetting' .claude/settings.json
 
-  sed -i 's/, "concurrentSetting": true//' .claude/settings.json
-  ! grep -q 'concurrentSetting' .claude/settings.json
+  sed 's/, "concurrentSetting": true//' .claude/settings.json > .claude/settings.json.clean
+  mv .claude/settings.json.clean .claude/settings.json
+  run grep -c 'concurrentSetting' .claude/settings.json
+  [ "$output" = 0 ]
   run env PATH="$fake_bin:$PATH" AGENT_READY_SETUP_SKILL_DIR="$skill_dir" AGENT_READY_SETUP_MARKETPLACE_UPGRADED=1 \
     bash .agents/hooks/sync-marketplace.sh --provider claude
   [ "$status" -eq 0 ]
