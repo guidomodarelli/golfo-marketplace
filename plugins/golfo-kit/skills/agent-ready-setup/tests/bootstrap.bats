@@ -16,6 +16,9 @@ setup() {
   # Asset-projection tests use the documented offline bootstrap option. Browser
   # installation and real MCP registration are exercised in their own suite.
   export AGENT_READY_SETUP_BROWSER_INSTALL=0
+  # These suites exercise the SessionStart projection; repositories created here
+  # opt into automatic updates. Pinned repositories are covered in agent-ready-state.bats.
+  export AGENT_READY_SETUP_UPDATES=auto
   # Tests choose the Codex home explicitly; an inherited CODEX_HOME would
   # redirect config, snapshot and cache lookups away from the fixture HOME.
   unset CODEX_HOME
@@ -107,6 +110,13 @@ done
 exec "$real_ln" "\$@"
 EOF
   chmod +x "$fake_bin/ln"
+}
+
+# Write-mechanics tests below edit a managed file and expect the projection to
+# replace it. That is the first-apply contract (no lockfile yet); with a lockfile
+# the edit is preserved as a conflict, which agent-ready-state.bats covers.
+forget_agent_ready_lock() {
+  rm -f .agents/agent-ready.lock.json
 }
 
 assert_claude_view() {
@@ -351,7 +361,7 @@ EOF
   run_bootstrap frontend
   [ "$status" -eq 0 ]
   for provider in claude codex; do
-    printf '%s\n' 'Stale template' > .github/pull_request_template.md
+    rm .github/pull_request_template.md
     jq 'del(.hooks.SessionStart[].hooks[].statusMessage, .hooks.PostToolUse[].hooks[].statusMessage)' \
       .claude/settings.json > "$test_root/settings.json"
     cp "$test_root/settings.json" .claude/settings.json
@@ -395,6 +405,7 @@ EOF
   cp "$test_root/external-template" "$test_root/expected-template"
   for operation in bootstrap sync; do
     ln -s "$test_root/external-template" .github/pull_request_template.md
+    forget_agent_ready_lock
     if [[ "$operation" == bootstrap ]]; then
       run_bootstrap frontend
     else
@@ -579,7 +590,7 @@ EOF
   jq -e '.hooks.PostToolUse[0].hooks | map(select(.type == "command" and .command == "bash .agents/hooks/check-harness-consistency.sh")) | length == 1' .claude/settings.json >/dev/null
 }
 
-@test "autonomous sync replaces identical and edited Claude copies with managed views" {
+@test "autonomous sync replaces identical Claude copies, and edited ones on the first apply, with managed views" {
   dynamic_skill_dir="$test_root/dynamic-skill"
   cp -R "$skill_dir" "$dynamic_skill_dir"
 
@@ -595,6 +606,8 @@ EOF
   assert_claude_view .claude/rules/security.md "../../.agents/rules/security.md"
   [[ "$output" != *".claude/rules/security.md differs from canonical shared asset"* ]]
 
+  # With a lockfile an edited copy is preserved; agent-ready-state.bats covers that contract.
+  forget_agent_ready_lock
   rm .claude/rules/security.md
   printf '%s\n' '# Claude-only security override' > .claude/rules/security.md
 
@@ -675,10 +688,12 @@ EOF
   [[ "$output" == *".claude/rules/security.md -> managed view"* ]]
 }
 
-@test "edited Claude copies of managed rules are replaced with managed views" {
+@test "without a lockfile, edited Claude copies of managed rules are replaced with managed views" {
   run_bootstrap frontend
   [ "$status" -eq 0 ]
 
+  # With a lockfile an edited copy is preserved; agent-ready-state.bats covers that contract.
+  forget_agent_ready_lock
   rm .claude/rules/security.md
   printf '%s\n' '# Claude-only security override' > .claude/rules/security.md
 
@@ -871,6 +886,7 @@ EOF
       'description: Provider-neutral reusable workflow for karpathy-guidelines.' '---' ''
     sed '1,/^---$/d' "$template"
   } > .agents/skills/karpathy-guidelines/SKILL.md
+  forget_agent_ready_lock
 
   run_marketplace_sync "$source_dir/assets/common/hooks/sync-marketplace.sh" "$source_dir"
 
@@ -1354,13 +1370,14 @@ EOF
 }
 
 @test "Codex patches trigger harness checks once per affected root" {
-  invocation_log="$test_root/claude-invocation.log"
-  cat > "$fake_bin/claude" <<'EOF'
+  invocation_log="$test_root/codex-invocation.log"
+  # Codex edits are reviewed with codex exec; marketplace calls are ignored.
+  cat > "$fake_bin/codex" <<'EOF'
 #!/bin/bash
-[[ "$1" != plugin ]] || exit 0
-printf '%s\n' "$PWD" >> "$CLAUDE_INVOCATION_LOG"
+[[ "$1" == exec ]] || exit 0
+printf '%s\n' "$PWD" >> "$CODEX_INVOCATION_LOG"
 EOF
-  chmod +x "$fake_bin/claude"
+  chmod +x "$fake_bin/codex"
   patch='*** Begin Patch
 *** Update File: .agents/rules/testing.md
 @@
@@ -1380,7 +1397,7 @@ EOF
     run_bootstrap "$stack"
     [ "$status" -eq 0 ]
     : > "$invocation_log"
-    run env CLAUDE_INVOCATION_LOG="$invocation_log" PATH="$fake_bin:$PATH" \
+    run env CODEX_INVOCATION_LOG="$invocation_log" PATH="$fake_bin:$PATH" \
       bash .agents/hooks/check-harness-consistency.sh <<< "$payload"
     [ "$status" -eq 0 ]
     [ "$(wc -l < "$invocation_log" | tr -d ' ')" -eq 2 ]
@@ -1392,12 +1409,12 @@ EOF
 @test "Codex patches detect move destinations without reading hunk content as paths" {
   run_bootstrap node
   [ "$status" -eq 0 ]
-  invocation_log="$test_root/claude-invocation.log"
-  cat > "$fake_bin/claude" <<'EOF'
+  invocation_log="$test_root/codex-invocation.log"
+  cat > "$fake_bin/codex" <<'EOF'
 #!/bin/bash
-printf '%s\n' "$PWD" >> "$CLAUDE_INVOCATION_LOG"
+printf '%s\n' "$PWD" >> "$CODEX_INVOCATION_LOG"
 EOF
-  chmod +x "$fake_bin/claude"
+  chmod +x "$fake_bin/codex"
   patch='*** Begin Patch
 *** Update File: README.md
 *** Move to: .agents/rules/moved.md
@@ -1407,7 +1424,7 @@ EOF
 +*** Add File: .claude/rules/not-a-file.md
 *** End Patch'
   payload="$(jq -n --arg command "$patch" '{tool_name:"apply_patch",tool_input:{command:$command}}')"
-  run env CLAUDE_INVOCATION_LOG="$invocation_log" PATH="$fake_bin:$PATH" \
+  run env CODEX_INVOCATION_LOG="$invocation_log" PATH="$fake_bin:$PATH" \
     bash .agents/hooks/check-harness-consistency.sh <<< "$payload"
   [ "$status" -eq 0 ]
   [ "$(cat "$invocation_log")" = "$project_dir/.agents" ]
@@ -1440,7 +1457,11 @@ EOF
 
   run bash "$skill_dir/scripts/bootstrap.sh" --stack frontend
   [ "$status" -ne 0 ]
-  [[ "$output" == *"--stack and --skill-dir are required"* ]]
+  [[ "$output" == *"--skill-dir is required"* ]]
+
+  run bash "$skill_dir/scripts/bootstrap.sh" --skill-dir "$skill_dir" --provider claude
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"pass --profiles or --stack"* ]]
 }
 
 @test "bootstrap infers Codex from installed skill path without provider override" {
@@ -1617,8 +1638,10 @@ EOF
   [ "$status" -ne 0 ]
   [[ "$output" == *"unsupported marketplace provider"* ]]
 
-  run env -u AGENT_READY_SETUP_SKILL_DIR \
-    MARKETPLACE_INVOCATION_LOG="$invocation_log" PATH="$fake_bin:$PATH" \
+  # An empty home: a marketplace snapshot installed on this machine must not decide the source.
+  mkdir -p "$test_root/empty-home"
+  run env -u AGENT_READY_SETUP_SKILL_DIR -u CODEX_HOME -u CLAUDE_CONFIG_DIR \
+    HOME="$test_root/empty-home" MARKETPLACE_INVOCATION_LOG="$invocation_log" PATH="$fake_bin:$PATH" \
     bash "$hook" --provider claude
   [ "$status" -eq 0 ]
   [[ "$output" == *"could not detect project stack"* ]]
@@ -1649,6 +1672,7 @@ EOF
   [ "$status" -eq 0 ]
 
   printf '%s\n' '# Local change' >> .agents/rules/security.md
+  forget_agent_ready_lock
 
   run_bootstrap frontend < /dev/null
 
@@ -1664,6 +1688,7 @@ EOF
   [ "$status" -eq 0 ]
 
   printf '%s\n' '# Local change' >> .agents/rules/security.md
+  forget_agent_ready_lock
   printf '%s\n' '# Project instructions' > AGENTS.md
   cp "$skill_dir/assets/claude-proxy.md" CLAUDE.md
   root_hash_before="$(shasum AGENTS.md CLAUDE.md | shasum | cut -d ' ' -f 1)"
@@ -1711,6 +1736,7 @@ EOF
   [ "$status" -eq 0 ]
 
   printf '%s\n' '# Local change' >> .agents/rules/security.md
+  forget_agent_ready_lock
   fake_bin="$test_root/bin"
   mkdir -p "$fake_bin"
   cat > "$fake_bin/cp" <<'EOF'
@@ -1751,6 +1777,7 @@ EOF
 
   rm .agents/rules/security.md
   ln -s "$outside_file" .agents/rules/security.md
+  forget_agent_ready_lock
 
   run_bootstrap node
 
@@ -1770,6 +1797,7 @@ EOF
 
   rm .agents/rules/security.md
   ln -s "$outside_directory" .agents/rules/security.md
+  forget_agent_ready_lock
 
   run_bootstrap node
 
@@ -2357,6 +2385,9 @@ EOF
   cp "$skill_dir/assets/common/hooks/sync-marketplace.sh" \
     "$source_dir/assets/common/hooks/sync-marketplace.sh"
   cp "$skill_dir/scripts/asset-sync-common.sh" "$source_dir/scripts/asset-sync-common.sh"
+  # Minimal sources still need the profile catalog and the state helper the hook resolves.
+  cp "$skill_dir/scripts/agent-ready-state.py" "$source_dir/scripts/agent-ready-state.py"
+  cp "$skill_dir/assets/profiles.json" "$source_dir/assets/profiles.json"
   cp "$skill_dir/scripts/render-instruction-template.sh" "$source_dir/scripts/render-instruction-template.sh"
   cp "$skill_dir/scripts/merge-managed-settings.py" "$source_dir/scripts/merge-managed-settings.py"
   cp "$skill_dir/scripts/run-detached.py" "$source_dir/scripts/run-detached.py"
@@ -2477,6 +2508,9 @@ EOF
   cp "$skill_dir/assets/common/hooks/sync-marketplace.sh" \
     "$source_dir/assets/common/hooks/sync-marketplace.sh"
   cp "$skill_dir/scripts/asset-sync-common.sh" "$source_dir/scripts/asset-sync-common.sh"
+  # Minimal sources still need the profile catalog and the state helper the hook resolves.
+  cp "$skill_dir/scripts/agent-ready-state.py" "$source_dir/scripts/agent-ready-state.py"
+  cp "$skill_dir/assets/profiles.json" "$source_dir/assets/profiles.json"
   cp "$skill_dir/scripts/merge-managed-settings.py" "$source_dir/scripts/merge-managed-settings.py"
   printf '%s\n' '{"settings":"updated"}' > "$source_dir/assets/common/settings.json"
   printf '%s\n' '{"hooks":"updated"}' > "$source_dir/assets/codex/hooks.json"

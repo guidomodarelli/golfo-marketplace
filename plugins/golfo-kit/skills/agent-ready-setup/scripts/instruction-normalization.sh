@@ -6,6 +6,9 @@
 # record_created, record_skipped and the CREATED, SKIPPED, MIGRATED, RENAMED,
 # CONFLICTS and PROVIDER_ROOT_CONFLICTS arrays.
 
+# shellcheck source=stack-directory.sh
+source "$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)/stack-directory.sh"
+
 # shellcheck disable=SC2034
 CLAUDE_DIR=".claude"
 SHARED_DIR=".agents"
@@ -14,13 +17,14 @@ AGENTS_FILE="AGENTS.md"
 CLAUDE_FILE="CLAUDE.md"
 CLAUDE_PROXY="@AGENTS.md"
 
-# Template paths derive from the resolved skill source and the detected stack.
+# Template paths derive from the resolved skill source and the selected
+# profiles; a single stack profile resolves to assets/stacks/<stack>.
 configure_instruction_templates() {
   local skill_dir="$1"
   local stack="$2"
 
   COMMON_SRC="$skill_dir/assets/common"
-  SRC="$skill_dir/assets/stacks/$stack"
+  SRC="$(resolve_stack_template_directory "$skill_dir" "$stack")"
   ROOT_CLAUDE_TEMPLATE="$skill_dir/assets/claude-proxy.md"
   CENTRALIZATION_TEMPLATE="$skill_dir/assets/instruction-centralization.md"
   TEMPLATE_RENDERER="$skill_dir/scripts/render-instruction-template.sh"

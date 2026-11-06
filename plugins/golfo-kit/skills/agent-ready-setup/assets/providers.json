@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "providers": {
+    "claude": {
+      "displayName": "Claude Code",
+      "cli": "claude",
+      "capabilities": {
+        "instructions": { "support": "native", "mechanism": "CLAUDE.md proxy that imports AGENTS.md" },
+        "rules": { "support": "native", "mechanism": ".claude/rules views of .agents/rules" },
+        "skills": { "support": "native", "mechanism": ".claude/skills views of .agents/skills" },
+        "agents": { "support": "native", "mechanism": ".claude/agents subagents" },
+        "commands": { "support": "native", "mechanism": ".claude/commands slash commands" },
+        "hooks": { "support": "native", "mechanism": ".claude/settings.json hooks" },
+        "mcp": { "support": "native", "mechanism": "project MCP registration" }
+      }
+    },
+    "codex": {
+      "displayName": "Codex",
+      "cli": "codex",
+      "capabilities": {
+        "instructions": { "support": "native", "mechanism": "AGENTS.md, including nested AGENTS.md files" },
+        "rules": { "support": "adapted", "mechanism": "listed in the AGENTS.md managed block; Codex reads each file" },
+        "skills": { "support": "native", "mechanism": ".agents/skills" },
+        "agents": { "support": "adapted", "mechanism": "skill adapter in .agents/skills; not a native subagent" },
+        "commands": { "support": "adapted", "mechanism": "skill adapter in .agents/skills; not a slash command" },
+        "hooks": { "support": "native", "mechanism": ".codex/hooks.json" },
+        "mcp": { "support": "native", "mechanism": ".codex/.mcp.json when a profile publishes mcp.json" }
+      }
+    }
+  }
+}

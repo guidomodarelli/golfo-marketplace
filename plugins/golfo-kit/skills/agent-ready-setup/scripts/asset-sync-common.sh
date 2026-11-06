@@ -183,10 +183,50 @@ relative_shared_target() {
   printf '%s%s/%s\n' "$prefix" "$SHARED_DIR" "$relative"
 }
 
-# Assets published by agent-ready-setup are always overwritten: projects add
-# their own rules or skills instead of editing managed ones. A symlink at a
-# managed path is replaced, never followed; the link is removed before the
-# rename so a link to a directory cannot redirect the write elsewhere.
+# Ownership gate. agent-ready-state.py plan --format protected lists the managed
+# destinations whose local content changed since the last apply (lockfile base);
+# sync_file preserves them and reports a conflict instead of overwriting them.
+# The list is wrapped in newlines so membership needs no fork per path.
+AGENT_READY_PROTECTED_DESTINATIONS=""
+
+load_protected_destinations() {
+  AGENT_READY_PROTECTED_DESTINATIONS=$'\n'"${1//$'\r'/}"$'\n'
+}
+
+is_protected_destination() {
+  [[ -n "$AGENT_READY_PROTECTED_DESTINATIONS" &&
+    "$AGENT_READY_PROTECTED_DESTINATIONS" == *$'\n'"${1#./}"$'\n'* ]]
+}
+
+# A checkout with core.autocrlf only changes line endings, which is not a change to
+# apply: rewriting the file would mark it as modified in Git with an empty diff.
+matches_ignoring_line_endings() {
+  local destination="$1"
+  local source="$2"
+
+  cmp -s "$destination" "$source" || tr -d '\r' < "$destination" | cmp -s - "$source"
+}
+
+# The plan only knows the files it read: a destination modified after it started was
+# edited during this run. Comparing modification times needs no fork per destination.
+AGENT_READY_PLAN_MARKER=""
+
+mark_plan_start() {
+  AGENT_READY_PLAN_MARKER="$(mktemp "${TMPDIR:-/tmp}/agent-ready-plan-start.XXXXXX")"
+}
+
+changed_since_plan_start() {
+  [[ -n "$AGENT_READY_PLAN_MARKER" && "$1" -nt "$AGENT_READY_PLAN_MARKER" ]]
+}
+
+# Reason shared by every consumer that preserves a protected destination.
+# shellcheck disable=SC2034 # Read by the sync_file implementations that source this file.
+AGENT_READY_PROTECTED_HINT="local changes since the last apply; preserved (review with plan, keep them in a project rule, or rerun with --force)"
+
+# Without a lockfile (first apply) a symlink at a managed path is replaced, never
+# followed; the link is removed before the rename so a link to a directory
+# cannot redirect the write elsewhere. With a lockfile, the ownership gate
+# above protects edited files and replaced symlinks.
 # Consumers define record_conflict and record_updated.
 replace_managed_symlink() {
   local source="$1"

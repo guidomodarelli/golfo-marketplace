@@ -2,8 +2,18 @@
 # sync-marketplace.sh
 # Upgrades golfo-marketplace and projects managed Agent Ready assets locally.
 # Runs automatically on session start (SessionStart hook).
+#
+# Repositories pinned in .agents/agent-ready.json ("updates": "pinned", the
+# default) are only checked: the hook reports drift and pending updates without
+# writing. With "updates": "auto" it applies the same ownership contract as
+# bootstrap.sh: locally modified managed assets are preserved and reported.
+# AGENT_READY_SETUP_REVIEW_MODE=1 (automated reviews) never writes either.
 
 set -euo pipefail
+
+# Hermes exports these to stop Git Bash from translating paths, but this hook
+# hands POSIX paths to native Windows Python, which needs that translation.
+unset MSYS_NO_PATHCONV MSYS2_ARG_CONV_EXCL
 
 # Keep hook stdout empty: progress (including child commands) belongs on stderr.
 # Codex treats output starting with '[' or '{' as JSON, not plain-text logs.
@@ -31,6 +41,12 @@ SYNC_LOCK_ENABLED=1
 
 provider=""
 stack_override="${AGENT_READY_SETUP_STACK:-}"
+profiles_override="${AGENT_READY_SETUP_PROFILES:-}"
+review_mode="${AGENT_READY_SETUP_REVIEW_MODE:-0}"
+update_mode_override="${AGENT_READY_SETUP_UPDATES:-}"
+# Only --stack or --profiles on the command line turn a pinned check into an
+# explicit apply; the environment overrides only choose the selection.
+explicit_selection=0
 marketplace_already_upgraded="${AGENT_READY_SETUP_MARKETPLACE_UPGRADED:-0}"
 force_marketplace_upgrade="${AGENT_READY_SETUP_FORCE_UPGRADE:-0}"
 sync_lock_inherited="${AGENT_READY_SETUP_SYNC_LOCK_HELD:-0}"
@@ -75,6 +91,19 @@ while [[ $# -gt 0 ]]; do
         exit 1
       fi
       stack_override="$2"
+      # A flag beats the selection that came from the environment.
+      profiles_override=""
+      explicit_selection=1
+      shift 2
+      ;;
+    --profiles)
+      if [[ $# -lt 2 || -z "${2:-}" ]]; then
+        printf 'ERROR: --profiles requires a comma separated list\n' >&2
+        exit 1
+      fi
+      profiles_override="$2"
+      stack_override=""
+      explicit_selection=1
       shift 2
       ;;
     *)
@@ -112,6 +141,19 @@ if [[ "$force_marketplace_upgrade" != 0 && "$force_marketplace_upgrade" != 1 ]];
   printf 'ERROR: AGENT_READY_SETUP_FORCE_UPGRADE must be 0 or 1\n' >&2
   exit 1
 fi
+
+if [[ "$review_mode" != 0 && "$review_mode" != 1 ]]; then
+  printf 'ERROR: AGENT_READY_SETUP_REVIEW_MODE must be 0 or 1\n' >&2
+  exit 1
+fi
+
+case "$update_mode_override" in
+  ""|pinned|auto) ;;
+  *)
+    printf 'ERROR: AGENT_READY_SETUP_UPDATES must be pinned or auto\n' >&2
+    exit 1
+    ;;
+esac
 
 if [[ "$sync_lock_inherited" != 0 && "$sync_lock_inherited" != 1 ]]; then
   printf 'ERROR: AGENT_READY_SETUP_SYNC_LOCK_HELD must be 0 or 1\n' >&2
@@ -202,7 +244,10 @@ record_marketplace_upgrade() {
   mkdir -p -- "$stamp_directory" 2>/dev/null && touch -- "$marketplace_upgrade_stamp" 2>/dev/null || true
 }
 
-if [[ "$marketplace_already_upgraded" -eq 1 ]]; then
+# Automated reviews need neither network nor a provider CLI: rules come from the checkout.
+if [[ "$review_mode" -eq 1 ]]; then
+  echo "[marketplace-sync] Review mode: the marketplace upgrade is skipped."
+elif [[ "$marketplace_already_upgraded" -eq 1 ]]; then
   echo "[marketplace-sync] El caller ya completó el upgrade del marketplace."
 elif is_marketplace_upgrade_unsupported; then
   report_local_marketplace_upgrade_skip
@@ -424,6 +469,8 @@ refresh_missing_asset_sync_helper() {
   if [[ -f "$skill_dir/$ASSET_SYNC_HELPER_PATH" ]]; then
     return 0
   fi
+  # A review stays offline; a source this old has no state to report anyway.
+  [[ "$review_mode" -eq 0 ]] || return 1
 
   echo "[marketplace-sync] Falta el helper compartido de sincronización; refrescando $MARKETPLACE_NAME para $provider..."
   if is_marketplace_upgrade_unsupported; then
@@ -511,12 +558,70 @@ if ! project_root="$(git rev-parse --show-toplevel 2>/dev/null)"; then
 fi
 cd -- "$project_root"
 
-stack="$(detect_stack || true)"
-if [[ -z "$stack" ]]; then
-  printf 'WARNING: could not detect project stack; local projection skipped.\n' >&2
-  printf 'Rerun with --stack frontend|node|java|go.\n' >&2
+state_script="$skill_dir/scripts/agent-ready-state.py"
+if ! command -v python3 >/dev/null 2>&1; then
+  printf 'WARNING: python3 is unavailable; local projection skipped.\n' >&2
   exit 0
 fi
+
+manifest_updates=""
+manifest_profiles=""
+while IFS=$'\t' read -r manifest_key manifest_value; do
+  manifest_value="${manifest_value%$'\r'}"
+  case "$manifest_key" in
+    updates) manifest_updates="$manifest_value" ;;
+    profiles) manifest_profiles="$manifest_value" ;;
+  esac
+done < <(python3 "$state_script" manifest --project . || true)
+
+# Automated reviews read the rules committed in the checkout; synchronizing
+# would change the very context under review.
+if [[ "$review_mode" -eq 1 ]]; then
+  echo "[marketplace-sync] Review mode: Agent Ready assets are read from the checkout; nothing was synchronized."
+  python3 "$state_script" status --project . --skill-dir "$skill_dir" --brief || true
+  exit 0
+fi
+
+if [[ "$manifest_updates" == pinned && "$explicit_selection" -eq 0 ]]; then
+  echo "[marketplace-sync] Repository pinned by .agents/agent-ready.json; checking without writing."
+  python3 "$state_script" status --project . --skill-dir "$skill_dir" --brief || true
+  exit 0
+fi
+
+profile_selection=()
+if [[ -n "$profiles_override" ]]; then
+  profile_selection=(--profiles "$profiles_override")
+elif [[ -n "$stack_override" ]]; then
+  profile_selection=(--stack "$stack_override")
+elif [[ -z "$manifest_profiles" ]]; then
+  stack="$(detect_stack || true)"
+  if [[ -z "$stack" ]]; then
+    printf 'WARNING: could not detect project stack; local projection skipped.\n' >&2
+    printf 'Rerun with --stack frontend|node|java|go or --profiles <a,b>.\n' >&2
+    exit 0
+  fi
+  profile_selection=(--stack "$stack")
+fi
+
+stack=""
+stack_dir=""
+resolved_tools=""
+if ! profile_resolution="$(python3 "$state_script" resolve --project . --skill-dir "$skill_dir" \
+  ${profile_selection[@]+"${profile_selection[@]}"} \
+  --compose-dir "${XDG_CACHE_HOME:-$HOME/.cache}/agent-ready-setup/compose")"; then
+  printf 'WARNING: Agent Ready profiles could not be resolved; local projection skipped.\n' >&2
+  exit 0
+fi
+while IFS=$'\t' read -r resolution_key resolution_value; do
+  resolution_value="${resolution_value%$'\r'}"
+  case "$resolution_key" in
+    primary) stack="$resolution_value" ;;
+    stack_dir) stack_dir="$resolution_value" ;;
+    tools) resolved_tools="$resolution_value" ;;
+  esac
+done <<< "$profile_resolution"
+# Child scripts (normalization, managed block, background review) read the same tree.
+export AGENT_READY_SETUP_STACK_DIR="$stack_dir"
 
 # Per-user state for background tasks; nothing machine-specific lands in the project.
 background_cache_directory="${XDG_CACHE_HOME:-$HOME/.cache}/agent-ready-setup"
@@ -604,6 +709,10 @@ sync_file() {
     conflicts+=("$source is not a regular file; $destination was not changed")
     return 0
   fi
+  if is_protected_destination "$destination"; then
+    record_conflict "$destination: $AGENT_READY_PROTECTED_HINT"
+    return 0
+  fi
   # A caller may require the exact pre-merge snapshot, including initial absence.
   if [[ -n "$supplied_snapshot" ]] && ! destination_matches_snapshot "$destination" "$supplied_snapshot"; then
     record_conflict "$destination changed during synchronization; neither was changed"
@@ -650,8 +759,12 @@ sync_file() {
     record_created "$destination"
     return 0
   fi
-  if cmp -s "$destination" "$source"; then
+  if matches_ignoring_line_endings "$destination" "$source"; then
     record_skipped "$destination"
+    return 0
+  fi
+  if changed_since_plan_start "$destination"; then
+    record_conflict "$destination changed during synchronization; neither was changed"
     return 0
   fi
 
@@ -726,6 +839,10 @@ link_claude_asset() {
   if [[ -e "$destination" ]]; then
     if [[ ! -f "$destination" ]]; then
       conflicts+=("$destination is not a regular file; neither was changed")
+      return 0
+    fi
+    if is_protected_destination "$destination"; then
+      record_conflict "$destination: $AGENT_READY_PROTECTED_HINT"
       return 0
     fi
     replace_with_claude_view "$destination" "$target" "$source" "$relative"
@@ -857,6 +974,17 @@ if ! acquire_sync_lock; then
   exit 0
 fi
 
+# The pre-apply plan decides ownership for every managed destination.
+plan_file="$(mktemp "${TMPDIR:-/tmp}/agent-ready-plan.XXXXXX")"
+trap 'rm -f -- "$plan_file" "$AGENT_READY_PLAN_MARKER"; release_sync_lock' EXIT
+mark_plan_start
+if ! protected_destinations="$(python3 "$state_script" plan --project . --skill-dir "$skill_dir" \
+  --format protected --save "$plan_file" ${profile_selection[@]+"${profile_selection[@]}"})"; then
+  printf 'WARNING: Agent Ready plan could not be computed; no asset was changed.\n' >&2
+  exit 0
+fi
+load_protected_destinations "$protected_destinations"
+
 sync_hook_source="$skill_dir/assets/common/hooks/sync-marketplace.sh"
 sync_hook_destination="$SHARED_DIR/hooks/sync-marketplace.sh"
 sync_hook_destination_was_different=1
@@ -881,16 +1009,18 @@ if [[ "$sync_hook_destination_was_different" -eq 1 || "$current_hook_needs_resta
   if [[ -n "$backup_directory" ]]; then
     export AGENT_READY_SETUP_BACKUP_DIRECTORY="$backup_directory"
   fi
+  # exec skips the EXIT trap; the restarted hook computes its own plan.
+  rm -f -- "$plan_file" "$AGENT_READY_PLAN_MARKER"
   exec bash "$sync_hook_destination" "${original_arguments[@]}"
 fi
 
 # Project common and stack assets before merging instruction references. The
 # shared tree remains canonical, while Claude and Codex receive provider views.
 project_assets "$skill_dir/assets/common" 0
-project_assets "$skill_dir/assets/stacks/$stack" 1
+project_assets "$stack_dir" 1
 project_rule_claude_views \
   "$skill_dir/scripts/render-instruction-template.sh" \
-  "$skill_dir/assets/stacks/$stack/rules" \
+  "$stack_dir/rules" \
   "$skill_dir/assets/common/rules"
 prune_hard_link_views
 install_hard_link_git_hook "$skill_dir/assets/git-hooks/post-index-change"
@@ -901,6 +1031,13 @@ bash "$skill_dir/scripts/normalize-instructions.sh" --stack "$stack"
 
 sync_claude_settings "$skill_dir/assets/common/settings.json"
 sync_codex_hooks "$skill_dir/assets/codex/hooks.json"
+
+finalize_arguments=(finalize --project . --skill-dir "$skill_dir" --plan "$plan_file")
+[[ -n "$update_mode_override" ]] && finalize_arguments+=(--updates "$update_mode_override")
+if ! finalize_report="$(python3 "$state_script" "${finalize_arguments[@]}")"; then
+  conflicts+=("could not write .agents/agent-ready.lock.json; the next apply treats this run as unlocked")
+  finalize_report=""
+fi
 
 # Exit status of register-browser-servers.py when only a full install can provide the tools.
 readonly BROWSER_NO_INSTALLATION_STATUS=3
@@ -914,6 +1051,7 @@ sync_browser_registration() {
   local registration_status=0
 
   [[ "${AGENT_READY_SETUP_BROWSER_INSTALL:-1}" == 1 ]] || return 0
+  [[ ",$resolved_tools," == *",browser,"* ]] || return 0
   if ! command -v python3 >/dev/null 2>&1; then
     printf 'WARNING: python3 is unavailable; browser MCP registration sync skipped.\n' >&2
     return 0
@@ -955,6 +1093,9 @@ fi
 if [[ ${#conflicts[@]} -gt 0 ]]; then
   echo "Managed asset conflicts (preserved):" >&2
   printf '  ! %s\n' "${conflicts[@]}" >&2
+fi
+if [[ -n "$finalize_report" ]]; then
+  printf '%s\n' "$finalize_report"
 fi
 
 # The verbatim managed block is local and applies now, so this session already

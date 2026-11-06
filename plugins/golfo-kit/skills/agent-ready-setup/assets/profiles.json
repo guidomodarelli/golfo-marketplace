@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "baseAssets": "assets/common",
+  "profiles": {
+    "frontend": {
+      "kind": "stack",
+      "description": "React and Next.js web frontends.",
+      "assets": "assets/stacks/frontend"
+    },
+    "node": {
+      "kind": "stack",
+      "description": "Node.js services without a React frontend.",
+      "assets": "assets/stacks/node"
+    },
+    "java": {
+      "kind": "stack",
+      "description": "Java and Kotlin services built with Maven or Gradle.",
+      "assets": "assets/stacks/java"
+    },
+    "go": {
+      "kind": "stack",
+      "description": "Go services.",
+      "assets": "assets/stacks/go"
+    },
+    "browser": {
+      "kind": "capability",
+      "description": "Browser automation tools (agent-browser, Playwright and Chrome DevTools MCP) installed in the user cache and registered for the project.",
+      "tools": ["browser"]
+    }
+  },
+  "stackDefaults": {
+    "frontend": ["frontend", "browser"],
+    "node": ["node", "browser"],
+    "java": ["java", "browser"],
+    "go": ["go", "browser"]
+  }
+}

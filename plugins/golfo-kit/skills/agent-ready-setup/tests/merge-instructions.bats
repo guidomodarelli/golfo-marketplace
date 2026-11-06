@@ -500,11 +500,24 @@ EOF
 }
 
 @test "directory lock protects against pathname replacement during atomic update" {
-  python3 - <<'PY'
-with open('AGENTS.md', 'w', encoding='utf-8') as agents_file:
-    agents_file.write('# Original instructions\n\n')
-    for index in range(250000):
-        agents_file.write(f'Project line {index}\n')
+  printf '%s\n' '# Original instructions' '' 'Project line' > AGENTS.md
+  # Keeps the merge inside its locked section long enough for the writer to see the
+  # temporary file, which otherwise lives for a few milliseconds on a fast disk.
+  slow_fsync_directory="$test_root/slow-fsync"
+  mkdir -p "$slow_fsync_directory"
+  cat > "$slow_fsync_directory/sitecustomize.py" <<'PY'
+import os
+import time
+
+original_fsync = os.fsync
+
+
+def slow_fsync(file_descriptor):
+    time.sleep(0.5)
+    original_fsync(file_descriptor)
+
+
+os.fsync = slow_fsync
 PY
   cat > "$fake_bin/claude" <<'EOF'
 #!/bin/bash
@@ -529,6 +542,7 @@ except ImportError:
 
 race_marker = sys.argv[1]
 windows_lock_path = sys.argv[2]
+open(sys.argv[3], 'w').close()
 deadline = time.monotonic() + 30
 while not glob.glob('.AGENTS.md.agent-ready-merge.*'):
     if time.monotonic() >= deadline:
@@ -565,13 +579,23 @@ finally:
         windows_lock_file.close()
 PY
 
-  PATH="$fake_bin:$PATH" bash "$skill_dir/scripts/merge-instructions.sh" \
+  # The writer polls before the merge starts: a slow Python startup would otherwise
+  # miss the short-lived temporary file and wait for it until the deadline.
+  ready_marker="$test_root/writer-ready"
+  windows_lock_path="$(git rev-parse --absolute-git-dir)/agent-ready-agents-md.lock"
+  python3 "$writer_script" "$race_marker" "$windows_lock_path" "$ready_marker" \
+    > "$test_root/writer-output.log" 2>&1 3>&- &
+  writer_pid=$!
+  background_pids="$writer_pid"
+  local wait_attempt
+  for wait_attempt in $(seq 1 300); do
+    [ -e "$ready_marker" ] && break
+    sleep 0.1
+  done
+  PATH="$fake_bin:$PATH" PYTHONPATH="$slow_fsync_directory" bash "$skill_dir/scripts/merge-instructions.sh" \
     --provider claude --stack node --skill-dir "$skill_dir" \
     > "$test_root/merge-output.log" 2>&1 3>&- &
   merge_pid=$!
-  windows_lock_path="$(git rev-parse --absolute-git-dir)/agent-ready-agents-md.lock"
-  python3 "$writer_script" "$race_marker" "$windows_lock_path" > "$test_root/writer-output.log" 2>&1 3>&- &
-  writer_pid=$!
   background_pids="$merge_pid $writer_pid"
 
   if wait "$merge_pid"; then
@@ -585,6 +609,8 @@ PY
     writer_status=$?
   fi
 
+  # bats shows this output only when the test fails.
+  cat "$test_root/merge-output.log" "$test_root/writer-output.log"
   [ "$merge_status" -eq 0 ]
   [ "$writer_status" -eq 0 ]
   [ ! -e "$race_marker" ]
@@ -732,6 +758,9 @@ EOF
   cp "$skill_dir/assets/common/hooks/sync-marketplace.sh" \
     "$source_dir/assets/common/hooks/sync-marketplace.sh"
   cp "$skill_dir/scripts/asset-sync-common.sh" "$source_dir/scripts/asset-sync-common.sh"
+  # Minimal sources still need the profile catalog and the state helper the hook resolves.
+  cp "$skill_dir/scripts/agent-ready-state.py" "$source_dir/scripts/agent-ready-state.py"
+  cp "$skill_dir/assets/profiles.json" "$source_dir/assets/profiles.json"
   cp "$skill_dir/scripts/merge-managed-settings.py" "$source_dir/scripts/merge-managed-settings.py"
   printf '%s\n' '#!/bin/bash' > "$source_dir/scripts/normalize-instructions.sh"
   cp "$skill_dir/scripts/run-detached.py" "$source_dir/scripts/run-detached.py"
@@ -790,6 +819,9 @@ EOF
   cp "$skill_dir/assets/common/hooks/sync-marketplace.sh" \
     "$source_dir/assets/common/hooks/sync-marketplace.sh"
   cp "$skill_dir/scripts/asset-sync-common.sh" "$source_dir/scripts/asset-sync-common.sh"
+  # Minimal sources still need the profile catalog and the state helper the hook resolves.
+  cp "$skill_dir/scripts/agent-ready-state.py" "$source_dir/scripts/agent-ready-state.py"
+  cp "$skill_dir/assets/profiles.json" "$source_dir/assets/profiles.json"
   cp "$skill_dir/scripts/merge-managed-settings.py" "$source_dir/scripts/merge-managed-settings.py"
   printf '%s\n' '#!/bin/bash' > "$source_dir/scripts/normalize-instructions.sh"
   printf '%s\n' '{}' > "$source_dir/assets/common/settings.json"

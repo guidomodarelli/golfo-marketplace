@@ -1,17 +1,28 @@
 #!/bin/bash
 # bootstrap.sh
 # Projects Agent Ready templates into Claude, shared-agent, and Codex trees.
-# Managed assets are always synchronized with the templates without prompting;
-# symlinks, non-regular files, and custom content are preserved and reported.
+# Profiles (assets/profiles.json) select which templates apply. Managed assets
+# follow the ownership contract of agent-ready-state.py: a file that still
+# matches its lockfile base is updated, a locally modified one is preserved and
+# reported, and assets no longer published are retired only when unmodified.
+# Without a lockfile (first apply) managed assets are overwritten once.
 # Instruction files are normalized so AGENTS.md is canonical and every CLAUDE.md
-# is the root proxy template.
+# is the root proxy template. Writes .agents/agent-ready.json (manifest) and
+# .agents/agent-ready.lock.json (lockfile).
 #
 # Usage:
-#   bash bootstrap.sh --stack <frontend|node|java|go> --skill-dir <path> [--provider <claude|codex>]
+#   bash bootstrap.sh --skill-dir <path> [--profiles <a,b> | --stack <frontend|node|java|go>]
+#     [--provider <claude|codex>] [--updates <pinned|auto>] [--force] [--plan | --status]
 #
-# Instruction normalization alone runs through normalize-instructions.sh.
+# Without --profiles or --stack, the profiles come from .agents/agent-ready.json.
+# --plan and --status are read-only: no marketplace upgrade, no writes, no tool
+# installation. Instruction normalization alone runs through normalize-instructions.sh.
 
 set -euo pipefail
+
+# Hermes exports these to stop Git Bash from translating paths, but this script
+# hands POSIX paths to native Windows Python, which needs that translation.
+unset MSYS_NO_PATHCONV MSYS2_ARG_CONV_EXCL
 
 # Bootstrap may run inside SessionStart; keep diagnostics off hook stdout.
 exec 1>&2
@@ -27,7 +38,12 @@ readonly SKILL_NAME="agent-ready-setup"
 readonly CODEX_HOME_DIRECTORY="${CODEX_HOME:-$HOME/.codex}"
 
 STACK=""
+PROFILES=""
 REQUESTED_SKILL_DIR=""
+UPDATE_MODE=""
+FORCE_OVERWRITE=0
+# apply (default), plan or status.
+RUN_MODE="apply"
 SKILL_DIR=""
 PROVIDER="${AGENT_READY_SETUP_ACTIVE_PROVIDER:-}"
 MARKETPLACE_ALREADY_UPGRADED="${AGENT_READY_SETUP_MARKETPLACE_UPGRADED:-0}"
@@ -57,6 +73,28 @@ while [[ $# -gt 0 ]]; do
       PROVIDER="$2"
       shift 2
       ;;
+    --profiles)
+      [[ $# -ge 2 && -n "${2:-}" ]] || { echo "ERROR: --profiles requires a comma separated list" >&2; exit 1; }
+      PROFILES="$2"
+      shift 2
+      ;;
+    --updates)
+      [[ $# -ge 2 && ( "${2:-}" == pinned || "${2:-}" == auto ) ]] || {
+        echo "ERROR: --updates requires pinned or auto" >&2
+        exit 1
+      }
+      UPDATE_MODE="$2"
+      shift 2
+      ;;
+    --force)
+      FORCE_OVERWRITE=1
+      shift
+      ;;
+    --plan|--status)
+      [[ "$RUN_MODE" == apply ]] || { echo "ERROR: --plan and --status are mutually exclusive" >&2; exit 1; }
+      RUN_MODE="${1#--}"
+      shift
+      ;;
     *)
       echo "ERROR: Unknown argument: $1" >&2
       exit 1
@@ -72,18 +110,32 @@ case "$MARKETPLACE_ALREADY_UPGRADED" in
     ;;
 esac
 
-if [[ -z "$STACK" || -z "$REQUESTED_SKILL_DIR" ]]; then
-  echo "ERROR: --stack and --skill-dir are required" >&2
+if [[ -z "$REQUESTED_SKILL_DIR" ]]; then
+  echo "ERROR: --skill-dir is required" >&2
+  exit 1
+fi
+
+if [[ -n "$STACK" && -n "$PROFILES" ]]; then
+  echo "ERROR: --stack and --profiles are mutually exclusive" >&2
   exit 1
 fi
 
 case "$STACK" in
-  frontend|node|java|go) ;;
+  ""|frontend|node|java|go) ;;
   *)
     echo "ERROR: Unsupported stack '$STACK'. Expected frontend, node, java, or go." >&2
     exit 1
     ;;
 esac
+
+case "${AGENT_READY_SETUP_UPDATES:-}" in
+  ""|pinned|auto) ;;
+  *)
+    echo "ERROR: AGENT_READY_SETUP_UPDATES must be pinned or auto" >&2
+    exit 1
+    ;;
+esac
+UPDATE_MODE="${UPDATE_MODE:-${AGENT_READY_SETUP_UPDATES:-}}"
 
 is_valid_skill_dir() {
   local candidate="$1"
@@ -444,6 +496,15 @@ fi
 PROJECT_ROOT="$(git rev-parse --show-toplevel)"
 cd -- "$PROJECT_ROOT"
 
+if [[ -z "$STACK" && -z "$PROFILES" && ! -f .agents/agent-ready.json ]]; then
+  echo "ERROR: pass --profiles or --stack; this repository has no .agents/agent-ready.json yet" >&2
+  exit 1
+fi
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "ERROR: python3 is required to resolve profiles and the lockfile" >&2
+  exit 1
+fi
+
 validate_provider_roots
 
 # Each provider refreshes its own marketplace snapshot through its CLI.
@@ -475,7 +536,9 @@ upgrade_marketplace() {
   echo "[marketplace-bootstrap] Upgrade del marketplace completado."
 }
 
-if [[ "$MARKETPLACE_ALREADY_UPGRADED" -eq 0 ]]; then
+if [[ "$RUN_MODE" != apply ]]; then
+  echo "[marketplace-bootstrap] Read-only $RUN_MODE: the marketplace upgrade is skipped."
+elif [[ "$MARKETPLACE_ALREADY_UPGRADED" -eq 0 ]]; then
   if ! upgrade_marketplace; then
     exit 1
   fi
@@ -488,6 +551,43 @@ if ! SKILL_DIR="$(resolve_skill_dir)"; then
   exit 1
 fi
 describe_skill_source "$SKILL_DIR"
+STATE_SCRIPT="$SKILL_DIR/scripts/agent-ready-state.py"
+PROFILE_SELECTION=()
+if [[ -n "$PROFILES" ]]; then
+  PROFILE_SELECTION=(--profiles "$PROFILES")
+elif [[ -n "$STACK" ]]; then
+  PROFILE_SELECTION=(--stack "$STACK")
+fi
+
+if [[ "$RUN_MODE" == status ]]; then
+  python3 "$STATE_SCRIPT" status --project . --skill-dir "$SKILL_DIR"
+  exit $?
+fi
+
+# Resolves profiles once; every later step reads the same stack tree.
+RESOLVED_PROFILES=""
+RESOLVED_TOOLS=""
+if ! resolution="$(python3 "$STATE_SCRIPT" resolve --project . --skill-dir "$SKILL_DIR" \
+  ${PROFILE_SELECTION[@]+"${PROFILE_SELECTION[@]}"} --compose-dir "$(agent_ready_compose_directory)")"; then
+  exit 1
+fi
+while IFS=$'\t' read -r resolution_key resolution_value; do
+  resolution_value="${resolution_value%$'\r'}"
+  case "$resolution_key" in
+    profiles) RESOLVED_PROFILES="$resolution_value" ;;
+    primary) STACK="$resolution_value" ;;
+    stack_dir) export AGENT_READY_SETUP_STACK_DIR="$resolution_value" ;;
+    tools) RESOLVED_TOOLS="$resolution_value" ;;
+  esac
+done <<< "$resolution"
+
+if [[ "$RUN_MODE" == plan ]]; then
+  plan_arguments=(plan --project . --skill-dir "$SKILL_DIR" --provider "$PROVIDER")
+  [[ "$FORCE_OVERWRITE" -eq 1 ]] && plan_arguments+=(--force)
+  python3 "$STATE_SCRIPT" "${plan_arguments[@]}" ${PROFILE_SELECTION[@]+"${PROFILE_SELECTION[@]}"}
+  exit $?
+fi
+
 validate_skill_source
 # shellcheck disable=SC2034
 ASSET_SYNC_SKILL_DIR="$SKILL_DIR"
@@ -501,6 +601,20 @@ SYNC_LOCK_ENABLED=1
 if ! acquire_sync_lock; then
   exit 0
 fi
+
+# The pre-apply plan decides ownership: protected destinations are preserved by
+# sync_file, and finalize retires assets and writes the lockfile from it.
+PLAN_FILE="$(mktemp "${TMPDIR:-/tmp}/agent-ready-plan.XXXXXX")"
+trap 'rm -f -- "$PLAN_FILE" "$AGENT_READY_PLAN_MARKER"; release_sync_lock' EXIT
+[[ "$FORCE_OVERWRITE" -eq 1 ]] || mark_plan_start
+plan_arguments=(plan --project . --skill-dir "$SKILL_DIR" --format protected --save "$PLAN_FILE")
+[[ "$FORCE_OVERWRITE" -eq 1 ]] && plan_arguments+=(--force)
+if ! protected_destinations="$(python3 "$STATE_SCRIPT" "${plan_arguments[@]}" \
+  ${PROFILE_SELECTION[@]+"${PROFILE_SELECTION[@]}"})"; then
+  echo "ERROR: could not compute the Agent Ready plan; no asset was changed" >&2
+  exit 1
+fi
+load_protected_destinations "$protected_destinations"
 
 record_created() {
   CREATED+=("$1")
@@ -524,6 +638,11 @@ sync_file() {
 
   if [[ ! -f "$src" ]]; then
     CONFLICTS+=("$source_description is not a regular file; $dst was not changed")
+    return 0
+  fi
+
+  if is_protected_destination "$dst"; then
+    record_conflict "$dst: $AGENT_READY_PROTECTED_HINT"
     return 0
   fi
 
@@ -576,8 +695,12 @@ sync_file() {
     return 0
   fi
 
-  if cmp -s "$dst" "$src"; then
+  if matches_ignoring_line_endings "$dst" "$src"; then
     record_skipped "$dst"
+    return 0
+  fi
+  if changed_since_plan_start "$dst"; then
+    record_conflict "$dst changed during synchronization; neither was changed"
     return 0
   fi
 
@@ -650,6 +773,10 @@ link_claude_asset() {
   if [[ -e "$destination" ]]; then
     if [[ ! -f "$destination" ]]; then
       CONFLICTS+=("$destination is not a regular file; neither was changed")
+      return 0
+    fi
+    if is_protected_destination "$destination"; then
+      record_conflict "$destination: $AGENT_READY_PROTECTED_HINT"
       return 0
     fi
     replace_with_claude_view "$destination" "$target" "$source" "$relative"
@@ -822,10 +949,21 @@ if [[ -f "$SRC/mcp.json" ]]; then
 fi
 sync_codex_hooks "$CODEX_ASSETS/hooks.json"
 
+finalize_arguments=(finalize --project . --skill-dir "$SKILL_DIR" --plan "$PLAN_FILE")
+[[ -n "$UPDATE_MODE" ]] && finalize_arguments+=(--updates "$UPDATE_MODE")
+FINALIZE_REPORT=""
+if ! FINALIZE_REPORT="$(python3 "$STATE_SCRIPT" "${finalize_arguments[@]}")"; then
+  CONFLICTS+=("could not write .agents/agent-ready.lock.json; the next apply treats this run as unlocked")
+fi
+
 browser_setup_status=0
 case "${AGENT_READY_SETUP_BROWSER_INSTALL:-1}" in
   1)
-    python3 "$SKILL_DIR/scripts/setup-browser-tools.py" --project "$PWD" || browser_setup_status=$?
+    if [[ ",$RESOLVED_TOOLS," == *",browser,"* ]]; then
+      python3 "$SKILL_DIR/scripts/setup-browser-tools.py" --project "$PWD" || browser_setup_status=$?
+    else
+      printf 'Browser installation skipped: no selected profile needs browser tools\n'
+    fi
     ;;
   0) printf 'Browser installation skipped by AGENT_READY_SETUP_BROWSER_INSTALL=0\n' ;;
   *) printf 'ERROR: AGENT_READY_SETUP_BROWSER_INSTALL must be 0 or 1\n'; browser_setup_status=1 ;;
@@ -833,6 +971,7 @@ esac
 
 # Print report
 printf '\nStack: %s\n' "$STACK"
+printf 'Profiles: %s\n' "$RESOLVED_PROFILES"
 printf 'Providers: Claude Code + Codex-compatible shared tree\n'
 # Stable line the agent reads to run follow-up scripts from the resolved source.
 printf 'Resolved %s source: %s\n\n' "$SKILL_NAME" "$SKILL_DIR"
@@ -882,6 +1021,11 @@ if [[ ${#CONFLICTS[@]} -gt 0 ]]; then
   echo ""
   echo "Instruction conflicts or differences (agent resolution may be required):" >&2
   for conflict in "${CONFLICTS[@]}"; do printf '  ! %s\n' "$conflict" >&2; done
+fi
+
+if [[ -n "$FINALIZE_REPORT" ]]; then
+  echo ""
+  printf '%s\n' "$FINALIZE_REPORT"
 fi
 
 echo ""

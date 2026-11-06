@@ -5,6 +5,9 @@
 # the verbatim managed block. Consumers source this file from their own scripts
 # directory, install `trap cleanup EXIT`, and call the steps in order.
 
+# shellcheck source=stack-directory.sh
+source "$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)/stack-directory.sh"
+
 # shellcheck disable=SC2034
 readonly AGENTS_FILE="AGENTS.md"
 readonly HUMAN_REQUIRED_EXIT_CODE=2
@@ -93,8 +96,9 @@ validate_managed_block_inputs() {
     exit 1
   fi
 
-  TEMPLATE_FILE="$SKILL_DIR/assets/stacks/$STACK/agents-template.md"
-  RULES_DIRECTORY="$SKILL_DIR/assets/stacks/$STACK/rules"
+  STACK_TEMPLATE_DIRECTORY="$(resolve_stack_template_directory "$SKILL_DIR" "$STACK")"
+  TEMPLATE_FILE="$STACK_TEMPLATE_DIRECTORY/agents-template.md"
+  RULES_DIRECTORY="$STACK_TEMPLATE_DIRECTORY/rules"
   COMMON_RULES_DIRECTORY="$SKILL_DIR/assets/common/rules"
   readonly PROJECT_RULES_DIRECTORY=".agents/rules"
   TEMPLATE_RENDERER="$SKILL_DIR/scripts/render-instruction-template.sh"

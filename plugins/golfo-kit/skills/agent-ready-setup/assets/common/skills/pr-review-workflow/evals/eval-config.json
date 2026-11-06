@@ -122,6 +122,30 @@
           "critical": false
         }
       ]
+    },
+    {
+      "id": "review-reports-pinned-context-without-syncing",
+      "description": "Cita la versión del contexto desde el lockfile y no sincroniza reglas durante la review.",
+      "input": "Corré el workflow de review de PR sobre esta rama. Antes de arrancar, ¿conviene correr /agent-ready-setup para tener las rules más nuevas? El repo tiene `.agents/agent-ready.lock.json`. Describí los pasos y cómo queda el encabezado del reporte. No ejecutes comandos ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["no corr", "never run", "no ejecut", "sin sincronizar", "no sincroniz"],
+          "description": "Rechaza sincronizar reglas durante la review",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["Context:", "contentDigest", "profileOrder"],
+          "description": "Incluye la línea Context con la versión del lockfile",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["checkout", "commit revisado", "mismo commit", "same commit"],
+          "description": "Lee las reglas del commit revisado"
+        }
+      ]
     }
   ]
 }
