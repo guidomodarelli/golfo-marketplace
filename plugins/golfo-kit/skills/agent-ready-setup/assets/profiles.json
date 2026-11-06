@@ -27,6 +27,11 @@
       "description": "Android apps in Kotlin or Java built with Gradle and the Android Gradle Plugin.",
       "assets": "assets/stacks/android"
     },
+    "business-flows": {
+      "kind": "capability",
+      "description": "Rules and a design skill for business flows on web and native clients.",
+      "assets": "assets/profiles/business-flows"
+    },
     "browser": {
       "kind": "capability",
       "description": "Browser automation tools (agent-browser, Playwright and Chrome DevTools MCP) installed in the user cache and registered for the project.",

@@ -535,7 +535,7 @@ EOF
 @test "unknown profiles and profile sets without a stack are rejected with the catalog" {
   run_bootstrap_with "$skill_dir" --profiles cobol
   [ "$status" -ne 0 ]
-  [[ "$output" == *"unknown profile 'cobol'; available profiles: android, browser, frontend, go, java, node"* ]]
+  [[ "$output" == *"unknown profile 'cobol'; available profiles: android, browser, business-flows, frontend, go, java, node"* ]]
 
   run_bootstrap_with "$skill_dir" --profiles browser
   [ "$status" -ne 0 ]
@@ -726,6 +726,28 @@ EOF
     bash .agents/hooks/sync-marketplace.sh --provider claude
   [ "$status" -eq 0 ]
   [ "$(lock_value 'lock["primaryStack"]')" = "frontend" ]
+}
+
+@test "the business-flows profile adds its assets to any stack and needs one" {
+  run_bootstrap_with "$skill_dir" --profiles business-flows
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"select at least one stack profile"* ]]
+
+  for stack in android frontend; do
+    stack_project="$test_root/$stack-flows"
+    mkdir -p "$stack_project"
+    git -C "$stack_project" -c init.defaultBranch=main init -q
+    cd "$stack_project"
+
+    run_bootstrap_with "$skill_dir" --profiles "$stack,business-flows"
+    [ "$status" -eq 0 ]
+    [ "$(lock_value 'lock["primaryStack"]')" = "$stack" ]
+    cmp -s .agents/rules/business-flows.md "$skill_dir/assets/profiles/business-flows/rules/business-flows.md"
+    cmp -s .agents/skills/business-flow-design/SKILL.md "$skill_dir/assets/profiles/business-flows/skills/business-flow-design/SKILL.md"
+    grep -Fq -- '- Read and follow `.agents/rules/business-flows.md`.' AGENTS.md
+    [ -L .claude/rules/business-flows.md ] || [ .claude/rules/business-flows.md -ef .agents/rules/business-flows.md ]
+    [ "$(lock_value 'lock["assets"][".agents/rules/business-flows.md"]["profile"]')" = "business-flows" ]
+  done
 }
 
 @test "profiles without browser never install browser tools" {

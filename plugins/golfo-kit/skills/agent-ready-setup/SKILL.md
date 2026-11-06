@@ -2,7 +2,7 @@
 name: agent-ready-setup
 description: >-
   Inspecciona proyecto, selecciona profiles componibles (frontend, node, java, go,
-  android, browser) y prepara configuración multi-provider para Claude Code y Codex: genera
+  android, browser, business-flows) y prepara configuración multi-provider para Claude Code y Codex: genera
   .claude/, .agents/, .codex/, AGENTS.md y proxy CLAUDE.md, fija la versión
   adoptada en un manifest y un lockfile por repo, sobrescribe en cada apply los
   assets gestionados aunque se hayan editado, retira los que salen del profile y
@@ -115,7 +115,8 @@ bootstrap sin `--stack` ni `--profiles`. Si el usuario pide otros profiles,
 pasar `--profiles a,b` (el primero de tipo stack aporta el template de
 `AGENTS.md`). Si no hay manifest, detectar el stack; `--stack <s>` equivale a
 `--profiles <s>,browser`, salvo `--stack android`, que no instala herramientas de
-browser. Inspeccionar raíz proyecto. Usar prioridad:
+browser. `business-flows` no se detecta: se pide con `--profiles <stack>,business-flows`
+cuando el proyecto diseña flujos de negocio, en cualquier stack. Inspeccionar raíz proyecto. Usar prioridad:
 
 | Archivo presente | Stack |
 |---|---|
@@ -325,6 +326,7 @@ Mostrar output del script sin alterarlo. En respuestas documentales, enumerar ad
 - **Todos los stacks** (`assets/common/`): `rules/browser-before-user-questions.md`, `rules/database.md`, `rules/environment-readiness.md`, `rules/error-handling.md`, `rules/established-libraries.md`, `rules/language-consistency.md`, `rules/lint-gate.md`, `rules/patterns-we-do-not-use.md`, `rules/root-cause-bug-fixes.md`, `rules/speculative-complexity-approval.md`, `rules/testing-scope.md`, `rules/user-actions-first.md`, `rules/verify-changes.md`, `skills/agent-browser/`, `skills/pr-review-workflow/`, `hooks/sync-marketplace.sh`, `hooks/check-harness-consistency.sh` y `settings.json`.
 - **Android, Go, Java y Node:** `rules/coding-style.md`, `rules/security.md`, `rules/testing.md`, `agents/perf-analyzer.md`, `agents/security-scanner.md` y `commands/review-pr.md`.
 - **Frontend:** `rules/api-configuration.md`, `rules/api-validation-middleware.md`, `rules/cross-engine.md`, `rules/frontend-style.md`, `rules/hexagonal-architecture.md`, `rules/lodash.md`, `rules/no-unnecessary-mocks.md`, `rules/security.md`, `rules/server-first-data-flow.md`, `rules/testing.md`, `rules/upstream-contracts.md`, `rules/user-facing-feedback.md`, `agents/a11y-reviewer.md`, `agents/lint-reviewer.md`, `agents/perf-analyzer.md`, `agents/security-scanner.md`, `agents/test-reviewer.md`, `commands/review-pr.md`, `skills/api-endpoint/`, `skills/component-creation/`, `skills/karpathy-guidelines/`, `skills/logger/`, `skills/react-act-test-fixes/` y `skills/service/`.
+- **Profile `business-flows`:** `rules/business-flows.md` y `skills/business-flow-design/SKILL.md`.
 - **Estado del repo:** `.agents/agent-ready.json` (manifest) y `.agents/agent-ready.lock.json` (lockfile). `assets/profiles.json` y `assets/providers.json` son catálogos internos de la skill y no se proyectan.
 
 Las skills que ya publica el plugin golfo-kit no se duplican en el catálogo de un stack: por ejemplo, el refactor de constantes se usa desde la skill `constants-refactor` del plugin y no se proyecta en `.agents/skills/`. Ningún stack publica hooks propios ni `mcp.json`: los únicos hooks proyectados son los comunes.

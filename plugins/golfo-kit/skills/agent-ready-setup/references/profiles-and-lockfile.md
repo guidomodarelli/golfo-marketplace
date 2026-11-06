@@ -44,6 +44,12 @@ que prueba un `WebView`, usar `--profiles android,browser`). Un profile nuevo qu
 específico de una plataforma) declara `requires: ["<stack>"]` y publica solo
 assets con nombres propios; no copia los de la stack.
 
+`business-flows` es una capability sin `requires`, porque un mismo modelo de flujos
+sirve para web y para apps nativas: se combina con cualquier stack
+(`--profiles android,business-flows`) y no se selecciona por detección. Lo específico
+de un motor interno de flujos no va en estos assets, que son públicos: va en una
+rule del proyecto bajo `.agents/rules/`.
+
 ## 2. Manifest y lockfile
 
 | Archivo | Quién lo edita | Contenido |
