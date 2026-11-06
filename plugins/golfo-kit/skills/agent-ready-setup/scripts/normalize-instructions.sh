@@ -6,7 +6,7 @@
 # after projecting managed assets.
 #
 # Usage:
-#   bash normalize-instructions.sh --stack <frontend|node|java|go>
+#   bash normalize-instructions.sh --stack <frontend|node|java|go|android>
 
 set -euo pipefail
 
@@ -21,7 +21,7 @@ STACK=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --stack)
-      [[ $# -ge 2 && -n "${2:-}" ]] || { echo "ERROR: --stack requires frontend, node, java, or go" >&2; exit 1; }
+      [[ $# -ge 2 && -n "${2:-}" ]] || { echo "ERROR: --stack requires frontend, node, java, go, or android" >&2; exit 1; }
       STACK="$2"
       shift 2
       ;;
@@ -33,9 +33,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "$STACK" in
-  frontend|node|java|go) ;;
+  frontend|node|java|go|android) ;;
   *)
-    echo "ERROR: --stack requires frontend, node, java, or go" >&2
+    echo "ERROR: --stack requires frontend, node, java, go, or android" >&2
     exit 1
     ;;
 esac
