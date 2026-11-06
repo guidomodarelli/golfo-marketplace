@@ -260,6 +260,60 @@ lock_value() {
   [ "$(lock_value 'lock["primaryStack"]')" = "go" ]
 }
 
+@test "an edited Claude view that became a regular file is preserved until --force" {
+  run_bootstrap_with "$skill_dir" --stack node
+  [ "$status" -eq 0 ]
+  rm .claude/rules/security.md
+  printf '%s\n' 'local policy' > .claude/rules/security.md
+
+  run_bootstrap_with "$skill_dir" --status
+  [[ "$output" == *"modified: .claude/rules/security.md"* ]]
+  run_bootstrap_with "$skill_dir" --plan
+  [[ "$output" == *"conflict"*".claude/rules/security.md"* ]]
+
+  run_bootstrap_with "$skill_dir"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *".claude/rules/security.md: local changes since the last apply; preserved"* ]]
+  [[ "$output" == *"applied with 1 preserved conflict(s)"* ]]
+  [ "$(cat .claude/rules/security.md)" = "local policy" ]
+
+  run_bootstrap_with "$skill_dir" --force
+  [ "$status" -eq 0 ]
+  cmp -s .claude/rules/security.md .agents/rules/security.md
+}
+
+@test "a Claude view detached with the applied content is relinked without a conflict" {
+  run_bootstrap_with "$skill_dir" --stack node
+  [ "$status" -eq 0 ]
+  rm .claude/rules/security.md
+  cp .agents/rules/security.md .claude/rules/security.md
+
+  run_bootstrap_with "$skill_dir"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Lockfile: .agents/agent-ready.lock.json (complete)"* ]]
+  [ -L .claude/rules/security.md ] || [ .claude/rules/security.md -ef .agents/rules/security.md ]
+}
+
+@test "status --check notices a profile added to the manifest without assets of its own" {
+  run_bootstrap_with "$skill_dir" --profiles node
+  [ "$status" -eq 0 ]
+  printf '%s\n' '{"profiles": ["node", "browser"], "updates": "pinned"}' > .agents/agent-ready.json
+
+  run python3 "$skill_dir/scripts/agent-ready-state.py" status --project . --skill-dir "$skill_dir" --check
+  [ "$status" -eq 4 ]
+  [[ "$output" == *"Update available"* ]]
+}
+
+@test "status --check notices a merged file that was deleted" {
+  run_bootstrap_with "$skill_dir" --stack node
+  [ "$status" -eq 0 ]
+  rm .codex/hooks.json
+
+  run python3 "$skill_dir/scripts/agent-ready-state.py" status --project . --skill-dir "$skill_dir" --check
+  [ "$status" -eq 4 ]
+  [[ "$output" == *"missing: .codex/hooks.json"* ]]
+}
+
 @test "plan and status are read-only and never call the provider CLI" {
   run_bootstrap_with "$skill_dir" --stack frontend
   [ "$status" -eq 0 ]
@@ -415,11 +469,14 @@ EOF
   printf '%s\n' '- Newer guidance.' >> "$source_copy/assets/stacks/node/rules/testing.md"
   printf '%s\n' '- Newer guidance.' >> "$source_copy/assets/stacks/node/rules/security.md"
   printf '%s\n' '# Newer hook release.' >> "$source_copy/assets/common/hooks/sync-marketplace.sh"
+  rm .claude/rules/testing.md
+  printf '%s\n' 'local view policy' > .claude/rules/testing.md
 
   run env PATH="$fake_bin:$PATH" AGENT_READY_SETUP_SKILL_DIR="$source_copy" AGENT_READY_SETUP_MARKETPLACE_UPGRADED=1 \
     bash .agents/hooks/sync-marketplace.sh --provider codex
   [ "$status" -eq 0 ]
   [[ "$output" == *"Sync hook updated; restarting with latest version."* ]]
+  [ "$(cat .claude/rules/testing.md)" = "local view policy" ]
   cmp -s .agents/rules/testing.md "$source_copy/assets/stacks/node/rules/testing.md"
   [ "$(tail -n 1 .agents/rules/security.md)" = "edited locally" ]
   [[ "$output" == *".agents/rules/security.md: local changes since the last apply; preserved"* ]]

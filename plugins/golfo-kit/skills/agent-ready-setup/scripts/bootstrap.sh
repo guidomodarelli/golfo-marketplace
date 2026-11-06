@@ -770,6 +770,10 @@ link_claude_asset() {
       CONFLICTS+=("$destination is not a regular file; neither was changed")
       return 0
     fi
+    if is_protected_destination "$destination"; then
+      record_conflict "$destination: $AGENT_READY_PROTECTED_HINT"
+      return 0
+    fi
     replace_with_claude_view "$destination" "$target" "$source" "$relative"
     return 0
   fi

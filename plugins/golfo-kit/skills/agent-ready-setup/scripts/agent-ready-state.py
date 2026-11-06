@@ -78,6 +78,9 @@ LOCAL_SYMLINK = "symlink"
 LOCAL_NOT_A_FILE = "not-a-file"
 
 LINKED_PARENT_REASON = "a parent directory is a symlink; deleting through it would reach files outside the project"
+DETACHED_VIEW_REASON = "regular file with content that no apply wrote; it is preserved instead of relinked"
+# Assets under these directories have a view under .claude/; hooks stay canonical in .agents/.
+CLAUDE_VIEW_DIRECTORIES = ("rules", "agents", "commands", "skills")
 
 ANSI_RESET = "\033[0m"
 ANSI_COLORS = {
@@ -663,6 +666,30 @@ def classify_retired(local, lock_entry, force):
     return ACTION_RETIRE_CONFLICT, "retired from the profiles but modified locally; delete it or rerun with --force"
 
 
+def detached_view_conflicts(project_root, assets, locked_assets):
+    """Claude views that became regular files holding content no apply wrote.
+
+    A view only mirrors its asset, so it may still hold the asset, the applied base
+    or the new template; anything else is an edit that relinking would lose.
+    """
+    conflicts = []
+    for destination, desired_entry in sorted(assets.items()):
+        relative = destination[len(".agents/"):] if destination.startswith(".agents/") else ""
+        if relative.split("/", 1)[0] not in CLAUDE_VIEW_DIRECTORIES or not desired_entry["source"].endswith("/" + relative):
+            continue
+        view = ".claude/" + relative
+        view_path = os.path.join(project_root, view)
+        if is_link(view_path) or not os.path.isfile(view_path):
+            continue
+        asset_path = os.path.join(project_root, destination)
+        if os.path.isfile(asset_path) and os.path.samefile(view_path, asset_path):
+            continue
+        known_content = {desired_entry["sha256"], locked_assets.get(destination, {}).get("sha256"), local_state(asset_path)}
+        if sha256_of_file(view_path) not in known_content:
+            conflicts.append(view)
+    return conflicts
+
+
 def compute_plan(project_root, skill_dir, profile_names, force):
     """Build the read-only plan for the selected profiles."""
     catalog = load_profile_catalog(skill_dir)
@@ -714,6 +741,8 @@ def compute_plan(project_root, skill_dir, profile_names, force):
         "hasLock": lock is not None,
         "force": force,
         "entries": entries,
+        # Without a lockfile the first apply keeps the previous overwrite contract.
+        "detachedViews": [] if force or lock is None else detached_view_conflicts(project_root, assets, locked_assets),
         "merged": merged,
     }
 
@@ -886,6 +915,10 @@ def print_plan(project_root, skill_dir, plan, provider, skip_marketplace_upgrade
         label = f"{symbol} {entry['action']:<15} {entry['destination']}"
         write_line("  " + paint(label, entry["action"] if entry["action"] in ANSI_COLORS else "muted", stream)
                    + f"  [{entry['profile']}] {entry['reason']}")
+    for view in plan["detachedViews"]:
+        counts[ACTION_CONFLICT] = counts.get(ACTION_CONFLICT, 0) + 1
+        label = f"{ACTION_SYMBOLS[ACTION_CONFLICT]} {ACTION_CONFLICT:<15} {view}"
+        write_line("  " + paint(label, ACTION_CONFLICT, stream) + f"  [view] {DETACHED_VIEW_REASON}")
     write_line(f"  = unchanged: {counts.get(ACTION_UNCHANGED, 0)}")
     write_line("")
     write_line(paint("Merged files (project content preserved)", "heading", stream))
@@ -1008,6 +1041,8 @@ def finalize(project_root, skill_dir, plan, provider_list, updates):
                 "state": STATE_FAILED,
             }
 
+    conflicts += [f"{view}: {DETACHED_VIEW_REASON}" for view in plan["detachedViews"]]
+
     catalog = load_profile_catalog(skill_dir)
     lock = {
         "schemaVersion": SCHEMA_VERSION,
@@ -1093,6 +1128,9 @@ def compute_status(project_root, skill_dir):
                 status["checkout"]["modified"].append(destination)
             else:
                 status["checkout"]["applied"].append(destination)
+        for destination in sorted(lock.get("merged", {})):
+            if local_state(os.path.join(project_root, destination)) == LOCAL_ABSENT:
+                status["checkout"]["missing"].append(destination)
 
     profile_names = manifest["profiles"] if manifest else (lock.get("profileOrder") if lock else None)
     if profile_names and skill_dir:
@@ -1103,9 +1141,13 @@ def compute_status(project_root, skill_dir):
         else:
             changed = [entry["destination"] for entry in plan["entries"]
                        if entry["action"] not in (ACTION_UNCHANGED, ACTION_DROP)]
-            locked_digest = (lock or {}).get("source", {}).get("contentDigest")
+            status["checkout"]["modified"].extend(plan["detachedViews"])
+            locked = lock or {}
+            selection_changed = locked.get("profileOrder") != plan["profiles"] or locked.get("profiles") != profile_digests(
+                skill_dir, load_profile_catalog(skill_dir), plan["profiles"]
+            )
             status["update"] = {
-                "available": locked_digest != plan["source"]["contentDigest"],
+                "available": selection_changed or locked.get("source", {}).get("contentDigest") != plan["source"]["contentDigest"],
                 "source": plan["source"],
                 "changedDestinations": changed,
             }
@@ -1234,6 +1276,8 @@ def command_plan(arguments):
         for entry in plan["entries"]:
             if entry["action"] in (ACTION_CONFLICT, ACTION_RETIRE_CONFLICT) and entry["local"] != LOCAL_NOT_A_FILE:
                 write_line(entry["destination"])
+        for view in plan["detachedViews"]:
+            write_line(view)
     else:
         print_plan(
             arguments.project, arguments.skill_dir, plan, arguments.provider,

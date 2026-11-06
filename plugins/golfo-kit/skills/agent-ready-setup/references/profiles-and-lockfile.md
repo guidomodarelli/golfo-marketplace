@@ -79,6 +79,7 @@ nuevo:
 | distinto de la base (editado o reemplazado por symlink) | `conflict`: se preserva |
 | existe pero el lock nunca lo aplicó | `conflict` |
 | no hay lockfile todavía | `adopt`: el primer apply sobrescribe una vez (contrato anterior) |
+| una vista `.claude/` quedó como archivo regular, con contenido distinto del asset, la base y el template | `conflict`: se preserva y `--force` la vuelve a enlazar |
 | ya no lo publica ningún profile y sigue igual a la base | `retire`: se borra junto con su vista `.claude/` |
 | ya no lo publica ningún profile y fue editado | `retire-conflict`: se conserva como `retired-modified` |
 | ya no lo publica ningún profile y un directorio padre es un symlink | `retire-conflict`: se conserva, también con `--force`, porque borrarlo tocaría archivos fuera del proyecto |
@@ -109,7 +110,9 @@ bash "$SKILL_DIR/scripts/bootstrap.sh" --skill-dir "$SKILL_DIR" --provider "$PRO
   upgrade (SessionStart o un apply) recién aparece cuando se refresca el snapshot.
 - `status` separa assets aplicados, modificados, faltantes, conflictos
   preservados, escrituras fallidas y retirados con cambios; además dice si el
-  source resuelto difiere del lock (`Update available`). `agent-ready-state.py
+  source resuelto o la selección de profiles difieren del lock (`Update
+  available`). También cuenta como faltante un archivo fusionado que se borró; su
+  contenido gestionado lo revisa `plan`. `agent-ready-state.py
   status --check` sale con 4 si hay drift o si la selección no se puede resolver.
 - `plan` lista cada destino con su acción, profile y motivo, los diffs (local →
   template), los archivos fusionados que cambiarían, los `CLAUDE.md` que se
@@ -165,6 +168,11 @@ las omite igual.
 
 - No hay asignación de profiles por ruta en monorepos: un repositorio tiene una
   sola selección.
+- En Windows sin symlinks, las vistas son hard links y
+  `relink-hard-link-views.sh` las reenlaza en cada prompt y en cada escritura del
+  índice, para recuperar las que git separa cuando recrea el asset. Sin historial
+  por vista no distingue ese caso de una edición guardada como archivo nuevo en la
+  vista, que se pierde ahí. Para cambiar comportamiento, usar una rule propia.
 - Un asset faltante se recrea desde el source resuelto en el próximo apply, no
   desde la versión del lock: el apply es un cambio explícito y revisable, y el
   lock pasa a registrar la versión nueva. `status` avisa antes si el source
