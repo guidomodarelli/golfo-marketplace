@@ -1054,8 +1054,6 @@ def finalize(project_root, skill_dir, plan, provider_list, updates):
                 "sha256": entry["sha256"],
                 "state": STATE_APPLIED,
             }
-            if claude_view_of(destination, entry["source"]) in preserved_views:
-                lock_assets[destination]["viewPreserved"] = True
         else:
             failed.append(destination)
             lock_assets[destination] = {
@@ -1064,6 +1062,11 @@ def finalize(project_root, skill_dir, plan, provider_list, updates):
                 "sha256": entry["baseSha256"],
                 "state": STATE_FAILED,
             }
+
+    # Whatever happened to the asset, a project file in its view stays the project's.
+    for entry in plan["entries"]:
+        if entry["sha256"] and entry["destination"] in lock_assets and                 claude_view_of(entry["destination"], entry["source"]) in preserved_views:
+            lock_assets[entry["destination"]]["viewPreserved"] = True
 
     conflicts += [f"{view}: {DETACHED_VIEW_REASON}" for view in plan["detachedViews"]]
 

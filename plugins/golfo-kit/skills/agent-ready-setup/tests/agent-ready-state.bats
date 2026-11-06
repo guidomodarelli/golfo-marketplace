@@ -388,6 +388,29 @@ lock_value() {
   [ "$(lock_value 'lock["assets"][".agents/rules/security.md"]["state"]')" = "applied" ]
 }
 
+@test "a project file in a Claude view stays preserved after its asset could not be written" {
+  copy_skill
+  run_bootstrap_with "$source_copy" --stack node
+  [ "$status" -eq 0 ]
+  printf '%s
+' '# New upstream rule' > "$source_copy/assets/stacks/node/rules/new-upstream.md"
+  printf '%s
+' 'project view content' > .claude/rules/new-upstream.md
+  run_bootstrap_with "$source_copy"
+  [ "$status" -eq 0 ]
+
+  rm .agents/rules/new-upstream.md
+  mkdir .agents/rules/new-upstream.md
+  run_bootstrap_with "$source_copy"
+  [ "$status" -eq 0 ]
+  rmdir .agents/rules/new-upstream.md
+
+  run_bootstrap_with "$source_copy"
+  [ "$status" -eq 0 ]
+  [ "$(cat .claude/rules/new-upstream.md)" = "project view content" ]
+  [[ "$output" == *".claude/rules/new-upstream.md: never applied by agent-ready-setup; preserved"* ]]
+}
+
 @test "a project file that a release starts publishing is preserved until it is renamed" {
   copy_skill
   run_bootstrap_with "$source_copy" --stack node
