@@ -337,13 +337,16 @@ lock_value() {
   [ "$status" -eq 0 ]
   printf '%s\n' '- Newer guidance.' >> "$source_copy/assets/stacks/node/rules/testing.md"
   # Saves the edit right when the plan process ends, before the projection reaches the file.
+  # It waits first because Bash 3.2 (macOS) compares modification times in whole seconds.
   mkdir -p "$test_root/edit-after-plan"
   cat > "$test_root/edit-after-plan/sitecustomize.py" <<'EOF'
 import atexit
 import sys
+import time
 
 
 def save_concurrent_edit():
+    time.sleep(1.1)
     with open(".agents/rules/testing.md", "a", encoding="utf-8") as rule_file:
         rule_file.write("edited after the plan\n")
 

@@ -91,7 +91,8 @@ cualquier sistema.
 
 Un destino que cambia después de calcular el plan también se preserva, aunque el
 plan haya decidido actualizarlo: el apply termina como `partial` y el siguiente lo
-reporta como conflicto.
+reporta como conflicto. Con Bash 3.2 (el de macOS) la comparación es por segundos
+enteros, así que no detecta una edición hecha en el mismo segundo en que arrancó el plan.
 
 `--force` convierte los conflictos en `update` o `retire`, salvo el de un directorio
 padre que es un symlink. Un conflicto nunca se
