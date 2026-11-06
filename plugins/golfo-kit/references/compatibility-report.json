@@ -44,7 +44,7 @@
     }
   ],
   "summary": {
-    "total_skills": 45,
+    "total_skills": 46,
     "agents": [
       "claude_code",
       "codex",
@@ -56,21 +56,21 @@
         "adapted": 0,
         "partial": 0,
         "incompatible": 0,
-        "unverified": 41
+        "unverified": 42
       },
       "codex": {
         "compatible": 0,
         "adapted": 1,
         "partial": 0,
         "incompatible": 0,
-        "unverified": 44
+        "unverified": 45
       },
       "hermes": {
         "compatible": 0,
         "adapted": 1,
         "partial": 0,
         "incompatible": 0,
-        "unverified": 44
+        "unverified": 45
       }
     },
     "disabled_features": 0,
@@ -8632,6 +8632,134 @@
         "Generar un manual real en Hermes Agent.",
         "Codex: inyectar capture-snippet.js y exportar una captura real.",
         "Hermes: browser_exec estable para inyectar el snippet."
+      ]
+    },
+    {
+      "id": "vivid-visual-output",
+      "name": "Vivid Visual Output",
+      "version": "1.0.0",
+      "path": "plugins/golfo-kit/skills/vivid-visual-output/SKILL.md",
+      "purpose": "Fija un piso de calidad visual para salidas de terminal y UI: color, tablas, listas y animación con degradación a texto plano, temas, contraste AA y movimiento reducido.",
+      "main_features": [
+        "degradación por capacidad en terminal",
+        "kits para Node, PowerShell y bash o zsh",
+        "tokens, temas y movimiento en UI"
+      ],
+      "declared_agents": null,
+      "dependencies": [],
+      "agents": {
+        "claude_code": {
+          "status": "unverified",
+          "summary": "Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Claude Code durante esta auditoría, así que su funcionamiento no está verificado.",
+          "missing_capabilities": [],
+          "alternatives_investigated": [],
+          "features": [
+            {
+              "id": "core-workflow",
+              "status": "unverified",
+              "resolution": "native",
+              "required": true,
+              "adaptation": false,
+              "required_capabilities": [
+                "lectura de archivos",
+                "escritura de archivos",
+                "shell para verificar"
+              ],
+              "implementation": "Instrucciones de la skill; no usa herramientas específicas de agente.",
+              "fallback": "",
+              "reason": "Sin dependencias específicas detectadas por inspección; no ejecutada en Claude Code en esta auditoría.",
+              "alternatives_investigated": [],
+              "evidence": [
+                "Inspección estática (prueba static-inspection)."
+              ],
+              "tests": [
+                "static-inspection"
+              ]
+            }
+          ]
+        },
+        "codex": {
+          "status": "unverified",
+          "summary": "Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Codex CLI durante esta auditoría, así que su funcionamiento no está verificado.",
+          "missing_capabilities": [],
+          "alternatives_investigated": [],
+          "features": [
+            {
+              "id": "core-workflow",
+              "status": "unverified",
+              "resolution": "native",
+              "required": true,
+              "adaptation": false,
+              "required_capabilities": [
+                "lectura de archivos",
+                "escritura de archivos",
+                "shell para verificar"
+              ],
+              "implementation": "Instrucciones de la skill; no usa herramientas específicas de agente.",
+              "fallback": "",
+              "reason": "Sin dependencias específicas detectadas por inspección; no ejecutada en Codex CLI en esta auditoría.",
+              "alternatives_investigated": [],
+              "evidence": [
+                "Inspección estática (prueba static-inspection)."
+              ],
+              "tests": [
+                "static-inspection"
+              ]
+            }
+          ]
+        },
+        "hermes": {
+          "status": "unverified",
+          "summary": "Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Hermes Agent durante esta auditoría, así que su funcionamiento no está verificado.",
+          "missing_capabilities": [],
+          "alternatives_investigated": [],
+          "features": [
+            {
+              "id": "core-workflow",
+              "status": "unverified",
+              "resolution": "native",
+              "required": true,
+              "adaptation": false,
+              "required_capabilities": [
+                "lectura de archivos",
+                "escritura de archivos",
+                "shell para verificar"
+              ],
+              "implementation": "Instrucciones de la skill; no usa herramientas específicas de agente.",
+              "fallback": "",
+              "reason": "Sin dependencias específicas detectadas por inspección; no ejecutada en Hermes Agent en esta auditoría.",
+              "alternatives_investigated": [],
+              "evidence": [
+                "Inspección estática (prueba static-inspection)."
+              ],
+              "tests": [
+                "static-inspection"
+              ]
+            }
+          ]
+        }
+      },
+      "implementation": {
+        "adaptations": [],
+        "files_modified": [],
+        "fallback": "",
+        "behavior_changes": ""
+      },
+      "issues": [],
+      "tests": [
+        {
+          "id": "static-inspection",
+          "agent": "any",
+          "kind": "static",
+          "command": "grep -rE \"AskUserQuestion|request_user_input|Monitor|Cron(Create|List|Delete)|PushNotification|TaskStop|Agent|subagent|mcp__|claude -p|codex exec|~/.claude|~/.codex|apply_patch|update_plan\" plugins/golfo-kit/skills/<skill>",
+          "result": "passed",
+          "evidence": "Inspección de SKILL.md y evals del 2026-10-30: la skill solo produce texto y no usa herramientas específicas de agente."
+        }
+      ],
+      "pending_verification": [
+        "Ejecutar la skill en Claude Code con un caso real.",
+        "Ejecutar la skill en Codex CLI con un caso real.",
+        "Ejecutar la skill en Hermes Agent con un caso real."
       ]
     },
     {

@@ -1,0 +1,23 @@
+[
+  {"query": "hacé un script en bash, scripts/bootstrap.sh, que instale las dependencias del proyecto, corra las migraciones y siembre los datos de desarrollo", "should_trigger": true},
+  {"query": "Escribí un CLI en Node que liste los worktrees de git y los ordene por fecha de último commit", "should_trigger": true},
+  {"query": "necesito un instalador en powershell para windows que baje el binario de nuestra tool, lo agregue al PATH y avise si ya estaba instalada", "should_trigger": true},
+  {"query": "scripts/deploy.mjs tarda como 5 minutos y no muestra nada mientras corre, agregale progreso", "should_trigger": true},
+  {"query": "Rediseñá la pantalla de facturas en src/pages/Invoices.tsx, hoy es una tabla gris sin jerarquía y en el celular se corta", "should_trigger": true},
+  {"query": "armá un reporte HTML con los resultados de benchmarks/results.csv que pueda abrir en el navegador y mandarle al equipo", "should_trigger": true},
+  {"query": "Agregá un wizard interactivo al comando `golfo init` que pregunte el nombre del proyecto y el stack, y genere los archivos", "should_trigger": true},
+  {"query": "creá el componente PlanCard en React para la página de precios, con el nombre del plan, el precio y el botón de contratar", "should_trigger": true},
+  {"query": "add a `status` subcommand to our python cli (tools/ops.py) that prints the health of each service in staging", "should_trigger": true},
+  {"query": "pasá el menú de selección de entornos de tools/pick-env.ps1 a algo navegable con flechas, hoy hay que tipear el número", "should_trigger": true},
+  {"query": "Agregá rate limiting al endpoint POST /api/otp/resend en Express (máximo 3 reenvíos cada 10 minutos por teléfono) con tests de integración", "should_trigger": false},
+  {"query": "Agregá un flag --json al CLI report.mjs para que lo consuma jq en el pipeline de CI, sin cambiar nada más", "should_trigger": false},
+  {"query": "Escribí una migración SQL que agregue la columna archived_at a courses con su índice y la policy de RLS", "should_trigger": false},
+  {"query": "escribí un paso de GitHub Actions que parsee coverage.xml y falle si la cobertura baja de 80, solo tiene que dejar el número en $GITHUB_OUTPUT", "should_trigger": false},
+  {"query": "Hacé que el logger del servicio de pagos emita JSON estructurado con requestId y nivel, para mandarlo a Datadog", "should_trigger": false},
+  {"query": "Agregá tests de bats para scripts/create-version.js que cubran --dry-run y --bump", "should_trigger": false},
+  {"query": "Explicame qué hace el flag --ff-only de git merge y cuándo conviene usarlo", "should_trigger": false},
+  {"query": "Escribí una función en TypeScript que parsee fechas ISO con zona horaria y devuelva un Date, con sus tests de Vitest", "should_trigger": false},
+  {"query": "Agregá un endpoint GET /api/reports/:id que devuelva el PDF generado, con cache de 1 hora y 404 si no existe", "should_trigger": false},
+  {"query": "El job de cron que manda el resumen diario por mail tarda 40s; perfilalo y decime qué query es la lenta", "should_trigger": false},
+  {"query": "resumime acá en el chat los cambios del último release en una tabla, leé el CHANGELOG.md", "should_trigger": false}
+]
