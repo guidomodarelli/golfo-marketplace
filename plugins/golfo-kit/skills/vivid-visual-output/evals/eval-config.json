@@ -1,0 +1,170 @@
+{
+  "schema_version": 2,
+  "skill": "vivid-visual-output",
+  "description": "Evalúa el contrato de la skill: qué se aplica en cada superficie, cuándo no aplica y el piso de calidad en el código que genera. run-evals fuerza la lectura de SKILL.md y no ejecuta nada, así que la activación real se mide con trigger-evals.json y el comportamiento real corriendo el código de los casos quality-*.",
+  "test_cases": [
+    {
+      "id": "applies-script-with-progress",
+      "description": "Un script con progreso recibe degradación, cursor restaurado y pasos numerados.",
+      "input": "Escribí `scripts/sync-assets.sh`: sube la carpeta `dist/` a un bucket con `aws s3 sync` y después invalida el CDN. Tarda varios minutos, así que tiene que mostrar el avance. Devolvé el archivo completo.",
+      "assertions": [
+        { "type": "regex", "pattern": "NO_COLOR", "description": "Respeta NO_COLOR" },
+        { "type": "regex", "pattern": "TERM.{0,12}dumb", "description": "Degrada con TERM=dumb" },
+        { "type": "regex", "pattern": "[?]25h|cnorm", "description": "Restaura el cursor" },
+        { "type": "regex", "pattern": "trap ", "description": "Limpia ante una interrupcion" },
+        { "type": "regex", "pattern": "\\[[^] ]*/[^] ]*\\]", "description": "Numera los pasos" }
+      ]
+    },
+    {
+      "id": "applies-screen-redesign",
+      "description": "Un rediseño recibe tokens, temas, movimiento reducido y contraste, y delega en las skills vecinas.",
+      "input": "Rediseñá la pantalla de facturas en `src/pages/Invoices.tsx`: hoy es una tabla gris, sin nada que guíe la vista, y en el celular se corta. Contame qué vas a hacer y mostrá el código clave.",
+      "assertions": [
+        { "type": "regex", "pattern": "prefers-reduced-motion", "description": "Contempla movimiento reducido" },
+        { "type": "regex", "pattern": "prefers-color-scheme|color-scheme|data-theme", "description": "Contempla tema claro y oscuro" },
+        { "type": "regex", "pattern": "--[a-z]+(-[a-z]+)*:|tokens", "description": "Define tokens" },
+        { "type": "regex", "pattern": "AA|4[.]5:1", "description": "Exige contraste AA" },
+        { "type": "contains_any", "values": ["ui-ux-flow-patterns", "semantic-html-a11y", "mobile-first-responsive-layout"], "description": "Referencia las skills vecinas en vez de duplicarlas" }
+      ]
+    },
+    {
+      "id": "applies-without-visual-mention",
+      "description": "Un CLI pedido solo por su lógica también recibe el piso de calidad.",
+      "input": "Escribí un CLI en Node que liste los worktrees de git ordenados por fecha de último commit. Devolvé el archivo completo.",
+      "assertions": [
+        { "type": "regex", "pattern": "NO_COLOR", "description": "Respeta NO_COLOR" },
+        { "type": "regex", "pattern": "isTTY", "description": "Distingue terminal de pipe" },
+        { "type": "regex", "pattern": "[.]columns", "description": "Se adapta al ancho real" },
+        { "type": "regex", "pattern": "38;2;|getColorDepth|paint|colorize", "description": "Usa color" }
+      ]
+    },
+    {
+      "id": "skips-pure-backend",
+      "description": "Un cambio sin salida visible no recibe decoración.",
+      "input": "Agregá rate limiting al endpoint POST /api/otp/resend en Express: máximo 3 reenvíos cada 10 minutos por teléfono, con tests de integración.",
+      "assertions": [
+        { "type": "regex", "pattern": "no aplica|no corresponde|sin salida visible|no tiene salida visible|no hay salida visible|fuera de (su )?alcance|no agrega nada|no cargarla|no apliqu", "description": "Reconoce que el piso visual no aplica" },
+        { "type": "not_contains_any", "values": ["NO_COLOR", "prefers-reduced-motion", "38;2;"], "description": "No suma decoracion" }
+      ]
+    },
+    {
+      "id": "skips-json-output",
+      "description": "Una salida para máquinas queda limpia.",
+      "input": "Agregá `--json` al CLI `report.mjs`: lo consume `jq` en un pipeline de CI. Mostrá solo el cambio.",
+      "assertions": [
+        { "type": "regex", "pattern": "JSON[.]stringify|JSON v.lido|documento JSON|solo (el )?JSON", "description": "Mantiene el JSON valido" },
+        { "type": "regex", "pattern": "sin (ninguna )?(decoraci|color|escape|banner|spinner)|no (lleva|agrega|debe|mezcl|contamin|llega|le llega|hay).{0,60}(decoraci|color|escape|banner|spinner)|nada de (decoraci|color|escape|ansi|banner|spinner)|nunca.{0,40}(decoraci|color|escape)|decoraci.{0,60}(stderr|no llega|nunca)", "description": "Mantiene la salida sin decoracion" },
+        { "type": "not_contains_any", "values": ["38;2;", "paintGradient"], "description": "No pinta el JSON" }
+      ]
+    },
+    {
+      "id": "skips-chat-answer",
+      "description": "Una respuesta en el chat no recibe el piso de terminal ni de UI.",
+      "input": "¿Qué diferencia hay entre `git merge` y `git rebase`? Respondeme en dos párrafos.",
+      "assertions": [
+        { "type": "regex", "pattern": "historial|commits", "description": "Responde la pregunta" },
+        { "type": "not_contains_any", "values": ["NO_COLOR", "prefers-reduced-motion", "spinner"], "description": "No trae el piso visual al chat" }
+      ]
+    },
+    {
+      "id": "no-decorative-delay",
+      "description": "Dar vida no inventa una espera.",
+      "input": "El instalador `install.mjs` termina en medio segundo y se siente seco. Hacé que se sienta más vivo. Contame qué harías y mostrá el código clave.",
+      "assertions": [
+        { "type": "regex", "pattern": "sin (ningun |ninguna )?(sleep|demora|espera|pausa)|no (agreg|invent|cre|sum|met|alarg).{0,50}(sleep|demora|espera|pausa)|nunca (la )?crea|acompa.{0,20}espera|nada de .?sleep|instant", "description": "Aclara que no inventa una espera" },
+        { "type": "not_contains_any", "values": ["await sleep", "setTimeout(resolve"], "description": "No agrega una pausa decorativa" }
+      ]
+    },
+    {
+      "id": "stricter-project-rule-wins",
+      "description": "Una regla de solo ASCII le gana a los glifos del kit.",
+      "input": "El `AGENTS.md` de este repo dice: «Decoración de scripts: solo ASCII». Escribí `scripts/setup.sh` con tres pasos (instalar, migrar y sembrar), avance mientras esperan y un resumen final. Devolvé el archivo completo.",
+      "assertions": [
+        { "type": "regex", "pattern": "NO_COLOR", "description": "Mantiene la degradacion" },
+        { "type": "regex", "pattern": "trap ", "description": "Restaura ante una interrupcion" },
+        { "type": "not_contains_any", "values": ["✓", "✗", "⠋", "╭", "↷", "●"], "description": "No usa glifos fuera de ASCII" }
+      ]
+    },
+    {
+      "id": "existing-design-system-wins",
+      "description": "Un design system existente se respeta, sin inventar otra paleta.",
+      "input": "Este proyecto ya tiene design system: `DESIGN.md` define los tokens `--brand-surface`, `--brand-ink` y `--brand-signal`, y el componente `<StatusPill>`. Agregá una tarjeta de estado del despliegue a `src/pages/Deploy.tsx`. Mostrá el código.",
+      "assertions": [
+        { "type": "contains", "value": "StatusPill", "description": "Reusa el componente existente" },
+        { "type": "regex", "pattern": "--brand-(surface|ink|signal)", "description": "Reusa los tokens existentes" },
+        { "type": "not_contains_any", "values": ["#[0-9a-f]\\{6\\}", "rgb("], "description": "No inventa colores" }
+      ]
+    },
+    {
+      "id": "character-as-constants",
+      "description": "Un proyecto nuevo define un carácter propio como constantes reutilizables.",
+      "input": "Arrancamos `tide-monitor`, un CLI en Node que muestra el estado de sensores de mareas. Todavía no tiene nada de salida. Definí cómo se va a ver y dejame listo el módulo de salida. Devolvé el archivo completo.",
+      "assertions": [
+        { "type": "not_contains_any", "values": ["94, 196, 182", "94;196;182", "#0a6c6c", "#f6f3ec", "#63cdbe"], "description": "No copia la paleta de ejemplo de la skill" },
+        { "type": "regex", "pattern": "THEME|PALETTE|palette|paleta", "description": "Define la paleta como constante" },
+        { "type": "regex", "pattern": "glyph|glifo", "description": "Define los glifos" },
+        { "type": "regex", "pattern": "interval_?ms", "description": "Define el ritmo de animacion" },
+        { "type": "regex", "pattern": "marea|tide|oleaje|ola |oc[e]ano|mar ", "description": "Toma el caracter del dominio del proyecto" }
+      ]
+    },
+    {
+      "id": "quality-node-script",
+      "description": "Script completo en Node. El arnés externo corre este código en pipe, en pseudoconsola, con Ctrl+C y a 40 columnas.",
+      "input": "Escribí el script completo `release-status` en Node (un solo archivo .mjs, sin dependencias). Hace cuatro pasos: Leer manifiestos, Compilar, Publicar y Verificar. Cada paso simula trabajo durante WORK_MS milisegundos (variable de entorno, 1500 por defecto). Al final muestra estas filas: api-gateway 3.14.2 done 12s; billing-worker-eu-central 2.8.0 changed 48s; notifications 1.9.7 skipped -; search-indexer 5.0.0-rc.1 warning 1m03s; legacy-importer 0.4.1 error 7s; ñandú-señales 1.0.0 done 3s. Con `--json` imprime solo esas filas como un array JSON con las claves service, version, status y duration. Con `--fail`, el paso Publicar falla con el error «registry timeout» y el script termina con un código distinto de cero. Devolvé el archivo completo en un único bloque de código.",
+      "assertions": [
+        { "type": "not_contains_any", "values": ["94, 196, 182", "94;196;182", "#0a6c6c", "#f6f3ec", "#63cdbe"], "description": "No copia la paleta de ejemplo de la skill" },
+        { "type": "regex", "pattern": "NO_COLOR", "description": "Respeta NO_COLOR" },
+        { "type": "regex", "pattern": "TERM.{0,12}dumb", "description": "Degrada con TERM=dumb" },
+        { "type": "regex", "pattern": "env[.]CI|env\\[.CI", "description": "Degrada en CI" },
+        { "type": "regex", "pattern": "isTTY", "description": "Distingue terminal de pipe" },
+        { "type": "regex", "pattern": "[?]25h", "description": "Restaura el cursor" },
+        { "type": "regex", "pattern": "SIGINT", "description": "Maneja Ctrl+C" },
+        { "type": "regex", "pattern": "[.]columns", "description": "Se adapta al ancho real" },
+        { "type": "regex", "pattern": "stderr", "description": "Separa la decoracion de los datos" }
+      ]
+    },
+    {
+      "id": "quality-powershell-script",
+      "description": "Script completo en PowerShell, para 7 y 5.1. El arnés externo corre este código.",
+      "input": "Escribí el script completo `release-status.ps1` en PowerShell, que tiene que funcionar en PowerShell 7 y en Windows PowerShell 5.1 (un solo archivo, sin módulos externos). Hace cuatro pasos: Leer manifiestos, Compilar, Publicar y Verificar. Cada paso simula trabajo durante WORK_MS milisegundos (variable de entorno, 1500 por defecto). Al final muestra estas filas: api-gateway 3.14.2 done 12s; billing-worker-eu-central 2.8.0 changed 48s; notifications 1.9.7 skipped -; search-indexer 5.0.0-rc.1 warning 1m03s; legacy-importer 0.4.1 error 7s; ñandú-señales 1.0.0 done 3s. Con el parámetro `-Json` imprime solo esas filas como un array JSON con las claves service, version, status y duration. Con el parámetro `-Fail`, el paso Publicar falla con el error «registry timeout» y el script termina con un código distinto de cero. Devolvé el archivo completo en un único bloque de código.",
+      "assertions": [
+        { "type": "not_contains_any", "values": ["94, 196, 182", "94;196;182", "#0a6c6c", "#f6f3ec", "#63cdbe"], "description": "No copia la paleta de ejemplo de la skill" },
+        { "type": "regex", "pattern": "NO_COLOR", "description": "Respeta NO_COLOR" },
+        { "type": "regex", "pattern": "TERM.{0,12}dumb", "description": "Degrada con TERM=dumb" },
+        { "type": "regex", "pattern": "env:CI", "description": "Degrada en CI" },
+        { "type": "regex", "pattern": "IsOutputRedirected|IsErrorRedirected", "description": "Distingue terminal de pipe" },
+        { "type": "regex", "pattern": "[?]25h|CursorVisible", "description": "Restaura el cursor" },
+        { "type": "regex", "pattern": "finally", "description": "Restaura ante Ctrl+C" },
+        { "type": "regex", "pattern": "WindowWidth|WindowSize|BufferWidth", "description": "Se adapta al ancho real" }
+      ]
+    },
+    {
+      "id": "quality-bash-script",
+      "description": "Script completo para bash y zsh. El arnés externo corre este código en Git Bash.",
+      "input": "Escribí el script completo `release-status.sh` para bash y zsh (un solo archivo). Hace cuatro pasos: Leer manifiestos, Compilar, Publicar y Verificar. Cada paso simula trabajo durante WORK_MS milisegundos (variable de entorno, 1500 por defecto). Al final muestra estas filas: api-gateway 3.14.2 done 12s; billing-worker-eu-central 2.8.0 changed 48s; notifications 1.9.7 skipped -; search-indexer 5.0.0-rc.1 warning 1m03s; legacy-importer 0.4.1 error 7s; ñandú-señales 1.0.0 done 3s. Con `--json` imprime solo esas filas como un array JSON con las claves service, version, status y duration. Con `--fail`, el paso Publicar falla con el error «registry timeout» y el script termina con un código distinto de cero. Devolvé el archivo completo en un único bloque de código.",
+      "assertions": [
+        { "type": "not_contains_any", "values": ["94, 196, 182", "94;196;182", "#0a6c6c", "#f6f3ec", "#63cdbe"], "description": "No copia la paleta de ejemplo de la skill" },
+        { "type": "regex", "pattern": "NO_COLOR", "description": "Respeta NO_COLOR" },
+        { "type": "regex", "pattern": "TERM.{0,12}dumb", "description": "Degrada con TERM=dumb" },
+        { "type": "regex", "pattern": "[{]?CI[:}]|[$]CI", "description": "Degrada en CI" },
+        { "type": "regex", "pattern": "-t [12\"$]", "description": "Distingue terminal de pipe" },
+        { "type": "regex", "pattern": "[?]25h|cnorm", "description": "Restaura el cursor" },
+        { "type": "regex", "pattern": "trap ", "description": "Maneja Ctrl+C" },
+        { "type": "regex", "pattern": "stty|tput cols|COLUMNS", "description": "Se adapta al ancho real" }
+      ]
+    },
+    {
+      "id": "quality-html-page",
+      "description": "Página HTML completa. El arnés externo la captura en desktop y mobile, en los dos temas y con movimiento reducido.",
+      "input": "Escribí una página HTML autocontenida (un solo archivo) con el estado de un release: api-gateway 3.14.2 done 12s; billing-worker-eu-central 2.8.0 changed 48s; notifications 1.9.7 skipped -; search-indexer 5.0.0-rc.1 warning 1m03s; legacy-importer 0.4.1 error 7s; ñandú-señales 1.0.0 done 3s. La fila con error tiene un botón Reintentar que, al apretarlo, la pasa a done. Devolvé el archivo completo en un único bloque de código.",
+      "assertions": [
+        { "type": "not_contains_any", "values": ["94, 196, 182", "94;196;182", "#0a6c6c", "#f6f3ec", "#63cdbe"], "description": "No copia la paleta de ejemplo de la skill" },
+        { "type": "regex", "pattern": "prefers-reduced-motion", "description": "Contempla movimiento reducido" },
+        { "type": "regex", "pattern": "prefers-color-scheme", "description": "Contempla el tema oscuro" },
+        { "type": "regex", "pattern": "--[a-z]+(-[a-z]+)*:", "description": "Define tokens" },
+        { "type": "regex", "pattern": "name=.viewport", "description": "Funciona en mobile" },
+        { "type": "regex", "pattern": "@media|minmax|clamp[(]", "description": "Se adapta al ancho" }
+      ]
+    }
+  ]
+}
