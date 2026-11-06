@@ -765,12 +765,34 @@ status_label() {
   esac
 }
 
+# mawk, el awk por defecto de Debian y Ubuntu, cuenta bytes aunque el locale sea UTF-8: length y substr
+# partirían una ñ. Estas funciones cuentan caracteres en los dos casos.
+AWK_TEXT_HELPERS='
+    # Se arma en ejecución: gawk en UTF-8 rechaza este rango de bytes si está escrito en el programa.
+    function continuation_bytes() { return sprintf("[%c-%c]", 128, 191) }
+    function text_length(text, copy) {
+      if (length("ñ") == 1) return length(text)
+      copy = text
+      return length(text) - gsub(continuation_bytes(), "", copy)
+    }
+    function text_units(text, count, position, seen) {
+      if (length("ñ") == 1) return count
+      seen = 0
+      for (position = 1; position <= length(text); position++) {
+        if (substr(text, position, 1) !~ continuation_bytes() && ++seen > count) return position - 1
+      }
+      return length(text)
+    }
+    function text_prefix(text, count) { return substr(text, 1, text_units(text, count)) }
+    function text_rest(text, count) { return substr(text, text_units(text, count) + 1) }
+'
+
 # Lee filas separadas por | desde stdin; la primera son los títulos. La columna $3 trae un estado.
 render_table() { # profundidad, ancho (0 = sin límite), número de la columna de estado
   awk -F'|' -v depth="$1" -v width="$2" -v status_column="$3" -v esc="$ESC" \
     -v done_code="$(color_code done "$1")" -v skipped_code="$(color_code skipped "$1")" \
     -v changed_code="$(color_code changed "$1")" -v warning_code="$(color_code warning "$1")" \
-    -v error_code="$(color_code error "$1")" '
+    -v error_code="$(color_code error "$1")" "$AWK_TEXT_HELPERS"'
     BEGIN {
       label["done"] = "✓ hecho"; label["skipped"] = "↷ saltado"; label["changed"] = "~ cambiado"
       label["warning"] = "! aviso"; label["error"] = "✗ error"
@@ -782,14 +804,20 @@ render_table() { # profundidad, ancho (0 = sin límite), número de la columna d
     }
     function bold(text) { return depth <= 1 ? text : esc "[1m" text esc "[0m" }
     # Parte el texto antes de pintarlo, en un espacio si hay uno: un dato largo no se trunca ni rompe la fila.
-    function print_stacked(text, style, cut, position) {
-      while (length(text) > width) {
-        cut = width
-        for (position = width + 1; position > 3; position--) {
-          if (substr(text, position, 1) == " ") { cut = position - 1; break }
+    function print_stacked(text, style, head, position, space) {
+      while (text_length(text) > width) {
+        head = text_prefix(text, width + 1)
+        space = 0
+        for (position = length(head); position > 3; position--) {
+          if (substr(head, position, 1) == " ") { space = position; break }
         }
-        print_styled(substr(text, 1, cut), style)
-        text = substr(text, cut + 1)
+        if (space) {
+          print_styled(substr(text, 1, space - 1), style)
+          text = substr(text, space + 1)
+        } else {
+          print_styled(text_prefix(text, width), style)
+          text = text_rest(text, width)
+        }
         sub(/^ +/, "", text)
       }
       print_styled(text, style)
@@ -804,7 +832,7 @@ render_table() { # profundidad, ancho (0 = sin límite), número de la columna d
         value = (NR > 1 && i == status_column) ? label[$i] : $i
         cell[NR, i] = value
         status[NR] = (i == status_column) ? $i : status[NR]
-        if (length(value) > widest[i]) widest[i] = length(value)
+        if (text_length(value) > widest[i]) widest[i] = text_length(value)
       }
       column_count = NF
     }
@@ -824,7 +852,7 @@ render_table() { # profundidad, ancho (0 = sin límite), número de la columna d
       for (row = 1; row <= NR; row++) {
         line = ""
         for (i = 1; i <= column_count; i++) {
-          padded = sprintf("%s%" (widest[i] - length(cell[row, i])) "s", cell[row, i], "")
+          padded = sprintf("%s%" (widest[i] - text_length(cell[row, i])) "s", cell[row, i], "")
           if (row == 1) padded = bold(padded)
           else if (i == status_column) padded = paint(status[row], padded)
           line = line (i > 1 ? "  " : "") padded
@@ -836,7 +864,7 @@ render_table() { # profundidad, ancho (0 = sin límite), número de la columna d
 
 # Lee las líneas del recuadro desde stdin; la primera es el título.
 render_box() { # profundidad, ancho (0 = sin límite)
-  awk -v depth="$1" -v width="$2" -v esc="$ESC" -v accent_code="$(color_code accent "$1")" '
+  awk -v depth="$1" -v width="$2" -v esc="$ESC" -v accent_code="$(color_code accent "$1")" "$AWK_TEXT_HELPERS"'
     function accent(text) { return depth <= 1 ? text : esc "[" accent_code "m" text esc "[0m" }
     function repeat_text(text, count, result) {
       result = ""
@@ -848,18 +876,18 @@ render_box() { # profundidad, ancho (0 = sin límite)
       current = ""
       for (position = 1; position <= word_count; position++) {
         if (current == "") current = words[position]
-        else if (length(current) + 1 + length(words[position]) <= inner) current = current " " words[position]
+        else if (text_length(current) + 1 + text_length(words[position]) <= inner) current = current " " words[position]
         else { wrapped[++wrapped_count] = current; current = words[position] }
-        while (length(current) > inner) {
-          wrapped[++wrapped_count] = substr(current, 1, inner)
-          current = substr(current, inner + 1)
+        while (text_length(current) > inner) {
+          wrapped[++wrapped_count] = text_prefix(current, inner)
+          current = text_rest(current, inner)
         }
       }
       wrapped[++wrapped_count] = current
     }
     {
       source[NR] = $0
-      if (length($0) > widest) widest = length($0)
+      if (text_length($0) > widest) widest = text_length($0)
     }
     END {
       inner = widest
@@ -867,7 +895,7 @@ render_box() { # profundidad, ancho (0 = sin límite)
       for (row = 1; row <= NR; row++) append_wrapped(source[row])
       print accent("╭" repeat_text("─", inner + 2) "╮")
       for (row = 1; row <= wrapped_count; row++) {
-        print accent("│") " " sprintf("%s%" (inner - length(wrapped[row])) "s", wrapped[row], "") " " accent("│")
+        print accent("│") " " sprintf("%s%" (inner - text_length(wrapped[row])) "s", wrapped[row], "") " " accent("│")
       }
       print accent("╰" repeat_text("─", inner + 2) "╯")
     }'
@@ -909,7 +937,8 @@ trap 'exit 143' TERM
 run_with_spinner() { # etiqueta, comando...
   spinner_label=$1
   shift
-  # Con set -e, un trabajo de varios pasos no sigue con el próximo si Ctrl+C cortó el actual.
+  # Con set -e, un trabajo de varios pasos no sigue si un paso falla o Ctrl+C lo corta. Pero bash lo apaga
+  # si el llamador usa `if run_with_spinner ...` o `||`: ahí el trabajo tiene que encadenar sus pasos con &&.
   (
     set -e
     "$@"
