@@ -1,18 +1,19 @@
 ---
 name: agent-ready-setup
 description: >-
-  Inspecciona proyecto, detecta stack (frontend, node, java, go) y prepara siempre
-  configuración multi-provider para Claude Code, Codex y futuros agentes: genera
-  .claude/, .agents/, .codex/, AGENTS.md y proxy CLAUDE.md, sobrescribe siempre
-  los assets gestionados con los templates, y mantiene el bloque gestionado de
-  AGENTS.md. Usar cuando
-  usuario diga "configurar agent ready",
-  "setup agent ready", "bootstrap claude", "bootstrap codex", "inicializar
-  configuración de agentes", "quiero ser agent ready", "make this repo agent
-  ready", o pida pasar Agent Ready Score.
+  Inspecciona proyecto, selecciona profiles componibles (frontend, node, java, go,
+  browser) y prepara configuración multi-provider para Claude Code y Codex: genera
+  .claude/, .agents/, .codex/, AGENTS.md y proxy CLAUDE.md, fija la versión
+  adoptada en un manifest y un lockfile por repo, preserva como conflicto los
+  assets gestionados editados, retira los que salen del profile y ofrece status y
+  plan sin escrituras. Usar cuando usuario diga "configurar agent ready", "setup
+  agent ready", "bootstrap claude", "bootstrap codex", "inicializar configuración
+  de agentes", "quiero ser agent ready", "make this repo agent ready", pida pasar
+  Agent Ready Score, o pregunte qué versión de las rules usa el repo, qué cambiaría
+  una actualización de agent-ready-setup o por qué un asset quedó en conflicto.
 license: MIT
 metadata:
-  version: "1.5.0"
+  version: "1.6.0"
   author: "guponce"
   category: "developer-experience"
   tags: "agent-ready, multi-provider, claude-code, codex, bootstrap, setup, scaffold, context-optimized-v1.20.1"
@@ -65,17 +66,23 @@ cada rule propia del proyecto; no mantener listado duplicado en templates.
 Bootstrap requiere ejecución dentro de un worktree Git. Usa `git check-ignore`
 como fuente de verdad para omitir instrucciones anidadas cubiertas por
 `.gitignore`; fuera de un worktree, termina con error antes de escribir assets.
-Bootstrap tiene un solo modo, sin flags de confirmación: sincroniza siempre los
-assets gestionados con los templates sin preguntar y normaliza instrucciones.
+Bootstrap aplica sin pedir confirmación; `--plan` y `--status` son las
+operaciones de solo lectura.
 
-Los assets publicados por agent-ready-setup (rules, skills, agents, commands,
-hooks y sus vistas en `.claude/`) se sobrescriben siempre, aunque se
-hayan editado: para agregar o cambiar comportamiento, el proyecto crea una rule
-propia bajo `.agents/rules/` o una skill nueva. Un symlink en un path gestionado
-se reemplaza sin seguirlo. Solo quedan como conflicto los directorios en un path
-gestionado y los padres que son symlink. Instrucciones del proyecto
-(`AGENTS.md` fuera del bloque gestionado), personalizaciones en `settings.json`
-y `.codex/hooks.json` (merge), y assets desconocidos se preservan.
+Adopción versionada: `.agents/agent-ready.json` (manifest: profiles elegidos y
+`updates` `pinned` por defecto o `auto`) y `.agents/agent-ready.lock.json`
+(lockfile: source, profiles y sha256 aplicado de cada asset). Un asset
+gestionado (rules, skills, agents, commands, hooks y sus vistas en `.claude/`)
+se actualiza solo si sigue igual a su base del lockfile; si el proyecto lo editó,
+se preserva y se reporta como conflicto (`--force` lo sobrescribe). Un asset que
+ya no publica ningún profile se retira solo si no tiene cambios. Sin lockfile
+previo, el primer apply sobrescribe una vez, como el contrato anterior. Para
+agregar o cambiar comportamiento, el proyecto crea una rule propia bajo
+`.agents/rules/` o una skill nueva. Instrucciones del proyecto (`AGENTS.md` fuera
+del bloque gestionado), personalizaciones en `settings.json` y
+`.codex/hooks.json` (merge), y assets desconocidos se preservan. Contrato
+completo, tabla de decisiones y límites:
+[references/profiles-and-lockfile.md](references/profiles-and-lockfile.md).
 
 ## Compatibilidad entre agentes
 
@@ -92,9 +99,22 @@ prioridad para desarrollo local. Al terminar imprime `Resolved agent-ready-setup
 <path>`; usar ese path para los scripts y assets posteriores, porque el upgrade puede
 reemplazar una fuente versionada y dejar el path anterior inexistente.
 
-## Step 2 — Detect stack
+## Subcomandos de solo lectura
 
-Inspeccionar raíz proyecto. Usar prioridad:
+`/agent-ready-setup status` y `/agent-ready-setup plan` corren
+`bootstrap.sh --status` o `--plan` (mismos `--skill-dir` y `--provider` del Step 3,
+sin `--stack` si el repo ya tiene manifest) y muestran su salida sin alterarla.
+No hacen upgrade del marketplace, no escriben, no instalan herramientas ni llaman
+a la CLI del provider. Saltear los Steps 2 y 4. Para explicar la salida, leer
+[references/profiles-and-lockfile.md](references/profiles-and-lockfile.md).
+
+## Step 2 — Select profiles
+
+Si el repo ya tiene `.agents/agent-ready.json`, usar sus profiles: correr
+bootstrap sin `--stack` ni `--profiles`. Si el usuario pide otros profiles,
+pasar `--profiles a,b` (el primero de tipo stack aporta el template de
+`AGENTS.md`). Si no hay manifest, detectar el stack; `--stack <s>` equivale a
+`--profiles <s>,browser`. Inspeccionar raíz proyecto. Usar prioridad:
 
 | Archivo presente | Stack |
 |---|---|
@@ -128,16 +148,19 @@ uno de: `frontend`, `node`, `java`, `go`.
 
 Si detección tiene éxito, confirmar:
 
-> `Detected stack: **<STACK>**. Running agent-ready-setup — Claude, shared-agent and Codex-compatible managed assets will be overwritten with the templates; project rules, skills, and instructions are preserved.`
+> `Detected stack: **<STACK>**. Running agent-ready-setup — managed assets that still match the lockfile are updated, locally edited ones are preserved as conflicts; project rules, skills, and instructions are preserved.`
 
 ## Step 3 — Run bootstrap script
 
-Bootstrap instala browsers automáticamente para ambos providers y todos los stacks.
-Leer [references/browser-setup.md](references/browser-setup.md) para requisitos,
+Bootstrap instala browsers para ambos providers solo si un profile seleccionado
+lo pide (`browser`, incluido en cada `--stack`). Leer
+[references/browser-setup.md](references/browser-setup.md) para requisitos,
 registro efectivo MCP, recuperación de fallos y opción offline antes de ejecutarlo.
+Para revisar antes de aplicar, correr primero el mismo comando con `--plan`.
 
 ```bash
 PROVIDER="$(bash "$SKILL_DIR/scripts/resolve-provider.sh" --skill-dir "$SKILL_DIR")"
+# Without a manifest pass --stack "$STACK" (or --profiles a,b); with one, omit both.
 bootstrap_output="$(bash "$SKILL_DIR/scripts/bootstrap.sh" \
   --stack "$STACK" \
   --skill-dir "$SKILL_DIR" \
@@ -173,8 +196,10 @@ preservan como conflictos. Codex requiere confiar hooks nuevos o modificados
 mediante `/hooks`; generar archivo no concede confianza. Hook de consistencia
 consume `tool_input.file_path` de Claude y cabeceras de `tool_input.command` de
 Codex `apply_patch`, incluidos destinos de renombre; revisa cada raíz afectada
-una vez. Matcher `Write|Edit` admite `apply_patch` como alias. Revisión utiliza
-CLI Claude instalada también cuando evento proviene de Codex.
+una vez. Matcher `Write|Edit` admite `apply_patch` como alias. La revisión usa la
+CLI del provider que editó: `claude --print` para Claude Code y `codex exec
+--sandbox read-only` para eventos `apply_patch` de Codex; sin esa CLI, se omite
+con un aviso, así un entorno solo-Codex no necesita Claude.
 El renderer crea `AGENTS.md` nuevo con el bloque gestionado; en `AGENTS.md`
 existente, `merge-instructions.sh` reemplaza ese bloque por copia literal del
 template y la IA solo revisa redundancias fuera de él. El provider debe ser
@@ -238,9 +263,12 @@ normalización por directorio, siempre con el `AGENTS.md` hermano:
 ### Sincronización posterior al upgrade
 
 El hook `.agents/hooks/sync-marketplace.sh` corre en cada `SessionStart`: actualiza el
-marketplace (como máximo una vez por hora; `AGENT_READY_SETUP_FORCE_UPGRADE=1` lo fuerza)
-y proyecta assets, normalización y bloque gestionado de forma local y sincrónica; lo que
-usa red o un LLM corre en segundo plano. Para sincronizar a mano:
+marketplace (como máximo una vez por hora; `AGENT_READY_SETUP_FORCE_UPGRADE=1` lo fuerza).
+En un repo `pinned` (default) solo informa drift y updates pendientes, sin escribir;
+con `updates: auto` o sin manifest proyecta assets con el gate de ownership,
+normalización y bloque gestionado de forma local y sincrónica, y lo que usa red o un
+LLM corre en segundo plano. `AGENT_READY_SETUP_REVIEW_MODE=1` nunca escribe; para
+reviews automatizadas leer [references/review-consumption.md](references/review-consumption.md). Para sincronizar a mano:
 `bash .agents/hooks/sync-marketplace.sh --provider claude|codex`. Leer
 [references/sync-and-upgrade.md](references/sync-and-upgrade.md) para explicar o
 diagnosticar el sync: resolución de la fuente, tareas en segundo plano, backups, riesgos

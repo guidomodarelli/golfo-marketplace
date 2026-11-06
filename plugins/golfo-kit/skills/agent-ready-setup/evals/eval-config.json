@@ -599,23 +599,13 @@
     },
     {
       "id": "marketplace-upgrade-refreshes-managed-assets",
-      "description": "Distingue upgrade global de proyección local segura.",
-      "input": "Explicá qué ocurre con un proyecto Agent Ready después del upgrade del marketplace cuando `.agents/rules/security.md` ya existe y la plantilla cambió. Indicá cómo el hook automático siempre ejecuta la proyección y el merge, cómo se muestra el diff, dónde se guarda el backup local, qué ocurre sin TTY y cuáles archivos de instrucciones nunca deben reemplazarse. No ejecutes Bash ni escribas archivos.",
+      "description": "Distingue upgrade global de proyección local con ownership: actualiza lo que sigue igual a la base del lock y preserva lo editado.",
+      "input": "Explicá qué ocurre con un proyecto Agent Ready con `updates: auto` en `.agents/agent-ready.json` después del upgrade del marketplace, cuando la plantilla de `.agents/rules/testing.md` cambió y nadie lo tocó, pero `.agents/rules/security.md` también cambió en la plantilla y el equipo lo editó a mano. Indicá qué hace el hook con cada archivo, cómo se muestra el diff, qué registra después y cuáles archivos de instrucciones nunca deben reemplazarse. No ejecutes Bash ni escribas archivos.",
       "assertions": [
-        {
-          "type": "contains_any",
-          "values": ["siempre", "automático", "automáticamente"],
-          "description": "Identifica sincronización completa automática"
-        },
         {
           "type": "contains_any",
           "values": ["proyección", "projection"],
           "description": "Identifica proyección de assets"
-        },
-        {
-          "type": "contains_any",
-          "values": ["merge", "fusión", "instrucciones"],
-          "description": "Identifica merge automático de instrucciones"
         },
         {
           "type": "contains",
@@ -624,13 +614,20 @@
         },
         {
           "type": "contains_any",
-          "values": ["backup", "respaldo", "copia local"],
-          "description": "Conserva la versión local antes de aplicar template"
+          "values": ["conflicto", "conflict"],
+          "description": "El archivo editado queda como conflicto",
+          "critical": true
         },
         {
           "type": "contains_any",
-          "values": ["sin TTY", "no interactivo", "no interactiva"],
-          "description": "Cubre ejecución sin terminal interactiva"
+          "values": ["agent-ready.lock.json", "lockfile"],
+          "description": "Explica que la base sale del lockfile y que se reescribe",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["--force"],
+          "description": "Ofrece la sobrescritura explícita"
         },
         {
           "type": "contains",
@@ -2043,6 +2040,140 @@
           ],
           "description": "Cita la rule patterns-we-do-not-use a la que apunta database.md",
           "critical": false
+        }
+      ]
+    },
+    {
+      "id": "pinned-session-start-only-reports-updates",
+      "description": "En un repo pinned, SessionStart no escribe: informa el update y deriva a plan y apply explícitos.",
+      "input": "Nuestro repo tiene `.agents/agent-ready.json` con `\"updates\": \"pinned\"` y ayer se publicó una versión nueva de golfo-kit que cambia rules del stack node. ¿Qué hace el hook de SessionStart cuando abro Claude Code mañana, cómo veo qué cambiaría antes de aceptarlo y cómo lo aplico de forma revisable? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["no escribe", "sin escribir", "solo lectura", "read-only", "no modifica"],
+          "description": "Dice que el hook pinned no escribe",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["--plan", " plan"],
+          "description": "Ofrece el plan sin escrituras",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["Update available", "update disponible", "actualización disponible", "--status", "status"],
+          "description": "Explica que el hook informa el update pendiente"
+        },
+        {
+          "type": "regex",
+          "pattern": "(pull request|una rama|nueva rama|abr[ií] un PR|un PR con)",
+          "description": "Propone aplicar como cambio revisable"
+        }
+      ]
+    },
+    {
+      "id": "edited-managed-rule-is-preserved-as-conflict",
+      "description": "Un asset gestionado editado no se pisa: queda como conflicto y se recomienda una rule propia.",
+      "input": "Edité `.agents/rules/security.md` en mi repo para agregar una excepción de nuestro equipo. Si corro /agent-ready-setup de nuevo, ¿pierdo mi cambio? ¿Qué me recomendás hacer con esa excepción? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["conflicto", "conflict"],
+          "description": "Explica que queda como conflicto preservado",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["--force"],
+          "description": "Aclara que solo --force lo sobrescribe"
+        },
+        {
+          "type": "contains_any",
+          "values": ["rule propia", "regla propia", "project rule", "nueva rule", "nueva regla"],
+          "description": "Recomienda mover la excepción a una rule propia del proyecto",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["agent-ready.lock.json", "lockfile"],
+          "description": "Explica que la base aplicada vive en el lockfile"
+        }
+      ]
+    },
+    {
+      "id": "profiles-sharing-destination-fail-explained",
+      "description": "Dos stacks que publican el mismo destino no se combinan; explica el error y la alternativa con requires.",
+      "input": "Tengo un monorepo con una app React y un BFF en Node. Quiero correr agent-ready-setup con `--profiles frontend,node` para tener las rules de los dos. ¿Qué pasa y qué alternativas tengo? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["mismo destino", "both publish", "both write", "ambos publican", "los dos publican", "mismo archivo"],
+          "description": "Explica que ambos profiles publican el mismo destino",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["antes de escribir", "no escribe nada", "before writing", "sin escribir"],
+          "description": "Aclara que falla antes de escribir"
+        },
+        {
+          "type": "contains_any",
+          "values": ["rule propia", "rules propias", "regla propia", "reglas propias", "requires"],
+          "description": "Ofrece una alternativa soportada: rules propias del proyecto o un profile que extiende la stack con requires"
+        },
+        {
+          "type": "contains_any",
+          "values": ["por ruta", "por directorio", "por carpeta"],
+          "description": "Menciona que la asignación por ruta no está soportada"
+        }
+      ]
+    },
+    {
+      "id": "codex-only-machine-consistency-hook",
+      "description": "El hook de consistencia usa codex exec en Codex y no exige el binario de Claude.",
+      "input": "En mi máquina solo tengo Codex instalado, no Claude Code. ¿El hook que revisa consistencia de rules y skills de agent-ready-setup funciona igual cuando Codex edita `.agents/rules/`? ¿Qué pasa si tampoco está la CLI de codex en el PATH? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "codex exec",
+          "description": "Identifica que usa codex exec para Codex",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["apply_patch"],
+          "description": "Explica que infiere Codex por el evento apply_patch"
+        },
+        {
+          "type": "contains_any",
+          "values": ["omite", "se salta", "skipped", "aviso", "advertencia"],
+          "description": "Sin CLI el check se omite con aviso en vez de fallar",
+          "critical": true
+        }
+      ]
+    },
+    {
+      "id": "automated-review-reads-pinned-context",
+      "description": "Configura una review automatizada sin sync y con versión de contexto identificable.",
+      "input": "Vamos a usar Codex para revisar PRs automáticamente en CI en un repo preparado con agent-ready-setup (`updates: auto`). ¿Cómo evito que la review sincronice reglas mientras revisa y cómo sé después qué versión de las reglas usó? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "AGENT_READY_SETUP_REVIEW_MODE",
+          "description": "Usa el modo review que nunca escribe",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["agent-ready.lock.json", "contentDigest"],
+          "description": "Identifica la versión del contexto desde el lockfile",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["PR de prueba", "test PR", "PR de ejemplo", "presencia", "no prueba"],
+          "description": "Aclara que la presencia del archivo no prueba que el reviewer lo use"
         }
       ]
     }

@@ -43,6 +43,7 @@ jobs:
           plugins/golfo-kit/skills/codex-comment-closeout/tests/closeout.bats
           plugins/golfo-kit/skills/user-manual/tests/check-design-tokens.bats
           plugins/golfo-kit/skills/agent-ready-setup/tests/merge-instructions.bats
+          plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-state.bats
           skill-eval-runner/tests/run-evals-env-contract.bats
           skill-eval-runner/tests/run-evals-assertions.bats
           skill-eval-runner/tests/install.bats

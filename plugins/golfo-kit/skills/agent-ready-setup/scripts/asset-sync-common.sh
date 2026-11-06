@@ -183,8 +183,29 @@ relative_shared_target() {
   printf '%s%s/%s\n' "$prefix" "$SHARED_DIR" "$relative"
 }
 
-# Assets published by agent-ready-setup are always overwritten: projects add
-# their own rules or skills instead of editing managed ones. A symlink at a
+# Ownership gate. agent-ready-state.py plan --format protected lists the managed
+# destinations whose local content changed since the last apply (lockfile base);
+# sync_file preserves them and reports a conflict instead of overwriting them.
+# The list is wrapped in newlines so membership needs no fork per path.
+AGENT_READY_PROTECTED_DESTINATIONS=""
+
+load_protected_destinations() {
+  AGENT_READY_PROTECTED_DESTINATIONS=$'\n'"${1//$'\r'/}"$'\n'
+}
+
+is_protected_destination() {
+  [[ -n "$AGENT_READY_PROTECTED_DESTINATIONS" &&
+    "$AGENT_READY_PROTECTED_DESTINATIONS" == *$'\n'"${1#./}"$'\n'* ]]
+}
+
+# Reason shared by every consumer that preserves a protected destination.
+# shellcheck disable=SC2034 # Read by the sync_file implementations that source this file.
+AGENT_READY_PROTECTED_HINT="local changes since the last apply; preserved (review with plan, keep them in a project rule, or rerun with --force)"
+
+# Without a lockfile (first apply) a symlink at a managed path is replaced, never
+# followed; the link is removed before the rename so a link to a directory
+# cannot redirect the write elsewhere. With a lockfile, the ownership gate
+# above protects edited files and replaced symlinks. A symlink at a
 # managed path is replaced, never followed; the link is removed before the
 # rename so a link to a directory cannot redirect the write elsewhere.
 # Consumers define record_conflict and record_updated.

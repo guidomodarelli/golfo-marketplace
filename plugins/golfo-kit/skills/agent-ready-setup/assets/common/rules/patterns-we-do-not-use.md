@@ -31,4 +31,4 @@ Each entry names a pattern to avoid, what to do instead, and why. A ban without 
 
 ## Project-specific patterns
 
-This rule is managed and gets overwritten on every sync. Record patterns specific to this project, such as lessons from a rejected implementation, in a project rule of your own under `.agents/rules/`, with a file name no managed rule uses.
+This rule is managed: a local edit blocks its updates and is reported as a conflict. Record patterns specific to this project, such as lessons from a rejected implementation, in a project rule of your own under `.agents/rules/`, with a file name no managed rule uses.

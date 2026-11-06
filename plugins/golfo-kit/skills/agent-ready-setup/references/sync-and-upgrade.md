@@ -1,5 +1,10 @@
 # Sincronización posterior al upgrade
 
+Antes de cualquier escritura, el hook lee `.agents/agent-ready.json`. Con
+`updates: pinned` (default) o `AGENT_READY_SETUP_REVIEW_MODE=1` solo informa el
+estado y termina sin escribir; lo de abajo describe un apply (bootstrap, o el
+hook con `updates: auto` o sin manifest). Manifest, lockfile, profiles y
+ownership: [profiles-and-lockfile.md](profiles-and-lockfile.md).
 
 El upgrade del marketplace usa la CLI del provider activo
 (`claude plugin marketplace update golfo-marketplace` o
@@ -44,11 +49,13 @@ se intenta antes de cargar helper. `normalize-instructions.sh` no repite proyecc
 ni upgrade.
 
 El hook compara cada asset gestionado con el template actualizado y muestra
-`diff -u` antes de reemplazar un archivo existente. Los archivos regulares
-modificados se reemplazan automáticamente y su contenido local se guarda en un
-directorio temporal externo al proyecto; el output muestra path exacto para
-revisarlo o compararlo. Los symlinks en paths gestionados se reemplazan sin
-seguirlos; directorios en paths gestionados, padres inseguros y cambios
+`diff -u` antes de reemplazar un archivo existente. Solo reemplaza archivos que
+siguen iguales a su base del lockfile: los editados localmente se preservan y se
+reportan como conflicto (sección «Ownership de 3 vías» de
+[profiles-and-lockfile.md](profiles-and-lockfile.md)). Sin lockfile previo, el
+primer apply reemplaza una vez los archivos modificados y guarda su contenido
+local en un directorio temporal externo al proyecto; el output muestra el path
+exacto. Directorios en paths gestionados, padres inseguros y cambios
 concurrentes se preservan y se reportan como conflictos estructurales.
 
 #### Riesgos del upgrade automático
@@ -61,10 +68,10 @@ concurrentes se preservan y se reportan como conflictos estructurales.
   `AGENT_READY_SETUP_FORCE_UPGRADE=1` o `bootstrap.sh` para aplicarla antes.
 - Upgrade global no tiene rollback en este script; la versión descargada puede
   cambiar aunque proyección local quede bloqueada.
-- El hook aplica templates nuevos sobre assets gestionados y conserva cada
-  versión local modificada en un backup temporal externo al proyecto; reglas,
-  symlinks, conflictos estructurales y reemplazos atómicos siguen evitando
-  seguir o sobrescribir destinos inseguros.
+- Con `updates: auto`, el hook aplica templates nuevos solo sobre assets que no
+  cambiaron desde el último apply; los editados quedan como conflicto. Symlinks,
+  conflictos estructurales y reemplazos atómicos siguen evitando seguir o
+  sobrescribir destinos inseguros.
 - Lock protege proyección local concurrente, pero no serializa upgrades globales
   del marketplace entre procesos distintos.
 
@@ -81,8 +88,9 @@ La proyección automática de assets:
   agent o command y preserva y reporta contenido custom.
 - Claude Code carga `.claude/rules/` automáticamente; el bloque gestionado de
   `AGENTS.md` le indica no volver a leerlas y deja las referencias para Codex.
-- Reemplaza symlinks en paths gestionados sin seguirlos: borra el link y escribe
-  el template, así nunca modifica el destino del link.
+- Sin lockfile, reemplaza symlinks en paths gestionados sin seguirlos: borra el
+  link y escribe el template, así nunca modifica el destino del link. Con
+  lockfile, un symlink donde el lock aplicó un archivo es un conflicto.
 - Elimina symlinks administrados stale bajo `.claude/`.
 - Sin privilegio para crear symlinks (Windows sin Modo de desarrollador ni shell
   elevada), crea cada vista como hard link al asset de `.agents/`, nunca como
@@ -105,7 +113,10 @@ La proyección automática de assets:
   `scripts/normalize-instructions.sh`; crea o actualiza únicamente el `AGENTS.md`
   hermano cuando puede preservar el contenido sin ambigüedad.
 - No elimina assets desconocidos (rules, skills o archivos propios del
-  proyecto); solo sobrescribe paths que publica agent-ready-setup.
+  proyecto); solo escribe paths que publica agent-ready-setup y solo retira los
+  que el lockfile registra como aplicados y siguen sin cambios.
+- Instala o registra herramientas de browser solo si un profile seleccionado lo
+  declara (`browser`).
 
 El paso posterior sobre instrucciones actualiza únicamente `AGENTS.md`; nunca
 modifica `CLAUDE.md` directamente.
@@ -119,7 +130,10 @@ bash .agents/hooks/sync-marketplace.sh --provider codex
 ```
 
 Si la fuente instalada no se puede resolver o el stack no se detecta, el hook
-conserva el upgrade global y muestra cómo indicar `AGENT_READY_SETUP_SKILL_DIR`
-o `--stack frontend|node|java|go`. `AGENT_READY_SETUP_STACK=<stack>` equivale a
-`--stack` (la flag tiene precedencia) y sirve para fijar el stack sin editar el
-comando del hook en `settings.json` o `hooks.json`.
+conserva el upgrade global y muestra cómo indicar `AGENT_READY_SETUP_SKILL_DIR`,
+`--stack frontend|node|java|go` o `--profiles <a,b>`. Sin flags, el hook usa los
+profiles del manifest y solo detecta el stack cuando no hay manifest.
+`AGENT_READY_SETUP_STACK=<stack>` y `AGENT_READY_SETUP_PROFILES=<a,b>` equivalen a
+las flags (las flags tienen precedencia). En un repositorio `pinned`, solo las
+flags `--stack` o `--profiles` en la línea de comandos convierten el chequeo en
+un apply explícito; las variables de entorno no.
