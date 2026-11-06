@@ -22,12 +22,23 @@ const childProcess = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const readline = require('readline');
+const { stripVTControlCharacters } = require('util');
 const {
   SEMVER_PATTERN,
   discoverPlugins,
   listVersionedManifests,
   readManifest,
 } = require('./lib/plugin-manifests');
+const {
+  fitToTerminal,
+  paint,
+  renderAlertBanner,
+  renderPanel,
+  stderrOutput,
+  stdoutOutput,
+  supportsLineEditing,
+  visibleWidth,
+} = require('./lib/terminal-output');
 
 const REPOSITORY_ROOT = path.join(__dirname, '..');
 const PLUGINS_DIR = path.join(REPOSITORY_ROOT, 'plugins');
@@ -51,89 +62,7 @@ const BUMP_KINDS = {
   major: 'major',
 };
 
-const BOX_WIDTH = 64;
-const ANSI_ESCAPE_PATTERN = /\u001b\[[0-9;]*m/g;
-const ZERO_WIDTH_CODE_POINTS = new Set([0x200d, 0xfe0f]);
-const ANSI_CODES = {
-  bold: '1',
-  dim: '2',
-  red: '31',
-  green: '32',
-  yellow: '33',
-  magenta: '35',
-  cyan: '36',
-  gray: '90',
-  black: '30',
-  yellowBackground: '43',
-};
-
-const isColorEnabled =
-  !process.env.NO_COLOR && (Boolean(process.env.FORCE_COLOR) || Boolean(process.stdout.isTTY));
-
-/**
- * Wraps text in an ANSI style when colors are enabled.
- *
- * @param {string} styleName Key of ANSI_CODES.
- * @param {string} text Text to style.
- * @returns {string} Styled text, or the original text when colors are disabled.
- */
-function paint(styleName, text) {
-  return isColorEnabled ? `\u001b[${ANSI_CODES[styleName]}m${text}\u001b[0m` : text;
-}
-
-/**
- * Approximates terminal cell width, counting emoji as two cells and ANSI codes as zero.
- *
- * @param {string} text Text to measure.
- * @returns {number} Visible width in terminal cells.
- */
-function visibleWidth(text) {
-  return [...text.replace(ANSI_ESCAPE_PATTERN, '')].reduce((width, character) => {
-    const codePoint = character.codePointAt(0);
-    if (ZERO_WIDTH_CODE_POINTS.has(codePoint)) {
-      return width;
-    }
-    const isWideSymbol = codePoint >= 0x1f300 || (codePoint >= 0x2600 && codePoint <= 0x27bf);
-    return width + (isWideSymbol ? 2 : 1);
-  }, 0);
-}
-
-/**
- * Renders a left-bordered panel; omitting the right border keeps emoji alignment stable.
- *
- * @param {string} title Panel title shown on the top border.
- * @param {string[]} lines Panel body lines.
- * @param {string} [borderStyle='cyan'] Key of ANSI_CODES for the border.
- * @returns {string} Rendered panel.
- */
-function renderPanel(title, lines, borderStyle = 'cyan') {
-  const border = (text) => paint(borderStyle, text);
-  const topRuleLength = Math.max(BOX_WIDTH - visibleWidth(title) - 4, 3);
-  return [
-    `${border('╭─')} ${paint('bold', title)} ${border('─'.repeat(topRuleLength))}`,
-    ...lines.map((line) => `${border('│')}  ${line}`),
-    border(`╰${'─'.repeat(BOX_WIDTH - 1)}`),
-  ].join('\n');
-}
-
-/**
- * Renders a full-width, heavy-bordered banner with a highlighted body line.
- *
- * @param {string} message Banner message.
- * @returns {string} Rendered banner.
- */
-function renderAlertBanner(message) {
-  const innerWidth = BOX_WIDTH - 2;
-  const bodyText = `  ${message}`;
-  const paddedBody = `${bodyText}${' '.repeat(Math.max(innerWidth - visibleWidth(bodyText), 0))}`;
-  const highlight = (text) => paint('yellowBackground', paint('black', paint('bold', text)));
-  const border = (text) => paint('yellow', paint('bold', text));
-  return [
-    border(`┏${'━'.repeat(innerWidth)}┓`),
-    `${border('┃')}${highlight(paddedBody)}${border('┃')}`,
-    border(`┗${'━'.repeat(innerWidth)}┛`),
-  ].join('\n');
-}
+const LINE_BREAK_PATTERN = /\r\n?|\n/;
 
 /**
  * Formats a version transition such as `1.0.0 → 1.0.1`.
@@ -164,7 +93,7 @@ function formatMenuOption(optionNumber, label) {
  * @returns {string} Styled prompt.
  */
 function formatPrompt(query) {
-  return `\n${paint('cyan', '❯')} ${paint('bold', query)} `;
+  return `\n${fitToTerminal(`${paint('cyan', '❯')} ${paint('bold', query)}`)} `;
 }
 
 /**
@@ -594,13 +523,15 @@ function renderHelp() {
  */
 async function resolveRequestedVersion(ask, currentVersion, { bumpKind, exactVersion }) {
   if (exactVersion) {
-    console.log(`\n🎯 Using ${SET_FLAG}: ${formatVersionTransition(currentVersion, exactVersion)}`);
+    console.log(fitToTerminal(`\n🎯 Using ${SET_FLAG}: ${formatVersionTransition(currentVersion, exactVersion)}`));
     return exactVersion;
   }
   if (bumpKind) {
     const bumpedVersion = bumpVersion(currentVersion, bumpKind);
     console.log(
-      `\n🎚️  Using ${BUMP_FLAG} ${paint('bold', bumpKind)}: ${formatVersionTransition(currentVersion, bumpedVersion)}`
+      fitToTerminal(
+        `\n🎚️  Using ${BUMP_FLAG} ${paint('bold', bumpKind)}: ${formatVersionTransition(currentVersion, bumpedVersion)}`
+      )
     );
     return bumpedVersion;
   }
@@ -684,7 +615,7 @@ async function resolvePlugin(ask, plugins, requestedName, changedPluginNames, bu
       ([pluginName, { baseVersion, currentVersion }]) =>
         `${paint('cyan', pluginName)} (${formatVersionTransition(baseVersion, currentVersion)})`
     );
-    console.log(`\n✅ Already bumped in this branch: ${bumpedSummaries.join(', ')}`);
+    console.log(fitToTerminal(`\n✅ Already bumped in this branch: ${bumpedSummaries.join(', ')}`));
   }
 
   const pendingPluginNames = changedPluginNames.filter((pluginName) => !bumpedPlugins.has(pluginName));
@@ -697,18 +628,18 @@ async function resolvePlugin(ask, plugins, requestedName, changedPluginNames, bu
         `Plugin "${pendingPluginName}" changed under plugins/ but does not expose both provider manifests.`
       );
     }
-    console.log(`\n🔍 Detected changed plugin: ${paint('cyan', paint('bold', match.name))}`);
+    console.log(fitToTerminal(`\n🔍 Detected changed plugin: ${paint('cyan', paint('bold', match.name))}`));
     return match;
   }
 
   if (plugins.length === 1) {
     const [onlyPlugin] = plugins;
-    console.log(`\n🔍 Only plugin available: ${paint('cyan', paint('bold', onlyPlugin.name))}`);
+    console.log(fitToTerminal(`\n🔍 Only plugin available: ${paint('cyan', paint('bold', onlyPlugin.name))}`));
     return onlyPlugin;
   }
 
   if (pendingPluginNames.length > 1) {
-    console.log(`\n🔍 Detected changed plugins: ${paint('cyan', pendingPluginNames.join(', '))}`);
+    console.log(fitToTerminal(`\n🔍 Detected changed plugins: ${paint('cyan', pendingPluginNames.join(', '))}`));
   }
 
   const changedMarker = paint('yellow', '● changed');
@@ -784,6 +715,20 @@ async function resolveNewVersion(ask, currentVersion) {
   }
 }
 
+/**
+ * Renders a failure for stderr. Git output inside the message may carry its own escapes and
+ * line breaks, so they are removed and every line gets its own style and panel prefix.
+ *
+ * @param {Error} error Failure to report.
+ * @returns {string} Rendered panel.
+ */
+function renderFailurePanel(error) {
+  const messageLines = stripVTControlCharacters(error.message)
+    .split(LINE_BREAK_PATTERN)
+    .map((messageLine) => paint('red', messageLine, stderrOutput));
+  return renderPanel('❌ create-version failed', messageLines, 'red', stderrOutput);
+}
+
 async function main() {
   const cliOptions = parseCliArguments(process.argv.slice(2));
   const { pluginName: requestedName, isDryRun } = cliOptions;
@@ -801,14 +746,20 @@ async function main() {
   }
 
   console.log(
-    `\n🌱 ${paint('green', paint('bold', 'create-version'))} ` +
-      paint('gray', '· plugin version bumper for Claude + Codex')
+    fitToTerminal(
+      `\n🌱 ${paint('green', paint('bold', 'create-version'))} ` +
+        paint('gray', '· plugin version bumper for Claude + Codex')
+    )
   );
   if (isDryRun) {
     console.log(`\n${renderAlertBanner(DRY_RUN_BANNER_MESSAGE)}`);
   }
 
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+    terminal: supportsLineEditing(stdoutOutput),
+  });
   const ask = createPrompter(rl);
 
   try {
@@ -899,13 +850,13 @@ async function main() {
 
     const pushPlan = planPush();
     pushVersionBump(pushPlan);
-    console.log(`\n🚀 Pushed "${paint('cyan', pushPlan.branchName)}" to ${REMOTE_NAME}\n`);
+    console.log(fitToTerminal(`\n🚀 Pushed "${paint('cyan', pushPlan.branchName)}" to ${REMOTE_NAME}\n`));
   } finally {
     rl.close();
   }
 }
 
 main().catch((error) => {
-  console.error(`\n${renderPanel('❌ create-version failed', [paint('red', error.message)], 'red')}\n`);
+  console.error(`\n${renderFailurePanel(error)}\n`);
   process.exit(1);
 });

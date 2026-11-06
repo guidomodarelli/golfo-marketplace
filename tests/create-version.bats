@@ -10,7 +10,7 @@ setup() {
     "$repo_dir/plugins/golfo-kit/.codex-plugin"
 
   cp "$repository_root/scripts/create-version.js" "$repo_dir/scripts/create-version.js"
-  cp "$repository_root/scripts/lib/plugin-manifests.js" "$repo_dir/scripts/lib/plugin-manifests.js"
+  cp "$repository_root/scripts/lib/plugin-manifests.js" "$repository_root/scripts/lib/terminal-output.js" "$repo_dir/scripts/lib/"
   cat > "$repo_dir/plugins/golfo-kit/.claude-plugin/plugin.json" <<'JSON'
 {
   "name": "golfo-kit",
@@ -34,8 +34,64 @@ JSON
   git -c init.defaultBranch=main init -q --bare "$remote_dir"
   git -C "$repo_dir" remote add origin "$remote_dir"
   git -C "$repo_dir" push -q origin main
-  unset FORCE_COLOR NO_COLOR
+  unset FORCE_COLOR NO_COLOR CI TERM
+
+  # bats has no terminal, and Node only sets these properties on a real one. Every test still
+  # runs the real script; this preload only makes it see a terminal on the chosen streams.
+  cat > "$test_root/simulate-tty.js" <<'JS'
+const tty = require('tty');
+const columns = Number(process.env.SIMULATED_TTY_COLUMNS || 80);
+const streamNames = (process.env.SIMULATED_TTY_STREAMS || 'stdout,stderr').split(',');
+process.env.TERM ??= 'xterm-256color';
+for (const streamName of streamNames) {
+  Object.assign(process[streamName], {
+    isTTY: true,
+    columns,
+    getColorDepth: tty.WriteStream.prototype.getColorDepth,
+  });
+}
+JS
+  # Measures independently from the script, so a wrong measure there cannot hide an overflow here.
+  cat > "$test_root/assert-fits-columns.js" <<'JS'
+const { readFileSync } = require('fs');
+const { stripVTControlCharacters } = require('util');
+const maximumColumns = Number(process.argv[2]);
+const segmenter = new Intl.Segmenter();
+const widthOf = (line) =>
+  [...segmenter.segment(stripVTControlCharacters(line))].reduce(
+    (width, { segment }) => width + (/\p{Emoji_Presentation}|️/u.test(segment) ? 2 : 1),
+    0
+  );
+const overflowingLines = readFileSync(0, 'utf8')
+  .split('\n')
+  .filter((line) => widthOf(line) > maximumColumns);
+if (overflowingLines.length > 0) {
+  console.error(`Lines wider than ${maximumColumns} columns:\n${overflowingLines.join('\n')}`);
+  process.exit(1);
+}
+JS
+  terminal_node="node --require ../simulate-tty.js"
   cd "$repo_dir"
+}
+
+assert_plain_output() {
+  [[ "$output" != *$'\e'* ]]
+  [[ "$output" != *$'\r'* ]]
+}
+
+assert_output_fits_columns() {
+  printf '%s\n' "$output" | node ../assert-fits-columns.js "$1"
+}
+
+# Output without borders, spaces or line breaks: wrapping must not lose any data.
+compact_output() {
+  printf '%s' "$output" | sed 's/[│┃]//g' | tr -d ' \n'
+}
+
+bottom_border_width() {
+  local bottom_border
+  bottom_border="$(printf '%s\n' "$output" | grep -m1 '╰')"
+  printf '%s' "${#bottom_border}"
 }
 
 remote_head() {
@@ -205,6 +261,187 @@ JSON
 
   [ "$status" -eq 0 ]
   [[ "$output" != *$'\e['* ]]
+}
+
+@test "FORCE_COLOR=0 prints plain output" {
+  run bash -c "printf '1\n' | FORCE_COLOR=0 node scripts/create-version.js --dry-run"
+
+  [ "$status" -eq 0 ]
+  assert_plain_output
+  [[ "$output" == *"1.12.0 → 1.12.1"* ]]
+}
+
+@test "FORCE_COLOR=false prints plain output" {
+  run bash -c "printf '1\n' | FORCE_COLOR=false node scripts/create-version.js --dry-run"
+
+  [ "$status" -eq 0 ]
+  assert_plain_output
+}
+
+@test "TERM=dumb overrides FORCE_COLOR" {
+  run bash -c "printf '1\n' | TERM=dumb FORCE_COLOR=1 node scripts/create-version.js --dry-run"
+
+  [ "$status" -eq 0 ]
+  assert_plain_output
+}
+
+@test "an empty NO_COLOR does not turn color off" {
+  run bash -c "printf '1\n' | NO_COLOR= FORCE_COLOR=1 node scripts/create-version.js --dry-run"
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *$'\e[32m'* ]]
+}
+
+@test "FORCE_COLOR colors output even under CI" {
+  run bash -c "printf '1\n' | CI=1 FORCE_COLOR=1 node scripts/create-version.js --dry-run"
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *$'\e[32m'* ]]
+}
+
+@test "colors output on a terminal" {
+  run bash -c "printf '1\n' | $terminal_node scripts/create-version.js --dry-run"
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *$'\e[32m'* ]]
+}
+
+@test "CI=1 prints plain output on a terminal, prompts included" {
+  run bash -c "printf '1\n' | CI=1 $terminal_node scripts/create-version.js --dry-run"
+
+  [ "$status" -eq 0 ]
+  assert_plain_output
+  [[ "$output" == *"Select an option"* ]]
+  [[ "$output" == *"1.12.0 → 1.12.1"* ]]
+}
+
+@test "CI=0 and CI=false keep color on a terminal" {
+  run bash -c "printf '1\n' | CI=0 $terminal_node scripts/create-version.js --dry-run"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *$'\e[32m'* ]]
+
+  run bash -c "printf '1\n' | CI=false $terminal_node scripts/create-version.js --dry-run"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *$'\e[32m'* ]]
+}
+
+@test "TERM=dumb prints plain output on a terminal" {
+  run bash -c "printf '1\n' | TERM=dumb $terminal_node scripts/create-version.js --dry-run"
+
+  [ "$status" -eq 0 ]
+  assert_plain_output
+}
+
+@test "FORCE_COLOR=0 prints plain output on a terminal" {
+  run bash -c "printf '1\n' | FORCE_COLOR=0 $terminal_node scripts/create-version.js --dry-run"
+
+  [ "$status" -eq 0 ]
+  assert_plain_output
+}
+
+@test "NO_COLOR prints plain output on a terminal" {
+  run bash -c "printf '1\n' | NO_COLOR=1 $terminal_node scripts/create-version.js --dry-run"
+
+  [ "$status" -eq 0 ]
+  assert_plain_output
+}
+
+@test "decides color for stderr apart from stdout" {
+  run bash -c "SIMULATED_TTY_STREAMS=stdout $terminal_node scripts/create-version.js --force"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"create-version failed"* ]]
+  assert_plain_output
+
+  run bash -c "SIMULATED_TTY_STREAMS=stderr $terminal_node scripts/create-version.js --force"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *$'\e[31m'* ]]
+}
+
+@test "removes the escapes and line breaks of git errors from plain output" {
+  mkdir -p .git/hooks
+  cat > .git/hooks/pre-commit <<'SH'
+#!/bin/sh
+printf '\033[31mhook rejected\033[0m\r\nsecond hook line\n' >&2
+exit 1
+SH
+  chmod +x .git/hooks/pre-commit
+
+  run node scripts/create-version.js golfo-kit --bump patch
+
+  [ "$status" -eq 1 ]
+  assert_plain_output
+  [[ "$output" == *"hook rejected"* ]]
+  [[ "$output" == *$'│  second hook line'* ]]
+}
+
+@test "keeps the 64-column box and whole lines without a terminal" {
+  run bash -c "printf '1\n' | node scripts/create-version.js --dry-run"
+
+  [ "$status" -eq 0 ]
+  [ "$(bottom_border_width)" -eq 64 ]
+  [[ "$output" == *'Would commit only the plugin manifests: Bump the version number from 1.12.0 to 1.12.1 in all "plugin.json" files for the "golfo-kit" plugin'* ]]
+}
+
+@test "keeps the 64-column box and whole lines on a wide terminal" {
+  run bash -c "printf '1\n' | CI=1 SIMULATED_TTY_COLUMNS=200 $terminal_node scripts/create-version.js --dry-run"
+
+  [ "$status" -eq 0 ]
+  [ "$(bottom_border_width)" -eq 64 ]
+  [[ "$output" == *'Would commit only the plugin manifests: Bump the version number from 1.12.0 to 1.12.1 in all "plugin.json" files for the "golfo-kit" plugin'* ]]
+}
+
+@test "fits a dry run in 40 columns without losing data" {
+  run bash -c "printf '1\n' | CI=1 SIMULATED_TTY_COLUMNS=40 $terminal_node scripts/create-version.js --dry-run"
+
+  [ "$status" -eq 0 ]
+  assert_plain_output
+  assert_output_fits_columns 40
+  [ "$(bottom_border_width)" -eq 40 ]
+  local compacted
+  compacted="$(compact_output)"
+  [[ "$compacted" == *'Bumptheversionnumberfrom1.12.0to1.12.1inall"plugin.json"filesforthe"golfo-kit"plugin'* ]]
+  [[ "$compacted" == *'plugins/golfo-kit/.claude-plugin/plugin.json'* ]]
+  [[ "$compacted" == *'1.12.0→1.12.1'* ]]
+  [[ "$compacted" == *'nothingwillbewritten,committedorpushed'* ]]
+}
+
+@test "fits a colored dry run in 40 columns" {
+  run bash -c "printf '1\n' | SIMULATED_TTY_COLUMNS=40 $terminal_node scripts/create-version.js --dry-run"
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *$'\e[32m'* ]]
+  assert_output_fits_columns 40
+}
+
+@test "fits the help in 40 columns" {
+  run bash -c "CI=1 SIMULATED_TTY_COLUMNS=40 $terminal_node scripts/create-version.js --help"
+
+  [ "$status" -eq 0 ]
+  assert_output_fits_columns 40
+  local compacted
+  compacted="$(compact_output)"
+  [[ "$compacted" == *'Previewwithoutwriting,committingorpushing'* ]]
+}
+
+@test "fits a whole bump and its push in 40 columns" {
+  git switch -q -c feature/golfo-kit-change
+
+  run bash -c "SIMULATED_TTY_COLUMNS=40 CI=1 $terminal_node scripts/create-version.js golfo-kit --bump patch < /dev/null"
+
+  [ "$status" -eq 0 ]
+  assert_output_fits_columns 40
+  [ "$(remote_head feature/golfo-kit-change)" = "$(git rev-parse HEAD)" ]
+  local compacted
+  compacted="$(compact_output)"
+  [[ "$compacted" == *'Pushed"feature/golfo-kit-change"toorigin'* ]]
+}
+
+@test "wraps a failure in 40 columns keeping its style on every line" {
+  run bash -c "FORCE_COLOR=1 SIMULATED_TTY_COLUMNS=40 $terminal_node scripts/create-version.js --force"
+
+  [ "$status" -eq 1 ]
+  assert_output_fits_columns 40
+  [ "$(printf '%s\n' "$output" | grep -c $'\e\\[31m│\e\\[0m  \e\\[31m.*\e\\[0m$')" -ge 2 ]
 }
 
 @test "dry run previews bump without writing, committing or pushing" {
