@@ -61,7 +61,7 @@ jobs:
   # each: line endings, code pages and hard-link views on Windows; Bash 3.2 and BSD
   # tools on macOS. The Linux run of these suites lives in the jobs around this one.
   agent-ready-cross-platform:
-    name: Agent Ready (${{ matrix.os }})
+    name: Agent Ready (${{ matrix.os }}, Python ${{ matrix.python }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:
@@ -72,10 +72,14 @@ jobs:
           - os: windows-latest
             python: "3.13"
             suites: agent-ready-state.bats
-          # The python3 that ships with the macOS command line tools.
+          - os: macos-latest
+            python: "3.13"
+            suites: agent-ready-state.bats merge-instructions.bats bootstrap.bats
+          # The python3 that ships with the macOS command line tools. Browser tools
+          # need 3.11+ (references/browser-setup.md), so bootstrap.bats stays on 3.13.
           - os: macos-latest
             python: "3.9"
-            suites: agent-ready-state.bats merge-instructions.bats bootstrap.bats
+            suites: agent-ready-state.bats
     defaults:
       run:
         shell: bash
