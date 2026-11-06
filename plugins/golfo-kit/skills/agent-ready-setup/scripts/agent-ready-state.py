@@ -71,14 +71,15 @@ ACTION_DROP = "drop"
 STATE_APPLIED = "applied"
 STATE_CONFLICT = "conflict"
 STATE_FAILED = "failed"
-STATE_RETIRED_MODIFIED = "retired-modified"
+STATE_RETIRED_PRESERVED = "retired-preserved"
 
 LOCAL_ABSENT = "absent"
 LOCAL_SYMLINK = "symlink"
 LOCAL_NOT_A_FILE = "not-a-file"
 
 LINKED_PARENT_REASON = "a parent directory is a symlink; deleting through it would reach files outside the project"
-DETACHED_VIEW_REASON = "regular file with content that no apply wrote; it is preserved instead of relinked"
+DETACHED_VIEW_REASON = "regular file that no apply wrote; it is preserved instead of relinked"
+EDITED_VIEW_REASON = "regular file with local changes; relinking the view overwrites them"
 # Assets under these directories have a view under .claude/; hooks stay canonical in .agents/.
 CLAUDE_VIEW_DIRECTORIES = ("rules", "agents", "commands", "skills")
 
@@ -187,11 +188,6 @@ def has_linked_parent(project_root, destination):
             return True
         parent = os.path.dirname(parent)
     return False
-
-
-def is_content_hash(value):
-    """True when a local state is a content hash rather than a special marker."""
-    return value not in (LOCAL_ABSENT, LOCAL_SYMLINK, LOCAL_NOT_A_FILE)
 
 
 def read_json_file(path, description):
@@ -632,8 +628,17 @@ def build_manifest(profiles, updates, providers):
 # Plan
 # ---------------------------------------------------------------------------
 
-def classify_asset(destination, desired_entry, local, lock_entry, has_lock, force):
-    """Three-way decision for one desired destination."""
+def was_applied(lock_entry):
+    """True when an apply wrote this destination, which is what makes it managed.
+
+    A preserved project file stays in the lock without an applied base. A failed
+    write also has no base, but the apply did try to own that destination.
+    """
+    return bool(lock_entry) and (bool(lock_entry.get("sha256")) or lock_entry.get("state") == STATE_FAILED)
+
+
+def classify_asset(destination, desired_entry, local, lock_entry, has_lock):
+    """Decision for one desired destination: managed files always follow the template."""
     new_hash = desired_entry["sha256"]
     base_hash = lock_entry.get("sha256") if lock_entry else None
     if local == LOCAL_ABSENT:
@@ -642,28 +647,28 @@ def classify_asset(destination, desired_entry, local, lock_entry, has_lock, forc
         return ACTION_UNCHANGED, "matches the template"
     if local == LOCAL_NOT_A_FILE:
         return ACTION_CONFLICT, "destination is not a regular file"
-    if force:
-        return ACTION_UPDATE, "forced overwrite"
     if not has_lock:
         return ACTION_ADOPT, "no lockfile yet: first apply keeps the previous overwrite contract"
-    if lock_entry is None:
+    if not was_applied(lock_entry):
         return ACTION_CONFLICT, "file exists but was never applied by agent-ready-setup"
     if local == base_hash:
         return ACTION_UPDATE, "local file still matches the applied base"
     if local == LOCAL_SYMLINK:
-        return ACTION_CONFLICT, "managed file was replaced by a symlink"
-    return ACTION_CONFLICT, "local changes since the last apply"
+        return ACTION_UPDATE, "managed file was replaced by a symlink; the template replaces the link without following it"
+    return ACTION_UPDATE, "overwrites local changes since the last apply"
 
 
-def classify_retired(local, lock_entry, force):
+def classify_retired(local, lock_entry):
     """Decision for a locked asset that no selected profile publishes anymore."""
     if local == LOCAL_ABSENT:
         return ACTION_DROP, "already removed"
-    if force and local != LOCAL_NOT_A_FILE:
-        return ACTION_RETIRE, "forced removal"
-    if is_content_hash(local) and local == lock_entry.get("sha256"):
+    if not was_applied(lock_entry):
+        return ACTION_DROP, "never applied by agent-ready-setup; it stays as a project file"
+    if local == LOCAL_NOT_A_FILE:
+        return ACTION_RETIRE_CONFLICT, "retired from the profiles but it is not a regular file"
+    if local == lock_entry.get("sha256"):
         return ACTION_RETIRE, "no longer published by the selected profiles"
-    return ACTION_RETIRE_CONFLICT, "retired from the profiles but modified locally; delete it or rerun with --force"
+    return ACTION_RETIRE, "no longer published by the selected profiles; removes its local changes"
 
 
 def claude_view_of(destination, source):
@@ -674,13 +679,16 @@ def claude_view_of(destination, source):
     return ".claude/" + relative
 
 
-def detached_view_conflicts(project_root, assets, locked_assets):
+def detached_views(project_root, assets, locked_assets):
     """Claude views that became regular files holding content no apply wrote.
 
     A view only mirrors its asset, so it may still hold the asset, the applied base
-    or the new template; anything else is an edit that relinking would lose.
+    or the new template; anything else is local content. The view of a managed asset
+    is relinked and only reported. Until an apply links the view, that path may be a
+    project file, so it is preserved. Returns (edited, preserved).
     """
-    conflicts = []
+    edited = []
+    preserved = []
     for destination, desired_entry in sorted(assets.items()):
         view = claude_view_of(destination, desired_entry["source"])
         view_path = os.path.join(project_root, view) if view else None
@@ -691,11 +699,13 @@ def detached_view_conflicts(project_root, assets, locked_assets):
             continue
         known_content = {desired_entry["sha256"], locked_assets.get(destination, {}).get("sha256"), local_state(asset_path)}
         if sha256_of_file(view_path) not in known_content:
-            conflicts.append(view)
-    return conflicts
+            lock_entry = locked_assets.get(destination)
+            is_managed_view = was_applied(lock_entry) and not lock_entry.get("viewPreserved")
+            (edited if is_managed_view else preserved).append(view)
+    return edited, preserved
 
 
-def compute_plan(project_root, skill_dir, profile_names, force):
+def compute_plan(project_root, skill_dir, profile_names):
     """Build the read-only plan for the selected profiles."""
     catalog = load_profile_catalog(skill_dir)
     resolved = resolve_profiles(catalog, profile_names)
@@ -706,7 +716,7 @@ def compute_plan(project_root, skill_dir, profile_names, force):
     for destination, desired_entry in sorted(assets.items()):
         local = local_state(os.path.join(project_root, destination))
         lock_entry = locked_assets.get(destination)
-        action, reason = classify_asset(destination, desired_entry, local, lock_entry, lock is not None, force)
+        action, reason = classify_asset(destination, desired_entry, local, lock_entry, lock is not None)
         entries.append({
             "destination": destination,
             "action": action,
@@ -722,7 +732,7 @@ def compute_plan(project_root, skill_dir, profile_names, force):
         if destination in assets:
             continue
         local = local_state(os.path.join(project_root, destination))
-        action, reason = classify_retired(local, lock_entry, force)
+        action, reason = classify_retired(local, lock_entry)
         if action == ACTION_RETIRE and has_linked_parent(project_root, destination):
             action, reason = ACTION_RETIRE_CONFLICT, LINKED_PARENT_REASON
         entries.append({
@@ -736,6 +746,8 @@ def compute_plan(project_root, skill_dir, profile_names, force):
             "local": local,
         })
     merged = merged_template_entries(skill_dir, catalog, resolved)
+    # Without a lockfile the first apply keeps the previous overwrite contract.
+    edited_views, preserved_views = detached_views(project_root, assets, locked_assets) if lock else ([], [])
     return {
         "schemaVersion": SCHEMA_VERSION,
         "profiles": resolved,
@@ -744,10 +756,9 @@ def compute_plan(project_root, skill_dir, profile_names, force):
         "source": source_identity(skill_dir, assets, merged),
         "lockedSource": lock.get("source") if lock else None,
         "hasLock": lock is not None,
-        "force": force,
         "entries": entries,
-        # Without a lockfile the first apply keeps the previous overwrite contract.
-        "detachedViews": [] if force or lock is None else detached_view_conflicts(project_root, assets, locked_assets),
+        "editedViews": edited_views,
+        "detachedViews": preserved_views,
         "merged": merged,
     }
 
@@ -920,10 +931,15 @@ def print_plan(project_root, skill_dir, plan, provider, skip_marketplace_upgrade
         label = f"{symbol} {entry['action']:<15} {entry['destination']}"
         write_line("  " + paint(label, entry["action"] if entry["action"] in ANSI_COLORS else "muted", stream)
                    + f"  [{entry['profile']}] {entry['reason']}")
-    for view in plan["detachedViews"]:
-        counts[ACTION_CONFLICT] = counts.get(ACTION_CONFLICT, 0) + 1
-        label = f"{ACTION_SYMBOLS[ACTION_CONFLICT]} {ACTION_CONFLICT:<15} {view}"
-        write_line("  " + paint(label, ACTION_CONFLICT, stream) + f"  [view] {DETACHED_VIEW_REASON}")
+    view_groups = (
+        (plan["editedViews"], ACTION_UPDATE, EDITED_VIEW_REASON),
+        (plan["detachedViews"], ACTION_CONFLICT, DETACHED_VIEW_REASON),
+    )
+    for views, action, reason in view_groups:
+        for view in views:
+            counts[action] = counts.get(action, 0) + 1
+            label = f"{ACTION_SYMBOLS[action]} {action:<15} {view}"
+            write_line("  " + paint(label, action, stream) + f"  [view] {reason}")
     write_line(f"  = unchanged: {counts.get(ACTION_UNCHANGED, 0)}")
     write_line("")
     write_line(paint("Merged files (project content preserved)", "heading", stream))
@@ -996,6 +1012,7 @@ def finalize(project_root, skill_dir, plan, provider_list, updates):
     retire_conflicts = []
     failed = []
     conflicts = []
+    preserved_views = set(plan["detachedViews"])
     previous_lock = read_lock(project_root)
     previous_assets = previous_lock["assets"] if previous_lock else {}
 
@@ -1008,7 +1025,7 @@ def finalize(project_root, skill_dir, plan, provider_list, updates):
         if entry["action"] == ACTION_RETIRE:
             if local_state(absolute_path) != entry["local"] or has_linked_parent(project_root, destination):
                 retire_conflicts.append(f"{destination} changed during synchronization; preserved")
-                lock_assets[destination] = dict(previous_entry, state=STATE_RETIRED_MODIFIED)
+                lock_assets[destination] = dict(previous_entry, state=STATE_RETIRED_PRESERVED)
                 continue
             view = remove_claude_view_of(project_root, destination)
             if view:
@@ -1019,7 +1036,7 @@ def finalize(project_root, skill_dir, plan, provider_list, updates):
             continue
         if entry["action"] == ACTION_RETIRE_CONFLICT:
             retire_conflicts.append(f"{destination}: {entry['reason']}")
-            lock_assets[destination] = dict(previous_entry, state=STATE_RETIRED_MODIFIED)
+            lock_assets[destination] = dict(previous_entry, state=STATE_RETIRED_PRESERVED)
             continue
         if entry["action"] == ACTION_CONFLICT:
             conflicts.append(f"{destination}: {entry['reason']}")
@@ -1045,6 +1062,11 @@ def finalize(project_root, skill_dir, plan, provider_list, updates):
                 "sha256": entry["baseSha256"],
                 "state": STATE_FAILED,
             }
+
+    # Whatever happened to the asset, a project file in its view stays the project's.
+    for entry in plan["entries"]:
+        if entry["sha256"] and entry["destination"] in lock_assets and                 claude_view_of(entry["destination"], entry["source"]) in preserved_views:
+            lock_assets[entry["destination"]]["viewPreserved"] = True
 
     conflicts += [f"{view}: {DETACHED_VIEW_REASON}" for view in plan["detachedViews"]]
 
@@ -1112,7 +1134,7 @@ def compute_status(project_root, skill_dir):
         "manifest": manifest,
         "hasLock": lock is not None,
         "lockedSource": lock.get("source") if lock else None,
-        "checkout": {"applied": [], "modified": [], "missing": [], "conflict": [], "failed": [], "retiredModified": []},
+        "checkout": {"applied": [], "modified": [], "missing": [], "conflict": [], "failed": [], "retiredPreserved": []},
         "update": None,
         "capabilities": {},
         "errors": [],
@@ -1123,8 +1145,8 @@ def compute_status(project_root, skill_dir):
             state = entry.get("state", STATE_APPLIED)
             if state == STATE_FAILED:
                 status["checkout"]["failed"].append(destination)
-            elif state == STATE_RETIRED_MODIFIED:
-                status["checkout"]["retiredModified"].append(destination)
+            elif state == STATE_RETIRED_PRESERVED:
+                status["checkout"]["retiredPreserved"].append(destination)
             elif state == STATE_CONFLICT:
                 status["checkout"]["conflict"].append(destination)
             elif local == LOCAL_ABSENT:
@@ -1140,13 +1162,13 @@ def compute_status(project_root, skill_dir):
     profile_names = manifest["profiles"] if manifest else (lock.get("profileOrder") if lock else None)
     if profile_names and skill_dir:
         try:
-            plan = compute_plan(project_root, skill_dir, profile_names, False)
+            plan = compute_plan(project_root, skill_dir, profile_names)
         except (ProfileError, StateError) as caught_error:
             status["errors"].append(str(caught_error))
         else:
             changed = [entry["destination"] for entry in plan["entries"]
                        if entry["action"] not in (ACTION_UNCHANGED, ACTION_DROP)]
-            status["checkout"]["modified"].extend(plan["detachedViews"])
+            status["checkout"]["modified"].extend(plan["editedViews"] + plan["detachedViews"])
             if lock:
                 published = [entry for entry in plan["entries"] if entry["sha256"]]
                 views = [claude_view_of(entry["destination"], entry["source"]) for entry in published]
@@ -1180,7 +1202,7 @@ def status_has_drift(status):
     if status["errors"]:
         return True
     checkout = status["checkout"]
-    if any(checkout[key] for key in ("modified", "missing", "conflict", "failed", "retiredModified")):
+    if any(checkout[key] for key in ("modified", "missing", "conflict", "failed", "retiredPreserved")):
         return True
     return bool(status["update"] and status["update"]["available"]) or not status["hasLock"]
 
@@ -1203,11 +1225,11 @@ def print_status(status, brief):
             "Checkout: "
             f"{len(checkout['applied'])} applied, {len(checkout['modified'])} modified, "
             f"{len(checkout['missing'])} missing, {len(checkout['conflict'])} preserved conflicts, "
-            f"{len(checkout['failed'])} failed, {len(checkout['retiredModified'])} retired but modified"
+            f"{len(checkout['failed'])} failed, {len(checkout['retiredPreserved'])} retired but preserved"
         )
         if not brief:
             for key, label in (("modified", "modified"), ("missing", "missing"), ("conflict", "conflict"),
-                               ("failed", "failed"), ("retiredModified", "retired but modified")):
+                               ("failed", "failed"), ("retiredPreserved", "retired but preserved")):
                 for destination in checkout[key]:
                     write_line(f"  ! {label}: {destination}")
     update = status["update"]
@@ -1277,7 +1299,7 @@ def command_plan(arguments):
     """Compute the plan; print it, save it, or list protected destinations."""
     catalog = load_profile_catalog(arguments.skill_dir)
     requested = requested_profile_names(arguments, catalog)
-    plan = compute_plan(arguments.project, arguments.skill_dir, requested, arguments.force)
+    plan = compute_plan(arguments.project, arguments.skill_dir, requested)
     plan["profiles_requested"] = requested
     if arguments.save:
         write_text_atomically(arguments.save, serialize_json(plan))
@@ -1344,7 +1366,6 @@ def build_parser():
     plan_parser = subparsers.add_parser("plan", help="read-only plan")
     add_common(plan_parser)
     add_selection(plan_parser)
-    plan_parser.add_argument("--force", action="store_true", help="plan overwriting local changes")
     plan_parser.add_argument("--format", choices=("text", "protected"), default="text")
     plan_parser.add_argument("--save", help="also save the full plan as JSON to this path")
     plan_parser.add_argument("--provider", default="claude", choices=SUPPORTED_PROVIDERS)

@@ -6,7 +6,8 @@
 # Repositories pinned in .agents/agent-ready.json ("updates": "pinned", the
 # default) are only checked: the hook reports drift and pending updates without
 # writing. With "updates": "auto" it applies the same ownership contract as
-# bootstrap.sh: locally modified managed assets are preserved and reported.
+# bootstrap.sh: managed assets are overwritten, local changes included, and only
+# files that no apply wrote are preserved and reported.
 # AGENT_READY_SETUP_REVIEW_MODE=1 (automated reviews) never writes either.
 
 set -euo pipefail
@@ -763,10 +764,6 @@ sync_file() {
     record_skipped "$destination"
     return 0
   fi
-  if changed_since_plan_start "$destination"; then
-    record_conflict "$destination changed during synchronization; neither was changed"
-    return 0
-  fi
 
   expected_destination="$(mktemp "${destination}.agent-ready-expected.XXXXXX")"
   if ! cp -p -- "${supplied_snapshot:-$destination}" "$expected_destination"; then
@@ -843,6 +840,11 @@ link_claude_asset() {
     fi
     if is_protected_destination "$destination"; then
       record_conflict "$destination: $AGENT_READY_PROTECTED_HINT"
+      return 0
+    fi
+    # Relinking discards what the view holds, so it gets the same copy as an asset.
+    if ! matches_ignoring_line_endings "$destination" "$source" && ! backup_file "$destination"; then
+      conflicts+=("could not back up $destination; neither was changed")
       return 0
     fi
     replace_with_claude_view "$destination" "$target" "$source" "$relative"
@@ -933,6 +935,7 @@ sync_claude_settings() {
   local template="$1"
   local destination="$CLAUDE_DIR/settings.json"
   local temporary_settings
+  local destination_snapshot
   local merge_status=0
 
   if [[ -L "$destination" ]]; then
@@ -944,26 +947,29 @@ sync_claude_settings() {
     return 0
   fi
   if [[ ! -f "$destination" ]]; then
-    sync_file "$template" "$destination"
+    sync_file "$template" "$destination" "$template" absent
     return 0
   fi
 
+  # Settings hold project content: a save during the merge must not be lost.
   temporary_settings="$(mktemp "${TMPDIR:-/tmp}/agent-ready-settings.XXXXXX")"
-  merge_managed_settings "$template" "$destination" strict > "$temporary_settings" || merge_status=$?
+  destination_snapshot="$(mktemp "${TMPDIR:-/tmp}/agent-ready-current-settings.XXXXXX")"
+  cp -- "$destination" "$destination_snapshot"
+  merge_managed_settings "$template" "$destination_snapshot" strict > "$temporary_settings" || merge_status=$?
 
   case "$merge_status" in
     0)
-      sync_file "$temporary_settings" "$destination"
+      sync_file "$temporary_settings" "$destination" "$template" "$destination_snapshot"
       ;;
     10)
       cp -- "$template" "$temporary_settings"
-      sync_file "$temporary_settings" "$destination"
+      sync_file "$temporary_settings" "$destination" "$template" "$destination_snapshot"
       ;;
     *)
       conflicts+=("$destination contains invalid JSON; preserved")
       ;;
   esac
-  rm -f -- "$temporary_settings"
+  rm -f -- "$temporary_settings" "$destination_snapshot"
 }
 
 if [[ -L "$SHARED_DIR" || ( -e "$SHARED_DIR" && ! -d "$SHARED_DIR" ) ]]; then
@@ -976,8 +982,7 @@ fi
 
 # The pre-apply plan decides ownership for every managed destination.
 plan_file="$(mktemp "${TMPDIR:-/tmp}/agent-ready-plan.XXXXXX")"
-trap 'rm -f -- "$plan_file" "$AGENT_READY_PLAN_MARKER"; release_sync_lock' EXIT
-mark_plan_start
+trap 'rm -f -- "$plan_file"; release_sync_lock' EXIT
 if ! protected_destinations="$(python3 "$state_script" plan --project . --skill-dir "$skill_dir" \
   --format protected --save "$plan_file" ${profile_selection[@]+"${profile_selection[@]}"})"; then
   printf 'WARNING: Agent Ready plan could not be computed; no asset was changed.\n' >&2
@@ -1010,7 +1015,7 @@ if [[ "$sync_hook_destination_was_different" -eq 1 || "$current_hook_needs_resta
     export AGENT_READY_SETUP_BACKUP_DIRECTORY="$backup_directory"
   fi
   # exec skips the EXIT trap; the restarted hook computes its own plan.
-  rm -f -- "$plan_file" "$AGENT_READY_PLAN_MARKER"
+  rm -f -- "$plan_file"
   exec bash "$sync_hook_destination" "${original_arguments[@]}"
 fi
 

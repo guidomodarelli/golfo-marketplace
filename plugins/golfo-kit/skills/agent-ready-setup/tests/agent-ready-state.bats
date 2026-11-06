@@ -158,7 +158,7 @@ lock_value() {
   [ -z "$(git status --short | grep -v '\.agent-ready-hard-link-views')" ]
 }
 
-@test "a CRLF checkout still receives updates and still protects real edits" {
+@test "a CRLF checkout receives updates and its real edits are overwritten" {
   copy_skill
   run_bootstrap_with "$source_copy" --stack node
   [ "$status" -eq 0 ]
@@ -169,10 +169,9 @@ lock_value() {
 
   run_bootstrap_with "$source_copy"
   [ "$status" -eq 0 ]
-  [[ "$output" == *".agents/rules/security.md: local changes since the last apply; preserved"* ]]
-  [[ "$output" == *"applied with 1 preserved conflict(s)"* ]]
+  [[ "$output" == *"Lockfile: .agents/agent-ready.lock.json (complete)"* ]]
   cmp -s .agents/rules/testing.md "$source_copy/assets/stacks/node/rules/testing.md"
-  [ "$(tail -n 1 .agents/rules/security.md | tr -d '\r')" = "team specific line" ]
+  cmp -s .agents/rules/security.md "$source_copy/assets/stacks/node/rules/security.md"
 }
 
 @test "a manifest that cannot be read stops the sync before writing" {
@@ -208,7 +207,7 @@ lock_value() {
   [[ "$output" == *"Lockfile: .agents/agent-ready.lock.json (complete)"* ]]
 }
 
-@test "assets under a symlinked parent directory are never retired, even with --force" {
+@test "assets under a symlinked parent directory are never retired" {
   copy_skill
   run_bootstrap_with "$source_copy" --stack node
   [ "$status" -eq 0 ]
@@ -221,10 +220,7 @@ lock_value() {
   [ "$status" -eq 0 ]
   [ -f "$test_root/outside-agents/perf-analyzer.md" ]
   [[ "$output" == *".agents/agents/perf-analyzer.md: a parent directory is a symlink"* ]]
-
-  run_bootstrap_with "$source_copy" --force
-  [ "$status" -eq 0 ]
-  [ -f "$test_root/outside-agents/perf-analyzer.md" ]
+  [ "$(lock_value 'lock["assets"][".agents/agents/perf-analyzer.md"]["state"]')" = "retired-preserved" ]
 }
 
 @test "a release that only changes instruction templates counts as an update" {
@@ -265,7 +261,7 @@ lock_value() {
   [ "$(lock_value 'lock["primaryStack"]')" = "go" ]
 }
 
-@test "an edited Claude view that became a regular file is preserved until --force" {
+@test "an edited Claude view of a managed asset is reported and then relinked" {
   run_bootstrap_with "$skill_dir" --stack node
   [ "$status" -eq 0 ]
   rm .claude/rules/security.md
@@ -274,17 +270,39 @@ lock_value() {
   run_bootstrap_with "$skill_dir" --status
   [[ "$output" == *"modified: .claude/rules/security.md"* ]]
   run_bootstrap_with "$skill_dir" --plan
-  [[ "$output" == *"conflict"*".claude/rules/security.md"* ]]
+  [[ "$output" == *"update"*".claude/rules/security.md"*"relinking the view overwrites them"* ]]
+  [ "$(cat .claude/rules/security.md)" = "local policy" ]
 
   run_bootstrap_with "$skill_dir"
   [ "$status" -eq 0 ]
-  [[ "$output" == *".claude/rules/security.md: local changes since the last apply; preserved"* ]]
-  [[ "$output" == *"applied with 1 preserved conflict(s)"* ]]
-  [ "$(cat .claude/rules/security.md)" = "local policy" ]
+  [[ "$output" == *"Lockfile: .agents/agent-ready.lock.json (complete)"* ]]
+  [ -L .claude/rules/security.md ] || [ .claude/rules/security.md -ef .agents/rules/security.md ]
+}
 
-  run_bootstrap_with "$skill_dir" --force
+@test "a project file where a new asset gets its Claude view is preserved until it is removed" {
+  copy_skill
+  run_bootstrap_with "$source_copy" --stack node
   [ "$status" -eq 0 ]
-  cmp -s .claude/rules/security.md .agents/rules/security.md
+  printf '%s\n' '# New upstream rule' > "$source_copy/assets/stacks/node/rules/new-upstream.md"
+  printf '%s\n' 'project view content' > .claude/rules/new-upstream.md
+
+  run_bootstrap_with "$source_copy" --plan
+  [[ "$output" == *"conflict"*".claude/rules/new-upstream.md"* ]]
+
+  for attempt in first second; do
+    run_bootstrap_with "$source_copy"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *".claude/rules/new-upstream.md: never applied by agent-ready-setup; preserved"* ]]
+    [[ "$output" == *"applied with 1 preserved conflict(s)"* ]]
+    [ "$(cat .claude/rules/new-upstream.md)" = "project view content" ]
+  done
+  cmp -s .agents/rules/new-upstream.md "$source_copy/assets/stacks/node/rules/new-upstream.md"
+
+  rm .claude/rules/new-upstream.md
+  run_bootstrap_with "$source_copy"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Lockfile: .agents/agent-ready.lock.json (complete)"* ]]
+  [ -L .claude/rules/new-upstream.md ] || [ .claude/rules/new-upstream.md -ef .agents/rules/new-upstream.md ]
 }
 
 @test "a Claude view detached with the applied content is relinked without a conflict" {
@@ -331,37 +349,6 @@ lock_value() {
   [[ "$output" == *"missing: .claude/rules/security.md"* ]]
 }
 
-@test "an edit saved after the plan was computed is preserved" {
-  copy_skill
-  run_bootstrap_with "$source_copy" --stack node
-  [ "$status" -eq 0 ]
-  printf '%s\n' '- Newer guidance.' >> "$source_copy/assets/stacks/node/rules/testing.md"
-  # Saves the edit right when the plan process ends, before the projection reaches the file.
-  # It waits first because Bash 3.2 (macOS) compares modification times in whole seconds.
-  mkdir -p "$test_root/edit-after-plan"
-  cat > "$test_root/edit-after-plan/sitecustomize.py" <<'EOF'
-import atexit
-import sys
-import time
-
-
-def save_concurrent_edit():
-    time.sleep(1.1)
-    with open(".agents/rules/testing.md", "a", encoding="utf-8") as rule_file:
-        rule_file.write("edited after the plan\n")
-
-
-if "plan" in sys.argv:
-    atexit.register(save_concurrent_edit)
-EOF
-
-  export PYTHONPATH="$test_root/edit-after-plan"
-  run_bootstrap_with "$source_copy"
-  [ "$status" -eq 0 ]
-  [ "$(tail -n 1 .agents/rules/testing.md)" = "edited after the plan" ]
-  [[ "$output" == *".agents/rules/testing.md changed during synchronization"* ]]
-  [[ "$output" == *"(partial:"* ]]
-}
 
 @test "plan and status are read-only and never call the provider CLI" {
   run_bootstrap_with "$skill_dir" --stack frontend
@@ -373,7 +360,7 @@ EOF
   run_bootstrap_with "$skill_dir" --plan
   [ "$status" -eq 0 ]
   [[ "$output" == *"Agent Ready plan (read-only: nothing was written)"* ]]
-  [[ "$output" == *"conflict"*".agents/rules/testing.md"*"local changes since the last apply"* ]]
+  [[ "$output" == *"update"*".agents/rules/testing.md"*"overwrites local changes since the last apply"* ]]
   [[ "$output" == *"+local note"* ]] || [[ "$output" == *"-local note"* ]]
 
   run_bootstrap_with "$skill_dir" --status
@@ -384,25 +371,109 @@ EOF
   [ ! -e "$cli_calls" ]
 }
 
-@test "a locally modified managed asset is preserved as a conflict until --force" {
+@test "a locally modified managed asset is overwritten by the next apply, and plan warns first" {
   run_bootstrap_with "$skill_dir" --stack node
   [ "$status" -eq 0 ]
   printf '%s\n' 'team specific line' >> .agents/rules/security.md
 
+  run_bootstrap_with "$skill_dir" --plan
+  [[ "$output" == *".agents/rules/security.md"*"overwrites local changes since the last apply"* ]]
+  [[ "$output" == *"team specific line"* ]]
+  [ "$(tail -n 1 .agents/rules/security.md)" = "team specific line" ]
+
   run_bootstrap_with "$skill_dir"
   [ "$status" -eq 0 ]
-  [[ "$output" == *".agents/rules/security.md: local changes since the last apply; preserved"* ]]
-  [[ "$output" == *"applied with 1 preserved conflict(s)"* ]]
-  [ "$(tail -n 1 .agents/rules/security.md)" = "team specific line" ]
-  [ "$(lock_value 'lock["assets"][".agents/rules/security.md"]["state"]')" = "conflict" ]
+  [[ "$output" == *"Lockfile: .agents/agent-ready.lock.json (complete)"* ]]
+  cmp -s .agents/rules/security.md "$skill_dir/assets/stacks/node/rules/security.md"
+  [ "$(lock_value 'lock["assets"][".agents/rules/security.md"]["state"]')" = "applied" ]
+}
 
-  run_bootstrap_with "$skill_dir" --force
+@test "a project file in a Claude view stays preserved after its asset could not be written" {
+  copy_skill
+  run_bootstrap_with "$source_copy" --stack node
+  [ "$status" -eq 0 ]
+  printf '%s
+' '# New upstream rule' > "$source_copy/assets/stacks/node/rules/new-upstream.md"
+  printf '%s
+' 'project view content' > .claude/rules/new-upstream.md
+  run_bootstrap_with "$source_copy"
+  [ "$status" -eq 0 ]
+
+  rm .agents/rules/new-upstream.md
+  mkdir .agents/rules/new-upstream.md
+  run_bootstrap_with "$source_copy"
+  [ "$status" -eq 0 ]
+  rmdir .agents/rules/new-upstream.md
+
+  run_bootstrap_with "$source_copy"
+  [ "$status" -eq 0 ]
+  [ "$(cat .claude/rules/new-upstream.md)" = "project view content" ]
+  [[ "$output" == *".claude/rules/new-upstream.md: never applied by agent-ready-setup; preserved"* ]]
+}
+
+@test "a project file that a release starts publishing is preserved until it is renamed" {
+  copy_skill
+  run_bootstrap_with "$source_copy" --stack node
+  [ "$status" -eq 0 ]
+  printf '%s\n' '# New upstream rule' > "$source_copy/assets/stacks/node/rules/new-upstream.md"
+  printf '%s\n' 'project rule' > .agents/rules/new-upstream.md
+
+  for attempt in first second; do
+    run_bootstrap_with "$source_copy"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *".agents/rules/new-upstream.md: never applied by agent-ready-setup; preserved"* ]]
+    [[ "$output" == *"applied with 1 preserved conflict(s)"* ]]
+    [ "$(cat .agents/rules/new-upstream.md)" = "project rule" ]
+    [ "$(lock_value 'lock["assets"][".agents/rules/new-upstream.md"]["state"]')" = "conflict" ]
+  done
+
+  mv .agents/rules/new-upstream.md .agents/rules/project-rule.md
+  run_bootstrap_with "$source_copy"
+  [ "$status" -eq 0 ]
+  cmp -s .agents/rules/new-upstream.md "$source_copy/assets/stacks/node/rules/new-upstream.md"
+  [ "$(lock_value 'lock["assets"][".agents/rules/new-upstream.md"]["state"]')" = "applied" ]
+  [ "$(cat .agents/rules/project-rule.md)" = "project rule" ]
+}
+
+@test "a preserved project file stays in place when no profile publishes that path anymore" {
+  copy_skill
+  run_bootstrap_with "$source_copy" --stack node
+  [ "$status" -eq 0 ]
+  printf '%s\n' '# New upstream rule' > "$source_copy/assets/stacks/node/rules/new-upstream.md"
+  printf '%s\n' 'project rule' > .agents/rules/new-upstream.md
+  run_bootstrap_with "$source_copy"
+  [ "$status" -eq 0 ]
+  rm "$source_copy/assets/stacks/node/rules/new-upstream.md"
+
+  run_bootstrap_with "$source_copy"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Lockfile: .agents/agent-ready.lock.json (complete)"* ]]
+  [ "$(cat .agents/rules/new-upstream.md)" = "project rule" ]
+  [ "$(lock_value '".agents/rules/new-upstream.md" in lock["assets"]')" = "False" ]
+}
+
+@test "a write that failed before having an applied base is retried by the next apply" {
+  run_bootstrap_with "$skill_dir" --stack node
+  [ "$status" -eq 0 ]
+  printf '%s\n' 'stale content' > .agents/rules/security.md
+  python3 - <<'EOF'
+import json
+
+path = ".agents/agent-ready.lock.json"
+with open(path, encoding="utf-8") as lock_file:
+    lock = json.load(lock_file)
+lock["assets"][".agents/rules/security.md"].update(sha256=None, state="failed")
+with open(path, "w", encoding="utf-8") as lock_file:
+    json.dump(lock, lock_file)
+EOF
+
+  run_bootstrap_with "$skill_dir"
   [ "$status" -eq 0 ]
   cmp -s .agents/rules/security.md "$skill_dir/assets/stacks/node/rules/security.md"
   [ "$(lock_value 'lock["assets"][".agents/rules/security.md"]["state"]')" = "applied" ]
 }
 
-@test "a new release updates untouched assets and keeps edited ones" {
+@test "a new release updates every managed asset, edited ones included" {
   copy_skill
   run_bootstrap_with "$source_copy" --stack java
   [ "$status" -eq 0 ]
@@ -416,17 +487,20 @@ EOF
   run_bootstrap_with "$source_copy"
   [ "$status" -eq 0 ]
   cmp -s .agents/rules/testing.md "$source_copy/assets/stacks/java/rules/testing.md"
-  [ "$(tail -n 1 .agents/rules/coding-style.md)" = "edited locally" ]
+  cmp -s .agents/rules/coding-style.md "$source_copy/assets/stacks/java/rules/coding-style.md"
 }
 
-@test "assets dropped from the profiles are retired only when unmodified" {
+@test "assets dropped from the profiles are retired, edited ones included" {
   copy_skill
   run_bootstrap_with "$source_copy" --stack node
   [ "$status" -eq 0 ]
   [ -f .agents/agents/perf-analyzer.md ]
   [ -f .agents/skills/perf-analyzer/SKILL.md ]
-  printf '%s\n' 'kept on purpose' >> .agents/agents/security-scanner.md
+  printf '%s\n' 'edited locally' >> .agents/agents/security-scanner.md
   rm "$source_copy/assets/stacks/node/agents/perf-analyzer.md" "$source_copy/assets/stacks/node/agents/security-scanner.md"
+
+  run_bootstrap_with "$source_copy" --plan
+  [[ "$output" == *".agents/agents/security-scanner.md"*"removes its local changes"* ]]
 
   run_bootstrap_with "$source_copy"
   [ "$status" -eq 0 ]
@@ -434,10 +508,10 @@ EOF
   [ ! -e .agents/agents/perf-analyzer.md ]
   [ ! -e .agents/skills/perf-analyzer ]
   [ ! -e .claude/agents/perf-analyzer.md ]
-  [ -f .agents/agents/security-scanner.md ]
-  [[ "$output" == *".agents/agents/security-scanner.md: retired from the profiles but modified locally"* ]]
-  [ "$(lock_value 'lock["assets"][".agents/agents/security-scanner.md"]["state"]')" = "retired-modified" ]
+  [ ! -e .agents/agents/security-scanner.md ]
+  [ ! -e .claude/agents/security-scanner.md ]
   [ "$(lock_value '".agents/agents/perf-analyzer.md" in lock["assets"]')" = "False" ]
+  [ "$(lock_value '".agents/agents/security-scanner.md" in lock["assets"]')" = "False" ]
 }
 
 @test "without a lockfile the first apply adopts existing managed files once" {
@@ -510,7 +584,7 @@ EOF
   [ "$(tree_fingerprint)" = "$before" ]
 }
 
-@test "SessionStart with automatic updates applies the ownership gate" {
+@test "SessionStart with automatic updates overwrites managed assets and keeps a backup" {
   copy_skill
   run_bootstrap_with "$source_copy" --stack node --updates auto
   [ "$status" -eq 0 ]
@@ -525,11 +599,54 @@ EOF
     bash .agents/hooks/sync-marketplace.sh --provider codex
   [ "$status" -eq 0 ]
   [[ "$output" == *"Sync hook updated; restarting with latest version."* ]]
-  [ "$(cat .claude/rules/testing.md)" = "local view policy" ]
+  [ -L .claude/rules/testing.md ] || [ .claude/rules/testing.md -ef .agents/rules/testing.md ]
   cmp -s .agents/rules/testing.md "$source_copy/assets/stacks/node/rules/testing.md"
-  [ "$(tail -n 1 .agents/rules/security.md)" = "edited locally" ]
-  [[ "$output" == *".agents/rules/security.md: local changes since the last apply; preserved"* ]]
+  cmp -s .agents/rules/security.md "$source_copy/assets/stacks/node/rules/security.md"
+  [[ "$output" == *"Local backups directory:"* ]]
+  backup_directory="$(sed -n 's/^Local backups directory: //p' <<< "$output")"
+  grep -rq 'edited locally' "$backup_directory"
+  grep -rq 'local view policy' "$backup_directory"
   [ -z "$(find "$TMPDIR" -name 'agent-ready-plan*' -print -quit)" ]
+}
+
+@test "settings saved during the merge are preserved, by bootstrap and by the hook" {
+  run_bootstrap_with "$skill_dir" --stack node --updates auto
+  [ "$status" -eq 0 ]
+  # Saves a project setting right when the merger ends, before its output is written.
+  mkdir -p "$test_root/edit-during-merge"
+  cat > "$test_root/edit-during-merge/sitecustomize.py" <<'EOF'
+import atexit
+import json
+import sys
+
+
+def save_concurrent_setting():
+    with open(".claude/settings.json", encoding="utf-8") as settings_file:
+        settings = json.load(settings_file)
+    settings["concurrentSetting"] = True
+    with open(".claude/settings.json", "w", encoding="utf-8") as settings_file:
+        json.dump(settings, settings_file)
+
+
+if sys.argv[0].endswith("merge-managed-settings.py"):
+    atexit.register(save_concurrent_setting)
+EOF
+  export PYTHONPATH="$test_root/edit-during-merge"
+
+  run_bootstrap_with "$skill_dir"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *".claude/settings.json changed during synchronization"* ]]
+  grep -q 'concurrentSetting' .claude/settings.json
+
+  sed 's/, "concurrentSetting": true//' .claude/settings.json > .claude/settings.json.clean
+  mv .claude/settings.json.clean .claude/settings.json
+  run grep -c 'concurrentSetting' .claude/settings.json
+  [ "$output" = 0 ]
+  run env PATH="$fake_bin:$PATH" AGENT_READY_SETUP_SKILL_DIR="$skill_dir" AGENT_READY_SETUP_MARKETPLACE_UPGRADED=1 \
+    bash .agents/hooks/sync-marketplace.sh --provider claude
+  [ "$status" -eq 0 ]
+  [[ "$output" == *".claude/settings.json changed during synchronization"* ]]
+  grep -q 'concurrentSetting' .claude/settings.json
 }
 
 @test "review mode never synchronizes, even with automatic updates" {

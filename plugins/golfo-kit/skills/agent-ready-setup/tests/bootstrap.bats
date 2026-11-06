@@ -112,13 +112,6 @@ EOF
   chmod +x "$fake_bin/ln"
 }
 
-# Write-mechanics tests below edit a managed file and expect the projection to
-# replace it. That is the first-apply contract (no lockfile yet); with a lockfile
-# the edit is preserved as a conflict, which agent-ready-state.bats covers.
-forget_agent_ready_lock() {
-  rm -f .agents/agent-ready.lock.json
-}
-
 assert_claude_view() {
   local view="$1"
   local expected_target="${2:-}"
@@ -405,7 +398,6 @@ EOF
   cp "$test_root/external-template" "$test_root/expected-template"
   for operation in bootstrap sync; do
     ln -s "$test_root/external-template" .github/pull_request_template.md
-    forget_agent_ready_lock
     if [[ "$operation" == bootstrap ]]; then
       run_bootstrap frontend
     else
@@ -590,7 +582,7 @@ EOF
   jq -e '.hooks.PostToolUse[0].hooks | map(select(.type == "command" and .command == "bash .agents/hooks/check-harness-consistency.sh")) | length == 1' .claude/settings.json >/dev/null
 }
 
-@test "autonomous sync replaces identical Claude copies, and edited ones on the first apply, with managed views" {
+@test "autonomous sync replaces identical and edited Claude copies with managed views" {
   dynamic_skill_dir="$test_root/dynamic-skill"
   cp -R "$skill_dir" "$dynamic_skill_dir"
 
@@ -606,8 +598,6 @@ EOF
   assert_claude_view .claude/rules/security.md "../../.agents/rules/security.md"
   [[ "$output" != *".claude/rules/security.md differs from canonical shared asset"* ]]
 
-  # With a lockfile an edited copy is preserved; agent-ready-state.bats covers that contract.
-  forget_agent_ready_lock
   rm .claude/rules/security.md
   printf '%s\n' '# Claude-only security override' > .claude/rules/security.md
 
@@ -688,12 +678,10 @@ EOF
   [[ "$output" == *".claude/rules/security.md -> managed view"* ]]
 }
 
-@test "without a lockfile, edited Claude copies of managed rules are replaced with managed views" {
+@test "edited Claude copies of managed rules are replaced with managed views" {
   run_bootstrap frontend
   [ "$status" -eq 0 ]
 
-  # With a lockfile an edited copy is preserved; agent-ready-state.bats covers that contract.
-  forget_agent_ready_lock
   rm .claude/rules/security.md
   printf '%s\n' '# Claude-only security override' > .claude/rules/security.md
 
@@ -886,7 +874,6 @@ EOF
       'description: Provider-neutral reusable workflow for karpathy-guidelines.' '---' ''
     sed '1,/^---$/d' "$template"
   } > .agents/skills/karpathy-guidelines/SKILL.md
-  forget_agent_ready_lock
 
   run_marketplace_sync "$source_dir/assets/common/hooks/sync-marketplace.sh" "$source_dir"
 
@@ -1672,7 +1659,6 @@ EOF
   [ "$status" -eq 0 ]
 
   printf '%s\n' '# Local change' >> .agents/rules/security.md
-  forget_agent_ready_lock
 
   run_bootstrap frontend < /dev/null
 
@@ -1688,7 +1674,6 @@ EOF
   [ "$status" -eq 0 ]
 
   printf '%s\n' '# Local change' >> .agents/rules/security.md
-  forget_agent_ready_lock
   printf '%s\n' '# Project instructions' > AGENTS.md
   cp "$skill_dir/assets/claude-proxy.md" CLAUDE.md
   root_hash_before="$(shasum AGENTS.md CLAUDE.md | shasum | cut -d ' ' -f 1)"
@@ -1736,7 +1721,6 @@ EOF
   [ "$status" -eq 0 ]
 
   printf '%s\n' '# Local change' >> .agents/rules/security.md
-  forget_agent_ready_lock
   fake_bin="$test_root/bin"
   mkdir -p "$fake_bin"
   cat > "$fake_bin/cp" <<'EOF'
@@ -1777,7 +1761,6 @@ EOF
 
   rm .agents/rules/security.md
   ln -s "$outside_file" .agents/rules/security.md
-  forget_agent_ready_lock
 
   run_bootstrap node
 
@@ -1797,7 +1780,6 @@ EOF
 
   rm .agents/rules/security.md
   ln -s "$outside_directory" .agents/rules/security.md
-  forget_agent_ready_lock
 
   run_bootstrap node
 

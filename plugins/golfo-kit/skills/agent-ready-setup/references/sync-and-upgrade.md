@@ -49,13 +49,12 @@ se intenta antes de cargar helper. `normalize-instructions.sh` no repite proyecc
 ni upgrade.
 
 El hook compara cada asset gestionado con el template actualizado y muestra
-`diff -u` antes de reemplazar un archivo existente. Solo reemplaza archivos que
-siguen iguales a su base del lockfile: los editados localmente se preservan y se
-reportan como conflicto (sección «Ownership de 3 vías» de
+`diff -u` antes de reemplazar un archivo existente. Reemplaza los assets
+gestionados aunque se hayan editado y guarda su contenido local en un directorio
+temporal externo al proyecto; el output muestra el path exacto. Solo preserva, como
+conflicto, los archivos que ningún apply escribió (sección «Ownership» de
 [profiles-and-lockfile.md](profiles-and-lockfile.md)). Sin lockfile previo, el
-primer apply reemplaza una vez los archivos modificados y guarda su contenido
-local en un directorio temporal externo al proyecto; el output muestra el path
-exacto. Directorios en paths gestionados, padres inseguros y cambios
+primer apply también reemplaza esos archivos una vez. Directorios en paths gestionados, padres inseguros y cambios
 concurrentes se preservan y se reportan como conflictos estructurales.
 
 #### Riesgos del upgrade automático
@@ -68,8 +67,8 @@ concurrentes se preservan y se reportan como conflictos estructurales.
   `AGENT_READY_SETUP_FORCE_UPGRADE=1` o `bootstrap.sh` para aplicarla antes.
 - Upgrade global no tiene rollback en este script; la versión descargada puede
   cambiar aunque proyección local quede bloqueada.
-- Con `updates: auto`, el hook aplica templates nuevos solo sobre assets que no
-  cambiaron desde el último apply; los editados quedan como conflicto. Symlinks,
+- Con `updates: auto`, el hook aplica templates nuevos al iniciar sesión y pisa los
+  cambios locales de los assets gestionados, sin pedir confirmación. Symlinks,
   conflictos estructurales y reemplazos atómicos siguen evitando seguir o
   sobrescribir destinos inseguros.
 - Lock protege proyección local concurrente, pero no serializa upgrades globales
@@ -88,9 +87,9 @@ La proyección automática de assets:
   agent o command y preserva y reporta contenido custom.
 - Claude Code carga `.claude/rules/` automáticamente; el bloque gestionado de
   `AGENTS.md` le indica no volver a leerlas y deja las referencias para Codex.
-- Sin lockfile, reemplaza symlinks en paths gestionados sin seguirlos: borra el
-  link y escribe el template, así nunca modifica el destino del link. Con
-  lockfile, un symlink donde el lock aplicó un archivo es un conflicto.
+- Reemplaza symlinks en paths gestionados sin seguirlos: borra el link y escribe el
+  template, así nunca modifica el destino del link. Con lockfile, un symlink en un
+  path que ningún apply escribió es un conflicto.
 - Elimina symlinks administrados stale bajo `.claude/`.
 - Sin privilegio para crear symlinks (Windows sin Modo de desarrollador ni shell
   elevada), crea cada vista como hard link al asset de `.agents/`, nunca como
