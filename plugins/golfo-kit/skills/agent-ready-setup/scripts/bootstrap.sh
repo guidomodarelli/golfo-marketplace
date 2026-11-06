@@ -12,7 +12,7 @@
 #
 # Usage:
 #   bash bootstrap.sh --skill-dir <path> [--profiles <a,b> | --stack <frontend|node|java|go>]
-#     [--provider <claude|codex>] [--updates <pinned|auto>] [--force] [--plan | --status]
+#     [--provider <claude|codex>] [--updates <pinned|auto>] [--plan | --status]
 #
 # Without --profiles or --stack, the profiles come from .agents/agent-ready.json.
 # --plan and --status are read-only: no marketplace upgrade, no writes, no tool
@@ -41,7 +41,6 @@ STACK=""
 PROFILES=""
 REQUESTED_SKILL_DIR=""
 UPDATE_MODE=""
-FORCE_OVERWRITE=0
 # apply (default), plan or status.
 RUN_MODE="apply"
 SKILL_DIR=""
@@ -85,10 +84,6 @@ while [[ $# -gt 0 ]]; do
       }
       UPDATE_MODE="$2"
       shift 2
-      ;;
-    --force)
-      FORCE_OVERWRITE=1
-      shift
       ;;
     --plan|--status)
       [[ "$RUN_MODE" == apply ]] || { echo "ERROR: --plan and --status are mutually exclusive" >&2; exit 1; }
@@ -582,9 +577,8 @@ while IFS=$'\t' read -r resolution_key resolution_value; do
 done <<< "$resolution"
 
 if [[ "$RUN_MODE" == plan ]]; then
-  plan_arguments=(plan --project . --skill-dir "$SKILL_DIR" --provider "$PROVIDER")
-  [[ "$FORCE_OVERWRITE" -eq 1 ]] && plan_arguments+=(--force)
-  python3 "$STATE_SCRIPT" "${plan_arguments[@]}" ${PROFILE_SELECTION[@]+"${PROFILE_SELECTION[@]}"}
+  python3 "$STATE_SCRIPT" plan --project . --skill-dir "$SKILL_DIR" --provider "$PROVIDER" \
+    ${PROFILE_SELECTION[@]+"${PROFILE_SELECTION[@]}"}
   exit $?
 fi
 
@@ -605,12 +599,9 @@ fi
 # The pre-apply plan decides ownership: protected destinations are preserved by
 # sync_file, and finalize retires assets and writes the lockfile from it.
 PLAN_FILE="$(mktemp "${TMPDIR:-/tmp}/agent-ready-plan.XXXXXX")"
-trap 'rm -f -- "$PLAN_FILE" "$AGENT_READY_PLAN_MARKER"; release_sync_lock' EXIT
-[[ "$FORCE_OVERWRITE" -eq 1 ]] || mark_plan_start
-plan_arguments=(plan --project . --skill-dir "$SKILL_DIR" --format protected --save "$PLAN_FILE")
-[[ "$FORCE_OVERWRITE" -eq 1 ]] && plan_arguments+=(--force)
-if ! protected_destinations="$(python3 "$STATE_SCRIPT" "${plan_arguments[@]}" \
-  ${PROFILE_SELECTION[@]+"${PROFILE_SELECTION[@]}"})"; then
+trap 'rm -f -- "$PLAN_FILE"; release_sync_lock' EXIT
+if ! protected_destinations="$(python3 "$STATE_SCRIPT" plan --project . --skill-dir "$SKILL_DIR" \
+  --format protected --save "$PLAN_FILE" ${PROFILE_SELECTION[@]+"${PROFILE_SELECTION[@]}"})"; then
   echo "ERROR: could not compute the Agent Ready plan; no asset was changed" >&2
   exit 1
 fi
@@ -697,10 +688,6 @@ sync_file() {
 
   if matches_ignoring_line_endings "$dst" "$src"; then
     record_skipped "$dst"
-    return 0
-  fi
-  if changed_since_plan_start "$dst"; then
-    record_conflict "$dst changed during synchronization; neither was changed"
     return 0
   fi
 

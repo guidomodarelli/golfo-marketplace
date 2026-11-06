@@ -4,9 +4,9 @@ description: >-
   Inspecciona proyecto, selecciona profiles componibles (frontend, node, java, go,
   browser) y prepara configuración multi-provider para Claude Code y Codex: genera
   .claude/, .agents/, .codex/, AGENTS.md y proxy CLAUDE.md, fija la versión
-  adoptada en un manifest y un lockfile por repo, preserva como conflicto los
-  assets gestionados editados, retira los que salen del profile y ofrece status y
-  plan sin escrituras. Usar cuando usuario diga "configurar agent ready", "setup
+  adoptada en un manifest y un lockfile por repo, sobrescribe en cada apply los
+  assets gestionados aunque se hayan editado, retira los que salen del profile y
+  ofrece status y plan sin escrituras. Usar cuando usuario diga "configurar agent ready", "setup
   agent ready", "bootstrap claude", "bootstrap codex", "inicializar configuración
   de agentes", "quiero ser agent ready", "make this repo agent ready", pida pasar
   Agent Ready Score, o pregunte qué versión de las rules usa el repo, qué cambiaría
@@ -73,11 +73,11 @@ Adopción versionada: `.agents/agent-ready.json` (manifest: profiles elegidos y
 `updates` `pinned` por defecto o `auto`) y `.agents/agent-ready.lock.json`
 (lockfile: source, profiles y sha256 aplicado de cada asset). Un asset
 gestionado (rules, skills, agents, commands, hooks y sus vistas en `.claude/`)
-se actualiza solo si sigue igual a su base del lockfile; si el proyecto lo editó,
-se preserva y se reporta como conflicto (`--force` lo sobrescribe). Un asset que
-ya no publica ningún profile se retira solo si no tiene cambios. Sin lockfile
-previo, el primer apply sobrescribe una vez, como el contrato anterior. Para
-agregar o cambiar comportamiento, el proyecto crea una rule propia bajo
+no se edita: cada apply lo deja igual al template y pisa cualquier cambio local,
+que `--plan` muestra antes. Un asset que ya no publica ningún profile se retira,
+aunque tenga cambios. Un archivo del proyecto que ningún apply escribió se preserva
+como conflicto, salvo en el primer apply de un repo sin lockfile, que sobrescribe
+una vez, como el contrato anterior. Para agregar o cambiar comportamiento, el proyecto crea una rule propia bajo
 `.agents/rules/` o una skill nueva. Instrucciones del proyecto (`AGENTS.md` fuera
 del bloque gestionado), personalizaciones en `settings.json` y
 `.codex/hooks.json` (merge), y assets desconocidos se preservan. Contrato
@@ -148,7 +148,7 @@ uno de: `frontend`, `node`, `java`, `go`.
 
 Si detección tiene éxito, confirmar:
 
-> `Detected stack: **<STACK>**. Running agent-ready-setup — managed assets that still match the lockfile are updated, locally edited ones are preserved as conflicts; project rules, skills, and instructions are preserved.`
+> `Detected stack: **<STACK>**. Running agent-ready-setup — managed assets are overwritten with the templates, local edits included; project rules, skills, and instructions are preserved.`
 
 ## Step 3 — Run bootstrap script
 
@@ -207,8 +207,8 @@ existente, `merge-instructions.sh` reemplaza ese bloque por copia literal del
 template y la IA solo revisa redundancias fuera de él. El provider debe ser
 `claude` o `codex`.
 Copias bajo `.claude/` de assets gestionados se reemplazan por el symlink
-canónico si conservan el contenido aplicado; con lockfile, una editada se preserva
-como conflicto hasta `--force`, y sin lockfile el primer apply la reemplaza. Antes de normalizar las
+canónico, aunque se hayan editado; con lockfile, un archivo del proyecto en un path
+donde ningún apply creó la vista se preserva como conflicto. Antes de normalizar las
 instrucciones del proyecto, bootstrap y sync buscan recursivamente en todos
 los niveles y subniveles cualquier archivo cuyo basename coincida con
 `claude.md` sin respetar exactamente mayúsculas (`Claude.md`, `claude.md`,

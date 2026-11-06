@@ -207,26 +207,12 @@ matches_ignoring_line_endings() {
   cmp -s "$destination" "$source" || tr -d '\r' < "$destination" | cmp -s - "$source"
 }
 
-# The plan only knows the files it read: a destination modified after it started was
-# edited during this run. Comparing modification times needs no fork per destination.
-AGENT_READY_PLAN_MARKER=""
-
-mark_plan_start() {
-  AGENT_READY_PLAN_MARKER="$(mktemp "${TMPDIR:-/tmp}/agent-ready-plan-start.XXXXXX")"
-}
-
-changed_since_plan_start() {
-  [[ -n "$AGENT_READY_PLAN_MARKER" && "$1" -nt "$AGENT_READY_PLAN_MARKER" ]]
-}
-
 # Reason shared by every consumer that preserves a protected destination.
 # shellcheck disable=SC2034 # Read by the sync_file implementations that source this file.
-AGENT_READY_PROTECTED_HINT="local changes since the last apply; preserved (review with plan, keep them in a project rule, or rerun with --force)"
+AGENT_READY_PROTECTED_HINT="never applied by agent-ready-setup; preserved (rename or delete it to receive the managed asset)"
 
-# Without a lockfile (first apply) a symlink at a managed path is replaced, never
-# followed; the link is removed before the rename so a link to a directory
-# cannot redirect the write elsewhere. With a lockfile, the ownership gate
-# above protects edited files and replaced symlinks.
+# A symlink at a managed path is replaced, never followed; the link is removed
+# before the rename so a link to a directory cannot redirect the write elsewhere.
 # Consumers define record_conflict and record_updated.
 replace_managed_symlink() {
   local source="$1"

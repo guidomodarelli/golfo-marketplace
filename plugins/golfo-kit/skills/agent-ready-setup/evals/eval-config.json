@@ -599,7 +599,7 @@
     },
     {
       "id": "marketplace-upgrade-refreshes-managed-assets",
-      "description": "Distingue upgrade global de proyección local con ownership: actualiza lo que sigue igual a la base del lock y preserva lo editado.",
+      "description": "Distingue upgrade global de proyección local con ownership: pisa también lo editado y protege las instrucciones del proyecto.",
       "input": "Explicá qué ocurre con un proyecto Agent Ready con `updates: auto` en `.agents/agent-ready.json` después del upgrade del marketplace, cuando la plantilla de `.agents/rules/testing.md` cambió y nadie lo tocó, pero `.agents/rules/security.md` también cambió en la plantilla y el equipo lo editó a mano. Indicá qué hace el hook con cada archivo, cómo se muestra el diff, qué registra después y cuáles archivos de instrucciones nunca deben reemplazarse. No ejecutes Bash ni escribas archivos.",
       "assertions": [
         {
@@ -614,8 +614,8 @@
         },
         {
           "type": "contains_any",
-          "values": ["conflicto", "conflict"],
-          "description": "El archivo editado queda como conflicto",
+          "values": ["sobrescrib", "pisa", "overwrit", "descarta"],
+          "description": "El archivo editado se sobrescribe",
           "critical": true
         },
         {
@@ -625,9 +625,9 @@
           "critical": true
         },
         {
-          "type": "contains_any",
+          "type": "not_contains_any",
           "values": ["--force"],
-          "description": "Ofrece la sobrescritura explícita"
+          "description": "No ofrece un flag que ya no existe"
         },
         {
           "type": "contains",
@@ -2073,9 +2073,33 @@
       ]
     },
     {
-      "id": "edited-managed-rule-is-preserved-as-conflict",
-      "description": "Un asset gestionado editado no se pisa: queda como conflicto y se recomienda una rule propia.",
+      "id": "edited-managed-rule-is-overwritten",
+      "description": "El próximo apply pisa un asset gestionado editado, así que se recomienda una rule propia.",
       "input": "Edité `.agents/rules/security.md` en mi repo para agregar una excepción de nuestro equipo. Si corro /agent-ready-setup de nuevo, ¿pierdo mi cambio? ¿Qué me recomendás hacer con esa excepción? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["sobrescrib", "pisa", "overwrit", "perdés", "se pierde"],
+          "description": "Explica que el próximo apply pisa la edición",
+          "critical": true
+        },
+        {
+          "type": "not_contains_any",
+          "values": ["--force"],
+          "description": "No ofrece un flag que ya no existe"
+        },
+        {
+          "type": "contains_any",
+          "values": ["rule propia", "regla propia", "project rule", "nueva rule", "nueva regla"],
+          "description": "Recomienda mover la excepción a una rule propia del proyecto",
+          "critical": true
+        }
+      ]
+    },
+    {
+      "id": "project-file-at-managed-path-is-preserved",
+      "description": "Un archivo del proyecto que ningún apply escribió no se pisa aunque una versión nueva publique ese path.",
+      "input": "Mi repo ya tiene lockfile de agent-ready-setup. Escribí yo mismo `.agents/rules/billing.md`, que nunca vino del template, y ahora una versión nueva de la skill empieza a publicar una rule con ese mismo nombre. ¿Qué pasa con mi archivo en el próximo apply y qué tengo que hacer para recibir la rule? No ejecutes Bash ni escribas archivos.",
       "assertions": [
         {
           "type": "contains_any",
@@ -2085,19 +2109,14 @@
         },
         {
           "type": "contains_any",
-          "values": ["--force"],
-          "description": "Aclara que solo --force lo sobrescribe"
-        },
-        {
-          "type": "contains_any",
-          "values": ["rule propia", "regla propia", "project rule", "nueva rule", "nueva regla"],
-          "description": "Recomienda mover la excepción a una rule propia del proyecto",
+          "values": ["renombr", "borr", "elimin"],
+          "description": "Indica cómo liberar el path para recibir la rule",
           "critical": true
         },
         {
-          "type": "contains_any",
-          "values": ["agent-ready.lock.json", "lockfile"],
-          "description": "Explica que la base aplicada vive en el lockfile"
+          "type": "not_contains_any",
+          "values": ["--force"],
+          "description": "No ofrece un flag que ya no existe"
         }
       ]
     },

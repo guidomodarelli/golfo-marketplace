@@ -6,7 +6,8 @@
 # Repositories pinned in .agents/agent-ready.json ("updates": "pinned", the
 # default) are only checked: the hook reports drift and pending updates without
 # writing. With "updates": "auto" it applies the same ownership contract as
-# bootstrap.sh: locally modified managed assets are preserved and reported.
+# bootstrap.sh: managed assets are overwritten, local changes included, and only
+# files that no apply wrote are preserved and reported.
 # AGENT_READY_SETUP_REVIEW_MODE=1 (automated reviews) never writes either.
 
 set -euo pipefail
@@ -763,10 +764,6 @@ sync_file() {
     record_skipped "$destination"
     return 0
   fi
-  if changed_since_plan_start "$destination"; then
-    record_conflict "$destination changed during synchronization; neither was changed"
-    return 0
-  fi
 
   expected_destination="$(mktemp "${destination}.agent-ready-expected.XXXXXX")"
   if ! cp -p -- "${supplied_snapshot:-$destination}" "$expected_destination"; then
@@ -976,8 +973,7 @@ fi
 
 # The pre-apply plan decides ownership for every managed destination.
 plan_file="$(mktemp "${TMPDIR:-/tmp}/agent-ready-plan.XXXXXX")"
-trap 'rm -f -- "$plan_file" "$AGENT_READY_PLAN_MARKER"; release_sync_lock' EXIT
-mark_plan_start
+trap 'rm -f -- "$plan_file"; release_sync_lock' EXIT
 if ! protected_destinations="$(python3 "$state_script" plan --project . --skill-dir "$skill_dir" \
   --format protected --save "$plan_file" ${profile_selection[@]+"${profile_selection[@]}"})"; then
   printf 'WARNING: Agent Ready plan could not be computed; no asset was changed.\n' >&2
@@ -1010,7 +1006,7 @@ if [[ "$sync_hook_destination_was_different" -eq 1 || "$current_hook_needs_resta
     export AGENT_READY_SETUP_BACKUP_DIRECTORY="$backup_directory"
   fi
   # exec skips the EXIT trap; the restarted hook computes its own plan.
-  rm -f -- "$plan_file" "$AGENT_READY_PLAN_MARKER"
+  rm -f -- "$plan_file"
   exec bash "$sync_hook_destination" "${original_arguments[@]}"
 fi
 
