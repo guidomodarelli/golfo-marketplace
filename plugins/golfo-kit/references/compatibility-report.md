@@ -8,7 +8,7 @@
 ## A. Resumen ejecutivo
 
 - **Fecha de auditoría:** 2026-10-23 (generado 2026-10-23T21:00:00Z).
-- **Total de skills analizadas:** 44.
+- **Total de skills analizadas:** 45.
 - **Funcionalidades deshabilitadas:** 0.
 - **Adaptaciones implementadas:** 42; verificadas: 20.
 - **Problemas críticos pendientes:** ninguno.
@@ -43,7 +43,7 @@ Dependencias implícitas de navegador de measured-performance-optimization, prev
 | `adapted` | 0 | 1 | 1 |
 | `partial` | 0 | 0 | 0 |
 | `incompatible` | 0 | 0 | 0 |
-| `unverified` | 40 | 43 | 43 |
+| `unverified` | 41 | 44 | 44 |
 
 ### Regla de derivación del estado
 
@@ -82,6 +82,7 @@ Una funcionalidad `disabled` lista las alternativas investigadas y ninguna es vi
 | `generate-commit-messages` | `unverified` | `unverified` | `unverified` |
 | `improve-spec` | `unverified` | `unverified` | `unverified` |
 | `inline-thread-autofix` | `unverified` | `unverified` | `unverified` |
+| `interactive-cli-design` | `unverified` | `unverified` | `unverified` |
 | `measured-performance-optimization` | `unverified` | `unverified` | `unverified` |
 | `mobile-first-responsive-layout` | `unverified` | `unverified` | `unverified` |
 | `mock-first-testing-design` | `unverified` | `unverified` | `unverified` |
@@ -1334,6 +1335,73 @@ Pendiente de verificar:
 - Ejecutar con una URL de hilo real en Claude Code.
 - Ejecutar con una URL de hilo real en Codex CLI.
 - Ejecutar con una URL de hilo real en Hermes Agent.
+
+### `interactive-cli-design`
+
+**Identificación**
+
+- Nombre: Interactive CLI Design; versión: 1.0.0; SKILL.md: `plugins/golfo-kit/skills/interactive-cli-design/SKILL.md`.
+- Propósito: Diseña e implementa CLIs con flags y modo interactivo: decisión de modo según TTY y CI, flags mínimas, paridad flag-pregunta, widget según el dato, exit codes y verificación en una pseudoconsola real.
+- Funcionalidades principales: tabla de decisión de modo; flags universales y condicionales; paridad y comando equivalente; widget según el dato; referencias por stack; matriz de verificación en pseudoconsola.
+- Agentes soportados declarados: no declara.
+
+**Dependencias**
+
+Sin dependencias específicas de agente detectadas por inspección.
+
+**Compatibilidad por agente**
+
+#### interactive-cli-design / `claude_code`: `unverified`
+
+Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Claude Code durante esta auditoría, así que su funcionamiento no está verificado.
+
+- Capacidades faltantes: ninguna.
+- Alternativas investigadas: ninguna.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `core-workflow` | sí | `unverified` | `native` | Instrucciones y referencias de la skill; la verificación instala node-pty en un directorio temporal y no usa herramientas específicas de agente. | — | Sin dependencias específicas detectadas por inspección; no ejecutada en Claude Code en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
+
+#### interactive-cli-design / `codex`: `unverified`
+
+Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Codex CLI durante esta auditoría, así que su funcionamiento no está verificado.
+
+- Capacidades faltantes: ninguna.
+- Alternativas investigadas: ninguna.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `core-workflow` | sí | `unverified` | `native` | Instrucciones y referencias de la skill; la verificación instala node-pty en un directorio temporal y no usa herramientas específicas de agente. | — | Sin dependencias específicas detectadas por inspección; no ejecutada en Codex CLI en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
+
+#### interactive-cli-design / `hermes`: `unverified`
+
+Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Hermes Agent durante esta auditoría, así que su funcionamiento no está verificado.
+
+- Capacidades faltantes: ninguna.
+- Alternativas investigadas: ninguna.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `core-workflow` | sí | `unverified` | `native` | Instrucciones y referencias de la skill; la verificación instala node-pty en un directorio temporal y no usa herramientas específicas de agente. | — | Sin dependencias específicas detectadas por inspección; no ejecutada en Hermes Agent en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
+
+**Implementación**
+
+- Adaptaciones: ninguna.
+- Archivos modificados: ninguno.
+- Fallback: ninguno.
+- Cambios de comportamiento respecto del original: ninguno.
+
+**Verificación**
+
+| Prueba | Agente | Tipo | Comando | Resultado | Evidencia |
+|---|---|---|---|---|---|
+| `static-inspection` | `any` | static | `grep -rE "AskUserQuestion\|request_user_input\|Monitor\|Cron(Create\|List\|Delete)\|PushNotification\|TaskStop\|Agent\|subagent\|mcp__\|claude -p\|codex exec\|~/.claude\|~/.codex\|apply_patch\|update_plan" plugins/golfo-kit/skills/<skill>` | `passed` | Inspección de SKILL.md y evals del 2026-10-30: la skill solo produce texto y no usa herramientas específicas de agente. |
+
+Pendiente de verificar:
+
+- Ejecutar la skill en Claude Code con un caso real.
+- Ejecutar la skill en Codex CLI con un caso real.
+- Ejecutar la skill en Hermes Agent con un caso real.
 
 ### `measured-performance-optimization`
 
