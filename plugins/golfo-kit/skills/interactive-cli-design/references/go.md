@@ -1,24 +1,31 @@
 # Go
 
-Escrito leyendo el código de `cobra` y `huh`, sin ejecutarlo. Compilar y correr la matriz antes de darlo por bueno, y mirar la documentación de la versión en uso.
+Probado en pseudoconsolas de Windows y Linux con Go 1.27, `cobra` 1.10 y `huh` 1.0. Antes de usar otra versión, mirar su documentación.
 
 ## Parser con cobra
 
 ```go
+type usageError struct{ error }
+
 root := &cobra.Command{
     Use:           "tool",
     Version:       version,
     SilenceUsage:  true,
     SilenceErrors: true,
-    Args:          cobra.NoArgs,
-    RunE:          run,
+    Args: func(command *cobra.Command, args []string) error {
+        if err := cobra.NoArgs(command, args); err != nil {
+            return usageError{err}
+        }
+        return nil
+    },
+    RunE: run,
 }
 root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
     return usageError{err}
 })
 ```
 
-- Cobra no fija el exit code: se decide en `main`. Con `SetFlagErrorFunc`, los errores de flags se pueden marcar como de uso. Los errores de `Args` no pasan por ahí: envolverlos también.
+- Cobra no fija el exit code: se decide en `main`. Con `SetFlagErrorFunc`, los errores de flags se marcan como de uso. Los errores de `Args` no pasan por ahí: `cobra.NoArgs` solo sale con 1, por eso se envuelve.
 - `Version` agrega `--version` y le asigna `-v` si está libre. Para usar `-V`, declarar antes un flag propio llamado `version`.
 - `SilenceUsage` evita volcar toda la ayuda ante cada error.
 
@@ -66,7 +73,7 @@ func canPrompt(noInput bool) bool {
 | Texto | `huh.NewInput().Title(message).Validate(fn).Value(&value)` |
 | Secreto | `huh.NewInput().EchoMode(huh.EchoModePassword).Value(&secret)` |
 
-Agrupar con `huh.NewForm(huh.NewGroup(campos...)).Run()`. Agregar al formulario solo los campos sin valor.
+Agrupar con `huh.NewForm(huh.NewGroup(campos...)).Run()`. Agregar al formulario solo los campos sin valor. Un solo grupo muestra todas las preguntas en una pantalla y Enter avanza el foco; para una pregunta por vez, usar un grupo por campo.
 
 ## Dibujar en stderr
 

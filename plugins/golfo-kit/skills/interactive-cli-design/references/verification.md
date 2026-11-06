@@ -37,7 +37,7 @@ tool --name demo --runtime go </dev/null | LC_ALL=C grep -c "$(printf '\033')"  
 
 ## Con terminal
 
-`node-pty` abre una pseudoconsola real en Windows, macOS y Linux. Instalarlo en un directorio temporal, nunca como dependencia del proyecto, salvo que los tests ya lo usen. Trae binarios para Windows y macOS: un aviso de pnpm sobre scripts de build ignorados no impide usarlo ahí. En Linux hay que compilarlo; sin compilador, el módulo `pty` de Python o `script -qec` cumplen el mismo papel.
+`node-pty` abre una pseudoconsola real en Windows, macOS y Linux. Instalarlo en un directorio temporal, nunca como dependencia del proyecto, salvo que los tests ya lo usen. Trae binarios para Windows y macOS: un aviso de pnpm sobre scripts de build ignorados no impide usarlo ahí. En Linux se compila al instalarlo: hacen falta `build-essential` y `python3`, y usar `npm install`, porque pnpm no corre el build. Sin compilador, el módulo `pty` de Python o `script -qec` cumplen el mismo papel.
 
 ```js
 // pty-check.cjs: espera un texto en pantalla y recién entonces manda las teclas.
@@ -106,6 +106,10 @@ Para `tool > archivo` en una terminal, lanzar el shell dentro de la pseudoconsol
 - **Escapes bajo ConPTY.** ConPTY escribe sus propias secuencias, así que bajo pseudoconsola no se cuentan escapes: ese chequeo se hace por pipe. Para saber si hay color en un prompt, reproducir la salida en `@xterm/headless` y mirar las celdas con `isFgDefault()` e `isBgDefault()`.
 - **Cursor.** Gana la última secuencia entre `\x1b[?25l` y `\x1b[?25h` del flujo crudo.
 - **Teclas antes de tiempo.** Un menú puede pintarse después de la pregunta, y el texto mandado a un menú se pierde o se cuela en el prompt siguiente. Esperar un texto de la opción, no solo de la pregunta, si hace falta.
+- **Primer dibujo lento.** `gum` y otras apps de Bubble Tea le preguntan a la terminal su color de fondo, y un PTY sin emulador no contesta: en Linux tardaron unos 5 s en dibujar. No es lentitud del CLI, pero las teclas mandadas antes se pierden.
+- **Formularios de `huh`.** Un grupo con varios campos muestra todas las preguntas a la vez: mandar las teclas en el orden de los campos, no según la última pregunta en pantalla. El filtro de una lista se abre con `/`.
+- **`TERM` heredado.** Si el proceso padre no tiene terminal, `TERM` puede llegar vacío o como `dumb`, y el CLI no va a preguntar. Definir `TERM=xterm-256color` en el entorno de la pseudoconsola.
+- **`bash` en Windows.** Desde `cmd.exe`, `bash` a secas puede ser el lanzador de WSL. Usar la ruta de Git Bash.
 - **`node-pty` mantiene vivo al proceso.** Terminar con `process.exit()`. En Windows, llamar a `kill()` sobre un hijo que ya salió imprime `AttachConsole failed`.
 - **Comando con un `.cmd` o sin extensión.** `pty.spawn` necesita un ejecutable real. Para `pnpm`, `npm` o un script, pasar por `cmd.exe /d /s /c`.
 - **mintty.** Bajo `git-bash.exe`, un programa nativo puede no ver una terminal y comportarse como en el caso c. No es una falla del CLI.
