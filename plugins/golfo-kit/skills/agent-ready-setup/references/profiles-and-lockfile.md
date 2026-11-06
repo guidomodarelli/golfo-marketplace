@@ -53,7 +53,8 @@ assets con nombres propios; no copia los de la stack.
 El lockfile registra `source.plugin`, `source.version`, `source.kind`
 (`marketplace-snapshot`, `plugin-cache` o `local`), `source.revision` (commit
 git del source cuando existe) y `source.contentDigest`, que identifica el
-contenido exacto aunque no haya revisión git. Por asset guarda `profile`,
+contenido exacto (assets, templates fusionados y plantillas de instrucciones)
+aunque no haya revisión git. Por asset guarda `profile`,
 `source`, `sha256` aplicado y `state` (`applied`, `conflict`, `failed`,
 `retired-modified`). `merged` lista `AGENTS.md` (bloque gestionado),
 `.claude/settings.json` y `.codex/hooks.json` con el sha256 del template: se
@@ -80,13 +81,15 @@ nuevo:
 | no hay lockfile todavía | `adopt`: el primer apply sobrescribe una vez (contrato anterior) |
 | ya no lo publica ningún profile y sigue igual a la base | `retire`: se borra junto con su vista `.claude/` |
 | ya no lo publica ningún profile y fue editado | `retire-conflict`: se conserva como `retired-modified` |
+| ya no lo publica ningún profile y un directorio padre es un symlink | `retire-conflict`: se conserva, también con `--force`, porque borrarlo tocaría archivos fuera del proyecto |
 
 Los hashes normalizan CRLF a LF: un checkout con `core.autocrlf` (el default de
 Git en Windows) no cuenta como edición local, el apply no reescribe un archivo
 cuya única diferencia son los fines de línea y el lockfile da los mismos bytes en
 cualquier sistema.
 
-`--force` convierte los conflictos en `update` o `retire`. Un conflicto nunca se
+`--force` convierte los conflictos en `update` o `retire`, salvo el de un directorio
+padre que es un symlink. Un conflicto nunca se
 reporta como éxito completo: el apply termina con `Lockfile: ... (applied with N
 preserved conflict(s))` o `(partial: ...)` si alguna escritura falló.
 Para cambiar comportamiento, el proyecto agrega una rule propia bajo
@@ -107,7 +110,7 @@ bash "$SKILL_DIR/scripts/bootstrap.sh" --skill-dir "$SKILL_DIR" --provider "$PRO
 - `status` separa assets aplicados, modificados, faltantes, conflictos
   preservados, escrituras fallidas y retirados con cambios; además dice si el
   source resuelto difiere del lock (`Update available`). `agent-ready-state.py
-  status --check` sale con 4 si hay drift.
+  status --check` sale con 4 si hay drift o si la selección no se puede resolver.
 - `plan` lista cada destino con su acción, profile y motivo, los diffs (local →
   template), los archivos fusionados que cambiarían, los `CLAUDE.md` que se
   normalizarían, los efectos fuera de los assets con su alcance (`user`,
@@ -152,7 +155,7 @@ El hook de consistencia (`check-harness-consistency.sh`) revisa con la CLI del
 provider que editó: `claude --print` para Claude Code y `codex exec --sandbox
 read-only` para Codex (eventos `apply_patch`). Un entorno solo-Codex no
 necesita el binario de Claude; si falta la CLI del provider, el check se omite
-con un aviso. `AGENT_READY_HARNESS_CHECK_PROVIDER` fuerza el provider.
+con un aviso.
 
 Las herramientas de browser se instalan y registran solo si un profile
 seleccionado declara `tools: ["browser"]`; `AGENT_READY_SETUP_BROWSER_INSTALL=0`

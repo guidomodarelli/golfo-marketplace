@@ -2176,6 +2176,25 @@
           "description": "Aclara que la presencia del archivo no prueba que el reviewer lo use"
         }
       ]
+    },
+    {
+      "id": "manifest-only-apply-resolves-stack-for-merge",
+      "description": "Con manifest y sin variables, toma de bootstrap el stack que necesita el merge posterior.",
+      "input": "Este repo ya tiene .agents/agent-ready.json con los profiles elegidos y estoy en una shell nueva, sin ninguna variable definida. Mostrame los comandos exactos para aplicar agent-ready-setup y correr después el merge de instrucciones.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "merge-instructions.sh",
+          "description": "Incluye el merge de instrucciones posterior",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["s/\\^Stack", "`Stack:`", "Stack: <"],
+          "description": "Obtiene el stack de la línea que reporta bootstrap en lugar de dejar la variable vacía",
+          "critical": true
+        }
+      ]
     }
   ]
 }

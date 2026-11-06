@@ -40,6 +40,8 @@ CENTRALIZATION_RELATIVE_PATH = "assets/instruction-centralization.md"
 RENDERER_RELATIVE_PATH = "scripts/render-instruction-template.sh"
 SETTINGS_MERGER_RELATIVE_PATH = "scripts/merge-managed-settings.py"
 CODEX_HOOKS_MERGER_RELATIVE_PATH = "scripts/merge-codex-hooks.py"
+# Inputs of the rendered instructions that no asset or merged template covers.
+RENDERED_INSTRUCTION_INPUTS = (CLAUDE_PROXY_RELATIVE_PATH, CENTRALIZATION_RELATIVE_PATH, RENDERER_RELATIVE_PATH)
 SKILL_NAME = "agent-ready-setup"
 PLUGIN_NAME = "golfo-kit"
 BASE_PROFILE_NAME = "common"
@@ -74,6 +76,8 @@ STATE_RETIRED_MODIFIED = "retired-modified"
 LOCAL_ABSENT = "absent"
 LOCAL_SYMLINK = "symlink"
 LOCAL_NOT_A_FILE = "not-a-file"
+
+LINKED_PARENT_REASON = "a parent directory is a symlink; deleting through it would reach files outside the project"
 
 ANSI_RESET = "\033[0m"
 ANSI_COLORS = {
@@ -165,6 +169,21 @@ def local_state(path):
     if not os.path.isfile(path):
         return LOCAL_NOT_A_FILE
     return sha256_of_file(path)
+
+
+def is_link(path):
+    """True for a symlink or, on Windows, a directory junction."""
+    return os.path.islink(path) or (hasattr(os.path, "isjunction") and os.path.isjunction(path))
+
+
+def has_linked_parent(project_root, destination):
+    """True when a directory between the project root and a destination is a link."""
+    parent = os.path.dirname(destination)
+    while parent:
+        if is_link(os.path.join(project_root, parent)):
+            return True
+        parent = os.path.dirname(parent)
+    return False
 
 
 def is_content_hash(value):
@@ -522,6 +541,11 @@ def source_identity(skill_dir, assets, merged_templates):
     """Identity of the resolved source; contentDigest is the immutable part."""
     digest_lines = [f"{destination}\t{entry['sha256']}" for destination, entry in sorted(assets.items())]
     digest_lines += [f"{destination}\t{entry['templateSha256']}" for destination, entry in sorted(merged_templates.items())]
+    digest_lines += [
+        f"{relative_path}\t{sha256_of_file(os.path.join(skill_dir, relative_path))}"
+        for relative_path in RENDERED_INSTRUCTION_INPUTS
+        if os.path.isfile(os.path.join(skill_dir, relative_path))
+    ]
     revision, dirty = source_revision(skill_dir)
     identity = {
         "plugin": PLUGIN_NAME,
@@ -667,6 +691,8 @@ def compute_plan(project_root, skill_dir, profile_names, force):
             continue
         local = local_state(os.path.join(project_root, destination))
         action, reason = classify_retired(local, lock_entry, force)
+        if action == ACTION_RETIRE and has_linked_parent(project_root, destination):
+            action, reason = ACTION_RETIRE_CONFLICT, LINKED_PARENT_REASON
         entries.append({
             "destination": destination,
             "action": action,
@@ -842,7 +868,7 @@ def describe_source(identity):
     return f"{identity.get('plugin', PLUGIN_NAME)} {version} ({identity.get('kind', 'unknown')}{suffix}; content {identity.get('contentDigest', '')[:12]})"
 
 
-def print_plan(project_root, skill_dir, plan, provider, show_diff, skip_marketplace_upgrade, browser_install_enabled):
+def print_plan(project_root, skill_dir, plan, provider, skip_marketplace_upgrade, browser_install_enabled):
     """Human readable plan on stdout."""
     stream = sys.stdout
     write_line(paint("Agent Ready plan (read-only: nothing was written)", "heading", stream))
@@ -877,23 +903,15 @@ def print_plan(project_root, skill_dir, plan, provider, show_diff, skip_marketpl
     for command, reason, available in requirements(provider, skip_marketplace_upgrade, plan["tools"]):
         marker = paint("ok", "ok", stream) if available else paint("missing", "error", stream)
         write_line(f"  {marker:<7} {command}: {reason}")
-    if show_diff:
-        diff_entries = [entry for entry in plan["entries"] if entry["action"] in (ACTION_UPDATE, ACTION_ADOPT, ACTION_CONFLICT)]
-        if diff_entries:
-            write_line("")
-            write_line(paint("Diffs (local -> template)", "heading", stream))
-            for entry in diff_entries:
-                write_line(render_diff(project_root, entry).rstrip("\n"))
+    diff_entries = [entry for entry in plan["entries"] if entry["action"] in (ACTION_UPDATE, ACTION_ADOPT, ACTION_CONFLICT)]
+    if diff_entries:
+        write_line("")
+        write_line(paint("Diffs (local -> template)", "heading", stream))
+        for entry in diff_entries:
+            write_line(render_diff(project_root, entry).rstrip("\n"))
     write_line("")
     summary = ", ".join(f"{counts[action]} {action}" for action in sorted(counts) if action != ACTION_UNCHANGED) or "no changes"
     write_line(paint(f"Summary: {summary}", "heading", stream))
-
-
-def plan_for_output(plan):
-    """Plan without machine-local absolute paths."""
-    sanitized = dict(plan)
-    sanitized["entries"] = [{key: value for key, value in entry.items() if key != "sourcePath"} for entry in plan["entries"]]
-    return sanitized
 
 
 # ---------------------------------------------------------------------------
@@ -904,7 +922,10 @@ def remove_claude_view_of(project_root, destination):
     """Remove the .claude view of a retired .agents asset when it is a managed view."""
     if not destination.startswith(".agents/"):
         return None
-    view = os.path.join(project_root, ".claude", destination[len(".agents/"):])
+    relative_view = ".claude/" + destination[len(".agents/"):]
+    if has_linked_parent(project_root, relative_view):
+        return None
+    view = os.path.join(project_root, relative_view)
     asset = os.path.join(project_root, destination)
     if os.path.islink(view):
         target = os.path.normpath(os.path.join(os.path.dirname(view), os.readlink(view)))
@@ -947,7 +968,7 @@ def finalize(project_root, skill_dir, plan, provider_list, updates):
         if entry["action"] == ACTION_DROP:
             continue
         if entry["action"] == ACTION_RETIRE:
-            if local_state(absolute_path) != entry["local"]:
+            if local_state(absolute_path) != entry["local"] or has_linked_parent(project_root, destination):
                 retire_conflicts.append(f"{destination} changed during synchronization; preserved")
                 lock_assets[destination] = dict(previous_entry, state=STATE_RETIRED_MODIFIED)
                 continue
@@ -1102,7 +1123,9 @@ def compute_status(project_root, skill_dir):
 
 
 def status_has_drift(status):
-    """True when the checkout or the source differs from the lock."""
+    """True when the checkout or the source differs from the lock, or the selection cannot resolve."""
+    if status["errors"]:
+        return True
     checkout = status["checkout"]
     if any(checkout[key] for key in ("modified", "missing", "conflict", "failed", "retiredModified")):
         return True
@@ -1114,7 +1137,8 @@ def print_status(status, brief):
     stream = sys.stdout
     manifest = status["manifest"]
     if manifest is None:
-        write_line(paint("Agent Ready: no manifest (.agents/agent-ready.json); run /agent-ready-setup to pin this repository.", "warning", stream))
+        hint = "" if brief else " Run /agent-ready-setup to pin this repository."
+        write_line(paint(f"Agent Ready: no manifest (.agents/agent-ready.json).{hint}", "warning", stream))
     else:
         write_line(f"Agent Ready profiles: {', '.join(manifest['profiles'])} (updates: {manifest.get('updates', DEFAULT_UPDATE_MODE)})")
     if not status["hasLock"]:
@@ -1136,9 +1160,9 @@ def print_status(status, brief):
     update = status["update"]
     if update:
         if update["available"]:
+            hint = "" if brief else " Review it with `/agent-ready-setup plan` and apply it with `/agent-ready-setup`."
             write_line(paint(
-                f"Update available: {describe_source(update['source'])}; {len(update['changedDestinations'])} asset(s) would change. "
-                "Review it with `/agent-ready-setup plan` and apply it with `/agent-ready-setup`.",
+                f"Update available: {describe_source(update['source'])}; {len(update['changedDestinations'])} asset(s) would change.{hint}",
                 "warning", stream,
             ))
         else:
@@ -1210,11 +1234,9 @@ def command_plan(arguments):
         for entry in plan["entries"]:
             if entry["action"] in (ACTION_CONFLICT, ACTION_RETIRE_CONFLICT) and entry["local"] != LOCAL_NOT_A_FILE:
                 write_line(entry["destination"])
-    elif arguments.format == "json":
-        sys.stdout.write(serialize_json(plan_for_output(plan)))
     else:
         print_plan(
-            arguments.project, arguments.skill_dir, plan, arguments.provider, not arguments.no_diff,
+            arguments.project, arguments.skill_dir, plan, arguments.provider,
             os.environ.get("AGENT_READY_SETUP_MARKETPLACE_UPGRADED") == "1",
             os.environ.get("AGENT_READY_SETUP_BROWSER_INSTALL", "1") == "1",
         )
@@ -1233,10 +1255,7 @@ def command_finalize(arguments):
 def command_status(arguments):
     """Print the read-only status."""
     status = compute_status(arguments.project, arguments.skill_dir)
-    if arguments.format == "json":
-        sys.stdout.write(serialize_json(status))
-    else:
-        print_status(status, arguments.brief)
+    print_status(status, arguments.brief)
     if arguments.check and status_has_drift(status):
         return DRIFT_STATUS
     return 0
@@ -1271,9 +1290,8 @@ def build_parser():
     add_common(plan_parser)
     add_selection(plan_parser)
     plan_parser.add_argument("--force", action="store_true", help="plan overwriting local changes")
-    plan_parser.add_argument("--format", choices=("text", "json", "protected"), default="text")
+    plan_parser.add_argument("--format", choices=("text", "protected"), default="text")
     plan_parser.add_argument("--save", help="also save the full plan as JSON to this path")
-    plan_parser.add_argument("--no-diff", action="store_true", help="omit unified diffs from the text plan")
     plan_parser.add_argument("--provider", default="claude", choices=SUPPORTED_PROVIDERS)
     plan_parser.set_defaults(handler=command_plan)
 
@@ -1287,7 +1305,6 @@ def build_parser():
     status_parser = subparsers.add_parser("status", help="read-only status")
     add_common(status_parser, needs_skill=False)
     status_parser.add_argument("--skill-dir", help="resolved source, to detect pending updates")
-    status_parser.add_argument("--format", choices=("text", "json"), default="text")
     status_parser.add_argument("--brief", action="store_true", help="summary lines only")
     status_parser.add_argument("--check", action="store_true", help=f"exit {DRIFT_STATUS} when anything drifted")
     status_parser.set_defaults(handler=command_status)

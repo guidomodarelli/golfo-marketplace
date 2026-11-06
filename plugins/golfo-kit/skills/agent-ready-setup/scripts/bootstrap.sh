@@ -552,10 +552,6 @@ if ! SKILL_DIR="$(resolve_skill_dir)"; then
 fi
 describe_skill_source "$SKILL_DIR"
 STATE_SCRIPT="$SKILL_DIR/scripts/agent-ready-state.py"
-if [[ ! -f "$STATE_SCRIPT" ]]; then
-  echo "ERROR: Agent Ready state helper is missing: $STATE_SCRIPT" >&2
-  exit 1
-fi
 PROFILE_SELECTION=()
 if [[ -n "$PROFILES" ]]; then
   PROFILE_SELECTION=(--profiles "$PROFILES")

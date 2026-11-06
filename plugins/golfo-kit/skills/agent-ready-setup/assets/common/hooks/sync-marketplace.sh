@@ -91,6 +91,8 @@ while [[ $# -gt 0 ]]; do
         exit 1
       fi
       stack_override="$2"
+      # A flag beats the selection that came from the environment.
+      profiles_override=""
       explicit_selection=1
       shift 2
       ;;
@@ -100,6 +102,7 @@ while [[ $# -gt 0 ]]; do
         exit 1
       fi
       profiles_override="$2"
+      stack_override=""
       explicit_selection=1
       shift 2
       ;;
@@ -556,8 +559,8 @@ fi
 cd -- "$project_root"
 
 state_script="$skill_dir/scripts/agent-ready-state.py"
-if [[ ! -f "$state_script" ]] || ! command -v python3 >/dev/null 2>&1; then
-  printf 'WARNING: python3 or %s is unavailable; local projection skipped.\n' "$state_script" >&2
+if ! command -v python3 >/dev/null 2>&1; then
+  printf 'WARNING: python3 is unavailable; local projection skipped.\n' >&2
   exit 0
 fi
 

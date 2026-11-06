@@ -169,8 +169,10 @@ printf '%s\n' "$bootstrap_output"
 
 # Bootstrap reports the source it resolved after the upgrade; the previous path may be gone.
 SKILL_DIR="$(printf '%s\n' "$bootstrap_output" | sed -n 's/^Resolved agent-ready-setup source: //p' | tail -n 1)"
-if [[ -z "$SKILL_DIR" ]]; then
-  echo "ERROR: bootstrap.sh did not report its resolved source; merge-instructions.sh was not run" >&2
+# It also reports the primary stack, the only way to know it when the manifest selects the profiles.
+STACK="$(printf '%s\n' "$bootstrap_output" | sed -n 's/^Stack: //p' | tail -n 1)"
+if [[ -z "$SKILL_DIR" || -z "$STACK" ]]; then
+  echo "ERROR: bootstrap.sh did not report its resolved source and stack; merge-instructions.sh was not run" >&2
   exit 1
 fi
 bash "$SKILL_DIR/scripts/merge-instructions.sh" \
@@ -316,6 +318,7 @@ Mostrar output del script sin alterarlo. En respuestas documentales, enumerar ad
 - **Todos los stacks** (`assets/common/`): `rules/browser-before-user-questions.md`, `rules/database.md`, `rules/environment-readiness.md`, `rules/error-handling.md`, `rules/established-libraries.md`, `rules/language-consistency.md`, `rules/lint-gate.md`, `rules/patterns-we-do-not-use.md`, `rules/root-cause-bug-fixes.md`, `rules/speculative-complexity-approval.md`, `rules/testing-scope.md`, `rules/user-actions-first.md`, `rules/verify-changes.md`, `skills/agent-browser/`, `skills/pr-review-workflow/`, `hooks/sync-marketplace.sh`, `hooks/check-harness-consistency.sh` y `settings.json`.
 - **Go, Java y Node:** `rules/coding-style.md`, `rules/security.md`, `rules/testing.md`, `agents/perf-analyzer.md`, `agents/security-scanner.md` y `commands/review-pr.md`.
 - **Frontend:** `rules/api-configuration.md`, `rules/api-validation-middleware.md`, `rules/cross-engine.md`, `rules/frontend-style.md`, `rules/hexagonal-architecture.md`, `rules/lodash.md`, `rules/no-unnecessary-mocks.md`, `rules/security.md`, `rules/server-first-data-flow.md`, `rules/testing.md`, `rules/upstream-contracts.md`, `rules/user-facing-feedback.md`, `agents/a11y-reviewer.md`, `agents/lint-reviewer.md`, `agents/perf-analyzer.md`, `agents/security-scanner.md`, `agents/test-reviewer.md`, `commands/review-pr.md`, `skills/api-endpoint/`, `skills/component-creation/`, `skills/karpathy-guidelines/`, `skills/logger/`, `skills/react-act-test-fixes/` y `skills/service/`.
+- **Estado del repo:** `.agents/agent-ready.json` (manifest) y `.agents/agent-ready.lock.json` (lockfile). `assets/profiles.json` y `assets/providers.json` son catálogos internos de la skill y no se proyectan.
 
 Las skills que ya publica el plugin golfo-kit no se duplican en el catálogo de un stack: por ejemplo, el refactor de constantes se usa desde la skill `constants-refactor` del plugin y no se proyecta en `.agents/skills/`. Ningún stack publica hooks propios ni `mcp.json`: los únicos hooks proyectados son los comunes.
 

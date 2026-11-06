@@ -12,11 +12,8 @@ Output ONLY the conflicts found as a bullet list, or a single line '\''No contra
 
 hook_payload="$(cat)"
 
-# AGENT_READY_HARNESS_CHECK_PROVIDER overrides the provider inferred from the
-# payload: Codex edits arrive as apply_patch, Claude edits as Write or Edit.
-provider="${AGENT_READY_HARNESS_CHECK_PROVIDER:-}"
-if [[ -z "$provider" ]]; then
-  provider="$(printf '%s' "$hook_payload" | python3 -c '
+# Codex edits arrive as apply_patch, Claude edits as Write or Edit.
+provider="$(printf '%s' "$hook_payload" | python3 -c '
 import json
 import sys
 
@@ -27,16 +24,8 @@ except json.JSONDecodeError:
 tool_name = payload.get("tool_name") if isinstance(payload, dict) else None
 print("codex" if tool_name == "apply_patch" else "claude")
 ')"
-  # Windows Python ends lines with CRLF.
-  provider="${provider%$'\r'}"
-fi
-case "$provider" in
-  claude|codex) ;;
-  *)
-    printf '[harness-check] unsupported provider %s; expected claude or codex\n' "$provider" >&2
-    exit 1
-    ;;
-esac
+# Windows Python ends lines with CRLF.
+provider="${provider%$'\r'}"
 
 # Extract only roots from file paths or patch headers, never execute patch text.
 harness_roots=$(printf '%s' "$hook_payload" | python3 -c '

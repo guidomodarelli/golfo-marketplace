@@ -208,6 +208,58 @@ lock_value() {
   [[ "$output" == *"Lockfile: .agents/agent-ready.lock.json (complete)"* ]]
 }
 
+@test "assets under a symlinked parent directory are never retired, even with --force" {
+  copy_skill
+  run_bootstrap_with "$source_copy" --stack node
+  [ "$status" -eq 0 ]
+  mv .agents/agents "$test_root/outside-agents"
+  ln -s "$test_root/outside-agents" .agents/agents 2>/dev/null || true
+  [ -L .agents/agents ] || skip "requiere symlinks reales (en Windows: Modo de desarrollador o una shell elevada)"
+  rm "$source_copy/assets/stacks/node/agents/perf-analyzer.md"
+
+  run_bootstrap_with "$source_copy"
+  [ "$status" -eq 0 ]
+  [ -f "$test_root/outside-agents/perf-analyzer.md" ]
+  [[ "$output" == *".agents/agents/perf-analyzer.md: a parent directory is a symlink"* ]]
+
+  run_bootstrap_with "$source_copy" --force
+  [ "$status" -eq 0 ]
+  [ -f "$test_root/outside-agents/perf-analyzer.md" ]
+}
+
+@test "a release that only changes instruction templates counts as an update" {
+  copy_skill
+  run_bootstrap_with "$source_copy" --stack node
+  [ "$status" -eq 0 ]
+  run_bootstrap_with "$source_copy" --status
+  [[ "$output" == *"Source matches the lock"* ]]
+
+  printf '%s\n' '- Newer centralization rule.' >> "$source_copy/assets/instruction-centralization.md"
+  run_bootstrap_with "$source_copy" --status
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Update available"* ]]
+}
+
+@test "status --check fails when the selected profiles cannot be resolved" {
+  run_bootstrap_with "$skill_dir" --stack go
+  [ "$status" -eq 0 ]
+  printf '%s\n' '{"profiles": ["nonexistent"], "updates": "pinned"}' > .agents/agent-ready.json
+
+  run python3 "$skill_dir/scripts/agent-ready-state.py" status --project . --skill-dir "$skill_dir" --check
+  [ "$status" -eq 4 ]
+  [[ "$output" == *"unknown profile 'nonexistent'"* ]]
+}
+
+@test "an explicit --stack wins over the profiles chosen in the environment" {
+  mkdir -p .agents/hooks
+  cp "$skill_dir/assets/common/hooks/sync-marketplace.sh" .agents/hooks/sync-marketplace.sh
+
+  run env PATH="$fake_bin:$PATH" AGENT_READY_SETUP_SKILL_DIR="$skill_dir" AGENT_READY_SETUP_MARKETPLACE_UPGRADED=1 \
+    AGENT_READY_SETUP_PROFILES=node bash .agents/hooks/sync-marketplace.sh --provider claude --stack go
+  [ "$status" -eq 0 ]
+  [ "$(lock_value 'lock["primaryStack"]')" = "go" ]
+}
+
 @test "plan and status are read-only and never call the provider CLI" {
   run_bootstrap_with "$skill_dir" --stack frontend
   [ "$status" -eq 0 ]
@@ -350,6 +402,8 @@ EOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"Repository pinned"* ]]
   [[ "$output" == *"Update available"* ]]
+  # Teammates who only receive the committed hook may not have the skill to run.
+  [[ "$output" != *"/agent-ready-setup plan"* ]]
   [ "$(tree_fingerprint)" = "$before" ]
 }
 
