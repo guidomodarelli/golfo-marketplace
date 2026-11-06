@@ -1,0 +1,297 @@
+{
+  "schema_version": 2,
+  "skill": "interactive-cli-design",
+  "description": "Evalúa el contrato de un CLI con flags y modo interactivo: decisión de modo según TTY y CI, flags mínimas sin agregar de más, paridad flag-pregunta, widget según el dato, stdout/stderr, exit codes, cancelación, secretos, verificación en pseudoconsola y frontera con vivid-visual-output.",
+  "test_cases": [
+    {
+      "id": "no-tty-fails-naming-flags",
+      "description": "Sin terminal no se cuelga: falla con exit 2 nombrando todos los flags, y la decisión mira stdin y stderr.",
+      "input": "Tengo un CLI en Node, `deploy`, que recibe --env y --service. Quiero que si faltan pregunte. Mostrame solo el código que decide si pregunta o qué hace si no puede, y qué pasa cuando corre en GitHub Actions.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "stdin\\.isTTY",
+          "description": "Mira si stdin es una terminal"
+        },
+        {
+          "type": "regex",
+          "pattern": "stderr\\.isTTY",
+          "description": "Mira stderr, donde se dibujan los prompts"
+        },
+        {
+          "type": "regex",
+          "pattern": "(env|process\\.env)\\.CI\\b",
+          "description": "Trata CI como un entorno donde no se pregunta"
+        },
+        {
+          "type": "regex",
+          "pattern": "(exit|exitCode|salid|código)[^\\n]{0,40}\\b2\\b|\\b2\\b[^\\n]{0,40}(uso|usage)",
+          "description": "Sale con el código de uso incorrecto"
+        },
+        {
+          "type": "regex",
+          "pattern": "--no-input",
+          "description": "Ofrece apagar los prompts de forma explícita"
+        }
+      ]
+    },
+    {
+      "id": "clack-draws-on-stderr",
+      "description": "Detecta que la librería dibuja en stdout y lo corrige prompt por prompt.",
+      "input": "Mi CLI usa @clack/prompts y escupe un JSON al final. Cuando hago `tool | jq` se rompe: al parser le llega basura. ¿Qué cambio?",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "output: *process\\.stderr|output.{0,30}process\\.stderr",
+          "description": "Manda los prompts a stderr con la opción de la librería"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "console.log(JSON",
+            "2>/dev/null"
+          ],
+          "description": "No lo tapa escondiendo stderr ni mezclando salidas"
+        }
+      ]
+    },
+    {
+      "id": "questionary-cancel-uses-unsafe-ask",
+      "description": "En questionary evita ask(), que imprime en stdout y devuelve None, y sale con 130.",
+      "input": "En mi CLI con Typer y questionary, al apretar Ctrl+C en una pregunta el programa sigue y después revienta con un None. Arreglalo. Mostrá el código.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "unsafe_ask",
+          "description": "Usa unsafe_ask para que Ctrl+C suba"
+        },
+        {
+          "type": "regex",
+          "pattern": "KeyboardInterrupt",
+          "description": "Atrapa la interrupción dentro del comando"
+        },
+        {
+          "type": "regex",
+          "pattern": "\\b130\\b",
+          "description": "Sale con 130"
+        }
+      ]
+    },
+    {
+      "id": "secret-never-in-argv",
+      "description": "Un secreto no va por flag: archivo o stdin, y prompt enmascarado.",
+      "input": "Agregale a mi CLI en Node un --token con la API key de Stripe, y que lo pregunte si no lo pasan. Decime cómo queda la interfaz.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "--token-file|--api-key-file|-file <|--token-stdin|stdin",
+          "description": "Ofrece archivo o stdin en lugar del flag"
+        },
+        {
+          "type": "regex",
+          "pattern": "\\bps\\b|historial|history|lista de procesos|process list",
+          "description": "Explica por qué no va por argv"
+        },
+        {
+          "type": "regex",
+          "pattern": "password\\(|enmascar|mask|sin eco",
+          "description": "Pregunta sin mostrar lo que se escribe"
+        }
+      ]
+    },
+    {
+      "id": "widget-follows-data-shape",
+      "description": "Elige el widget según la forma del dato, con lista filtrable para muchas opciones y default seguro en lo destructivo.",
+      "input": "Mi wizard pide: una de 40 regiones de AWS, una de 3 versiones de Postgres, varias etiquetas de un set de 6, y si borra la base anterior. ¿Qué tipo de pregunta va en cada una y qué flag le corresponde?",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "b[uú]squeda|autocomplet|filtr|search",
+          "description": "Lista con búsqueda para las 40 regiones"
+        },
+        {
+          "type": "regex",
+          "pattern": "radio|select\\b",
+          "description": "Radio para pocas opciones exclusivas"
+        },
+        {
+          "type": "regex",
+          "pattern": "multiselect|multi-select|checkbox|selecci[oó]n m[uú]ltiple",
+          "description": "Multiselect para las etiquetas"
+        },
+        {
+          "type": "regex",
+          "pattern": "--force|--confirm",
+          "description": "La acción destructiva tiene su flag para scripts"
+        },
+        {
+          "type": "regex",
+          "pattern": "default[^\\n]{0,40}(no\\b|«no»|\"no\"|false|segur)|(no\\b|false)[^\\n]{0,30}(por default|por defecto)",
+          "description": "El default de lo destructivo es la opción segura"
+        }
+      ]
+    },
+    {
+      "id": "runs-without-flags-no-wizard",
+      "description": "Si todo tiene default seguro y no destruye nada, corre directo y no agrega un wizard.",
+      "input": "Voy a hacer `logs-tail`, un CLI de solo lectura que muestra los logs de hoy, con --since opcional (default 24h) y --level opcional (default info). ¿Qué tiene que hacer si lo corro sin ningún flag en una terminal?",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "corre directo|corre sin preguntar|sin (prompts|preguntas|preguntar)|no pregunta|no (hace falta|necesita) (un )?(wizard|modo interactivo)",
+          "description": "Corre directo sin preguntar"
+        },
+        {
+          "type": "regex",
+          "pattern": "default[^\\n]{0,40}segur|segur[^\\n]{0,40}default|solo lectura|no destruye|no cambia",
+          "description": "Justifica por qué puede correr sin flags"
+        }
+      ]
+    },
+    {
+      "id": "minimal-flags-only-what-it-does",
+      "description": "Un CLI de solo lectura lleva las universales y no suma flags de acciones que no hace.",
+      "input": "Armá la lista de flags para `whoami-lite`, un CLI que imprime el usuario logueado en una línea. No recibe ningún dato. Solo la lista, con una línea de motivo por flag.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "--help",
+          "description": "Incluye la ayuda"
+        },
+        {
+          "type": "regex",
+          "pattern": "--version",
+          "description": "Incluye la versión"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "-f, --force",
+            "`--force`:",
+            "-y, --yes",
+            "`--yes`:"
+          ],
+          "description": "No agrega flags de acciones que el CLI no hace"
+        }
+      ]
+    },
+    {
+      "id": "equivalent-command-reproducible",
+      "description": "Al terminar el wizard imprime el comando equivalente, también con el multiselect vacío, y en una sola capa de acción.",
+      "input": "Mi wizard en Python pregunta nombre, runtime y un multiselect de features que puede quedar vacío. Quiero que la gente pueda automatizar lo que eligió. ¿Qué agrego y cómo lo diseño para que preguntar y pasar flags den lo mismo?",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "comando equivalente|equivalent command|para repetirlo|comando (que|para) reproduc",
+          "description": "Imprime el comando equivalente"
+        },
+        {
+          "type": "regex",
+          "pattern": "\\bnone\\b",
+          "description": "Tiene una forma de escribir la lista vacía"
+        },
+        {
+          "type": "regex",
+          "pattern": "stderr|err=True",
+          "description": "Lo imprime fuera de stdout"
+        },
+        {
+          "type": "regex",
+          "pattern": "misma (función|validaci)|una sola validaci|no (sabe|sepa) de d[oó]nde|resolve|parse[A-Za-z_]*[^\\n]{0,60}(run|ejecut|act)",
+          "description": "Separa parseo, resolución y acción"
+        }
+      ]
+    },
+    {
+      "id": "invalid-value-does-not-prompt",
+      "description": "Un valor inválido falla con los valores válidos y no cae a preguntar aunque haya terminal.",
+      "input": "Si en una terminal alguien corre `tool --runtime cobol` y solo existen node, python y go, ¿conviene mostrarle el menú para que elija bien? Decidilo y mostrá el mensaje de error o el flujo exacto.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "no (conviene|cae|muestr|pregunt|abr)|sin (caer|preguntar|mostrar)",
+          "description": "Decide no caer al menú"
+        },
+        {
+          "type": "regex",
+          "pattern": "(exit|exitCode|salid|código)[^\\n]{0,40}\\b2\\b|\\b2\\b[^\\n]{0,40}(uso|usage)",
+          "description": "Sale con el código de uso incorrecto"
+        },
+        {
+          "type": "regex",
+          "pattern": "(válid|valid|acept|permit)[^\\n]{0,60}node",
+          "description": "El error lista los valores válidos"
+        }
+      ]
+    },
+    {
+      "id": "subcommands-menu",
+      "description": "Sin subcomando abre un menú en una terminal y da ayuda con exit 2 fuera de ella.",
+      "input": "`mytool` tiene los subcomandos init, deploy y rollback. ¿Qué tiene que pasar si corro `mytool` sin nada, en una terminal y en un script?",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "men[uú]",
+          "description": "En una terminal ofrece un menú de subcomandos"
+        },
+        {
+          "type": "regex",
+          "pattern": "(exit|exitCode|salid|código)[^\\n]{0,40}\\b2\\b|\\b2\\b[^\\n]{0,40}(uso|usage)",
+          "description": "En un script falla con el código de uso"
+        },
+        {
+          "type": "regex",
+          "pattern": "stderr",
+          "description": "La ayuda breve va a stderr"
+        }
+      ]
+    },
+    {
+      "id": "verifies-in-real-pty",
+      "description": "Sabe que la shell del agente no tiene terminal y verifica con una pseudoconsola y Ctrl+C real.",
+      "input": "Ya terminé el wizard del CLI en Windows. ¿Cómo pruebo desde el agente, de verdad, que las flechas y Ctrl+C funcionan? Dame la receta.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "node-pty|pseudoconsol|ConPTY|\\bPTY\\b",
+          "description": "Usa una pseudoconsola real"
+        },
+        {
+          "type": "regex",
+          "pattern": "x03",
+          "description": "Manda Ctrl+C como carácter a la pseudoconsola"
+        },
+        {
+          "type": "regex",
+          "pattern": "kill\\('SIGINT'\\)|SIGINT",
+          "description": "Avisa que un kill SIGINT no equivale a Ctrl+C en Windows"
+        },
+        {
+          "type": "regex",
+          "pattern": "\\b130\\b",
+          "description": "Define qué exit code prueba que pasó"
+        }
+      ]
+    },
+    {
+      "id": "colors-only-defers-to-owner",
+      "description": "Si el pedido es solo de aspecto, deriva a la skill dueña y no rediseña flags ni modos.",
+      "input": "Poné colores y un spinner a la salida de este script de Node que ya funciona. No quiero cambiar nada más.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "vivid-visual-output",
+          "description": "Deriva a la skill que se ocupa del aspecto"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "--no-input",
+            "parseArgs"
+          ],
+          "description": "No aprovecha para agregar flags ni reescribir el parseo"
+        }
+      ]
+    }
+  ]
+}

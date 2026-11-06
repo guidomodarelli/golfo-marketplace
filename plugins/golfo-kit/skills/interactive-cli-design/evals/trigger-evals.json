@@ -1,0 +1,22 @@
+[
+  {"query":"necesito un cli en node que se llame `release-cut`, recibe --version-bump y --target, y si no le paso nada que me vaya preguntando con flechitas. tiene que andar tambien en github actions","should_trigger":true},
+  {"query":"Armá un instalador en Python para el repo `acme-agent`: pide token, carpeta destino y qué módulos instalar (varios). Tiene que tener --help y poder correrse sin preguntas en un Dockerfile.","should_trigger":true},
+  {"query":"mi script `scripts/rotate-keys.sh` hoy lee todo de variables de entorno. quiero que acepte flags y que si falta alguno lo pregunte, y que el borrado de las claves viejas pida confirmacion","should_trigger":true},
+  {"query":"Agregale a `bin/tool.js` un flag --region que valide contra la lista de regiones y que, si no viene, muestre una lista donde se pueda buscar escribiendo. Hoy usa @inquirer/prompts.","should_trigger":true},
+  {"query":"El CLI en Go que tenemos con cobra se cuelga en CI cuando falta --cluster porque se queda esperando un prompt de huh. Arreglá el comportamiento y decidí qué exit code debería devolver.","should_trigger":true},
+  {"query":"Quiero convertir este tool de Rust con clap en un wizard interactivo: selección múltiple de targets, radio para el perfil y confirmación final, pero sin perder los flags actuales.","should_trigger":true},
+  {"query":"`tool --name x | jq` me rompe porque los prompts salen por stdout y encima con ctrl+c queda un archivo a medio escribir. es un cli en typer con questionary, lo podes dejar bien?","should_trigger":true},
+  {"query":"Definí qué flags mínimas tiene que tener `backup-db`, un comando nuevo que borra backups viejos y sube uno nuevo a S3, y cómo se comporta si lo llamo sin argumentos desde cron y desde mi terminal.","should_trigger":true},
+  {"query":"hacé un menu interactivo en powershell para `setup-dev.ps1` que deje elegir qué herramientas instalar, y que también se pueda pasar la lista por parámetro para automatizarlo","should_trigger":true},
+  {"query":"Tenemos `mytool` con subcomandos init, deploy y rollback en Node. Si lo corren sin subcomando no hace nada. Quiero que en una terminal ofrezca un menú y que en scripts falle explicando qué pasar.","should_trigger":true},
+  {"query":"Poné colores, un spinner con tiempo transcurrido y una tabla alineada a la salida de `scripts/report.js`, que ya funciona. No toques la lógica ni los argumentos.","should_trigger":false},
+  {"query":"La tabla que imprime mi script en la terminal se rompe a 40 columnas y deja el cursor oculto cuando falla. Arreglá solo la presentación, y que respete NO_COLOR.","should_trigger":false},
+  {"query":"Rediseñá el wizard de onboarding de la app web en `app/onboarding/page.tsx`: tres pasos, selección múltiple de intereses y un radio de plan, con estados de carga y error.","should_trigger":false},
+  {"query":"Armá un formulario React con react-hook-form para elegir región de una lista filtrable y varias etiquetas, con validación y mensajes de error junto al campo.","should_trigger":false},
+  {"query":"Creá un slash command `/deploy-check` para Claude Code en `.claude/commands/` que revise el estado del deploy y me resuma los errores.","should_trigger":false},
+  {"query":"Escribí un script de una sola corrida que renombre todos los .jpeg de esta carpeta a .jpg. No recibe nada, lo voy a usar una vez y lo tiro.","should_trigger":false},
+  {"query":"Armame un dashboard de terminal a pantalla completa con paneles estilo htop para ver CPU y memoria de mis contenedores, con Ink.","should_trigger":false},
+  {"query":"Corré `pnpm create-version --dry-run` y decime qué versión le tocaría a golfo-kit y si hay manifests desincronizados.","should_trigger":false},
+  {"query":"Los tests de `tests/cli.bats` están flaky en CI: a veces el mock de git no se aplica. Encontrá la causa y arreglalos sin tocar el CLI.","should_trigger":false},
+  {"query":"Necesito un endpoint REST que reciba name, region y features y cree el plan del servicio en la base, con validación y errores 422 bien armados.","should_trigger":false}
+]
