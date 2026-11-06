@@ -1,6 +1,6 @@
 # Python
 
-Probado en una pseudoconsola de Windows con Python 3.13, Typer 0.27, questionary 2.1 y prompt_toolkit 3.0. Antes de usar otra versión, mirar su documentación.
+Probado en pseudoconsolas de Windows y Linux con Typer 0.27, questionary 2.1 y prompt_toolkit 3.0. Antes de usar otra versión, mirar su documentación.
 
 Usar lo que el proyecto ya tenga. `argparse` es nativo y da `-h`, exit 2 y errores de uso sin dependencias. Typer suma tipos y una ayuda más linda.
 

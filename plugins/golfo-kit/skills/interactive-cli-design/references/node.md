@@ -1,6 +1,6 @@
 # Node
 
-Probado en una pseudoconsola con Node 24, `@clack/prompts` 1.8 y `@inquirer/prompts` 8.7. Antes de usar otra versión, mirar su documentación.
+Probado en pseudoconsolas de Windows y Linux con Node 24, `@clack/prompts` 1.8 y `@inquirer/prompts` 8.7. Antes de usar otra versión, mirar su documentación.
 
 Usar la librería de prompts que el proyecto ya tenga. Sin ninguna, `@clack/prompts` trae lista con búsqueda y multiselect con menos código; proponerla como decisión explícita.
 

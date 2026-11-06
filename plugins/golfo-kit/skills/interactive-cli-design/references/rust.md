@@ -1,6 +1,6 @@
 # Rust
 
-Escrito leyendo el código de `clap` e `inquire`, sin ejecutarlo. Compilar y correr la matriz antes de darlo por bueno, y mirar la documentación de la versión en uso.
+Probado en pseudoconsolas de Windows y Linux con `clap` 4.6 e `inquire` 0.9. Antes de usar otra versión, mirar su documentación.
 
 ## Parser con clap
 
@@ -21,7 +21,7 @@ struct Flags {
 
 - Los errores de uso de clap ya salen con 2, y `--help` y `--version` con 0 por stdout.
 - Con `ValueEnum`, un valor inválido lista los válidos en el mensaje.
-- Un obligatorio se declara `Option<T>`: si no, clap falla antes de poder preguntar. Para los faltantes sin terminal, `Flags::command().error(ErrorKind::MissingRequiredArgument, mensaje).exit()` sale con 2.
+- Un obligatorio se declara `Option<T>`: si no, clap falla antes de poder preguntar. Para los faltantes sin terminal, `Flags::command().error(ErrorKind::MissingRequiredArgument, mensaje).exit()` sale con 2; necesita `use clap::{error::ErrorKind, CommandFactory}`.
 
 ## Se puede preguntar
 
@@ -71,3 +71,7 @@ fn exit_on_cancel<T>(answer: Result<T, InquireError>) -> T {
 ```
 
 Con el backend `console`, Ctrl+C no vuelve como error: dispara `SIGINT` y hay que manejarlo aparte.
+
+## Trampas
+
+- **Toolchain `windows-gnu`.** Los crates actuales necesitan `dlltool` y `as`, que la toolchain no trae. Instalar MinGW (`scoop install mingw`) o usar la toolchain MSVC. Fijar versiones viejas de `clap` o `inquire` lo esquiva, pero deja el CLI atrasado.

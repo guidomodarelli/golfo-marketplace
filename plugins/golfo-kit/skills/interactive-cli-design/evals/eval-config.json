@@ -106,7 +106,7 @@
       "assertions": [
         {
           "type": "regex",
-          "pattern": "b[uú]squeda|autocomplet|filtr|search",
+          "pattern": "b.{1,2}squeda|autocomplet|filtr|search",
           "description": "Lista con búsqueda para las 40 regiones"
         },
         {
@@ -138,7 +138,7 @@
       "assertions": [
         {
           "type": "regex",
-          "pattern": "corre directo|corre sin preguntar|sin (prompts|preguntas|preguntar)|no pregunta|no (hace falta|necesita) (un )?(wizard|modo interactivo)",
+          "pattern": "correr? directo|corre sin preguntar|sin (prompts|preguntas|preguntar)|no pregunta|ninguna pregunta|no (hace falta|necesita) (un )?(wizard|modo interactivo)",
           "description": "Corre directo sin preguntar"
         },
         {
@@ -290,6 +290,50 @@
             "parseArgs"
           ],
           "description": "No aprovecha para agregar flags ni reescribir el parseo"
+        }
+      ]
+    },
+    {
+      "id": "powershell-ctrl-c-exit-code",
+      "description": "Sabe que Ctrl+C en Read-Host sale con 0 y usa finally para devolver 130.",
+      "input": "Mi script de PowerShell 7 pregunta con Read-Host y con PromptForChoice. Un pipeline de CI lo llama a veces desde una terminal y quiero distinguir si el usuario canceló. ¿Qué devuelve hoy si aprietan Ctrl+C y cómo lo dejo bien?",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "exit ?(code )?0|exit=0|sale con 0|c[oó]digo 0|con 0\\b",
+          "description": "Avisa que hoy sale con 0, como si hubiera salido bien"
+        },
+        {
+          "type": "regex",
+          "pattern": "finally",
+          "description": "Devuelve el código desde un bloque finally"
+        },
+        {
+          "type": "regex",
+          "pattern": "\\b130\\b",
+          "description": "Usa 130 para la cancelación"
+        }
+      ]
+    },
+    {
+      "id": "gum-right-package-on-windows",
+      "description": "Instala el gum correcto en Windows y pasa las opciones de la lista como argumentos.",
+      "input": "Voy a usar gum en un script de bash que también corre en Windows. Dame el comando de scoop para instalarlo y cómo armar con gum una lista filtrable de 30 regiones.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "charm-gum",
+          "description": "Instala el paquete correcto de scoop"
+        },
+        {
+          "type": "regex",
+          "pattern": "kordamp|otra herramienta|otro paquete|no es (el|la) ",
+          "description": "Avisa que el paquete gum de scoop es otra cosa"
+        },
+        {
+          "type": "regex",
+          "pattern": "gum filter[^|]*[$]",
+          "description": "Pasa las opciones como argumentos de gum filter"
         }
       ]
     }
