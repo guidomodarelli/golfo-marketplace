@@ -106,11 +106,24 @@ Asignar `process.exitCode` en vez de llamar a `process.exit()`, que puede cortar
 
 ## Comando equivalente
 
+Las comillas dependen de la plataforma: simples en POSIX, donde dejan el valor literal, y dobles en Windows, porque `cmd.exe` no entiende las simples.
+
 ```js
-const SAFE_SHELL_TOKEN = /^[\w@%+=:,./-]+$/;
-const quoteForShell = (value) =>
-  (SAFE_SHELL_TOKEN.test(value) ? value : `"${value.replace(/(["\\$`])/g, '\\$1')}"`);
+const POSIX_SAFE_TOKEN = /^[\w@%+=:,./-]+$/;
+const WINDOWS_SAFE_TOKEN = /^[\w@+=:,./\\-]+$/;
+
+function quoteForShell(value) {
+  if (process.platform !== 'win32') {
+    return POSIX_SAFE_TOKEN.test(value) ? value : `'${value.replaceAll("'", `'\\''`)}'`;
+  }
+  if (WINDOWS_SAFE_TOKEN.test(value)) return value;
+  // En Windows una barra solo se duplica antes de una comilla o al final del argumento.
+  const escaped = value.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\+)$/, '$1$1');
+  return `"${escaped}"`;
+}
 ```
+
+En Windows no hay una forma de citar que sirva igual en `cmd.exe` y en PowerShell cuando el valor trae `%`, `$`, acento grave o comillas dobles: `cmd.exe` expande `%VAR%` aun entre comillas, y PowerShell, `$var`. Si el valor trae alguno, avisar junto al comando que puede necesitar ajuste según el shell. Una ruta que termina en barra llega a PowerShell con una barra de más, que Windows tolera.
 
 ## Trampas
 

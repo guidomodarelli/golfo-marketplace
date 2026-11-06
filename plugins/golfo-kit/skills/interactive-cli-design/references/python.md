@@ -120,16 +120,23 @@ raise fail_usage(f'--runtime no acepta "{value}". Valores válidos: {", ".join(R
 
 ## Comando equivalente
 
-No usar `shlex.quote`: pone comillas simples, que `cmd.exe` no entiende, y el comando impreso falla ahí. Las comillas dobles sirven en bash, zsh, PowerShell y cmd.
+Las comillas dependen de la plataforma. En POSIX, `shlex.quote` deja el valor literal. En Windows pone comillas simples, que `cmd.exe` no entiende, y el comando impreso falla ahí.
 
 ```python
-SAFE_SHELL_TOKEN = re.compile(r"^[\w@%+=:,./-]+$")
+WINDOWS_SAFE_TOKEN = re.compile(r"^[\w@+=:,./\\-]+$")
 
 def quote_for_shell(value: str) -> str:
-    if SAFE_SHELL_TOKEN.match(value):
+    if sys.platform != "win32":
+        return shlex.quote(value)
+    if WINDOWS_SAFE_TOKEN.match(value):
         return value
-    return '"' + re.sub(r'(["\\$`])', r"\\\1", value) + '"'
+    # En Windows una barra solo se duplica antes de una comilla o al final del argumento.
+    escaped = re.sub(r'(\\*)"', r'\1\1\\"', value)
+    escaped = re.sub(r"(\\+)$", r"\1\1", escaped)
+    return f'"{escaped}"'
 ```
+
+En Windows no hay una forma de citar que sirva igual en `cmd.exe` y en PowerShell cuando el valor trae `%`, `$`, acento grave o comillas dobles: `cmd.exe` expande `%VAR%` aun entre comillas, y PowerShell, `$var`. Si el valor trae alguno, avisar junto al comando que puede necesitar ajuste según el shell. Una ruta que termina en barra llega a PowerShell con una barra de más, que Windows tolera.
 
 ## Trampas
 

@@ -32,16 +32,16 @@ Evaluar en orden. Gana la primera fila que aplica.
 |---|---|---|---|
 | 1 | `--help`, `-h` o `--version` | Imprime en stdout y nunca pregunta ni actúa, aunque vengan otros flags | 0 |
 | 2 | Flag desconocido o valor inválido | Error en stderr con el flag y los valores válidos. stdout vacío. No cae a preguntar, aunque haya terminal: el usuario dio un dato explícito y hay que decirle que está mal | 2 |
-| 3 | No falta nada obligatorio | Corre directo, sin prompts | 0 o 1 |
-| 4 | Falta algo y no se puede preguntar | Falla enseguida, sin colgarse, y nombra en una línea **todos** los flags faltantes | 2 |
-| 5 | Falta algo y hay terminal | Pregunta y al final imprime el comando equivalente | 0, 1 o 130 |
-| 6 | Tiene subcomandos y no se pasó ninguno | Con terminal, menú de subcomandos y sigue con el elegido. Sin terminal, ayuda breve en stderr | 0 o 2 |
+| 3 | Exige un subcomando y no se pasó ninguno | Con terminal, menú de subcomandos, y se sigue evaluando desde la fila 4 con el elegido. Sin terminal, ayuda breve en stderr | 2 sin terminal |
+| 4 | No falta nada obligatorio | Corre directo, sin prompts | 0 o 1 |
+| 5 | Falta algo y no se puede preguntar | Falla enseguida, sin colgarse, y nombra en una línea **todos** los flags faltantes | 2 |
+| 6 | Falta algo y hay terminal | Pregunta y al final imprime el comando equivalente | 0, 1 o 130 |
 
 **Se puede preguntar** solo si stdin y stderr son terminales, no se pasó `--no-input`, `CI` no está definida (o vale `0` o `false`) y `TERM` no es `dumb`. Se mira stderr y no stdout porque ahí se dibujan los prompts: `tool > plan.json` sigue siendo interactivo y el archivo queda limpio.
 
-**Puede correr sin flags** el CLI cuyos parámetros tienen todos un default seguro y que, corrido así, no destruye, no publica y no cobra (`git status`, `ls`). Si el default haría algo difícil de deshacer, no es seguro: va por la fila 5.
+**Puede correr sin flags** el CLI cuyos parámetros tienen todos un default seguro y que, corrido así, no destruye, no publica y no cobra (`git status`, `ls`). Si el default haría algo difícil de deshacer, no es seguro: va por la fila 6.
 
-**Qué preguntar en la fila 5:**
+**Qué preguntar en la fila 6:**
 
 - Sin ningún argumento: el wizard completo, obligatorios y opcionales, con el default preseleccionado.
 - Con algún flag: solo lo obligatorio que falta. Quien ya pasó flags no quiere un interrogatorio; lo opcional toma su default.
@@ -87,7 +87,7 @@ run(valores)            → actúa
 - **Cada pregunta tiene su flag, y cada flag de dato su pregunta.** El prompt nunca es la única entrada.
 - **Una sola validación.** La misma función valida el flag y el prompt, con los valores válidos en constantes.
 - **Preguntar todo antes de actuar.** Sin efectos hasta la última respuesta. Así Ctrl+C no deja nada a medias. Escribir archivos a un temporal y renombrar.
-- **Imprimir el comando equivalente** en stderr cuando se preguntó algo. Tiene que reproducir el resultado sin una sola pregunta, con comillas dobles (las simples fallan en `cmd.exe`) y con `none` si un multiselect quedó vacío. Un secreto se muestra como `--token-file <ruta>`, nunca su valor.
+- **Imprimir el comando equivalente** en stderr cuando se preguntó algo. Tiene que reproducir el resultado sin una sola pregunta, con `none` si un multiselect quedó vacío y con las comillas de la plataforma: simples en POSIX, que dejan el valor literal, y dobles en Windows, donde `cmd.exe` no entiende las simples. Las referencias de Node y Python traen el helper y sus límites. Un secreto se muestra como `--token-file <ruta>`, nunca su valor.
 
 ## Widget según el dato
 
