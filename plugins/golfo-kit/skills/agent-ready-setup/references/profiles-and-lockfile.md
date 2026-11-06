@@ -89,6 +89,10 @@ Git en Windows) no cuenta como edición local, el apply no reescribe un archivo
 cuya única diferencia son los fines de línea y el lockfile da los mismos bytes en
 cualquier sistema.
 
+Un destino que cambia después de calcular el plan también se preserva, aunque el
+plan haya decidido actualizarlo: el apply termina como `partial` y el siguiente lo
+reporta como conflicto.
+
 `--force` convierte los conflictos en `update` o `retire`, salvo el de un directorio
 padre que es un symlink. Un conflicto nunca se
 reporta como éxito completo: el apply termina con `Lockfile: ... (applied with N
@@ -111,7 +115,7 @@ bash "$SKILL_DIR/scripts/bootstrap.sh" --skill-dir "$SKILL_DIR" --provider "$PRO
 - `status` separa assets aplicados, modificados, faltantes, conflictos
   preservados, escrituras fallidas y retirados con cambios; además dice si el
   source resuelto o la selección de profiles difieren del lock (`Update
-  available`). También cuenta como faltante un archivo fusionado que se borró; su
+  available`). También cuenta como faltante una vista `.claude/` o un archivo fusionado que se borró; su
   contenido gestionado lo revisa `plan`. `agent-ready-state.py
   status --check` sale con 4 si hay drift o si la selección no se puede resolver.
 - `plan` lista cada destino con su acción, profile y motivo, los diffs (local →

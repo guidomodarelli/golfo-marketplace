@@ -763,6 +763,10 @@ sync_file() {
     record_skipped "$destination"
     return 0
   fi
+  if changed_since_plan_start "$destination"; then
+    record_conflict "$destination changed during synchronization; neither was changed"
+    return 0
+  fi
 
   expected_destination="$(mktemp "${destination}.agent-ready-expected.XXXXXX")"
   if ! cp -p -- "${supplied_snapshot:-$destination}" "$expected_destination"; then
@@ -972,7 +976,8 @@ fi
 
 # The pre-apply plan decides ownership for every managed destination.
 plan_file="$(mktemp "${TMPDIR:-/tmp}/agent-ready-plan.XXXXXX")"
-trap 'rm -f -- "$plan_file"; release_sync_lock' EXIT
+trap 'rm -f -- "$plan_file" "$AGENT_READY_PLAN_MARKER"; release_sync_lock' EXIT
+mark_plan_start
 if ! protected_destinations="$(python3 "$state_script" plan --project . --skill-dir "$skill_dir" \
   --format protected --save "$plan_file" ${profile_selection[@]+"${profile_selection[@]}"})"; then
   printf 'WARNING: Agent Ready plan could not be computed; no asset was changed.\n' >&2
@@ -1005,7 +1010,7 @@ if [[ "$sync_hook_destination_was_different" -eq 1 || "$current_hook_needs_resta
     export AGENT_READY_SETUP_BACKUP_DIRECTORY="$backup_directory"
   fi
   # exec skips the EXIT trap; the restarted hook computes its own plan.
-  rm -f -- "$plan_file"
+  rm -f -- "$plan_file" "$AGENT_READY_PLAN_MARKER"
   exec bash "$sync_hook_destination" "${original_arguments[@]}"
 fi
 

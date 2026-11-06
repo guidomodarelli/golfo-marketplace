@@ -605,7 +605,8 @@ fi
 # The pre-apply plan decides ownership: protected destinations are preserved by
 # sync_file, and finalize retires assets and writes the lockfile from it.
 PLAN_FILE="$(mktemp "${TMPDIR:-/tmp}/agent-ready-plan.XXXXXX")"
-trap 'rm -f -- "$PLAN_FILE"; release_sync_lock' EXIT
+trap 'rm -f -- "$PLAN_FILE" "$AGENT_READY_PLAN_MARKER"; release_sync_lock' EXIT
+[[ "$FORCE_OVERWRITE" -eq 1 ]] || mark_plan_start
 plan_arguments=(plan --project . --skill-dir "$SKILL_DIR" --format protected --save "$PLAN_FILE")
 [[ "$FORCE_OVERWRITE" -eq 1 ]] && plan_arguments+=(--force)
 if ! protected_destinations="$(python3 "$STATE_SCRIPT" "${plan_arguments[@]}" \
@@ -696,6 +697,10 @@ sync_file() {
 
   if matches_ignoring_line_endings "$dst" "$src"; then
     record_skipped "$dst"
+    return 0
+  fi
+  if changed_since_plan_start "$dst"; then
+    record_conflict "$dst changed during synchronization; neither was changed"
     return 0
   fi
 

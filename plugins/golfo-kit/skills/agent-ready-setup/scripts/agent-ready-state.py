@@ -666,6 +666,14 @@ def classify_retired(local, lock_entry, force):
     return ACTION_RETIRE_CONFLICT, "retired from the profiles but modified locally; delete it or rerun with --force"
 
 
+def claude_view_of(destination, source):
+    """Project path of the .claude view of a managed asset, or None when it has none."""
+    relative = destination[len(".agents/"):] if destination.startswith(".agents/") else ""
+    if relative.split("/", 1)[0] not in CLAUDE_VIEW_DIRECTORIES or not source.endswith("/" + relative):
+        return None
+    return ".claude/" + relative
+
+
 def detached_view_conflicts(project_root, assets, locked_assets):
     """Claude views that became regular files holding content no apply wrote.
 
@@ -674,12 +682,9 @@ def detached_view_conflicts(project_root, assets, locked_assets):
     """
     conflicts = []
     for destination, desired_entry in sorted(assets.items()):
-        relative = destination[len(".agents/"):] if destination.startswith(".agents/") else ""
-        if relative.split("/", 1)[0] not in CLAUDE_VIEW_DIRECTORIES or not desired_entry["source"].endswith("/" + relative):
-            continue
-        view = ".claude/" + relative
-        view_path = os.path.join(project_root, view)
-        if is_link(view_path) or not os.path.isfile(view_path):
+        view = claude_view_of(destination, desired_entry["source"])
+        view_path = os.path.join(project_root, view) if view else None
+        if not view or is_link(view_path) or not os.path.isfile(view_path):
             continue
         asset_path = os.path.join(project_root, destination)
         if os.path.isfile(asset_path) and os.path.samefile(view_path, asset_path):
@@ -1142,6 +1147,12 @@ def compute_status(project_root, skill_dir):
             changed = [entry["destination"] for entry in plan["entries"]
                        if entry["action"] not in (ACTION_UNCHANGED, ACTION_DROP)]
             status["checkout"]["modified"].extend(plan["detachedViews"])
+            if lock:
+                published = [entry for entry in plan["entries"] if entry["sha256"]]
+                views = [claude_view_of(entry["destination"], entry["source"]) for entry in published]
+                status["checkout"]["missing"].extend(
+                    view for view in views if view and local_state(os.path.join(project_root, view)) == LOCAL_ABSENT
+                )
             locked = lock or {}
             selection_changed = locked.get("profileOrder") != plan["profiles"] or locked.get("profiles") != profile_digests(
                 skill_dir, load_profile_catalog(skill_dir), plan["profiles"]

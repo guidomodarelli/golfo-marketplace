@@ -319,6 +319,47 @@ lock_value() {
   [[ "$output" == *"missing: .codex/hooks.json"* ]]
 }
 
+@test "status --check notices a Claude view that was deleted" {
+  run_bootstrap_with "$skill_dir" --stack frontend
+  [ "$status" -eq 0 ]
+  run python3 "$skill_dir/scripts/agent-ready-state.py" status --project . --skill-dir "$skill_dir" --check
+  [ "$status" -eq 0 ]
+
+  rm .claude/rules/security.md
+  run python3 "$skill_dir/scripts/agent-ready-state.py" status --project . --skill-dir "$skill_dir" --check
+  [ "$status" -eq 4 ]
+  [[ "$output" == *"missing: .claude/rules/security.md"* ]]
+}
+
+@test "an edit saved after the plan was computed is preserved" {
+  copy_skill
+  run_bootstrap_with "$source_copy" --stack node
+  [ "$status" -eq 0 ]
+  printf '%s\n' '- Newer guidance.' >> "$source_copy/assets/stacks/node/rules/testing.md"
+  # Saves the edit right when the plan process ends, before the projection reaches the file.
+  mkdir -p "$test_root/edit-after-plan"
+  cat > "$test_root/edit-after-plan/sitecustomize.py" <<'EOF'
+import atexit
+import sys
+
+
+def save_concurrent_edit():
+    with open(".agents/rules/testing.md", "a", encoding="utf-8") as rule_file:
+        rule_file.write("edited after the plan\n")
+
+
+if "plan" in sys.argv:
+    atexit.register(save_concurrent_edit)
+EOF
+
+  export PYTHONPATH="$test_root/edit-after-plan"
+  run_bootstrap_with "$source_copy"
+  [ "$status" -eq 0 ]
+  [ "$(tail -n 1 .agents/rules/testing.md)" = "edited after the plan" ]
+  [[ "$output" == *".agents/rules/testing.md changed during synchronization"* ]]
+  [[ "$output" == *"(partial:"* ]]
+}
+
 @test "plan and status are read-only and never call the provider CLI" {
   run_bootstrap_with "$skill_dir" --stack frontend
   [ "$status" -eq 0 ]
@@ -485,7 +526,7 @@ EOF
   cmp -s .agents/rules/testing.md "$source_copy/assets/stacks/node/rules/testing.md"
   [ "$(tail -n 1 .agents/rules/security.md)" = "edited locally" ]
   [[ "$output" == *".agents/rules/security.md: local changes since the last apply; preserved"* ]]
-  [ -z "$(find "$TMPDIR" -name 'agent-ready-plan.*' -print -quit)" ]
+  [ -z "$(find "$TMPDIR" -name 'agent-ready-plan*' -print -quit)" ]
 }
 
 @test "review mode never synchronizes, even with automatic updates" {
