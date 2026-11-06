@@ -20,6 +20,10 @@
 
 set -euo pipefail
 
+# Hermes exports these to stop Git Bash from translating paths, but this script
+# hands POSIX paths to native Windows Python, which needs that translation.
+unset MSYS_NO_PATHCONV MSYS2_ARG_CONV_EXCL
+
 # Bootstrap may run inside SessionStart; keep diagnostics off hook stdout.
 exec 1>&2
 
@@ -433,10 +437,6 @@ describe_skill_source() {
 }
 
 validate_skill_source() {
-  if [[ ! -f "$STATE_SCRIPT" ]]; then
-    echo "ERROR: Agent Ready state helper is missing: $STATE_SCRIPT" >&2
-    exit 1
-  fi
   configure_instruction_templates "$SKILL_DIR" "$STACK"
   CODEX_ASSETS="$SKILL_DIR/assets/codex"
 
@@ -552,6 +552,10 @@ if ! SKILL_DIR="$(resolve_skill_dir)"; then
 fi
 describe_skill_source "$SKILL_DIR"
 STATE_SCRIPT="$SKILL_DIR/scripts/agent-ready-state.py"
+if [[ ! -f "$STATE_SCRIPT" ]]; then
+  echo "ERROR: Agent Ready state helper is missing: $STATE_SCRIPT" >&2
+  exit 1
+fi
 PROFILE_SELECTION=()
 if [[ -n "$PROFILES" ]]; then
   PROFILE_SELECTION=(--profiles "$PROFILES")
@@ -567,10 +571,6 @@ fi
 # Resolves profiles once; every later step reads the same stack tree.
 RESOLVED_PROFILES=""
 RESOLVED_TOOLS=""
-if [[ ! -f "$STATE_SCRIPT" ]]; then
-  echo "ERROR: Agent Ready state helper is missing: $STATE_SCRIPT" >&2
-  exit 1
-fi
 if ! resolution="$(python3 "$STATE_SCRIPT" resolve --project . --skill-dir "$SKILL_DIR" \
   ${PROFILE_SELECTION[@]+"${PROFILE_SELECTION[@]}"} --compose-dir "$(agent_ready_compose_directory)")"; then
   exit 1
@@ -698,7 +698,7 @@ sync_file() {
     return 0
   fi
 
-  if cmp -s "$dst" "$src"; then
+  if matches_ignoring_line_endings "$dst" "$src"; then
     record_skipped "$dst"
     return 0
   fi

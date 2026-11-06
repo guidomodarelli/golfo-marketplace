@@ -198,6 +198,15 @@ is_protected_destination() {
     "$AGENT_READY_PROTECTED_DESTINATIONS" == *$'\n'"${1#./}"$'\n'* ]]
 }
 
+# A checkout with core.autocrlf only changes line endings, which is not a change to
+# apply: rewriting the file would mark it as modified in Git with an empty diff.
+matches_ignoring_line_endings() {
+  local destination="$1"
+  local source="$2"
+
+  cmp -s "$destination" "$source" || tr -d '\r' < "$destination" | cmp -s - "$source"
+}
+
 # Reason shared by every consumer that preserves a protected destination.
 # shellcheck disable=SC2034 # Read by the sync_file implementations that source this file.
 AGENT_READY_PROTECTED_HINT="local changes since the last apply; preserved (review with plan, keep them in a project rule, or rerun with --force)"
@@ -205,9 +214,7 @@ AGENT_READY_PROTECTED_HINT="local changes since the last apply; preserved (revie
 # Without a lockfile (first apply) a symlink at a managed path is replaced, never
 # followed; the link is removed before the rename so a link to a directory
 # cannot redirect the write elsewhere. With a lockfile, the ownership gate
-# above protects edited files and replaced symlinks. A symlink at a
-# managed path is replaced, never followed; the link is removed before the
-# rename so a link to a directory cannot redirect the write elsewhere.
+# above protects edited files and replaced symlinks.
 # Consumers define record_conflict and record_updated.
 replace_managed_symlink() {
   local source="$1"

@@ -11,6 +11,10 @@
 
 set -euo pipefail
 
+# Hermes exports these to stop Git Bash from translating paths, but this hook
+# hands POSIX paths to native Windows Python, which needs that translation.
+unset MSYS_NO_PATHCONV MSYS2_ARG_CONV_EXCL
+
 # Keep hook stdout empty: progress (including child commands) belongs on stderr.
 # Codex treats output starting with '[' or '{' as JSON, not plain-text logs.
 exec 1>&2
@@ -237,7 +241,10 @@ record_marketplace_upgrade() {
   mkdir -p -- "$stamp_directory" 2>/dev/null && touch -- "$marketplace_upgrade_stamp" 2>/dev/null || true
 }
 
-if [[ "$marketplace_already_upgraded" -eq 1 ]]; then
+# Automated reviews need neither network nor a provider CLI: rules come from the checkout.
+if [[ "$review_mode" -eq 1 ]]; then
+  echo "[marketplace-sync] Review mode: the marketplace upgrade is skipped."
+elif [[ "$marketplace_already_upgraded" -eq 1 ]]; then
   echo "[marketplace-sync] El caller ya completó el upgrade del marketplace."
 elif is_marketplace_upgrade_unsupported; then
   report_local_marketplace_upgrade_skip
@@ -459,6 +466,8 @@ refresh_missing_asset_sync_helper() {
   if [[ -f "$skill_dir/$ASSET_SYNC_HELPER_PATH" ]]; then
     return 0
   fi
+  # A review stays offline; a source this old has no state to report anyway.
+  [[ "$review_mode" -eq 0 ]] || return 1
 
   echo "[marketplace-sync] Falta el helper compartido de sincronización; refrescando $MARKETPLACE_NAME para $provider..."
   if is_marketplace_upgrade_unsupported; then
@@ -747,7 +756,7 @@ sync_file() {
     record_created "$destination"
     return 0
   fi
-  if cmp -s "$destination" "$source"; then
+  if matches_ignoring_line_endings "$destination" "$source"; then
     record_skipped "$destination"
     return 0
   fi
@@ -988,6 +997,8 @@ if [[ "$sync_hook_destination_was_different" -eq 1 || "$current_hook_needs_resta
   if [[ -n "$backup_directory" ]]; then
     export AGENT_READY_SETUP_BACKUP_DIRECTORY="$backup_directory"
   fi
+  # exec skips the EXIT trap; the restarted hook computes its own plan.
+  rm -f -- "$plan_file"
   exec bash "$sync_hook_destination" "${original_arguments[@]}"
 fi
 

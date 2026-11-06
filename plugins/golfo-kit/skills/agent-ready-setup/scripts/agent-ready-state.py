@@ -140,12 +140,15 @@ def write_line(text="", stream=None):
 # ---------------------------------------------------------------------------
 
 def sha256_of_file(path):
-    """Return the hex sha256 of a file's bytes."""
-    digest = hashlib.sha256()
+    """Return the hex sha256 of a file with CRLF line endings normalized to LF.
+
+    A checkout with core.autocrlf rewrites every line ending without anyone
+    editing the file, so hashing raw bytes would report the whole tree as locally
+    modified. A file with LF endings hashes to its plain sha256.
+    """
     with open(path, "rb") as file_handle:
-        for chunk in iter(lambda: file_handle.read(65536), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+        content = file_handle.read()
+    return hashlib.sha256(content.replace(b"\r\n", b"\n")).hexdigest()
 
 
 def sha256_of_text(text):
@@ -201,6 +204,21 @@ def write_text_atomically(path, text):
         if os.path.exists(temporary_path):
             os.unlink(temporary_path)
         raise
+
+
+def write_text_if_changed(path, text):
+    """Write text unless the file already holds it, ignoring its line endings.
+
+    Rewriting a CRLF checkout with LF would mark the file as modified in Git
+    although its content is the same.
+    """
+    try:
+        with open(path, encoding="utf-8") as file_handle:
+            if file_handle.read() == text:
+                return
+    except (OSError, UnicodeDecodeError):
+        pass
+    write_text_atomically(path, text)
 
 
 def walk_files(root):
@@ -451,10 +469,15 @@ def profile_digests(skill_dir, catalog, resolved):
 # Source identity
 # ---------------------------------------------------------------------------
 
+def bash_executable():
+    """Bash from PATH; Windows process creation would find the WSL launcher in System32 first."""
+    return shutil.which("bash") or "bash"
+
+
 def run_quiet(command, cwd=None):
-    """Run a read-only command and return stdout, or None when it fails."""
+    """Run a read-only command and return its UTF-8 stdout, or None when it fails."""
     try:
-        completed = subprocess.run(command, cwd=cwd, capture_output=True, text=True, check=False)
+        completed = subprocess.run(command, cwd=cwd, capture_output=True, encoding="utf-8", errors="replace", check=False)
     except OSError:
         return None
     if completed.returncode != 0:
@@ -682,13 +705,14 @@ def merged_file_changes(project_root, skill_dir, plan):
     """Describe whether each merged file would change, without writing it."""
     changes = []
     catalog = load_profile_catalog(skill_dir)
-    primary_root = profile_asset_root(skill_dir, catalog, plan["primaryStack"])
+    # Bootstrap exports the composed tree, the one the managed block is rendered from.
+    stack_root = os.environ.get("AGENT_READY_SETUP_STACK_DIR") or profile_asset_root(skill_dir, catalog, plan["primaryStack"])
 
     agents_path = os.path.join(project_root, "AGENTS.md")
     renderer = [
-        "bash", os.path.join(skill_dir, RENDERER_RELATIVE_PATH),
-        "--template", os.path.join(primary_root, AGENTS_TEMPLATE_NAME),
-        "--rules-dir", os.path.join(primary_root, "rules"),
+        bash_executable(), os.path.join(skill_dir, RENDERER_RELATIVE_PATH),
+        "--template", os.path.join(stack_root, AGENTS_TEMPLATE_NAME),
+        "--rules-dir", os.path.join(stack_root, "rules"),
         "--common-rules-dir", os.path.join(skill_dir, catalog.get("baseAssets", "assets/common"), "rules"),
         "--centralization", os.path.join(skill_dir, CENTRALIZATION_RELATIVE_PATH),
         "--managed-block",
@@ -724,7 +748,7 @@ def merged_file_changes(project_root, skill_dir, plan):
             continue
         command = [sys.executable, os.path.join(skill_dir, merger)] + extra_arguments + [template, current]
         try:
-            completed = subprocess.run(command, capture_output=True, text=True, check=False)
+            completed = subprocess.run(command, capture_output=True, encoding="utf-8", errors="replace", check=False)
         except OSError as caught_error:
             changes.append((destination, ACTION_CONFLICT, f"merge preview failed: {caught_error}"))
             continue
@@ -977,7 +1001,7 @@ def finalize(project_root, skill_dir, plan, provider_list, updates):
         "assets": lock_assets,
         "merged": plan["merged"],
     }
-    write_text_atomically(os.path.join(project_root, LOCK_RELATIVE_PATH), serialize_json(lock))
+    write_text_if_changed(os.path.join(project_root, LOCK_RELATIVE_PATH), serialize_json(lock))
 
     manifest = read_manifest(project_root)
     manifest_providers = manifest.get("providers", list(provider_list)) if manifest else list(provider_list)
@@ -1146,6 +1170,9 @@ def requested_profile_names(arguments, catalog):
 
 def command_resolve(arguments):
     """Print the resolution as key<TAB>value lines for Bash."""
+    # A manifest that cannot be read stops the apply even when flags pick the
+    # profiles: it may declare a pinned repository that must not be written.
+    read_manifest(arguments.project)
     catalog = load_profile_catalog(arguments.skill_dir)
     requested = requested_profile_names(arguments, catalog)
     resolved = resolve_profiles(catalog, requested)
@@ -1267,8 +1294,15 @@ def build_parser():
     return parser
 
 
+def use_utf8_output():
+    """Emit UTF-8 with LF everywhere; Windows defaults to the locale code page and CRLF."""
+    sys.stdout.reconfigure(encoding="utf-8", newline="\n")
+    sys.stderr.reconfigure(encoding="utf-8", errors="backslashreplace", newline="\n")
+
+
 def main(argv=None):
     """Entry point; prints a one-line error and a non-zero status on failure."""
+    use_utf8_output()
     arguments = build_parser().parse_args(argv)
     arguments.project = os.path.abspath(arguments.project)
     if getattr(arguments, "skill_dir", None):

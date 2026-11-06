@@ -27,6 +27,8 @@ except json.JSONDecodeError:
 tool_name = payload.get("tool_name") if isinstance(payload, dict) else None
 print("codex" if tool_name == "apply_patch" else "claude")
 ')"
+  # Windows Python ends lines with CRLF.
+  provider="${provider%$'\r'}"
 fi
 case "$provider" in
   claude|codex) ;;

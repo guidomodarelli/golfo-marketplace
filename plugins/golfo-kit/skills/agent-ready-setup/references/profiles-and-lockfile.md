@@ -81,6 +81,11 @@ nuevo:
 | ya no lo publica ningún profile y sigue igual a la base | `retire`: se borra junto con su vista `.claude/` |
 | ya no lo publica ningún profile y fue editado | `retire-conflict`: se conserva como `retired-modified` |
 
+Los hashes normalizan CRLF a LF: un checkout con `core.autocrlf` (el default de
+Git en Windows) no cuenta como edición local, el apply no reescribe un archivo
+cuya única diferencia son los fines de línea y el lockfile da los mismos bytes en
+cualquier sistema.
+
 `--force` convierte los conflictos en `update` o `retire`. Un conflicto nunca se
 reporta como éxito completo: el apply termina con `Lockfile: ... (applied with N
 preserved conflict(s))` o `(partial: ...)` si alguna escritura falló.
@@ -127,8 +132,11 @@ El hook `.agents/hooks/sync-marketplace.sh` lee el manifest:
 - `updates: auto`: aplica con el mismo gate de ownership que bootstrap.
 - Sin manifest (repos legacy): aplica una vez y deja manifest y lockfile.
 - `AGENT_READY_SETUP_REVIEW_MODE=1`: nunca escribe, aunque el manifest diga
-  `auto`. Definirla en el entorno de reviews automatizadas; ver
+  `auto`, y tampoco refresca el marketplace ni llama a la CLI del provider. No se
+  activa sola en CI: definirla en el entorno de reviews automatizadas; ver
   [review-consumption.md](review-consumption.md).
+- Un manifest que no se puede leer frena el sync antes de escribir, porque podría
+  declarar un repositorio `pinned`.
 
 `AGENT_READY_SETUP_UPDATES=pinned|auto` define el modo cuando el apply crea el
 manifest; `--updates` en bootstrap lo cambia de forma explícita.

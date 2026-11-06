@@ -57,6 +57,55 @@ jobs:
       - name: User manual suites (validators and real browser)
         run: pnpm run test:user-manual
 
+  # agent-ready-setup runs on Linux, macOS and Windows, and what breaks differs on
+  # each: line endings, code pages and hard-link views on Windows; Bash 3.2 and BSD
+  # tools on macOS. The Linux run of these suites lives in the jobs around this one.
+  agent-ready-cross-platform:
+    name: Agent Ready (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # bootstrap.bats would not fit in the time budget of a Windows runner.
+          - os: windows-latest
+            python: "3.13"
+            suites: agent-ready-state.bats
+          # The python3 that ships with the macOS command line tools.
+          - os: macos-latest
+            python: "3.9"
+            suites: agent-ready-state.bats merge-instructions.bats bootstrap.bats
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pnpm install --frozen-lockfile
+      - name: Use the Bash that ships with macOS (3.2)
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p "$RUNNER_TEMP/system-bash"
+          ln -s /bin/bash "$RUNNER_TEMP/system-bash/bash"
+          echo "$RUNNER_TEMP/system-bash" >> "$GITHUB_PATH"
+      - name: Configure git identity for test repositories
+        run: |
+          git config --global user.name "CI"
+          git config --global user.email "ci@example.invalid"
+      - name: Agent Ready suites
+        working-directory: plugins/golfo-kit/skills/agent-ready-setup/tests
+        run: |
+          bash --version | head -n 1
+          LC_ALL=C.UTF-8 pnpm exec bats ${{ matrix.suites }}
+
   bootstrap:
     name: Agent Ready bootstrap (shard ${{ matrix.shard }}/3)
     runs-on: ubuntu-latest
