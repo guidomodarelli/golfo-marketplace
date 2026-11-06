@@ -206,8 +206,9 @@ El renderer crea `AGENTS.md` nuevo con el bloque gestionado; en `AGENTS.md`
 existente, `merge-instructions.sh` reemplaza ese bloque por copia literal del
 template y la IA solo revisa redundancias fuera de él. El provider debe ser
 `claude` o `codex`.
-Copias bajo `.claude/` de assets gestionados, idénticas o editadas, se
-reemplazan por el symlink canónico. Antes de normalizar las
+Copias bajo `.claude/` de assets gestionados se reemplazan por el symlink
+canónico si conservan el contenido aplicado; con lockfile, una editada se preserva
+como conflicto hasta `--force`, y sin lockfile el primer apply la reemplaza. Antes de normalizar las
 instrucciones del proyecto, bootstrap y sync buscan recursivamente en todos
 los niveles y subniveles cualquier archivo cuyo basename coincida con
 `claude.md` sin respetar exactamente mayúsculas (`Claude.md`, `claude.md`,

@@ -590,7 +590,7 @@ EOF
   jq -e '.hooks.PostToolUse[0].hooks | map(select(.type == "command" and .command == "bash .agents/hooks/check-harness-consistency.sh")) | length == 1' .claude/settings.json >/dev/null
 }
 
-@test "autonomous sync replaces identical and edited Claude copies with managed views" {
+@test "autonomous sync replaces identical Claude copies, and edited ones on the first apply, with managed views" {
   dynamic_skill_dir="$test_root/dynamic-skill"
   cp -R "$skill_dir" "$dynamic_skill_dir"
 
@@ -606,6 +606,8 @@ EOF
   assert_claude_view .claude/rules/security.md "../../.agents/rules/security.md"
   [[ "$output" != *".claude/rules/security.md differs from canonical shared asset"* ]]
 
+  # With a lockfile an edited copy is preserved; agent-ready-state.bats covers that contract.
+  forget_agent_ready_lock
   rm .claude/rules/security.md
   printf '%s\n' '# Claude-only security override' > .claude/rules/security.md
 
@@ -686,10 +688,12 @@ EOF
   [[ "$output" == *".claude/rules/security.md -> managed view"* ]]
 }
 
-@test "edited Claude copies of managed rules are replaced with managed views" {
+@test "without a lockfile, edited Claude copies of managed rules are replaced with managed views" {
   run_bootstrap frontend
   [ "$status" -eq 0 ]
 
+  # With a lockfile an edited copy is preserved; agent-ready-state.bats covers that contract.
+  forget_agent_ready_lock
   rm .claude/rules/security.md
   printf '%s\n' '# Claude-only security override' > .claude/rules/security.md
 
