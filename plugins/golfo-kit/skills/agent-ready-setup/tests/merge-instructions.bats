@@ -529,6 +529,7 @@ except ImportError:
 
 race_marker = sys.argv[1]
 windows_lock_path = sys.argv[2]
+open(sys.argv[3], 'w').close()
 deadline = time.monotonic() + 30
 while not glob.glob('.AGENTS.md.agent-ready-merge.*'):
     if time.monotonic() >= deadline:
@@ -565,13 +566,23 @@ finally:
         windows_lock_file.close()
 PY
 
+  # The writer polls before the merge starts: a slow Python startup would otherwise
+  # miss the short-lived temporary file and wait for it until the deadline.
+  ready_marker="$test_root/writer-ready"
+  windows_lock_path="$(git rev-parse --absolute-git-dir)/agent-ready-agents-md.lock"
+  python3 "$writer_script" "$race_marker" "$windows_lock_path" "$ready_marker" \
+    > "$test_root/writer-output.log" 2>&1 3>&- &
+  writer_pid=$!
+  background_pids="$writer_pid"
+  local wait_attempt
+  for wait_attempt in $(seq 1 300); do
+    [ -e "$ready_marker" ] && break
+    sleep 0.1
+  done
   PATH="$fake_bin:$PATH" bash "$skill_dir/scripts/merge-instructions.sh" \
     --provider claude --stack node --skill-dir "$skill_dir" \
     > "$test_root/merge-output.log" 2>&1 3>&- &
   merge_pid=$!
-  windows_lock_path="$(git rev-parse --absolute-git-dir)/agent-ready-agents-md.lock"
-  python3 "$writer_script" "$race_marker" "$windows_lock_path" > "$test_root/writer-output.log" 2>&1 3>&- &
-  writer_pid=$!
   background_pids="$merge_pid $writer_pid"
 
   if wait "$merge_pid"; then
@@ -585,6 +596,8 @@ PY
     writer_status=$?
   fi
 
+  # bats shows this output only when the test fails.
+  cat "$test_root/writer-output.log"
   [ "$merge_status" -eq 0 ]
   [ "$writer_status" -eq 0 ]
   [ ! -e "$race_marker" ]
