@@ -678,7 +678,11 @@ El kit mide caracteres, no celdas: con texto de doble ancho (CJK, emoji) las col
 #!/usr/bin/env bash
 case "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" in
   *[Uu][Tt][Ff]-8* | *[Uu][Tt][Ff]8*) ;;
-  *) export LC_CTYPE=C.UTF-8 ;;
+  # LC_ALL le gana a LC_CTYPE: con LC_ALL=C heredado hay que sacarlo, o se miden bytes y se parten caracteres.
+  *)
+    unset LC_ALL
+    export LC_CTYPE=C.UTF-8
+    ;;
 esac
 
 ESC=$(printf '\033')
