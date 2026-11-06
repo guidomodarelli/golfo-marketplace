@@ -3,7 +3,7 @@ name: codex-autofix-loop
 description: "Lanza y opera el loop que auto-fixea comentarios de Codex (chatgpt-codex-connector[bot]) en un PR: clone efímero → fix → push → closeout del hilo, o `@codex fix` en el propio hilo (modos `codex`/`auto` con fallback local), con dedup por PR, tope de rondas, timeout por ronda, guard de auto-cancelación y merge sin preguntar ni esperar revisión humana tras el gate de CI, también al terminar la última ronda. Lanzarlo solo, sin que lo pidan, apenas el agente abre un PR con `gh pr create`. Adapta la espera a cada agente (Monitor en Claude Code, watcher en background en Hermes, en foreground en Codex, o una ronda por invocación). Para un solo comentario de Codex alcanza con `codex-comment-closeout`. Use when the user asks to relaunch/start the Codex auto-fix loop for a PR, right after the agent opens a pull request (gh pr create) even if nobody asked, set up Codex comment auto-fixing, mentions docs/codex-autofix-loop.md, processed-PR.json, or the codex-autofix workflow."
 license: MIT
 metadata:
-  version: "1.8.0"
+  version: "1.8.1"
   author: "Guido Modarelli"
   category: "code-review"
   tags: "code-review, codex, pull-request, autofix, convergence"
@@ -174,12 +174,27 @@ siempre si Codex nunca publica la review: en el PR #29 la review de la ronda 1 q
   hay nada que procesar: cada vuelta del cron o del watcher gasta un turno del agente
   (unas 190 vueltas en las 9,5 h del PR #29) y el aviso queda perdido entre ellas. El
   JSON se conserva, así que relanzar retoma la misma ronda.
-- **Nunca mergea**: una ronda vencida no es una review limpia. Tampoco cuenta para el
-  corte por convergencia, el tope de solo tests ni el fin de la última ronda, aunque la CI
-  esté verde y no queden hallazgos abiertos.
+- **Review fallida**: si el último estado `codex-review-state:v1` del head actual trae
+  `code_review.status == "failed"` («We couldn't complete this review»), Codex terminó sin
+  revisar y no va a publicar nada más: cuenta como una review que no llegó, sin esperar al
+  reloj. En el PR #52 no había regla para este estado y el loop se quedó esperando sin
+  reloj, hasta que alguien reposteó a mano. La primera falla se trata como el primer
+  vencimiento (un repost, sin sumar a `reviewRounds`). Si vuelve a fallar con los reintentos
+  agotados, se trata como el segundo vencimiento (aviso, `reviewTimedOut: true` y
+  auto-cancelación sin mergear).
+  - **Solo cuenta una falla posterior al pedido**: el resumen sigue en `failed` hasta que
+    Codex arranca la review pedida. Por eso se compara el `updated_at` de ese comentario con
+    `reviewRequestedAt`. Sin esa comparación, la vuelta siguiente al repost tomaría la misma
+    falla como la segunda y cancelaría el loop antes de que Codex reintente.
+  - **Sin hallazgos**: `has_any_findings: true` y `has_unresolved_findings: true` junto a
+    `failed` no son hallazgos: Codex no publicó comentarios ni review, así que no hay nada que triagear.
+- **Nunca mergea**: una ronda vencida o una review `failed` no es una review limpia.
+  Tampoco cuenta para el corte por convergencia, el tope de solo tests ni el fin de la
+  última ronda, aunque la CI esté verde y no queden hallazgos abiertos.
 - **Relanzar tras el timeout**: con `reviewTimedOut: true`, el paso 2 de «Cómo
   relanzarlo» lo vuelve a `false` y pone `reviewTimeoutRetries` en `0`. Como el reloj ya
-  venció, la primera vuelta repostea `@codex review` y arranca un reloj nuevo. Relanzar un
+  venció o la falla sigue siendo posterior al último pedido, la primera vuelta repostea
+  `@codex review` y arranca un reloj nuevo. Relanzar un
   loop que no se canceló por timeout no toca estos campos, así que no regala reintentos.
 
 **Esperando al usuario:** cuando el loop queda frenado por algo que solo el usuario puede
@@ -303,9 +318,9 @@ No lo lances, y decí en una línea por qué, cuando:
    clasificación (o, antes de la primera, el head previo a los primeros fixes del loop);
    `lastReviewedSha` es el head al postear el último; `reviewRequestedAt` (ISO-8601 UTC) es
    el momento en que se posteó el `@codex review` de la ronda en curso y
-   `reviewTimeoutRetries` cuenta los reposts de esa ronda por vencimiento y `reviewTimedOut`
-   queda en `true` cuando el loop se auto-canceló porque la ronda volvió a vencer (ver
-   «Timeout de ronda»); `finalMergePending` queda en `true`
+   `reviewTimeoutRetries` cuenta los reposts de esa ronda por vencimiento o por una review
+   `failed` y `reviewTimedOut` queda en `true` cuando el loop se auto-canceló porque la ronda
+   volvió a vencer o la review volvió a fallar (ver «Timeout de ronda»); `finalMergePending` queda en `true`
    cuando terminó la última ronda permitida y solo falta el merge final (ver «Tope de
    rondas»); `awaitingUser` es `{reason, since}` mientras el loop espera una decisión del
    usuario y `null` el resto del tiempo (ver «Esperando al usuario»); `outcomes` es el registro de
@@ -392,8 +407,8 @@ por convergencia): ahí el loop **mergea el PR** sin esperar revisión humana y 
 solo; (c) cuando termina la última ronda permitida (`{{MAX_REVIEW_ROUNDS}}`): ahí también
 mergea sin preguntar tras el gate de CI; (d) cuando se alcanzan
 `{{MAX_TEST_ONLY_ROUNDS}}` rondas seguidas que solo corrigen tests y el PR se mergea tras el
-gate de CI; (e) cuando la review de una ronda vence por segunda vez (ver «Timeout de
-ronda»): ahí avisa y corta **sin mergear**. La review limpia se reconoce por el estado JSON del resumen de Codex
+gate de CI; (e) cuando la review de una ronda vence por segunda vez o vuelve a terminar
+`failed` (ver «Timeout de ronda»): ahí avisa y corta **sin mergear**. La review limpia se reconoce por el estado JSON del resumen de Codex
 (`<!-- codex-review-state:v1 {...} -->` sin hallazgos) o, en el formato viejo, por el
 texto "Codex Review: Didn't find any major issues" (ver paso 5-bis).
 

@@ -92,6 +92,12 @@ Por qué el loop funciona como funciona: útil para cambiar la skill, no para co
   `{{REVIEW_ROUND_TIMEOUT_MIN}}` min, el loop repostea `@codex review` una vez sin consumir
   el tope de rondas; si vuelve a vencer, avisa y se auto-cancela sin mergear. Relanzarlo
   le da a esa ronda un reintento más (ver «Timeout de ronda»).
+- **Review `failed` como review que no llegó**: reusa el reintento del timeout en vez de
+  sumar otro contador, porque el efecto es el mismo (no hay review que procesar) y así una
+  ronda no acumula reintentos por las dos causas. Se distingue una falla nueva por el
+  `updated_at` del resumen, ya que el JSON del marcador no trae fecha y el texto sigue en
+  `failed` hasta que Codex arranca la review pedida (en el PR #52 pasó a `running` 73 s
+  después de fallar, tiempo de sobra para que una vuelta del monitor lea el estado viejo).
 - **Head avanzado sin review**: si después de una review terminada entra un commit
   ajeno al loop, el loop pide `@codex review` del head nuevo aunque esa vuelta no haya
   fixeado nada (o adopta la review que Codex ya esté corriendo sobre ese head), para no quedar esperando una
