@@ -9,7 +9,7 @@ un repositorio. La implementación vive en `scripts/agent-ready-state.py`.
 
 1. Profiles
 2. Manifest y lockfile
-3. Ownership de 3 vías
+3. Ownership
 4. Operaciones: status, plan y apply
 5. SessionStart y modo review
 6. Providers y capacidades
@@ -56,9 +56,10 @@ git del source cuando existe) y `source.contentDigest`, que identifica el
 contenido exacto (assets, templates fusionados y plantillas de instrucciones)
 aunque no haya revisión git. Por asset guarda `profile`,
 `source`, `sha256` aplicado y `state` (`applied`, `conflict`, `failed`,
-`retired-modified`). `merged` lista `AGENTS.md` (bloque gestionado),
+`retired-preserved`), más `viewPreserved` cuando un archivo del proyecto ocupa su
+vista `.claude/`. `merged` lista `AGENTS.md` (bloque gestionado),
 `.claude/settings.json` y `.codex/hooks.json` con el sha256 del template: se
-fusionan con contenido del proyecto, así que no tienen base de 3 vías. El JSON es
+fusionan con contenido del proyecto, así que no se comparan con una base. El JSON es
 determinista (sin timestamps ni paths de la máquina): la misma resolución
 produce los mismos bytes.
 
@@ -66,37 +67,40 @@ No confundir con `.agents/.agent-ready-assets.lock` (lock de concurrencia del
 sync) ni con el hash de revisión de instrucciones bajo `.git/`. Fijar la
 configuración de un MCP remoto no fija el comportamiento del servicio.
 
-## 3. Ownership de 3 vías
+## 3. Ownership
 
-Para cada destino se comparan la base del lock, el archivo local y el template
-nuevo:
+Nadie debería editar un asset gestionado: cada apply lo deja igual al template y
+pisa cualquier cambio local. Un destino es gestionado cuando el lock registra que
+un apply lo escribió. Para cada destino se comparan la base del lock, el archivo
+local y el template nuevo:
 
 | Situación | Acción |
 |---|---|
 | no existe localmente | `create` |
 | igual al template | `unchanged` |
 | igual a la base del lock | `update` |
-| distinto de la base (editado o reemplazado por symlink) | `conflict`: se preserva |
-| existe pero el lock nunca lo aplicó | `conflict` |
+| distinto de la base (editado o reemplazado por symlink) | `update`: pisa el cambio local; el link se reemplaza sin seguirlo |
+| existe pero el lock nunca lo aplicó | `conflict`: es del proyecto y se preserva; renombrarlo o borrarlo para recibir el asset |
+| no es un archivo regular (por ejemplo, un directorio) | `conflict`: se preserva y se reporta |
 | no hay lockfile todavía | `adopt`: el primer apply sobrescribe una vez (contrato anterior) |
-| una vista `.claude/` quedó como archivo regular, con contenido distinto del asset, la base y el template | `conflict`: se preserva y `--force` la vuelve a enlazar |
-| ya no lo publica ningún profile y sigue igual a la base | `retire`: se borra junto con su vista `.claude/` |
-| ya no lo publica ningún profile y fue editado | `retire-conflict`: se conserva como `retired-modified` |
-| ya no lo publica ningún profile y un directorio padre es un symlink | `retire-conflict`: se conserva, también con `--force`, porque borrarlo tocaría archivos fuera del proyecto |
+| la vista `.claude/` de un asset gestionado quedó como archivo regular, con contenido distinto del asset, la base y el template | `update`: se vuelve a enlazar y pisa ese contenido |
+| un archivo del proyecto ocupa un path donde ningún apply creó la vista | `conflict`: se preserva hasta que se renombre o se borre |
+| ya no lo publica ningún profile y el lock registra su base | `retire`: se borra junto con su vista `.claude/`, aunque se haya editado |
+| ya no lo publica ningún profile y el lock nunca lo aplicó | `drop`: queda como archivo del proyecto y sale del lock |
+| ya no lo publica ningún profile y no es un archivo regular | `retire-conflict`: se conserva como `retired-preserved` |
+| ya no lo publica ningún profile y un directorio padre es un symlink | `retire-conflict`: se conserva como `retired-preserved`, porque borrarlo tocaría archivos fuera del proyecto |
 
 Los hashes normalizan CRLF a LF: un checkout con `core.autocrlf` (el default de
 Git en Windows) no cuenta como edición local, el apply no reescribe un archivo
 cuya única diferencia son los fines de línea y el lockfile da los mismos bytes en
 cualquier sistema.
 
-Un destino que cambia después de calcular el plan también se preserva, aunque el
-plan haya decidido actualizarlo: el apply termina como `partial` y el siguiente lo
-reporta como conflicto. Con Bash 3.2 (el de macOS) la comparación es por segundos
-enteros, así que no detecta una edición hecha en el mismo segundo en que arrancó el plan.
+Sobrescribir no pide confirmación. `plan` muestra antes qué cambios locales se
+pisarían, con su motivo y su diff. El hook guarda una copia de cada archivo que
+reemplaza en un directorio temporal e imprime la ruta; `bootstrap.sh` solo muestra
+el diff, y un asset retirado no deja copia. Commitear antes lo que se quiera conservar.
 
-`--force` convierte los conflictos en `update` o `retire`, salvo el de un directorio
-padre que es un symlink. Un conflicto nunca se
-reporta como éxito completo: el apply termina con `Lockfile: ... (applied with N
+Un conflicto nunca se reporta como éxito completo: el apply termina con `Lockfile: ... (applied with N
 preserved conflict(s))` o `(partial: ...)` si alguna escritura falló.
 Para cambiar comportamiento, el proyecto agrega una rule propia bajo
 `.agents/rules/` o una skill nueva en vez de editar un asset gestionado.
@@ -106,7 +110,7 @@ Para cambiar comportamiento, el proyecto agrega una rule propia bajo
 ```bash
 bash "$SKILL_DIR/scripts/bootstrap.sh" --skill-dir "$SKILL_DIR" --provider "$PROVIDER" --status
 bash "$SKILL_DIR/scripts/bootstrap.sh" --skill-dir "$SKILL_DIR" --provider "$PROVIDER" --plan
-bash "$SKILL_DIR/scripts/bootstrap.sh" --skill-dir "$SKILL_DIR" --provider "$PROVIDER" [--profiles a,b] [--updates pinned|auto] [--force]
+bash "$SKILL_DIR/scripts/bootstrap.sh" --skill-dir "$SKILL_DIR" --provider "$PROVIDER" [--profiles a,b] [--updates pinned|auto]
 ```
 
 - `--status` y `--plan` no escriben archivos, no hacen upgrade del marketplace,
@@ -114,7 +118,7 @@ bash "$SKILL_DIR/scripts/bootstrap.sh" --skill-dir "$SKILL_DIR" --provider "$PRO
   contra el source ya disponible: una versión publicada después del último
   upgrade (SessionStart o un apply) recién aparece cuando se refresca el snapshot.
 - `status` separa assets aplicados, modificados, faltantes, conflictos
-  preservados, escrituras fallidas y retirados con cambios; además dice si el
+  preservados, escrituras fallidas y retirados que no se pudieron borrar; además dice si el
   source resuelto o la selección de profiles difieren del lock (`Update
   available`). También cuenta como faltante una vista `.claude/` o un archivo fusionado que se borró; su
   contenido gestionado lo revisa `plan`. `agent-ready-state.py
@@ -140,7 +144,8 @@ El hook `.agents/hooks/sync-marketplace.sh` lee el manifest:
   se autoactualiza. Sí refresca, como máximo una vez por hora, el snapshot del
   marketplace del usuario (fuera del repo) y después corre `status --brief`, que
   compara ese snapshot con el lock e informa drift y updates pendientes.
-- `updates: auto`: aplica con el mismo gate de ownership que bootstrap.
+- `updates: auto`: aplica con el mismo gate de ownership que bootstrap, así que
+  pisa los cambios locales al iniciar sesión.
 - Sin manifest (repos legacy): aplica una vez y deja manifest y lockfile.
 - `AGENT_READY_SETUP_REVIEW_MODE=1`: nunca escribe, aunque el manifest diga
   `auto`, y tampoco refresca el marketplace ni llama a la CLI del provider. No se
