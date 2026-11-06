@@ -187,12 +187,12 @@ lock_value() {
   run env PATH="$fake_bin:$PATH" AGENT_READY_SETUP_SKILL_DIR="$skill_dir" AGENT_READY_SETUP_MARKETPLACE_UPGRADED=1 \
     bash .agents/hooks/sync-marketplace.sh --provider claude
   [ "$status" -eq 0 ]
-  [[ "$output" == *"must declare 'profiles' as a list of names"* ]]
+  [[ "$output" == *"must declare 'profiles' as a non-empty list of names"* ]]
   [ "$(tree_fingerprint)" = "$before" ]
 
   run_bootstrap_with "$skill_dir" --stack node
   [ "$status" -ne 0 ]
-  [[ "$output" == *"must declare 'profiles' as a list of names"* ]]
+  [[ "$output" == *"must declare 'profiles' as a non-empty list of names"* ]]
   [ "$(tree_fingerprint)" = "$before" ]
 }
 
@@ -248,6 +248,11 @@ lock_value() {
   run python3 "$skill_dir/scripts/agent-ready-state.py" status --project . --skill-dir "$skill_dir" --check
   [ "$status" -eq 4 ]
   [[ "$output" == *"unknown profile 'nonexistent'"* ]]
+
+  printf '%s\n' '{"profiles": [], "updates": "pinned"}' > .agents/agent-ready.json
+  run python3 "$skill_dir/scripts/agent-ready-state.py" status --project . --skill-dir "$skill_dir" --check
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"must declare 'profiles' as a non-empty list of names"* ]]
 }
 
 @test "an explicit --stack wins over the profiles chosen in the environment" {

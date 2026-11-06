@@ -597,8 +597,8 @@ def read_manifest(project_root):
         raise StateError(f"{path} is a symlink; Agent Ready does not follow it")
     manifest = read_json_file(path, "Agent Ready manifest")
     profiles = manifest.get("profiles")
-    if not isinstance(profiles, list) or not all(isinstance(name, str) for name in profiles):
-        raise StateError(f"{path} must declare 'profiles' as a list of names")
+    if not isinstance(profiles, list) or not profiles or not all(isinstance(name, str) for name in profiles):
+        raise StateError(f"{path} must declare 'profiles' as a non-empty list of names")
     updates = manifest.get("updates", DEFAULT_UPDATE_MODE)
     if updates not in SUPPORTED_UPDATE_MODES:
         raise StateError(f"{path} 'updates' must be one of {', '.join(SUPPORTED_UPDATE_MODES)}")

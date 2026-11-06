@@ -167,11 +167,12 @@ jobs:
   tests:
     name: Tests
     if: always()
-    needs: [shell, bootstrap, browser]
+    needs: [shell, agent-ready-cross-platform, bootstrap, browser]
     runs-on: ubuntu-latest
     steps:
       - name: Require every suite to pass
         run: |
           [[ "${{ needs.shell.result }}" == success ]]
+          [[ "${{ needs.agent-ready-cross-platform.result }}" == success ]]
           [[ "${{ needs.bootstrap.result }}" == success ]]
           [[ "${{ needs.browser.result }}" == success ]]
