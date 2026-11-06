@@ -842,6 +842,11 @@ link_claude_asset() {
       record_conflict "$destination: $AGENT_READY_PROTECTED_HINT"
       return 0
     fi
+    # Relinking discards what the view holds, so it gets the same copy as an asset.
+    if ! matches_ignoring_line_endings "$destination" "$source" && ! backup_file "$destination"; then
+      conflicts+=("could not back up $destination; neither was changed")
+      return 0
+    fi
     replace_with_claude_view "$destination" "$target" "$source" "$relative"
     return 0
   fi
@@ -930,6 +935,7 @@ sync_claude_settings() {
   local template="$1"
   local destination="$CLAUDE_DIR/settings.json"
   local temporary_settings
+  local destination_snapshot
   local merge_status=0
 
   if [[ -L "$destination" ]]; then
@@ -941,26 +947,29 @@ sync_claude_settings() {
     return 0
   fi
   if [[ ! -f "$destination" ]]; then
-    sync_file "$template" "$destination"
+    sync_file "$template" "$destination" "$template" absent
     return 0
   fi
 
+  # Settings hold project content: a save during the merge must not be lost.
   temporary_settings="$(mktemp "${TMPDIR:-/tmp}/agent-ready-settings.XXXXXX")"
-  merge_managed_settings "$template" "$destination" strict > "$temporary_settings" || merge_status=$?
+  destination_snapshot="$(mktemp "${TMPDIR:-/tmp}/agent-ready-current-settings.XXXXXX")"
+  cp -- "$destination" "$destination_snapshot"
+  merge_managed_settings "$template" "$destination_snapshot" strict > "$temporary_settings" || merge_status=$?
 
   case "$merge_status" in
     0)
-      sync_file "$temporary_settings" "$destination"
+      sync_file "$temporary_settings" "$destination" "$template" "$destination_snapshot"
       ;;
     10)
       cp -- "$template" "$temporary_settings"
-      sync_file "$temporary_settings" "$destination"
+      sync_file "$temporary_settings" "$destination" "$template" "$destination_snapshot"
       ;;
     *)
       conflicts+=("$destination contains invalid JSON; preserved")
       ;;
   esac
-  rm -f -- "$temporary_settings"
+  rm -f -- "$temporary_settings" "$destination_snapshot"
 }
 
 if [[ -L "$SHARED_DIR" || ( -e "$SHARED_DIR" && ! -d "$SHARED_DIR" ) ]]; then

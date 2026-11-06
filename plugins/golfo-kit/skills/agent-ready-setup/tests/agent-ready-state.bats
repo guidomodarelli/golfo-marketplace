@@ -603,7 +603,48 @@ EOF
   cmp -s .agents/rules/testing.md "$source_copy/assets/stacks/node/rules/testing.md"
   cmp -s .agents/rules/security.md "$source_copy/assets/stacks/node/rules/security.md"
   [[ "$output" == *"Local backups directory:"* ]]
+  backup_directory="$(sed -n 's/^Local backups directory: //p' <<< "$output")"
+  grep -rq 'edited locally' "$backup_directory"
+  grep -rq 'local view policy' "$backup_directory"
   [ -z "$(find "$TMPDIR" -name 'agent-ready-plan*' -print -quit)" ]
+}
+
+@test "settings saved during the merge are preserved, by bootstrap and by the hook" {
+  run_bootstrap_with "$skill_dir" --stack node --updates auto
+  [ "$status" -eq 0 ]
+  # Saves a project setting right when the merger ends, before its output is written.
+  mkdir -p "$test_root/edit-during-merge"
+  cat > "$test_root/edit-during-merge/sitecustomize.py" <<'EOF'
+import atexit
+import json
+import sys
+
+
+def save_concurrent_setting():
+    with open(".claude/settings.json", encoding="utf-8") as settings_file:
+        settings = json.load(settings_file)
+    settings["concurrentSetting"] = True
+    with open(".claude/settings.json", "w", encoding="utf-8") as settings_file:
+        json.dump(settings, settings_file)
+
+
+if sys.argv[0].endswith("merge-managed-settings.py"):
+    atexit.register(save_concurrent_setting)
+EOF
+  export PYTHONPATH="$test_root/edit-during-merge"
+
+  run_bootstrap_with "$skill_dir"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *".claude/settings.json changed during synchronization"* ]]
+  grep -q 'concurrentSetting' .claude/settings.json
+
+  sed -i 's/, "concurrentSetting": true//' .claude/settings.json
+  ! grep -q 'concurrentSetting' .claude/settings.json
+  run env PATH="$fake_bin:$PATH" AGENT_READY_SETUP_SKILL_DIR="$skill_dir" AGENT_READY_SETUP_MARKETPLACE_UPGRADED=1 \
+    bash .agents/hooks/sync-marketplace.sh --provider claude
+  [ "$status" -eq 0 ]
+  [[ "$output" == *".claude/settings.json changed during synchronization"* ]]
+  grep -q 'concurrentSetting' .claude/settings.json
 }
 
 @test "review mode never synchronizes, even with automatic updates" {
