@@ -531,10 +531,11 @@ race_marker = sys.argv[1]
 windows_lock_path = sys.argv[2]
 open(sys.argv[3], 'w').close()
 deadline = time.monotonic() + 30
+# No sleep here: on a fast disk the temporary file lives for a few milliseconds
+# (write, fsync, rename), less than a short sleep can take on a macOS runner.
 while not glob.glob('.AGENTS.md.agent-ready-merge.*'):
     if time.monotonic() >= deadline:
         sys.exit('merge temporary file was not created')
-    time.sleep(0.001)
 
 directory_descriptor = None
 windows_lock_file = None
