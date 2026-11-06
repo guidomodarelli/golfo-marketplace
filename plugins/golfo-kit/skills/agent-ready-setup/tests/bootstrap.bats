@@ -1634,8 +1634,10 @@ EOF
   [ "$status" -ne 0 ]
   [[ "$output" == *"unsupported marketplace provider"* ]]
 
-  run env -u AGENT_READY_SETUP_SKILL_DIR \
-    MARKETPLACE_INVOCATION_LOG="$invocation_log" PATH="$fake_bin:$PATH" \
+  # An empty home: a marketplace snapshot installed on this machine must not decide the source.
+  mkdir -p "$test_root/empty-home"
+  run env -u AGENT_READY_SETUP_SKILL_DIR -u CODEX_HOME -u CLAUDE_CONFIG_DIR \
+    HOME="$test_root/empty-home" MARKETPLACE_INVOCATION_LOG="$invocation_log" PATH="$fake_bin:$PATH" \
     bash "$hook" --provider claude
   [ "$status" -eq 0 ]
   [[ "$output" == *"could not detect project stack"* ]]
