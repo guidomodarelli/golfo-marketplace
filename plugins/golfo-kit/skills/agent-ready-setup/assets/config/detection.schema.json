@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Detección",
+  "description": "Señales estáticas del proyecto que eligen el stack primario de un repositorio sin selección y sugieren capabilities en plan.",
+  "x-module": "detection",
+  "x-mount": "detection",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "enabled": {
+      "description": "Apagada, plan no muestra señales ni sugerencias y un repositorio sin selección pide --stack o --profiles.",
+      "type": "boolean",
+      "default": true,
+      "x-env": "AGENT_READY_SETUP_DETECTION"
+    }
+  }
+}

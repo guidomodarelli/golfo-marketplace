@@ -1,7 +1,7 @@
 # Chequeo de CI de agent-ready-setup
 
-Leer al agregar el chequeo a un pipeline o al explicar un código de salida. Configuración y defaults: sección
-«Configuración y actualizaciones» de [profiles-and-lockfile.md](profiles-and-lockfile.md).
+Leer al agregar el chequeo a un pipeline o al explicar un código de salida. Configuración y defaults:
+[configuration.md](configuration.md) (`ci.enabled`, `ci.mode`).
 
 Es un comando común que sirve en cualquier proveedor de CI, porque no depende de `gh` ni de variables de GitHub. Necesita `python3`, `git` y `bash`, y no necesita la CLI de Claude ni la de Codex.
 agent-ready-setup no proyecta ni crea workflows en `.github/workflows`: el job lo agrega cada repo si lo quiere.
@@ -18,14 +18,15 @@ assets faltantes o modificados, archivos fusionados y una versión nueva de golf
 | `up-to-date` | 0 | todo está al día |
 | `outdated` | 4 | hay assets, lock o fuentes desactualizados; los lista |
 | `source-unavailable` | 5 | no se pudo llegar a una fuente: no se puede afirmar que esté al día |
-| `config-error` | 2 | manifest, catálogo, pack o selección inválidos, o una variable con un valor que no existe |
-| `skipped` | 0 | `ci: off`: no evalúa nada, no usa la red y no ejecuta nada |
+| `config-error` | 2 | una capa de configuración, el catálogo, un pack o la selección inválidos, o una variable con un valor que no existe |
+| `skipped` | 0 | `ci.enabled: false`: no evalúa nada, no usa la red y no ejecuta nada |
 
-`ci: warn` informa lo mismo pero sale con 0 ante `outdated` y `source-unavailable`. `config-error` sale con 2 en
+`ci.mode: warn` informa lo mismo pero sale con 0 ante `outdated` y `source-unavailable`. `config-error` sale con 2 en
 cualquier modo, y un argumento inválido del comando también sale con 2. Una fuente en `pinned` que sigue una `ref` también cuenta como
 desactualizada si la `ref` avanzó, porque el chequeo responde si falta actualizar y no si se aplica solo. Un commit
-completo nunca queda desactualizado. `refresh` configura `plan` y `status`; el chequeo solo evita la red con
-`--offline`. `--format json` imprime un objeto con `status`, `ci`, `exitStatus`, `problems` y `unavailable`.
+completo nunca queda desactualizado. `updates.refresh` configura `plan` y `status`; el chequeo solo evita la red
+con `--offline`. `--format json` imprime un objeto con `status`, `ci` (`enabled` y `mode`), `exitStatus`,
+`problems` y `unavailable`.
 
 ## Autenticación de packs privados
 

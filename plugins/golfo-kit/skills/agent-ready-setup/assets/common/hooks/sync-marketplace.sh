@@ -4,11 +4,12 @@
 # Runs automatically on session start (SessionStart hook), where it never makes the
 # session wait: it reports the last update and starts the next one detached.
 #
-# With "updates": "auto" (the default in .agents/agent-ready.json) that update applies
-# the same ownership contract as bootstrap.sh: managed assets are overwritten, local
+# With updates.mode auto (the default of the configuration) that update applies the
+# same ownership contract as bootstrap.sh: managed assets are overwritten, local
 # changes included, and only files that no apply wrote are preserved and reported.
 # Pinned repositories are only checked: the update refreshes the user cache, and the
-# hook reports drift and pending updates without writing.
+# hook reports drift and pending updates without writing. updates.enabled false makes
+# SessionStart do nothing at all; an explicit sync still runs.
 # AGENT_READY_SETUP_REVIEW_MODE=1 (automated reviews) never writes or uses the network.
 # AGENT_READY_SETUP_SYNC_FOREGROUND=1, or --stack and --profiles, run the sync right here.
 
@@ -46,7 +47,6 @@ provider=""
 stack_override="${AGENT_READY_SETUP_STACK:-}"
 profiles_override="${AGENT_READY_SETUP_PROFILES:-}"
 review_mode="${AGENT_READY_SETUP_REVIEW_MODE:-0}"
-update_mode_override="${AGENT_READY_SETUP_UPDATES:-}"
 # Only --stack or --profiles on the command line turn a pinned check into an
 # explicit apply; the environment overrides only choose the selection.
 explicit_selection=0
@@ -163,14 +163,6 @@ defer_to_background=0
 if [[ "$review_mode" -eq 0 && "$foreground_sync" -eq 0 && "$explicit_selection" -eq 0 ]]; then
   defer_to_background=1
 fi
-
-case "$update_mode_override" in
-  ""|pinned|auto) ;;
-  *)
-    printf 'ERROR: AGENT_READY_SETUP_UPDATES must be pinned or auto\n' >&2
-    exit 1
-    ;;
-esac
 
 if [[ "$sync_lock_inherited" != 0 && "$sync_lock_inherited" != 1 ]]; then
   printf 'ERROR: AGENT_READY_SETUP_SYNC_LOCK_HELD must be 0 or 1\n' >&2
@@ -574,20 +566,30 @@ if ! command -v python3 >/dev/null 2>&1; then
   exit 0
 fi
 
-manifest_updates=""
-manifest_auto_sources=""
-manifest_refresh=""
-while IFS=$'\t' read -r manifest_key manifest_value; do
-  manifest_value="${manifest_value%$'\r'}"
-  case "$manifest_key" in
-    updates) manifest_updates="$manifest_value" ;;
-    auto_sources) manifest_auto_sources="$manifest_value" ;;
-    refresh) manifest_refresh="$manifest_value" ;;
+# Every layer is validated before anything else: an unknown key or an invalid value
+# could hide a pinned repository, so the sync stops without writing.
+if ! configuration="$(python3 "$state_script" config --project . --format tsv)"; then
+  printf 'WARNING: the Agent Ready configuration is not valid; nothing was synchronized.\n' >&2
+  exit 0
+fi
+updates_enabled=true
+update_mode=""
+auto_sources=""
+refresh_enabled=true
+tools_enabled=true
+while IFS=$'\t' read -r configuration_key configuration_value; do
+  configuration_value="${configuration_value%$'\r'}"
+  case "$configuration_key" in
+    updates.enabled) updates_enabled="$configuration_value" ;;
+    updates.mode) update_mode="$configuration_value" ;;
+    updates.refresh) refresh_enabled="$configuration_value" ;;
+    tools.enabled) tools_enabled="$configuration_value" ;;
+    auto_sources) auto_sources="$configuration_value" ;;
   esac
-done < <(python3 "$state_script" manifest --project . || true)
+done <<< "$configuration"
 # A pinned repository with a source in auto still syncs; its policy guards the rest.
 only_check=0
-if [[ "$manifest_updates" == pinned && -z "$manifest_auto_sources" && "$explicit_selection" -eq 0 ]]; then
+if [[ "$update_mode" == pinned && -z "$auto_sources" && "$explicit_selection" -eq 0 ]]; then
   only_check=1
 fi
 
@@ -599,9 +601,15 @@ if [[ "$review_mode" -eq 1 ]]; then
   exit 0
 fi
 
+# Only an explicit sync runs with automatic updates off.
+if [[ "$updates_enabled" != true && "$defer_to_background" -eq 1 ]]; then
+  echo "[marketplace-sync] Automatic updates are off (updates.enabled: false); nothing was checked or synchronized."
+  exit 0
+fi
+
 if [[ "$defer_to_background" -eq 0 && "$only_check" -eq 1 ]]; then
-  echo "[marketplace-sync] Repository pinned by .agents/agent-ready.json; checking without writing."
-  if [[ "$manifest_refresh" == on ]]; then
+  echo "[marketplace-sync] Repository pinned (updates.mode: pinned); checking without writing."
+  if [[ "$refresh_enabled" == true ]]; then
     python3 "$state_script" fetch-sources --project . --skill-dir "$skill_dir" --refresh || true
   fi
   python3 "$state_script" status --project . --skill-dir "$skill_dir" --brief || true
@@ -638,11 +646,11 @@ start_background_task() {
 if [[ "$defer_to_background" -eq 1 ]]; then
   python3 "$state_script" update-report --project . || true
   if [[ "$only_check" -eq 1 ]]; then
-    echo "[marketplace-sync] Repository pinned by .agents/agent-ready.json; checking without writing."
+    echo "[marketplace-sync] Repository pinned (updates.mode: pinned); checking without writing."
     python3 "$state_script" status --project . --skill-dir "$skill_dir" --brief || true
   fi
   # A pinned repository with refresh off has nothing to do in the background.
-  if [[ "$only_check" -eq 0 || "$manifest_refresh" == on ]]; then
+  if [[ "$only_check" -eq 0 || "$refresh_enabled" == true ]]; then
     start_background_task "background-update-$(project_log_key)" \
       python3 "$state_script" background-update --project . --skill-dir "$skill_dir" \
       --hook "$hook_path" --provider "$provider"
@@ -1107,7 +1115,7 @@ sync_browser_registration() {
   local installer="$skill_dir/scripts/start-browser-install.py"
   local registration_status=0
 
-  [[ "${AGENT_READY_SETUP_BROWSER_INSTALL:-1}" == 1 ]] || return 0
+  [[ "$tools_enabled" == true ]] || return 0
   [[ ",$resolved_tools," == *",browser,"* ]] || return 0
   if ! command -v python3 >/dev/null 2>&1; then
     printf 'WARNING: python3 is unavailable; browser MCP registration sync skipped.\n' >&2

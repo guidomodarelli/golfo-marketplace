@@ -46,23 +46,40 @@ from agent_ready_common import (  # noqa: E402
     sha256_of_text,
     walk_files,
 )
-from agent_ready_defaults import (  # noqa: E402
-    CI_FIELD,
-    CI_OFF,
+from agent_ready_config import (  # noqa: E402
+    IGNORED_LOCKED,
+    IGNORED_LOOSENS,
+    LAYER_USER,
+    PROJECT_CONFIG_RELATIVE_PATH,
+    describe_ignored,
+    describe_layer,
+    format_value,
+    load_schema,
+    normalized_project_path,
+    read_layer_file,
+    render_reference,
+    resolve_configuration,
+    set_sparse,
+    user_config_path,
+    validate_layer,
+)
+from agent_ready_options import (  # noqa: E402
+    CI_ENABLED_KEY,
+    CI_MODE_KEY,
     CI_WARN,
-    DEFAULT_PROVIDERS,
-    DETECTION_FIELD,
-    OPTIONS,
-    PROVIDERS_FIELD,
-    REFRESH_FIELD,
-    TOGGLE_OFF,
-    TOGGLE_ON,
+    DETECTION_ENABLED_KEY,
+    PROFILES_KEY,
+    PROVIDERS_KEY,
+    SOURCES_ENABLED_KEY,
+    SOURCES_PACKS_KEY,
+    SUPPORTED_PROVIDERS,
+    TOOLS_ENABLED_KEY,
+    UPDATE_MODES,
     UPDATES_AUTO,
-    UPDATES_FIELD,
+    UPDATES_MODE_KEY,
     UPDATES_PINNED,
-    effective_option,
-    validate_manifest_options,
-    without_default_values,
+    TRUSTED_PROJECTS_KEY,
+    UPDATES_REFRESH_KEY,
 )
 from agent_ready_detection import (  # noqa: E402
     STACK_PROFILE_KIND,
@@ -85,9 +102,10 @@ from agent_ready_packs import (  # noqa: E402
     parse_profile_sources,
     refresh_declared_sources,
     source_of_profile,
+    source_update_mode_is_ignored,
 )
 
-MANIFEST_RELATIVE_PATH = ".agents/agent-ready.json"
+MANIFEST_RELATIVE_PATH = PROJECT_CONFIG_RELATIVE_PATH
 LOCK_RELATIVE_PATH = ".agents/agent-ready.lock.json"
 PROFILE_CATALOG_RELATIVE_PATH = "assets/profiles.json"
 PROVIDER_CATALOG_RELATIVE_PATH = "assets/providers.json"
@@ -122,7 +140,6 @@ BACKGROUND_UPDATE_TIMEOUT_SECONDS = 1800
 REPORT_MAX_LISTED_ASSETS = 10
 REPORT_MAX_PROBLEM_CHARACTERS = 500
 BACKUPS_LINE_PREFIX = "Local backups directory:"
-SUPPORTED_PROVIDERS = DEFAULT_PROVIDERS
 BROWSER_TOOL_NAME = "browser"
 # Exit status when the selected profiles cannot be resolved or composed.
 PROFILE_ERROR_STATUS = 2
@@ -317,12 +334,17 @@ def load_profile_catalog(skill_dir):
     return catalog
 
 
+def configuration_of(project_root, offline=False):
+    """Effective configuration of a repository; ``offline`` is the --offline flag of this run."""
+    return resolve_configuration(project_root, flags={UPDATES_REFRESH_KEY: False} if offline else None)
+
+
 def declared_sources(project_root):
-    """Profile sources of the manifest, in a stable order."""
-    manifest = read_manifest(project_root)
-    if not manifest:
+    """Profile sources of the manifest, in a stable order; none while sources are off."""
+    configuration = configuration_of(project_root)
+    if not configuration.value(SOURCES_ENABLED_KEY):
         return []
-    return parse_profile_sources(manifest, os.path.join(project_root, MANIFEST_RELATIVE_PATH))
+    return parse_profile_sources(configuration.value(SOURCES_PACKS_KEY), os.path.join(project_root, MANIFEST_RELATIVE_PATH))
 
 
 def locked_sources_of(project_root):
@@ -341,12 +363,13 @@ def load_effective_catalog(project_root, skill_dir, source_state=None):
     catalog = load_profile_catalog(skill_dir)
     golfo_profile_names = set(catalog["profiles"])
     locked_sources = locked_sources_of(project_root)
-    manifest = read_manifest(project_root)
+    configuration = configuration_of(project_root)
     catalog["sources"] = {}
     catalog["packAssetRoots"] = {}
+    catalog["sourcesEnabled"] = configuration.value(SOURCES_ENABLED_KEY)
     for declaration in declared_sources(project_root):
         name = declaration["name"]
-        update_mode = effective_update_mode(manifest, declaration)
+        update_mode = effective_update_mode(configuration, declaration)
         source = locate_source(declaration, locked_sources.get(name), project_root, update_mode, (source_state or {}).get(name))
         if source["state"] == SOURCE_AVAILABLE:
             pack = load_pack_catalog(source, golfo_profile_names)
@@ -364,6 +387,8 @@ def raise_unknown_profile(catalog, name, requested_by):
     if is_pack_profile(name):
         source_name = source_of_profile(name)
         source = catalog.get("sources", {}).get(source_name)
+        if source is None and not catalog.get("sourcesEnabled", True):
+            raise ProfileError(f"profile '{name}'{origin} comes from the source '{source_name}', and profile sources are off ({SOURCES_ENABLED_KEY}: false)")
         if source is None:
             raise ProfileError(f"profile '{name}'{origin} needs the source '{source_name}', which the manifest does not declare; packs cannot bring sources of their own")
         if source["state"] != SOURCE_AVAILABLE:
@@ -772,7 +797,7 @@ def enforce_sync_policy(project_root, skill_dir, catalog, resolved, digests):
                 f"profile source '{name}' is pinned and differs from the lock ({'; '.join(item['differences'])}); "
                 "SessionStart does not adopt it, so this repository keeps its committed assets until someone adopts the change"
             )
-    if lock and effective_update_mode(read_manifest(project_root)) == UPDATES_PINNED:
+    if lock and effective_update_mode(configuration_of(project_root)) == UPDATES_PINNED:
         assets = desired_assets(skill_dir, catalog, resolved)
         golfo_assets = {destination: entry for destination, entry in assets.items() if not is_pack_profile(entry["profile"])}
         identity = source_identity(skill_dir, golfo_assets, merged_template_entries(skill_dir, catalog, resolved))
@@ -893,19 +918,16 @@ def merged_template_entries(skill_dir, catalog, resolved):
 # ---------------------------------------------------------------------------
 
 def read_manifest(project_root):
-    """Read the repository manifest, or None when the repository has none."""
-    path = os.path.join(project_root, MANIFEST_RELATIVE_PATH)
-    if not os.path.exists(path) and not os.path.islink(path):
-        return None
-    if os.path.islink(path):
-        raise StateError(f"{path} is a symlink; Agent Ready does not follow it")
-    manifest = read_json_file(path, "Agent Ready manifest")
-    profiles = manifest.get("profiles")
-    if not isinstance(profiles, list) or not profiles or not all(isinstance(name, str) for name in profiles):
-        raise StateError(f"{path} must declare 'profiles' as a non-empty list of names")
-    validate_manifest_options(manifest, path)
-    parse_profile_sources(manifest, path)
-    return manifest
+    """The repository manifest (the project layer), validated, or None when there is none.
+
+    Reading it resolves every layer, so an invalid organization, user or project file
+    stops here, before anything is written.
+    """
+    configuration = configuration_of(project_root)
+    if configuration.project_document is not None:
+        parse_profile_sources(configuration.project_document.get("sources", {}).get("packs", []),
+                              os.path.join(project_root, MANIFEST_RELATIVE_PATH))
+    return configuration.project_document
 
 
 def read_lock(project_root):
@@ -921,14 +943,18 @@ def read_lock(project_root):
     return lock
 
 
-def build_manifest(profiles, updates, providers, previous):
-    """Manifest content: what people configured, without the values that are defaults.
+def build_manifest(previous, profiles, updates):
+    """Manifest after an apply: the profiles it applied and, with --updates, the new mode.
 
-    Whatever else the file holds stays, and the fields of the catalog are never added.
+    The apply never writes a default: --updates with the default value removes the key, so
+    the repository follows whatever the lower layers say. What people wrote stays as is,
+    because a value equal to the default may override the organization or the user.
     """
-    manifest = dict(previous or {})
-    manifest.update({"schemaVersion": SCHEMA_VERSION, "profiles": list(profiles), UPDATES_FIELD: updates, PROVIDERS_FIELD: list(providers)})
-    return without_default_values(manifest)
+    manifest = json.loads(json.dumps(previous or {}))
+    manifest[PROFILES_KEY] = list(profiles)
+    if updates:
+        set_sparse(manifest, UPDATES_MODE_KEY, updates, load_schema())
+    return manifest
 
 
 # ---------------------------------------------------------------------------
@@ -1178,7 +1204,7 @@ def claude_proxy_drift(project_root, skill_dir):
     return drifted
 
 
-def global_effects(plan, skip_marketplace_upgrade, browser_install_enabled):
+def global_effects(plan, skip_marketplace_upgrade, tools_enabled):
     """Effects outside the repository that an apply may have, with their scope."""
     effects = []
     if not skip_marketplace_upgrade:
@@ -1186,11 +1212,11 @@ def global_effects(plan, skip_marketplace_upgrade, browser_install_enabled):
     if any(item["type"] == SOURCE_TYPE_GIT for item in plan["sourceReport"].values()):
         effects.append(("user-cache", f"download pinned profile sources that are missing under {pack_cache_root()}"))
     if BROWSER_TOOL_NAME in plan["tools"]:
-        if browser_install_enabled:
+        if tools_enabled:
             effects.append(("user-cache", "install or reuse browser tools under ~/.local/share/agent-ready-setup/browser-tools (profile browser)"))
             effects.append(("project", "register browser MCP servers in .mcp.json and .codex/config.toml"))
         else:
-            effects.append(("none", "browser tools are selected but AGENT_READY_SETUP_BROWSER_INSTALL=0 skips them"))
+            effects.append(("none", f"browser tools are selected but {TOOLS_ENABLED_KEY}: false skips them"))
     effects.append(("repository-config", "register a git config hook only if .claude views fall back to hard links"))
     return effects
 
@@ -1320,7 +1346,7 @@ def print_plan_sources(plan):
     write_line("")
 
 
-def print_plan(project_root, skill_dir, plan, provider, skip_marketplace_upgrade, browser_install_enabled):
+def print_plan(project_root, skill_dir, plan, provider, skip_marketplace_upgrade, configuration):
     """Human readable plan on stdout."""
     stream = sys.stdout
     write_line(paint("Agent Ready plan (read-only: nothing was written)", "heading", stream))
@@ -1330,6 +1356,10 @@ def print_plan(project_root, skill_dir, plan, provider, skip_marketplace_upgrade
         write_line(f"Dependency added: {name} (required by {', '.join(requirers)})")
     write_line(f"Source:   {describe_source(plan['source'])}")
     write_line(f"Lock:     {describe_source(plan['lockedSource']) if plan['hasLock'] else 'none (first apply creates it)'}")
+    write_line("")
+    write_line(paint("Configuration (effective value and the layer it comes from)", "heading", stream))
+    print_configuration_values(configuration)
+    print_ignored_configuration(configuration, stream)
     write_line("")
     print_plan_sources(plan)
     print_plan_detection(plan)
@@ -1362,7 +1392,7 @@ def print_plan(project_root, skill_dir, plan, provider, skip_marketplace_upgrade
         write_line(f"  ~ {len(drifted_proxies)} CLAUDE.md file(s) would be normalized to the proxy: {', '.join(drifted_proxies)}")
     write_line("")
     write_line(paint("Effects outside project assets (not applied by plan)", "heading", stream))
-    for scope, description in global_effects(plan, skip_marketplace_upgrade, browser_install_enabled):
+    for scope, description in global_effects(plan, skip_marketplace_upgrade, configuration.value(TOOLS_ENABLED_KEY)):
         write_line(f"  - [{scope}] {description}")
     write_line("")
     write_line(paint("Requirements", "heading", stream))
@@ -1417,7 +1447,7 @@ def remove_empty_parents(project_root, path):
         directory = os.path.dirname(directory)
 
 
-def finalize(project_root, skill_dir, plan, provider_list, updates):
+def finalize(project_root, skill_dir, plan, updates):
     """Retire assets, then write the lockfile and the manifest."""
     lock_assets = {}
     removed = []
@@ -1490,7 +1520,7 @@ def finalize(project_root, skill_dir, plan, provider_list, updates):
         # The digests map is keyed by name; profileOrder keeps the resolution order.
         "profileOrder": plan["profiles"],
         "primaryStack": plan["primaryStack"],
-        "providers": list(provider_list),
+        "providers": configuration_of(project_root).value(PROVIDERS_KEY),
         "requires": {"bash": "3.2+", "git": "any", "python3": "3.8+"},
         "assets": lock_assets,
         "merged": plan["merged"],
@@ -1500,9 +1530,7 @@ def finalize(project_root, skill_dir, plan, provider_list, updates):
     write_text_if_changed(os.path.join(project_root, LOCK_RELATIVE_PATH), serialize_json(lock))
 
     manifest = read_manifest(project_root)
-    manifest_providers = manifest.get("providers", list(provider_list)) if manifest else list(provider_list)
-    manifest_updates = updates or (manifest or {}).get(UPDATES_FIELD) or OPTIONS[UPDATES_FIELD]["default"]
-    desired_manifest = build_manifest(plan["profiles_requested"], manifest_updates, manifest_providers, manifest)
+    desired_manifest = build_manifest(manifest, plan["profiles_requested"], updates)
     if manifest != desired_manifest:
         write_text_atomically(os.path.join(project_root, MANIFEST_RELATIVE_PATH), serialize_json(desired_manifest))
 
@@ -1571,9 +1599,11 @@ def selection_differences(lock, plan):
 def compute_status(project_root, skill_dir):
     """Read-only state: manifest, checkout versus lock, source versus lock."""
     manifest = read_manifest(project_root)
+    configuration = configuration_of(project_root)
     lock = read_lock(project_root)
     status = {
         "manifest": manifest,
+        "configuration": configuration,
         "hasLock": lock is not None,
         "lockedSource": lock.get("source") if lock else None,
         "checkout": {"applied": [], "modified": [], "missing": [], "conflict": [], "failed": [], "retiredPreserved": []},
@@ -1604,7 +1634,7 @@ def compute_status(project_root, skill_dir):
             if local_state(os.path.join(project_root, destination)) == LOCAL_ABSENT:
                 status["checkout"]["missing"].append(destination)
 
-    profile_names = manifest["profiles"] if manifest else (lock.get("profileOrder") if lock else None)
+    profile_names = configuration.value(PROFILES_KEY) or (lock.get("profileOrder") if lock else None)
     if profile_names and skill_dir:
         try:
             catalog = load_effective_catalog(project_root, skill_dir)
@@ -1639,8 +1669,7 @@ def compute_status(project_root, skill_dir):
         provider_path = os.path.join(skill_dir, PROVIDER_CATALOG_RELATIVE_PATH)
         if os.path.isfile(provider_path):
             providers_catalog = read_json_file(provider_path, "provider catalog").get("providers", {})
-            selected = (manifest or {}).get("providers") or list(SUPPORTED_PROVIDERS)
-            for provider in selected:
+            for provider in configuration.value(PROVIDERS_KEY):
                 if provider in providers_catalog:
                     status["capabilities"][provider] = providers_catalog[provider]["capabilities"]
                 else:
@@ -1661,12 +1690,16 @@ def status_has_drift(status):
 def print_status(status, brief):
     """Human readable status."""
     stream = sys.stdout
-    manifest = status["manifest"]
-    if manifest is None:
+    configuration = status["configuration"]
+    profiles = configuration.value(PROFILES_KEY)
+    if not profiles:
         hint = "" if brief else " Run /agent-ready-setup to pin this repository."
-        write_line(paint(f"Agent Ready: no manifest (.agents/agent-ready.json).{hint}", "warning", stream))
+        write_line(paint(f"Agent Ready: no profiles selected in {MANIFEST_RELATIVE_PATH}.{hint}", "warning", stream))
     else:
-        write_line(f"Agent Ready profiles: {', '.join(manifest['profiles'])} (updates: {effective_option(manifest, UPDATES_FIELD, os.environ)})")
+        write_line(f"Agent Ready profiles: {', '.join(profiles)} (updates: {configuration.value(UPDATES_MODE_KEY)})")
+    # SessionStart already reported what was ignored when it read the configuration.
+    if not brief:
+        print_ignored_configuration(configuration, stream)
     if not status["hasLock"]:
         write_line(paint("No lockfile: applied assets are not pinned yet.", "warning", stream))
     else:
@@ -1754,11 +1787,11 @@ def resolve_selection(arguments, catalog):
         return split_profile_names(arguments.profiles), SELECTION_PROFILES_FLAG
     if getattr(arguments, "stack", None):
         return profiles_for_stack(catalog, arguments.stack), SELECTION_STACK_FLAG
-    manifest = read_manifest(arguments.project)
-    if manifest:
-        return list(manifest["profiles"]), SELECTION_MANIFEST
-    if effective_option(manifest, DETECTION_FIELD, os.environ) == TOGGLE_OFF:
-        raise ProfileError("detection is off: select the profiles with --stack or --profiles")
+    configuration = configuration_of(arguments.project)
+    if configuration.value(PROFILES_KEY):
+        return configuration.value(PROFILES_KEY), SELECTION_MANIFEST
+    if not configuration.value(DETECTION_ENABLED_KEY):
+        raise ProfileError(f"detection is off ({DETECTION_ENABLED_KEY}: false): select the profiles with --stack or --profiles")
     detection = detect_profiles(catalog["profiles"], arguments.project)
     return profiles_for_stack(catalog, stack_from_initial_detection(catalog, detection)), SELECTION_DETECTION
 
@@ -1788,19 +1821,114 @@ def command_resolve(arguments):
     return 0
 
 
-def command_manifest(arguments):
-    """Print the configuration as key<TAB>value lines; the rest only exists with a manifest."""
-    manifest = read_manifest(arguments.project)
-    write_line(f"refresh\t{effective_option(manifest, REFRESH_FIELD, os.environ)}")
-    write_line(f"updates\t{effective_option(manifest, UPDATES_FIELD, os.environ)}")
-    if manifest is None:
+def approval_hint(project_root):
+    """The exact command that approves a repository on this machine."""
+    script = os.path.abspath(__file__)
+    return f'approve it with: python3 "{script}" trust --project "{project_root}"'
+
+
+def print_ignored_configuration(configuration, stream):
+    """Warn about every value a layer could not set, and about ignored source update modes."""
+    hint = approval_hint(configuration.project_root)
+    for item in configuration.ignored:
+        write_line(paint(f"WARNING: {describe_ignored(item, hint)}", "warning", stream), stream)
+    for declaration in declared_sources(configuration.project_root):
+        reason = source_update_mode_is_ignored(configuration, declaration)
+        if reason is None:
+            continue
+        item = {"key": f"{SOURCES_PACKS_KEY}[{declaration['name']}].updates", "value": declaration["updates"],
+                "layer": "project", "reason": reason}
+        if reason in (IGNORED_LOCKED, IGNORED_LOOSENS):
+            message = describe_ignored(item, hint)
+        else:
+            message = f"{item['key']}={declaration['updates']} was ignored: {reason}"
+        write_line(paint(f"WARNING: {message}", "warning", stream), stream)
+
+
+def automatic_sources(configuration):
+    """Names of the declared sources whose effective update mode is auto."""
+    return [declaration["name"] for declaration in declared_sources(configuration.project_root)
+            if effective_update_mode(configuration, declaration) == UPDATES_AUTO]
+
+
+def print_configuration_values(configuration, indent="  "):
+    """Every option with its effective value and the layer it comes from."""
+    values = {key: format_value(configuration.value(key)) or "-" for key in configuration.schema.leaves}
+    key_width = max(len(key) for key in values)
+    value_width = max(len(value) for value in values.values())
+    for key in sorted(values):
+        write_line(f"{indent}{key:<{key_width}}  {values[key]:<{value_width}}  ({configuration.origin(key)})")
+
+
+def print_configuration_text(configuration):
+    """Layers, every effective value with its origin, then what was ignored."""
+    stream = sys.stdout
+    write_line(paint("Agent Ready configuration (effective value and the layer it comes from)", "heading", stream))
+    for layer in configuration.layers:
+        if layer["path"]:
+            presence = "present" if layer["present"] else "not present"
+            write_line(f"  {layer['name']}: {layer['path']} ({presence})")
+    approval = "approved" if configuration.project_approved else "not approved"
+    write_line(f"  this repository on this machine: {approval} to loosen security from its manifest")
+    print_configuration_values(configuration)
+    print_ignored_configuration(configuration, stream)
+
+
+def command_config(arguments):
+    """Print the effective configuration: text explains it, json and tsv are for scripts.
+
+    tsv prints one ``key<TAB>value`` line per option (booleans as true/false, lists joined
+    with commas) and the derived line ``auto_sources``: declared sources in auto.
+    """
+    configuration = configuration_of(arguments.project, arguments.offline)
+    if arguments.format == "json":
+        document = {
+            "values": configuration.tree(),
+            "origins": {key: configuration.origin(key) for key in sorted(configuration.values)},
+            "ignored": configuration.ignored,
+            "layers": configuration.layers,
+            "projectApproved": configuration.project_approved,
+        }
+        write_line(serialize_json(document).rstrip("\n"))
         return 0
-    write_line(f"profiles\t{','.join(manifest['profiles'])}")
-    automatic_sources = [
-        declaration["name"] for declaration in parse_profile_sources(manifest, MANIFEST_RELATIVE_PATH)
-        if effective_update_mode(manifest, declaration) == UPDATES_AUTO
-    ]
-    write_line(f"auto_sources\t{','.join(automatic_sources)}")
+    if arguments.format == "tsv":
+        print_ignored_configuration(configuration, sys.stderr)
+        for key in sorted(configuration.schema.leaves):
+            write_line(f"{key}\t{format_value(configuration.value(key))}")
+        write_line(f"auto_sources\t{','.join(automatic_sources(configuration))}")
+        return 0
+    print_configuration_text(configuration)
+    return 0
+
+
+def command_config_reference(arguments):
+    """Print the Markdown reference of every option, generated from the schemas."""
+    write_line(render_reference(load_schema()).rstrip("\n"))
+    return 0
+
+
+def command_trust(arguments):
+    """Approve (or revoke) this repository on this machine, in the user configuration."""
+    project_root = find_repository_root(arguments.project)
+    path = user_config_path(os.environ)
+    schema = load_schema()
+    label = describe_layer(LAYER_USER, path)
+    document = read_layer_file(path, LAYER_USER) or {}
+    validate_layer(schema, document, LAYER_USER, label)
+    current = document.get("security", {}).get("trustedProjects", [])
+    approved = [entry for entry in current if normalized_project_path(entry) != normalized_project_path(project_root)]
+    if not arguments.revoke:
+        approved.append(project_root)
+    set_sparse(document, TRUSTED_PROJECTS_KEY, approved, schema)
+    validate_layer(schema, document, LAYER_USER, label)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    write_text_if_changed(path, serialize_json(document))
+    script = os.path.abspath(__file__)
+    if arguments.revoke:
+        write_line(f"Revoked: the manifest of {project_root} can no longer loosen security on this machine ({path}).")
+    else:
+        write_line(f"Approved on this machine: the manifest of {project_root} may loosen security keys ({path}).")
+        write_line(f'Revoke it with: python3 "{script}" trust --revoke --project "{project_root}"')
     return 0
 
 
@@ -1812,8 +1940,8 @@ def command_fetch_sources(arguments):
         for failure in refresh_declared_sources(declarations, locked_sources):
             write_line(f"WARNING: comparing with the local cache: {failure}", sys.stderr)
         return 0
-    manifest = read_manifest(arguments.project)
-    pins = download_declared_sources(declarations, locked_sources, arguments.update_source or [], manifest, arguments.project)
+    pins = download_declared_sources(declarations, locked_sources, arguments.update_source or [],
+                                     configuration_of(arguments.project), arguments.project)
     if arguments.state_file:
         write_text_atomically(arguments.state_file, serialize_json(pins))
     return 0
@@ -1822,8 +1950,8 @@ def command_fetch_sources(arguments):
 def command_detect(arguments):
     """Print what the project signals say; it never changes a selection."""
     catalog = load_effective_catalog(arguments.project, arguments.skill_dir)
-    if effective_option(read_manifest(arguments.project), DETECTION_FIELD, os.environ) == TOGGLE_OFF:
-        write_line("Detection is off: select the profiles with --stack or --profiles.")
+    if not configuration_of(arguments.project).value(DETECTION_ENABLED_KEY):
+        write_line(f"Detection is off ({DETECTION_ENABLED_KEY}: false): select the profiles with --stack or --profiles.")
         return DETECTION_UNRESOLVED_STATUS
     detection = detect_profiles(catalog["profiles"], arguments.project)
     write_line(f"Stack: {describe_detected_stack(detection)}")
@@ -1866,13 +1994,13 @@ def command_plan(arguments):
         for view in plan["detachedViews"]:
             write_line(view)
     else:
-        if effective_option(read_manifest(arguments.project), DETECTION_FIELD, os.environ) == TOGGLE_ON:
+        configuration = configuration_of(arguments.project, arguments.offline)
+        if configuration.value(DETECTION_ENABLED_KEY):
             plan["detection"] = detect_profiles(catalog["profiles"], arguments.project)
             plan["suggestions"] = capability_suggestions(catalog, plan["detection"], plan["profiles"])
         print_plan(
             arguments.project, arguments.skill_dir, plan, arguments.provider,
-            os.environ.get("AGENT_READY_SETUP_MARKETPLACE_UPGRADED") == "1",
-            os.environ.get("AGENT_READY_SETUP_BROWSER_INSTALL", "1") == "1",
+            os.environ.get("AGENT_READY_SETUP_MARKETPLACE_UPGRADED") == "1", configuration,
         )
     return 0
 
@@ -1880,8 +2008,7 @@ def command_plan(arguments):
 def command_finalize(arguments):
     """Retire assets and write the lockfile from a saved pre-apply plan."""
     plan = read_json_file(arguments.plan, "saved plan")
-    providers = split_profile_names(arguments.providers) or list(SUPPORTED_PROVIDERS)
-    report = finalize(arguments.project, arguments.skill_dir, plan, providers, arguments.updates)
+    report = finalize(arguments.project, arguments.skill_dir, plan, arguments.updates)
     print_finalize_report(report)
     return 0
 
@@ -1961,10 +2088,10 @@ def find_repository_root(start):
 
 def evaluate_check(project_root, skill_dir, offline):
     """Result of the check, before the ``ci`` mode decides the exit status."""
-    manifest = read_manifest(project_root)
-    mode = effective_option(manifest, CI_FIELD, os.environ)
-    if mode == CI_OFF:
-        return {"status": CHECK_SKIPPED, "ci": mode, "problems": [], "unavailable": []}
+    configuration = configuration_of(project_root, offline)
+    ci = {"enabled": configuration.value(CI_ENABLED_KEY), "mode": configuration.value(CI_MODE_KEY)}
+    if not ci["enabled"]:
+        return {"status": CHECK_SKIPPED, "ci": ci, "problems": [], "unavailable": []}
     unavailable = []
     if not offline:
         unavailable = refresh_declared_sources(declared_sources(project_root), locked_sources_of(project_root))
@@ -1977,7 +2104,7 @@ def evaluate_check(project_root, skill_dir, offline):
         status = CHECK_OUTDATED
     else:
         status = CHECK_UP_TO_DATE
-    return {"status": status, "ci": mode, "problems": problems, "unavailable": unavailable}
+    return {"status": status, "ci": ci, "problems": problems, "unavailable": unavailable}
 
 
 def print_check_text(result):
@@ -1991,7 +2118,13 @@ def print_check_text(result):
         CHECK_SKIPPED: ("skipped", "muted"),
     }
     headline, color = headlines[result["status"]]
-    mode = f" (ci: {result['ci']})" if result["ci"] else ""
+    ci = result["ci"]
+    if not ci:
+        mode = ""
+    elif ci["enabled"]:
+        mode = f" ({CI_MODE_KEY}: {ci['mode']})"
+    else:
+        mode = f" ({CI_ENABLED_KEY}: false)"
     write_line(paint(f"Agent Ready check: {headline}{mode}", color, stream))
     for message in result["unavailable"] + result["problems"]:
         write_line(f"  ! {message}")
@@ -2010,7 +2143,7 @@ def command_check(arguments):
     except (ProfileError, StateError) as configuration_error:
         result = {"status": CHECK_CONFIG_ERROR, "ci": None, "problems": [str(configuration_error)], "unavailable": []}
     exit_status = CHECK_EXIT_STATUSES[result["status"]]
-    if result["ci"] == CI_WARN:
+    if result["ci"] and result["ci"]["mode"] == CI_WARN:
         exit_status = 0
     result["exitStatus"] = exit_status
     if arguments.format == "json":
@@ -2224,9 +2357,19 @@ def build_parser():
     resolve_parser.add_argument("--compose-dir", help="cache directory for composed stack trees")
     resolve_parser.set_defaults(handler=command_resolve)
 
-    manifest_parser = subparsers.add_parser("manifest", help="print the repository manifest")
-    add_common(manifest_parser, needs_skill=False)
-    manifest_parser.set_defaults(handler=command_manifest)
+    config_parser = subparsers.add_parser("config", help="effective configuration with the layer of each value")
+    add_common(config_parser, needs_skill=False)
+    config_parser.add_argument("--format", choices=("text", "json", "tsv"), default="text", help="tsv is for Bash")
+    config_parser.add_argument("--offline", action="store_true", help="this run uses no network (updates.refresh: false)")
+    config_parser.set_defaults(handler=command_config)
+
+    reference_parser = subparsers.add_parser("config-reference", help="Markdown reference generated from the schemas")
+    reference_parser.set_defaults(handler=command_config_reference, project=".")
+
+    trust_parser = subparsers.add_parser("trust", help="approve this repository on this machine to loosen security")
+    add_common(trust_parser, needs_skill=False)
+    trust_parser.add_argument("--revoke", action="store_true", help="remove the approval")
+    trust_parser.set_defaults(handler=command_trust)
 
     detect_parser = subparsers.add_parser("detect", help="read-only detection of stacks and capabilities")
     add_common(detect_parser)
@@ -2265,13 +2408,13 @@ def build_parser():
     plan_parser.add_argument("--format", choices=("text", "protected"), default="text")
     plan_parser.add_argument("--save", help="also save the full plan as JSON to this path")
     plan_parser.add_argument("--provider", default="claude", choices=SUPPORTED_PROVIDERS)
+    plan_parser.add_argument("--offline", action="store_true", help="this run uses no network (updates.refresh: false)")
     plan_parser.set_defaults(handler=command_plan)
 
     finalize_parser = subparsers.add_parser("finalize", help="retire assets and write the lockfile")
     add_common(finalize_parser)
     finalize_parser.add_argument("--plan", required=True, help="plan saved before the projection")
-    finalize_parser.add_argument("--updates", choices=OPTIONS[UPDATES_FIELD]["supported"], help="manifest update mode")
-    finalize_parser.add_argument("--providers", default=",".join(SUPPORTED_PROVIDERS))
+    finalize_parser.add_argument("--updates", choices=UPDATE_MODES, help="manifest update mode")
     finalize_parser.set_defaults(handler=command_finalize)
 
     status_parser = subparsers.add_parser("status", help="read-only status")

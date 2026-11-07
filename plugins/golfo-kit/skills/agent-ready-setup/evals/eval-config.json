@@ -600,7 +600,7 @@
     {
       "id": "marketplace-upgrade-refreshes-managed-assets",
       "description": "Distingue upgrade global de proyección local con ownership: pisa también lo editado y protege las instrucciones del proyecto.",
-      "input": "Explicá qué ocurre con un proyecto Agent Ready con `updates: auto` en `.agents/agent-ready.json` después del upgrade del marketplace, cuando la plantilla de `.agents/rules/testing.md` cambió y nadie lo tocó, pero `.agents/rules/security.md` también cambió en la plantilla y el equipo lo editó a mano. Indicá qué hace el hook con cada archivo, cómo se muestra el diff, qué registra después y cuáles archivos de instrucciones nunca deben reemplazarse. No ejecutes Bash ni escribas archivos.",
+      "input": "Explicá qué ocurre con un proyecto Agent Ready con `updates.mode: auto` en `.agents/agent-ready.json` después del upgrade del marketplace, cuando la plantilla de `.agents/rules/testing.md` cambió y nadie lo tocó, pero `.agents/rules/security.md` también cambió en la plantilla y el equipo lo editó a mano. Indicá qué hace el hook con cada archivo, cómo se muestra el diff, qué registra después y cuáles archivos de instrucciones nunca deben reemplazarse. No ejecutes Bash ni escribas archivos.",
       "assertions": [
         {
           "type": "contains_any",
@@ -2046,7 +2046,7 @@
     {
       "id": "pinned-session-start-only-reports-updates",
       "description": "En un repo pinned, SessionStart no escribe: informa el update y deriva a plan y apply explícitos.",
-      "input": "Nuestro repo tiene `.agents/agent-ready.json` con `\"updates\": \"pinned\"` y ayer se publicó una versión nueva de golfo-kit que cambia rules del stack node. ¿Qué hace el hook de SessionStart cuando abro Claude Code mañana, cómo veo qué cambiaría antes de aceptarlo y cómo lo aplico de forma revisable? No ejecutes Bash ni escribas archivos.",
+      "input": "Nuestro repo tiene `.agents/agent-ready.json` con `\"updates\": {\"mode\": \"pinned\"}` y ayer se publicó una versión nueva de golfo-kit que cambia rules del stack node. ¿Qué hace el hook de SessionStart cuando abro Claude Code mañana, cómo veo qué cambiaría antes de aceptarlo y cómo lo aplico de forma revisable? No ejecutes Bash ni escribas archivos.",
       "assertions": [
         {
           "type": "contains_any",
@@ -2252,7 +2252,7 @@
     {
       "id": "automated-review-reads-pinned-context",
       "description": "Configura una review automatizada sin sync y con versión de contexto identificable.",
-      "input": "Vamos a usar Codex para revisar PRs automáticamente en CI en un repo preparado con agent-ready-setup (`updates: auto`). ¿Cómo evito que la review sincronice reglas mientras revisa y cómo sé después qué versión de las reglas usó? No ejecutes Bash ni escribas archivos.",
+      "input": "Vamos a usar Codex para revisar PRs automáticamente en CI en un repo preparado con agent-ready-setup (`updates.mode: auto`). ¿Cómo evito que la review sincronice reglas mientras revisa y cómo sé después qué versión de las reglas usó? No ejecutes Bash ni escribas archivos.",
       "assertions": [
         {
           "type": "contains",
@@ -2470,7 +2470,7 @@
     {
       "id": "pinned-source-never-applies-on-its-own",
       "description": "Una fuente pinned no se aplica sola, aunque su rama avance, y plan lo avisa.",
-      "input": "Mi manifest tiene `\"updates\": \"pinned\"` y una fuente con `\"ref\": \"main\"`. Esa rama avanzó ayer. ¿Se aplica sola en la próxima sesión? ¿Cómo me entero y cómo adopto esa versión? No ejecutes Bash ni escribas archivos.",
+      "input": "Mi manifest tiene `\"updates\": {\"mode\": \"pinned\"}` y una fuente con `\"ref\": \"main\"`. Esa rama avanzó ayer. ¿Se aplica sola en la próxima sesión? ¿Cómo me entero y cómo adopto esa versión? No ejecutes Bash ni escribas archivos.",
       "assertions": [
         {
           "type": "contains_any",
@@ -2504,7 +2504,7 @@
         },
         {
           "type": "contains_any",
-          "values": ["refresh.*off", "off.*refresh"],
+          "values": ["updates.refresh"],
           "description": "Da la configuración persistente",
           "critical": true
         },
@@ -2540,7 +2540,7 @@
         },
         {
           "type": "contains_any",
-          "values": ["`off`", "\"off\"", "ci: off", "ci.*off"],
+          "values": ["ci.enabled"],
           "description": "Explica cómo apagarlo"
         }
       ]
@@ -2589,13 +2589,13 @@
         },
         {
           "type": "contains_any",
-          "values": ["updates.*pinned", "pinned.*updates"],
+          "values": ["updates.*pinned", "pinned.*updates", "updates.enabled"],
           "description": "Apaga las actualizaciones automáticas",
           "critical": true
         },
         {
-          "type": "contains",
-          "value": "profileSources",
+          "type": "contains_any",
+          "values": ["sources.packs", "sources.enabled"],
           "description": "Los packs son opcionales por no declararlos"
         },
         {
@@ -2608,7 +2608,7 @@
     {
       "id": "pack-keeps-credentials-out-of-the-manifest",
       "description": "Para un pack privado no acepta un token en la URL del manifest.",
-      "input": "El pack de mi empresa es privado. Para no pelear con la autenticación en CI pensaba poner `git+https://usuario:ghp_mitoken@github.com/acme/agent-profiles#<commit>` en `profileSources`. ¿Está bien? No ejecutes Bash ni escribas archivos.",
+      "input": "El pack de mi empresa es privado. Para no pelear con la autenticación en CI pensaba poner `git+https://usuario:ghp_mitoken@github.com/acme/agent-profiles#<commit>` en `sources.packs`. ¿Está bien? No ejecutes Bash ni escribas archivos.",
       "assertions": [
         {
           "type": "contains_any",
@@ -2621,6 +2621,175 @@
           "values": ["autenticación ya configurada", "autenticación configurada", "credential", "ssh", "autenticación de Git"],
           "description": "Propone la autenticación ya configurada",
           "critical": true
+        }
+      ]
+    },
+    {
+      "id": "config-loosening-from-the-project-needs-machine-approval",
+      "description": "Un valor del manifest que afloja una clave sensible se ignora hasta que la máquina aprueba el repo; no se esquiva borrando la config de usuario.",
+      "input": "En mi notebook tengo `~/.config/agent-ready-setup/config.json` con `{\"tools\": {\"enabled\": false}}`. Cloné un repo cuyo `.agents/agent-ready.json` trae `{\"tools\": {\"enabled\": true}}` y el apply avisa que lo ignoró y no instala el browser. Confío en ese repo. ¿Borro mi config de usuario o le pongo `security.enabled: false` para que ande? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["afloj", "loosen"],
+          "description": "Explica que el manifest afloja una clave sensible",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "trust",
+          "description": "Aprueba ese repo con la operación de confianza",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["todos los repo", "todos los proyecto", "cualquier repo", "cualquier proyecto", "every project", "all projects", "every repo"],
+          "description": "Advierte que apagar security.enabled o borrar la config afecta a todos los repos",
+          "critical": true
+        }
+      ]
+    },
+    {
+      "id": "config-old-flat-fields-fail-and-point-to-namespaces",
+      "description": "Un campo con el formato viejo falla antes de escribir; la respuesta usa el namespace del módulo.",
+      "input": "Un README viejo de mi equipo dice que para apagar el chequeo de CI de agent-ready-setup hay que poner `\"ci\": \"off\"` en `.agents/agent-ready.json`, y para no refrescar `\"refresh\": \"off\"`. Lo hice y ahora bootstrap falla antes de escribir. ¿Qué tengo que poner? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "ci.enabled",
+          "description": "Apaga el chequeo con su enabled",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "updates.refresh",
+          "description": "El refresco vive en el módulo updates",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["unknown key", "clave desconocida", "desconocid", "schema"],
+          "description": "Explica que el formato viejo es una clave que el schema no conoce"
+        }
+      ]
+    },
+    {
+      "id": "config-machine-preference-goes-to-the-user-layer",
+      "description": "Una preferencia de la máquina va a la config de usuario, no al manifest de cada repo.",
+      "input": "En mi máquina de trabajo quiero que todos los repos que tengo con agent-ready-setup queden fijados y nada se actualice solo, sin tocar el `.agents/agent-ready.json` de cada uno porque los comparten otras personas. ¿Dónde lo configuro? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": [".config.*agent-ready-setup"],
+          "description": "Usa la config de usuario",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["updates.mode", "security.preset", "\"mode\": \"pinned\"", "strict"],
+          "description": "Fija con updates.mode o el preset strict",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["afloj", "loosen", "ignora", "aprob"],
+          "description": "Explica que un manifest no puede volver a auto sin aprobación de la máquina"
+        }
+      ]
+    },
+    {
+      "id": "config-explains-where-a-value-comes-from",
+      "description": "Para saber de dónde sale un valor, muestra la configuración efectiva con su capa de origen.",
+      "input": "Mi repo quedó en `pinned` y el `.agents/agent-ready.json` no dice nada de `updates`. ¿De dónde sale eso y cómo lo averiguo sin adivinar? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["--config", "state.py\" config", "state.py config", "config --project"],
+          "description": "Muestra la configuración efectiva",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["organizaci", "organization"],
+          "description": "Considera la capa de organización",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [".config.*agent-ready-setup", "config de usuario", "user layer", "capa de usuario", "capa user"],
+          "description": "Considera la capa de usuario"
+        }
+      ]
+    },
+    {
+      "id": "config-reference-is-generated-from-the-schemas",
+      "description": "La referencia de claves no se edita a mano: se cambia el schema y se regenera.",
+      "input": "Estoy agregando una opción nueva `ci.timeoutSeconds` a agent-ready-setup. Para documentarla pensaba sumar una fila a mano en `references/configuration-keys.md` y listar el default en `scripts/agent_ready_options.py`. ¿Es así? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "ci.schema.json",
+          "description": "La opción se declara en el schema del módulo",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "config-reference",
+          "description": "Regenera la referencia desde los schemas",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["uso real", "llamador", "caller", "código que la use", "código que la lea"],
+          "description": "Recuerda que una opción entra con el código que la usa"
+        }
+      ]
+    },
+    {
+      "id": "config-organization-locks-a-key",
+      "description": "Una organización bloquea una clave con locked desde su capa opcional, sin imponerla en el manifest.",
+      "input": "Soy del equipo de plataforma de una empresa. Quiero que ningún repo ni ningún desarrollador pueda apagar el chequeo de CI de agent-ready-setup ni pasarlo a warn, pero sin agregar nada a los repos de los equipos. ¿Cómo lo hago y qué tan a prueba de manipulación es? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "locked",
+          "description": "Usa locked de la organización",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["AGENT_READY_SETUP_ORGANIZATION_CONFIG", "/etc/agent-ready-setup", "ProgramData"],
+          "description": "Ubica la capa de organización",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["no es a prueba", "no es un control", "puede cambiar", "puede modificar", "no garantiza", "tamper"],
+          "description": "Aclara que la capa de organización no es a prueba de manipulación"
+        }
+      ]
+    },
+    {
+      "id": "config-preset-off-from-the-project-is-ignored",
+      "description": "security.preset off desde el proyecto cuenta como aflojar; solo vale desde usuario u organización.",
+      "input": "Para que agent-ready-setup deje de quejarse en un repo nuestro, pensaba poner `\"security\": {\"preset\": \"off\"}` en el `.agents/agent-ready.json` y commitearlo, así le sirve a todo el equipo. ¿Funciona? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["afloj", "loosen"],
+          "description": "Lo trata como aflojar",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["ignora", "no se toma", "no se aplica", "no tiene efecto", "ignored"],
+          "description": "Dice que desde el proyecto se ignora sin aprobación",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["usuario", "user", "organizaci", "organization"],
+          "description": "Indica desde qué capas sí vale"
         }
       ]
     },

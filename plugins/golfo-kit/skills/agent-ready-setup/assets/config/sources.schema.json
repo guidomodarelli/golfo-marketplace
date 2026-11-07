@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Profile packs",
+  "description": "Fuentes externas de profiles: un pack en Git o una carpeta local del repositorio.",
+  "x-module": "sources",
+  "x-mount": "sources",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "enabled": {
+      "description": "Apagado, los packs declarados no se descargan ni se leen, y seleccionar un profile de un pack falla. Encenderlo desde el proyecto cuando otra capa lo apagó afloja la seguridad.",
+      "type": "boolean",
+      "default": true,
+      "x-security": { "strictness": [true, false] }
+    },
+    "packs": {
+      "description": "Packs disponibles para seleccionar sus profiles por nombre con namespace (acme/kafka-interno). Declararlos no selecciona ninguno.",
+      "type": "array",
+      "default": [],
+      "x-layers": ["project"],
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "source"],
+        "properties": {
+          "name": { "description": "Namespace de sus profiles; igual al name del catálogo del pack, en kebab-case.", "type": "string" },
+          "source": { "description": "git+https://..., git+ssh://... o path:<ruta relativa a la raíz del repositorio>.", "type": "string" },
+          "ref": { "description": "Rama o tag a seguir de una fuente Git, si la URL no trae #<revisión>.", "type": "string" },
+          "updates": { "description": "Modo de actualización de esta fuente; pisa updates.mode del repositorio.", "type": "string", "enum": ["auto", "pinned"] }
+        }
+      }
+    }
+  }
+}

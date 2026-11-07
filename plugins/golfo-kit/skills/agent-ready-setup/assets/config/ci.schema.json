@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Chequeo de CI",
+  "description": "agent-ready-state.py check compara las fuentes, el lockfile y los assets commiteados; corre en cualquier proveedor de CI.",
+  "x-module": "ci",
+  "x-mount": "ci",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "enabled": {
+      "description": "Apagado, el chequeo no compara nada, no usa la red y sale con 0.",
+      "type": "boolean",
+      "default": true
+    },
+    "mode": {
+      "description": "fail sale con el código de cada resultado; warn informa lo mismo y sale con 0.",
+      "type": "string",
+      "enum": ["fail", "warn"],
+      "default": "fail",
+      "x-env": "AGENT_READY_SETUP_CI"
+    }
+  }
+}

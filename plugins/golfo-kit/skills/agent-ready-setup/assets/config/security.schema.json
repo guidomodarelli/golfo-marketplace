@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Seguridad",
+  "description": "Qué puede aflojar el manifest de un repositorio. Endurecer siempre se aplica; aflojar desde el proyecto requiere que la máquina haya aprobado el repositorio.",
+  "x-module": "security",
+  "x-mount": "security",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "enabled": {
+      "description": "Exige la aprobación de la máquina para que el proyecto afloje una clave sensible. Apagado, el proyecto afloja sin aprobación.",
+      "type": "boolean",
+      "default": true,
+      "x-security": { "strictness": [false, true] },
+      "x-role": "approval-switch"
+    },
+    "preset": {
+      "description": "Conjunto de valores con una sola clave: standard (los defaults), strict (además, updates.mode pinned) u off (sin exigir aprobación). Cualquier clave se puede pisar en la misma capa o en una superior; off desde el proyecto cuenta como aflojar.",
+      "type": "string",
+      "enum": ["off", "standard", "strict"],
+      "default": "standard",
+      "x-security": { "strictness": ["off", "standard", "strict"] },
+      "x-presets": {
+        "off": { "security.enabled": false, "updates.mode": "auto" },
+        "standard": { "security.enabled": true, "updates.mode": "auto" },
+        "strict": { "security.enabled": true, "updates.mode": "pinned" }
+      }
+    },
+    "trustedProjects": {
+      "description": "Raíces de los repositorios que esta máquina aprobó para aflojar desde su manifest. Se agregan con agent-ready-state.py trust y se unen entre capas.",
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "default": [],
+      "uniqueItems": true,
+      "x-layers": ["organization", "user"],
+      "x-merge": "union",
+      "x-role": "approved-projects"
+    }
+  }
+}

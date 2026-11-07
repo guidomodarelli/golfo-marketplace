@@ -760,10 +760,11 @@ EOF
   cp "$skill_dir/assets/common/hooks/sync-marketplace.sh" \
     "$source_dir/assets/common/hooks/sync-marketplace.sh"
   cp "$skill_dir/scripts/asset-sync-common.sh" "$source_dir/scripts/asset-sync-common.sh"
-  # Minimal sources still need the profile catalog and the state helper the hook resolves.
+  # Minimal sources still need the profile catalog, the configuration schemas and the state helper the hook resolves.
   cp "$skill_dir/scripts/agent-ready-state.py" "$source_dir/scripts/agent-ready-state.py"
   cp "$skill_dir/scripts/"agent_ready_*.py "$source_dir/scripts/"
   cp "$skill_dir/assets/profiles.json" "$source_dir/assets/profiles.json"
+  cp -R "$skill_dir/assets/config" "$source_dir/assets/config"
   cp "$skill_dir/scripts/merge-managed-settings.py" "$source_dir/scripts/merge-managed-settings.py"
   printf '%s\n' '#!/bin/bash' > "$source_dir/scripts/normalize-instructions.sh"
   cp "$skill_dir/scripts/run-detached.py" "$source_dir/scripts/run-detached.py"
@@ -790,7 +791,7 @@ EOF
   EVENT_LOG="$event_log" \
     MERGE_LOG="$merge_log" \
     AGENT_READY_SETUP_SKILL_DIR="$source_dir" \
-    AGENT_READY_SETUP_BROWSER_INSTALL=0 \
+    AGENT_READY_SETUP_TOOLS=0 \
     PATH="$fake_bin:$PATH" \
     run bash "$skill_dir/assets/common/hooks/sync-marketplace.sh" \
       --provider claude
@@ -822,10 +823,11 @@ EOF
   cp "$skill_dir/assets/common/hooks/sync-marketplace.sh" \
     "$source_dir/assets/common/hooks/sync-marketplace.sh"
   cp "$skill_dir/scripts/asset-sync-common.sh" "$source_dir/scripts/asset-sync-common.sh"
-  # Minimal sources still need the profile catalog and the state helper the hook resolves.
+  # Minimal sources still need the profile catalog, the configuration schemas and the state helper the hook resolves.
   cp "$skill_dir/scripts/agent-ready-state.py" "$source_dir/scripts/agent-ready-state.py"
   cp "$skill_dir/scripts/"agent_ready_*.py "$source_dir/scripts/"
   cp "$skill_dir/assets/profiles.json" "$source_dir/assets/profiles.json"
+  cp -R "$skill_dir/assets/config" "$source_dir/assets/config"
   cp "$skill_dir/scripts/merge-managed-settings.py" "$source_dir/scripts/merge-managed-settings.py"
   printf '%s\n' '#!/bin/bash' > "$source_dir/scripts/normalize-instructions.sh"
   printf '%s\n' '{}' > "$source_dir/assets/common/settings.json"

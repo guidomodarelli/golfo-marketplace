@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Herramientas",
+  "description": "Herramientas que declaran los profiles seleccionados (hoy browser) y que el apply instala y registra fuera de los assets.",
+  "x-module": "tools",
+  "x-mount": "tools",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "enabled": {
+      "description": "Apagado, el apply y el inicio de sesión proyectan los assets sin instalar ni registrar herramientas. Encenderlo desde el proyecto cuando otra capa lo apagó afloja la seguridad.",
+      "type": "boolean",
+      "default": true,
+      "x-env": "AGENT_READY_SETUP_TOOLS",
+      "x-security": { "strictness": [true, false] }
+    }
+  }
+}

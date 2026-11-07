@@ -13,7 +13,7 @@ setup() {
   mkdir -p "$project_dir" "$fake_bin" "$test_root/tmp"
   export TMPDIR="$test_root/tmp"
   export XDG_CACHE_HOME="$test_root/cache"
-  export AGENT_READY_SETUP_BROWSER_INSTALL=0
+  export AGENT_READY_SETUP_TOOLS=0
   export AGENT_READY_SETUP_ACTIVE_PROVIDER=claude
   # The detached update has its own suite; these tests read the sync's output directly.
   export AGENT_READY_SETUP_SYNC_FOREGROUND=1
@@ -90,7 +90,7 @@ lock_value() {
   [[ "$output" == *"Profiles: node,browser"* ]]
   [[ "$output" == *"Lockfile: .agents/agent-ready.lock.json (complete)"* ]]
 
-  [ "$(python3 -c 'import json; m=json.load(open(".agents/agent-ready.json")); print(m["updates"], ",".join(m["profiles"]))')" = "pinned node,browser" ]
+  [ "$(python3 -c 'import json; m=json.load(open(".agents/agent-ready.json")); print(m["updates"]["mode"], ",".join(m["profiles"]))')" = "pinned node,browser" ]
   [ "$(lock_value 'lock["source"]["plugin"]')" = "golfo-kit" ]
   [ "$(lock_value 'lock["profileOrder"]')" = "['node', 'browser']" ]
 
@@ -184,7 +184,7 @@ lock_value() {
   run_bootstrap_with "$skill_dir" --stack node
   [ "$status" -eq 0 ]
   printf '%s\n' '{"name": "project"}' > package.json
-  printf '%s\n' '{"profiles": "node", "updates": "pinned"}' > .agents/agent-ready.json
+  printf '%s\n' '{"profiles": "node", "updates": {"mode": "pinned"}}' > .agents/agent-ready.json
   printf '%s\n' 'edited locally' >> .agents/rules/security.md
   rm .agents/rules/testing.md
   before="$(tree_fingerprint)"
@@ -192,12 +192,13 @@ lock_value() {
   run env PATH="$fake_bin:$PATH" AGENT_READY_SETUP_SKILL_DIR="$skill_dir" AGENT_READY_SETUP_MARKETPLACE_UPGRADED=1 \
     bash .agents/hooks/sync-marketplace.sh --provider claude
   [ "$status" -eq 0 ]
-  [[ "$output" == *"must declare 'profiles' as a non-empty list of names"* ]]
+  [[ "$output" == *"project layer"*"'profiles' must be a list"* ]]
+  [[ "$output" == *"nothing was synchronized"* ]]
   [ "$(tree_fingerprint)" = "$before" ]
 
   run_bootstrap_with "$skill_dir" --stack node
   [ "$status" -ne 0 ]
-  [[ "$output" == *"must declare 'profiles' as a non-empty list of names"* ]]
+  [[ "$output" == *"project layer"*"'profiles' must be a list"* ]]
   [ "$(tree_fingerprint)" = "$before" ]
 }
 
@@ -245,16 +246,16 @@ lock_value() {
 @test "status --check fails when the selected profiles cannot be resolved" {
   run_bootstrap_with "$skill_dir" --stack go
   [ "$status" -eq 0 ]
-  printf '%s\n' '{"profiles": ["nonexistent"], "updates": "pinned"}' > .agents/agent-ready.json
+  printf '%s\n' '{"profiles": ["nonexistent"], "updates": {"mode": "pinned"}}' > .agents/agent-ready.json
 
   run python3 "$skill_dir/scripts/agent-ready-state.py" status --project . --skill-dir "$skill_dir" --check
   [ "$status" -eq 4 ]
   [[ "$output" == *"unknown profile 'nonexistent'"* ]]
 
-  printf '%s\n' '{"profiles": [], "updates": "pinned"}' > .agents/agent-ready.json
+  printf '%s\n' '{"profiles": [], "updates": {"mode": "pinned"}}' > .agents/agent-ready.json
   run python3 "$skill_dir/scripts/agent-ready-state.py" status --project . --skill-dir "$skill_dir" --check
   [ "$status" -ne 0 ]
-  [[ "$output" == *"must declare 'profiles' as a non-empty list of names"* ]]
+  [[ "$output" == *"project layer"*"'profiles' needs at least 1 item(s)"* ]]
 }
 
 @test "an explicit --stack wins over the profiles chosen in the environment" {
@@ -326,7 +327,7 @@ lock_value() {
 @test "status --check notices a profile added to the manifest without assets of its own" {
   run_bootstrap_with "$skill_dir" --profiles node
   [ "$status" -eq 0 ]
-  printf '%s\n' '{"profiles": ["node", "browser"], "updates": "pinned"}' > .agents/agent-ready.json
+  printf '%s\n' '{"profiles": ["node", "browser"], "updates": {"mode": "pinned"}}' > .agents/agent-ready.json
 
   run python3 "$skill_dir/scripts/agent-ready-state.py" status --project . --skill-dir "$skill_dir" --check
   [ "$status" -eq 4 ]
@@ -758,7 +759,7 @@ EOF
 
 @test "profiles without browser never install browser tools" {
   mkdir -p "$test_root/home"
-  run env HOME="$test_root/home" PATH="$fake_bin:$PATH" AGENT_READY_SETUP_BROWSER_INSTALL=1 \
+  run env HOME="$test_root/home" PATH="$fake_bin:$PATH" AGENT_READY_SETUP_TOOLS=1 \
     AGENT_READY_SETUP_MARKETPLACE_UPGRADED=1 bash "$skill_dir/scripts/bootstrap.sh" \
     --skill-dir "$skill_dir" --provider claude --profiles node
   [ "$status" -eq 0 ]

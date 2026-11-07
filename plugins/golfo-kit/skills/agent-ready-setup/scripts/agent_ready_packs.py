@@ -2,7 +2,7 @@
 
 A pack is a Git repository or a local directory with a catalog
 (``agent-ready-pack.json``) and assets. This module parses the sources a manifest
-declares, downloads revisions into a per-user cache and validates catalogs. Only
+declares in ``sources.packs``, downloads revisions into a per-user cache and validates catalogs. Only
 ``download_declared_sources`` and ``refresh_declared_sources`` use the network.
 Loading a pack reads files and nothing else: no script of a pack ever runs. The
 contract is documented in ``references/profiles-and-lockfile.md``.
@@ -17,7 +17,8 @@ import tempfile
 import urllib.parse
 
 from agent_ready_common import ProfileError, StateError, read_json_file, sha256_of_file, sha256_of_text
-from agent_ready_defaults import OPTIONS, UPDATES_AUTO, UPDATES_FIELD, effective_option
+from agent_ready_config import LAYER_ENVIRONMENT, LAYER_FLAGS
+from agent_ready_options import UPDATES_AUTO, UPDATES_MODE_KEY
 from agent_ready_detection import (
     DetectionSchemaError,
     is_contained_pattern,
@@ -65,7 +66,6 @@ MATERIALIZED_TREE_DIRECTORY = "tree"
 EXECUTABLE_PERMISSIONS = 0o755
 URL_CREDENTIALS = re.compile(r"://[^/@\s]+@")
 
-SOURCE_ALLOWED_KEYS = ("name", "source", "ref", "updates")
 
 
 def is_pack_profile(name):
@@ -120,18 +120,17 @@ def parse_path_source(name, text, declared_ref):
     return {"name": name, "type": SOURCE_TYPE_PATH, "origin": path, "requestedRef": None}
 
 
-def parse_profile_sources(manifest, manifest_path):
-    """Validate the ``profileSources`` of a manifest and return their declarations."""
-    entries = manifest.get("profileSources", [])
-    if not isinstance(entries, list):
-        raise StateError(f"{manifest_path} 'profileSources' must be a list")
+def parse_profile_sources(entries, manifest_path):
+    """Validate the ``sources.packs`` of a manifest and return their declarations.
+
+    The configuration schema already checked the fields and their types; this checks what
+    a schema cannot: names, duplicates and the form of each source.
+    """
     declarations = {}
     for entry in entries:
-        if not isinstance(entry, dict) or not {"name", "source"} <= set(entry) or set(entry) - set(SOURCE_ALLOWED_KEYS):
-            raise StateError(f"{manifest_path} 'profileSources' entries need 'name' and 'source', and also accept 'ref' and 'updates'")
         name, text = entry["name"], entry["source"]
-        if not isinstance(name, str) or not KEBAB_CASE_NAME.fullmatch(name) or not isinstance(text, str):
-            raise StateError(f"{manifest_path} has a profile source with an invalid name; use kebab-case")
+        if not KEBAB_CASE_NAME.fullmatch(name):
+            raise StateError(f"{manifest_path} has a profile source with an invalid name '{name}'; use kebab-case")
         if name in declarations:
             raise StateError(f"{manifest_path} declares the profile source '{name}' more than once")
         declared_ref = entry.get("ref")
@@ -141,18 +140,29 @@ def parse_profile_sources(manifest, manifest_path):
             declarations[name] = parse_path_source(name, text, declared_ref)
         else:
             raise StateError(f"profile source '{name}' must start with {GIT_SOURCE_PREFIX} or {PATH_SOURCE_PREFIX}")
-        updates = entry.get("updates")
-        if updates is not None and updates not in OPTIONS[UPDATES_FIELD]["supported"]:
-            raise StateError(f"profile source '{name}': 'updates' must be one of {', '.join(OPTIONS[UPDATES_FIELD]['supported'])}")
-        declarations[name]["updates"] = updates
+        declarations[name]["updates"] = entry.get("updates")
     return [declarations[name] for name in sorted(declarations)]
 
 
-def effective_update_mode(manifest, declaration=None):
-    """Update mode in force: the machine override, then the source, then the manifest."""
-    if declaration and declaration.get("updates") and not os.environ.get(OPTIONS[UPDATES_FIELD]["override"]):
+def source_update_mode_is_ignored(configuration, declaration):
+    """Why the update mode a source declares cannot apply, or None when it can.
+
+    A machine override (environment or flags) beats every source. Otherwise the source
+    mode is a project value of ``updates.mode``: it cannot loosen what the organization or
+    the user set unless this machine approved the repository, nor change a locked key.
+    """
+    if not declaration or not declaration.get("updates"):
+        return None
+    if configuration.origin(UPDATES_MODE_KEY) in (LAYER_ENVIRONMENT, LAYER_FLAGS):
+        return "the update mode of this run overrides it"
+    return configuration.check_project_value(UPDATES_MODE_KEY, declaration["updates"])
+
+
+def effective_update_mode(configuration, declaration=None):
+    """Update mode in force: the machine override, then the source, then the configuration."""
+    if declaration and declaration.get("updates") and source_update_mode_is_ignored(configuration, declaration) is None:
         return declaration["updates"]
-    return effective_option(manifest, UPDATES_FIELD, os.environ)
+    return configuration.value(UPDATES_MODE_KEY)
 
 
 # ---------------------------------------------------------------------------
@@ -384,7 +394,7 @@ def require_local_source(declaration, project_root):
         raise ProfileError(f"profile source '{declaration['name']}': the path {declaration['origin']} does not exist from the repository root")
 
 
-def download_declared_sources(declarations, locked_sources, update_names, manifest, project_root):
+def download_declared_sources(declarations, locked_sources, update_names, configuration, project_root):
     """Resolve and download what an apply needs. Returns the commit adopted per Git source.
 
     A source in ``auto`` follows its ref; a pinned one keeps the lock until --update-source.
@@ -401,7 +411,7 @@ def download_declared_sources(declarations, locked_sources, update_names, manife
             require_local_source(declaration, project_root)
             continue
         name = declaration["name"]
-        follow_ref = name in update_names or effective_update_mode(manifest, declaration) == UPDATES_AUTO
+        follow_ref = name in update_names or effective_update_mode(configuration, declaration) == UPDATES_AUTO
         commit = revision_to_download(declaration, locked_sources.get(name), follow_ref)
         if not cached_tree(declaration["origin"], commit):
             download_commit(name, declaration["origin"], commit)

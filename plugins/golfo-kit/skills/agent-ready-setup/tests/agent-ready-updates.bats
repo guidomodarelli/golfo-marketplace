@@ -20,7 +20,7 @@ setup() {
   # Sync flows run with an empty home: nothing installed on this machine may decide them.
   export HOME="$test_root/home"
   mkdir -p "$HOME"
-  export AGENT_READY_SETUP_BROWSER_INSTALL=0
+  export AGENT_READY_SETUP_TOOLS=0
   export AGENT_READY_SETUP_ACTIVE_PROVIDER=claude
   export GIT_CONFIG_GLOBAL="$test_root/gitconfig"
   git config --global user.name Test
@@ -103,7 +103,7 @@ write_manifest() {
   mkdir -p .agents
   python3 - "$1" "$extra_fields" <<'PY'
 import json, sys
-manifest = {"schemaVersion": 1, "profiles": sys.argv[1].split(","), "providers": ["claude", "codex"]}
+manifest = {"profiles": sys.argv[1].split(",")}
 manifest.update(json.loads(sys.argv[2]))
 with open(".agents/agent-ready.json", "w", encoding="utf-8") as manifest_file:
     json.dump(manifest, manifest_file)
@@ -157,34 +157,31 @@ wait_for_background_update() {
   return 1
 }
 
-@test "a manifest without options is in auto: the apply only writes what differs from a default" {
+@test "a manifest without options is in auto: the apply never writes a default" {
   run_bootstrap --stack node
   [ "$status" -eq 0 ]
-  [ "$(json_value .agents/agent-ready.json 'sorted(data)')" = "['profiles', 'schemaVersion']" ]
-  run python3 "$skill_dir/scripts/agent-ready-state.py" manifest --project .
+  [ "$(json_value .agents/agent-ready.json 'sorted(data)')" = "['profiles']" ]
+  run python3 "$skill_dir/scripts/agent-ready-state.py" config --project . --format tsv
   [ "$status" -eq 0 ]
-  [[ "$output" == *"updates"*"auto"* ]]
-  [[ "$output" == *"refresh"*"on"* ]]
+  [[ "$output" == *"updates.mode"$'\t'"auto"* ]]
+  [[ "$output" == *"updates.refresh"$'\t'"true"* ]]
 
   run_bootstrap --updates pinned
   [ "$status" -eq 0 ]
-  [ "$(json_value .agents/agent-ready.json 'data["updates"]')" = "pinned" ]
+  [ "$(json_value .agents/agent-ready.json 'data["updates"]')" = "{'mode': 'pinned'}" ]
 
   run_bootstrap --updates auto
   [ "$status" -eq 0 ]
   [ "$(json_value .agents/agent-ready.json '"updates" in data')" = "False" ]
 }
 
-@test "the apply removes values equal to a default and keeps what someone changed" {
-  write_manifest node '{"updates": "auto", "ci": "fail", "detection": "on", "refresh": "on", "providers": ["codex", "claude"]}'
+@test "the apply keeps what a person wrote, also a value equal to a default" {
+  write_manifest node '{"updates": {"mode": "auto", "refresh": false}, "ci": {"mode": "fail"}, "providers": ["codex"]}'
   run_bootstrap
   [ "$status" -eq 0 ]
-  [ "$(json_value .agents/agent-ready.json 'sorted(data)')" = "['profiles', 'schemaVersion']" ]
-
-  write_manifest node '{"ci": "warn", "detection": "off", "refresh": "off", "providers": ["codex"], "team": "keeps-this"}'
-  run_bootstrap
-  [ "$status" -eq 0 ]
-  [ "$(json_value .agents/agent-ready.json 'sorted(data)')" = "['ci', 'detection', 'profiles', 'providers', 'refresh', 'schemaVersion', 'team']" ]
+  [ "$(json_value .agents/agent-ready.json 'sorted(data)')" = "['ci', 'profiles', 'providers', 'updates']" ]
+  [ "$(json_value .agents/agent-ready.json 'data["updates"]')" = "{'mode': 'auto', 'refresh': False}" ]
+  [ "$(json_value .agents/agent-ready.lock.json 'data["providers"]')" = "['codex']" ]
   before="$(cksum < .agents/agent-ready.json)"
   run_bootstrap
   [ "$status" -eq 0 ]
@@ -236,7 +233,7 @@ EOF
 
 @test "auto follows the ref of a source in the background and the lock records the new commit" {
   publish_pack_repository
-  write_manifest acme/kafka-interno '{"profileSources": [{"name": "acme", "source": "git+https://packs.example.invalid/acme", "ref": "main"}]}'
+  write_manifest acme/kafka-interno '{"sources": {"packs": [{"name": "acme", "source": "git+https://packs.example.invalid/acme", "ref": "main"}]}}'
   run_bootstrap
   [ "$status" -eq 0 ]
   [ "$(lock_value 'data["profileSources"]["acme"]["requestedRef"]')" = "main" ]
@@ -257,7 +254,7 @@ EOF
 
 @test "a machine that never saw a pack gets it from the background update" {
   publish_pack_repository
-  write_manifest acme/kafka-interno "{\"profileSources\": [{\"name\": \"acme\", \"source\": \"git+https://packs.example.invalid/acme#$pack_commit\"}]}"
+  write_manifest acme/kafka-interno "{\"sources\": {\"packs\": [{\"name\": \"acme\", \"source\": \"git+https://packs.example.invalid/acme#$pack_commit\"}]}}"
   run_bootstrap
   [ "$status" -eq 0 ]
   rm -rf "$XDG_CACHE_HOME/agent-ready-setup/packs"
@@ -272,7 +269,7 @@ EOF
 @test "a pinned repository never applies on its own, and a later session reports what is pending" {
   copy_skill
   publish_pack_repository
-  write_manifest acme/kafka-interno '{"updates": "pinned", "profileSources": [{"name": "acme", "source": "git+https://packs.example.invalid/acme", "ref": "main"}]}'
+  write_manifest acme/kafka-interno '{"updates": {"mode": "pinned"}, "sources": {"packs": [{"name": "acme", "source": "git+https://packs.example.invalid/acme", "ref": "main"}]}}'
   run_bootstrap
   [ "$status" -eq 0 ]
   before="$(tree_fingerprint)"
@@ -295,7 +292,7 @@ EOF
 
 @test "a source can be pinned in a repository in auto, and its drift stops the sync with no call to run bootstrap" {
   cp -R "$example_pack" "$test_root/acme-pack"
-  write_manifest acme/kafka-interno '{"profileSources": [{"name": "acme", "source": "path:../acme-pack", "updates": "pinned"}]}'
+  write_manifest acme/kafka-interno '{"sources": {"packs": [{"name": "acme", "source": "path:../acme-pack", "updates": "pinned"}]}}'
   run_bootstrap
   [ "$status" -eq 0 ]
   before="$(tree_fingerprint)"
@@ -311,7 +308,7 @@ EOF
 
 @test "a pinned source without selected profiles keeps its lock entry after a sync" {
   cp -R "$example_pack" "$test_root/acme-pack"
-  write_manifest node '{"profileSources": [{"name": "acme", "source": "path:../acme-pack", "updates": "pinned"}]}'
+  write_manifest node '{"sources": {"packs": [{"name": "acme", "source": "path:../acme-pack", "updates": "pinned"}]}}'
   run_bootstrap
   [ "$status" -eq 0 ]
   locked_digest="$(lock_value 'data["profileSources"]["acme"]["catalogDigest"]')"
@@ -324,7 +321,7 @@ EOF
 
 @test "a local source in auto adopts its changes in the sync" {
   cp -R "$example_pack" "$test_root/acme-pack"
-  write_manifest acme/kafka-interno '{"profileSources": [{"name": "acme", "source": "path:../acme-pack"}]}'
+  write_manifest acme/kafka-interno '{"sources": {"packs": [{"name": "acme", "source": "path:../acme-pack"}]}}'
   run_bootstrap
   [ "$status" -eq 0 ]
   printf 'changed locally\n' >> "$test_root/acme-pack/profiles/kafka-interno/rules/acme-kafka.md"
@@ -337,7 +334,7 @@ EOF
 @test "a source in auto updates a pinned repository, unless golfo-kit has a release pending" {
   copy_skill
   publish_pack_repository
-  write_manifest acme/kafka-interno '{"updates": "pinned", "profileSources": [{"name": "acme", "source": "git+https://packs.example.invalid/acme", "ref": "main", "updates": "auto"}]}'
+  write_manifest acme/kafka-interno '{"updates": {"mode": "pinned"}, "sources": {"packs": [{"name": "acme", "source": "git+https://packs.example.invalid/acme", "ref": "main", "updates": "auto"}]}}'
   run_bootstrap
   [ "$status" -eq 0 ]
 
@@ -375,7 +372,7 @@ EOF
 @test "review mode starts no update, uses no network and writes nothing" {
   copy_skill
   publish_pack_repository
-  write_manifest acme/kafka-interno '{"profileSources": [{"name": "acme", "source": "git+https://packs.example.invalid/acme", "ref": "main"}]}'
+  write_manifest acme/kafka-interno '{"sources": {"packs": [{"name": "acme", "source": "git+https://packs.example.invalid/acme", "ref": "main"}]}}'
   run_bootstrap
   [ "$status" -eq 0 ]
   advance_pack_repository
@@ -450,7 +447,7 @@ PY
 
 @test "a failed background update is reported, changes nothing and stops retrying for a while" {
   publish_pack_repository
-  write_manifest acme/kafka-interno '{"profileSources": [{"name": "acme", "source": "git+https://packs.example.invalid/acme", "ref": "main"}]}'
+  write_manifest acme/kafka-interno '{"sources": {"packs": [{"name": "acme", "source": "git+https://packs.example.invalid/acme", "ref": "main"}]}}'
   run_bootstrap
   [ "$status" -eq 0 ]
   before="$(tree_fingerprint)"
@@ -480,7 +477,7 @@ PY
 
 @test "plan and status refresh the cache by default and report a moved ref without writing" {
   publish_pack_repository
-  write_manifest acme/kafka-interno '{"updates": "pinned", "profileSources": [{"name": "acme", "source": "git+https://packs.example.invalid/acme", "ref": "main"}]}'
+  write_manifest acme/kafka-interno '{"updates": {"mode": "pinned"}, "sources": {"packs": [{"name": "acme", "source": "git+https://packs.example.invalid/acme", "ref": "main"}]}}'
   run_bootstrap
   [ "$status" -eq 0 ]
   before="$(tree_fingerprint)"
@@ -501,7 +498,7 @@ PY
 
 @test "--offline uses neither the network nor the provider CLI" {
   publish_pack_repository
-  write_manifest acme/kafka-interno "{\"updates\": \"pinned\", \"profileSources\": [{\"name\": \"acme\", \"source\": \"git+https://packs.example.invalid/acme\", \"ref\": \"main\"}]}"
+  write_manifest acme/kafka-interno "{\"updates\": {\"mode\": \"pinned\"}, \"sources\": {\"packs\": [{\"name\": \"acme\", \"source\": \"git+https://packs.example.invalid/acme\", \"ref\": \"main\"}]}}"
   run_bootstrap
   [ "$status" -eq 0 ]
   advance_pack_repository
@@ -519,7 +516,7 @@ PY
 
 @test "a refresh that fails compares with the cache and says so" {
   publish_pack_repository
-  write_manifest acme/kafka-interno '{"updates": "pinned", "profileSources": [{"name": "acme", "source": "git+https://packs.example.invalid/acme", "ref": "main"}]}'
+  write_manifest acme/kafka-interno '{"updates": {"mode": "pinned"}, "sources": {"packs": [{"name": "acme", "source": "git+https://packs.example.invalid/acme", "ref": "main"}]}}'
   run_bootstrap
   [ "$status" -eq 0 ]
   rm -rf "$pack_repository"
@@ -533,14 +530,14 @@ PY
 @test "--offline is not an option of an apply" {
   run_bootstrap --stack node --offline
   [ "$status" -ne 0 ]
-  [[ "$output" == *"--offline only works with --plan or --status"* ]]
+  [[ "$output" == *"--offline only works with --plan, --status or --config"* ]]
 }
 
-@test "refresh off in the manifest keeps plan, status and a pinned SessionStart off the network" {
-  write_manifest node '{"updates": "pinned", "refresh": "off"}'
+@test "updates.refresh false in the manifest keeps plan, status and a pinned SessionStart off the network" {
+  write_manifest node '{"updates": {"mode": "pinned", "refresh": false}}'
   run_bootstrap
   [ "$status" -eq 0 ]
-  [ "$(json_value .agents/agent-ready.json 'data["refresh"]')" = "off" ]
+  [ "$(json_value .agents/agent-ready.json 'data["updates"]["refresh"]')" = "False" ]
   rm -f "$cli_calls"
 
   run_bootstrap --plan
@@ -555,7 +552,7 @@ PY
 }
 
 @test "AGENT_READY_SETUP_REFRESH turns the refresh off on one machine" {
-  write_manifest node '{"updates": "pinned"}'
+  write_manifest node '{"updates": {"mode": "pinned"}}'
   run_bootstrap
   [ "$status" -eq 0 ]
   rm -f "$cli_calls"
@@ -566,7 +563,7 @@ PY
 }
 
 @test "detection off removes the signals and suggestions from the plan" {
-  write_manifest node '{"detection": "off"}'
+  write_manifest node '{"detection": {"enabled": false}}'
   printf '%s\n' '{"dependencies": {"react": "19.0.0"}, "devDependencies": {"@playwright/test": "1.0.0"}}' > package.json
 
   run_bootstrap --plan --offline
@@ -590,17 +587,18 @@ PY
 }
 
 @test "the options of the manifest and the environment reject values they do not know" {
-  for field in '"updates": "sometimes"' '"ci": "maybe"' '"refresh": "later"' '"detection": "partial"'; do
+  for field in '"updates": {"mode": "sometimes"}' '"ci": {"mode": "maybe"}' '"updates": {"refresh": "later"}' '"detection": {"enabled": "partial"}'; do
     write_manifest node "{$field}"
     run_bootstrap --plan --offline
     [ "$status" -ne 0 ]
+    [[ "$output" == *"project layer"* ]]
   done
   rm .agents/agent-ready.json
 
   run_check AGENT_READY_SETUP_CI=maybe
   [ "$status" -eq 2 ]
   [[ "$output" == *"configuration error"* ]]
-  [[ "$output" == *"AGENT_READY_SETUP_CI must be one of"* ]]
+  [[ "$output" == *"environment layer (AGENT_READY_SETUP_CI): 'ci.mode' must be one of fail, warn"* ]]
 }
 
 @test "a source accepts ref or a revision in its URL, not both, and a path takes no ref" {
@@ -611,7 +609,7 @@ PY
     '{"name": "acme", "source": "path:../pack", "updates": "sometimes"}' \
     '{"name": "acme", "source": "path:../pack", "extra": "field"}'
   do
-    write_manifest node "{\"profileSources\": [$source_entry]}"
+    write_manifest node "{\"sources\": {\"packs\": [$source_entry]}}"
     run_bootstrap --plan --offline
     [ "$status" -ne 0 ]
     [[ "$output" == *"ERROR"* ]]
@@ -620,7 +618,7 @@ PY
 
 @test "the check passes when everything is up to date and writes nothing" {
   publish_pack_repository
-  write_manifest acme/kafka-interno '{"profileSources": [{"name": "acme", "source": "git+https://packs.example.invalid/acme", "ref": "main"}]}'
+  write_manifest acme/kafka-interno '{"sources": {"packs": [{"name": "acme", "source": "git+https://packs.example.invalid/acme", "ref": "main"}]}}'
   run_bootstrap
   [ "$status" -eq 0 ]
   run env PATH="$fake_bin:$PATH" bash "$skill_dir/scripts/apply-managed-block.sh" --stack node --skill-dir "$skill_dir"
@@ -629,27 +627,27 @@ PY
 
   run_check
   [ "$status" -eq 0 ]
-  [[ "$output" == *"Agent Ready check: up to date (ci: fail)"* ]]
+  [[ "$output" == *"Agent Ready check: up to date (ci.mode: fail)"* ]]
   [ "$(tree_fingerprint)" = "$before" ]
   [ ! -e "$cli_calls" ]
 }
 
 @test "the check fails with a source out of date, also when it is pinned" {
   publish_pack_repository
-  write_manifest acme/kafka-interno '{"updates": "pinned", "profileSources": [{"name": "acme", "source": "git+https://packs.example.invalid/acme", "ref": "main"}]}'
+  write_manifest acme/kafka-interno '{"updates": {"mode": "pinned"}, "sources": {"packs": [{"name": "acme", "source": "git+https://packs.example.invalid/acme", "ref": "main"}]}}'
   run_bootstrap
   [ "$status" -eq 0 ]
   advance_pack_repository
 
   run_check
   [ "$status" -eq 4 ]
-  [[ "$output" == *"updates pending (ci: fail)"* ]]
+  [[ "$output" == *"updates pending (ci.mode: fail)"* ]]
   [[ "$output" == *"profile source acme"*"ref main is at ${pack_commit:0:12}"* ]]
 }
 
 @test "a source pinned to a full commit is never out of date for the check" {
   publish_pack_repository
-  write_manifest acme/kafka-interno "{\"profileSources\": [{\"name\": \"acme\", \"source\": \"git+https://packs.example.invalid/acme#$pack_commit\"}]}"
+  write_manifest acme/kafka-interno "{\"sources\": {\"packs\": [{\"name\": \"acme\", \"source\": \"git+https://packs.example.invalid/acme#$pack_commit\"}]}}"
   run_bootstrap
   [ "$status" -eq 0 ]
   run env PATH="$fake_bin:$PATH" bash "$skill_dir/scripts/apply-managed-block.sh" --stack node --skill-dir "$skill_dir"
@@ -710,19 +708,19 @@ PY
 
 @test "ci warn reports the same problems and passes" {
   publish_pack_repository
-  write_manifest acme/kafka-interno '{"ci": "warn", "profileSources": [{"name": "acme", "source": "git+https://packs.example.invalid/acme", "ref": "main"}]}'
+  write_manifest acme/kafka-interno '{"ci": {"mode": "warn"}, "sources": {"packs": [{"name": "acme", "source": "git+https://packs.example.invalid/acme", "ref": "main"}]}}'
   run_bootstrap
   [ "$status" -eq 0 ]
-  [ "$(json_value .agents/agent-ready.json 'data["ci"]')" = "warn" ]
+  [ "$(json_value .agents/agent-ready.json 'data["ci"]')" = "{'mode': 'warn'}" ]
   advance_pack_repository
 
   run_check
   [ "$status" -eq 0 ]
-  [[ "$output" == *"updates pending (ci: warn)"* ]]
+  [[ "$output" == *"updates pending (ci.mode: warn)"* ]]
 }
 
-@test "ci off runs nothing: no git, no provider and no cache" {
-  write_manifest acme/kafka-interno '{"ci": "off", "profileSources": [{"name": "acme", "source": "git+https://packs.example.invalid/acme", "ref": "main"}]}'
+@test "ci.enabled false runs nothing: no git, no provider and no cache" {
+  write_manifest acme/kafka-interno '{"ci": {"enabled": false}, "sources": {"packs": [{"name": "acme", "source": "git+https://packs.example.invalid/acme", "ref": "main"}]}}'
   # Every command the check could run records its call and fails.
   for command_name in git bash; do
     printf '#!/bin/sh\nprintf "%%s\\n" "%s" >> "%s"\nexit 1\n' "$command_name" "$cli_calls" > "$fake_bin/$command_name"
@@ -733,7 +731,7 @@ PY
 
   run_check
   [ "$status" -eq 0 ]
-  [[ "$output" == *"skipped (ci: off)"* ]]
+  [[ "$output" == *"skipped (ci.enabled: false)"* ]]
   [ ! -e "$cli_calls" ]
   [ ! -e "$XDG_CACHE_HOME/agent-ready-setup" ]
   rm "$fake_bin/git" "$fake_bin/bash"
@@ -742,7 +740,7 @@ PY
 
 @test "the check has one exit status per result, also in JSON" {
   publish_pack_repository
-  write_manifest acme/kafka-interno '{"profileSources": [{"name": "acme", "source": "git+https://packs.example.invalid/acme", "ref": "main"}]}'
+  write_manifest acme/kafka-interno '{"sources": {"packs": [{"name": "acme", "source": "git+https://packs.example.invalid/acme", "ref": "main"}]}}'
   run_bootstrap
   [ "$status" -eq 0 ]
   run env PATH="$fake_bin:$PATH" bash "$skill_dir/scripts/apply-managed-block.sh" --stack node --skill-dir "$skill_dir"
@@ -751,7 +749,7 @@ PY
   run_check
   [ "$status" -eq 0 ]
   printf '%s' "$output" > "$test_root/check.json"
-  [ "$(json_value "$test_root/check.json" '[data["status"], data["exitStatus"], data["ci"]]')" = "['up-to-date', 0, 'fail']" ]
+  [ "$(json_value "$test_root/check.json" '[data["status"], data["exitStatus"], data["ci"]]')" = "['up-to-date', 0, {'enabled': True, 'mode': 'fail'}]" ]
 
   advance_pack_repository
   run_check
@@ -809,7 +807,7 @@ PY
 
 @test "AGENT_READY_SETUP_CI overrides the manifest" {
   publish_pack_repository
-  write_manifest acme/kafka-interno '{"ci": "off", "profileSources": [{"name": "acme", "source": "git+https://packs.example.invalid/acme", "ref": "main"}]}'
+  write_manifest acme/kafka-interno '{"ci": {"mode": "warn"}, "sources": {"packs": [{"name": "acme", "source": "git+https://packs.example.invalid/acme", "ref": "main"}]}}'
   run_bootstrap
   [ "$status" -eq 0 ]
   advance_pack_repository
@@ -819,16 +817,16 @@ PY
 }
 
 @test "a token in the environment of Git reaches a source, shows nowhere and needs no gh" {
-  write_manifest acme/kafka-interno '{"profileSources": [{"name": "acme", "source": "git+https://packs.example.invalid/acme", "ref": "main"}]}'
+  write_manifest acme/kafka-interno '{"sources": {"packs": [{"name": "acme", "source": "git+https://packs.example.invalid/acme", "ref": "main"}]}}'
   rm -f "$cli_calls"
 
   run_check GIT_CONFIG_COUNT=1 "GIT_CONFIG_KEY_0=url.https://reader:s3cr3t-token@127.0.0.1:9/acme.insteadOf" GIT_CONFIG_VALUE_0=https://packs.example.invalid/acme
   [ "$status" -eq 5 ]
-  [[ "$output" == *"source not available (ci: fail)"* ]]
+  [[ "$output" == *"source not available (ci.mode: fail)"* ]]
   [[ "$output" != *"s3cr3t-token"* ]]
   [ ! -e "$cli_calls" ]
 
   run_check AGENT_READY_SETUP_CI=warn GIT_CONFIG_COUNT=1 "GIT_CONFIG_KEY_0=url.https://reader:s3cr3t-token@127.0.0.1:9/acme.insteadOf" GIT_CONFIG_VALUE_0=https://packs.example.invalid/acme
   [ "$status" -eq 0 ]
-  [[ "$output" == *"source not available (ci: warn)"* ]]
+  [[ "$output" == *"source not available (ci.mode: warn)"* ]]
 }
