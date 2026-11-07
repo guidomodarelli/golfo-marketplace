@@ -7,7 +7,7 @@ Es un comando común que sirve en cualquier proveedor de CI, porque no depende d
 agent-ready-setup no proyecta ni crea workflows en `.github/workflows`: el job lo agrega cada repo si lo quiere.
 
 ```bash
-python3 "$SKILL_DIR/scripts/agent-ready-state.py" check --project . --skill-dir "$SKILL_DIR" [--offline] [--format json]
+python3 "$SKILL_DIR/scripts/agent-ready" check [--offline] [--json]
 ```
 
 Trae las fuentes, resuelve cada `ref` y compara contra el lock y los assets commiteados: profiles, digests,
@@ -71,7 +71,7 @@ jobs:
         run: |
           git clone --depth 1 https://github.com/guidomodarelli/golfo-marketplace "$RUNNER_TEMP/golfo-marketplace"
           SKILL_DIR="$RUNNER_TEMP/golfo-marketplace/plugins/golfo-kit/skills/agent-ready-setup"
-          python3 "$SKILL_DIR/scripts/agent-ready-state.py" check --project . --skill-dir "$SKILL_DIR"
+          python3 "$SKILL_DIR/scripts/agent-ready" check
 ```
 
 Jenkins (`Jenkinsfile`):
@@ -94,7 +94,7 @@ pipeline {
             export GIT_CONFIG_COUNT=1
             export GIT_CONFIG_KEY_0="url.https://oauth2:${PACKS_TOKEN}@git.example.com/.insteadOf"
             export GIT_CONFIG_VALUE_0="https://git.example.com/"
-            python3 "$SKILL_DIR/scripts/agent-ready-state.py" check --project . --skill-dir "$SKILL_DIR"
+            python3 "$SKILL_DIR/scripts/agent-ready" check
           '''
         }
       }
@@ -112,7 +112,7 @@ trap 'rm -rf "$CHECKOUT"' EXIT
 git clone --depth 1 https://github.com/guidomodarelli/golfo-marketplace "$CHECKOUT/golfo-marketplace" || exit 1
 SKILL_DIR="$CHECKOUT/golfo-marketplace/plugins/golfo-kit/skills/agent-ready-setup"
 
-python3 "$SKILL_DIR/scripts/agent-ready-state.py" check --project . --skill-dir "$SKILL_DIR" --format json > agent-ready-check.json
+python3 "$SKILL_DIR/scripts/agent-ready" check --json > agent-ready-check.json
 check_status=$?
 case "$check_status" in
   0) echo "Agent Ready al día" ;;

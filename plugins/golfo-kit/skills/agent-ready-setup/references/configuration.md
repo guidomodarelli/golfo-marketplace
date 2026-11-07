@@ -116,9 +116,11 @@ security.preset=strict)`. El preset de default coincide con los defaults.
 ## 8. Ver la configuración efectiva
 
 ```bash
-python3 "$SKILL_DIR/scripts/agent-ready-state.py" config --project .                 # valor y capa de cada opción
-python3 "$SKILL_DIR/scripts/agent-ready-state.py" config --project . --format json   # para scripts
-bash "$SKILL_DIR/scripts/bootstrap.sh" --skill-dir "$SKILL_DIR" --provider "$PROVIDER" --config
+python3 "$SKILL_DIR/scripts/agent-ready" config explain                     # valor y capa de cada opción
+python3 "$SKILL_DIR/scripts/agent-ready" config explain updates.mode --json # una opción, para scripts
+python3 "$SKILL_DIR/scripts/agent-ready" config set ci.mode warn            # escribe en el manifest
+python3 "$SKILL_DIR/scripts/agent-ready" config set updates.mode pinned --layer user
+python3 "$SKILL_DIR/scripts/agent-ready" config unset ci.mode
 ```
 
 `config` muestra cada capa (con su archivo y si existe), si el repo está aprobado, cada opción con su valor

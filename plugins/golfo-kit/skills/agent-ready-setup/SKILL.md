@@ -92,23 +92,35 @@ La configuración que genera esta skill es para **Claude Code y Codex**; Hermes 
 ## Step 1 — Locate SKILL_DIR
 
 `SKILL_DIR` es el directorio desde el que se cargó esta skill; no resolver otra fuente
-antes del bootstrap. `bootstrap.sh` actualiza el marketplace y resuelve por su cuenta la
-fuente más nueva: prioriza el snapshot del marketplace del provider (ver «Sincronización
-posterior al upgrade») salvo que el cache provider-specific tenga una versión semver
-mayor; `AGENT_READY_SETUP_SKILL_DIR` y un source explícito fuera del cache conservan
-prioridad para desarrollo local. Al terminar imprime `Resolved agent-ready-setup source:
-<path>`; usar ese path para los scripts y assets posteriores, porque el upgrade puede
-reemplazar una fuente versionada y dejar el path anterior inexistente.
+antes del apply. Cada flujo se corre con el CLI de esa misma instalación,
+`python3 "$SKILL_DIR/scripts/agent-ready" <subcomando>`, que usa su propio motor. El apply
+actualiza el marketplace y resuelve por su cuenta la fuente más nueva: prioriza el snapshot
+del marketplace del provider (ver «Sincronización posterior al upgrade») salvo que el cache
+provider-specific tenga una versión semver mayor; `AGENT_READY_SETUP_SKILL_DIR` y un source
+explícito fuera del cache conservan prioridad para desarrollo local.
 
-## Subcomandos de solo lectura
+## Subcomandos
+
+| Subcomando | Qué hace |
+|---|---|
+| `agent-ready plan [--offline] [--json]` | qué cambiaría un apply, sin escribir en el repo |
+| `agent-ready status [--offline] [--json]` | checkout contra el lockfile y las fuentes, sin escribir |
+| `agent-ready check [--offline] [--json]` | el chequeo de CI, con sus códigos `0`, `4`, `5` y `2` |
+| `agent-ready apply [--profiles a,b \| --stack s] [--updates auto\|pinned] [--dry-run]` | el Step 3 completo |
+| `agent-ready update [<fuente>...] [--dry-run]` | adopta la última revisión de esas fuentes (o de todas) y de golfo-kit |
+| `agent-ready config explain\|get\|set\|unset` | la configuración efectiva por capas ([references/configuration.md](references/configuration.md)) |
 
 `/agent-ready-setup status`, `/agent-ready-setup plan` y `/agent-ready-setup config` corren
-`bootstrap.sh --status`, `--plan` o `--config` (mismos `--skill-dir` y `--provider` del Step 3,
-sin `--stack` si el repo ya tiene manifest) y muestran su salida sin alterarla.
-No escriben en el repo ni instalan herramientas. Por defecto refrescan la caché fuera del
-repo para decir si todo está al día; `--offline` no toca la red. Para CI, en cualquier proveedor,
-`scripts/agent-ready-state.py check` compara y sale con códigos documentados, según `ci.mode`. Esta
-skill no crea workflows de CI; para armar un pipeline o explicar un código de salida, leer
+`agent-ready status`, `agent-ready plan` o `agent-ready config explain` y muestran su salida sin
+alterarla. No escriben en el repo ni instalan herramientas. Por defecto refrescan la caché fuera
+del repo para decir si todo está al día; `--offline` no toca la red. Cada subcomando tiene
+`--help` con ejemplos y códigos de salida (`0` bien, `1` falló, `2` uso o configuración inválidos,
+`4` desactualizado, `5` fuente no disponible, `130` cancelado), y `--version`; los datos salen por
+stdout y el progreso y los errores por stderr. Ninguno pregunta nada, así que corren igual en un
+hook o en CI. `plan`, `status` y `apply` necesitan el provider: lo infieren como `resolve-provider.sh`
+(ver Step 3) o lo toman de `--provider claude|codex`. Para CI, en cualquier proveedor, `agent-ready
+check` compara y sale con códigos documentados, según `ci.mode`. Esta skill no crea workflows de CI;
+para armar un pipeline o explicar un código de salida, leer
 [references/ci-check.md](references/ci-check.md). Saltear los Steps 2 y 4. Para explicar la salida, leer
 [references/profiles-and-lockfile.md](references/profiles-and-lockfile.md).
 
@@ -119,7 +131,7 @@ La selección efectiva sigue esta precedencia: `--profiles` o `--stack`, despué
 Una detección posterior informa señales y sugerencias en `--plan`, pero nunca cambia
 la selección guardada.
 
-Con manifest, usar sus profiles: correr bootstrap sin `--stack` ni `--profiles`. Si
+Con manifest, usar sus profiles: correr `agent-ready apply` sin `--stack` ni `--profiles`. Si
 el usuario pide otros, pasar `--profiles a,b` (el primero de tipo stack aporta el
 template de `AGENTS.md`). `--stack <s>` selecciona los defaults de ese stack: incluye
 `browser`, salvo `--stack android`. Sin manifest, inspeccionar el proyecto con la
@@ -131,8 +143,8 @@ python3 "$SKILL_DIR/scripts/agent-ready-state.py" detect --project . --skill-dir
 
 | Salida | Qué significa | Qué hacer |
 |---|---|---|
-| `Stack: <stack>` (exit 0) | las señales determinan un stack primario; cada línea muestra su evidencia y qué stack quedó reemplazado | confirmar con el mensaje de abajo y correr bootstrap sin `--stack` ni `--profiles`: aplica el mismo resultado |
-| `Stack: ambiguous (<a>, <b>)` (exit 3) | coinciden stacks sin prioridad entre sí | mostrar las coincidencias y su evidencia, y pedir que el usuario elija; bootstrap no elige solo y falla sin escribir |
+| `Stack: <stack>` (exit 0) | las señales determinan un stack primario; cada línea muestra su evidencia y qué stack quedó reemplazado | confirmar con el mensaje de abajo y correr `agent-ready apply` sin `--stack` ni `--profiles`: aplica el mismo resultado |
+| `Stack: ambiguous (<a>, <b>)` (exit 3) | coinciden stacks sin prioridad entre sí | mostrar las coincidencias y su evidencia, y pedir que el usuario elija; el apply no elige solo y falla sin escribir |
 | `Stack: none` (exit 3) | ninguna señal coincide | informar que el stack no pudo determinarse y pedir uno de: `frontend`, `node`, `java`, `go`, `android` |
 
 Las líneas `? <capability>: <evidencia>` son sugerencias: nunca se agregan solas al
@@ -159,45 +171,34 @@ para declarar una fuente, explicar una colisión o un `Evaluation incomplete`;
 
 Detección, packs, actualizaciones, refresco, chequeo de CI y herramientas son opcionales y se configuran
 por separado, con defaults que funcionan sin configurar nada. La configuración va en capas (organización,
-usuario, proyecto, entorno y flags), cada valor muestra su origen con `--config` o en `--plan`, y el manifest
+usuario, proyecto, entorno y flags), cada valor muestra su origen con `agent-ready config explain` o en
+`agent-ready plan`, y el manifest
 no puede aflojar una clave sensible sin que la máquina apruebe el repo. Leer
 [references/configuration.md](references/configuration.md) para cambiar una opción, explicar un valor
 ignorado o aprobar un repo, y [references/configuration-keys.md](references/configuration-keys.md) para la
 lista de claves. Nunca editar a mano `references/configuration-keys.md`: se genera desde
 `assets/config/*.schema.json`.
 
-## Step 3 — Run bootstrap script
+## Step 3 — Apply
 
-Bootstrap instala browsers para ambos providers solo si un profile seleccionado
+El apply instala browsers para ambos providers solo si un profile seleccionado
 lo pide (`browser`, incluido en cada `--stack`). Leer
 [references/browser-setup.md](references/browser-setup.md) para requisitos,
 registro efectivo MCP, recuperación de fallos y opción offline antes de ejecutarlo.
-Para revisar antes de aplicar, correr primero el mismo comando con `--plan`.
+Para revisar antes de aplicar, correr primero el mismo comando con `--dry-run`.
 
 ```bash
-PROVIDER="$(bash "$SKILL_DIR/scripts/resolve-provider.sh" --skill-dir "$SKILL_DIR")"
-# An explicit selection goes in --stack <s> or --profiles a,b; without them, bootstrap
+# An explicit selection goes in --stack <s> or --profiles a,b; without them, the apply
 # uses the manifest and then the initial detection of Step 2.
-bootstrap_output="$(bash "$SKILL_DIR/scripts/bootstrap.sh" \
-  --skill-dir "$SKILL_DIR" \
-  --provider "$PROVIDER" 2>&1)"
-printf '%s\n' "$bootstrap_output"
-
-# Bootstrap reports the source it resolved after the upgrade; the previous path may be gone.
-SKILL_DIR="$(printf '%s\n' "$bootstrap_output" | sed -n 's/^Resolved agent-ready-setup source: //p' | tail -n 1)"
-# It also reports the primary stack, the only way to know it when the manifest selects the profiles.
-STACK="$(printf '%s\n' "$bootstrap_output" | sed -n 's/^Stack: //p' | tail -n 1)"
-if [[ -z "$SKILL_DIR" || -z "$STACK" ]]; then
-  echo "ERROR: bootstrap.sh did not report its resolved source and stack; merge-instructions.sh was not run" >&2
-  exit 1
-fi
-bash "$SKILL_DIR/scripts/merge-instructions.sh" \
-  --provider "$PROVIDER" \
-  --stack "$STACK" \
-  --skill-dir "$SKILL_DIR"
+python3 "$SKILL_DIR/scripts/agent-ready" apply
 ```
 
-`resolve-provider.sh` respeta `AGENT_READY_SETUP_ACTIVE_PROVIDER` cuando vale
+`agent-ready apply` corre `scripts/bootstrap.sh` (upgrade del marketplace, proyección, lockfile y
+manifest) y después `scripts/merge-instructions.sh` desde la fuente que el upgrade resolvió, con el
+stack primario que reportó (`Resolved agent-ready-setup source:` y `Stack:` en stderr): el path
+anterior puede no existir después del upgrade. Si la proyección falla, no alinea `AGENTS.md`.
+
+El provider sale de `--provider` y, si no se pasa, como en `resolve-provider.sh`, que respeta `AGENT_READY_SETUP_ACTIVE_PROVIDER` cuando vale
 `claude` o `codex`; si no existe, infiere provider desde `SKILL_DIR` bajo
 `$HOME/.claude/`, `$HOME/.codex/` o `CLAUDE_PLUGIN_ROOT`; bajo una instalación de
 Hermes, toma el único CLI de provider en `PATH` y falla si hay dos o ninguno. Para

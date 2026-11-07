@@ -41,10 +41,14 @@ from agent_ready_common import (  # noqa: E402
     ProfileError,
     StateError,
     acquire_directory_lock,
+    bash_executable,
+    plugin_version,
     read_json_file,
+    serialize_json,
     sha256_of_file,
     sha256_of_text,
     walk_files,
+    write_text_atomically,
 )
 from agent_ready_config import (  # noqa: E402
     IGNORED_LOCKED,
@@ -274,28 +278,6 @@ def has_linked_parent(project_root, destination):
             return True
         parent = os.path.dirname(parent)
     return False
-
-
-def serialize_json(content):
-    """Deterministic JSON so the same resolution produces the same bytes."""
-    return json.dumps(content, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
-
-
-def write_text_atomically(path, text):
-    """Write text through a temporary sibling and an atomic rename."""
-    directory = os.path.dirname(path) or "."
-    os.makedirs(directory, exist_ok=True)
-    if os.path.islink(path):
-        raise StateError(f"{path} is a symlink; it was not overwritten")
-    file_descriptor, temporary_path = tempfile.mkstemp(prefix=".agent-ready-state.", dir=directory)
-    try:
-        with os.fdopen(file_descriptor, "w", encoding="utf-8", newline="\n") as file_handle:
-            file_handle.write(text)
-        os.replace(temporary_path, path)
-    except BaseException:
-        if os.path.exists(temporary_path):
-            os.unlink(temporary_path)
-        raise
 
 
 def write_text_if_changed(path, text):
@@ -820,11 +802,6 @@ def keep_locked_entries_of_unselected_sources(plan, lock):
             plan["profileSources"].pop(name, None)
 
 
-def bash_executable():
-    """Bash from PATH; Windows process creation would find the WSL launcher in System32 first."""
-    return shutil.which("bash") or "bash"
-
-
 def run_quiet(command, cwd=None):
     """Run a read-only command and return its UTF-8 stdout, or None when it fails."""
     try:
@@ -834,19 +811,6 @@ def run_quiet(command, cwd=None):
     if completed.returncode != 0:
         return None
     return completed.stdout.strip()
-
-
-def plugin_version(skill_dir):
-    """Version of the plugin manifest that ships the skill, if present."""
-    plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(skill_dir)))
-    for manifest in (".claude-plugin/plugin.json", ".codex-plugin/plugin.json", "plugin.json"):
-        manifest_path = os.path.join(plugin_root, manifest)
-        if os.path.isfile(manifest_path):
-            try:
-                return read_json_file(manifest_path, "plugin manifest").get("version")
-            except StateError:
-                return None
-    return None
 
 
 def source_kind(skill_dir):
@@ -1882,14 +1846,7 @@ def command_config(arguments):
     """
     configuration = configuration_of(arguments.project, arguments.offline)
     if arguments.format == "json":
-        document = {
-            "values": configuration.tree(),
-            "origins": {key: configuration.origin(key) for key in sorted(configuration.values)},
-            "ignored": configuration.ignored,
-            "layers": configuration.layers,
-            "projectApproved": configuration.project_approved,
-        }
-        write_line(serialize_json(document).rstrip("\n"))
+        write_line(serialize_json(configuration_report(configuration)).rstrip("\n"))
         return 0
     if arguments.format == "tsv":
         print_ignored_configuration(configuration, sys.stderr)
@@ -1975,6 +1932,10 @@ def command_plan(arguments):
     except IncompleteEvaluationError as incomplete_error:
         if arguments.format == "protected":
             raise
+        if arguments.format == "json":
+            write_line(serialize_json({"complete": False, "requestedProfiles": requested, "selection": selection,
+                                       "incomplete": str(incomplete_error)}).rstrip("\n"))
+            return INCOMPLETE_EVALUATION_STATUS
         print_incomplete_plan(arguments.project, arguments.skill_dir, selection, requested, incomplete_error)
         return INCOMPLETE_EVALUATION_STATUS
     if arguments.source_mode == SOURCE_MODE_SYNC:
@@ -1998,6 +1959,9 @@ def command_plan(arguments):
         if configuration.value(DETECTION_ENABLED_KEY):
             plan["detection"] = detect_profiles(catalog["profiles"], arguments.project)
             plan["suggestions"] = capability_suggestions(catalog, plan["detection"], plan["profiles"])
+        if arguments.format == "json":
+            write_line(serialize_json(plan_report(arguments.project, arguments.skill_dir, plan, configuration)).rstrip("\n"))
+            return 0
         print_plan(
             arguments.project, arguments.skill_dir, plan, arguments.provider,
             os.environ.get("AGENT_READY_SETUP_MARKETPLACE_UPGRADED") == "1", configuration,
@@ -2013,9 +1977,45 @@ def command_finalize(arguments):
     return 0
 
 
+def configuration_report(configuration):
+    """Effective configuration as JSON-ready data: values, origins and what was ignored."""
+    return {
+        "values": configuration.tree(),
+        "origins": {key: configuration.origin(key) for key in sorted(configuration.values)},
+        "ignored": configuration.ignored,
+        "layers": configuration.layers,
+        "projectApproved": configuration.project_approved,
+    }
+
+
+def plan_report(project_root, skill_dir, plan, configuration):
+    """The plan as JSON-ready data, with the merged files and the configuration it used."""
+    report = {key: value for key, value in plan.items() if key != "profiles_requested"}
+    report["complete"] = True
+    report["requestedProfiles"] = plan["profiles_requested"]
+    report["mergedChanges"] = [
+        {"destination": destination, "action": action, "reason": reason}
+        for destination, action, reason in merged_file_changes(project_root, skill_dir, plan)
+    ]
+    report["claudeProxiesToNormalize"] = claude_proxy_drift(project_root, skill_dir)
+    report["configuration"] = configuration_report(configuration)
+    return report
+
+
+def status_report(status):
+    """The status as JSON-ready data; the full plan stays out, plan --format json has it."""
+    report = {key: value for key, value in status.items() if key not in ("configuration", "plan")}
+    report["drift"] = status_has_drift(status)
+    report["configuration"] = configuration_report(status["configuration"])
+    return report
+
+
 def command_status(arguments):
     """Print the read-only status."""
     status = compute_status(arguments.project, arguments.skill_dir)
+    if arguments.format == "json":
+        write_line(serialize_json(status_report(status)).rstrip("\n"))
+        return DRIFT_STATUS if arguments.check and status_has_drift(status) else 0
     print_status(status, arguments.brief)
     if arguments.check and status_has_drift(status):
         return DRIFT_STATUS
@@ -2405,7 +2405,8 @@ def build_parser():
     plan_parser = subparsers.add_parser("plan", help="read-only plan")
     add_common(plan_parser)
     add_selection(plan_parser)
-    plan_parser.add_argument("--format", choices=("text", "protected"), default="text")
+    plan_parser.add_argument("--format", choices=("text", "json", "protected"), default="text",
+                             help="json is for scripts; protected lists the destinations an apply preserves")
     plan_parser.add_argument("--save", help="also save the full plan as JSON to this path")
     plan_parser.add_argument("--provider", default="claude", choices=SUPPORTED_PROVIDERS)
     plan_parser.add_argument("--offline", action="store_true", help="this run uses no network (updates.refresh: false)")
@@ -2422,6 +2423,7 @@ def build_parser():
     status_parser.add_argument("--skill-dir", help="resolved source, to detect pending updates")
     status_parser.add_argument("--brief", action="store_true", help="summary lines only")
     status_parser.add_argument("--check", action="store_true", help=f"exit {DRIFT_STATUS} when anything drifted")
+    status_parser.add_argument("--format", choices=("text", "json"), default="text", help="json is for scripts")
     status_parser.set_defaults(handler=command_status)
     return parser
 

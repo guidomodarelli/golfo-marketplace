@@ -13,7 +13,7 @@
 # Usage:
 #   bash bootstrap.sh --skill-dir <path> [--profiles <a,b> | --stack <frontend|node|java|go|android>]
 #     [--provider <claude|codex>] [--updates <pinned|auto>] [--update-source <name>]...
-#     [--plan | --status | --config] [--offline]
+#     [--plan | --status | --config] [--offline] [--json]
 #
 # Without --profiles or --stack, the profiles come from .agents/agent-ready.json
 # and, when the repository has no manifest yet, from the initial detection of
@@ -22,7 +22,9 @@
 # marketplace snapshot and the profile sources in the user cache to tell whether
 # everything is current; --offline and AGENT_READY_SETUP_REVIEW_MODE=1 keep them off the
 # network. --config prints the effective configuration and the layer of each value, without
-# the network. Every run validates the configuration first and fails before writing when a
+# the network. Reports (plan, status, config) go to stdout, and --json prints them as JSON;
+# progress and errors go to stderr. --plan --update-source <name> shows what adopting that
+# source would change: it only downloads into the user cache. Every run validates the configuration first and fails before writing when a
 # layer has an unknown key or an invalid value. CI pipelines use "agent-ready-state.py check",
 # which needs no provider.
 # An apply follows the sources in auto; --update-source also moves a pinned one.
@@ -34,8 +36,9 @@ set -euo pipefail
 # hands POSIX paths to native Windows Python, which needs that translation.
 unset MSYS_NO_PATHCONV MSYS2_ARG_CONV_EXCL
 
-# Bootstrap may run inside SessionStart; keep diagnostics off hook stdout.
-exec 1>&2
+# Diagnostics go to stderr. File descriptor 3 keeps the original stdout for the reports of
+# --plan, --status and --config, so "bootstrap.sh --plan > plan.txt" holds only the plan.
+exec 3>&1 1>&2
 
 # Shared normalization loads from this script's own directory so both stay on one version.
 # shellcheck source=instruction-normalization.sh
@@ -53,6 +56,7 @@ REQUESTED_SKILL_DIR=""
 UPDATE_MODE=""
 UPDATE_SOURCES=()
 OFFLINE=0
+JSON_OUTPUT=0
 # apply (default), plan, status or config.
 RUN_MODE="apply"
 SKILL_DIR=""
@@ -111,6 +115,10 @@ while [[ $# -gt 0 ]]; do
       OFFLINE=1
       shift
       ;;
+    --json)
+      JSON_OUTPUT=1
+      shift
+      ;;
     *)
       echo "ERROR: Unknown argument: $1" >&2
       exit 1
@@ -118,8 +126,16 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ "$RUN_MODE" != apply && ${#UPDATE_SOURCES[@]} -gt 0 ]]; then
-  echo "ERROR: --update-source only works on an apply: it changes the lockfile" >&2
+if [[ "$RUN_MODE" != apply && "$RUN_MODE" != plan && ${#UPDATE_SOURCES[@]} -gt 0 ]]; then
+  echo "ERROR: --update-source only works on an apply or a --plan" >&2
+  exit 1
+fi
+if [[ "$OFFLINE" -eq 1 && ${#UPDATE_SOURCES[@]} -gt 0 ]]; then
+  echo "ERROR: --update-source needs the network to resolve the source; drop --offline" >&2
+  exit 1
+fi
+if [[ "$RUN_MODE" == apply && "$JSON_OUTPUT" -eq 1 ]]; then
+  echo "ERROR: --json only works with --plan, --status or --config" >&2
   exit 1
 fi
 if [[ "$RUN_MODE" == apply && "$OFFLINE" -eq 1 ]]; then
@@ -521,8 +537,11 @@ if ! command -v python3 >/dev/null 2>&1; then
 fi
 OFFLINE_ARGUMENTS=()
 [[ "$OFFLINE" -eq 1 ]] && OFFLINE_ARGUMENTS=(--offline)
+FORMAT_ARGUMENTS=()
+[[ "$JSON_OUTPUT" -eq 1 ]] && FORMAT_ARGUMENTS=(--format json)
 if [[ "$RUN_MODE" == config ]]; then
-  python3 "$SKILL_DIR/scripts/agent-ready-state.py" config --project . ${OFFLINE_ARGUMENTS[@]+"${OFFLINE_ARGUMENTS[@]}"}
+  python3 "$SKILL_DIR/scripts/agent-ready-state.py" config --project . ${OFFLINE_ARGUMENTS[@]+"${OFFLINE_ARGUMENTS[@]}"} \
+    ${FORMAT_ARGUMENTS[@]+"${FORMAT_ARGUMENTS[@]}"} >&3
   exit $?
 fi
 
@@ -534,7 +553,7 @@ if ! CONFIGURATION="$(python3 "$SKILL_DIR/scripts/agent-ready-state.py" config -
   cat -- "$configuration_messages" >&2
   rm -f -- "$configuration_messages"
   echo "ERROR: the Agent Ready configuration is not valid; nothing was written" >&2
-  exit 1
+  exit 2
 fi
 [[ "$RUN_MODE" != apply ]] || cat -- "$configuration_messages" >&2
 rm -f -- "$configuration_messages"
@@ -627,7 +646,7 @@ if [[ "$RUN_MODE" != apply && "$OFFLINE" -eq 0 ]]; then
 fi
 
 if [[ "$RUN_MODE" == status ]]; then
-  python3 "$STATE_SCRIPT" status --project . --skill-dir "$SKILL_DIR"
+  python3 "$STATE_SCRIPT" status --project . --skill-dir "$SKILL_DIR" ${FORMAT_ARGUMENTS[@]+"${FORMAT_ARGUMENTS[@]}"} >&3
   exit $?
 fi
 
@@ -639,7 +658,8 @@ remove_temporary_paths() {
   [[ ${#TEMPORARY_PATHS[@]} -eq 0 ]] || rm -rf -- "${TEMPORARY_PATHS[@]}"
 }
 trap remove_temporary_paths EXIT
-if [[ "$RUN_MODE" == apply ]]; then
+# A plan with --update-source resolves those sources the same way, into the user cache only.
+if [[ "$RUN_MODE" == apply || ${#UPDATE_SOURCES[@]} -gt 0 ]]; then
   SOURCE_STATE_FILE="$(mktemp "${TMPDIR:-/tmp}/agent-ready-sources.XXXXXX")"
   TEMPORARY_PATHS+=("$SOURCE_STATE_FILE")
   fetch_arguments=(fetch-sources --project . --skill-dir "$SKILL_DIR" --state-file "$SOURCE_STATE_FILE")
@@ -674,7 +694,8 @@ resolution="$(python3 "$STATE_SCRIPT" resolve --project . --skill-dir "$SKILL_DI
 if [[ "$RUN_MODE" == plan && "$resolution_status" -eq 5 ]]; then
   # A source is missing: the plan command reports the incomplete evaluation itself.
   python3 "$STATE_SCRIPT" plan --project . --skill-dir "$SKILL_DIR" --provider "$PROVIDER" \
-    ${PROFILE_SELECTION[@]+"${PROFILE_SELECTION[@]}"} ${OFFLINE_ARGUMENTS[@]+"${OFFLINE_ARGUMENTS[@]}"} || exit $?
+    ${PROFILE_SELECTION[@]+"${PROFILE_SELECTION[@]}"} ${SOURCE_STATE_ARGUMENTS[@]+"${SOURCE_STATE_ARGUMENTS[@]}"} \
+    ${OFFLINE_ARGUMENTS[@]+"${OFFLINE_ARGUMENTS[@]}"} ${FORMAT_ARGUMENTS[@]+"${FORMAT_ARGUMENTS[@]}"} >&3 || exit $?
   exit 0
 fi
 cat -- "$resolve_errors" >&2
@@ -695,7 +716,8 @@ done <<< "$resolution"
 
 if [[ "$RUN_MODE" == plan ]]; then
   python3 "$STATE_SCRIPT" plan --project . --skill-dir "$SKILL_DIR" --provider "$PROVIDER" \
-    ${PROFILE_SELECTION[@]+"${PROFILE_SELECTION[@]}"} ${OFFLINE_ARGUMENTS[@]+"${OFFLINE_ARGUMENTS[@]}"}
+    ${PROFILE_SELECTION[@]+"${PROFILE_SELECTION[@]}"} ${SOURCE_STATE_ARGUMENTS[@]+"${SOURCE_STATE_ARGUMENTS[@]}"} \
+    ${OFFLINE_ARGUMENTS[@]+"${OFFLINE_ARGUMENTS[@]}"} ${FORMAT_ARGUMENTS[@]+"${FORMAT_ARGUMENTS[@]}"} >&3
   exit $?
 fi
 

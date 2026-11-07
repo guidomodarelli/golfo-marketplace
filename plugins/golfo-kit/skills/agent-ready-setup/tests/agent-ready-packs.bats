@@ -328,7 +328,11 @@ PY
 
   run_bootstrap --plan --update-source acme
   [ "$status" -ne 0 ]
-  [[ "$output" == *"only works on an apply"* ]]
+  [[ "$output" == *"pinned to a full commit"* ]]
+
+  run_bootstrap --status --update-source acme
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"only works on an apply or a --plan"* ]]
 }
 
 @test "plan shows the differences from the lock and what a new revision would change" {
