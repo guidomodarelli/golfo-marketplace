@@ -14,7 +14,7 @@ description: >-
   una actualización de agent-ready-setup o por qué un asset quedó en conflicto.
 license: MIT
 metadata:
-  version: "1.7.0"
+  version: "1.8.0"
   author: "guponce"
   category: "developer-experience"
   tags: "agent-ready, multi-provider, claude-code, codex, bootstrap, setup, scaffold, context-optimized-v1.20.1"
