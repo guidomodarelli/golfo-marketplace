@@ -21,7 +21,7 @@ Viven en el estado del PR (`.codex-autofix/processed-<PR>.json`) y en comprobaci
 
 - **Dedup por PR**: `processedCommentIds`, `inFlight`, `delegationReplyIds` y `outcomes` se leen y escriben igual. El loop principal sigue siendo el único escritor.
 - **Tope de rondas** (`reviewRounds` contra `{{MAX_REVIEW_ROUNDS}}`) y **tope de solo tests** (`testOnlyRounds`): persisten entre invocaciones, así que relanzar no los resetea.
-- **Timeout de ronda** (`reviewRequestedAt`, `reviewTimeoutRetries` y `reviewTimedOut` contra `{{REVIEW_ROUND_TIMEOUT_MIN}}` y `{{REVIEW_ROUND_TIMEOUT_RETRIES}}`, paso 2-quater): el reloj es la hora guardada en el JSON, así que vence igual en cualquier modo, aunque el agente haya estado cerrado. Ningún modo mergea por una ronda vencida.
+- **Timeout de ronda** (`reviewRequestedAt`, `reviewTimeoutRetries` y `reviewTimedOut` contra `{{REVIEW_ROUND_TIMEOUT_MIN}}` y `{{REVIEW_ROUND_TIMEOUT_RETRIES}}`, paso 2-quater): el reloj es la hora guardada en el JSON, así que vence igual en cualquier modo, aunque el agente haya estado cerrado. Ningún modo mergea por una ronda vencida ni por una review `failed`.
 - **Gates de merge**: review limpia de Codex para el head actual (o un corte del loop: convergencia, tope de solo tests o fin de la última ronda) y GATE DE CI del paso (5-bis), evaluados en el momento del merge. Nunca se mergea con CI roja ni checks pendientes, y ningún merge se le consulta al usuario. Fuera del merge por fin de la última ronda, que tolera hallazgos `failed` y los reporta, tampoco se mergea con hallazgos abiertos. `finalMergePending` persiste entre invocaciones igual que los topes.
 - **Guard de auto-cancelación**: el paso «GUARD» corre primero en cada vuelta.
 
