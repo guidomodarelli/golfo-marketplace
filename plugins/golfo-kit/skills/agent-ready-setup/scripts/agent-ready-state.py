@@ -546,7 +546,22 @@ def desired_assets(skill_dir, catalog, resolved):
                     "sourcePath": absolute_path,
                     "sha256": sha256_of_file(absolute_path),
                 }
+    reject_destinations_inside_files(assets, destinations_by_folded_name)
     return assets
+
+
+def reject_destinations_inside_files(assets, destinations_by_folded_name):
+    """A destination cannot sit under another one: one of the two could not be written."""
+    for destination, entry in sorted(assets.items()):
+        parent = os.path.dirname(destination)
+        while parent:
+            blocking = destinations_by_folded_name.get(parent.casefold())
+            if blocking in assets:
+                raise ProfileError(
+                    f"profile '{assets[blocking]['profile']}' writes the file {blocking}, but profile "
+                    f"'{entry['profile']}' needs it as a directory for {destination}; nothing was written. Rename one of the assets"
+                )
+            parent = os.path.dirname(parent)
 
 
 def profile_digests(skill_dir, catalog, resolved):
@@ -1687,7 +1702,7 @@ def command_fetch_sources(arguments):
         for failure in download_locked_sources_in_background(declarations, locked_sources):
             write_line(f"WARNING: {failure}", sys.stderr)
         return 0
-    pins = download_declared_sources(declarations, locked_sources, arguments.update_source or [])
+    pins = download_declared_sources(declarations, locked_sources, arguments.update_source or [], arguments.project)
     if arguments.state_file:
         write_text_atomically(arguments.state_file, serialize_json(pins))
     return 0

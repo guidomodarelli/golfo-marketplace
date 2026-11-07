@@ -281,6 +281,10 @@ def materialize_commit(name, origin, commit, repository):
                 regular_files.append((path, object_id.decode(), mode))
             elif object_type != SUBMODULE_OBJECT_TYPE:
                 excluded.append(path)
+        # On a case-insensitive file system one of these files would silently replace the other.
+        folded_paths = [path.casefold() for path, _, _ in regular_files]
+        excluded += [path for path, _, _ in regular_files if folded_paths.count(path.casefold()) > 1]
+        regular_files = [entry for entry in regular_files if folded_paths.count(entry[0].casefold()) == 1]
         blobs = read_blobs(name, repository, sorted({object_id for _, object_id, _ in regular_files}))
         tree = os.path.join(staging, MATERIALIZED_TREE_DIRECTORY)
         os.makedirs(tree)
@@ -333,7 +337,14 @@ def revision_to_download(declaration, locked_entry, update_requested):
     return resolve_remote_ref(declaration)
 
 
-def download_declared_sources(declarations, locked_sources, update_names):
+def require_local_source(declaration, project_root):
+    """An apply needs every declared local source, also one without selected profiles."""
+    root = os.path.join(project_root, *declaration["origin"].split("/"))
+    if not os.path.isdir(root):
+        raise ProfileError(f"profile source '{declaration['name']}': the path {declaration['origin']} does not exist from the repository root")
+
+
+def download_declared_sources(declarations, locked_sources, update_names, project_root):
     """Resolve and download what an apply needs. Returns the commit adopted per Git source."""
     known = {declaration["name"] for declaration in declarations}
     for name in update_names:
@@ -342,6 +353,7 @@ def download_declared_sources(declarations, locked_sources, update_names):
     pins = {}
     for declaration in declarations:
         if declaration["type"] != SOURCE_TYPE_GIT:
+            require_local_source(declaration, project_root)
             continue
         name = declaration["name"]
         commit = revision_to_download(declaration, locked_sources.get(name), name in update_names)

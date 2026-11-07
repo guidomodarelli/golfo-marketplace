@@ -590,6 +590,40 @@ EOF
   [ "$(tree_fingerprint)" = "$before" ]
 }
 
+@test "a destination inside the file of another asset is rejected" {
+  copy_example_pack
+  mkdir -p "$pack_dir/profiles/base/skills" "$pack_dir/profiles/kafka-interno/commands"
+  printf 'a file\n' > "$pack_dir/profiles/base/skills/acme-hello"
+  printf '# Command\n' > "$pack_dir/profiles/kafka-interno/commands/acme-hello.md"
+  write_manifest acme/kafka-interno "acme=path:../acme-pack"
+  before="$(tree_fingerprint)"
+
+  run_bootstrap --plan
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"'acme/base' writes the file .agents/skills/acme-hello"* ]]
+  [[ "$output" == *".agents/skills/acme-hello/SKILL.md"* ]]
+
+  run_bootstrap
+  [ "$status" -ne 0 ]
+  [ "$(tree_fingerprint)" = "$before" ]
+}
+
+@test "a Git pack with paths that differ only by case is rejected on every system" {
+  publish_pack_repository acme
+  rule_object="$(printf '# Rule\n' | git -C "$pack_repository" hash-object -w --stdin)"
+  git -C "$pack_repository" update-index --add --cacheinfo "100644,$rule_object,profiles/base/rules/Acme-Twin.md"
+  git -C "$pack_repository" update-index --add --cacheinfo "100644,$rule_object,profiles/base/rules/acme-twin.md"
+  git -C "$pack_repository" -c core.ignorecase=false commit -qm "add paths that differ by case"
+  pack_commit="$(git -C "$pack_repository" rev-parse HEAD)"
+  write_manifest acme/kafka-interno "acme=git+https://packs.example.invalid/acme#$pack_commit"
+  before="$(tree_fingerprint)"
+
+  run_bootstrap
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"has a name that cannot be used"* ]]
+  [ "$(tree_fingerprint)" = "$before" ]
+}
+
 @test "a Git pack with a symlink in its assets is rejected on every system" {
   publish_pack_repository acme
   link_object="$(printf '../../../outside.md' | git -C "$pack_repository" hash-object -w --stdin)"
@@ -770,13 +804,19 @@ PY
   [[ "$output" == *"This is not a validated plan"* ]]
 }
 
-@test "a missing source that the selection does not need does not stop the evaluation" {
+@test "a missing source that the selection does not need stops an apply, not an evaluation" {
   write_manifest node "acme=path:../does-not-exist"
+  before="$(tree_fingerprint)"
 
   run_bootstrap --plan
   [ "$status" -eq 0 ]
   [[ "$output" == *"not available: the path ../does-not-exist does not exist"*"(not needed by this selection)"* ]]
   [[ "$output" == *"Project assets"* ]]
+
+  run_bootstrap
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"the path ../does-not-exist does not exist from the repository root"* ]]
+  [ "$(tree_fingerprint)" = "$before" ]
 }
 
 @test "loading a pack and evaluating its signals never runs anything from it" {
