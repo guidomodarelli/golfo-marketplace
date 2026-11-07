@@ -2367,10 +2367,11 @@ EOF
   cp "$skill_dir/assets/common/hooks/sync-marketplace.sh" \
     "$source_dir/assets/common/hooks/sync-marketplace.sh"
   cp "$skill_dir/scripts/asset-sync-common.sh" "$source_dir/scripts/asset-sync-common.sh"
-  # Minimal sources still need the profile catalog and the state helper the hook resolves.
+  # Minimal sources still need the profile catalog, the configuration schemas and the state helper the hook resolves.
   cp "$skill_dir/scripts/agent-ready-state.py" "$source_dir/scripts/agent-ready-state.py"
   cp "$skill_dir/scripts/"agent_ready_*.py "$source_dir/scripts/"
   cp "$skill_dir/assets/profiles.json" "$source_dir/assets/profiles.json"
+  cp -R "$skill_dir/assets/config" "$source_dir/assets/config"
   cp "$skill_dir/scripts/render-instruction-template.sh" "$source_dir/scripts/render-instruction-template.sh"
   cp "$skill_dir/scripts/merge-managed-settings.py" "$source_dir/scripts/merge-managed-settings.py"
   cp "$skill_dir/scripts/run-detached.py" "$source_dir/scripts/run-detached.py"
@@ -2491,10 +2492,11 @@ EOF
   cp "$skill_dir/assets/common/hooks/sync-marketplace.sh" \
     "$source_dir/assets/common/hooks/sync-marketplace.sh"
   cp "$skill_dir/scripts/asset-sync-common.sh" "$source_dir/scripts/asset-sync-common.sh"
-  # Minimal sources still need the profile catalog and the state helper the hook resolves.
+  # Minimal sources still need the profile catalog, the configuration schemas and the state helper the hook resolves.
   cp "$skill_dir/scripts/agent-ready-state.py" "$source_dir/scripts/agent-ready-state.py"
   cp "$skill_dir/scripts/"agent_ready_*.py "$source_dir/scripts/"
   cp "$skill_dir/assets/profiles.json" "$source_dir/assets/profiles.json"
+  cp -R "$skill_dir/assets/config" "$source_dir/assets/config"
   cp "$skill_dir/scripts/merge-managed-settings.py" "$source_dir/scripts/merge-managed-settings.py"
   printf '%s\n' '{"settings":"updated"}' > "$source_dir/assets/common/settings.json"
   printf '%s\n' '{"hooks":"updated"}' > "$source_dir/assets/codex/hooks.json"
