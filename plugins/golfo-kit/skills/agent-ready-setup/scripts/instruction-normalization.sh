@@ -24,7 +24,7 @@ configure_instruction_templates() {
   local stack="$2"
 
   COMMON_SRC="$skill_dir/assets/common"
-  SRC="$(resolve_stack_template_directory "$skill_dir" "$stack")"
+  SRC="$(resolve_stack_template_directory "$skill_dir" "$stack")" || exit 1
   ROOT_CLAUDE_TEMPLATE="$skill_dir/assets/claude-proxy.md"
   CENTRALIZATION_TEMPLATE="$skill_dir/assets/instruction-centralization.md"
   TEMPLATE_RENDERER="$skill_dir/scripts/render-instruction-template.sh"

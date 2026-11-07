@@ -2387,6 +2387,98 @@
           "description": "Ubica las prioridades en el catálogo"
         }
       ]
+    },
+    {
+      "id": "pack-cannot-overwrite-a-golfo-asset",
+      "description": "Un pack que publica el mismo destino que Golfo falla antes de escribir: el namespace no evita la colisión.",
+      "input": "Quiero que el pack de mi empresa reemplace la rule `rules/security.md` de Golfo. Armé el profile `acme/seguridad` con un archivo `rules/security.md` y lo seleccioné junto a `node` en `.agents/agent-ready.json`. Como el profile tiene su propio namespace, ¿agent-ready-setup usa mi versión? ¿Qué tengo que hacer? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["colisi", "both write", "falla", "rechaza"],
+          "description": "Explica que la colisión se rechaza",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["antes de escribir", "antes de modificar", "no escribe", "nothing was written", "sin escribir"],
+          "description": "Falla antes de tocar el repositorio",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["nombre propio", "nombres propios", "rutas propias", "otro nombre", "renombr", "acme-"],
+          "description": "Indica publicar el asset con un nombre propio"
+        }
+      ]
+    },
+    {
+      "id": "pack-source-missing-in-review-mode",
+      "description": "En modo review sin la fuente en caché no descarga nada y no presenta un plan validado.",
+      "input": "Un job de CI corre la review con `AGENT_READY_SETUP_REVIEW_MODE=1` y además `bootstrap.sh --plan`, en una máquina limpia. El repo seleccionó `acme/kafka-interno` con una fuente Git fijada por commit que no está en la caché. ¿Baja el pack para poder responder? ¿El resultado sirve como plan aprobado? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["no descarga", "sin descarga", "no baja", "no lo baja", "no usa la red", "sin red"],
+          "description": "No descarga nada",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["incomplet"],
+          "description": "Informa la evaluación incompleta",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["no es un plan validado", "no está validado", "no sirve como", "no presenta", "not a validated", "no es válido", "no lo presenta", "no valida"],
+          "description": "No lo presenta como un plan validado",
+          "critical": true
+        }
+      ]
+    },
+    {
+      "id": "pack-revision-follows-only-explicit-updates",
+      "description": "Una rama del pack que avanza no se sigue sola, ni en un repo con updates auto.",
+      "input": "Mi manifest tiene `updates: auto` y la fuente `git+https://github.com/acme/agent-profiles#main`. Hoy mergearon cambios en `main` de ese pack. ¿Mañana, al abrir sesión, mis agentes reciben las rules nuevas? ¿Cómo adopto esa versión y dónde reviso qué cambió? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "--update-source",
+          "description": "Da la actualización explícita",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["no se sigue", "no sigue", "queda fijad", "sigue fijad", "no se actualiza", "no las reciben", "no reciben", "no adopta", "no recib"],
+          "description": "Aclara que la revisión adoptada queda fijada",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["lockfile", "lock.json", "diff"],
+          "description": "El cambio queda como diff revisable"
+        }
+      ]
+    },
+    {
+      "id": "pack-keeps-credentials-out-of-the-manifest",
+      "description": "Para un pack privado no acepta un token en la URL del manifest.",
+      "input": "El pack de mi empresa es privado. Para no pelear con la autenticación en CI pensaba poner `git+https://usuario:ghp_mitoken@github.com/acme/agent-profiles#<commit>` en `profileSources`. ¿Está bien? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["rechaz", "no acepta", "no se acepta", "falla", "no pongas", "no pongás", "no van en", "nunca"],
+          "description": "Rechaza credenciales en el manifest",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["autenticación ya configurada", "autenticación configurada", "credential", "ssh", "autenticación de Git"],
+          "description": "Propone la autenticación ya configurada",
+          "critical": true
+        }
+      ]
     }
   ]
 }

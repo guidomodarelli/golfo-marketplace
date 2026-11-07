@@ -9,12 +9,13 @@ un repositorio. La implementación vive en `scripts/agent-ready-state.py`.
 
 1. Profiles
 2. Detección
-3. Manifest y lockfile
-4. Ownership
-5. Operaciones: status, plan y apply
-6. SessionStart y modo review
-7. Providers y capacidades
-8. Límites conocidos
+3. Profile packs
+4. Manifest y lockfile
+5. Ownership
+6. Operaciones: status, plan y apply
+7. SessionStart y modo review
+8. Providers y capacidades
+9. Límites conocidos
 
 ## 1. Profiles
 
@@ -138,12 +139,104 @@ cambia: `--stack android` sigue sin `browser` aunque `plan` lo sugiera por
 `detect` no forma parte del digest de un profile en el lockfile, porque no cambia lo que
 se proyecta: ajustar una señal no marca un update pendiente en repos ya aplicados.
 
-## 3. Manifest y lockfile
+## 3. Profile packs
+
+Una empresa mantiene sus profiles en un repositorio propio y los reutiliza con versiones
+fijadas. `scripts/agent_ready_packs.py` carga los packs y `examples/acme-profile-pack/` es un
+pack mínimo de ejemplo. No hay stacks primarios externos, profiles por carpeta, distribución por
+npm ni instaladores propios de un pack.
+
+**Fuentes.** `.agents/agent-ready.json` las declara en `profileSources`:
+
+```json
+{
+  "profiles": ["node", "acme/kafka-interno"],
+  "updates": "pinned",
+  "profileSources": [
+    { "name": "acme", "source": "git+https://github.com/acme/agent-profiles#<commit-completo>" },
+    { "name": "local", "source": "path:./agent-packs/local" }
+  ]
+}
+```
+
+| Forma | Significado |
+|---|---|
+| `git+https://…#<commit-completo>`, `git+ssh://…#<commit-completo>` | revisión fijada |
+| `git+https://…#<tag-o-rama>` | se resuelve a un commit en el alta y queda fijado en el lock; una rama que avanza no se sigue |
+| `path:<ruta relativa>` | carpeta local, relativa a la raíz del repo consumidor |
+
+Las credenciales no van en el manifest, el lockfile ni los logs: una URL con usuario de HTTPS,
+contraseña o query se rechaza, y Git usa la autenticación ya configurada, sin prompts. Una ruta
+absoluta se rechaza porque no existiría en otra máquina. Agregar una fuente hace disponibles sus
+profiles, pero no selecciona ninguno ni proyecta sus assets.
+
+**Pack.** Tiene `agent-ready-pack.json` en la raíz, con `schemaVersion`, `name` y `profiles`. `name`
+debe ser igual al de la fuente en el manifest, porque los profiles se referencian por él. Cada
+profile acepta `kind`, `description`, `assets`, `requires`, `conflicts`, `tools` y `detect`, con el
+significado de la sección 1, y estos límites:
+
+- `kind` es siempre `capability`. Un profile que necesita un stack lo declara en `requires`.
+- `tools` solo acepta herramientas que el motor ya conoce (`browser`).
+- Un pack no declara `stackDefaults`, `baseAssets` ni otras fuentes, ni redefine un profile de
+  Golfo. Los assets compartidos van en un profile propio, como `acme/base`, que los demás requieren.
+- `assets` publica solo `rules/`, `skills/`, `agents/` y `commands/`. No puede traer hooks, settings,
+  el template de `AGENTS.md` ni archivos `AGENTS.md` o `CLAUDE.md`.
+- Las rules de un pack entran en la lista del bloque gestionado de `AGENTS.md`, como las de cualquier
+  profile. Un pack no cambia el template ni las instrucciones propias del proyecto.
+
+| Referencia | Significado |
+|---|---|
+| `node` | profile de Golfo |
+| `acme/kafka-interno` | profile de la fuente `acme` |
+| `otra-fuente/base` | profile de otra fuente declarada en el manifest; un pack no trae fuentes por su cuenta |
+
+**Validación antes de escribir.** Al resolver se validan el schema, las dependencias, los ciclos, los
+conflictos y los nombres de fuente duplicados. También se rechazan estas colisiones de destino:
+entre un pack y Golfo, entre dos packs, entre profiles de un mismo pack, en los destinos que generan
+los adaptadores (`agents/x.md` y `commands/x.md` producen el mismo `.agents/skills/x/SKILL.md`) y entre
+paths que solo difieren en mayúsculas. El namespace no evita una colisión de archivos. Los assets deben
+quedar dentro del pack, sin symlinks, y un destino no puede pasar por un directorio enlazado del
+proyecto. Cualquiera de estos errores frena el apply antes de modificar el repositorio.
+
+**Lockfile.** `profileSources` registra por fuente `type`, `origin`, `requestedRef`, `resolvedCommit`
+(`null` en una ruta), `catalogDigest`, `contentDigest` (assets de los profiles seleccionados) y
+`profiles`. Cada asset guarda su propietario en `profile` y su origen en `source`
+(`acme:profiles/kafka-interno/rules/acme-kafka.md`), con su `sha256` y `state`. El resultado es
+determinista, sin timestamps ni rutas de la máquina. Un repo sin fuentes no suma ningún campo. `detect`
+sí cuenta en `catalogDigest`, pero no en el digest de cada profile. El commit y el digest identifican el
+contenido; la confianza en sus instrucciones sigue dependiendo de la fuente y de quien la revisa.
+
+**Actualizaciones.** Un apply descarga lo que falta en
+`${XDG_CACHE_HOME:-~/.cache}/agent-ready-setup/packs/` y usa la revisión fijada. Necesita resolver todas
+las fuentes declaradas, también las que no tienen profiles seleccionados: si una falla, frena antes de
+escribir. Una revisión de pack cambia solo de forma explícita, aunque el repo tenga `updates: auto` para
+Golfo:
+
+- Con un commit en el manifest: se edita el manifest y se aplica.
+- Con una rama o un tag: `bash "$SKILL_DIR/scripts/bootstrap.sh" … --update-source acme` vuelve a resolverla.
+
+Cada caso deja un diff revisable de assets y lockfile, y sigue el ownership de la sección 5. Cada repo
+fija su revisión; dos repos con el mismo pack pueden usar revisiones distintas.
+
+**Rutas locales.** El digest se calcula sobre el contenido real de la carpeta, incluidos cambios sin
+commitear, porque el `HEAD` no identifica un árbol modificado. `plan` y `status` muestran el drift, un
+apply de `bootstrap.sh` lo adopta y SessionStart no lo adopta. Si la ruta falta, un apply falla sin
+escribir y `plan` informa la evaluación incompleta. Una carpeta externa sirve para desarrollo, pero su
+digest no garantiza que pueda reconstruirse en otro entorno. Para consumo compartido, usar Git fijado o
+un pack versionado dentro del propio repo.
+
+**Modos de consulta.** `--plan`, `--status` y `AGENT_READY_SETUP_REVIEW_MODE=1` trabajan con contenido
+local o en caché, sin descargas ni escrituras. Si falta una fuente que la selección necesita, informan
+`Evaluation incomplete` y `plan` sale con 5: ese resultado no es un plan validado. Una fuente sin
+profiles seleccionados que no está en caché no frena la evaluación, pero sus sugerencias no aparecen.
+Cargar un catálogo o evaluar su `detect` nunca ejecuta nada del pack.
+
+## 4. Manifest y lockfile
 
 | Archivo | Quién lo edita | Contenido |
 |---|---|---|
-| `.agents/agent-ready.json` | personas (versionado) | `profiles` elegidos, `updates` (`pinned` por defecto o `auto`), `providers` |
-| `.agents/agent-ready.lock.json` | solo el apply | source resuelto, profiles con digest, inventario de assets, archivos fusionados |
+| `.agents/agent-ready.json` | personas (versionado) | `profiles` elegidos, `updates` (`pinned` por defecto o `auto`), `providers`, `profileSources` |
+| `.agents/agent-ready.lock.json` | solo el apply | source resuelto, profiles con digest, fuentes de packs, inventario de assets, archivos fusionados |
 
 El lockfile registra `source.plugin`, `source.version`, `source.kind`
 (`marketplace-snapshot`, `plugin-cache` o `local`), `source.revision` (commit
@@ -162,7 +255,7 @@ No confundir con `.agents/.agent-ready-assets.lock` (lock de concurrencia del
 sync) ni con el hash de revisión de instrucciones bajo `.git/`. Fijar la
 configuración de un MCP remoto no fija el comportamiento del servicio.
 
-## 4. Ownership
+## 5. Ownership
 
 Nadie debería editar un asset gestionado: cada apply lo deja igual al template y
 pisa cualquier cambio local. Un destino es gestionado cuando el lock registra que
@@ -200,7 +293,7 @@ preserved conflict(s))` o `(partial: ...)` si alguna escritura falló.
 Para cambiar comportamiento, el proyecto agrega una rule propia bajo
 `.agents/rules/` o una skill nueva en vez de editar un asset gestionado.
 
-## 5. Operaciones
+## 6. Operaciones
 
 ```bash
 bash "$SKILL_DIR/scripts/bootstrap.sh" --skill-dir "$SKILL_DIR" --provider "$PROVIDER" --status
@@ -235,7 +328,7 @@ bash "$SKILL_DIR/scripts/bootstrap.sh" --skill-dir "$SKILL_DIR" --provider "$PRO
 Preferir aplicar actualizaciones como un cambio revisable: correr el apply en
 una rama y abrir un PR con el diff de `.agents/`, `.claude/` y el lockfile.
 
-## 6. SessionStart y modo review
+## 7. SessionStart y modo review
 
 El hook `.agents/hooks/sync-marketplace.sh` lee el manifest:
 
@@ -244,7 +337,10 @@ El hook `.agents/hooks/sync-marketplace.sh` lee el manifest:
   marketplace del usuario (fuera del repo) y después corre `status --brief`, que
   compara ese snapshot con el lock e informa drift y updates pendientes.
 - `updates: auto`: aplica con el mismo gate de ownership que bootstrap, así que
-  pisa los cambios locales al iniciar sesión.
+  pisa los cambios locales al iniciar sesión. Una fuente de packs nunca se adopta
+  acá: si difiere del lock, no se proyecta nada y se pide un apply explícito; si
+  falta su revisión fijada en la caché, la descarga corre en segundo plano, con un
+  tope de intentos, y una sesión posterior proyecta.
 - Sin manifest (repos legacy): aplica una vez y deja manifest y lockfile.
 - `AGENT_READY_SETUP_REVIEW_MODE=1`: nunca escribe, aunque el manifest diga
   `auto`, y tampoco refresca el marketplace ni llama a la CLI del provider. No se
@@ -256,7 +352,7 @@ El hook `.agents/hooks/sync-marketplace.sh` lee el manifest:
 `AGENT_READY_SETUP_UPDATES=pinned|auto` define el modo cuando el apply crea el
 manifest; `--updates` en bootstrap lo cambia de forma explícita.
 
-## 7. Providers y capacidades
+## 8. Providers y capacidades
 
 `assets/providers.json` declara qué soporta cada provider y cómo se adapta cada
 tipo de asset; `status` lo imprime. En Codex, `agents/` y `commands/` son
@@ -273,7 +369,7 @@ Las herramientas de browser se instalan y registran solo si un profile
 seleccionado declara `tools: ["browser"]`; `AGENT_READY_SETUP_BROWSER_INSTALL=0`
 las omite igual.
 
-## 8. Límites conocidos
+## 9. Límites conocidos
 
 - No hay asignación de profiles por ruta en monorepos: un repositorio tiene una
   sola selección.

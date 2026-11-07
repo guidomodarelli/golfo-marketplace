@@ -12,13 +12,14 @@
 #
 # Usage:
 #   bash bootstrap.sh --skill-dir <path> [--profiles <a,b> | --stack <frontend|node|java|go|android>]
-#     [--provider <claude|codex>] [--updates <pinned|auto>] [--plan | --status]
+#     [--provider <claude|codex>] [--updates <pinned|auto>] [--update-source <name>]... [--plan | --status]
 #
 # Without --profiles or --stack, the profiles come from .agents/agent-ready.json
 # and, when the repository has no manifest yet, from the initial detection of
 # agent-ready-state.py, which fails if the signals do not determine one stack.
 # --plan and --status are read-only: no marketplace upgrade, no writes, no tool
 # installation. Instruction normalization alone runs through normalize-instructions.sh.
+# An apply downloads pinned profile sources; --update-source resolves a source's ref again.
 
 set -euo pipefail
 
@@ -43,6 +44,7 @@ STACK=""
 PROFILES=""
 REQUESTED_SKILL_DIR=""
 UPDATE_MODE=""
+UPDATE_SOURCES=()
 # apply (default), plan or status.
 RUN_MODE="apply"
 SKILL_DIR=""
@@ -87,6 +89,11 @@ while [[ $# -gt 0 ]]; do
       UPDATE_MODE="$2"
       shift 2
       ;;
+    --update-source)
+      [[ $# -ge 2 && -n "${2:-}" ]] || { echo "ERROR: --update-source requires a source name" >&2; exit 1; }
+      UPDATE_SOURCES+=("$2")
+      shift 2
+      ;;
     --plan|--status)
       [[ "$RUN_MODE" == apply ]] || { echo "ERROR: --plan and --status are mutually exclusive" >&2; exit 1; }
       RUN_MODE="${1#--}"
@@ -98,6 +105,11 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+if [[ "$RUN_MODE" != apply && ${#UPDATE_SOURCES[@]} -gt 0 ]]; then
+  echo "ERROR: --update-source only works on an apply: --plan and --status never use the network" >&2
+  exit 1
+fi
 
 case "$MARKETPLACE_ALREADY_UPGRADED" in
   0|1) ;;
@@ -565,13 +577,54 @@ if [[ "$RUN_MODE" == status ]]; then
   exit $?
 fi
 
+# Only an apply uses the network for profile sources. It records the commits it adopted,
+# so every later step reads the same revisions, and fails here before writing anything.
+SOURCE_STATE_ARGUMENTS=()
+TEMPORARY_PATHS=()
+remove_temporary_paths() {
+  [[ ${#TEMPORARY_PATHS[@]} -eq 0 ]] || rm -rf -- "${TEMPORARY_PATHS[@]}"
+}
+trap remove_temporary_paths EXIT
+if [[ "$RUN_MODE" == apply ]]; then
+  SOURCE_STATE_FILE="$(mktemp "${TMPDIR:-/tmp}/agent-ready-sources.XXXXXX")"
+  TEMPORARY_PATHS+=("$SOURCE_STATE_FILE")
+  fetch_arguments=(fetch-sources --project . --skill-dir "$SKILL_DIR" --state-file "$SOURCE_STATE_FILE")
+  for update_source in ${UPDATE_SOURCES[@]+"${UPDATE_SOURCES[@]}"}; do
+    fetch_arguments+=(--update-source "$update_source")
+  done
+  if ! python3 "$STATE_SCRIPT" "${fetch_arguments[@]}"; then
+    echo "ERROR: could not prepare the profile sources; no asset was changed" >&2
+    exit 1
+  fi
+  SOURCE_STATE_ARGUMENTS=(--source-state "$SOURCE_STATE_FILE")
+fi
+
+# A plan writes nothing outside a temporary directory, not even the composed tree.
+COMPOSE_DIRECTORY="$(agent_ready_compose_directory)"
+if [[ "$RUN_MODE" == plan ]]; then
+  COMPOSE_DIRECTORY="$(mktemp -d "${TMPDIR:-/tmp}/agent-ready-compose.XXXXXX")"
+  TEMPORARY_PATHS+=("$COMPOSE_DIRECTORY")
+fi
+
 # Resolves profiles once; every later step reads the same stack tree.
 RESOLVED_PROFILES=""
 RESOLVED_TOOLS=""
 REQUESTED_PROFILES=""
 SELECTION_ORIGIN=""
-if ! resolution="$(python3 "$STATE_SCRIPT" resolve --project . --skill-dir "$SKILL_DIR" \
-  ${PROFILE_SELECTION[@]+"${PROFILE_SELECTION[@]}"} --compose-dir "$(agent_ready_compose_directory)")"; then
+resolve_errors="$(mktemp "${TMPDIR:-/tmp}/agent-ready-resolve.XXXXXX")"
+TEMPORARY_PATHS+=("$resolve_errors")
+resolution_status=0
+resolution="$(python3 "$STATE_SCRIPT" resolve --project . --skill-dir "$SKILL_DIR" \
+  ${PROFILE_SELECTION[@]+"${PROFILE_SELECTION[@]}"} ${SOURCE_STATE_ARGUMENTS[@]+"${SOURCE_STATE_ARGUMENTS[@]}"} \
+  --compose-dir "$COMPOSE_DIRECTORY" 2>"$resolve_errors")" || resolution_status=$?
+if [[ "$RUN_MODE" == plan && "$resolution_status" -eq 5 ]]; then
+  # A source is missing: the plan command reports the incomplete evaluation itself.
+  python3 "$STATE_SCRIPT" plan --project . --skill-dir "$SKILL_DIR" --provider "$PROVIDER" \
+    ${PROFILE_SELECTION[@]+"${PROFILE_SELECTION[@]}"} || exit $?
+  exit 0
+fi
+cat -- "$resolve_errors" >&2
+if [[ "$resolution_status" -ne 0 ]]; then
   exit 1
 fi
 while IFS=$'\t' read -r resolution_key resolution_value; do
@@ -614,9 +667,11 @@ fi
 # The pre-apply plan decides ownership: protected destinations are preserved by
 # sync_file, and finalize retires assets and writes the lockfile from it.
 PLAN_FILE="$(mktemp "${TMPDIR:-/tmp}/agent-ready-plan.XXXXXX")"
-trap 'rm -f -- "$PLAN_FILE"; release_sync_lock' EXIT
+TEMPORARY_PATHS+=("$PLAN_FILE")
+trap 'remove_temporary_paths; release_sync_lock' EXIT
 if ! protected_destinations="$(python3 "$STATE_SCRIPT" plan --project . --skill-dir "$SKILL_DIR" \
-  --format protected --save "$PLAN_FILE" ${PROFILE_SELECTION[@]+"${PROFILE_SELECTION[@]}"})"; then
+  --format protected --save "$PLAN_FILE" ${PROFILE_SELECTION[@]+"${PROFILE_SELECTION[@]}"} \
+  ${SOURCE_STATE_ARGUMENTS[@]+"${SOURCE_STATE_ARGUMENTS[@]}"})"; then
   echo "ERROR: could not compute the Agent Ready plan; no asset was changed" >&2
   exit 1
 fi

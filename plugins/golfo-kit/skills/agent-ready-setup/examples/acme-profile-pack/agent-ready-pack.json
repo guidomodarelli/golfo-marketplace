@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "name": "acme",
+  "profiles": {
+    "base": {
+      "kind": "capability",
+      "description": "Conventions that every Acme profile shares.",
+      "assets": "profiles/base"
+    },
+    "kafka-interno": {
+      "kind": "capability",
+      "description": "Rules and a skill for the internal Kafka client on Node services.",
+      "assets": "profiles/kafka-interno",
+      "requires": ["node", "acme/base"],
+      "detect": {
+        "signals": [
+          { "type": "package-dependency", "names": ["@acme/kafka"] }
+        ]
+      }
+    }
+  }
+}

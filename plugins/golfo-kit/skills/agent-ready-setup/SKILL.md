@@ -2,7 +2,8 @@
 name: agent-ready-setup
 description: >-
   Inspecciona proyecto, selecciona profiles componibles (frontend, node, java, go,
-  android, browser, business-flows) y prepara configuración multi-provider para Claude Code y Codex: genera
+  android, browser, business-flows y packs externos de una empresa, fijados por commit) y prepara
+  configuración multi-provider para Claude Code y Codex: genera
   .claude/, .agents/, .codex/, AGENTS.md y proxy CLAUDE.md, fija la versión
   adoptada en un manifest y un lockfile por repo, sobrescribe en cada apply los
   assets gestionados aunque se hayan editado, retira los que salen del profile y
@@ -145,6 +146,14 @@ Las señales y sus prioridades viven en `assets/profiles.json`; el evaluador, en
 Si detección tiene éxito, confirmar:
 
 > `Detected stack: **<STACK>**. Running agent-ready-setup — managed assets are overwritten with the templates, local edits included; project rules, skills, and instructions are preserved.`
+
+Una empresa puede sumar sus propios profiles con `profileSources` en el manifest: un pack en Git con
+revisión fijada o una carpeta local. Agregar una fuente solo los hace disponibles: se seleccionan por
+nombre con namespace (`acme/kafka-interno`), y un pack agrega capabilities, nunca un stack primario. Una
+revisión cambia solo de forma explícita: editando el commit del manifest o con
+`--update-source <fuente>`. Leer [references/profiles-and-lockfile.md](references/profiles-and-lockfile.md)
+(sección «Profile packs») para declarar una fuente, explicar una colisión o un `Evaluation incomplete`;
+`examples/acme-profile-pack/` es un pack mínimo.
 
 ## Step 3 — Run bootstrap script
 
@@ -316,6 +325,7 @@ Mostrar output del script sin alterarlo. En respuestas documentales, enumerar ad
 - **Android, Go, Java y Node:** `rules/coding-style.md`, `rules/security.md`, `rules/testing.md`, `agents/perf-analyzer.md`, `agents/security-scanner.md` y `commands/review-pr.md`.
 - **Frontend:** `rules/api-configuration.md`, `rules/api-validation-middleware.md`, `rules/cross-engine.md`, `rules/frontend-style.md`, `rules/hexagonal-architecture.md`, `rules/lodash.md`, `rules/no-unnecessary-mocks.md`, `rules/security.md`, `rules/server-first-data-flow.md`, `rules/testing.md`, `rules/upstream-contracts.md`, `rules/user-facing-feedback.md`, `agents/a11y-reviewer.md`, `agents/lint-reviewer.md`, `agents/perf-analyzer.md`, `agents/security-scanner.md`, `agents/test-reviewer.md`, `commands/review-pr.md`, `skills/api-endpoint/`, `skills/component-creation/`, `skills/karpathy-guidelines/`, `skills/logger/`, `skills/react-act-test-fixes/` y `skills/service/`.
 - **Profile `business-flows`:** `rules/business-flows.md` y `skills/business-flow-design/SKILL.md`.
+- **Profile packs:** los assets de cada profile seleccionado de `profileSources`, con los paths que publique su pack bajo `rules/`, `skills/`, `agents/` y `commands/`.
 - **Estado del repo:** `.agents/agent-ready.json` (manifest) y `.agents/agent-ready.lock.json` (lockfile). `assets/profiles.json` y `assets/providers.json` son catálogos internos de la skill y no se proyectan.
 
 Las skills que ya publica el plugin golfo-kit no se duplican en el catálogo de un stack: por ejemplo, el refactor de constantes se usa desde la skill `constants-refactor` del plugin y no se proyecta en `.agents/skills/`. Ningún stack publica hooks propios ni `mcp.json`: los únicos hooks proyectados son los comunes.
