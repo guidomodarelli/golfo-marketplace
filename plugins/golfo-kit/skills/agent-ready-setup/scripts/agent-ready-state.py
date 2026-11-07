@@ -107,6 +107,12 @@ SCHEMA_VERSION = 1
 MANAGED_BLOCK_START = "<!-- BEGIN AGENT-READY MANAGED -->"
 MANAGED_BLOCK_END = "<!-- END AGENT-READY MANAGED -->"
 SETTINGS_TEMPLATE_FALLBACK_STATUS = 10
+# Results of `check` and their exit statuses: the stable contract of a CI pipeline.
+CHECK_UP_TO_DATE = "up-to-date"
+CHECK_OUTDATED = "outdated"
+CHECK_SOURCE_UNAVAILABLE = "source-unavailable"
+CHECK_CONFIG_ERROR = "config-error"
+CHECK_SKIPPED = "skipped"
 FOREGROUND_SYNC_VARIABLE = "AGENT_READY_SETUP_SYNC_FOREGROUND"
 # The background update stops retrying for a while after this many failures in a row.
 BACKGROUND_UPDATE_MAX_FAILURES = 3
@@ -124,6 +130,13 @@ DETECTION_UNRESOLVED_STATUS = 3
 DRIFT_STATUS = 4
 # Exit status when a profile source the selection needs is not available or not adopted.
 INCOMPLETE_EVALUATION_STATUS = 5
+CHECK_EXIT_STATUSES = {
+    CHECK_UP_TO_DATE: 0,
+    CHECK_SKIPPED: 0,
+    CHECK_CONFIG_ERROR: PROFILE_ERROR_STATUS,
+    CHECK_OUTDATED: DRIFT_STATUS,
+    CHECK_SOURCE_UNAVAILABLE: INCOMPLETE_EVALUATION_STATUS,
+}
 
 # How a command treats profile sources. Read-only evaluates what is there and reports
 # differences. Sync (SessionStart with automatic updates) also refuses to adopt them.
@@ -1877,6 +1890,9 @@ def merged_file_problems(project_root, skill_dir, plan):
 def check_problems(project_root, skill_dir):
     """Everything that shows the committed assets are not up to date. Returns (problems, incomplete)."""
     status = compute_status(project_root, skill_dir)
+    # A catalog, a selection or a provider that cannot be evaluated is not an outdated repository.
+    if status["errors"]:
+        raise ProfileError("; ".join(status["errors"]))
     problems = []
     if status["manifest"] is None:
         problems.append(f"{MANIFEST_RELATIVE_PATH} is missing")
@@ -1886,9 +1902,8 @@ def check_problems(project_root, skill_dir):
               ("failed", "failed to apply"), ("retiredPreserved", "retired but preserved"))
     for key, label in labels:
         problems += [f"{destination}: {label}" for destination in status["checkout"][key]]
-    problems += status["errors"]
     if status["incomplete"]:
-        return problems, status["incomplete"]
+        return sorted(set(problems)), status["incomplete"]
     for name, item in status["sources"].items():
         problems += [f"profile source {name}: {difference}" for difference in item["differences"]]
         if item["pendingUpdate"]:
@@ -1905,32 +1920,77 @@ def check_problems(project_root, skill_dir):
     return sorted(set(problems)), None
 
 
-def command_check(arguments):
-    """Compare sources, lock and committed assets for CI; the exit status follows ``ci``."""
-    manifest = read_manifest(arguments.project)
+def find_repository_root(start):
+    """Root of the repository that holds a directory, without running anything: ci off runs nothing."""
+    current = os.path.abspath(start)
+    while True:
+        if os.path.exists(os.path.join(current, ".git")):
+            return current
+        parent = os.path.dirname(current)
+        if parent == current:
+            return os.path.abspath(start)
+        current = parent
+
+
+def evaluate_check(project_root, skill_dir, offline):
+    """Result of the check, before the ``ci`` mode decides the exit status."""
+    manifest = read_manifest(project_root)
     mode = effective_option(manifest, CI_FIELD, os.environ)
     if mode == CI_OFF:
-        write_line("Agent Ready check: skipped (ci: off)")
-        return 0
-    refresh_failures = []
-    if not arguments.offline:
-        refresh_failures = refresh_declared_sources(declared_sources(arguments.project), locked_sources_of(arguments.project))
-    problems, incomplete = check_problems(arguments.project, arguments.skill_dir)
-    problems = refresh_failures + problems
-    stream = sys.stdout
+        return {"status": CHECK_SKIPPED, "ci": mode, "problems": [], "unavailable": []}
+    unavailable = []
+    if not offline:
+        unavailable = refresh_declared_sources(declared_sources(project_root), locked_sources_of(project_root))
+    problems, incomplete = check_problems(project_root, skill_dir)
     if incomplete:
-        write_line(paint(f"Agent Ready check: evaluation incomplete (ci: {mode}): {incomplete}", "error", stream))
-    elif not problems:
-        write_line(paint(f"Agent Ready check: up to date (ci: {mode})", "ok", stream))
-        return 0
+        unavailable.append(incomplete)
+    if unavailable:
+        status = CHECK_SOURCE_UNAVAILABLE
+    elif problems:
+        status = CHECK_OUTDATED
     else:
-        write_line(paint(f"Agent Ready check: updates pending (ci: {mode})", "warning", stream))
-    for problem in problems:
-        write_line(f"  ! {problem}")
-    write_line("Apply with bootstrap.sh, review the diff of the assets and the lockfile, and commit it.")
-    if mode == CI_WARN:
-        return 0
-    return INCOMPLETE_EVALUATION_STATUS if incomplete else DRIFT_STATUS
+        status = CHECK_UP_TO_DATE
+    return {"status": status, "ci": mode, "problems": problems, "unavailable": unavailable}
+
+
+def print_check_text(result):
+    """Readable result of the check; the text is not a contract, the exit status is."""
+    stream = sys.stdout
+    headlines = {
+        CHECK_UP_TO_DATE: ("up to date", "ok"),
+        CHECK_OUTDATED: ("updates pending", "warning"),
+        CHECK_SOURCE_UNAVAILABLE: ("source not available", "error"),
+        CHECK_CONFIG_ERROR: ("configuration error", "error"),
+        CHECK_SKIPPED: ("skipped", "muted"),
+    }
+    headline, color = headlines[result["status"]]
+    mode = f" (ci: {result['ci']})" if result["ci"] else ""
+    write_line(paint(f"Agent Ready check: {headline}{mode}", color, stream))
+    for message in result["unavailable"] + result["problems"]:
+        write_line(f"  ! {message}")
+    if result["status"] in (CHECK_OUTDATED, CHECK_SOURCE_UNAVAILABLE):
+        write_line("Apply with bootstrap.sh, review the diff of the assets and the lockfile, and commit it.")
+
+
+def command_check(arguments):
+    """Compare sources, lock and committed assets; any CI provider can run this.
+
+    It needs python3, git and bash, and reaches private sources only through Git.
+    """
+    project_root = find_repository_root(arguments.project)
+    try:
+        result = evaluate_check(project_root, arguments.skill_dir, arguments.offline)
+    except (ProfileError, StateError) as configuration_error:
+        result = {"status": CHECK_CONFIG_ERROR, "ci": None, "problems": [str(configuration_error)], "unavailable": []}
+    exit_status = CHECK_EXIT_STATUSES[result["status"]]
+    if result["ci"] == CI_WARN:
+        exit_status = 0
+    result["exitStatus"] = exit_status
+    if arguments.format == "json":
+        write_line(serialize_json(result).rstrip("\n"))
+    else:
+        print_check_text(result)
+    return exit_status
 
 
 # ---------------------------------------------------------------------------
@@ -2096,9 +2156,14 @@ def build_parser():
     fetch_parser.add_argument("--refresh", action="store_true", help="only update the cache and the last commit seen per ref")
     fetch_parser.set_defaults(handler=command_fetch_sources)
 
-    check_parser = subparsers.add_parser("check", help="compare sources, lock and committed assets for CI")
+    check_parser = subparsers.add_parser(
+        "check",
+        help=f"compare sources, lock and committed assets; exits {DRIFT_STATUS} when outdated, "
+             f"{INCOMPLETE_EVALUATION_STATUS} when a source is unavailable and {PROFILE_ERROR_STATUS} on a configuration error",
+    )
     add_common(check_parser)
     check_parser.add_argument("--offline", action="store_true", help="compare with the cache, without the network")
+    check_parser.add_argument("--format", choices=("text", "json"), default="text", help="json is for pipelines")
     check_parser.set_defaults(handler=command_check)
 
     background_parser = subparsers.add_parser("background-update", help="run the sync hook and record its result")

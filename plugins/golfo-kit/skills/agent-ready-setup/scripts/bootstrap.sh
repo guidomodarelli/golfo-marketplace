@@ -13,15 +13,15 @@
 # Usage:
 #   bash bootstrap.sh --skill-dir <path> [--profiles <a,b> | --stack <frontend|node|java|go|android>]
 #     [--provider <claude|codex>] [--updates <pinned|auto>] [--update-source <name>]...
-#     [--plan | --status | --check] [--offline]
+#     [--plan | --status] [--offline]
 #
 # Without --profiles or --stack, the profiles come from .agents/agent-ready.json
 # and, when the repository has no manifest yet, from the initial detection of
 # agent-ready-state.py, which fails if the signals do not determine one stack.
-# --plan, --status and --check never write to the repository or install tools. They
-# refresh the marketplace snapshot and the profile sources in the user cache to tell
-# whether everything is current; --offline and AGENT_READY_SETUP_REVIEW_MODE=1 keep them
-# off the network. --check exits according to "ci" in the manifest, for CI pipelines.
+# --plan and --status never write to the repository or install tools. They refresh the
+# marketplace snapshot and the profile sources in the user cache to tell whether
+# everything is current; --offline and AGENT_READY_SETUP_REVIEW_MODE=1 keep them off the
+# network. CI pipelines use "agent-ready-state.py check", which needs no provider.
 # An apply follows the sources in auto; --update-source also moves a pinned one.
 # Instruction normalization alone runs through normalize-instructions.sh.
 
@@ -50,7 +50,7 @@ REQUESTED_SKILL_DIR=""
 UPDATE_MODE=""
 UPDATE_SOURCES=()
 OFFLINE=0
-# apply (default), plan, status or check.
+# apply (default), plan or status.
 RUN_MODE="apply"
 SKILL_DIR=""
 PROVIDER="${AGENT_READY_SETUP_ACTIVE_PROVIDER:-}"
@@ -99,8 +99,8 @@ while [[ $# -gt 0 ]]; do
       UPDATE_SOURCES+=("$2")
       shift 2
       ;;
-    --plan|--status|--check)
-      [[ "$RUN_MODE" == apply ]] || { echo "ERROR: --plan, --status and --check are mutually exclusive" >&2; exit 1; }
+    --plan|--status)
+      [[ "$RUN_MODE" == apply ]] || { echo "ERROR: --plan and --status are mutually exclusive" >&2; exit 1; }
       RUN_MODE="${1#--}"
       shift
       ;;
@@ -120,7 +120,7 @@ if [[ "$RUN_MODE" != apply && ${#UPDATE_SOURCES[@]} -gt 0 ]]; then
   exit 1
 fi
 if [[ "$RUN_MODE" == apply && "$OFFLINE" -eq 1 ]]; then
-  echo "ERROR: --offline only works with --plan, --status or --check" >&2
+  echo "ERROR: --offline only works with --plan or --status" >&2
   exit 1
 fi
 if [[ "${AGENT_READY_SETUP_REVIEW_MODE:-0}" == 1 ]]; then
@@ -526,13 +526,13 @@ if ! command -v python3 >/dev/null 2>&1; then
 fi
 # "refresh": "off" in the manifest keeps plan and status off the network, like --offline.
 while IFS=$'\t' read -r configuration_key configuration_value; do
-  if [[ "$configuration_key" == refresh && "${configuration_value%$'\r'}" == off && "$RUN_MODE" != check ]]; then
+  if [[ "$configuration_key" == refresh && "${configuration_value%$'\r'}" == off ]]; then
     OFFLINE=1
   fi
 done < <(python3 "$SKILL_DIR/scripts/agent-ready-state.py" manifest --project . 2>/dev/null || true)
 
 # A repository without a selection that detection cannot settle stops before the upgrade.
-if [[ "$RUN_MODE" != status && "$RUN_MODE" != check && -z "$STACK" && -z "$PROFILES" && ! -f .agents/agent-ready.json ]]; then
+if [[ "$RUN_MODE" != status && -z "$STACK" && -z "$PROFILES" && ! -f .agents/agent-ready.json ]]; then
   if ! detection_report="$(python3 "$SKILL_DIR/scripts/agent-ready-state.py" detect --project . --skill-dir "$SKILL_DIR")"; then
     printf '%s\n' "$detection_report" >&2
     echo "ERROR: could not detect project stack; pass --profiles or --stack" >&2
@@ -571,10 +571,7 @@ upgrade_marketplace() {
   echo "[marketplace-bootstrap] Upgrade del marketplace completado."
 }
 
-if [[ "$RUN_MODE" == check ]]; then
-  # CI compares with the source it was given and has no provider CLI to upgrade with.
-  echo "[marketplace-bootstrap] Check: the marketplace upgrade is skipped."
-elif [[ "$RUN_MODE" != apply && "$OFFLINE" -eq 1 ]]; then
+if [[ "$RUN_MODE" != apply && "$OFFLINE" -eq 1 ]]; then
   echo "[marketplace-bootstrap] Offline $RUN_MODE: the marketplace upgrade is skipped."
 elif [[ "$RUN_MODE" != apply && "$MARKETPLACE_ALREADY_UPGRADED" -eq 0 ]]; then
   # Refreshing only tells whether something is pending: without it, the cache still answers.
@@ -602,13 +599,6 @@ if [[ -n "$PROFILES" ]]; then
   PROFILE_SELECTION=(--profiles "$PROFILES")
 elif [[ -n "$STACK" ]]; then
   PROFILE_SELECTION=(--stack "$STACK")
-fi
-
-if [[ "$RUN_MODE" == check ]]; then
-  check_arguments=(check --project . --skill-dir "$SKILL_DIR")
-  [[ "$OFFLINE" -eq 0 ]] || check_arguments+=(--offline)
-  python3 "$STATE_SCRIPT" "${check_arguments[@]}"
-  exit $?
 fi
 
 if [[ "$RUN_MODE" != apply && "$OFFLINE" -eq 0 ]]; then

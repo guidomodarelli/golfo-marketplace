@@ -52,7 +52,11 @@ copy_skill() {
 run_bootstrap_with() {
   local source="$1"
   shift
-  run env PATH="$fake_bin:$PATH" bash "$source/scripts/bootstrap.sh" --skill-dir "$source" --provider claude --updates pinned "$@"
+  # A new manifest is pinned here unless the test says otherwise; auto has its own suite.
+  local updates=()
+  [[ -f .agents/agent-ready.json ]] || updates=(--updates pinned)
+  run env PATH="$fake_bin:$PATH" bash "$source/scripts/bootstrap.sh" --skill-dir "$source" --provider claude \
+    ${updates[@]+"${updates[@]}"} "$@"
 }
 
 # Content fingerprint of the project tree, including symlink targets.

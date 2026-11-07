@@ -2461,7 +2461,7 @@
         },
         {
           "type": "contains_any",
-          "values": ["--check", "chequeo de CI", "diff del lock"],
+          "values": ["agent-ready-state.py check", "chequeo de CI", "diff del lock"],
           "description": "Da el control disponible",
           "critical": true
         }
@@ -2522,8 +2522,8 @@
       "assertions": [
         {
           "type": "contains",
-          "value": "--check",
-          "description": "Usa el modo de chequeo",
+          "value": "agent-ready-state.py",
+          "description": "Usa el comando común de chequeo",
           "critical": true
         },
         {
@@ -2542,6 +2542,37 @@
           "type": "contains_any",
           "values": ["`off`", "\"off\"", "ci: off", "ci.{0,6}off"],
           "description": "Explica cómo apagarlo"
+        }
+      ]
+    },
+    {
+      "id": "ci-check-works-without-github",
+      "description": "El chequeo sirve en Jenkins, sin gh, con códigos de salida y sin crear workflows.",
+      "input": "Mi empresa usa Jenkins y no tenemos GitHub Actions; el pack privado está en un Git interno. ¿Cómo corro el chequeo de agent-ready-setup en un Jenkinsfile? ¿Qué códigos de salida tengo que manejar y necesito `gh` para autenticar? ¿agent-ready-setup me genera algún archivo de CI? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "agent-ready-state.py",
+          "description": "Usa el comando común",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(4|5).{0,60}(desactualizad|no disponible|outdated|unavailable)|(desactualizad|no disponible|outdated|unavailable).{0,60}(4|5)",
+          "description": "Da los códigos de salida",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["GIT_CONFIG", "SSH", "ssh", "sshagent"],
+          "description": "La autenticación va por Git",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["no proyecta", "no crea", "no genera", "no te genera", "no te crea"],
+          "description": "Aclara que no crea workflows",
+          "critical": true
         }
       ]
     },

@@ -106,8 +106,9 @@ reemplazar una fuente versionada y dejar el path anterior inexistente.
 `bootstrap.sh --status` o `--plan` (mismos `--skill-dir` y `--provider` del Step 3,
 sin `--stack` si el repo ya tiene manifest) y muestran su salida sin alterarla.
 No escriben en el repo ni instalan herramientas. Por defecto refrescan la caché fuera del
-repo para decir si todo está al día; `--offline` no toca la red. `bootstrap.sh --check`
-compara para CI y sale según `ci` del manifest. Saltear los Steps 2 y 4. Para explicar la salida, leer
+repo para decir si todo está al día; `--offline` no toca la red. Para CI, en cualquier proveedor,
+`scripts/agent-ready-state.py check` compara y sale con códigos documentados, según `ci` del manifest. Esta
+skill no crea workflows de CI. Saltear los Steps 2 y 4. Para explicar la salida, leer
 [references/profiles-and-lockfile.md](references/profiles-and-lockfile.md).
 
 ## Step 2 — Select profiles

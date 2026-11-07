@@ -28,7 +28,7 @@ setup() {
   unset CODEX_HOME AGENT_READY_SETUP_UPDATES AGENT_READY_SETUP_STACK_DIR AGENT_READY_SETUP_REVIEW_MODE
   unset AGENT_READY_SETUP_STACK AGENT_READY_SETUP_PROFILES AGENT_READY_SETUP_SYNC_FOREGROUND
   unset AGENT_READY_SETUP_CI AGENT_READY_SETUP_REFRESH AGENT_READY_SETUP_DETECTION
-  for provider_cli in claude codex; do
+  for provider_cli in claude codex gh; do
     cat > "$fake_bin/$provider_cli" <<EOF
 #!/bin/bash
 printf '%s %s\n' "$provider_cli" "\$*" >> "$cli_calls"
@@ -63,9 +63,10 @@ run_session_start() {
     bash .agents/hooks/sync-marketplace.sh --provider claude
 }
 
+# The check as a CI pipeline runs it: no provider, no gh, whatever the "env" arguments set.
 run_check() {
-  run env PATH="$fake_bin:$PATH" "$@" bash "${source_copy:-$skill_dir}/scripts/bootstrap.sh" \
-    --skill-dir "${source_copy:-$skill_dir}" --provider claude --check
+  run env PATH="$fake_bin:$PATH" "$@" python3 "${source_copy:-$skill_dir}/scripts/agent-ready-state.py" check \
+    --project . --skill-dir "${source_copy:-$skill_dir}" ${check_flags:-}
 }
 
 tree_fingerprint() {
@@ -473,7 +474,7 @@ PY
 @test "--offline is not an option of an apply" {
   run_bootstrap --stack node --offline
   [ "$status" -ne 0 ]
-  [[ "$output" == *"--offline only works with --plan, --status or --check"* ]]
+  [[ "$output" == *"--offline only works with --plan or --status"* ]]
 }
 
 @test "refresh off in the manifest keeps plan, status and a pinned SessionStart off the network" {
@@ -537,8 +538,9 @@ PY
   done
   rm .agents/agent-ready.json
 
-  run env AGENT_READY_SETUP_CI=maybe bash "$skill_dir/scripts/bootstrap.sh" --skill-dir "$skill_dir" --provider claude --check
-  [ "$status" -ne 0 ]
+  run_check AGENT_READY_SETUP_CI=maybe
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"configuration error"* ]]
   [[ "$output" == *"AGENT_READY_SETUP_CI must be one of"* ]]
 }
 
@@ -633,17 +635,90 @@ PY
   [[ "$output" == *"updates pending (ci: warn)"* ]]
 }
 
-@test "ci off skips the check without using the network" {
-  publish_pack_repository
+@test "ci off runs nothing: no git, no provider and no cache" {
   write_manifest acme/kafka-interno '{"ci": "off", "profileSources": [{"name": "acme", "source": "git+https://packs.example.invalid/acme", "ref": "main"}]}'
-  run_bootstrap
-  [ "$status" -eq 0 ]
-  advance_pack_repository
-  rm -rf "$pack_repository"
+  # Every command the check could run records its call and fails.
+  for command_name in git bash; do
+    printf '#!/bin/sh\nprintf "%%s\\n" "%s" >> "%s"\nexit 1\n' "$command_name" "$cli_calls" > "$fake_bin/$command_name"
+    chmod +x "$fake_bin/$command_name"
+  done
+  rm -f "$cli_calls"
+  before="$(tree_fingerprint)"
 
   run_check
   [ "$status" -eq 0 ]
   [[ "$output" == *"skipped (ci: off)"* ]]
+  [ ! -e "$cli_calls" ]
+  [ ! -e "$XDG_CACHE_HOME/agent-ready-setup" ]
+  rm "$fake_bin/git" "$fake_bin/bash"
+  [ "$(tree_fingerprint)" = "$before" ]
+}
+
+@test "the check has one exit status per result, also in JSON" {
+  publish_pack_repository
+  write_manifest acme/kafka-interno '{"profileSources": [{"name": "acme", "source": "git+https://packs.example.invalid/acme", "ref": "main"}]}'
+  run_bootstrap
+  [ "$status" -eq 0 ]
+  run env PATH="$fake_bin:$PATH" bash "$skill_dir/scripts/apply-managed-block.sh" --stack node --skill-dir "$skill_dir"
+  check_flags="--format json"
+
+  run_check
+  [ "$status" -eq 0 ]
+  printf '%s' "$output" > "$test_root/check.json"
+  [ "$(json_value "$test_root/check.json" '[data["status"], data["exitStatus"], data["ci"]]')" = "['up-to-date', 0, 'fail']" ]
+
+  advance_pack_repository
+  run_check
+  [ "$status" -eq 4 ]
+  printf '%s' "$output" > "$test_root/check.json"
+  [ "$(json_value "$test_root/check.json" 'data["status"]')" = "outdated" ]
+  [ "$(json_value "$test_root/check.json" 'len(data["problems"]) > 0')" = "True" ]
+
+  rm -rf "$pack_repository"
+  run_check
+  [ "$status" -eq 5 ]
+  printf '%s' "$output" > "$test_root/check.json"
+  [ "$(json_value "$test_root/check.json" 'data["status"]')" = "source-unavailable" ]
+  [ "$(json_value "$test_root/check.json" 'len(data["unavailable"])')" = "1" ]
+
+  run_check AGENT_READY_SETUP_CI=warn
+  [ "$status" -eq 0 ]
+  printf '%s' "$output" > "$test_root/check.json"
+  [ "$(json_value "$test_root/check.json" '[data["status"], data["exitStatus"]]')" = "['source-unavailable', 0]" ]
+
+  printf '{"profiles": "not-a-list"}' > .agents/agent-ready.json
+  run_check AGENT_READY_SETUP_CI=warn
+  [ "$status" -eq 2 ]
+  printf '%s' "$output" > "$test_root/check.json"
+  [ "$(json_value "$test_root/check.json" 'data["status"]')" = "config-error" ]
+}
+
+@test "an invalid pack or selection is a configuration error, not an outdated repository" {
+  write_manifest node,other/thing
+  run_check
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"configuration error"* ]]
+  [[ "$output" == *"needs the source 'other'"* ]]
+}
+
+@test "the check works from a subdirectory and without any provider or GitHub tool" {
+  run_bootstrap --stack node
+  [ "$status" -eq 0 ]
+  run env PATH="$fake_bin:$PATH" bash "$skill_dir/scripts/apply-managed-block.sh" --stack node --skill-dir "$skill_dir"
+  rm -f "$cli_calls"
+  mkdir -p src/deep
+  cd src/deep
+  run env -u GITHUB_ACTIONS -u GITHUB_TOKEN -u GH_TOKEN PATH="$fake_bin:$PATH" python3 "$skill_dir/scripts/agent-ready-state.py" check --project . --skill-dir "$skill_dir"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"up to date"* ]]
+  [ ! -e "$cli_calls" ]
+}
+
+@test "the setup never creates a CI workflow in the repository" {
+  run_bootstrap --stack node
+  [ "$status" -eq 0 ]
+  [ ! -e .github/workflows ]
+  [ -f .github/pull_request_template.md ]
 }
 
 @test "AGENT_READY_SETUP_CI overrides the manifest" {
@@ -657,16 +732,17 @@ PY
   [ "$status" -eq 4 ]
 }
 
-@test "a source the check cannot reach leaves it incomplete and shows no credentials" {
-  git config --global url."https://reader:s3cr3t-token@127.0.0.1:9/acme".insteadOf "https://packs.example.invalid/acme"
+@test "a token in the environment of Git reaches a source, shows nowhere and needs no gh" {
   write_manifest acme/kafka-interno '{"profileSources": [{"name": "acme", "source": "git+https://packs.example.invalid/acme", "ref": "main"}]}'
+  rm -f "$cli_calls"
 
-  run_check
+  run_check GIT_CONFIG_COUNT=1 "GIT_CONFIG_KEY_0=url.https://reader:s3cr3t-token@127.0.0.1:9/acme.insteadOf" GIT_CONFIG_VALUE_0=https://packs.example.invalid/acme
   [ "$status" -eq 5 ]
-  [[ "$output" == *"evaluation incomplete (ci: fail)"* ]]
+  [[ "$output" == *"source not available (ci: fail)"* ]]
   [[ "$output" != *"s3cr3t-token"* ]]
+  [ ! -e "$cli_calls" ]
 
-  run_check AGENT_READY_SETUP_CI=warn
+  run_check AGENT_READY_SETUP_CI=warn GIT_CONFIG_COUNT=1 "GIT_CONFIG_KEY_0=url.https://reader:s3cr3t-token@127.0.0.1:9/acme.insteadOf" GIT_CONFIG_VALUE_0=https://packs.example.invalid/acme
   [ "$status" -eq 0 ]
-  [[ "$output" == *"evaluation incomplete (ci: warn)"* ]]
+  [[ "$output" == *"source not available (ci: warn)"* ]]
 }
