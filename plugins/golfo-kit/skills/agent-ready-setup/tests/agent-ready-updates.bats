@@ -391,6 +391,46 @@ EOF
   [ -z "$(update_report_path)" ]
 }
 
+@test "a local edit the background update overwrote is reported with its backup" {
+  run_bootstrap --stack node
+  [ "$status" -eq 0 ]
+  printf 'local edit\n' >> .agents/rules/testing.md
+  rm .agents/rules/security.md
+
+  run_session_start
+  [ "$status" -eq 0 ]
+  wait_for_background_update
+  ! grep -Fq 'local edit' .agents/rules/testing.md
+
+  run_session_start
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"The last background update changed the repository: 2 restored"* ]]
+  [[ "$output" == *"restored: .agents/rules/testing.md"* ]]
+  [[ "$output" == *"restored: .agents/rules/security.md"* ]]
+  [[ "$output" == *"Local backups directory:"* ]]
+}
+
+@test "a sync that times out is stopped with its children before anything else can run" {
+  marker="$test_root/child-kept-writing"
+  cat > "$test_root/slow-sync.sh" <<EOF
+#!/bin/bash
+(sleep 3; touch "$marker") &
+wait
+EOF
+  run python3 - "$skill_dir/scripts/agent-ready-state.py" "$test_root/slow-sync.sh" <<'PY'
+import importlib.util, os, shutil, sys
+spec = importlib.util.spec_from_file_location("agent_ready_state", sys.argv[1])
+state = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(state)
+output, status = state.run_sync([shutil.which("bash"), sys.argv[2]], os.getcwd(), dict(os.environ), 1)
+print(status, output)
+PY
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"1 ERROR: the sync did not finish in 1 seconds and was stopped"* ]]
+  sleep 4
+  [ ! -e "$marker" ]
+}
+
 @test "a conflict the background update preserved is reported in the next session" {
   run_bootstrap --stack node
   [ "$status" -eq 0 ]

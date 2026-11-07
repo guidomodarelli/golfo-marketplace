@@ -25,6 +25,7 @@ import difflib
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -120,6 +121,7 @@ BACKGROUND_UPDATE_RETRY_AFTER_SECONDS = 3600
 BACKGROUND_UPDATE_TIMEOUT_SECONDS = 1800
 REPORT_MAX_LISTED_ASSETS = 10
 REPORT_MAX_PROBLEM_CHARACTERS = 500
+BACKUPS_LINE_PREFIX = "Local backups directory:"
 SUPPORTED_PROVIDERS = DEFAULT_PROVIDERS
 BROWSER_TOOL_NAME = "browser"
 # Exit status when the selected profiles cannot be resolved or composed.
@@ -2072,6 +2074,43 @@ def summarize_lock_changes(before, after):
     return changes
 
 
+def locally_changed_assets(project_root, lock):
+    """Managed files that differ from what the lock recorded, or that someone deleted."""
+    return sorted(
+        destination for destination, entry in lock.get("assets", {}).items()
+        if entry.get("sha256") and local_state(os.path.join(project_root, destination)) != entry["sha256"]
+    )
+
+
+def terminate_process_tree(process):
+    """Stop a process and its children: an orphan could keep writing after the lock is released."""
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/T", "/F", "/PID", str(process.pid)], capture_output=True, check=False)
+        return
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except OSError:
+        process.kill()
+
+
+def run_sync(command, project_root, environment, timeout_seconds):
+    """Run the foreground sync in its own process group. Returns (output, exit status)."""
+    try:
+        process = subprocess.Popen(
+            command, cwd=project_root, env=environment, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            encoding="utf-8", errors="replace", start_new_session=True,
+        )
+    except OSError as start_error:
+        return f"ERROR: the sync could not start: {type(start_error).__name__}\n", 1
+    try:
+        output, _ = process.communicate(timeout=timeout_seconds)
+        return output, process.returncode
+    except subprocess.TimeoutExpired:
+        terminate_process_tree(process)
+        output, _ = process.communicate()
+        return f"{output}ERROR: the sync did not finish in {timeout_seconds} seconds and was stopped\n", 1
+
+
 def command_background_update(arguments):
     """Run the sync detached from the session and leave its result for the next one."""
     report_path, lock_path = update_state_paths(arguments.project)
@@ -2086,26 +2125,31 @@ def command_background_update(arguments):
             write_line(f"{failures} background updates failed in a row; the next attempt waits {BACKGROUND_UPDATE_RETRY_AFTER_SECONDS} seconds.")
             return 0
         before = lock_for_comparison(arguments.project)
+        changed_before = locally_changed_assets(arguments.project, before)
         environment = dict(os.environ)
         environment[FOREGROUND_SYNC_VARIABLE] = "1"
         command = [bash_executable(), arguments.hook, "--provider", arguments.provider]
-        try:
-            completed = subprocess.run(
-                command, cwd=arguments.project, env=environment, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                encoding="utf-8", errors="replace", timeout=BACKGROUND_UPDATE_TIMEOUT_SECONDS, check=False,
-            )
-            output, return_code = completed.stdout, completed.returncode
-        except (OSError, subprocess.TimeoutExpired) as update_error:
-            output, return_code = f"ERROR: the sync could not finish: {type(update_error).__name__}\n", 1
+        output, return_code = run_sync(command, arguments.project, environment, BACKGROUND_UPDATE_TIMEOUT_SECONDS)
         write_line(output.rstrip("\n"))
         problems = [line.strip() for line in output.splitlines() if line.startswith(("ERROR:", "WARNING:", "Evaluation incomplete:"))]
         if return_code != 0 and not problems:
             problems = [f"the sync exited with status {return_code}"]
         after = lock_for_comparison(arguments.project)
+        changes = summarize_lock_changes(before, after)
+        # The lock keeps its hash when a sync overwrites a local edit: only the checkout shows it.
+        still_changed = set(locally_changed_assets(arguments.project, after))
+        changes["restored"] = sorted(
+            destination for destination in changed_before
+            if destination not in still_changed and destination in after.get("assets", {})
+            and destination not in changes["updated"]
+        )
+        backup_line = next((line.strip() for line in output.splitlines() if line.startswith(BACKUPS_LINE_PREFIX)), None)
+        if backup_line:
+            changes["backups"] = backup_line
         report = {
             "reported": False,
             "consecutiveFailures": failures + 1 if problems else 0,
-            "changes": summarize_lock_changes(before, after),
+            "changes": changes,
             "attention": assets_needing_attention(after),
             "problems": problems,
         }
@@ -2117,14 +2161,16 @@ def command_background_update(arguments):
 
 def describe_update_changes(changes):
     """Readable lines of what a background update changed; nothing when it changed nothing."""
-    counts = [f"{len(changes[key])} {key}" for key in ("created", "updated", "retired") if changes.get(key)]
+    counts = [f"{len(changes[key])} {key}" for key in ("created", "updated", "restored", "retired") if changes.get(key)]
     if not counts and not changes.get("sources"):
         return []
     details = ", ".join(counts + changes.get("sources", []))
     lines = [f"[marketplace-sync] The last background update changed the repository: {details}. Review it with git diff and commit it."]
-    for key in ("created", "updated", "retired"):
+    for key in ("created", "updated", "restored", "retired"):
         listed = changes.get(key, [])[:REPORT_MAX_LISTED_ASSETS]
         lines += [f"  {key}: {destination}" for destination in listed]
+    if changes.get("backups"):
+        lines.append(f"  {changes['backups']}")
     return lines
 
 
