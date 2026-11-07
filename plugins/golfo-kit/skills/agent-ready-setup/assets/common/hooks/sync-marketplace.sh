@@ -502,35 +502,6 @@ refresh_missing_asset_sync_helper() {
   fi
 }
 
-# An Android module keeps its manifest under src/main; a root Gradle file alone
-# cannot tell it apart from a JVM service.
-has_android_manifest() {
-  local manifest
-
-  for manifest in src/main/AndroidManifest.xml */src/main/AndroidManifest.xml */*/src/main/AndroidManifest.xml; do
-    [[ -f "$manifest" ]] && return 0
-  done
-  return 1
-}
-
-detect_stack() {
-  if [[ -n "$stack_override" ]]; then
-    printf '%s\n' "$stack_override"
-  elif [[ -f package.json ]]; then
-    if grep -q '"react"' package.json 2>/dev/null; then
-      printf '%s\n' "frontend"
-    else
-      printf '%s\n' "node"
-    fi
-  elif has_android_manifest; then
-    printf '%s\n' "android"
-  elif [[ -f pom.xml || -f build.gradle || -f build.gradle.kts ]]; then
-    printf '%s\n' "java"
-  elif [[ -f go.mod ]]; then
-    printf '%s\n' "go"
-  fi
-}
-
 case "$stack_override" in
   ""|frontend|node|java|go|android) ;;
   *)
@@ -607,19 +578,15 @@ if [[ -n "$profiles_override" ]]; then
   profile_selection=(--profiles "$profiles_override")
 elif [[ -n "$stack_override" ]]; then
   profile_selection=(--stack "$stack_override")
-elif [[ -z "$manifest_profiles" ]]; then
-  stack="$(detect_stack || true)"
-  if [[ -z "$stack" ]]; then
-    printf 'WARNING: could not detect project stack; local projection skipped.\n' >&2
-    printf 'Rerun with --stack frontend|node|java|go|android or --profiles <a,b>.\n' >&2
-    exit 0
-  fi
-  profile_selection=(--stack "$stack")
 fi
 
+# Without flags, resolve uses the manifest and then the initial detection; if neither
+# determines one stack it names the matches and asks for an explicit selection.
 stack=""
 stack_dir=""
 resolved_tools=""
+requested_profiles=""
+selection_origin=""
 if ! profile_resolution="$(python3 "$state_script" resolve --project . --skill-dir "$skill_dir" \
   ${profile_selection[@]+"${profile_selection[@]}"} \
   --compose-dir "${XDG_CACHE_HOME:-$HOME/.cache}/agent-ready-setup/compose")"; then
@@ -632,8 +599,14 @@ while IFS=$'\t' read -r resolution_key resolution_value; do
     primary) stack="$resolution_value" ;;
     stack_dir) stack_dir="$resolution_value" ;;
     tools) resolved_tools="$resolution_value" ;;
+    requested) requested_profiles="$resolution_value" ;;
+    selection) selection_origin="$resolution_value" ;;
   esac
 done <<< "$profile_resolution"
+# The sync projects what this resolution detected, even if the signals change meanwhile.
+if [[ "$selection_origin" == detection ]]; then
+  profile_selection=(--profiles "$requested_profiles")
+fi
 # Child scripts (normalization, managed block, background review) read the same tree.
 export AGENT_READY_SETUP_STACK_DIR="$stack_dir"
 

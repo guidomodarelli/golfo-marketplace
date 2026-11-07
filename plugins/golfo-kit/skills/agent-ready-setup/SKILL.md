@@ -110,48 +110,37 @@ a la CLI del provider. Saltear los Steps 2 y 4. Para explicar la salida, leer
 
 ## Step 2 — Select profiles
 
-Si el repo ya tiene `.agents/agent-ready.json`, usar sus profiles: correr
-bootstrap sin `--stack` ni `--profiles`. Si el usuario pide otros profiles,
-pasar `--profiles a,b` (el primero de tipo stack aporta el template de
-`AGENTS.md`). Si no hay manifest, detectar el stack; `--stack <s>` equivale a
-`--profiles <s>,browser`, salvo `--stack android`, que no instala herramientas de
-browser. `business-flows` no se detecta: se pide con `--profiles <stack>,business-flows`
-cuando el proyecto diseña flujos de negocio, en cualquier stack. Inspeccionar raíz proyecto. Usar prioridad:
+La selección efectiva sigue esta precedencia: `--profiles` o `--stack`, después
+`.agents/agent-ready.json` y, solo si todavía no hay manifest, la detección inicial.
+Una detección posterior informa señales y sugerencias en `--plan`, pero nunca cambia
+la selección guardada.
 
-| Archivo presente | Stack |
-|---|---|
-| `package.json` con `react` en dependencies | `frontend` |
-| `package.json` sin React | `node` |
-| `AndroidManifest.xml` en `src/main` de la raíz o de un módulo | `android` |
-| `pom.xml` o `build.gradle` | `java` |
-| `go.mod` | `go` |
+Con manifest, usar sus profiles: correr bootstrap sin `--stack` ni `--profiles`. Si
+el usuario pide otros, pasar `--profiles a,b` (el primero de tipo stack aporta el
+template de `AGENTS.md`). `--stack <s>` selecciona los defaults de ese stack: incluye
+`browser`, salvo `--stack android`. Sin manifest, inspeccionar el proyecto con la
+detección, que solo lee archivos:
 
 ```bash
-detect_stack() {
-  if [[ -f "package.json" ]]; then
-    if grep -q '"react"' package.json 2>/dev/null; then
-      echo "frontend"
-    else
-      echo "node"
-    fi
-  elif compgen -G "src/main/AndroidManifest.xml" >/dev/null ||
-    compgen -G "*/src/main/AndroidManifest.xml" >/dev/null ||
-    compgen -G "*/*/src/main/AndroidManifest.xml" >/dev/null; then
-    echo "android"
-  elif [[ -f "pom.xml" || -f "build.gradle" || -f "build.gradle.kts" ]]; then
-    echo "java"
-  elif [[ -f "go.mod" ]]; then
-    echo "go"
-  else
-    echo ""
-  fi
-}
-
-STACK=$(detect_stack)
+python3 "$SKILL_DIR/scripts/agent-ready-state.py" detect --project . --skill-dir "$SKILL_DIR"
 ```
 
-Si detección devuelve vacío, informar que stack no pudo determinarse y pedir
-uno de: `frontend`, `node`, `java`, `go`, `android`.
+| Salida | Qué significa | Qué hacer |
+|---|---|---|
+| `Stack: <stack>` (exit 0) | las señales determinan un stack primario; cada línea muestra su evidencia y qué stack quedó reemplazado | confirmar con el mensaje de abajo y correr bootstrap sin `--stack` ni `--profiles`: aplica el mismo resultado |
+| `Stack: ambiguous (<a>, <b>)` (exit 3) | coinciden stacks sin prioridad entre sí | mostrar las coincidencias y su evidencia, y pedir que el usuario elija; bootstrap no elige solo y falla sin escribir |
+| `Stack: none` (exit 3) | ninguna señal coincide | informar que el stack no pudo determinarse y pedir uno de: `frontend`, `node`, `java`, `go`, `android` |
+
+Las líneas `? <capability>: <evidencia>` son sugerencias: nunca se agregan solas al
+manifest ni instalan herramientas. Mencionarlas, y agregarlas con `--profiles` solo si
+el usuario las pide. `business-flows` no tiene señales: se pide con
+`--profiles <stack>,business-flows` cuando el proyecto diseña flujos de negocio, en
+cualquier stack.
+
+Las señales y sus prioridades viven en `assets/profiles.json`; el evaluador, en
+`scripts/agent_ready_detection.py`. Leer
+[references/profiles-and-lockfile.md](references/profiles-and-lockfile.md) (sección
+«Detección») para explicar un resultado o los formatos de Gradle reconocidos.
 
 Si detección tiene éxito, confirmar:
 
@@ -167,9 +156,9 @@ Para revisar antes de aplicar, correr primero el mismo comando con `--plan`.
 
 ```bash
 PROVIDER="$(bash "$SKILL_DIR/scripts/resolve-provider.sh" --skill-dir "$SKILL_DIR")"
-# Without a manifest pass --stack "$STACK" (or --profiles a,b); with one, omit both.
+# An explicit selection goes in --stack <s> or --profiles a,b; without them, bootstrap
+# uses the manifest and then the initial detection of Step 2.
 bootstrap_output="$(bash "$SKILL_DIR/scripts/bootstrap.sh" \
-  --stack "$STACK" \
   --skill-dir "$SKILL_DIR" \
   --provider "$PROVIDER" 2>&1)"
 printf '%s\n' "$bootstrap_output"

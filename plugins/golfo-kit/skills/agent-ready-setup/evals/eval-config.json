@@ -2291,6 +2291,102 @@
           "critical": true
         }
       ]
+    },
+    {
+      "id": "detected-capability-stays-a-suggestion",
+      "description": "Una capability detectada solo se sugiere en plan: no entra sola al manifest aunque tiente hacerlo.",
+      "input": "Mi repo tiene `.agents/agent-ready.json` con `\"profiles\": [\"android\"]`. Ahora la app usa `androidx.webkit:webkit` y `--plan` lista una línea `? browser: app/build.gradle.kts declares the Gradle dependency androidx.webkit:webkit`. Como ya lo encontró solo, supongo que el próximo apply lo agrega al manifest e instala las herramientas, ¿no? Explicá qué pasa y qué tendría que hacer. No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["no se agrega", "no lo agrega", "no agrega", "no entra", "no va a agregar", "no se suma", "no lo suma", "no cambia el manifest", "nunca cambia"],
+          "description": "Aclara que la sugerencia no entra sola al manifest",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "--profiles android,browser",
+          "description": "Da la selección explícita para adoptarla",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["sugerencia", "sugiere", "sugerida"],
+          "description": "La describe como sugerencia"
+        }
+      ]
+    },
+    {
+      "id": "ambiguous-detection-asks-for-a-selection",
+      "description": "Con señales sin prioridad entre sí, no elige un stack: lista las coincidencias y pide uno.",
+      "input": "Corrí la detección de agent-ready-setup en un repo sin manifest que tiene `package.json` (solo commitlint) y `go.mod`, y salió `Stack: ambiguous (go, node)` con exit 3. Es obvio que debe ser Node porque el package.json aparece primero en el directorio, ¿lanzás bootstrap sin flags y listo? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["--stack go", "--stack <", "--stack `", "--profiles go", "--stack node"],
+          "description": "Pide una selección explícita con la flag",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["falla", "no elige", "sin escribir", "no escribe", "no sirve", "va a fallar", "termina con error"],
+          "description": "Aclara que bootstrap sin flags no elige ni escribe",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["orden", "no depende"],
+          "description": "Rechaza decidir por el orden de los archivos"
+        }
+      ]
+    },
+    {
+      "id": "later-detection-never-moves-the-manifest",
+      "description": "La precedencia conserva el manifest aunque las señales del proyecto cambien después.",
+      "input": "Mi repo fijó `.agents/agent-ready.json` con el stack `node`. Hace poco agregamos `react` a `package.json`. ¿El próximo apply de agent-ready-setup pasa solo al stack frontend? ¿Cómo me entero y qué hago si quiero cambiarlo? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["no cambia", "sigue en", "se mantiene", "conserva", "no pasa", "no modifica", "keeps node", "mantiene"],
+          "description": "Conserva la selección persistida",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["--plan", "`plan`"],
+          "description": "Indica que plan informa las señales"
+        },
+        {
+          "type": "contains_any",
+          "values": ["--stack frontend", "--profiles frontend"],
+          "description": "El cambio es una selección explícita",
+          "critical": true
+        }
+      ]
+    },
+    {
+      "id": "react-over-node-explained-from-the-catalog",
+      "description": "Explica la prioridad entre React y Node desde el contrato, sin lógica de detección en SKILL.md.",
+      "input": "Un repo sin manifest tiene `package.json` con `react` y una app Android generada por React Native en `android/app/src/main/AndroidManifest.xml`. ¿Qué stack elige agent-ready-setup, por qué, y dónde están declaradas esas prioridades por si quiero revisarlas? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "frontend",
+          "description": "Elige frontend",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "supersedes",
+          "description": "Nombra el mecanismo de prioridad",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "profiles.json",
+          "description": "Ubica las prioridades en el catálogo"
+        }
+      ]
     }
   ]
 }

@@ -15,7 +15,7 @@ configuration. Bash keeps doing the actual writes (atomic replacements, Claude
 views, settings merges); it consults the protected list that ``plan`` emits so
 locally modified assets are preserved instead of overwritten.
 
-Subcommands: resolve, manifest, plan, finalize, status.
+Subcommands: resolve, manifest, detect, plan, finalize, status.
 """
 
 import argparse
@@ -27,6 +27,21 @@ import shutil
 import subprocess
 import sys
 import tempfile
+
+# Shared modules load from this script's own directory and leave no bytecode beside
+# the skill source, which may be a read-only snapshot.
+sys.dont_write_bytecode = True
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from agent_ready_detection import (  # noqa: E402
+    STACK_PROFILE_KIND,
+    STATUS_AMBIGUOUS,
+    STATUS_RESOLVED,
+    DetectionSchemaError,
+    detect_profiles,
+    format_evidence_list,
+    validate_catalog_detection,
+)
 
 MANIFEST_RELATIVE_PATH = ".agents/agent-ready.json"
 LOCK_RELATIVE_PATH = ".agents/agent-ready.lock.json"
@@ -45,7 +60,6 @@ RENDERED_INSTRUCTION_INPUTS = (CLAUDE_PROXY_RELATIVE_PATH, CENTRALIZATION_RELATI
 SKILL_NAME = "agent-ready-setup"
 PLUGIN_NAME = "golfo-kit"
 BASE_PROFILE_NAME = "common"
-STACK_PROFILE_KIND = "stack"
 SCHEMA_VERSION = 1
 MANAGED_BLOCK_START = "<!-- BEGIN AGENT-READY MANAGED -->"
 MANAGED_BLOCK_END = "<!-- END AGENT-READY MANAGED -->"
@@ -56,8 +70,18 @@ SUPPORTED_PROVIDERS = ("claude", "codex")
 BROWSER_TOOL_NAME = "browser"
 # Exit status when the selected profiles cannot be resolved or composed.
 PROFILE_ERROR_STATUS = 2
+# Exit status of `detect` when the signals do not determine one primary stack.
+DETECTION_UNRESOLVED_STATUS = 3
 # Exit status of `status --check` when the checkout or the source drifted from the lock.
 DRIFT_STATUS = 4
+
+# Where the effective selection came from, by precedence.
+SELECTION_PROFILES_FLAG = "--profiles"
+SELECTION_STACK_FLAG = "--stack"
+SELECTION_MANIFEST = "manifest"
+SELECTION_DETECTION = "detection"
+# Catalog fields that do not change what a profile projects, so they stay out of its digest.
+PROFILE_DIGEST_EXCLUDED_FIELDS = ("detect",)
 
 ACTION_CREATE = "create"
 ACTION_UPDATE = "update"
@@ -265,6 +289,10 @@ def load_profile_catalog(skill_dir):
     profiles = catalog.get("profiles")
     if not isinstance(profiles, dict) or not profiles:
         raise ProfileError(f"profile catalog {catalog_path} has no profiles")
+    try:
+        validate_catalog_detection(profiles)
+    except DetectionSchemaError as caught_error:
+        raise ProfileError(f"profile catalog {catalog_path}: {caught_error}") from caught_error
     return catalog
 
 
@@ -475,7 +503,10 @@ def profile_digests(skill_dir, catalog, resolved):
             entry = {"kind": "base"}
         else:
             root = profile_asset_root(skill_dir, catalog, name)
-            entry = catalog["profiles"][name]
+            entry = {
+                field: value for field, value in catalog["profiles"][name].items()
+                if field not in PROFILE_DIGEST_EXCLUDED_FIELDS
+            }
         lines = [json.dumps(entry, sort_keys=True)]
         if root:
             lines += [f"{relative_path}\t{sha256_of_file(absolute_path)}" for relative_path, absolute_path in walk_files(root)]
@@ -913,14 +944,72 @@ def describe_source(identity):
     return f"{identity.get('plugin', PLUGIN_NAME)} {version} ({identity.get('kind', 'unknown')}{suffix}; content {identity.get('contentDigest', '')[:12]})"
 
 
+def print_detection_matches(detection):
+    """List each stack that matched with its evidence, and the limits of the evaluation."""
+    for name, evidence in sorted(detection["stacks"].items()):
+        winners = detection["supersededBy"].get(name)
+        note = f" (superseded by {', '.join(winners)})" if winners else ""
+        write_line(f"  {name}: {format_evidence_list(evidence)}{note}")
+    for warning in detection["warnings"]:
+        write_line(paint(f"  ! {warning}", "warning", sys.stdout))
+
+
+def describe_detected_stack(detection):
+    """The outcome of a detection in one line."""
+    if detection["status"] == STATUS_RESOLVED:
+        return detection["primaryStack"]
+    if detection["status"] == STATUS_AMBIGUOUS:
+        return f"ambiguous ({', '.join(detection['candidates'])})"
+    return "none"
+
+
+def capability_suggestions(catalog, detection, resolved):
+    """Detected capabilities the selection lacks: only reported, never applied."""
+    profiles = catalog["profiles"]
+    suggestions = []
+    for name, evidence in sorted(detection["capabilities"].items()):
+        conflicts = set(profiles[name].get("conflicts", []))
+        is_compatible = not conflicts.intersection(resolved) and not any(
+            name in profiles[selected].get("conflicts", []) for selected in resolved
+        )
+        if name not in resolved and is_compatible:
+            suggestions.append({"profile": name, "evidence": evidence})
+    return suggestions
+
+
+def print_plan_detection(plan):
+    """Detected signals and suggestions of a plan; neither changes the selection."""
+    stream = sys.stdout
+    detection = plan["detection"]
+    write_line(paint("Detection (it informs; only a repository without a selection starts from it)", "heading", stream))
+    write_line(f"  Detected stack: {describe_detected_stack(detection)}")
+    print_detection_matches(detection)
+    if detection["primaryStack"] and detection["primaryStack"] != plan["primaryStack"]:
+        write_line(paint(
+            f"  ! Signals point to {detection['primaryStack']}, but the selection from {plan['selection']} keeps "
+            f"{plan['primaryStack']}; change it explicitly with --stack or --profiles.",
+            "warning", stream,
+        ))
+    write_line("")
+    if plan["suggestions"]:
+        write_line(paint("Suggestions (not applied: nothing is added to the manifest or installed)", "heading", stream))
+        for suggestion in plan["suggestions"]:
+            write_line(f"  ? {suggestion['profile']}: {format_evidence_list(suggestion['evidence'])}")
+        adopted = plan["profiles_requested"] + [suggestion["profile"] for suggestion in plan["suggestions"]]
+        write_line(f"  Adopt them with --profiles {','.join(adopted)}")
+        write_line("")
+
+
 def print_plan(project_root, skill_dir, plan, provider, skip_marketplace_upgrade, browser_install_enabled):
     """Human readable plan on stdout."""
     stream = sys.stdout
     write_line(paint("Agent Ready plan (read-only: nothing was written)", "heading", stream))
     write_line(f"Profiles: {', '.join(plan['profiles'])} (primary stack: {plan['primaryStack']})")
+    write_line(f"Selected by: {plan['selection']}")
     write_line(f"Source:   {describe_source(plan['source'])}")
     write_line(f"Lock:     {describe_source(plan['lockedSource']) if plan['hasLock'] else 'none (first apply creates it)'}")
     write_line("")
+    print_plan_detection(plan)
     write_line(paint("Project assets", "heading", stream))
     counts = {}
     for entry in plan["entries"]:
@@ -1255,16 +1344,33 @@ def print_status(status, brief):
 # Command line
 # ---------------------------------------------------------------------------
 
-def requested_profile_names(arguments, catalog):
-    """Profiles from --profiles, the legacy --stack alias, or the manifest."""
+def stack_names_of(catalog):
+    """Names of the stack profiles of a catalog, sorted."""
+    return sorted(name for name, profile in catalog["profiles"].items() if profile.get("kind") == STACK_PROFILE_KIND)
+
+
+def stack_from_initial_detection(catalog, detection):
+    """The stack a repository without a selection starts with, or why there is none."""
+    if detection["status"] == STATUS_RESOLVED:
+        return detection["primaryStack"]
+    selection_hint = f"select one with --stack {'|'.join(stack_names_of(catalog))} or --profiles <a,b>"
+    if detection["status"] == STATUS_AMBIGUOUS:
+        matches = ", ".join(f"{name} ({format_evidence_list(detection['stacks'][name])})" for name in detection["candidates"])
+        raise ProfileError(f"could not detect project stack: several stacks match and none has priority: {matches}; {selection_hint}")
+    raise ProfileError(f"could not detect project stack: no signal matched; {selection_hint}")
+
+
+def resolve_selection(arguments, catalog):
+    """Requested profiles and their origin: flags, then the manifest, then initial detection."""
     if getattr(arguments, "profiles", None):
-        return split_profile_names(arguments.profiles)
+        return split_profile_names(arguments.profiles), SELECTION_PROFILES_FLAG
     if getattr(arguments, "stack", None):
-        return profiles_for_stack(catalog, arguments.stack)
+        return profiles_for_stack(catalog, arguments.stack), SELECTION_STACK_FLAG
     manifest = read_manifest(arguments.project)
     if manifest:
-        return list(manifest["profiles"])
-    raise ProfileError("no profiles selected: pass --profiles or --stack, or add .agents/agent-ready.json")
+        return list(manifest["profiles"]), SELECTION_MANIFEST
+    detection = detect_profiles(catalog["profiles"], arguments.project)
+    return profiles_for_stack(catalog, stack_from_initial_detection(catalog, detection)), SELECTION_DETECTION
 
 
 def command_resolve(arguments):
@@ -1273,12 +1379,17 @@ def command_resolve(arguments):
     # profiles: it may declare a pinned repository that must not be written.
     read_manifest(arguments.project)
     catalog = load_profile_catalog(arguments.skill_dir)
-    requested = requested_profile_names(arguments, catalog)
+    requested, selection = resolve_selection(arguments, catalog)
     resolved = resolve_profiles(catalog, requested)
     desired_assets(arguments.skill_dir, catalog, resolved)
     stack_dir = compose_stack_directory(arguments.skill_dir, catalog, resolved, arguments.compose_dir)
+    if selection == SELECTION_DETECTION:
+        detection = detect_profiles(catalog["profiles"], arguments.project)
+        primary = detection["primaryStack"]
+        write_line(f"Detected stack: {primary} ({format_evidence_list(detection['stacks'][primary])})", sys.stderr)
     write_line(f"profiles\t{','.join(resolved)}")
     write_line(f"requested\t{','.join(requested)}")
+    write_line(f"selection\t{selection}")
     write_line(f"primary\t{primary_stack(catalog, resolved)}")
     write_line(f"stack_dir\t{stack_dir}")
     write_line(f"tools\t{','.join(resolved_tools(catalog, resolved))}")
@@ -1295,12 +1406,29 @@ def command_manifest(arguments):
     return 0
 
 
+def command_detect(arguments):
+    """Print what the project signals say; it never changes a selection."""
+    catalog = load_profile_catalog(arguments.skill_dir)
+    detection = detect_profiles(catalog["profiles"], arguments.project)
+    write_line(f"Stack: {describe_detected_stack(detection)}")
+    print_detection_matches(detection)
+    if detection["capabilities"]:
+        write_line("Capabilities detected (suggestions only; detection never applies them):")
+        for name, evidence in sorted(detection["capabilities"].items()):
+            write_line(f"  ? {name}: {format_evidence_list(evidence)}")
+    if detection["status"] == STATUS_RESOLVED:
+        return 0
+    write_line(f"No primary stack: select one explicitly with --stack or --profiles ({', '.join(stack_names_of(catalog))}).")
+    return DETECTION_UNRESOLVED_STATUS
+
+
 def command_plan(arguments):
     """Compute the plan; print it, save it, or list protected destinations."""
     catalog = load_profile_catalog(arguments.skill_dir)
-    requested = requested_profile_names(arguments, catalog)
+    requested, selection = resolve_selection(arguments, catalog)
     plan = compute_plan(arguments.project, arguments.skill_dir, requested)
     plan["profiles_requested"] = requested
+    plan["selection"] = selection
     if arguments.save:
         write_text_atomically(arguments.save, serialize_json(plan))
     if arguments.format == "protected":
@@ -1312,6 +1440,8 @@ def command_plan(arguments):
         for view in plan["detachedViews"]:
             write_line(view)
     else:
+        plan["detection"] = detect_profiles(catalog["profiles"], arguments.project)
+        plan["suggestions"] = capability_suggestions(catalog, plan["detection"], plan["profiles"])
         print_plan(
             arguments.project, arguments.skill_dir, plan, arguments.provider,
             os.environ.get("AGENT_READY_SETUP_MARKETPLACE_UPGRADED") == "1",
@@ -1362,6 +1492,10 @@ def build_parser():
     manifest_parser = subparsers.add_parser("manifest", help="print the repository manifest")
     add_common(manifest_parser, needs_skill=False)
     manifest_parser.set_defaults(handler=command_manifest)
+
+    detect_parser = subparsers.add_parser("detect", help="read-only detection of stacks and capabilities")
+    add_common(detect_parser)
+    detect_parser.set_defaults(handler=command_detect)
 
     plan_parser = subparsers.add_parser("plan", help="read-only plan")
     add_common(plan_parser)
