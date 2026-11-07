@@ -95,8 +95,10 @@ native_path() {
 
 # Writes the manifest: profiles, then a JSON object with any other field.
 write_manifest() {
+  local extra_fields='{}'
+  [[ $# -lt 2 ]] || extra_fields="$2"
   mkdir -p .agents
-  python3 - "$1" "${2:-{\}}" <<'PY'
+  python3 - "$1" "$extra_fields" <<'PY'
 import json, sys
 manifest = {"schemaVersion": 1, "profiles": sys.argv[1].split(","), "providers": ["claude", "codex"]}
 manifest.update(json.loads(sys.argv[2]))
@@ -389,6 +391,21 @@ EOF
   [ -z "$(update_report_path)" ]
 }
 
+@test "a conflict the background update preserved is reported in the next session" {
+  run_bootstrap --stack node
+  [ "$status" -eq 0 ]
+  rm .agents/rules/security.md
+  mkdir .agents/rules/security.md
+
+  run_session_start
+  [ "$status" -eq 0 ]
+  wait_for_background_update
+
+  run_session_start
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"The last background update reported: preserved conflict: .agents/rules/security.md"* ]]
+}
+
 @test "a failed background update is reported, changes nothing and stops retrying for a while" {
   publish_pack_repository
   write_manifest acme/kafka-interno '{"profileSources": [{"name": "acme", "source": "git+https://packs.example.invalid/acme", "ref": "main"}]}'
@@ -620,6 +637,17 @@ PY
   run_check
   [ "$status" -eq 4 ]
   [[ "$output" == *"golfo-kit: the lock has"* ]]
+}
+
+@test "the check fails when the selection differs from the lock, even with no file to change" {
+  run_bootstrap --stack node
+  [ "$status" -eq 0 ]
+  run env PATH="$fake_bin:$PATH" bash "$skill_dir/scripts/apply-managed-block.sh" --stack node --skill-dir "$skill_dir"
+  write_manifest node
+
+  run_check
+  [ "$status" -eq 4 ]
+  [[ "$output" == *"the lock has the profiles node, browser; the selection resolves to node"* ]]
 }
 
 @test "ci warn reports the same problems and passes" {

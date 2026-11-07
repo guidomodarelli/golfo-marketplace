@@ -1544,6 +1544,19 @@ def print_finalize_report(report):
 # Status
 # ---------------------------------------------------------------------------
 
+def selection_differences(lock, plan):
+    """How the selected profiles differ from the lock, in words."""
+    differences = []
+    locked_order = lock.get("profileOrder")
+    if locked_order != plan["profiles"]:
+        differences.append(f"the lock has the profiles {', '.join(locked_order or []) or 'none'}; the selection resolves to {', '.join(plan['profiles'])}")
+    locked_profiles = lock.get("profiles") or {}
+    for name, entry in sorted(plan["profileDigests"].items()):
+        if name in locked_profiles and locked_profiles[name] != entry:
+            differences.append(f"profile {name} changed since the lock")
+    return differences
+
+
 def compute_status(project_root, skill_dir):
     """Read-only state: manifest, checkout versus lock, source versus lock."""
     manifest = read_manifest(project_root)
@@ -1558,6 +1571,7 @@ def compute_status(project_root, skill_dir):
         "errors": [],
         "incomplete": None,
         "sources": {},
+        "selectionDifferences": [],
     }
     if lock:
         for destination, entry in sorted(lock["assets"].items()):
@@ -1601,7 +1615,8 @@ def compute_status(project_root, skill_dir):
                     view for view in views if view and local_state(os.path.join(project_root, view)) == LOCAL_ABSENT
                 )
             locked = lock or {}
-            selection_changed = locked.get("profileOrder") != plan["profiles"] or locked.get("profiles") != plan["profileDigests"]
+            status["selectionDifferences"] = selection_differences(locked, plan)
+            selection_changed = bool(status["selectionDifferences"])
             sources_changed = any(item["differences"] or item["pendingUpdate"] for item in plan["sourceReport"].values())
             status["update"] = {
                 "available": selection_changed or sources_changed
@@ -1908,6 +1923,7 @@ def check_problems(project_root, skill_dir):
         problems += [f"profile source {name}: {difference}" for difference in item["differences"]]
         if item["pendingUpdate"]:
             problems.append(f"profile source {name}: {item['pendingUpdate']}")
+    problems += status["selectionDifferences"]
     update = status["update"]
     if update and update["available"]:
         plan = status["plan"]
@@ -2021,6 +2037,16 @@ def lock_for_comparison(project_root):
         return {}
 
 
+def assets_needing_attention(lock):
+    """Assets an update could not leave as published: the next session must hear about them."""
+    labels = {STATE_CONFLICT: "preserved conflict", STATE_FAILED: "could not be applied", STATE_RETIRED_PRESERVED: "retired but preserved"}
+    return [
+        f"{labels[entry.get('state')]}: {destination}"
+        for destination, entry in sorted(lock.get("assets", {}).items())
+        if entry.get("state") in labels
+    ]
+
+
 def summarize_lock_changes(before, after):
     """What an update changed, from the two lockfiles."""
     assets_before, assets_after = before.get("assets", {}), after.get("assets", {})
@@ -2075,10 +2101,12 @@ def command_background_update(arguments):
         problems = [line.strip() for line in output.splitlines() if line.startswith(("ERROR:", "WARNING:", "Evaluation incomplete:"))]
         if return_code != 0 and not problems:
             problems = [f"the sync exited with status {return_code}"]
+        after = lock_for_comparison(arguments.project)
         report = {
             "reported": False,
             "consecutiveFailures": failures + 1 if problems else 0,
-            "changes": summarize_lock_changes(before, lock_for_comparison(arguments.project)),
+            "changes": summarize_lock_changes(before, after),
+            "attention": assets_needing_attention(after),
             "problems": problems,
         }
         write_text_atomically(report_path, serialize_json(report))
@@ -2108,7 +2136,7 @@ def command_update_report(arguments):
         return 0
     for line in describe_update_changes(report.get("changes", {})):
         write_line(line)
-    for problem in report.get("problems", []):
+    for problem in report.get("problems", []) + report.get("attention", []):
         write_line(f"[marketplace-sync] The last background update reported: {problem[:REPORT_MAX_PROBLEM_CHARACTERS]}")
     report["reported"] = True
     write_text_atomically(report_path, serialize_json(report))
