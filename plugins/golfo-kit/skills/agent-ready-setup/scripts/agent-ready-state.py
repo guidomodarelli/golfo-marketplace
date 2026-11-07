@@ -15,9 +15,9 @@ configuration. Bash keeps doing the actual writes (atomic replacements, Claude
 views, settings merges); it consults the protected list that ``plan`` emits so
 locally modified assets are preserved instead of overwritten.
 
-Subcommands: resolve, manifest, detect, fetch-sources, plan, finalize, status.
-Only fetch-sources uses the network, and only the apply and the background
-download of SessionStart call it.
+Subcommands: resolve, manifest, detect, fetch-sources, plan, finalize, status,
+check, background-update, update-report. Only fetch-sources and check use the
+network; plan and status read what the cache already has.
 """
 
 import argparse
@@ -28,6 +28,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 
 # Shared modules load from this script's own directory and leave no bytecode beside
 # the skill source, which may be a read-only snapshot.
@@ -38,10 +39,29 @@ from agent_ready_common import (  # noqa: E402
     IncompleteEvaluationError,
     ProfileError,
     StateError,
+    acquire_directory_lock,
     read_json_file,
     sha256_of_file,
     sha256_of_text,
     walk_files,
+)
+from agent_ready_defaults import (  # noqa: E402
+    CI_FIELD,
+    CI_OFF,
+    CI_WARN,
+    DEFAULT_PROVIDERS,
+    DETECTION_FIELD,
+    OPTIONS,
+    PROVIDERS_FIELD,
+    REFRESH_FIELD,
+    TOGGLE_OFF,
+    TOGGLE_ON,
+    UPDATES_AUTO,
+    UPDATES_FIELD,
+    UPDATES_PINNED,
+    effective_option,
+    validate_manifest_options,
+    without_default_values,
 )
 from agent_ready_detection import (  # noqa: E402
     STACK_PROFILE_KIND,
@@ -56,12 +76,13 @@ from agent_ready_packs import (  # noqa: E402
     SOURCE_AVAILABLE,
     SOURCE_TYPE_GIT,
     download_declared_sources,
-    download_locked_sources_in_background,
+    effective_update_mode,
     is_pack_profile,
     load_pack_catalog,
     locate_source,
     pack_cache_root,
     parse_profile_sources,
+    refresh_declared_sources,
     source_of_profile,
 )
 
@@ -86,9 +107,14 @@ SCHEMA_VERSION = 1
 MANAGED_BLOCK_START = "<!-- BEGIN AGENT-READY MANAGED -->"
 MANAGED_BLOCK_END = "<!-- END AGENT-READY MANAGED -->"
 SETTINGS_TEMPLATE_FALLBACK_STATUS = 10
-SUPPORTED_UPDATE_MODES = ("pinned", "auto")
-DEFAULT_UPDATE_MODE = "pinned"
-SUPPORTED_PROVIDERS = ("claude", "codex")
+FOREGROUND_SYNC_VARIABLE = "AGENT_READY_SETUP_SYNC_FOREGROUND"
+# The background update stops retrying for a while after this many failures in a row.
+BACKGROUND_UPDATE_MAX_FAILURES = 3
+BACKGROUND_UPDATE_RETRY_AFTER_SECONDS = 3600
+BACKGROUND_UPDATE_TIMEOUT_SECONDS = 1800
+REPORT_MAX_LISTED_ASSETS = 10
+REPORT_MAX_PROBLEM_CHARACTERS = 500
+SUPPORTED_PROVIDERS = DEFAULT_PROVIDERS
 BROWSER_TOOL_NAME = "browser"
 # Exit status when the selected profiles cannot be resolved or composed.
 PROFILE_ERROR_STATUS = 2
@@ -300,11 +326,13 @@ def load_effective_catalog(project_root, skill_dir, source_state=None):
     catalog = load_profile_catalog(skill_dir)
     golfo_profile_names = set(catalog["profiles"])
     locked_sources = locked_sources_of(project_root)
+    manifest = read_manifest(project_root)
     catalog["sources"] = {}
     catalog["packAssetRoots"] = {}
     for declaration in declared_sources(project_root):
         name = declaration["name"]
-        source = locate_source(declaration, locked_sources.get(name), project_root, (source_state or {}).get(name))
+        update_mode = effective_update_mode(manifest, declaration)
+        source = locate_source(declaration, locked_sources.get(name), project_root, update_mode, (source_state or {}).get(name))
         if source["state"] == SOURCE_AVAILABLE:
             pack = load_pack_catalog(source, golfo_profile_names)
             source["catalogDigest"] = pack["digest"]
@@ -679,8 +707,16 @@ def source_report(catalog, resolved, digests, lock):
             "state": source["state"],
             "reason": source["reason"],
             "selected": selected,
+            "updates": source["updates"],
             "differences": [],
+            "pendingUpdate": None,
         }
+        latest = source.get("latestCommit")
+        if latest and source["resolvedCommit"] and latest != source["resolvedCommit"]:
+            item["pendingUpdate"] = (
+                f"ref {source['requestedRef']} is at {latest[:12]} and this source is pinned at "
+                f"{source['resolvedCommit'][:12]}; adopt it with --update-source {name}"
+            )
         if source["state"] == SOURCE_AVAILABLE:
             entry = entries[name]
             item["catalogDigest"] = entry["catalogDigest"]
@@ -706,22 +742,37 @@ def describe_source_item(name, item):
     return f"{name} ({item['type']} {item['origin']}): " + "; ".join(details)
 
 
-def enforce_adopted_sources(catalog, resolved, digests, lock):
-    """SessionStart with automatic updates never adopts a source: only an apply does."""
+def enforce_sync_policy(project_root, skill_dir, catalog, resolved, digests):
+    """An unattended sync only adopts what is in ``auto``.
+
+    A pinned source that differs from the lock stops it. A pinned repository can have a
+    source in ``auto``, but a new Golfo release stops that source too: an apply writes
+    the whole selection, and it cannot update a pack without updating Golfo.
+    """
+    lock = read_lock(project_root)
     report = source_report(catalog, resolved, digests, lock)
     for name, item in report.items():
-        if item["selected"] and item["differences"]:
+        if item["selected"] and item["differences"] and item["updates"] != UPDATES_AUTO:
             raise IncompleteEvaluationError(
-                f"profile source '{name}' differs from the lock ({'; '.join(item['differences'])}); "
+                f"profile source '{name}' is pinned and differs from the lock ({'; '.join(item['differences'])}); "
                 "SessionStart does not adopt it, so this repository keeps its committed assets until someone adopts the change"
+            )
+    if lock and effective_update_mode(read_manifest(project_root)) == UPDATES_PINNED:
+        assets = desired_assets(skill_dir, catalog, resolved)
+        golfo_assets = {destination: entry for destination, entry in assets.items() if not is_pack_profile(entry["profile"])}
+        identity = source_identity(skill_dir, golfo_assets, merged_template_entries(skill_dir, catalog, resolved))
+        if lock.get("source", {}).get("contentDigest") != identity["contentDigest"]:
+            raise IncompleteEvaluationError(
+                "this repository pins golfo-kit and has a release pending, and SessionStart cannot update a pack alone; "
+                "the repository keeps its committed assets until someone adopts both"
             )
 
 
 def keep_locked_entries_of_unselected_sources(plan, lock):
-    """SessionStart does not adopt a source without selected profiles either: its drift stays visible."""
+    """SessionStart does not adopt a pinned source without selected profiles either: its drift stays visible."""
     locked_sources = (lock or {}).get("profileSources", {})
     for name, item in plan["sourceReport"].items():
-        if item["selected"] or not item["differences"]:
+        if item["selected"] or not item["differences"] or item["updates"] == UPDATES_AUTO:
             continue
         if name in locked_sources:
             plan["profileSources"][name] = locked_sources[name]
@@ -837,9 +888,7 @@ def read_manifest(project_root):
     profiles = manifest.get("profiles")
     if not isinstance(profiles, list) or not profiles or not all(isinstance(name, str) for name in profiles):
         raise StateError(f"{path} must declare 'profiles' as a non-empty list of names")
-    updates = manifest.get("updates", DEFAULT_UPDATE_MODE)
-    if updates not in SUPPORTED_UPDATE_MODES:
-        raise StateError(f"{path} 'updates' must be one of {', '.join(SUPPORTED_UPDATE_MODES)}")
+    validate_manifest_options(manifest, path)
     parse_profile_sources(manifest, path)
     return manifest
 
@@ -857,17 +906,14 @@ def read_lock(project_root):
     return lock
 
 
-def build_manifest(profiles, updates, providers, profile_sources):
-    """Manifest content: desired configuration, edited by people."""
-    manifest = {
-        "schemaVersion": SCHEMA_VERSION,
-        "profiles": list(profiles),
-        "updates": updates,
-        "providers": list(providers),
-    }
-    if profile_sources is not None:
-        manifest["profileSources"] = profile_sources
-    return manifest
+def build_manifest(profiles, updates, providers, previous):
+    """Manifest content: what people configured, without the values that are defaults.
+
+    Whatever else the file holds stays, and the fields of the catalog are never added.
+    """
+    manifest = dict(previous or {})
+    manifest.update({"schemaVersion": SCHEMA_VERSION, "profiles": list(profiles), UPDATES_FIELD: updates, PROVIDERS_FIELD: list(providers)})
+    return without_default_values(manifest)
 
 
 # ---------------------------------------------------------------------------
@@ -1203,7 +1249,9 @@ def capability_suggestions(catalog, detection, resolved):
 def print_plan_detection(plan):
     """Detected signals and suggestions of a plan; neither changes the selection."""
     stream = sys.stdout
-    detection = plan["detection"]
+    detection = plan.get("detection")
+    if detection is None:
+        return
     write_line(paint("Detection (it informs; only a repository without a selection starts from it)", "heading", stream))
     write_line(f"  Detected stack: {describe_detected_stack(detection)}")
     print_detection_matches(detection)
@@ -1243,6 +1291,8 @@ def print_plan_sources(plan):
         if item["differences"]:
             changes = "; ".join(item["differences"])
             write_line(paint(f"  ! {name} differs from the lock: {changes}; an apply adopts it", "warning", stream))
+        if item["pendingUpdate"]:
+            write_line(paint(f"  ! {name}: {item['pendingUpdate']}", "warning", stream))
     write_line("")
 
 
@@ -1427,11 +1477,9 @@ def finalize(project_root, skill_dir, plan, provider_list, updates):
 
     manifest = read_manifest(project_root)
     manifest_providers = manifest.get("providers", list(provider_list)) if manifest else list(provider_list)
-    manifest_updates = updates or (manifest.get("updates") if manifest else None) or DEFAULT_UPDATE_MODE
-    desired_manifest = build_manifest(
-        plan["profiles_requested"], manifest_updates, manifest_providers, manifest.get("profileSources") if manifest else None,
-    )
-    if manifest is None or {key: manifest.get(key) for key in desired_manifest} != desired_manifest:
+    manifest_updates = updates or (manifest or {}).get(UPDATES_FIELD) or OPTIONS[UPDATES_FIELD]["default"]
+    desired_manifest = build_manifest(plan["profiles_requested"], manifest_updates, manifest_providers, manifest)
+    if manifest != desired_manifest:
         write_text_atomically(os.path.join(project_root, MANIFEST_RELATIVE_PATH), serialize_json(desired_manifest))
 
     return {"removed": removed, "retireConflicts": retire_conflicts, "failed": failed, "conflicts": conflicts}
@@ -1450,7 +1498,7 @@ def print_incomplete_plan(project_root, skill_dir, selection, requested, incompl
         write_line("Profile sources:")
         for name, line in report.items():
             write_line(f"  {name}: {line}")
-    write_line("This is not a validated plan. An apply downloads pinned sources and validates the selection before writing.")
+    write_line("This is not a validated plan. Run it without --offline, or an apply, to download what is missing.")
 
 
 def print_finalize_report(report):
@@ -1529,6 +1577,7 @@ def compute_status(project_root, skill_dir):
             status["errors"].append(str(caught_error))
         else:
             status["sources"] = plan["sourceReport"]
+            status["plan"] = plan
             changed = [entry["destination"] for entry in plan["entries"]
                        if entry["action"] not in (ACTION_UNCHANGED, ACTION_DROP)]
             status["checkout"]["modified"].extend(plan["editedViews"] + plan["detachedViews"])
@@ -1540,7 +1589,7 @@ def compute_status(project_root, skill_dir):
                 )
             locked = lock or {}
             selection_changed = locked.get("profileOrder") != plan["profiles"] or locked.get("profiles") != plan["profileDigests"]
-            sources_changed = any(item["differences"] for item in plan["sourceReport"].values())
+            sources_changed = any(item["differences"] or item["pendingUpdate"] for item in plan["sourceReport"].values())
             status["update"] = {
                 "available": selection_changed or sources_changed
                 or locked.get("source", {}).get("contentDigest") != plan["source"]["contentDigest"],
@@ -1578,7 +1627,7 @@ def print_status(status, brief):
         hint = "" if brief else " Run /agent-ready-setup to pin this repository."
         write_line(paint(f"Agent Ready: no manifest (.agents/agent-ready.json).{hint}", "warning", stream))
     else:
-        write_line(f"Agent Ready profiles: {', '.join(manifest['profiles'])} (updates: {manifest.get('updates', DEFAULT_UPDATE_MODE)})")
+        write_line(f"Agent Ready profiles: {', '.join(manifest['profiles'])} (updates: {effective_option(manifest, UPDATES_FIELD, os.environ)})")
     if not status["hasLock"]:
         write_line(paint("No lockfile: applied assets are not pinned yet.", "warning", stream))
     else:
@@ -1596,10 +1645,12 @@ def print_status(status, brief):
                 for destination in checkout[key]:
                     write_line(f"  ! {label}: {destination}")
     for name, item in status["sources"].items():
-        if item["differences"] or item["state"] != SOURCE_AVAILABLE or not brief:
+        if item["differences"] or item["pendingUpdate"] or item["state"] != SOURCE_AVAILABLE or not brief:
             write_line(f"Profile source {describe_source_item(name, item)}")
         if item["differences"]:
             write_line(paint(f"  ! {name} differs from the lock: {'; '.join(item['differences'])}", "warning", stream))
+        if item["pendingUpdate"]:
+            write_line(paint(f"  ! {name}: {item['pendingUpdate']}", "warning", stream))
     if status["incomplete"]:
         write_line(paint(f"Evaluation incomplete, nothing was validated: {status['incomplete']}", "warning", stream))
     update = status["update"]
@@ -1667,6 +1718,8 @@ def resolve_selection(arguments, catalog):
     manifest = read_manifest(arguments.project)
     if manifest:
         return list(manifest["profiles"]), SELECTION_MANIFEST
+    if effective_option(manifest, DETECTION_FIELD, os.environ) == TOGGLE_OFF:
+        raise ProfileError("detection is off: select the profiles with --stack or --profiles")
     detection = detect_profiles(catalog["profiles"], arguments.project)
     return profiles_for_stack(catalog, stack_from_initial_detection(catalog, detection)), SELECTION_DETECTION
 
@@ -1681,7 +1734,7 @@ def command_resolve(arguments):
     resolved = resolve_profiles(catalog, requested)
     validate_pack_destinations(arguments.project, desired_assets(arguments.skill_dir, catalog, resolved))
     if arguments.source_mode == SOURCE_MODE_SYNC:
-        enforce_adopted_sources(catalog, resolved, profile_digests(arguments.skill_dir, catalog, resolved), read_lock(arguments.project))
+        enforce_sync_policy(arguments.project, arguments.skill_dir, catalog, resolved, profile_digests(arguments.skill_dir, catalog, resolved))
     stack_dir = compose_stack_directory(arguments.skill_dir, catalog, resolved, arguments.compose_dir)
     if selection == SELECTION_DETECTION:
         detection = detect_profiles(catalog["profiles"], arguments.project)
@@ -1697,24 +1750,31 @@ def command_resolve(arguments):
 
 
 def command_manifest(arguments):
-    """Print the manifest as key<TAB>value lines, or nothing without one."""
+    """Print the configuration as key<TAB>value lines; the rest only exists with a manifest."""
     manifest = read_manifest(arguments.project)
+    write_line(f"refresh\t{effective_option(manifest, REFRESH_FIELD, os.environ)}")
+    write_line(f"updates\t{effective_option(manifest, UPDATES_FIELD, os.environ)}")
     if manifest is None:
         return 0
     write_line(f"profiles\t{','.join(manifest['profiles'])}")
-    write_line(f"updates\t{manifest.get('updates', DEFAULT_UPDATE_MODE)}")
+    automatic_sources = [
+        declaration["name"] for declaration in parse_profile_sources(manifest, MANIFEST_RELATIVE_PATH)
+        if effective_update_mode(manifest, declaration) == UPDATES_AUTO
+    ]
+    write_line(f"auto_sources\t{','.join(automatic_sources)}")
     return 0
 
 
 def command_fetch_sources(arguments):
-    """Download profile sources; the only subcommand that uses the network."""
+    """Bring profile sources into the cache; a refresh reports failures without stopping."""
     declarations = declared_sources(arguments.project)
     locked_sources = locked_sources_of(arguments.project)
-    if arguments.locked_only:
-        for failure in download_locked_sources_in_background(declarations, locked_sources):
-            write_line(f"WARNING: {failure}", sys.stderr)
+    if arguments.refresh:
+        for failure in refresh_declared_sources(declarations, locked_sources):
+            write_line(f"WARNING: comparing with the local cache: {failure}", sys.stderr)
         return 0
-    pins = download_declared_sources(declarations, locked_sources, arguments.update_source or [], arguments.project)
+    manifest = read_manifest(arguments.project)
+    pins = download_declared_sources(declarations, locked_sources, arguments.update_source or [], manifest, arguments.project)
     if arguments.state_file:
         write_text_atomically(arguments.state_file, serialize_json(pins))
     return 0
@@ -1723,6 +1783,9 @@ def command_fetch_sources(arguments):
 def command_detect(arguments):
     """Print what the project signals say; it never changes a selection."""
     catalog = load_effective_catalog(arguments.project, arguments.skill_dir)
+    if effective_option(read_manifest(arguments.project), DETECTION_FIELD, os.environ) == TOGGLE_OFF:
+        write_line("Detection is off: select the profiles with --stack or --profiles.")
+        return DETECTION_UNRESOLVED_STATUS
     detection = detect_profiles(catalog["profiles"], arguments.project)
     write_line(f"Stack: {describe_detected_stack(detection)}")
     print_detection_matches(detection)
@@ -1748,9 +1811,8 @@ def command_plan(arguments):
         print_incomplete_plan(arguments.project, arguments.skill_dir, selection, requested, incomplete_error)
         return INCOMPLETE_EVALUATION_STATUS
     if arguments.source_mode == SOURCE_MODE_SYNC:
-        lock = read_lock(arguments.project)
-        enforce_adopted_sources(catalog, plan["profiles"], plan["profileDigests"], lock)
-        keep_locked_entries_of_unselected_sources(plan, lock)
+        enforce_sync_policy(arguments.project, arguments.skill_dir, catalog, plan["profiles"], plan["profileDigests"])
+        keep_locked_entries_of_unselected_sources(plan, read_lock(arguments.project))
     plan["profiles_requested"] = requested
     plan["selection"] = selection
     plan["addedDependencies"] = added_dependencies(catalog, requested, plan["profiles"])
@@ -1765,8 +1827,9 @@ def command_plan(arguments):
         for view in plan["detachedViews"]:
             write_line(view)
     else:
-        plan["detection"] = detect_profiles(catalog["profiles"], arguments.project)
-        plan["suggestions"] = capability_suggestions(catalog, plan["detection"], plan["profiles"])
+        if effective_option(read_manifest(arguments.project), DETECTION_FIELD, os.environ) == TOGGLE_ON:
+            plan["detection"] = detect_profiles(catalog["profiles"], arguments.project)
+            plan["suggestions"] = capability_suggestions(catalog, plan["detection"], plan["profiles"])
         print_plan(
             arguments.project, arguments.skill_dir, plan, arguments.provider,
             os.environ.get("AGENT_READY_SETUP_MARKETPLACE_UPGRADED") == "1",
@@ -1790,6 +1853,205 @@ def command_status(arguments):
     print_status(status, arguments.brief)
     if arguments.check and status_has_drift(status):
         return DRIFT_STATUS
+    return 0
+
+
+def merged_file_problems(project_root, skill_dir, plan):
+    """Merged files and CLAUDE.md proxies that an apply would change."""
+    catalog = load_effective_catalog(project_root, skill_dir)
+    with tempfile.TemporaryDirectory(prefix="agent-ready-check.") as compose_root:
+        previous_stack_dir = os.environ.get("AGENT_READY_SETUP_STACK_DIR")
+        os.environ["AGENT_READY_SETUP_STACK_DIR"] = compose_stack_directory(skill_dir, catalog, plan["profiles"], compose_root)
+        try:
+            changes = merged_file_changes(project_root, skill_dir, plan)
+        finally:
+            if previous_stack_dir is None:
+                del os.environ["AGENT_READY_SETUP_STACK_DIR"]
+            else:
+                os.environ["AGENT_READY_SETUP_STACK_DIR"] = previous_stack_dir
+    problems = [f"{destination}: {reason}" for destination, action, reason in changes if action != ACTION_UNCHANGED]
+    problems += [f"{path}: an apply would normalize it to the proxy" for path in claude_proxy_drift(project_root, skill_dir)]
+    return problems
+
+
+def check_problems(project_root, skill_dir):
+    """Everything that shows the committed assets are not up to date. Returns (problems, incomplete)."""
+    status = compute_status(project_root, skill_dir)
+    problems = []
+    if status["manifest"] is None:
+        problems.append(f"{MANIFEST_RELATIVE_PATH} is missing")
+    if not status["hasLock"]:
+        problems.append(f"{LOCK_RELATIVE_PATH} is missing")
+    labels = (("modified", "modified"), ("missing", "missing"), ("conflict", "preserved conflict"),
+              ("failed", "failed to apply"), ("retiredPreserved", "retired but preserved"))
+    for key, label in labels:
+        problems += [f"{destination}: {label}" for destination in status["checkout"][key]]
+    problems += status["errors"]
+    if status["incomplete"]:
+        return problems, status["incomplete"]
+    for name, item in status["sources"].items():
+        problems += [f"profile source {name}: {difference}" for difference in item["differences"]]
+        if item["pendingUpdate"]:
+            problems.append(f"profile source {name}: {item['pendingUpdate']}")
+    update = status["update"]
+    if update and update["available"]:
+        plan = status["plan"]
+        locked_digest = (status["lockedSource"] or {}).get("contentDigest")
+        if locked_digest != plan["source"]["contentDigest"]:
+            problems.append(f"golfo-kit: the lock has {describe_source(status['lockedSource'])}; the source is {describe_source(plan['source'])}")
+        problems += [f"{destination}: an apply would change it" for destination in update["changedDestinations"]]
+    if status.get("plan") and status["hasLock"]:
+        problems += merged_file_problems(project_root, skill_dir, status["plan"])
+    return sorted(set(problems)), None
+
+
+def command_check(arguments):
+    """Compare sources, lock and committed assets for CI; the exit status follows ``ci``."""
+    manifest = read_manifest(arguments.project)
+    mode = effective_option(manifest, CI_FIELD, os.environ)
+    if mode == CI_OFF:
+        write_line("Agent Ready check: skipped (ci: off)")
+        return 0
+    refresh_failures = []
+    if not arguments.offline:
+        refresh_failures = refresh_declared_sources(declared_sources(arguments.project), locked_sources_of(arguments.project))
+    problems, incomplete = check_problems(arguments.project, arguments.skill_dir)
+    problems = refresh_failures + problems
+    stream = sys.stdout
+    if incomplete:
+        write_line(paint(f"Agent Ready check: evaluation incomplete (ci: {mode}): {incomplete}", "error", stream))
+    elif not problems:
+        write_line(paint(f"Agent Ready check: up to date (ci: {mode})", "ok", stream))
+        return 0
+    else:
+        write_line(paint(f"Agent Ready check: updates pending (ci: {mode})", "warning", stream))
+    for problem in problems:
+        write_line(f"  ! {problem}")
+    write_line("Apply with bootstrap.sh, review the diff of the assets and the lockfile, and commit it.")
+    if mode == CI_WARN:
+        return 0
+    return INCOMPLETE_EVALUATION_STATUS if incomplete else DRIFT_STATUS
+
+
+# ---------------------------------------------------------------------------
+# Background update
+# ---------------------------------------------------------------------------
+
+def update_state_paths(project_root):
+    """Per-user report and lock of one project; nothing machine-specific lands in it."""
+    base = os.environ.get("XDG_CACHE_HOME") or os.path.join(os.environ.get("HOME") or os.path.expanduser("~"), ".cache")
+    key = sha256_of_text(os.path.realpath(project_root))[:16]
+    directory = os.path.join(base, "agent-ready-setup", "updates")
+    return os.path.join(directory, f"{key}.json"), os.path.join(directory, f"{key}.lock")
+
+
+def read_update_report(report_path):
+    """Last background update of a project, or an empty report."""
+    try:
+        return read_json_file(report_path, "background update report")
+    except StateError:
+        return {}
+
+
+def lock_for_comparison(project_root):
+    """The lock before or after an update; an unreadable one compares as empty."""
+    try:
+        return read_lock(project_root) or {}
+    except StateError:
+        return {}
+
+
+def summarize_lock_changes(before, after):
+    """What an update changed, from the two lockfiles."""
+    assets_before, assets_after = before.get("assets", {}), after.get("assets", {})
+    changes = {
+        "created": sorted(set(assets_after) - set(assets_before)),
+        "updated": sorted(
+            destination for destination in set(assets_after) & set(assets_before)
+            if assets_after[destination].get("sha256") != assets_before[destination].get("sha256")
+        ),
+        "retired": sorted(set(assets_before) - set(assets_after)),
+        "sources": [],
+    }
+    sources_before, sources_after = before.get("profileSources", {}), after.get("profileSources", {})
+    for name in sorted(set(sources_before) | set(sources_after)):
+        old_entry, new_entry = sources_before.get(name, {}), sources_after.get(name, {})
+        if old_entry.get("resolvedCommit") != new_entry.get("resolvedCommit") or old_entry.get("contentDigest") != new_entry.get("contentDigest"):
+            old_revision = (old_entry.get("resolvedCommit") or old_entry.get("contentDigest") or "none")[:12]
+            new_revision = (new_entry.get("resolvedCommit") or new_entry.get("contentDigest") or "removed")[:12]
+            changes["sources"].append(f"{name} {old_revision} -> {new_revision}")
+    source_before, source_after = before.get("source", {}), after.get("source", {})
+    if source_before.get("contentDigest") != source_after.get("contentDigest"):
+        changes["sources"].append(f"golfo-kit {source_before.get('version') or 'none'} -> {source_after.get('version') or 'unknown'}")
+    return changes
+
+
+def command_background_update(arguments):
+    """Run the sync detached from the session and leave its result for the next one."""
+    report_path, lock_path = update_state_paths(arguments.project)
+    if not acquire_directory_lock(lock_path):
+        write_line("Another background update of this project is running.")
+        return 0
+    try:
+        previous = read_update_report(report_path)
+        failures = previous.get("consecutiveFailures", 0)
+        age = time.time() - os.path.getmtime(report_path) if os.path.exists(report_path) else None
+        if failures >= BACKGROUND_UPDATE_MAX_FAILURES and age is not None and age < BACKGROUND_UPDATE_RETRY_AFTER_SECONDS:
+            write_line(f"{failures} background updates failed in a row; the next attempt waits {BACKGROUND_UPDATE_RETRY_AFTER_SECONDS} seconds.")
+            return 0
+        before = lock_for_comparison(arguments.project)
+        environment = dict(os.environ)
+        environment[FOREGROUND_SYNC_VARIABLE] = "1"
+        command = [bash_executable(), arguments.hook, "--provider", arguments.provider]
+        try:
+            completed = subprocess.run(
+                command, cwd=arguments.project, env=environment, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                encoding="utf-8", errors="replace", timeout=BACKGROUND_UPDATE_TIMEOUT_SECONDS, check=False,
+            )
+            output, return_code = completed.stdout, completed.returncode
+        except (OSError, subprocess.TimeoutExpired) as update_error:
+            output, return_code = f"ERROR: the sync could not finish: {type(update_error).__name__}\n", 1
+        write_line(output.rstrip("\n"))
+        problems = [line.strip() for line in output.splitlines() if line.startswith(("ERROR:", "WARNING:", "Evaluation incomplete:"))]
+        if return_code != 0 and not problems:
+            problems = [f"the sync exited with status {return_code}"]
+        report = {
+            "reported": False,
+            "consecutiveFailures": failures + 1 if problems else 0,
+            "changes": summarize_lock_changes(before, lock_for_comparison(arguments.project)),
+            "problems": problems,
+        }
+        write_text_atomically(report_path, serialize_json(report))
+    finally:
+        os.rmdir(lock_path)
+    return 0
+
+
+def describe_update_changes(changes):
+    """Readable lines of what a background update changed; nothing when it changed nothing."""
+    counts = [f"{len(changes[key])} {key}" for key in ("created", "updated", "retired") if changes.get(key)]
+    if not counts and not changes.get("sources"):
+        return []
+    details = ", ".join(counts + changes.get("sources", []))
+    lines = [f"[marketplace-sync] The last background update changed the repository: {details}. Review it with git diff and commit it."]
+    for key in ("created", "updated", "retired"):
+        listed = changes.get(key, [])[:REPORT_MAX_LISTED_ASSETS]
+        lines += [f"  {key}: {destination}" for destination in listed]
+    return lines
+
+
+def command_update_report(arguments):
+    """Show the result of the last background update once, in the next session."""
+    report_path, _ = update_state_paths(arguments.project)
+    report = read_update_report(report_path)
+    if not report or report.get("reported"):
+        return 0
+    for line in describe_update_changes(report.get("changes", {})):
+        write_line(line)
+    for problem in report.get("problems", []):
+        write_line(f"[marketplace-sync] The last background update reported: {problem[:REPORT_MAX_PROBLEM_CHARACTERS]}")
+    report["reported"] = True
+    write_text_atomically(report_path, serialize_json(report))
     return 0
 
 
@@ -1827,12 +2089,27 @@ def build_parser():
     add_common(detect_parser)
     detect_parser.set_defaults(handler=command_detect)
 
-    fetch_parser = subparsers.add_parser("fetch-sources", help="download pinned profile sources into the user cache")
+    fetch_parser = subparsers.add_parser("fetch-sources", help="bring profile sources into the user cache")
     add_common(fetch_parser)
     fetch_parser.add_argument("--update-source", action="append", help="resolve this source's ref again; repeatable")
     fetch_parser.add_argument("--state-file", help="write the adopted commits here, for resolve and plan")
-    fetch_parser.add_argument("--locked-only", action="store_true", help="only download revisions already pinned, with a limit of attempts")
+    fetch_parser.add_argument("--refresh", action="store_true", help="only update the cache and the last commit seen per ref")
     fetch_parser.set_defaults(handler=command_fetch_sources)
+
+    check_parser = subparsers.add_parser("check", help="compare sources, lock and committed assets for CI")
+    add_common(check_parser)
+    check_parser.add_argument("--offline", action="store_true", help="compare with the cache, without the network")
+    check_parser.set_defaults(handler=command_check)
+
+    background_parser = subparsers.add_parser("background-update", help="run the sync hook and record its result")
+    add_common(background_parser)
+    background_parser.add_argument("--hook", required=True, help="sync hook to run")
+    background_parser.add_argument("--provider", required=True, choices=SUPPORTED_PROVIDERS)
+    background_parser.set_defaults(handler=command_background_update)
+
+    report_parser = subparsers.add_parser("update-report", help="show the last background update once")
+    add_common(report_parser, needs_skill=False)
+    report_parser.set_defaults(handler=command_update_report)
 
     plan_parser = subparsers.add_parser("plan", help="read-only plan")
     add_common(plan_parser)
@@ -1845,7 +2122,7 @@ def build_parser():
     finalize_parser = subparsers.add_parser("finalize", help="retire assets and write the lockfile")
     add_common(finalize_parser)
     finalize_parser.add_argument("--plan", required=True, help="plan saved before the projection")
-    finalize_parser.add_argument("--updates", choices=SUPPORTED_UPDATE_MODES, help="manifest update mode")
+    finalize_parser.add_argument("--updates", choices=OPTIONS[UPDATES_FIELD]["supported"], help="manifest update mode")
     finalize_parser.add_argument("--providers", default=",".join(SUPPORTED_PROVIDERS))
     finalize_parser.set_defaults(handler=command_finalize)
 

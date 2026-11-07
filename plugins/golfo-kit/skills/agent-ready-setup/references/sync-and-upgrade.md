@@ -1,10 +1,11 @@
 # Sincronización posterior al upgrade
 
 Antes de cualquier escritura, el hook lee `.agents/agent-ready.json`. Con
-`updates: pinned` (default) o `AGENT_READY_SETUP_REVIEW_MODE=1` solo informa el
-estado y termina sin escribir; lo de abajo describe un apply (bootstrap, o el
-hook con `updates: auto` o sin manifest). Manifest, lockfile, profiles y
-ownership: [profiles-and-lockfile.md](profiles-and-lockfile.md).
+`updates: pinned` o `AGENT_READY_SETUP_REVIEW_MODE=1` solo informa el estado y termina
+sin escribir. Con `updates: auto` (el default) o sin manifest, SessionStart lanza lo de
+abajo desacoplado y no hace esperar a la sesión; lo de abajo describe un apply (bootstrap,
+o esa sincronización). Configuración, manifest, lockfile, profiles y ownership:
+[profiles-and-lockfile.md](profiles-and-lockfile.md).
 
 El upgrade del marketplace usa la CLI del provider activo
 (`claude plugin marketplace update golfo-marketplace` o
@@ -20,13 +21,13 @@ El hook canónico `.agents/hooks/sync-marketplace.sh` ejecuta el upgrade salvo q
 haya uno exitoso de menos de 60 minutos para el mismo provider (marca en
 `${XDG_CACHE_HOME:-~/.cache}/agent-ready-setup/marketplace-upgrade-<provider>.stamp`,
 escrita solo tras un upgrade exitoso); `AGENT_READY_SETUP_FORCE_UPGRADE=1` lo
-fuerza y `bootstrap.sh` lo ejecuta siempre. El upgrade es lo único sincrónico que
-usa red: proyecta todos los assets gestionados, ejecuta la normalización recursiva de
-instrucciones mediante `scripts/normalize-instructions.sh` y aplica el bloque gestionado
-literal de `AGENTS.md` con `scripts/apply-managed-block.sh`, todo local, para que la
-sesión que arranca ya los vea. Lo que usa red o un LLM corre desacoplado mediante
-`scripts/run-detached.py`, con log en `${XDG_CACHE_HOME:-~/.cache}/agent-ready-setup/`:
-la revisión de redundancias de `scripts/merge-instructions.sh`. La normalización
+fuerza y `bootstrap.sh` lo ejecuta siempre. Después proyecta todos los assets gestionados,
+ejecuta la normalización recursiva de instrucciones mediante
+`scripts/normalize-instructions.sh` y aplica el bloque gestionado literal de `AGENTS.md`
+con `scripts/apply-managed-block.sh`. Toda esa sincronización corre desacoplada de la
+sesión mediante `scripts/run-detached.py`, con log en
+`${XDG_CACHE_HOME:-~/.cache}/agent-ready-setup/`, igual que la revisión de redundancias de
+`scripts/merge-instructions.sh`. La normalización
 incluye `CLAUDE.md` bajo `.claude/` y conserva conflictos, symlinks y archivos no
 regulares.
 El upgrade solo refresca el snapshot del marketplace del provider (Claude:
@@ -120,12 +121,12 @@ La proyección automática de assets:
 El paso posterior sobre instrucciones actualiza únicamente `AGENTS.md`; nunca
 modifica `CLAUDE.md` directamente.
 
-Para sincronizar manualmente desde un hook existente:
+Para sincronizar manualmente desde un hook existente, en primer plano:
 
 ```bash
-bash .agents/hooks/sync-marketplace.sh --provider claude
+AGENT_READY_SETUP_SYNC_FOREGROUND=1 bash .agents/hooks/sync-marketplace.sh --provider claude
 # o
-bash .agents/hooks/sync-marketplace.sh --provider codex
+AGENT_READY_SETUP_SYNC_FOREGROUND=1 bash .agents/hooks/sync-marketplace.sh --provider codex
 ```
 
 Si la fuente instalada no se puede resolver o el stack no se detecta, el hook

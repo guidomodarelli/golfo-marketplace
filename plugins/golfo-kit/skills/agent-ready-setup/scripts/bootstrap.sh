@@ -12,14 +12,18 @@
 #
 # Usage:
 #   bash bootstrap.sh --skill-dir <path> [--profiles <a,b> | --stack <frontend|node|java|go|android>]
-#     [--provider <claude|codex>] [--updates <pinned|auto>] [--update-source <name>]... [--plan | --status]
+#     [--provider <claude|codex>] [--updates <pinned|auto>] [--update-source <name>]...
+#     [--plan | --status | --check] [--offline]
 #
 # Without --profiles or --stack, the profiles come from .agents/agent-ready.json
 # and, when the repository has no manifest yet, from the initial detection of
 # agent-ready-state.py, which fails if the signals do not determine one stack.
-# --plan and --status are read-only: no marketplace upgrade, no writes, no tool
-# installation. Instruction normalization alone runs through normalize-instructions.sh.
-# An apply downloads pinned profile sources; --update-source resolves a source's ref again.
+# --plan, --status and --check never write to the repository or install tools. They
+# refresh the marketplace snapshot and the profile sources in the user cache to tell
+# whether everything is current; --offline and AGENT_READY_SETUP_REVIEW_MODE=1 keep them
+# off the network. --check exits according to "ci" in the manifest, for CI pipelines.
+# An apply follows the sources in auto; --update-source also moves a pinned one.
+# Instruction normalization alone runs through normalize-instructions.sh.
 
 set -euo pipefail
 
@@ -45,7 +49,8 @@ PROFILES=""
 REQUESTED_SKILL_DIR=""
 UPDATE_MODE=""
 UPDATE_SOURCES=()
-# apply (default), plan or status.
+OFFLINE=0
+# apply (default), plan, status or check.
 RUN_MODE="apply"
 SKILL_DIR=""
 PROVIDER="${AGENT_READY_SETUP_ACTIVE_PROVIDER:-}"
@@ -94,9 +99,13 @@ while [[ $# -gt 0 ]]; do
       UPDATE_SOURCES+=("$2")
       shift 2
       ;;
-    --plan|--status)
-      [[ "$RUN_MODE" == apply ]] || { echo "ERROR: --plan and --status are mutually exclusive" >&2; exit 1; }
+    --plan|--status|--check)
+      [[ "$RUN_MODE" == apply ]] || { echo "ERROR: --plan, --status and --check are mutually exclusive" >&2; exit 1; }
       RUN_MODE="${1#--}"
+      shift
+      ;;
+    --offline)
+      OFFLINE=1
       shift
       ;;
     *)
@@ -107,8 +116,15 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ "$RUN_MODE" != apply && ${#UPDATE_SOURCES[@]} -gt 0 ]]; then
-  echo "ERROR: --update-source only works on an apply: --plan and --status never use the network" >&2
+  echo "ERROR: --update-source only works on an apply: it changes the lockfile" >&2
   exit 1
+fi
+if [[ "$RUN_MODE" == apply && "$OFFLINE" -eq 1 ]]; then
+  echo "ERROR: --offline only works with --plan, --status or --check" >&2
+  exit 1
+fi
+if [[ "${AGENT_READY_SETUP_REVIEW_MODE:-0}" == 1 ]]; then
+  OFFLINE=1
 fi
 
 case "$MARKETPLACE_ALREADY_UPGRADED" in
@@ -144,7 +160,6 @@ case "${AGENT_READY_SETUP_UPDATES:-}" in
     exit 1
     ;;
 esac
-UPDATE_MODE="${UPDATE_MODE:-${AGENT_READY_SETUP_UPDATES:-}}"
 
 is_valid_skill_dir() {
   local candidate="$1"
@@ -509,8 +524,15 @@ if ! command -v python3 >/dev/null 2>&1; then
   echo "ERROR: python3 is required to resolve profiles and the lockfile" >&2
   exit 1
 fi
+# "refresh": "off" in the manifest keeps plan and status off the network, like --offline.
+while IFS=$'\t' read -r configuration_key configuration_value; do
+  if [[ "$configuration_key" == refresh && "${configuration_value%$'\r'}" == off && "$RUN_MODE" != check ]]; then
+    OFFLINE=1
+  fi
+done < <(python3 "$SKILL_DIR/scripts/agent-ready-state.py" manifest --project . 2>/dev/null || true)
+
 # A repository without a selection that detection cannot settle stops before the upgrade.
-if [[ "$RUN_MODE" != status && -z "$STACK" && -z "$PROFILES" && ! -f .agents/agent-ready.json ]]; then
+if [[ "$RUN_MODE" != status && "$RUN_MODE" != check && -z "$STACK" && -z "$PROFILES" && ! -f .agents/agent-ready.json ]]; then
   if ! detection_report="$(python3 "$SKILL_DIR/scripts/agent-ready-state.py" detect --project . --skill-dir "$SKILL_DIR")"; then
     printf '%s\n' "$detection_report" >&2
     echo "ERROR: could not detect project stack; pass --profiles or --stack" >&2
@@ -549,8 +571,18 @@ upgrade_marketplace() {
   echo "[marketplace-bootstrap] Upgrade del marketplace completado."
 }
 
-if [[ "$RUN_MODE" != apply ]]; then
-  echo "[marketplace-bootstrap] Read-only $RUN_MODE: the marketplace upgrade is skipped."
+if [[ "$RUN_MODE" == check ]]; then
+  # CI compares with the source it was given and has no provider CLI to upgrade with.
+  echo "[marketplace-bootstrap] Check: the marketplace upgrade is skipped."
+elif [[ "$RUN_MODE" != apply && "$OFFLINE" -eq 1 ]]; then
+  echo "[marketplace-bootstrap] Offline $RUN_MODE: the marketplace upgrade is skipped."
+elif [[ "$RUN_MODE" != apply && "$MARKETPLACE_ALREADY_UPGRADED" -eq 0 ]]; then
+  # Refreshing only tells whether something is pending: without it, the cache still answers.
+  if ! upgrade_marketplace; then
+    echo "WARNING: comparing with the marketplace snapshot already on this machine" >&2
+  fi
+elif [[ "$RUN_MODE" != apply ]]; then
+  echo "[marketplace-bootstrap] El caller ya completó el upgrade del marketplace."
 elif [[ "$MARKETPLACE_ALREADY_UPGRADED" -eq 0 ]]; then
   if ! upgrade_marketplace; then
     exit 1
@@ -572,13 +604,24 @@ elif [[ -n "$STACK" ]]; then
   PROFILE_SELECTION=(--stack "$STACK")
 fi
 
+if [[ "$RUN_MODE" == check ]]; then
+  check_arguments=(check --project . --skill-dir "$SKILL_DIR")
+  [[ "$OFFLINE" -eq 0 ]] || check_arguments+=(--offline)
+  python3 "$STATE_SCRIPT" "${check_arguments[@]}"
+  exit $?
+fi
+
+if [[ "$RUN_MODE" != apply && "$OFFLINE" -eq 0 ]]; then
+  python3 "$STATE_SCRIPT" fetch-sources --project . --skill-dir "$SKILL_DIR" --refresh || true
+fi
+
 if [[ "$RUN_MODE" == status ]]; then
   python3 "$STATE_SCRIPT" status --project . --skill-dir "$SKILL_DIR"
   exit $?
 fi
 
-# Only an apply uses the network for profile sources. It records the commits it adopted,
-# so every later step reads the same revisions, and fails here before writing anything.
+# An apply records the commits it adopted, so every later step reads the same revisions,
+# and fails here before writing anything.
 SOURCE_STATE_ARGUMENTS=()
 TEMPORARY_PATHS=()
 remove_temporary_paths() {

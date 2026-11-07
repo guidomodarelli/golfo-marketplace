@@ -18,6 +18,7 @@ setup() {
   export XDG_CACHE_HOME="$test_root/cache"
   export AGENT_READY_SETUP_BROWSER_INSTALL=0
   export AGENT_READY_SETUP_ACTIVE_PROVIDER=claude
+  export AGENT_READY_SETUP_SYNC_FOREGROUND=1
   export GIT_CONFIG_GLOBAL="$test_root/gitconfig"
   git config --global user.name Test
   git config --global user.email test@example.invalid
@@ -335,11 +336,7 @@ PY
   first_commit="$pack_commit"
 
   advance_pack_repository
-  # Downloading the new revision is an apply's job; the plan reads what is in the cache.
-  python3 "$skill_dir/scripts/agent-ready-state.py" fetch-sources --project . --skill-dir "$skill_dir"
   write_manifest acme/kafka-interno "acme=git+https://packs.example.invalid/acme#$pack_commit"
-  run python3 "$skill_dir/scripts/agent-ready-state.py" fetch-sources --project . --skill-dir "$skill_dir"
-  [ "$status" -eq 0 ]
 
   run_bootstrap --plan
   [ "$status" -eq 0 ]
@@ -355,7 +352,7 @@ PY
   write_manifest acme/kafka-interno "acme=git+https://packs.example.invalid/acme#$pack_commit"
   before="$(tree_fingerprint)"
 
-  run_bootstrap --plan
+  run_bootstrap --plan --offline
   [ "$status" -eq 5 ]
   [[ "$output" == *"Agent Ready plan INCOMPLETE"* ]]
   [[ "$output" == *"is not in the local cache"* ]]
@@ -857,112 +854,6 @@ EOF
   run_bootstrap
   [ "$status" -eq 0 ]
   [ ! -e "$sentinel" ]
-}
-
-@test "SessionStart with automatic updates keeps the adopted revision when a branch advances" {
-  publish_pack_repository acme
-  write_manifest acme/kafka-interno "acme=git+https://packs.example.invalid/acme#main"
-  run_bootstrap --updates auto
-  [ "$status" -eq 0 ]
-  git add -A >/dev/null 2>&1
-  before="$(cksum < .agents/agent-ready.lock.json)"
-
-  advance_pack_repository
-  run_sync_hook
-  [ "$status" -eq 0 ]
-  [ ! -e .agents/rules/acme-new.md ]
-  [ "$(cksum < .agents/agent-ready.lock.json)" = "$before" ]
-}
-
-@test "SessionStart never adopts a changed source: drift stops the projection" {
-  copy_example_pack
-  write_manifest acme/kafka-interno "acme=path:../acme-pack"
-  run_bootstrap --updates auto
-  [ "$status" -eq 0 ]
-  before="$(tree_fingerprint)"
-  printf 'changed locally\n' >> "$pack_dir/profiles/kafka-interno/rules/acme-kafka.md"
-
-  run_sync_hook
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"differs from the lock"* ]]
-  [[ "$output" == *"SessionStart does not adopt it"* ]]
-  [[ "$output" == *"local projection skipped"* ]]
-  [ "$(tree_fingerprint)" = "$before" ]
-}
-
-@test "SessionStart does not adopt a changed source that the selection does not use" {
-  copy_example_pack
-  write_manifest node "acme=path:../acme-pack"
-  run_bootstrap --updates auto
-  [ "$status" -eq 0 ]
-  locked_digest="$(lock_value 'data["profileSources"]["acme"]["catalogDigest"]')"
-  edit_pack_catalog 'catalog["profiles"]["base"]["description"] = "Changed in the pack."'
-
-  run_sync_hook
-  [ "$status" -eq 0 ]
-  [ "$(lock_value 'data["profileSources"]["acme"]["catalogDigest"]')" = "$locked_digest" ]
-
-  run_state status --check
-  [ "$status" -eq 4 ]
-  [[ "$output" == *"acme differs from the lock: catalog changed"* ]]
-}
-
-@test "the messages of SessionStart about a source never ask to run bootstrap" {
-  copy_example_pack
-  write_manifest acme/kafka-interno "acme=path:../acme-pack"
-  run_bootstrap --updates auto
-  [ "$status" -eq 0 ]
-  printf 'changed locally\n' >> "$pack_dir/profiles/kafka-interno/rules/acme-kafka.md"
-
-  run_sync_hook
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"SessionStart does not adopt it"* ]]
-  [[ "$output" != *"bootstrap"* ]]
-}
-
-@test "a machine without the pinned revision downloads it in the background and a later session projects" {
-  publish_pack_repository acme
-  write_manifest acme/kafka-interno "acme=git+https://packs.example.invalid/acme#$pack_commit"
-  run_bootstrap --updates auto
-  [ "$status" -eq 0 ]
-  rm -rf "$XDG_CACHE_HOME/agent-ready-setup/packs"
-  rm .agents/rules/acme-kafka.md
-  mkdir -p "$test_root/empty-home"
-
-  run_sync_hook HOME="$test_root/empty-home"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"is not in the local cache"* ]]
-  [[ "$output" == *"local projection skipped"* ]]
-  [ ! -e .agents/rules/acme-kafka.md ]
-
-  # The detached download finishes on its own; wait for it without depending on its timing.
-  for attempt in $(seq 1 100); do
-    [ -d "$XDG_CACHE_HOME/agent-ready-setup/packs/trees" ] && [ -n "$(find "$XDG_CACHE_HOME/agent-ready-setup/packs/trees" -type d -name tree)" ] && break
-    sleep 0.2
-  done
-
-  run_sync_hook HOME="$test_root/empty-home"
-  [ "$status" -eq 0 ]
-  [ -f .agents/rules/acme-kafka.md ]
-}
-
-@test "the background download never resolves a ref and stops after its attempts" {
-  write_manifest node "acme=git+https://packs.example.invalid/unknown#0123456789abcdef0123456789abcdef01234567"
-  git config --global url."https://127.0.0.1:9/unknown".insteadOf "https://packs.example.invalid/unknown"
-
-  for attempt in 1 2 3; do
-    run python3 "$skill_dir/scripts/agent-ready-state.py" fetch-sources --project . --skill-dir "$skill_dir" --locked-only
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"could not download commit"* ]]
-  done
-  run python3 "$skill_dir/scripts/agent-ready-state.py" fetch-sources --project . --skill-dir "$skill_dir" --locked-only
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"automatic download stopped after 3 attempts"* ]]
-
-  write_manifest node "acme=git+https://packs.example.invalid/unknown#main"
-  run python3 "$skill_dir/scripts/agent-ready-state.py" fetch-sources --project . --skill-dir "$skill_dir" --locked-only
-  [ "$status" -eq 0 ]
-  [[ "$output" != *"could not"* ]]
 }
 
 @test "the example pack is valid and adds its profiles to a Node repository" {
