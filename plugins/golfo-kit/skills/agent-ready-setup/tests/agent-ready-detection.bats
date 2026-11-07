@@ -17,7 +17,7 @@ setup() {
   # Sync flows run with an empty home: nothing installed on this machine may decide them.
   export HOME="$test_root/home"
   mkdir -p "$HOME"
-  export AGENT_READY_SETUP_BROWSER_INSTALL=0
+  export AGENT_READY_SETUP_TOOLS=0
   export AGENT_READY_SETUP_ACTIVE_PROVIDER=claude
   export AGENT_READY_SETUP_SYNC_FOREGROUND=1
   unset CODEX_HOME AGENT_READY_SETUP_UPDATES AGENT_READY_SETUP_STACK_DIR AGENT_READY_SETUP_REVIEW_MODE
@@ -218,7 +218,7 @@ PY
 @test "status works in a repository without a selection" {
   run_bootstrap --status
   [ "$status" -eq 0 ]
-  [[ "$output" == *"no manifest"* ]]
+  [[ "$output" == *"no profiles selected"* ]]
 }
 
 @test "the initial detection is persisted with the stack defaults and shown to the user" {

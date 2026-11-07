@@ -15,7 +15,7 @@ setup() {
   export XDG_CACHE_HOME="$test_root/cache"
   # Asset-projection tests use the documented offline bootstrap option. Browser
   # installation and real MCP registration are exercised in their own suite.
-  export AGENT_READY_SETUP_BROWSER_INSTALL=0
+  export AGENT_READY_SETUP_TOOLS=0
   # These suites exercise the projection itself, which SessionStart otherwise runs detached.
   # Pinned repositories and the detached update are covered in their own suites.
   export AGENT_READY_SETUP_SYNC_FOREGROUND=1
@@ -185,7 +185,7 @@ EOF
   jq -n --arg command "$legacy/playwright-mcp" '{mcpServers: {playwright: {command: $command}, custom: {command: "custom"}}}' > .mcp.json
 
   run env HOME="$browser_home" CODEX_HOME="$browser_home/.codex" CLAUDE_CONFIG_DIR="$browser_home" \
-    AGENT_READY_SETUP_BROWSER_INSTALL=1 PATH="$test_root/bin:$PATH" AGENT_READY_SETUP_SKILL_DIR="$source_dir" \
+    AGENT_READY_SETUP_TOOLS=1 PATH="$test_root/bin:$PATH" AGENT_READY_SETUP_SKILL_DIR="$source_dir" \
     bash .agents/hooks/sync-marketplace.sh --provider claude --stack frontend
 
   [ "$status" -eq 0 ]
@@ -221,7 +221,7 @@ EOF
   mkdir -p "$browser_home"
 
   run env HOME="$browser_home" CODEX_HOME="$browser_home/.codex" CLAUDE_CONFIG_DIR="$browser_home" \
-    AGENT_READY_SETUP_BROWSER_INSTALL=1 PATH="$test_root/bin:$PATH" AGENT_READY_SETUP_SKILL_DIR="$source_dir" \
+    AGENT_READY_SETUP_TOOLS=1 PATH="$test_root/bin:$PATH" AGENT_READY_SETUP_SKILL_DIR="$source_dir" \
     bash .agents/hooks/sync-marketplace.sh --provider claude --stack frontend
 
   [ "$status" -eq 0 ]

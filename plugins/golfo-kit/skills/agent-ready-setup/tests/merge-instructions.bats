@@ -790,7 +790,7 @@ EOF
   EVENT_LOG="$event_log" \
     MERGE_LOG="$merge_log" \
     AGENT_READY_SETUP_SKILL_DIR="$source_dir" \
-    AGENT_READY_SETUP_BROWSER_INSTALL=0 \
+    AGENT_READY_SETUP_TOOLS=0 \
     PATH="$fake_bin:$PATH" \
     run bash "$skill_dir/assets/common/hooks/sync-marketplace.sh" \
       --provider claude

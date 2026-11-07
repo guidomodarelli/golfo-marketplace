@@ -71,7 +71,7 @@ Bootstrap aplica sin pedir confirmación; `--plan` y `--status` son las
 operaciones de solo lectura.
 
 Adopción versionada: `.agents/agent-ready.json` (manifest: profiles elegidos y
-`updates` `auto` por defecto o `pinned`) y `.agents/agent-ready.lock.json`
+lo que difiere de los defaults) y `.agents/agent-ready.lock.json`
 (lockfile: source, profiles y sha256 aplicado de cada asset). Un asset
 gestionado (rules, skills, agents, commands, hooks y sus vistas en `.claude/`)
 no se edita: cada apply lo deja igual al template y pisa cualquier cambio local,
@@ -102,12 +102,12 @@ reemplazar una fuente versionada y dejar el path anterior inexistente.
 
 ## Subcomandos de solo lectura
 
-`/agent-ready-setup status` y `/agent-ready-setup plan` corren
-`bootstrap.sh --status` o `--plan` (mismos `--skill-dir` y `--provider` del Step 3,
+`/agent-ready-setup status`, `/agent-ready-setup plan` y `/agent-ready-setup config` corren
+`bootstrap.sh --status`, `--plan` o `--config` (mismos `--skill-dir` y `--provider` del Step 3,
 sin `--stack` si el repo ya tiene manifest) y muestran su salida sin alterarla.
 No escriben en el repo ni instalan herramientas. Por defecto refrescan la caché fuera del
 repo para decir si todo está al día; `--offline` no toca la red. Para CI, en cualquier proveedor,
-`scripts/agent-ready-state.py check` compara y sale con códigos documentados, según `ci` del manifest. Esta
+`scripts/agent-ready-state.py check` compara y sale con códigos documentados, según `ci.mode`. Esta
 skill no crea workflows de CI; para armar un pipeline o explicar un código de salida, leer
 [references/ci-check.md](references/ci-check.md). Saltear los Steps 2 y 4. Para explicar la salida, leer
 [references/profiles-and-lockfile.md](references/profiles-and-lockfile.md).
@@ -150,17 +150,21 @@ Si detección tiene éxito, confirmar:
 
 > `Detected stack: **<STACK>**. Running agent-ready-setup — managed assets are overwritten with the templates, local edits included; project rules, skills, and instructions are preserved.`
 
-Cualquier proyecto, personal o de empresa, puede sumar profiles propios con `profileSources` en el
+Cualquier proyecto, personal o de empresa, puede sumar profiles propios con `sources.packs` en el
 manifest: un pack en Git o una carpeta local. Agregar una fuente solo los hace disponibles: se seleccionan
 por nombre con namespace (`acme/kafka-interno`), y un pack agrega capabilities, nunca un stack primario.
 Leer [references/profiles-and-lockfile.md](references/profiles-and-lockfile.md) (sección «Profile packs»)
 para declarar una fuente, explicar una colisión o un `Evaluation incomplete`;
 `assets/examples/acme-profile-pack/` es un pack mínimo.
 
-Detección, packs, actualizaciones, refresco y chequeo de CI son opcionales y se configuran por separado,
-con defaults que funcionan sin configurar nada. La tabla de campos, variables y defaults, y la advertencia
-de seguridad de seguir una `ref` en `auto`, están en la sección «Configuración y actualizaciones» de esa
-referencia.
+Detección, packs, actualizaciones, refresco, chequeo de CI y herramientas son opcionales y se configuran
+por separado, con defaults que funcionan sin configurar nada. La configuración va en capas (organización,
+usuario, proyecto, entorno y flags), cada valor muestra su origen con `--config` o en `--plan`, y el manifest
+no puede aflojar una clave sensible sin que la máquina apruebe el repo. Leer
+[references/configuration.md](references/configuration.md) para cambiar una opción, explicar un valor
+ignorado o aprobar un repo, y [references/configuration-keys.md](references/configuration-keys.md) para la
+lista de claves. Nunca editar a mano `references/configuration-keys.md`: se genera desde
+`assets/config/*.schema.json`.
 
 ## Step 3 — Run bootstrap script
 
@@ -278,8 +282,8 @@ normalización por directorio, siempre con el `AGENTS.md` hermano:
 ### Sincronización posterior al upgrade
 
 El hook `.agents/hooks/sync-marketplace.sh` corre en cada `SessionStart` y nunca hace esperar a la
-sesión: informa el resultado de la actualización anterior y lanza la siguiente desacoplada. Con `updates:
-auto` (default) o sin manifest, esa actualización refresca el marketplace y las fuentes, y proyecta assets
+sesión: informa el resultado de la actualización anterior y lanza la siguiente desacoplada. Con `updates.mode:
+auto` (default), esa actualización refresca el marketplace y las fuentes, y proyecta assets
 con el gate de ownership. En un repo `pinned` solo informa drift y updates pendientes, sin escribir.
 `AGENT_READY_SETUP_REVIEW_MODE=1` nunca escribe ni usa la red; para reviews automatizadas leer
 [references/review-consumption.md](references/review-consumption.md). Para sincronizar a mano en primer
@@ -332,8 +336,8 @@ Mostrar output del script sin alterarlo. En respuestas documentales, enumerar ad
 - **Android, Go, Java y Node:** `rules/coding-style.md`, `rules/security.md`, `rules/testing.md`, `agents/perf-analyzer.md`, `agents/security-scanner.md` y `commands/review-pr.md`.
 - **Frontend:** `rules/api-configuration.md`, `rules/api-validation-middleware.md`, `rules/cross-engine.md`, `rules/frontend-style.md`, `rules/hexagonal-architecture.md`, `rules/lodash.md`, `rules/no-unnecessary-mocks.md`, `rules/security.md`, `rules/server-first-data-flow.md`, `rules/testing.md`, `rules/upstream-contracts.md`, `rules/user-facing-feedback.md`, `agents/a11y-reviewer.md`, `agents/lint-reviewer.md`, `agents/perf-analyzer.md`, `agents/security-scanner.md`, `agents/test-reviewer.md`, `commands/review-pr.md`, `skills/api-endpoint/`, `skills/component-creation/`, `skills/karpathy-guidelines/`, `skills/logger/`, `skills/react-act-test-fixes/` y `skills/service/`.
 - **Profile `business-flows`:** `rules/business-flows.md` y `skills/business-flow-design/SKILL.md`.
-- **Profile packs:** los assets de cada profile seleccionado de `profileSources`, con los paths que publique su pack bajo `rules/`, `skills/`, `agents/` y `commands/`.
-- **Estado del repo:** `.agents/agent-ready.json` (manifest) y `.agents/agent-ready.lock.json` (lockfile). `assets/profiles.json` y `assets/providers.json` son catálogos internos de la skill, y `assets/examples/` guarda ejemplos para leer; ninguno se proyecta.
+- **Profile packs:** los assets de cada profile seleccionado de `sources.packs`, con los paths que publique su pack bajo `rules/`, `skills/`, `agents/` y `commands/`.
+- **Estado del repo:** `.agents/agent-ready.json` (manifest) y `.agents/agent-ready.lock.json` (lockfile). `assets/profiles.json`, `assets/providers.json` y los schemas de `assets/config/` son catálogos internos de la skill, y `assets/examples/` guarda ejemplos para leer; ninguno se proyecta.
 
 Las skills que ya publica el plugin golfo-kit no se duplican en el catálogo de un stack: por ejemplo, el refactor de constantes se usa desde la skill `constants-refactor` del plugin y no se proyecta en `.agents/skills/`. Ningún stack publica hooks propios ni `mcp.json`: los únicos hooks proyectados son los comunes.
 

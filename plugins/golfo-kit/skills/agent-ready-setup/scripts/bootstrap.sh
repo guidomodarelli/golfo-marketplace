@@ -13,7 +13,7 @@
 # Usage:
 #   bash bootstrap.sh --skill-dir <path> [--profiles <a,b> | --stack <frontend|node|java|go|android>]
 #     [--provider <claude|codex>] [--updates <pinned|auto>] [--update-source <name>]...
-#     [--plan | --status] [--offline]
+#     [--plan | --status | --config] [--offline]
 #
 # Without --profiles or --stack, the profiles come from .agents/agent-ready.json
 # and, when the repository has no manifest yet, from the initial detection of
@@ -21,7 +21,10 @@
 # --plan and --status never write to the repository or install tools. They refresh the
 # marketplace snapshot and the profile sources in the user cache to tell whether
 # everything is current; --offline and AGENT_READY_SETUP_REVIEW_MODE=1 keep them off the
-# network. CI pipelines use "agent-ready-state.py check", which needs no provider.
+# network. --config prints the effective configuration and the layer of each value, without
+# the network. Every run validates the configuration first and fails before writing when a
+# layer has an unknown key or an invalid value. CI pipelines use "agent-ready-state.py check",
+# which needs no provider.
 # An apply follows the sources in auto; --update-source also moves a pinned one.
 # Instruction normalization alone runs through normalize-instructions.sh.
 
@@ -50,7 +53,7 @@ REQUESTED_SKILL_DIR=""
 UPDATE_MODE=""
 UPDATE_SOURCES=()
 OFFLINE=0
-# apply (default), plan or status.
+# apply (default), plan, status or config.
 RUN_MODE="apply"
 SKILL_DIR=""
 PROVIDER="${AGENT_READY_SETUP_ACTIVE_PROVIDER:-}"
@@ -99,8 +102,8 @@ while [[ $# -gt 0 ]]; do
       UPDATE_SOURCES+=("$2")
       shift 2
       ;;
-    --plan|--status)
-      [[ "$RUN_MODE" == apply ]] || { echo "ERROR: --plan and --status are mutually exclusive" >&2; exit 1; }
+    --plan|--status|--config)
+      [[ "$RUN_MODE" == apply ]] || { echo "ERROR: --plan, --status and --config are mutually exclusive" >&2; exit 1; }
       RUN_MODE="${1#--}"
       shift
       ;;
@@ -120,7 +123,7 @@ if [[ "$RUN_MODE" != apply && ${#UPDATE_SOURCES[@]} -gt 0 ]]; then
   exit 1
 fi
 if [[ "$RUN_MODE" == apply && "$OFFLINE" -eq 1 ]]; then
-  echo "ERROR: --offline only works with --plan or --status" >&2
+  echo "ERROR: --offline only works with --plan, --status or --config" >&2
   exit 1
 fi
 if [[ "${AGENT_READY_SETUP_REVIEW_MODE:-0}" == 1 ]]; then
@@ -149,14 +152,6 @@ case "$STACK" in
   ""|frontend|node|java|go|android) ;;
   *)
     echo "ERROR: Unsupported stack '$STACK'. Expected frontend, node, java, go, or android." >&2
-    exit 1
-    ;;
-esac
-
-case "${AGENT_READY_SETUP_UPDATES:-}" in
-  ""|pinned|auto) ;;
-  *)
-    echo "ERROR: AGENT_READY_SETUP_UPDATES must be pinned or auto" >&2
     exit 1
     ;;
 esac
@@ -524,15 +519,41 @@ if ! command -v python3 >/dev/null 2>&1; then
   echo "ERROR: python3 is required to resolve profiles and the lockfile" >&2
   exit 1
 fi
-# "refresh": "off" in the manifest keeps plan and status off the network, like --offline.
+OFFLINE_ARGUMENTS=()
+[[ "$OFFLINE" -eq 1 ]] && OFFLINE_ARGUMENTS=(--offline)
+if [[ "$RUN_MODE" == config ]]; then
+  python3 "$SKILL_DIR/scripts/agent-ready-state.py" config --project . ${OFFLINE_ARGUMENTS[@]+"${OFFLINE_ARGUMENTS[@]}"}
+  exit $?
+fi
+
+# Every layer is validated here, so an unknown key or an invalid value stops before the upgrade.
+# Plan and status report ignored values themselves; an apply reports them from here.
+configuration_messages="$(mktemp "${TMPDIR:-/tmp}/agent-ready-config.XXXXXX")"
+if ! CONFIGURATION="$(python3 "$SKILL_DIR/scripts/agent-ready-state.py" config --project . --format tsv \
+  ${OFFLINE_ARGUMENTS[@]+"${OFFLINE_ARGUMENTS[@]}"} 2>"$configuration_messages")"; then
+  cat -- "$configuration_messages" >&2
+  rm -f -- "$configuration_messages"
+  echo "ERROR: the Agent Ready configuration is not valid; nothing was written" >&2
+  exit 1
+fi
+[[ "$RUN_MODE" != apply ]] || cat -- "$configuration_messages" >&2
+rm -f -- "$configuration_messages"
+CONFIGURED_PROFILES=""
+TOOLS_ENABLED=true
 while IFS=$'\t' read -r configuration_key configuration_value; do
-  if [[ "$configuration_key" == refresh && "${configuration_value%$'\r'}" == off ]]; then
-    OFFLINE=1
-  fi
-done < <(python3 "$SKILL_DIR/scripts/agent-ready-state.py" manifest --project . 2>/dev/null || true)
+  configuration_value="${configuration_value%$'\r'}"
+  case "$configuration_key" in
+    # updates.refresh false keeps plan and status off the network, like --offline.
+    updates.refresh) [[ "$configuration_value" == false ]] && OFFLINE=1 ;;
+    tools.enabled) TOOLS_ENABLED="$configuration_value" ;;
+    profiles) CONFIGURED_PROFILES="$configuration_value" ;;
+  esac
+done <<< "$CONFIGURATION"
+OFFLINE_ARGUMENTS=()
+[[ "$OFFLINE" -eq 1 ]] && OFFLINE_ARGUMENTS=(--offline)
 
 # A repository without a selection that detection cannot settle stops before the upgrade.
-if [[ "$RUN_MODE" != status && -z "$STACK" && -z "$PROFILES" && ! -f .agents/agent-ready.json ]]; then
+if [[ "$RUN_MODE" != status && -z "$STACK" && -z "$PROFILES" && -z "$CONFIGURED_PROFILES" ]]; then
   if ! detection_report="$(python3 "$SKILL_DIR/scripts/agent-ready-state.py" detect --project . --skill-dir "$SKILL_DIR")"; then
     printf '%s\n' "$detection_report" >&2
     echo "ERROR: could not detect project stack; pass --profiles or --stack" >&2
@@ -653,7 +674,7 @@ resolution="$(python3 "$STATE_SCRIPT" resolve --project . --skill-dir "$SKILL_DI
 if [[ "$RUN_MODE" == plan && "$resolution_status" -eq 5 ]]; then
   # A source is missing: the plan command reports the incomplete evaluation itself.
   python3 "$STATE_SCRIPT" plan --project . --skill-dir "$SKILL_DIR" --provider "$PROVIDER" \
-    ${PROFILE_SELECTION[@]+"${PROFILE_SELECTION[@]}"} || exit $?
+    ${PROFILE_SELECTION[@]+"${PROFILE_SELECTION[@]}"} ${OFFLINE_ARGUMENTS[@]+"${OFFLINE_ARGUMENTS[@]}"} || exit $?
   exit 0
 fi
 cat -- "$resolve_errors" >&2
@@ -674,7 +695,7 @@ done <<< "$resolution"
 
 if [[ "$RUN_MODE" == plan ]]; then
   python3 "$STATE_SCRIPT" plan --project . --skill-dir "$SKILL_DIR" --provider "$PROVIDER" \
-    ${PROFILE_SELECTION[@]+"${PROFILE_SELECTION[@]}"}
+    ${PROFILE_SELECTION[@]+"${PROFILE_SELECTION[@]}"} ${OFFLINE_ARGUMENTS[@]+"${OFFLINE_ARGUMENTS[@]}"}
   exit $?
 fi
 
@@ -1051,17 +1072,13 @@ if ! FINALIZE_REPORT="$(python3 "$STATE_SCRIPT" "${finalize_arguments[@]}")"; th
 fi
 
 browser_setup_status=0
-case "${AGENT_READY_SETUP_BROWSER_INSTALL:-1}" in
-  1)
-    if [[ ",$RESOLVED_TOOLS," == *",browser,"* ]]; then
-      python3 "$SKILL_DIR/scripts/setup-browser-tools.py" --project "$PWD" || browser_setup_status=$?
-    else
-      printf 'Browser installation skipped: no selected profile needs browser tools\n'
-    fi
-    ;;
-  0) printf 'Browser installation skipped by AGENT_READY_SETUP_BROWSER_INSTALL=0\n' ;;
-  *) printf 'ERROR: AGENT_READY_SETUP_BROWSER_INSTALL must be 0 or 1\n'; browser_setup_status=1 ;;
-esac
+if [[ "$TOOLS_ENABLED" != true ]]; then
+  printf 'Browser installation skipped by tools.enabled: false\n'
+elif [[ ",$RESOLVED_TOOLS," == *",browser,"* ]]; then
+  python3 "$SKILL_DIR/scripts/setup-browser-tools.py" --project "$PWD" || browser_setup_status=$?
+else
+  printf 'Browser installation skipped: no selected profile needs browser tools\n'
+fi
 
 # Print report
 printf '\nStack: %s\n' "$STACK"

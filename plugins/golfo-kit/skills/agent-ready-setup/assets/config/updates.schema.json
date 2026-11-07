@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Actualizaciones",
+  "description": "Cómo se mantienen al día los assets: la actualización en segundo plano del inicio de sesión y el refresco de plan y status.",
+  "x-module": "updates",
+  "x-mount": "updates",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "enabled": {
+      "description": "El inicio de sesión busca actualizaciones en segundo plano e informa el resultado. Apagado, SessionStart no actualiza, no chequea ni refresca nada, y solo un apply explícito cambia los assets.",
+      "type": "boolean",
+      "default": true
+    },
+    "mode": {
+      "description": "auto aplica las actualizaciones solo, sin bloquear la sesión; pinned solo informa drift y updates pendientes, sin escribir. Seguir una ref en auto deja que quien pushee al pack cambie las instrucciones del agente.",
+      "type": "string",
+      "enum": ["auto", "pinned"],
+      "default": "auto",
+      "x-env": "AGENT_READY_SETUP_UPDATES",
+      "x-security": { "strictness": ["auto", "pinned"] }
+    },
+    "refresh": {
+      "description": "plan, status y el inicio de sesión de un repositorio pinned refrescan la caché fuera del repositorio para decir si todo está al día. Apagado, comparan con lo que ya hay, como --offline.",
+      "type": "boolean",
+      "default": true,
+      "x-env": "AGENT_READY_SETUP_REFRESH"
+    }
+  }
+}

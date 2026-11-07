@@ -14,7 +14,7 @@ reviewer o al explicar qué reglas usó una review.
 2. **Nada se sincroniza durante la review.** Definir
    `AGENT_READY_SETUP_REVIEW_MODE=1` en el entorno del reviewer: el hook de
    SessionStart solo informa el estado, sin refrescar el marketplace ni llamar a
-   la CLI del provider. Un repositorio con `updates: pinned` tampoco escribe, pero
+   la CLI del provider. Un repositorio con `updates.mode: pinned` tampoco escribe, pero
    la variable cubre los repos en `auto` y evita el refresh del marketplace.
 3. **La versión del contexto queda identificada.** `.agents/agent-ready.lock.json`
    del mismo commit dice qué source (`source.version`, `source.revision`,

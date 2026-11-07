@@ -1,11 +1,11 @@
 # Sincronización posterior al upgrade
 
-Antes de cualquier escritura, el hook lee `.agents/agent-ready.json`. Con
-`updates: pinned` o `AGENT_READY_SETUP_REVIEW_MODE=1` solo informa el estado y termina
-sin escribir. Con `updates: auto` (el default) o sin manifest, SessionStart lanza lo de
-abajo desacoplado y no hace esperar a la sesión; lo de abajo describe un apply (bootstrap,
-o esa sincronización). Configuración, manifest, lockfile, profiles y ownership:
-[profiles-and-lockfile.md](profiles-and-lockfile.md).
+Antes de cualquier escritura, el hook valida la configuración efectiva (todas las capas de
+[configuration.md](configuration.md)). Con `updates.mode: pinned` o `AGENT_READY_SETUP_REVIEW_MODE=1`
+solo informa el estado y termina sin escribir; con `updates.enabled: false` no hace nada. Con
+`updates.mode: auto` (el default), SessionStart lanza lo de abajo desacoplado y no hace esperar a la
+sesión; lo de abajo describe un apply (bootstrap, o esa sincronización). Manifest, lockfile, profiles y
+ownership: [profiles-and-lockfile.md](profiles-and-lockfile.md).
 
 El upgrade del marketplace usa la CLI del provider activo
 (`claude plugin marketplace update golfo-marketplace` o
@@ -68,7 +68,7 @@ concurrentes se preservan y se reportan como conflictos estructurales.
   `AGENT_READY_SETUP_FORCE_UPGRADE=1` o `bootstrap.sh` para aplicarla antes.
 - Upgrade global no tiene rollback en este script; la versión descargada puede
   cambiar aunque proyección local quede bloqueada.
-- Con `updates: auto`, el hook aplica templates nuevos al iniciar sesión y pisa los
+- Con `updates.mode: auto`, el hook aplica templates nuevos al iniciar sesión y pisa los
   cambios locales de los assets gestionados, sin pedir confirmación. Symlinks,
   conflictos estructurales y reemplazos atómicos siguen evitando seguir o
   sobrescribir destinos inseguros.

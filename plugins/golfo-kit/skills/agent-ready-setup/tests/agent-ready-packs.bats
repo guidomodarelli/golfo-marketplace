@@ -19,7 +19,7 @@ setup() {
   # Sync flows run with an empty home: nothing installed on this machine may decide them.
   export HOME="$test_root/home"
   mkdir -p "$HOME"
-  export AGENT_READY_SETUP_BROWSER_INSTALL=0
+  export AGENT_READY_SETUP_TOOLS=0
   export AGENT_READY_SETUP_ACTIVE_PROVIDER=claude
   export AGENT_READY_SETUP_SYNC_FOREGROUND=1
   export GIT_CONFIG_GLOBAL="$test_root/gitconfig"
@@ -101,9 +101,9 @@ write_manifest() {
 import json, sys
 profiles = sys.argv[1].split(",")
 sources = [dict(zip(("name", "source"), item.split("=", 1))) for item in sys.argv[2:]]
-manifest = {"schemaVersion": 1, "profiles": profiles, "updates": "pinned", "providers": ["claude", "codex"]}
+manifest = {"profiles": profiles, "updates": {"mode": "pinned"}}
 if sources:
-    manifest["profileSources"] = sources
+    manifest["sources"] = {"packs": sources}
 with open(".agents/agent-ready.json", "w", encoding="utf-8") as manifest_file:
     json.dump(manifest, manifest_file)
 PY
@@ -152,7 +152,7 @@ PY
   run_bootstrap --stack node
   [ "$status" -eq 0 ]
   [ "$(lock_value '"profileSources" in data')" = "False" ]
-  [ "$(json_value .agents/agent-ready.json '"profileSources" in data')" = "False" ]
+  [ "$(json_value .agents/agent-ready.json '"sources" in data')" = "False" ]
 }
 
 @test "a declared source without selected profiles projects none of its assets" {
@@ -164,7 +164,7 @@ PY
   [ ! -e .agents/rules/acme-kafka.md ]
   [ ! -e .agents/rules/acme-conventions.md ]
   [ "$(lock_value 'data["profileSources"]["acme"]["profiles"]')" = "[]" ]
-  [ "$(json_value .agents/agent-ready.json 'data["profileSources"][0]["name"]')" = "acme" ]
+  [ "$(json_value .agents/agent-ready.json 'data["sources"]["packs"][0]["name"]')" = "acme" ]
 }
 
 @test "a capability detected in a pack is suggested with its evidence and never selected" {
@@ -378,7 +378,7 @@ PY
 import json
 with open(".agents/agent-ready.json", encoding="utf-8") as manifest_file:
     manifest = json.load(manifest_file)
-manifest["updates"] = "auto"
+manifest["updates"] = {"mode": "auto"}
 with open(".agents/agent-ready.json", "w", encoding="utf-8") as manifest_file:
     json.dump(manifest, manifest_file)
 PY

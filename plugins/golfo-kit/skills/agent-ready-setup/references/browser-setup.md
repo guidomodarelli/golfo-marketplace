@@ -79,8 +79,9 @@ directorio, y no lanza nada si la instalación ya existe, si otro setup tiene el
 lock o si faltan Node.js y npm. Sin Node.js no consume el intento: la sesión
 siguiente a instalarlo lanza la instalación. Nada de este camino exige haber
 ejecutado bootstrap.
-Para CI o entorno offline: `AGENT_READY_SETUP_BROWSER_INSTALL=0` omite instalación
-y registro, también en SessionStart; valor predeterminado `1`. No reportar browser listo si se omitió o falló.
+Para CI o entorno offline: `tools.enabled: false` (en cualquier capa de
+[configuration.md](configuration.md), o `AGENT_READY_SETUP_TOOLS=0` en una corrida) omite instalación
+y registro, también en SessionStart; por defecto está encendido. No reportar browser listo si se omitió o falló.
 
 Fuentes: [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp),
 [Playwright MCP](https://github.com/microsoft/playwright-mcp),
