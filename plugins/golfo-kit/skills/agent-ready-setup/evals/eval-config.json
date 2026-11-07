@@ -2902,6 +2902,49 @@
           "critical": true
         }
       ]
+    },
+    {
+      "id": "cli-init-asks-only-with-a-terminal",
+      "description": "Un agente sin terminal corre init con sus flags; init pregunta solo cuando hay una persona.",
+      "input": "Sos un agente sin terminal interactiva y tenés que dejar agent ready un repo nuevo que detectaste como frontend, sin manifest todavía. ¿Qué comando corrés para la primera configuración, y qué pasa si lo corrés sin flags? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "init (--stack frontend|--profiles frontend[a-z,-]*)( --updates [a-z]+)? --yes",
+          "description": "Corre init con la selección y --yes",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(exit|sale con|código)[^.]{0,40}2|2[^.]{0,40}(flags? (que )?falt|missing)",
+          "description": "Sin flags y sin terminal, sale con 2 nombrando los flags faltantes",
+          "critical": true
+        }
+      ]
+    },
+    {
+      "id": "cli-sources-add-before-selecting-a-pack-profile",
+      "description": "Un pack se declara con sources add y su profile se suma con profiles add antes del apply.",
+      "input": "Quiero sumar a un repo que ya usa agent-ready-setup el pack de mi empresa que está en git+https://github.com/acme/agent-profiles, siguiendo la rama main, y usar su profile kafka-interno. Dame los comandos del CLI en orden. No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "sources add acme git[^ ]*github.com/acme/agent-profiles --ref main",
+          "description": "Declara la fuente con su ref",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "profiles add acme/kafka-interno",
+          "description": "Selecciona el profile con namespace",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["agent-ready apply", "agent-ready\" apply"],
+          "description": "Termina proyectando con apply"
+        }
+      ]
     }
   ]
 }

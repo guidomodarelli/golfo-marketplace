@@ -283,3 +283,97 @@ publish_pack_repository() {
   [ "$status" -eq 2 ]
   [[ "$stderr" == *"profile sources are off (sources.enabled: false)"* ]]
 }
+
+@test "init without a terminal names every missing flag, writes nothing, and with its flags applies" {
+  printf '%s\n' '{"dependencies": {"react": "19.0.0"}}' > package.json
+  before="$(tree_fingerprint)"
+  run --separate-stderr env PATH="$fake_bin:$PATH" python3 "$cli" init < /dev/null
+  [ "$status" -eq 2 ]
+  [ -z "$output" ]
+  [[ "$stderr" == *"missing --profiles <a,b> (or --stack <s>) and --yes; there is no terminal to ask"* ]]
+  [ "$(tree_fingerprint)" = "$before" ]
+
+  run --separate-stderr env PATH="$fake_bin:$PATH" python3 "$cli" init --profiles nope --yes < /dev/null
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"--profiles: unknown profile 'nope'; available profiles:"* ]]
+  [ "$(tree_fingerprint)" = "$before" ]
+
+  run --separate-stderr env PATH="$fake_bin:$PATH" CI=1 python3 "$cli" init --stack frontend < /dev/null
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"missing --yes"* ]]
+
+  run --separate-stderr env PATH="$fake_bin:$PATH" python3 "$cli" init --stack frontend --yes < /dev/null
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ "$(json_value "$(cat .agents/agent-ready.json)" 'data["profiles"]')" = "['frontend', 'browser']" ]
+  [ "$(grep -c 'BEGIN AGENT-READY MANAGED' AGENTS.md)" -eq 1 ]
+
+  run_cli init --profiles node --yes
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"this repository is already set up"* ]]
+}
+
+@test "profiles list, add and remove validate the selection against the catalog before writing" {
+  run_cli profiles add browser
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"no selection yet; start it with agent-ready init"* ]]
+
+  run_cli init --profiles node --yes < /dev/null
+  [ "$status" -eq 0 ]
+  run_cli profiles list --json
+  [ "$status" -eq 0 ]
+  [ "$(json_value "$output" '[row["name"] for row in data if row["selected"]]')" = "['node']" ]
+
+  run_cli profiles add business-flows
+  [ "$status" -eq 0 ]
+  [ "$(json_value "$(cat .agents/agent-ready.json)" 'data["profiles"]')" = "['node', 'business-flows']" ]
+  [[ "$stderr" == *"Run agent-ready apply to project them"* ]]
+
+  before="$(cksum < .agents/agent-ready.json)"
+  run_cli profiles remove node
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"select at least one stack profile"* ]]
+  run_cli profiles add nope
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"unknown profile 'nope'"* ]]
+  run_cli profiles remove browser
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"not selected: browser"* ]]
+  [ "$(cksum < .agents/agent-ready.json)" = "$before" ]
+
+  run_cli profiles remove business-flows
+  [ "$status" -eq 0 ]
+  [ "$(json_value "$(cat .agents/agent-ready.json)" 'data["profiles"]')" = "['node']" ]
+}
+
+@test "sources add, list and remove keep the manifest valid and protect the profiles in use" {
+  run_cli init --profiles node --yes < /dev/null
+  [ "$status" -eq 0 ]
+  mkdir -p agent-packs
+  cp -R "$example_pack" agent-packs/acme
+
+  run_cli sources add acme path:./agent-packs/acme
+  [ "$status" -eq 0 ]
+  run_cli sources list --json
+  [ "$status" -eq 0 ]
+  [ "$(json_value "$output" '[(row["name"], row["state"], len(row["profiles"])) for row in data["sources"]]')" = "[('acme', 'available', 2)]" ]
+
+  run_cli sources add acme path:./agent-packs/acme
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"already declares the source 'acme'"* ]]
+  run_cli sources add Bad path:./agent-packs/acme
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"invalid name 'Bad'"* ]]
+
+  run_cli profiles add acme/kafka-interno
+  [ "$status" -eq 0 ]
+  run_cli sources remove acme
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"the selection still uses acme/kafka-interno"* ]]
+
+  run_cli profiles remove acme/kafka-interno
+  [ "$status" -eq 0 ]
+  run_cli sources remove acme
+  [ "$status" -eq 0 ]
+  [ "$(json_value "$(cat .agents/agent-ready.json)" '"sources" in data')" = "False" ]
+}

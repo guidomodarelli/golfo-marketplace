@@ -109,6 +109,9 @@ explícito fuera del cache conservan prioridad para desarrollo local.
 | `agent-ready apply [--profiles a,b \| --stack s] [--updates auto\|pinned] [--dry-run]` | el Step 3 completo |
 | `agent-ready update [<fuente>...] [--dry-run]` | adopta la última revisión de esas fuentes (o de todas) y de golfo-kit |
 | `agent-ready config explain\|get\|set\|unset` | la configuración efectiva por capas ([references/configuration.md](references/configuration.md)) |
+| `agent-ready init [--profiles a,b \| --stack s] [--updates m] [--yes] [--no-input]` | primera configuración: detecta, pregunta lo que falta si hay terminal y aplica |
+| `agent-ready profiles list\|add\|remove` | la selección del manifest, validada contra el catálogo; después, `apply` |
+| `agent-ready sources list\|add\|remove` | las fuentes de packs del manifest; `add` además la trae a la caché |
 
 `/agent-ready-setup status`, `/agent-ready-setup plan` y `/agent-ready-setup config` corren
 `agent-ready status`, `agent-ready plan` o `agent-ready config explain` y muestran su salida sin
@@ -116,8 +119,9 @@ alterarla. No escriben en el repo ni instalan herramientas. Por defecto refresca
 del repo para decir si todo está al día; `--offline` no toca la red. Cada subcomando tiene
 `--help` con ejemplos y códigos de salida (`0` bien, `1` falló, `2` uso o configuración inválidos,
 `4` desactualizado, `5` fuente no disponible, `130` cancelado), y `--version`; los datos salen por
-stdout y el progreso y los errores por stderr. Ninguno pregunta nada, así que corren igual en un
-hook o en CI. `plan`, `status` y `apply` necesitan el provider: lo infieren como `resolve-provider.sh`
+stdout y el progreso y los errores por stderr. Solo `init` pregunta, y solo con terminal: sin
+terminal, con `CI` definida o con `--no-input` sale con 2 y nombra los flags que faltan; si preguntó,
+imprime el comando equivalente. El resto corre igual en un hook o en CI. `plan`, `status` y `apply` necesitan el provider: lo infieren como `resolve-provider.sh`
 (ver Step 3) o lo toman de `--provider claude|codex`. Para CI, en cualquier proveedor, `agent-ready
 check` compara y sale con códigos documentados, según `ci.mode`. Esta skill no crea workflows de CI;
 para armar un pipeline o explicar un código de salida, leer
@@ -131,7 +135,10 @@ La selección efectiva sigue esta precedencia: `--profiles` o `--stack`, despué
 Una detección posterior informa señales y sugerencias en `--plan`, pero nunca cambia
 la selección guardada.
 
-Con manifest, usar sus profiles: correr `agent-ready apply` sin `--stack` ni `--profiles`. Si
+Sin manifest, un agente corre `agent-ready init --profiles <a,b> --yes` (o `--stack <s>`) con la
+selección confirmada abajo; una persona en su terminal puede correr `agent-ready init` y responder.
+Con manifest, usar sus profiles: correr `agent-ready apply` sin `--stack` ni `--profiles`, y cambiar
+la selección con `agent-ready profiles add|remove`. Si
 el usuario pide otros, pasar `--profiles a,b` (el primero de tipo stack aporta el
 template de `AGENTS.md`). `--stack <s>` selecciona los defaults de ese stack: incluye
 `browser`, salvo `--stack android`. Sin manifest, inspeccionar el proyecto con la
