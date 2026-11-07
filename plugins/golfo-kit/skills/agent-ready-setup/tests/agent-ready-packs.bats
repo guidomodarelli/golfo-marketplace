@@ -819,6 +819,23 @@ PY
   [ "$(tree_fingerprint)" = "$before" ]
 }
 
+@test "a changed declaration of an unavailable source still shows as drift" {
+  copy_example_pack
+  write_manifest node "acme=path:../acme-pack"
+  run_bootstrap
+  [ "$status" -eq 0 ]
+
+  write_manifest node "acme=path:../other-pack"
+  run_state status --check
+  [ "$status" -eq 4 ]
+  [[ "$output" == *"acme differs from the lock: origin changed to ../other-pack"* ]]
+  [[ "$output" == *"Update available"* ]]
+
+  run_bootstrap --plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"acme differs from the lock: origin changed to ../other-pack"* ]]
+}
+
 @test "loading a pack and evaluating its signals never runs anything from it" {
   copy_example_pack
   sentinel="$test_root/pack-code-ran"

@@ -623,6 +623,18 @@ def source_entries(catalog, resolved, digests, locked_sources):
     return entries
 
 
+def declaration_differences(declaration, locked_entry):
+    """What the manifest changed in a source; it needs neither the network nor its content."""
+    if not locked_entry:
+        return ["not adopted yet"]
+    differences = []
+    if declaration.get("origin") != locked_entry.get("origin"):
+        differences.append(f"origin changed to {declaration.get('origin')}")
+    if declaration.get("requestedRef") != locked_entry.get("requestedRef"):
+        differences.append(f"requested revision changed to {declaration.get('requestedRef')}")
+    return differences
+
+
 def source_differences(name, entry, lock):
     """What changed in a source since the last apply, in words.
 
@@ -633,9 +645,7 @@ def source_differences(name, entry, lock):
     locked_entry = locked_sources.get(name)
     if not locked_entry:
         return ["not adopted yet"]
-    differences = []
-    if entry.get("origin") != locked_entry.get("origin"):
-        differences.append(f"origin changed to {entry.get('origin')}")
+    differences = declaration_differences(entry, locked_entry)
     if entry.get("resolvedCommit") != locked_entry.get("resolvedCommit"):
         locked_commit = (locked_entry.get("resolvedCommit") or "none")[:12]
         differences.append(f"revision {locked_commit} -> {(entry.get('resolvedCommit') or 'none')[:12]}")
@@ -677,6 +687,8 @@ def source_report(catalog, resolved, digests, lock):
             item["contentDigest"] = entry["contentDigest"]
             item["differences"] = source_differences(name, entry, lock)
             item["differences"] += [f"content of {profile} changed" for profile in changed_profiles if source_of_profile(profile) == name]
+        else:
+            item["differences"] = declaration_differences(source, locked_sources.get(name))
         report[name] = item
     return report
 
