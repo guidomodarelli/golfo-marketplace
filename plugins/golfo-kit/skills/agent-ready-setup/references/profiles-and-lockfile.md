@@ -144,7 +144,7 @@ se proyecta: ajustar una señal no marca un update pendiente en repos ya aplicad
 ## 3. Profile packs
 
 Una empresa mantiene sus profiles en un repositorio propio y los reutiliza con versiones
-fijadas. `scripts/agent_ready_packs.py` carga los packs y `examples/acme-profile-pack/` es un
+fijadas. `scripts/agent_ready_packs.py` carga los packs y `assets/examples/acme-profile-pack/` es un
 pack mínimo de ejemplo. No hay stacks primarios externos, profiles por carpeta, distribución por
 npm ni instaladores propios de un pack.
 

@@ -2623,6 +2623,30 @@
           "critical": true
         }
       ]
+    },
+    {
+      "id": "example-pack-is-copied-from-assets",
+      "description": "El pack de ejemplo vive bajo assets/examples/, fuera de lo que un runtime carga como skill.",
+      "input": "Quiero armar el profile pack de mi empresa partiendo del pack de ejemplo que trae agent-ready-setup. ¿De qué carpeta de la skill lo copio, qué trae y cómo lo declaro en mi repo? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "assets/examples/acme-profile-pack",
+          "description": "Copia el ejemplo desde su ubicación real",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["agent-ready-pack.json"],
+          "description": "Nombra el catálogo del pack",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["profileSources", "sources.packs"],
+          "description": "Explica cómo declararlo en el manifest"
+        }
+      ]
     }
   ]
 }
