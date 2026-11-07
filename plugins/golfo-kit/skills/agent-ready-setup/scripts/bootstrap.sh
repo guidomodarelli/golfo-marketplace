@@ -14,7 +14,9 @@
 #   bash bootstrap.sh --skill-dir <path> [--profiles <a,b> | --stack <frontend|node|java|go|android>]
 #     [--provider <claude|codex>] [--updates <pinned|auto>] [--plan | --status]
 #
-# Without --profiles or --stack, the profiles come from .agents/agent-ready.json.
+# Without --profiles or --stack, the profiles come from .agents/agent-ready.json
+# and, when the repository has no manifest yet, from the initial detection of
+# agent-ready-state.py, which fails if the signals do not determine one stack.
 # --plan and --status are read-only: no marketplace upgrade, no writes, no tool
 # installation. Instruction normalization alone runs through normalize-instructions.sh.
 
@@ -491,13 +493,17 @@ fi
 PROJECT_ROOT="$(git rev-parse --show-toplevel)"
 cd -- "$PROJECT_ROOT"
 
-if [[ -z "$STACK" && -z "$PROFILES" && ! -f .agents/agent-ready.json ]]; then
-  echo "ERROR: pass --profiles or --stack; this repository has no .agents/agent-ready.json yet" >&2
-  exit 1
-fi
 if ! command -v python3 >/dev/null 2>&1; then
   echo "ERROR: python3 is required to resolve profiles and the lockfile" >&2
   exit 1
+fi
+# A repository without a selection that detection cannot settle stops before the upgrade.
+if [[ "$RUN_MODE" != status && -z "$STACK" && -z "$PROFILES" && ! -f .agents/agent-ready.json ]]; then
+  if ! detection_report="$(python3 "$SKILL_DIR/scripts/agent-ready-state.py" detect --project . --skill-dir "$SKILL_DIR")"; then
+    printf '%s\n' "$detection_report" >&2
+    echo "ERROR: could not detect project stack; pass --profiles or --stack" >&2
+    exit 1
+  fi
 fi
 
 validate_provider_roots
@@ -562,6 +568,8 @@ fi
 # Resolves profiles once; every later step reads the same stack tree.
 RESOLVED_PROFILES=""
 RESOLVED_TOOLS=""
+REQUESTED_PROFILES=""
+SELECTION_ORIGIN=""
 if ! resolution="$(python3 "$STATE_SCRIPT" resolve --project . --skill-dir "$SKILL_DIR" \
   ${PROFILE_SELECTION[@]+"${PROFILE_SELECTION[@]}"} --compose-dir "$(agent_ready_compose_directory)")"; then
   exit 1
@@ -570,6 +578,8 @@ while IFS=$'\t' read -r resolution_key resolution_value; do
   resolution_value="${resolution_value%$'\r'}"
   case "$resolution_key" in
     profiles) RESOLVED_PROFILES="$resolution_value" ;;
+    requested) REQUESTED_PROFILES="$resolution_value" ;;
+    selection) SELECTION_ORIGIN="$resolution_value" ;;
     primary) STACK="$resolution_value" ;;
     stack_dir) export AGENT_READY_SETUP_STACK_DIR="$resolution_value" ;;
     tools) RESOLVED_TOOLS="$resolution_value" ;;
@@ -580,6 +590,11 @@ if [[ "$RUN_MODE" == plan ]]; then
   python3 "$STATE_SCRIPT" plan --project . --skill-dir "$SKILL_DIR" --provider "$PROVIDER" \
     ${PROFILE_SELECTION[@]+"${PROFILE_SELECTION[@]}"}
   exit $?
+fi
+
+# The apply projects what this resolution detected, even if the signals change meanwhile.
+if [[ "$SELECTION_ORIGIN" == detection ]]; then
+  PROFILE_SELECTION=(--profiles "$REQUESTED_PROFILES")
 fi
 
 validate_skill_source

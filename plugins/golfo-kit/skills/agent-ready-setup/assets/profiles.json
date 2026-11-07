@@ -5,27 +5,55 @@
     "frontend": {
       "kind": "stack",
       "description": "React and Next.js web frontends.",
-      "assets": "assets/stacks/frontend"
+      "assets": "assets/stacks/frontend",
+      "detect": {
+        "supersedes": ["node", "android"],
+        "signals": [
+          { "type": "package-dependency", "names": ["react", "react-dom", "next"] }
+        ]
+      }
     },
     "node": {
       "kind": "stack",
       "description": "Node.js services without a React frontend.",
-      "assets": "assets/stacks/node"
+      "assets": "assets/stacks/node",
+      "detect": {
+        "signals": [
+          { "type": "file", "paths": ["package.json"] }
+        ]
+      }
     },
     "java": {
       "kind": "stack",
       "description": "Java and Kotlin services built with Maven or Gradle.",
-      "assets": "assets/stacks/java"
+      "assets": "assets/stacks/java",
+      "detect": {
+        "signals": [
+          { "type": "file", "paths": ["pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts"] }
+        ]
+      }
     },
     "go": {
       "kind": "stack",
       "description": "Go services.",
-      "assets": "assets/stacks/go"
+      "assets": "assets/stacks/go",
+      "detect": {
+        "signals": [
+          { "type": "file", "paths": ["go.mod"] }
+        ]
+      }
     },
     "android": {
       "kind": "stack",
       "description": "Android apps in Kotlin or Java built with Gradle and the Android Gradle Plugin.",
-      "assets": "assets/stacks/android"
+      "assets": "assets/stacks/android",
+      "detect": {
+        "supersedes": ["java"],
+        "signals": [
+          { "type": "glob", "patterns": ["src/main/AndroidManifest.xml", "*/src/main/AndroidManifest.xml", "*/*/src/main/AndroidManifest.xml"] },
+          { "type": "gradle-plugin", "ids": ["com.android.application", "com.android.library"] }
+        ]
+      }
     },
     "business-flows": {
       "kind": "capability",
@@ -35,7 +63,13 @@
     "browser": {
       "kind": "capability",
       "description": "Browser automation tools (agent-browser, Playwright and Chrome DevTools MCP) installed in the user cache and registered for the project.",
-      "tools": ["browser"]
+      "tools": ["browser"],
+      "detect": {
+        "signals": [
+          { "type": "package-dependency", "names": ["@playwright/test", "playwright", "puppeteer", "cypress"] },
+          { "type": "gradle-dependency", "coordinates": ["androidx.webkit:webkit"] }
+        ]
+      }
     }
   },
   "stackDefaults": {
