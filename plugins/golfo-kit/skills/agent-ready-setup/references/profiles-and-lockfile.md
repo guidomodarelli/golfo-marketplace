@@ -10,12 +10,13 @@ un repositorio. La implementación vive en `scripts/agent-ready-state.py`.
 1. Profiles
 2. Detección
 3. Profile packs
-4. Manifest y lockfile
-5. Ownership
-6. Operaciones: status, plan y apply
-7. SessionStart y modo review
-8. Providers y capacidades
-9. Límites conocidos
+4. Configuración y actualizaciones
+5. Manifest y lockfile
+6. Ownership
+7. Operaciones: status, plan, check y apply
+8. SessionStart y modo review
+9. Providers y capacidades
+10. Límites conocidos
 
 ## 1. Profiles
 
@@ -110,6 +111,7 @@ formato cuenta aunque no se use.
 3. Detección inicial, solo sin manifest: el stack primario se expande con `stackDefaults`,
    y el apply lo guarda en el manifest.
 
+`detection: off` apaga la detección y las sugerencias (ver «Configuración y actualizaciones»).
 Una detección posterior nunca cambia el manifest. `plan` informa la selección (`Selected
 by`), las señales y, si apuntan a otro stack, un aviso. Para cambiar la selección hay que
 pedirlo con `--stack` o `--profiles`.
@@ -151,18 +153,18 @@ npm ni instaladores propios de un pack.
 ```json
 {
   "profiles": ["node", "acme/kafka-interno"],
-  "updates": "pinned",
   "profileSources": [
-    { "name": "acme", "source": "git+https://github.com/acme/agent-profiles#<commit-completo>" },
-    { "name": "local", "source": "path:./agent-packs/local" }
+    { "name": "acme", "source": "git+https://github.com/acme/agent-profiles", "ref": "main" },
+    { "name": "seguridad", "source": "git+ssh://git@github.com/acme/security-profiles#<commit-completo>" },
+    { "name": "local", "source": "path:./agent-packs/local", "updates": "pinned" }
   ]
 }
 ```
 
 | Forma | Significado |
 |---|---|
-| `git+https://…#<commit-completo>`, `git+ssh://…#<commit-completo>` | revisión fijada |
-| `git+https://…#<tag-o-rama>` | se resuelve a un commit en el alta y queda fijado en el lock; una rama que avanza no se sigue |
+| `git+https://…#<commit-completo>`, `git+ssh://…#<commit-completo>` | revisión fija: nunca se mueve |
+| `git+https://…` con `"ref": "<rama-o-tag>"` (o `#<rama-o-tag>` en la URL) | se resuelve a un commit, que el lock registra; en `auto` sigue a la `ref`, en `pinned` espera una actualización explícita |
 | `path:<ruta relativa>` | carpeta local, relativa a la raíz del repo consumidor |
 
 Las credenciales no van en el manifest, el lockfile ni los logs: una URL con usuario de HTTPS,
@@ -207,35 +209,85 @@ sí cuenta en `catalogDigest`, pero no en el digest de cada profile. El commit y
 contenido; la confianza en sus instrucciones sigue dependiendo de la fuente y de quien la revisa.
 
 **Actualizaciones.** Un apply descarga lo que falta en
-`${XDG_CACHE_HOME:-~/.cache}/agent-ready-setup/packs/` y usa la revisión fijada. Necesita resolver todas
-las fuentes declaradas, también las que no tienen profiles seleccionados: si una falla, frena antes de
-escribir. Una revisión de pack cambia solo de forma explícita, aunque el repo tenga `updates: auto` para
-Golfo:
-
-- Con un commit en el manifest: se edita el manifest y se aplica.
-- Con una rama o un tag: `bash "$SKILL_DIR/scripts/bootstrap.sh" … --update-source acme` vuelve a resolverla.
-
-Cada caso deja un diff revisable de assets y lockfile, y sigue el ownership de la sección 5. Cada repo
-fija su revisión; dos repos con el mismo pack pueden usar revisiones distintas.
+`${XDG_CACHE_HOME:-~/.cache}/agent-ready-setup/packs/`. Necesita resolver todas las fuentes declaradas,
+también las que no tienen profiles seleccionados: si una falla, frena antes de escribir. Cada actualización
+deja un diff revisable de assets y lockfile, y sigue el ownership de la sección 6. Cada repo tiene su lock;
+dos repos con el mismo pack pueden usar revisiones distintas. Cómo se actualiza cada fuente: sección 4.
 
 **Rutas locales.** El digest se calcula sobre el contenido real de la carpeta, incluidos cambios sin
 commitear, porque el `HEAD` no identifica un árbol modificado. `plan` y `status` muestran el drift, un
-apply de `bootstrap.sh` lo adopta y SessionStart no lo adopta. Si la ruta falta, un apply falla sin
+apply de `bootstrap.sh` lo adopta y un sync también, salvo con `updates: pinned`. Si la ruta falta, un apply falla sin
 escribir y `plan` informa la evaluación incompleta. Una carpeta externa sirve para desarrollo, pero su
 digest no garantiza que pueda reconstruirse en otro entorno. Para consumo compartido, usar Git fijado o
 un pack versionado dentro del propio repo.
 
-**Modos de consulta.** `--plan`, `--status` y `AGENT_READY_SETUP_REVIEW_MODE=1` trabajan con contenido
-local o en caché, sin descargas ni escrituras. Si falta una fuente que la selección necesita, informan
-`Evaluation incomplete` y `plan` sale con 5: ese resultado no es un plan validado. Una fuente sin
-profiles seleccionados que no está en caché no frena la evaluación, pero sus sugerencias no aparecen.
-Cargar un catálogo o evaluar su `detect` nunca ejecuta nada del pack.
+**Modos de consulta.** `--plan`, `--status` y `AGENT_READY_SETUP_REVIEW_MODE=1` no escriben en el repo. Si
+falta una fuente que la selección necesita, informan `Evaluation incomplete` y `plan` sale con 5: ese
+resultado no es un plan validado. Una fuente sin profiles seleccionados que no está disponible no frena la
+evaluación, pero sus sugerencias no aparecen. Cargar un catálogo o evaluar su `detect` nunca ejecuta nada
+del pack. Qué refrescan y cuándo: sección 4.
 
-## 4. Manifest y lockfile
+## 4. Configuración y actualizaciones
+
+Cada mecanismo es opcional y se configura por separado. Sin configurar nada, todo funciona con estos
+defaults, igual en un proyecto personal y en uno de empresa. Una variable de entorno gana sobre el
+manifest y sirve para una máquina o un job de CI; nunca se escribe en el manifest.
+
+El manifest es disperso: el apply solo escribe lo que difiere del default (también `providers`), así un
+default que mejora llega a todos los repos. Los defaults viven en `scripts/agent_ready_defaults.py`.
+
+| Mecanismo | Campo del manifest | Variable | Default | Para apagarlo o cambiarlo |
+|---|---|---|---|---|
+| Detección y sugerencias | `detection`: `on`, `off` | `AGENT_READY_SETUP_DETECTION` | `on` | `off`: `plan` no muestra señales ni sugerencias, y un repo sin manifest pide `--stack` o `--profiles` |
+| Profile packs | `profileSources` | — | sin fuentes | no declarar ninguna |
+| Actualizaciones | `updates`: `auto`, `pinned` | `AGENT_READY_SETUP_UPDATES` | `auto` | `pinned`: nada se aplica solo. También por fuente, con `updates` en `profileSources[]` |
+| Refresco en `plan` y `status` | `refresh`: `on`, `off` | `AGENT_READY_SETUP_REFRESH` | `on` | `off`, o `--offline` en una corrida |
+| Chequeo de CI | `ci`: `fail`, `warn`, `off` | `AGENT_READY_SETUP_CI` | `fail` | `warn` o `off`. Solo corre si el repo agrega el job |
+
+**`updates: auto`.** Los assets se mantienen al día solos, sin bloquear nada. El hook de SessionStart
+informa el resultado de la actualización anterior y lanza la siguiente desacoplada con
+`scripts/run-detached.py`: refresca el snapshot de `golfo-marketplace`, resuelve la `ref` de cada fuente
+en `auto` a su último commit y aplica con el gate de ownership y el lock de concurrencia de siempre. El
+cambio queda sin commitear en el árbol, para revisarlo y commitearlo. El lockfile sigue registrando el
+commit resuelto y sus digests, así cada resultado es reproducible y auditable. Lo que cambió, o el error,
+se informa una vez en la sesión siguiente. Tras tres fallas seguidas, el próximo intento espera una hora.
+En una máquina sin ninguna fuente de la skill, el primer upgrade del marketplace es sincrónico porque no
+hay scripts para desacoplarlo.
+
+**`updates: pinned`.** Nada se aplica solo: el hook informa drift y updates pendientes, sin escribir en el
+repo. Con `refresh: on`, la tarea desacoplada solo refresca la caché, para que la sesión siguiente pueda
+avisar. Se adopta con `bash "$SKILL_DIR/scripts/bootstrap.sh" … --update-source <fuente>` o editando la
+revisión del manifest. Un apply de `bootstrap.sh` es siempre explícito: sigue las fuentes en `auto`, adopta
+el drift de las rutas locales y deja el resto en la revisión del lock.
+
+Se puede combinar por fuente. Un repo en `auto` puede fijar una fuente con `"updates": "pinned"`, y entonces
+un cambio de esa fuente frena el sync sin escribir nada. Un repo `pinned` puede seguir una fuente con
+`"updates": "auto"`, pero un apply proyecta toda la selección: si golfo-kit tiene una versión pendiente, el
+sync no actualiza el pack solo y espera una adopción explícita de ambos.
+
+`AGENT_READY_SETUP_SYNC_FOREGROUND=1`, o `--stack` y `--profiles` en el hook, corren la sincronización en
+primer plano. `AGENT_READY_SETUP_REVIEW_MODE=1` nunca actualiza, nunca usa la red y nunca escribe.
+
+**Seguridad.** Seguir una `ref` en `auto` significa que quien pushee al pack cambia las instrucciones del
+agente en todos los repos consumidores en su próxima sesión. El diff del lockfile y el chequeo de CI son el
+control. Si eso no alcanza para una fuente, fijarla con un commit completo o con `"updates": "pinned"`.
+Credenciales y ejecución de scripts del pack no cambian: nunca entran al manifest, al lock ni a los logs, y
+ningún script de un pack se ejecuta.
+
+**Refresco.** `--plan` y `--status` actualizan por defecto la caché fuera del repo (snapshot del marketplace
+y última revisión de cada `ref`) para decir si todo está al día, sin escribir en el repo. `--offline`,
+`refresh: off` y el modo review no tocan la red: comparan con lo que ya hay. Si el refresco falla, lo avisan
+y comparan con la caché. Si aun así falta una fuente necesaria, informan `Evaluation incomplete`.
+
+**Chequeo de CI.** `scripts/agent-ready-state.py check` compara las fuentes, el lock y los assets commiteados, y
+sale con códigos documentados según `ci`. Sirve en cualquier proveedor de CI y esta skill no crea workflows.
+Comando, códigos de salida, autenticación y ejemplos: [ci-check.md](ci-check.md).
+
+## 5. Manifest y lockfile
 
 | Archivo | Quién lo edita | Contenido |
 |---|---|---|
-| `.agents/agent-ready.json` | personas (versionado) | `profiles` elegidos, `updates` (`pinned` por defecto o `auto`), `providers`, `profileSources` |
+| `.agents/agent-ready.json` | personas (versionado) | `profiles` elegidos, `updates`, `providers`, `profileSources`, `ci`, `refresh`, `detection` (sección 4) |
 | `.agents/agent-ready.lock.json` | solo el apply | source resuelto, profiles con digest, fuentes de packs, inventario de assets, archivos fusionados |
 
 El lockfile registra `source.plugin`, `source.version`, `source.kind`
@@ -255,7 +307,7 @@ No confundir con `.agents/.agent-ready-assets.lock` (lock de concurrencia del
 sync) ni con el hash de revisión de instrucciones bajo `.git/`. Fijar la
 configuración de un MCP remoto no fija el comportamiento del servicio.
 
-## 5. Ownership
+## 6. Ownership
 
 Nadie debería editar un asset gestionado: cada apply lo deja igual al template y
 pisa cualquier cambio local. Un destino es gestionado cuando el lock registra que
@@ -293,7 +345,7 @@ preserved conflict(s))` o `(partial: ...)` si alguna escritura falló.
 Para cambiar comportamiento, el proyecto agrega una rule propia bajo
 `.agents/rules/` o una skill nueva en vez de editar un asset gestionado.
 
-## 6. Operaciones
+## 7. Operaciones
 
 ```bash
 bash "$SKILL_DIR/scripts/bootstrap.sh" --skill-dir "$SKILL_DIR" --provider "$PROVIDER" --status
@@ -301,10 +353,10 @@ bash "$SKILL_DIR/scripts/bootstrap.sh" --skill-dir "$SKILL_DIR" --provider "$PRO
 bash "$SKILL_DIR/scripts/bootstrap.sh" --skill-dir "$SKILL_DIR" --provider "$PROVIDER" [--profiles a,b] [--updates pinned|auto]
 ```
 
-- `--status` y `--plan` no escriben archivos, no hacen upgrade del marketplace,
-  no instalan herramientas y no llaman a la CLI del provider. Por eso comparan
-  contra el source ya disponible: una versión publicada después del último
-  upgrade (SessionStart o un apply) recién aparece cuando se refresca el snapshot.
+- `--status` y `--plan` no escriben en el repo ni instalan herramientas. Antes de
+  comparar refrescan la caché y el snapshot del marketplace. Con `--offline` o
+  `refresh: off` comparan contra lo ya disponible y no llaman a la CLI del provider.
+- `agent-ready-state.py check` compara para CI, y su código de salida sigue a `ci` (sección 4).
 - `status` separa assets aplicados, modificados, faltantes, conflictos
   preservados, escrituras fallidas y retirados que no se pudieron borrar; además dice si el
   source resuelto o la selección de profiles difieren del lock (`Update
@@ -328,31 +380,23 @@ bash "$SKILL_DIR/scripts/bootstrap.sh" --skill-dir "$SKILL_DIR" --provider "$PRO
 Preferir aplicar actualizaciones como un cambio revisable: correr el apply en
 una rama y abrir un PR con el diff de `.agents/`, `.claude/` y el lockfile.
 
-## 7. SessionStart y modo review
+## 8. SessionStart y modo review
 
-El hook `.agents/hooks/sync-marketplace.sh` lee el manifest:
+El hook `.agents/hooks/sync-marketplace.sh` nunca hace esperar a la sesión. Lee el manifest e informa el
+resultado de la actualización anterior:
 
-- `updates: pinned` (default): no escribe nada en el repositorio, ni siquiera
-  se autoactualiza. Sí refresca, como máximo una vez por hora, el snapshot del
-  marketplace del usuario (fuera del repo) y después corre `status --brief`, que
-  compara ese snapshot con el lock e informa drift y updates pendientes.
-- `updates: auto`: aplica con el mismo gate de ownership que bootstrap, así que
-  pisa los cambios locales al iniciar sesión. Una fuente de packs nunca se adopta
-  acá: si difiere del lock, no se proyecta nada y se pide un apply explícito; si
-  falta su revisión fijada en la caché, la descarga corre en segundo plano, con un
-  tope de intentos, y una sesión posterior proyecta.
-- Sin manifest (repos legacy): aplica una vez y deja manifest y lockfile.
-- `AGENT_READY_SETUP_REVIEW_MODE=1`: nunca escribe, aunque el manifest diga
-  `auto`, y tampoco refresca el marketplace ni llama a la CLI del provider. No se
-  activa sola en CI: definirla en el entorno de reviews automatizadas; ver
-  [review-consumption.md](review-consumption.md).
-- Un manifest que no se puede leer frena el sync antes de escribir, porque podría
-  declarar un repositorio `pinned`.
+- `updates: auto` o sin manifest: lanza desacoplada la sincronización (sección 4).
+- `updates: pinned`: corre `status --brief` y no escribe nada en el repositorio, ni siquiera se
+  autoactualiza. Con `refresh: on`, refresca la caché desacoplado, para que la sesión siguiente avise.
+- `AGENT_READY_SETUP_REVIEW_MODE=1`: nunca escribe, aunque el manifest diga `auto`, y tampoco refresca el
+  marketplace ni llama a la CLI del provider. No se activa sola en CI: definirla en el entorno de reviews
+  automatizadas; ver [review-consumption.md](review-consumption.md).
+- Un manifest que no se puede leer frena el sync antes de escribir, porque podría declarar un repositorio
+  `pinned`.
 
-`AGENT_READY_SETUP_UPDATES=pinned|auto` define el modo cuando el apply crea el
-manifest; `--updates` en bootstrap lo cambia de forma explícita.
+`--updates` en bootstrap cambia el modo del manifest de forma explícita.
 
-## 8. Providers y capacidades
+## 9. Providers y capacidades
 
 `assets/providers.json` declara qué soporta cada provider y cómo se adapta cada
 tipo de asset; `status` lo imprime. En Codex, `agents/` y `commands/` son
@@ -369,7 +413,7 @@ Las herramientas de browser se instalan y registran solo si un profile
 seleccionado declara `tools: ["browser"]`; `AGENT_READY_SETUP_BROWSER_INSTALL=0`
 las omite igual.
 
-## 9. Límites conocidos
+## 10. Límites conocidos
 
 - No hay asignación de profiles por ruta en monorepos: un repositorio tiene una
   sola selección.

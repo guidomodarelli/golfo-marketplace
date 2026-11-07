@@ -2,10 +2,10 @@
 
 A pack is a Git repository or a local directory with a catalog
 (``agent-ready-pack.json``) and assets. This module parses the sources a manifest
-declares, downloads pinned revisions into a per-user cache and validates catalogs.
-Only ``download_declared_sources`` uses the network. Loading a pack reads files and
-nothing else: no script of a pack ever runs. The contract is documented in
-``references/profiles-and-lockfile.md``.
+declares, downloads revisions into a per-user cache and validates catalogs. Only
+``download_declared_sources`` and ``refresh_declared_sources`` use the network.
+Loading a pack reads files and nothing else: no script of a pack ever runs. The
+contract is documented in ``references/profiles-and-lockfile.md``.
 """
 
 import json
@@ -14,10 +14,10 @@ import re
 import shutil
 import subprocess
 import tempfile
-import time
 import urllib.parse
 
 from agent_ready_common import ProfileError, StateError, read_json_file, sha256_of_file, sha256_of_text
+from agent_ready_defaults import OPTIONS, UPDATES_AUTO, UPDATES_FIELD, effective_option
 from agent_ready_detection import (
     DetectionSchemaError,
     is_contained_pattern,
@@ -64,8 +64,8 @@ EXCLUDED_PATHS_FILE_NAME = "excluded.json"
 MATERIALIZED_TREE_DIRECTORY = "tree"
 EXECUTABLE_PERMISSIONS = 0o755
 URL_CREDENTIALS = re.compile(r"://[^/@\s]+@")
-BACKGROUND_FETCH_MAX_ATTEMPTS = 3
-BACKGROUND_FETCH_LOCK_MAX_AGE_SECONDS = 3600
+
+SOURCE_ALLOWED_KEYS = ("name", "source", "ref", "updates")
 
 
 def is_pack_profile(name):
@@ -82,9 +82,9 @@ def source_of_profile(name):
 # Manifest declarations
 # ---------------------------------------------------------------------------
 
-def parse_git_source(name, text):
-    """Parse ``git+<url>#<ref>``. Credentials never get into the manifest or the lock."""
-    url, separator, ref = text[len(GIT_SOURCE_PREFIX):].partition("#")
+def parse_git_source(name, text, declared_ref):
+    """Parse ``git+<url>``, with its ref after ``#`` or in ``ref``. Credentials never get in."""
+    url, separator, fragment = text[len(GIT_SOURCE_PREFIX):].partition("#")
     try:
         parsed = urllib.parse.urlsplit(url)
     except ValueError as url_error:
@@ -96,13 +96,21 @@ def parse_git_source(name, text):
             f"profile source '{name}' has credentials or a query in its URL; "
             "remove them and use the Git authentication configured on the machine"
         )
-    if not separator or not SAFE_GIT_REF.fullmatch(ref):
-        raise StateError(f"profile source '{name}' must pin a revision: end its URL with #<full commit>, #<tag> or #<branch>")
+    if separator and declared_ref is not None:
+        raise StateError(f"profile source '{name}' declares its revision twice: use #<revision> in the URL or 'ref', not both")
+    ref = declared_ref if declared_ref is not None else fragment
+    if not isinstance(ref, str) or not SAFE_GIT_REF.fullmatch(ref):
+        raise StateError(
+            f"profile source '{name}' must declare a revision: "
+            "'ref' with a branch or tag to follow, or #<full commit> at the end of its URL"
+        )
     return {"name": name, "type": SOURCE_TYPE_GIT, "origin": url, "requestedRef": ref}
 
 
-def parse_path_source(name, text):
+def parse_path_source(name, text, declared_ref):
     """Parse ``path:<relative path>``, resolved later from the consumer repository root."""
+    if declared_ref is not None:
+        raise StateError(f"profile source '{name}' is a local path, so it cannot declare 'ref'")
     path = text[len(PATH_SOURCE_PREFIX):]
     if not path or "\\" in path or path.startswith("/") or re.match(r"^[A-Za-z]:", path):
         raise StateError(
@@ -119,20 +127,32 @@ def parse_profile_sources(manifest, manifest_path):
         raise StateError(f"{manifest_path} 'profileSources' must be a list")
     declarations = {}
     for entry in entries:
-        if not isinstance(entry, dict) or set(entry) != {"name", "source"}:
-            raise StateError(f"{manifest_path} 'profileSources' entries must have exactly 'name' and 'source'")
+        if not isinstance(entry, dict) or not {"name", "source"} <= set(entry) or set(entry) - set(SOURCE_ALLOWED_KEYS):
+            raise StateError(f"{manifest_path} 'profileSources' entries need 'name' and 'source', and also accept 'ref' and 'updates'")
         name, text = entry["name"], entry["source"]
         if not isinstance(name, str) or not KEBAB_CASE_NAME.fullmatch(name) or not isinstance(text, str):
             raise StateError(f"{manifest_path} has a profile source with an invalid name; use kebab-case")
         if name in declarations:
             raise StateError(f"{manifest_path} declares the profile source '{name}' more than once")
+        declared_ref = entry.get("ref")
         if text.startswith(GIT_SOURCE_PREFIX):
-            declarations[name] = parse_git_source(name, text)
+            declarations[name] = parse_git_source(name, text, declared_ref)
         elif text.startswith(PATH_SOURCE_PREFIX):
-            declarations[name] = parse_path_source(name, text)
+            declarations[name] = parse_path_source(name, text, declared_ref)
         else:
             raise StateError(f"profile source '{name}' must start with {GIT_SOURCE_PREFIX} or {PATH_SOURCE_PREFIX}")
+        updates = entry.get("updates")
+        if updates is not None and updates not in OPTIONS[UPDATES_FIELD]["supported"]:
+            raise StateError(f"profile source '{name}': 'updates' must be one of {', '.join(OPTIONS[UPDATES_FIELD]['supported'])}")
+        declarations[name]["updates"] = updates
     return [declarations[name] for name in sorted(declarations)]
+
+
+def effective_update_mode(manifest, declaration=None):
+    """Update mode in force: the machine override, then the source, then the manifest."""
+    if declaration and declaration.get("updates") and not os.environ.get(OPTIONS[UPDATES_FIELD]["override"]):
+        return declaration["updates"]
+    return effective_option(manifest, UPDATES_FIELD, os.environ)
 
 
 # ---------------------------------------------------------------------------
@@ -321,20 +341,40 @@ def download_commit(name, origin, commit):
         materialize_commit(name, origin, commit, repository)
 
 
-def revision_to_download(declaration, locked_entry, update_requested):
-    """Commit a Git source should use, using the network only to resolve a new or updated ref."""
+def latest_commit_path(origin, ref):
+    """Where this machine remembers the last commit seen for a ref; it is only a cache."""
+    return os.path.join(pack_cache_root(), "latest", f"{origin_key(origin)}-{sha256_of_text(ref)[:16]}")
+
+
+def record_latest_commit(origin, ref, commit):
+    """Remember the commit a ref points at, so offline modes can report a pending update."""
+    path = latest_commit_path(origin, ref)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as file_handle:
+        file_handle.write(commit)
+
+
+def last_known_commit(origin, ref):
+    """Last commit seen for a ref on this machine, or None."""
+    try:
+        with open(latest_commit_path(origin, ref), encoding="utf-8") as file_handle:
+            commit = file_handle.read().strip()
+    except OSError:
+        return None
+    return commit if FULL_COMMIT.fullmatch(commit) else None
+
+
+def revision_to_download(declaration, locked_entry, follow_ref):
+    """Commit a Git source should use, using the network only to resolve a new or followed ref."""
     ref = declaration["requestedRef"]
     if FULL_COMMIT.fullmatch(ref):
-        if update_requested:
-            raise ProfileError(
-                f"profile source '{declaration['name']}' is pinned to a full commit; "
-                "edit its revision in the manifest to change it"
-            )
         return ref
-    if not update_requested and locked_entry and locked_entry.get("requestedRef") == ref \
+    if not follow_ref and locked_entry and locked_entry.get("requestedRef") == ref \
             and locked_entry.get("origin") == declaration["origin"] and locked_entry.get("resolvedCommit"):
         return locked_entry["resolvedCommit"]
-    return resolve_remote_ref(declaration)
+    commit = resolve_remote_ref(declaration)
+    record_latest_commit(declaration["origin"], ref, commit)
+    return commit
 
 
 def require_local_source(declaration, project_root):
@@ -344,23 +384,54 @@ def require_local_source(declaration, project_root):
         raise ProfileError(f"profile source '{declaration['name']}': the path {declaration['origin']} does not exist from the repository root")
 
 
-def download_declared_sources(declarations, locked_sources, update_names, project_root):
-    """Resolve and download what an apply needs. Returns the commit adopted per Git source."""
-    known = {declaration["name"] for declaration in declarations}
+def download_declared_sources(declarations, locked_sources, update_names, manifest, project_root):
+    """Resolve and download what an apply needs. Returns the commit adopted per Git source.
+
+    A source in ``auto`` follows its ref; a pinned one keeps the lock until --update-source.
+    """
+    known = {declaration["name"]: declaration for declaration in declarations}
     for name in update_names:
         if name not in known:
             raise ProfileError(f"--update-source {name}: the manifest does not declare that source")
+        if known[name]["type"] == SOURCE_TYPE_GIT and FULL_COMMIT.fullmatch(known[name]["requestedRef"]):
+            raise ProfileError(f"profile source '{name}' is pinned to a full commit; edit its revision in the manifest to change it")
     pins = {}
     for declaration in declarations:
         if declaration["type"] != SOURCE_TYPE_GIT:
             require_local_source(declaration, project_root)
             continue
         name = declaration["name"]
-        commit = revision_to_download(declaration, locked_sources.get(name), name in update_names)
+        follow_ref = name in update_names or effective_update_mode(manifest, declaration) == UPDATES_AUTO
+        commit = revision_to_download(declaration, locked_sources.get(name), follow_ref)
         if not cached_tree(declaration["origin"], commit):
             download_commit(name, declaration["origin"], commit)
         pins[name] = commit
     return pins
+
+
+def refresh_declared_sources(declarations, locked_sources):
+    """Update the cache to know whether everything is current; the repository is not touched.
+
+    Returns one message per source that could not be refreshed: the caller compares with
+    what the cache already has and reports the limit instead of failing.
+    """
+    failures = []
+    for declaration in declarations:
+        if declaration["type"] != SOURCE_TYPE_GIT:
+            continue
+        name, origin, ref = declaration["name"], declaration["origin"], declaration["requestedRef"]
+        try:
+            commits = {locked_revision(declaration, locked_sources.get(name))}
+            if not FULL_COMMIT.fullmatch(ref):
+                latest = resolve_remote_ref(declaration)
+                record_latest_commit(origin, ref, latest)
+                commits.add(latest)
+            for commit in sorted(commit for commit in commits if commit):
+                if not cached_tree(origin, commit):
+                    download_commit(name, origin, commit)
+        except ProfileError as refresh_error:
+            failures.append(str(refresh_error))
+    return failures
 
 
 def locked_revision(declaration, locked_entry):
@@ -373,69 +444,17 @@ def locked_revision(declaration, locked_entry):
     return None
 
 
-def read_attempts(attempts_path):
-    """Failed background downloads of one revision; an unreadable count starts over."""
-    try:
-        with open(attempts_path, encoding="utf-8") as attempts_file:
-            return int(attempts_file.read().strip() or 0)
-    except (OSError, ValueError):
-        return 0
-
-
-def download_locked_sources_in_background(declarations, locked_sources):
-    """Download revisions already pinned, for a machine that has never seen them.
-
-    SessionStart runs this detached. It never resolves a ref and never adopts anything:
-    a later session projects the locked revision once it is in the cache. Failures
-    stop after a few attempts, so an unreachable source does not retry forever.
-    """
-    lock_path = os.path.join(pack_cache_root(), "background-fetch.lock")
-    os.makedirs(os.path.dirname(lock_path), exist_ok=True)
-    try:
-        if time.time() - os.path.getmtime(lock_path) > BACKGROUND_FETCH_LOCK_MAX_AGE_SECONDS:
-            os.rmdir(lock_path)
-    except OSError:
-        pass
-    try:
-        os.mkdir(lock_path)
-    except OSError:
-        return []
-    failures = []
-    try:
-        for declaration in declarations:
-            if declaration["type"] != SOURCE_TYPE_GIT:
-                continue
-            name, origin = declaration["name"], declaration["origin"]
-            commit = locked_revision(declaration, locked_sources.get(name))
-            if not commit or cached_tree(origin, commit):
-                continue
-            attempts_path = os.path.join(pack_cache_root(), "attempts", f"{origin_key(origin)}-{commit}")
-            attempts = read_attempts(attempts_path)
-            if attempts >= BACKGROUND_FETCH_MAX_ATTEMPTS:
-                failures.append(f"profile source '{name}': automatic download stopped after {attempts} attempts")
-                continue
-            try:
-                download_commit(name, origin, commit)
-            except ProfileError as download_error:
-                failures.append(str(download_error))
-                os.makedirs(os.path.dirname(attempts_path), exist_ok=True)
-                with open(attempts_path, "w", encoding="utf-8") as attempts_file:
-                    attempts_file.write(str(attempts + 1))
-            else:
-                if os.path.isfile(attempts_path):
-                    os.unlink(attempts_path)
-    finally:
-        os.rmdir(lock_path)
-    return failures
-
-
 # ---------------------------------------------------------------------------
 # Locating a source without the network
 # ---------------------------------------------------------------------------
 
-def locate_source(declaration, locked_entry, project_root, pinned_commit=None):
-    """Where a declared source lives on this machine. It never uses the network."""
-    located = dict(declaration, root=None, resolvedCommit=None, state=SOURCE_MISSING, reason=None)
+def locate_source(declaration, locked_entry, project_root, update_mode, pinned_commit=None):
+    """Where a declared source lives on this machine. It never uses the network.
+
+    A source in ``auto`` uses the last commit seen for its ref, and a pinned one the
+    lock. ``latestCommit`` lets a pinned source report that its ref moved.
+    """
+    located = dict(declaration, root=None, resolvedCommit=None, latestCommit=None, state=SOURCE_MISSING, reason=None, updates=update_mode)
     if declaration["type"] == SOURCE_TYPE_PATH:
         root = os.path.normpath(os.path.join(project_root, *declaration["origin"].split("/")))
         if os.path.isdir(root):
@@ -443,7 +462,13 @@ def locate_source(declaration, locked_entry, project_root, pinned_commit=None):
         else:
             located["reason"] = f"the path {declaration['origin']} does not exist from the repository root"
         return located
-    commit = pinned_commit or locked_revision(declaration, locked_entry)
+    locked_commit = locked_revision(declaration, locked_entry)
+    latest_commit = None
+    if not FULL_COMMIT.fullmatch(declaration["requestedRef"]):
+        latest_commit = last_known_commit(declaration["origin"], declaration["requestedRef"])
+    located["latestCommit"] = latest_commit
+    preferred = (latest_commit, locked_commit) if update_mode == UPDATES_AUTO else (locked_commit, latest_commit)
+    commit = pinned_commit or preferred[0] or preferred[1]
     if not commit:
         located["reason"] = (
             f"the ref '{declaration['requestedRef']}' is not resolved in the lockfile; "

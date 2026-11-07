@@ -16,9 +16,9 @@ setup() {
   # Asset-projection tests use the documented offline bootstrap option. Browser
   # installation and real MCP registration are exercised in their own suite.
   export AGENT_READY_SETUP_BROWSER_INSTALL=0
-  # These suites exercise the SessionStart projection; repositories created here
-  # opt into automatic updates. Pinned repositories are covered in agent-ready-state.bats.
-  export AGENT_READY_SETUP_UPDATES=auto
+  # These suites exercise the projection itself, which SessionStart otherwise runs detached.
+  # Pinned repositories and the detached update are covered in their own suites.
+  export AGENT_READY_SETUP_SYNC_FOREGROUND=1
   # Tests choose the Codex home explicitly; an inherited CODEX_HOME would
   # redirect config, snapshot and cache lookups away from the fixture HOME.
   unset CODEX_HOME

@@ -71,7 +71,7 @@ Bootstrap aplica sin pedir confirmación; `--plan` y `--status` son las
 operaciones de solo lectura.
 
 Adopción versionada: `.agents/agent-ready.json` (manifest: profiles elegidos y
-`updates` `pinned` por defecto o `auto`) y `.agents/agent-ready.lock.json`
+`updates` `auto` por defecto o `pinned`) y `.agents/agent-ready.lock.json`
 (lockfile: source, profiles y sha256 aplicado de cada asset). Un asset
 gestionado (rules, skills, agents, commands, hooks y sus vistas en `.claude/`)
 no se edita: cada apply lo deja igual al template y pisa cualquier cambio local,
@@ -105,8 +105,11 @@ reemplazar una fuente versionada y dejar el path anterior inexistente.
 `/agent-ready-setup status` y `/agent-ready-setup plan` corren
 `bootstrap.sh --status` o `--plan` (mismos `--skill-dir` y `--provider` del Step 3,
 sin `--stack` si el repo ya tiene manifest) y muestran su salida sin alterarla.
-No hacen upgrade del marketplace, no escriben, no instalan herramientas ni llaman
-a la CLI del provider. Saltear los Steps 2 y 4. Para explicar la salida, leer
+No escriben en el repo ni instalan herramientas. Por defecto refrescan la caché fuera del
+repo para decir si todo está al día; `--offline` no toca la red. Para CI, en cualquier proveedor,
+`scripts/agent-ready-state.py check` compara y sale con códigos documentados, según `ci` del manifest. Esta
+skill no crea workflows de CI; para armar un pipeline o explicar un código de salida, leer
+[references/ci-check.md](references/ci-check.md). Saltear los Steps 2 y 4. Para explicar la salida, leer
 [references/profiles-and-lockfile.md](references/profiles-and-lockfile.md).
 
 ## Step 2 — Select profiles
@@ -147,13 +150,17 @@ Si detección tiene éxito, confirmar:
 
 > `Detected stack: **<STACK>**. Running agent-ready-setup — managed assets are overwritten with the templates, local edits included; project rules, skills, and instructions are preserved.`
 
-Una empresa puede sumar sus propios profiles con `profileSources` en el manifest: un pack en Git con
-revisión fijada o una carpeta local. Agregar una fuente solo los hace disponibles: se seleccionan por
-nombre con namespace (`acme/kafka-interno`), y un pack agrega capabilities, nunca un stack primario. Una
-revisión cambia solo de forma explícita: editando el commit del manifest o con
-`--update-source <fuente>`. Leer [references/profiles-and-lockfile.md](references/profiles-and-lockfile.md)
-(sección «Profile packs») para declarar una fuente, explicar una colisión o un `Evaluation incomplete`;
+Cualquier proyecto, personal o de empresa, puede sumar profiles propios con `profileSources` en el
+manifest: un pack en Git o una carpeta local. Agregar una fuente solo los hace disponibles: se seleccionan
+por nombre con namespace (`acme/kafka-interno`), y un pack agrega capabilities, nunca un stack primario.
+Leer [references/profiles-and-lockfile.md](references/profiles-and-lockfile.md) (sección «Profile packs»)
+para declarar una fuente, explicar una colisión o un `Evaluation incomplete`;
 `examples/acme-profile-pack/` es un pack mínimo.
+
+Detección, packs, actualizaciones, refresco y chequeo de CI son opcionales y se configuran por separado,
+con defaults que funcionan sin configurar nada. La tabla de campos, variables y defaults, y la advertencia
+de seguridad de seguir una `ref` en `auto`, están en la sección «Configuración y actualizaciones» de esa
+referencia.
 
 ## Step 3 — Run bootstrap script
 
@@ -270,14 +277,14 @@ normalización por directorio, siempre con el `AGENTS.md` hermano:
 
 ### Sincronización posterior al upgrade
 
-El hook `.agents/hooks/sync-marketplace.sh` corre en cada `SessionStart`: actualiza el
-marketplace (como máximo una vez por hora; `AGENT_READY_SETUP_FORCE_UPGRADE=1` lo fuerza).
-En un repo `pinned` (default) solo informa drift y updates pendientes, sin escribir;
-con `updates: auto` o sin manifest proyecta assets con el gate de ownership,
-normalización y bloque gestionado de forma local y sincrónica, y lo que usa red o un
-LLM corre en segundo plano. `AGENT_READY_SETUP_REVIEW_MODE=1` nunca escribe; para
-reviews automatizadas leer [references/review-consumption.md](references/review-consumption.md). Para sincronizar a mano:
-`bash .agents/hooks/sync-marketplace.sh --provider claude|codex`. Leer
+El hook `.agents/hooks/sync-marketplace.sh` corre en cada `SessionStart` y nunca hace esperar a la
+sesión: informa el resultado de la actualización anterior y lanza la siguiente desacoplada. Con `updates:
+auto` (default) o sin manifest, esa actualización refresca el marketplace y las fuentes, y proyecta assets
+con el gate de ownership. En un repo `pinned` solo informa drift y updates pendientes, sin escribir.
+`AGENT_READY_SETUP_REVIEW_MODE=1` nunca escribe ni usa la red; para reviews automatizadas leer
+[references/review-consumption.md](references/review-consumption.md). Para sincronizar a mano en primer
+plano: `AGENT_READY_SETUP_SYNC_FOREGROUND=1 bash .agents/hooks/sync-marketplace.sh --provider claude|codex`.
+Leer
 [references/sync-and-upgrade.md](references/sync-and-upgrade.md) para explicar o
 diagnosticar el sync: resolución de la fuente, tareas en segundo plano, backups, riesgos
 del upgrade y overrides (`AGENT_READY_SETUP_SKILL_DIR`, `AGENT_READY_SETUP_STACK`).

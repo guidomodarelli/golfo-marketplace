@@ -3,6 +3,8 @@
 setup() {
   repository_root="$(cd "$BATS_TEST_DIRNAME/../../../../.." && pwd)"
   skill_dir="$repository_root/plugins/golfo-kit/skills/agent-ready-setup"
+  # The hook runs the sync right here: the detached update has its own suite.
+  export AGENT_READY_SETUP_SYNC_FOREGROUND=1
   test_root="$(mktemp -d)"
   # Native Windows symlinks under Git Bash (needs Developer Mode); ignored elsewhere.
   export MSYS="${MSYS:+$MSYS }winsymlinks:nativestrict"

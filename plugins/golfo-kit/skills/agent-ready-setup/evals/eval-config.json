@@ -2415,7 +2415,7 @@
     {
       "id": "pack-source-missing-in-review-mode",
       "description": "En modo review sin la fuente en caché no descarga nada y no presenta un plan validado.",
-      "input": "Un job de CI corre la review con `AGENT_READY_SETUP_REVIEW_MODE=1` y además `bootstrap.sh --plan`, en una máquina limpia. El repo seleccionó `acme/kafka-interno` con una fuente Git fijada por commit que no está en la caché. ¿Baja el pack para poder responder? ¿El resultado sirve como plan aprobado? No ejecutes Bash ni escribas archivos.",
+      "input": "Un job de CI corre la review con `AGENT_READY_SETUP_REVIEW_MODE=1` definida en todos sus pasos, incluido `bootstrap.sh --plan`, en una máquina limpia. El repo seleccionó `acme/kafka-interno` con una fuente Git fijada por commit que no está en la caché. ¿Baja el pack para poder responder? ¿El resultado sirve como plan aprobado? No ejecutes Bash ni escribas archivos.",
       "assertions": [
         {
           "type": "contains_any",
@@ -2438,26 +2438,170 @@
       ]
     },
     {
-      "id": "pack-revision-follows-only-explicit-updates",
-      "description": "Una rama del pack que avanza no se sigue sola, ni en un repo con updates auto.",
-      "input": "Mi manifest tiene `updates: auto` y la fuente `git+https://github.com/acme/agent-profiles#main`. Hoy mergearon cambios en `main` de ese pack. ¿Mañana, al abrir sesión, mis agentes reciben las rules nuevas? ¿Cómo adopto esa versión y dónde reviso qué cambió? No ejecutes Bash ni escribas archivos.",
+      "id": "auto-source-follows-its-ref-without-blocking",
+      "description": "En auto, una fuente sigue su ref en segundo plano, sin bloquear la sesión, y explica el riesgo.",
+      "input": "Mi manifest no configura `updates` y tiene la fuente `git+https://github.com/acme/agent-profiles` con `\"ref\": \"main\"`. Hoy mergearon cambios en `main` de ese pack. ¿Mañana, al abrir sesión, mis agentes reciben las rules nuevas? ¿Esa sesión tiene que esperar la descarga? ¿Qué riesgo tiene esto y cómo lo controlo? No ejecutes Bash ni escribas archivos.",
       "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["segundo plano", "desacoplad", "background", "no bloquea", "no espera", "no hace esperar"],
+          "description": "La actualización corre sin bloquear la sesión",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["sesión siguiente", "próxima sesión", "siguiente sesión"],
+          "description": "El resultado se informa después"
+        },
+        {
+          "type": "contains_any",
+          "values": ["quien pushee", "quien haga push", "quien publique", "pushea", "cualquiera con push", "permiso de escritura", "acceso de escritura"],
+          "description": "Advierte quién puede cambiar las instrucciones del agente",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["agent-ready-state.py check", "chequeo de CI", "diff del lock"],
+          "description": "Da el control disponible",
+          "critical": true
+        }
+      ]
+    },
+    {
+      "id": "pinned-source-never-applies-on-its-own",
+      "description": "Una fuente pinned no se aplica sola, aunque su rama avance, y plan lo avisa.",
+      "input": "Mi manifest tiene `\"updates\": \"pinned\"` y una fuente con `\"ref\": \"main\"`. Esa rama avanzó ayer. ¿Se aplica sola en la próxima sesión? ¿Cómo me entero y cómo adopto esa versión? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["no se aplica", "nada se aplica", "no aplica", "no escribe", "sin escribir"],
+          "description": "Pinned no aplica solo",
+          "critical": true
+        },
         {
           "type": "contains",
           "value": "--update-source",
-          "description": "Da la actualización explícita",
+          "description": "Da la adopción explícita",
           "critical": true
         },
         {
           "type": "contains_any",
-          "values": ["no se sigue", "no sigue", "queda fijad", "sigue fijad", "no se actualiza", "no las reciben", "no reciben", "no adopta", "no recib"],
-          "description": "Aclara que la revisión adoptada queda fijada",
+          "values": ["--plan", "--status", "`plan`", "`status`"],
+          "description": "Indica cómo ver la actualización pendiente"
+        }
+      ]
+    },
+    {
+      "id": "offline-plan-does-not-touch-the-network",
+      "description": "Distingue el refresco por defecto de plan y status del modo sin red.",
+      "input": "Estoy en un avión, sin internet, y quiero correr `--plan` de agent-ready-setup. ¿Por defecto intenta usar la red? ¿Qué uso para que no lo haga en esta corrida, y cómo lo dejo apagado para siempre en este repo? ¿Escribe algo en el repo? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "--offline",
+          "description": "Da la opción de una corrida",
           "critical": true
         },
         {
           "type": "contains_any",
-          "values": ["lockfile", "lock.json", "diff"],
-          "description": "El cambio queda como diff revisable"
+          "values": ["refresh.*off", "off.*refresh"],
+          "description": "Da la configuración persistente",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["no escribe", "sin escribir", "fuera del repo", "no toca el repo"],
+          "description": "Aclara que el repo no se escribe"
+        }
+      ]
+    },
+    {
+      "id": "ci-check-follows-its-mode",
+      "description": "El chequeo de CI falla, avisa o se omite según ci, con el token fuera del manifest.",
+      "input": "Quiero que el CI de mi repo me avise si los assets de agent-ready-setup quedaron viejos, y mi pack es privado. ¿Qué corro en el workflow? ¿Cómo hago para que solo avise sin fallar, y para apagarlo? ¿Dónde va el token? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "agent-ready-state.py",
+          "description": "Usa el comando común de chequeo",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["warn"],
+          "description": "Da el modo que solo avisa",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["secret", "secreto"],
+          "description": "El token va como secret",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["`off`", "\"off\"", "ci: off", "ci.*off"],
+          "description": "Explica cómo apagarlo"
+        }
+      ]
+    },
+    {
+      "id": "ci-check-works-without-github",
+      "description": "El chequeo sirve en Jenkins, sin gh, con códigos de salida y sin crear workflows.",
+      "input": "Mi empresa usa Jenkins y no tenemos GitHub Actions; el pack privado está en un Git interno. ¿Cómo corro el chequeo de agent-ready-setup en un Jenkinsfile? ¿Qué códigos de salida tengo que manejar y necesito `gh` para autenticar? ¿agent-ready-setup me genera algún archivo de CI? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "agent-ready-state.py",
+          "description": "Usa el comando común",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(4|5).{0,60}(desactualizad|no disponible|outdated|unavailable)|(desactualizad|no disponible|outdated|unavailable).{0,60}(4|5)",
+          "description": "Da los códigos de salida",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["GIT_CONFIG", "SSH", "ssh", "sshagent"],
+          "description": "La autenticación va por Git",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["no proyecta", "no crea", "no genera", "no te genera", "no te crea"],
+          "description": "Aclara que no crea workflows",
+          "critical": true
+        }
+      ]
+    },
+    {
+      "id": "each-mechanism-is-optional",
+      "description": "Sin configurar nada funciona, y cada mecanismo se apaga por separado.",
+      "input": "Es un proyecto personal chico: no quiero packs, ni CI, ni sugerencias, y prefiero actualizar a mano. ¿Tengo que configurar algo para que agent-ready-setup funcione? ¿Qué pongo para apagar cada cosa por separado? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "detection",
+          "description": "Apaga la detección y las sugerencias",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["updates.*pinned", "pinned.*updates"],
+          "description": "Apaga las actualizaciones automáticas",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "profileSources",
+          "description": "Los packs son opcionales por no declararlos"
+        },
+        {
+          "type": "not_contains_any",
+          "values": ["es obligatorio configurar", "tenés que configurar todo"],
+          "description": "No impone configuración"
         }
       ]
     },

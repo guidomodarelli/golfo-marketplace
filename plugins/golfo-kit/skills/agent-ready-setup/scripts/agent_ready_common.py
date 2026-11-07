@@ -3,6 +3,9 @@
 import hashlib
 import json
 import os
+import time
+
+LOCK_MAX_AGE_SECONDS = 3600
 
 
 class ProfileError(Exception):
@@ -44,6 +47,21 @@ def read_json_file(path, description):
     if not isinstance(content, dict):
         raise StateError(f"{description} {path} must contain a JSON object")
     return content
+
+
+def acquire_directory_lock(lock_path):
+    """Take a lock between processes; one left behind by a dead process expires."""
+    os.makedirs(os.path.dirname(lock_path), exist_ok=True)
+    try:
+        if time.time() - os.path.getmtime(lock_path) > LOCK_MAX_AGE_SECONDS:
+            os.rmdir(lock_path)
+    except OSError:
+        pass
+    try:
+        os.mkdir(lock_path)
+    except OSError:
+        return False
+    return True
 
 
 def walk_files(root):

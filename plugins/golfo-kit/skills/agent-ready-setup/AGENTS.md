@@ -29,7 +29,7 @@ Al agregar o modificar una rule, skill, agent, command, template de instruccione
 
 1. El sync obtiene la skill del snapshot del marketplace que trae su propio upgrade (o de la cache si es más nueva). Nunca depende de que la skill esté instalada ni de que bootstrap haya corrido.
 2. Ninguna operación del sync exige estado creado por bootstrap (instalaciones, metadata, dependencias privadas, archivos generados). Si falta, el sync lo crea, lo adopta de lo que ya existe o lo deja instalando en segundo plano.
-3. Lo único sincrónico que usa red es actualizar la skill a la última versión (el upgrade del marketplace) antes de ejecutar el resto del sync. La proyección local, que no usa red, también es sincrónica, para que la sesión que arranca ya vea los assets nuevos. Todo lo que use red o un LLM (instalaciones, descargas, consultas a registries, revisiones con el provider) corre desacoplado mediante `scripts/run-detached.py`, con lock, log privado y un límite de reintentos.
+3. SessionStart nunca hace esperar a la sesión. El upgrade del marketplace, las fuentes de profiles y la proyección corren desacoplados mediante `scripts/run-detached.py`, con lock, log privado y un límite de reintentos, igual que todo lo que use red o un LLM (instalaciones, descargas, consultas a registries, revisiones con el provider). El resultado se informa en la sesión siguiente. La única excepción es una máquina sin ninguna fuente de la skill: ahí el primer upgrade es sincrónico, porque no hay scripts para desacoplarlo.
 4. Los mensajes del sync no piden ejecutar bootstrap ni instalar la skill. Indican qué falta fuera de la skill (por ejemplo, Node.js) o que se reintenta solo.
 5. Cada flujo del sync se testea con un `HOME` vacío, sin instalación previa ni skill instalada.
 

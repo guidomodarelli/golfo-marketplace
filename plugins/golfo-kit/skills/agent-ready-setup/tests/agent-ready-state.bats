@@ -15,6 +15,8 @@ setup() {
   export XDG_CACHE_HOME="$test_root/cache"
   export AGENT_READY_SETUP_BROWSER_INSTALL=0
   export AGENT_READY_SETUP_ACTIVE_PROVIDER=claude
+  # The detached update has its own suite; these tests read the sync's output directly.
+  export AGENT_READY_SETUP_SYNC_FOREGROUND=1
   unset CODEX_HOME AGENT_READY_SETUP_UPDATES AGENT_READY_SETUP_STACK_DIR AGENT_READY_SETUP_REVIEW_MODE
   # Fake provider CLIs record every call, so tests can prove read-only modes stay offline.
   for provider_cli in claude codex; do
@@ -50,7 +52,11 @@ copy_skill() {
 run_bootstrap_with() {
   local source="$1"
   shift
-  run env PATH="$fake_bin:$PATH" bash "$source/scripts/bootstrap.sh" --skill-dir "$source" --provider claude "$@"
+  # A new manifest is pinned here unless the test says otherwise; auto has its own suite.
+  local updates=()
+  [[ -f .agents/agent-ready.json ]] || updates=(--updates pinned)
+  run env PATH="$fake_bin:$PATH" bash "$source/scripts/bootstrap.sh" --skill-dir "$source" --provider claude \
+    ${updates[@]+"${updates[@]}"} "$@"
 }
 
 # Content fingerprint of the project tree, including symlink targets.
@@ -357,13 +363,13 @@ lock_value() {
   rm -f "$cli_calls"
   before="$(tree_fingerprint)"
 
-  run_bootstrap_with "$skill_dir" --plan
+  run_bootstrap_with "$skill_dir" --plan --offline
   [ "$status" -eq 0 ]
   [[ "$output" == *"Agent Ready plan (read-only: nothing was written)"* ]]
   [[ "$output" == *"update"*".agents/rules/testing.md"*"overwrites local changes since the last apply"* ]]
   [[ "$output" == *"+local note"* ]] || [[ "$output" == *"-local note"* ]]
 
-  run_bootstrap_with "$skill_dir" --status
+  run_bootstrap_with "$skill_dir" --status --offline
   [ "$status" -eq 0 ]
   [[ "$output" == *"modified: .agents/rules/testing.md"* ]]
 

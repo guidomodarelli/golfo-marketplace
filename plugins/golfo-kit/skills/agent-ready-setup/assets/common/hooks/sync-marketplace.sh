@@ -1,14 +1,16 @@
 #!/bin/bash
 # sync-marketplace.sh
 # Upgrades golfo-marketplace and projects managed Agent Ready assets locally.
-# Runs automatically on session start (SessionStart hook).
+# Runs automatically on session start (SessionStart hook), where it never makes the
+# session wait: it reports the last update and starts the next one detached.
 #
-# Repositories pinned in .agents/agent-ready.json ("updates": "pinned", the
-# default) are only checked: the hook reports drift and pending updates without
-# writing. With "updates": "auto" it applies the same ownership contract as
-# bootstrap.sh: managed assets are overwritten, local changes included, and only
-# files that no apply wrote are preserved and reported.
-# AGENT_READY_SETUP_REVIEW_MODE=1 (automated reviews) never writes either.
+# With "updates": "auto" (the default in .agents/agent-ready.json) that update applies
+# the same ownership contract as bootstrap.sh: managed assets are overwritten, local
+# changes included, and only files that no apply wrote are preserved and reported.
+# Pinned repositories are only checked: the update refreshes the user cache, and the
+# hook reports drift and pending updates without writing.
+# AGENT_READY_SETUP_REVIEW_MODE=1 (automated reviews) never writes or uses the network.
+# AGENT_READY_SETUP_SYNC_FOREGROUND=1, or --stack and --profiles, run the sync right here.
 
 set -euo pipefail
 
@@ -50,6 +52,7 @@ update_mode_override="${AGENT_READY_SETUP_UPDATES:-}"
 explicit_selection=0
 marketplace_already_upgraded="${AGENT_READY_SETUP_MARKETPLACE_UPGRADED:-0}"
 force_marketplace_upgrade="${AGENT_READY_SETUP_FORCE_UPGRADE:-0}"
+foreground_sync="${AGENT_READY_SETUP_SYNC_FOREGROUND:-0}"
 sync_lock_inherited="${AGENT_READY_SETUP_SYNC_LOCK_HELD:-0}"
 backup_directory="${AGENT_READY_SETUP_BACKUP_DIRECTORY:-}"
 created_assets=()
@@ -59,6 +62,8 @@ removed_assets=()
 backups=()
 conflicts=()
 original_arguments=("$@")
+# Absolute: the detached update starts from the project root, not from this directory.
+hook_path="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)/$(basename -- "${BASH_SOURCE[0]}")"
 
 record_conflict() {
   conflicts+=("$1")
@@ -146,6 +151,17 @@ fi
 if [[ "$review_mode" != 0 && "$review_mode" != 1 ]]; then
   printf 'ERROR: AGENT_READY_SETUP_REVIEW_MODE must be 0 or 1\n' >&2
   exit 1
+fi
+
+if [[ "$foreground_sync" != 0 && "$foreground_sync" != 1 ]]; then
+  printf 'ERROR: AGENT_READY_SETUP_SYNC_FOREGROUND must be 0 or 1\n' >&2
+  exit 1
+fi
+
+# A session start never waits for the network: the sync below runs detached instead.
+defer_to_background=0
+if [[ "$review_mode" -eq 0 && "$foreground_sync" -eq 0 && "$explicit_selection" -eq 0 ]]; then
+  defer_to_background=1
 fi
 
 case "$update_mode_override" in
@@ -248,6 +264,8 @@ record_marketplace_upgrade() {
 # Automated reviews need neither network nor a provider CLI: rules come from the checkout.
 if [[ "$review_mode" -eq 1 ]]; then
   echo "[marketplace-sync] Review mode: the marketplace upgrade is skipped."
+elif [[ "$defer_to_background" -eq 1 ]]; then
+  : # The detached sync upgrades the marketplace.
 elif [[ "$marketplace_already_upgraded" -eq 1 ]]; then
   echo "[marketplace-sync] El caller ya completó el upgrade del marketplace."
 elif is_marketplace_upgrade_unsupported; then
@@ -510,7 +528,14 @@ case "$stack_override" in
     ;;
 esac
 
-if ! skill_dir="$(resolve_skill_dir)"; then
+if ! skill_dir="$(resolve_skill_dir)" && [[ "$defer_to_background" -eq 1 ]] && \
+  [[ -z "${AGENT_READY_SETUP_SKILL_DIR:-}" ]] && ! is_marketplace_upgrade_unsupported; then
+  # A machine without a source yet has no scripts to detach with: the only synchronous fetch.
+  echo "[marketplace-sync] Haciendo upgrade de $MARKETPLACE_NAME para $provider..."
+  run_marketplace_upgrade && record_marketplace_upgrade
+  skill_dir="$(resolve_skill_dir)" || skill_dir=""
+fi
+if [[ -z "${skill_dir:-}" ]]; then
   if [[ -n "${AGENT_READY_SETUP_SKILL_DIR:-}" ]]; then
     exit 1
   fi
@@ -550,14 +575,21 @@ if ! command -v python3 >/dev/null 2>&1; then
 fi
 
 manifest_updates=""
-manifest_profiles=""
+manifest_auto_sources=""
+manifest_refresh=""
 while IFS=$'\t' read -r manifest_key manifest_value; do
   manifest_value="${manifest_value%$'\r'}"
   case "$manifest_key" in
     updates) manifest_updates="$manifest_value" ;;
-    profiles) manifest_profiles="$manifest_value" ;;
+    auto_sources) manifest_auto_sources="$manifest_value" ;;
+    refresh) manifest_refresh="$manifest_value" ;;
   esac
 done < <(python3 "$state_script" manifest --project . || true)
+# A pinned repository with a source in auto still syncs; its policy guards the rest.
+only_check=0
+if [[ "$manifest_updates" == pinned && -z "$manifest_auto_sources" && "$explicit_selection" -eq 0 ]]; then
+  only_check=1
+fi
 
 # Automated reviews read the rules committed in the checkout; synchronizing
 # would change the very context under review.
@@ -567,8 +599,11 @@ if [[ "$review_mode" -eq 1 ]]; then
   exit 0
 fi
 
-if [[ "$manifest_updates" == pinned && "$explicit_selection" -eq 0 ]]; then
+if [[ "$defer_to_background" -eq 0 && "$only_check" -eq 1 ]]; then
   echo "[marketplace-sync] Repository pinned by .agents/agent-ready.json; checking without writing."
+  if [[ "$manifest_refresh" == on ]]; then
+    python3 "$state_script" fetch-sources --project . --skill-dir "$skill_dir" --refresh || true
+  fi
   python3 "$state_script" status --project . --skill-dir "$skill_dir" --brief || true
   exit 0
 fi
@@ -586,7 +621,7 @@ project_log_key() {
 }
 
 # Starts long-running or network work detached from the session, so SessionStart
-# only waits for the marketplace upgrade and local projection.
+# does not wait for it.
 start_background_task() {
   local log_name="$1"
   shift
@@ -599,6 +634,21 @@ start_background_task() {
     printf 'WARNING: background task %s could not start; it retries in the next session.\n' "$log_name" >&2
   fi
 }
+
+if [[ "$defer_to_background" -eq 1 ]]; then
+  python3 "$state_script" update-report --project . || true
+  if [[ "$only_check" -eq 1 ]]; then
+    echo "[marketplace-sync] Repository pinned by .agents/agent-ready.json; checking without writing."
+    python3 "$state_script" status --project . --skill-dir "$skill_dir" --brief || true
+  fi
+  # A pinned repository with refresh off has nothing to do in the background.
+  if [[ "$only_check" -eq 0 || "$manifest_refresh" == on ]]; then
+    start_background_task "background-update-$(project_log_key)" \
+      python3 "$state_script" background-update --project . --skill-dir "$skill_dir" \
+      --hook "$hook_path" --provider "$provider"
+  fi
+  exit 0
+fi
 
 profile_selection=()
 if [[ -n "$profiles_override" ]]; then
@@ -614,16 +664,23 @@ stack_dir=""
 resolved_tools=""
 requested_profiles=""
 selection_origin=""
+# Profile sources in auto follow their ref here; a failure leaves everything as it was.
+source_state_file="$(mktemp "${TMPDIR:-/tmp}/agent-ready-sources.XXXXXX")"
+trap 'rm -f -- "$source_state_file"' EXIT
+if ! python3 "$state_script" fetch-sources --project . --skill-dir "$skill_dir" --state-file "$source_state_file"; then
+  printf 'WARNING: the profile sources could not be prepared; local projection skipped and nothing was changed.\n' >&2
+  exit 0
+fi
+sync_policy=(--source-state "$source_state_file")
+if [[ "$explicit_selection" -eq 0 ]]; then
+  sync_policy+=(--source-mode sync)
+fi
 profile_resolution_status=0
-profile_resolution="$(python3 "$state_script" resolve --project . --skill-dir "$skill_dir" --source-mode sync \
+profile_resolution="$(python3 "$state_script" resolve --project . --skill-dir "$skill_dir" "${sync_policy[@]}" \
   ${profile_selection[@]+"${profile_selection[@]}"} \
   --compose-dir "${XDG_CACHE_HOME:-$HOME/.cache}/agent-ready-setup/compose")" || profile_resolution_status=$?
 if [[ "$profile_resolution_status" -eq 5 ]]; then
-  # A profile source is missing or not adopted: updates of packs are always explicit, and the
-  # pinned revision downloads detached so a later session can project it.
   printf 'WARNING: a profile source is not ready; local projection skipped and nothing was changed.\n' >&2
-  start_background_task "profile-sources-$(project_log_key)" \
-    python3 "$state_script" fetch-sources --project . --skill-dir "$skill_dir" --locked-only
   exit 0
 fi
 if [[ "$profile_resolution_status" -ne 0 ]]; then
@@ -978,9 +1035,9 @@ fi
 
 # The pre-apply plan decides ownership for every managed destination.
 plan_file="$(mktemp "${TMPDIR:-/tmp}/agent-ready-plan.XXXXXX")"
-trap 'rm -f -- "$plan_file"; release_sync_lock' EXIT
+trap 'rm -f -- "$plan_file" "$source_state_file"; release_sync_lock' EXIT
 if ! protected_destinations="$(python3 "$state_script" plan --project . --skill-dir "$skill_dir" \
-  --format protected --save "$plan_file" --source-mode sync ${profile_selection[@]+"${profile_selection[@]}"})"; then
+  --format protected --save "$plan_file" "${sync_policy[@]}" ${profile_selection[@]+"${profile_selection[@]}"})"; then
   printf 'WARNING: Agent Ready plan could not be computed; no asset was changed.\n' >&2
   exit 0
 fi
@@ -1034,7 +1091,6 @@ sync_claude_settings "$skill_dir/assets/common/settings.json"
 sync_codex_hooks "$skill_dir/assets/codex/hooks.json"
 
 finalize_arguments=(finalize --project . --skill-dir "$skill_dir" --plan "$plan_file")
-[[ -n "$update_mode_override" ]] && finalize_arguments+=(--updates "$update_mode_override")
 if ! finalize_report="$(python3 "$state_script" "${finalize_arguments[@]}")"; then
   conflicts+=("could not write .agents/agent-ready.lock.json; the next apply treats this run as unlocked")
   finalize_report=""
