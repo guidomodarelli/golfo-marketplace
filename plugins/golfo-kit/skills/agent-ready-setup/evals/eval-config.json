@@ -2504,7 +2504,7 @@
         },
         {
           "type": "contains_any",
-          "values": ["refresh.{0,6}off", "off.{0,12}refresh"],
+          "values": ["refresh.*off", "off.*refresh"],
           "description": "Da la configuración persistente",
           "critical": true
         },
@@ -2540,7 +2540,7 @@
         },
         {
           "type": "contains_any",
-          "values": ["`off`", "\"off\"", "ci: off", "ci.{0,6}off"],
+          "values": ["`off`", "\"off\"", "ci: off", "ci.*off"],
           "description": "Explica cómo apagarlo"
         }
       ]
@@ -2589,7 +2589,7 @@
         },
         {
           "type": "contains_any",
-          "values": ["updates.{0,8}pinned", "pinned.{0,8}updates"],
+          "values": ["updates.*pinned", "pinned.*updates"],
           "description": "Apaga las actualizaciones automáticas",
           "critical": true
         },
