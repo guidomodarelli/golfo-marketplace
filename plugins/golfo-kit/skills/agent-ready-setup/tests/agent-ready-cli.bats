@@ -269,3 +269,17 @@ publish_pack_repository() {
   [ "$status" -eq 0 ]
   [ -f .agents/rules/acme-new.md ]
 }
+
+@test "update follows the effective configuration: with sources off it only updates golfo-kit" {
+  mkdir -p .agents "$XDG_CONFIG_HOME/agent-ready-setup"
+  printf '%s\n' '{"profiles": ["node"], "sources": {"packs": [{"name": "acme", "source": "git+https://packs.example.invalid/acme", "ref": "main"}]}}' > .agents/agent-ready.json
+  printf '%s\n' '{"sources": {"enabled": false}}' > "$XDG_CONFIG_HOME/agent-ready-setup/config.json"
+
+  run_cli update --dry-run
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Agent Ready plan"* ]]
+
+  run_cli update acme
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"profile sources are off (sources.enabled: false)"* ]]
+}

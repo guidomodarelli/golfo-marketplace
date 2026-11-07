@@ -25,9 +25,11 @@ from agent_ready_config import (
     load_schema,
     parse_text_value,
     read_layer_file,
+    resolve_configuration,
     user_config_path,
     validate_layer,
 )
+from agent_ready_options import SOURCES_ENABLED_KEY, SOURCES_PACKS_KEY
 
 CLI_NAME = "agent-ready"
 SCRIPT_DIRECTORY = os.path.dirname(os.path.abspath(__file__))
@@ -148,11 +150,12 @@ def last_value(lines, prefix):
 
 
 def declared_sources(project_root):
-    """Profile sources the manifest declares, parsed by the engine."""
+    """Profile sources in force, as the engine resolves them: none while sources are off."""
+    configuration = resolve_configuration(project_root)
+    if not configuration.value(SOURCES_ENABLED_KEY):
+        return None
     path = os.path.join(project_root, PROJECT_CONFIG_RELATIVE_PATH)
-    document = read_layer_file(path, LAYER_PROJECT) or {}
-    validate_layer(load_schema(), document, LAYER_PROJECT, describe_layer(LAYER_PROJECT, path))
-    return parse_profile_sources(document.get("sources", {}).get("packs", []), path)
+    return parse_profile_sources(configuration.value(SOURCES_PACKS_KEY), path)
 
 
 def follows_a_ref(declaration):
@@ -217,7 +220,10 @@ def command_apply(arguments):
 
 def command_update(arguments):
     """Adopt the latest revision of some sources, or of every declared one, and of golfo-kit."""
-    declarations = {declaration["name"]: declaration for declaration in declared_sources(arguments.project_root)}
+    sources = declared_sources(arguments.project_root)
+    if sources is None and arguments.sources:
+        raise UsageError(f"profile sources are off ({SOURCES_ENABLED_KEY}: false), so there is no source to update")
+    declarations = {declaration["name"]: declaration for declaration in sources or []}
     unknown = [name for name in arguments.sources if name not in declarations]
     if unknown:
         known = ", ".join(sorted(declarations)) or "none"
