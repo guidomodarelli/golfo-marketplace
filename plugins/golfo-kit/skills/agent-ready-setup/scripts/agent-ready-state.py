@@ -1153,19 +1153,28 @@ def merged_file_changes(project_root, skill_dir, plan):
 
 
 def claude_proxy_drift(project_root, skill_dir):
-    """CLAUDE.md files that instruction normalization would rewrite."""
+    """CLAUDE.md files that instruction normalization would rewrite or create."""
     proxy_path = os.path.join(skill_dir, CLAUDE_PROXY_RELATIVE_PATH)
     listed = run_quiet(["git", "ls-files", "-co", "--exclude-standard"], cwd=project_root)
     if listed is None or not os.path.isfile(proxy_path):
         return []
     proxy_hash = sha256_of_file(proxy_path)
+    listed_paths = listed.splitlines()
+    existing_proxies = {path.casefold() for path in listed_paths if os.path.basename(path).lower() == "claude.md"}
     drifted = []
-    for relative_path in listed.splitlines():
-        if os.path.basename(relative_path).lower() != "claude.md":
-            continue
-        absolute_path = os.path.join(project_root, relative_path)
-        if os.path.isfile(absolute_path) and not os.path.islink(absolute_path) and sha256_of_file(absolute_path) != proxy_hash:
-            drifted.append(relative_path)
+    # The root always needs its proxy, and so does every AGENTS.md: it is what loads the instructions.
+    required_proxies = {"CLAUDE.md"}
+    for relative_path in listed_paths:
+        file_name = os.path.basename(relative_path).lower()
+        if file_name == "agents.md":
+            required_proxies.add(os.path.join(os.path.dirname(relative_path), "CLAUDE.md").replace(os.sep, "/"))
+        elif file_name == "claude.md":
+            absolute_path = os.path.join(project_root, relative_path)
+            if os.path.isfile(absolute_path) and not os.path.islink(absolute_path) and sha256_of_file(absolute_path) != proxy_hash:
+                drifted.append(relative_path)
+    for proxy in sorted(required_proxies):
+        if proxy.casefold() not in existing_proxies and not os.path.lexists(os.path.join(project_root, proxy)):
+            drifted.append(proxy)
     return drifted
 
 

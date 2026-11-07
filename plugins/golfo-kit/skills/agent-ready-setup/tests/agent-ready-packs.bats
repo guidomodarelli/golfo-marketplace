@@ -16,6 +16,9 @@ setup() {
   mkdir -p "$project_dir" "$fake_bin" "$test_root/tmp"
   export TMPDIR="$test_root/tmp"
   export XDG_CACHE_HOME="$test_root/cache"
+  # Sync flows run with an empty home: nothing installed on this machine may decide them.
+  export HOME="$test_root/home"
+  mkdir -p "$HOME"
   export AGENT_READY_SETUP_BROWSER_INSTALL=0
   export AGENT_READY_SETUP_ACTIVE_PROVIDER=claude
   export AGENT_READY_SETUP_SYNC_FOREGROUND=1

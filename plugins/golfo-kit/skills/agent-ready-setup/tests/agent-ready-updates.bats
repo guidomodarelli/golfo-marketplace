@@ -17,6 +17,9 @@ setup() {
   mkdir -p "$project_dir" "$fake_bin" "$test_root/tmp"
   export TMPDIR="$test_root/tmp"
   export XDG_CACHE_HOME="$test_root/cache"
+  # Sync flows run with an empty home: nothing installed on this machine may decide them.
+  export HOME="$test_root/home"
+  mkdir -p "$HOME"
   export AGENT_READY_SETUP_BROWSER_INSTALL=0
   export AGENT_READY_SETUP_ACTIVE_PROVIDER=claude
   export GIT_CONFIG_GLOBAL="$test_root/gitconfig"
@@ -259,9 +262,8 @@ EOF
   [ "$status" -eq 0 ]
   rm -rf "$XDG_CACHE_HOME/agent-ready-setup/packs"
   rm .agents/rules/acme-kafka.md
-  mkdir -p "$test_root/empty-home"
 
-  run_session_start HOME="$test_root/empty-home"
+  run_session_start
   [ "$status" -eq 0 ]
   wait_for_background_update
   [ -f .agents/rules/acme-kafka.md ]
@@ -688,6 +690,22 @@ PY
   run_check
   [ "$status" -eq 4 ]
   [[ "$output" == *"the lock has the profiles node, browser; the selection resolves to node"* ]]
+}
+
+@test "the check fails when a CLAUDE.md proxy is missing, in the root or beside an AGENTS.md" {
+  run_bootstrap --stack node
+  [ "$status" -eq 0 ]
+  run env PATH="$fake_bin:$PATH" bash "$skill_dir/scripts/apply-managed-block.sh" --stack node --skill-dir "$skill_dir"
+  run_check
+  [ "$status" -eq 0 ]
+
+  rm CLAUDE.md
+  mkdir -p services/billing
+  printf '# Billing\n' > services/billing/AGENTS.md
+  run_check
+  [ "$status" -eq 4 ]
+  [[ "$output" == *"CLAUDE.md: an apply would normalize it to the proxy"* ]]
+  [[ "$output" == *"services/billing/CLAUDE.md: an apply would normalize it to the proxy"* ]]
 }
 
 @test "ci warn reports the same problems and passes" {
