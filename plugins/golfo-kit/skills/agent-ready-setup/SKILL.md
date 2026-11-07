@@ -108,7 +108,8 @@ sin `--stack` si el repo ya tiene manifest) y muestran su salida sin alterarla.
 No escriben en el repo ni instalan herramientas. Por defecto refrescan la caché fuera del
 repo para decir si todo está al día; `--offline` no toca la red. Para CI, en cualquier proveedor,
 `scripts/agent-ready-state.py check` compara y sale con códigos documentados, según `ci` del manifest. Esta
-skill no crea workflows de CI. Saltear los Steps 2 y 4. Para explicar la salida, leer
+skill no crea workflows de CI; para armar un pipeline o explicar un código de salida, leer
+[references/ci-check.md](references/ci-check.md). Saltear los Steps 2 y 4. Para explicar la salida, leer
 [references/profiles-and-lockfile.md](references/profiles-and-lockfile.md).
 
 ## Step 2 — Select profiles
