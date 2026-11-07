@@ -261,8 +261,8 @@ hay scripts para desacoplarlo.
 
 **`updates.mode: pinned`.** Nada se aplica solo: el hook informa drift y updates pendientes, sin escribir en el
 repo. Con `updates.refresh` encendido, la tarea desacoplada solo refresca la caché, para que la sesión siguiente pueda
-avisar. Se adopta con `bash "$SKILL_DIR/scripts/bootstrap.sh" … --update-source <fuente>` o editando la
-revisión del manifest. Un apply de `bootstrap.sh` es siempre explícito: sigue las fuentes en `auto`, adopta
+avisar. Se adopta con `agent-ready update <fuente>` (`--dry-run` muestra antes qué cambiaría) o editando la
+revisión del manifest. Un apply es siempre explícito: sigue las fuentes en `auto`, adopta
 el drift de las rutas locales y deja el resto en la revisión del lock.
 
 **`updates.enabled: false`.** SessionStart no actualiza, no chequea ni refresca nada, y no informa: solo un apply
@@ -358,16 +358,19 @@ Para cambiar comportamiento, el proyecto agrega una rule propia bajo
 ## 7. Operaciones
 
 ```bash
-bash "$SKILL_DIR/scripts/bootstrap.sh" --skill-dir "$SKILL_DIR" --provider "$PROVIDER" --status
-bash "$SKILL_DIR/scripts/bootstrap.sh" --skill-dir "$SKILL_DIR" --provider "$PROVIDER" --plan
-bash "$SKILL_DIR/scripts/bootstrap.sh" --skill-dir "$SKILL_DIR" --provider "$PROVIDER" [--profiles a,b] [--updates pinned|auto]
+python3 "$SKILL_DIR/scripts/agent-ready" status [--offline] [--json]
+python3 "$SKILL_DIR/scripts/agent-ready" plan [--offline] [--json]
+python3 "$SKILL_DIR/scripts/agent-ready" apply [--profiles a,b] [--updates pinned|auto] [--dry-run]
+python3 "$SKILL_DIR/scripts/agent-ready" update [<fuente>...] [--dry-run]
 ```
 
-- `--status` y `--plan` no escriben en el repo ni instalan herramientas. Antes de
+- `status` y `plan` no escriben en el repo ni instalan herramientas. Antes de
   comparar refrescan la caché y el snapshot del marketplace. Con `--offline` o
   `updates.refresh: false` comparan contra lo ya disponible y no llaman a la CLI del provider.
-- `agent-ready-state.py check` compara para CI, y su código de salida sigue a `ci.mode` (sección 4).
-- `--config` (o `agent-ready-state.py config`) muestra la configuración efectiva y la capa de cada valor.
+- `agent-ready check` compara para CI, y su código de salida sigue a `ci.mode` (sección 4).
+- `agent-ready config explain` muestra la configuración efectiva y la capa de cada valor.
+- `update` sin fuentes adopta la última revisión de cada fuente Git que sigue una `ref` y de golfo-kit;
+  con `--dry-run` muestra el plan de esa adopción y solo descarga en la caché del usuario.
 - `status` separa assets aplicados, modificados, faltantes, conflictos
   preservados, escrituras fallidas y retirados que no se pudieron borrar; además dice si el
   source resuelto o la selección de profiles difieren del lock (`Update
@@ -381,10 +384,10 @@ bash "$SKILL_DIR/scripts/bootstrap.sh" --skill-dir "$SKILL_DIR" --provider "$PRO
   normalizarían, los efectos fuera de los assets con su alcance (`user`,
   `user-cache`, `project`, `repository-config`) y los requisitos con su
   disponibilidad.
-- Sin `--status` ni `--plan`, bootstrap aplica: upgrade del marketplace,
-  proyección con el gate de ownership, retirada, lockfile y manifest. Sin
-  `--profiles` ni `--stack` usa los profiles del manifest y, si no hay manifest, la
-  detección inicial. Aplicar dos veces el mismo plan no cambia nada.
+- `apply` corre `bootstrap.sh`: upgrade del marketplace, proyección con el gate de ownership,
+  retirada, lockfile y manifest; después alinea el bloque gestionado de `AGENTS.md` con
+  `merge-instructions.sh`. Sin `--profiles` ni `--stack` usa los profiles del manifest y, si no
+  hay manifest, la detección inicial. Aplicar dos veces el mismo plan no cambia nada.
 - `python3 scripts/agent-ready-state.py detect --project . --skill-dir "$SKILL_DIR"`
   muestra la detección sola. Sale con 0 si determina un stack primario y con 3 si no.
 

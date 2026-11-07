@@ -3,6 +3,8 @@
 import hashlib
 import json
 import os
+import shutil
+import tempfile
 import time
 
 LOCK_MAX_AGE_SECONDS = 3600
@@ -74,3 +76,43 @@ def walk_files(root):
             relative_path = os.path.relpath(absolute_path, root).replace(os.sep, "/")
             collected.append((relative_path, absolute_path))
     return sorted(collected)
+
+
+def serialize_json(content):
+    """Deterministic JSON so the same resolution produces the same bytes."""
+    return json.dumps(content, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
+
+
+def write_text_atomically(path, text):
+    """Write text through a temporary sibling and an atomic rename."""
+    directory = os.path.dirname(path) or "."
+    os.makedirs(directory, exist_ok=True)
+    if os.path.islink(path):
+        raise StateError(f"{path} is a symlink; it was not overwritten")
+    file_descriptor, temporary_path = tempfile.mkstemp(prefix=".agent-ready-state.", dir=directory)
+    try:
+        with os.fdopen(file_descriptor, "w", encoding="utf-8", newline="\n") as file_handle:
+            file_handle.write(text)
+        os.replace(temporary_path, path)
+    except BaseException:
+        if os.path.exists(temporary_path):
+            os.unlink(temporary_path)
+        raise
+
+
+def plugin_version(skill_dir):
+    """Version of the plugin manifest that ships the skill, if present."""
+    plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(skill_dir)))
+    for manifest in (".claude-plugin/plugin.json", ".codex-plugin/plugin.json", "plugin.json"):
+        manifest_path = os.path.join(plugin_root, manifest)
+        if os.path.isfile(manifest_path):
+            try:
+                return read_json_file(manifest_path, "plugin manifest").get("version")
+            except StateError:
+                return None
+    return None
+
+
+def bash_executable():
+    """Bash from PATH; Windows process creation would find the WSL launcher in System32 first."""
+    return shutil.which("bash") or "bash"

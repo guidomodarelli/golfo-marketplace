@@ -365,8 +365,13 @@ def validate_layer(schema, document, layer, label):
     return assignments, locked
 
 
-def parse_environment_value(raw, node):
-    """Value of an option from the text of its environment variable."""
+def parse_text_value(raw, node):
+    """Value of an option from its text form, as an environment variable or a command line gives it.
+
+    Booleans accept 1, true, on, 0, false and off; lists take comma separated items, or JSON
+    when the text starts with ``[``. Anything that does not parse is returned as is, so the
+    schema validation names the key and the expected values.
+    """
     if node.get("type") == "boolean":
         word = raw.strip().lower()
         if word in ENVIRONMENT_TRUE_WORDS:
@@ -380,6 +385,11 @@ def parse_environment_value(raw, node):
         except ValueError:
             return raw
     if node.get("type") == "array":
+        if raw.lstrip().startswith("["):
+            try:
+                return json.loads(raw)
+            except ValueError:
+                return raw
         return [item.strip() for item in raw.split(ENVIRONMENT_LIST_SEPARATOR) if item.strip()]
     return raw
 
@@ -392,7 +402,7 @@ def environment_assignments(schema, environment):
         raw = environment.get(variable) if variable else None
         if raw in (None, ""):
             continue
-        value = parse_environment_value(raw, node)
+        value = parse_text_value(raw, node)
         label = describe_layer(LAYER_ENVIRONMENT, variable)
         try:
             validate_value(value, node, key)

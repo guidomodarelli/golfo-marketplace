@@ -2461,7 +2461,7 @@
         },
         {
           "type": "contains_any",
-          "values": ["agent-ready-state.py check", "chequeo de CI", "diff del lock"],
+          "values": ["agent-ready check", "agent-ready\" check", "chequeo de CI", "diff del lock"],
           "description": "Da el control disponible",
           "critical": true
         }
@@ -2479,14 +2479,14 @@
           "critical": true
         },
         {
-          "type": "contains",
-          "value": "--update-source",
-          "description": "Da la adopción explícita",
+          "type": "contains_any",
+          "values": ["agent-ready update", "agent-ready\" update"],
+          "description": "Da la adopción explícita con el CLI",
           "critical": true
         },
         {
           "type": "contains_any",
-          "values": ["--plan", "--status", "`plan`", "`status`"],
+          "values": ["--plan", "--status", "`plan`", "`status`", "agent-ready plan", "agent-ready\" plan", "agent-ready status", "agent-ready\" status", "--dry-run"],
           "description": "Indica cómo ver la actualización pendiente"
         }
       ]
@@ -2521,8 +2521,8 @@
       "input": "Quiero que el CI de mi repo me avise si los assets de agent-ready-setup quedaron viejos, y mi pack es privado. ¿Qué corro en el workflow? ¿Cómo hago para que solo avise sin fallar, y para apagarlo? ¿Dónde va el token? No ejecutes Bash ni escribas archivos.",
       "assertions": [
         {
-          "type": "contains",
-          "value": "agent-ready-state.py",
+          "type": "contains_any",
+          "values": ["agent-ready check", "agent-ready\" check"],
           "description": "Usa el comando común de chequeo",
           "critical": true
         },
@@ -2551,8 +2551,8 @@
       "input": "Mi empresa usa Jenkins y no tenemos GitHub Actions; el pack privado está en un Git interno. ¿Cómo corro el chequeo de agent-ready-setup en un Jenkinsfile? ¿Qué códigos de salida tengo que manejar y necesito `gh` para autenticar? ¿agent-ready-setup me genera algún archivo de CI? No ejecutes Bash ni escribas archivos.",
       "assertions": [
         {
-          "type": "contains",
-          "value": "agent-ready-state.py",
+          "type": "contains_any",
+          "values": ["agent-ready check", "agent-ready\" check"],
           "description": "Usa el comando común",
           "critical": true
         },
@@ -2704,7 +2704,7 @@
       "assertions": [
         {
           "type": "contains_any",
-          "values": ["--config", "state.py\" config", "state.py config", "config --project"],
+          "values": ["config explain", "--config", "state.py\" config", "state.py config", "config --project"],
           "description": "Muestra la configuración efectiva",
           "critical": true
         },
@@ -2814,6 +2814,92 @@
           "type": "contains_any",
           "values": ["profileSources", "sources.packs"],
           "description": "Explica cómo declararlo en el manifest"
+        }
+      ]
+    },
+    {
+      "id": "cli-apply-runs-the-whole-flow",
+      "description": "Aplicar usa agent-ready apply, que proyecta y alinea AGENTS.md, en vez de encadenar los scripts internos.",
+      "input": "Dame el comando exacto para dejar agent ready un repo Node que además diseña flujos de negocio, incluido dejar alineado el AGENTS.md. Antes quiero ver qué cambiaría. No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "apply --profiles node,business-flows",
+          "description": "Aplica con el CLI y la selección pedida",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["--dry-run", "agent-ready plan", "agent-ready\" plan"],
+          "description": "Muestra antes qué cambiaría",
+          "critical": true
+        },
+        {
+          "type": "not_contains_any",
+          "values": ["bootstrap.sh\" --skill-dir", "bootstrap.sh --skill-dir"],
+          "description": "No encadena bootstrap.sh a mano"
+        }
+      ]
+    },
+    {
+      "id": "cli-check-json-for-a-pipeline",
+      "description": "En CI, el chequeo se corre con agent-ready check y su JSON va por stdout.",
+      "input": "En el pipeline quiero guardar en un archivo el resultado del chequeo de agent-ready-setup como JSON y que el job falle solo cuando está desactualizado o una fuente no responde. ¿Qué corro y qué códigos manejo? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["check --json", "check --format json"],
+          "description": "Pide el JSON al CLI",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["agent-ready check", "agent-ready\" check"],
+          "description": "Usa el CLI",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(4|5).{0,80}(desactualizad|no disponible|outdated|unavailable)|(desactualizad|no disponible|outdated|unavailable).{0,80}(4|5)",
+          "description": "Da los códigos de salida"
+        }
+      ]
+    },
+    {
+      "id": "cli-update-previews-one-source",
+      "description": "Adoptar una fuente fijada se previsualiza con update --dry-run y se aplica con update.",
+      "input": "Mi repo está en pinned y quiero ver qué cambiaría si adopto la última versión de la fuente acme, y si me gusta, adoptarla sin tocar las otras fuentes. ¿Qué comandos corro? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["agent-ready update acme --dry-run", "agent-ready\" update acme --dry-run"],
+          "description": "Previsualiza la adopción de esa fuente con el CLI",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "update acme($|[^-])",
+          "description": "Adopta solo esa fuente",
+          "critical": true
+        }
+      ]
+    },
+    {
+      "id": "cli-config-set-writes-the-right-layer",
+      "description": "Una preferencia de la máquina se escribe con config set --layer user, y una del repo en el manifest.",
+      "input": "Con el CLI de agent-ready-setup quiero dos cosas: que en mi máquina todos los repos queden en pinned, y que este repo en particular use el chequeo de CI solo como aviso. ¿Qué comandos uso? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "config set updates.mode pinned --layer user",
+          "description": "La preferencia de la máquina va a la capa de usuario",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "config set ci.mode warn",
+          "description": "La del repo va al manifest",
+          "critical": true
         }
       ]
     }
