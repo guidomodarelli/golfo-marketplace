@@ -111,3 +111,36 @@ run_validation() {
   [ "$status" -eq 1 ]
   [[ "$output" == *"::error file=plugins/golfo-kit/.claude-plugin/plugin.json::golfo-kit: Missing portable root plugin.json"* ]]
 }
+
+# write_nested_skill_file <path under skills/demo>
+write_nested_skill_file() {
+  mkdir -p "$plugin_dir/skills/demo/$1"
+  printf -- '---\nname: %s\ndescription: Nested file.\n---\n' "$(basename "$1")" > "$plugin_dir/skills/demo/$1/SKILL.md"
+}
+
+@test "fails when a SKILL.md outside the support directories would install as another skill in Hermes" {
+  write_nested_skill_file examples/pack/profiles/kafka/skills/consumer
+
+  run_validation
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"nested demo/examples/pack/profiles/kafka/skills/consumer/SKILL.md would install as a separate skill in Hermes"* ]]
+}
+
+@test "accepts nested SKILL.md templates inside the support directories of a skill" {
+  write_nested_skill_file assets/stacks/node/skills/service
+  write_nested_skill_file references/examples/pack
+  write_nested_skill_file templates/skill
+  write_nested_skill_file scripts/fixtures/skill
+
+  run_validation
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"golfo-kit: portable package is valid."* ]]
+}
+
+@test "a support directory only hides a SKILL.md when its parent holds a skill" {
+  write_nested_skill_file examples/assets/skill
+
+  run_validation
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"nested demo/examples/assets/skill/SKILL.md"* ]]
+}

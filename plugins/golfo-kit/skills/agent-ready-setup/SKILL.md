@@ -14,7 +14,7 @@ description: >-
   una actualización de agent-ready-setup o por qué un asset quedó en conflicto.
 license: MIT
 metadata:
-  version: "1.6.0"
+  version: "1.6.1"
   author: "guponce"
   category: "developer-experience"
   tags: "agent-ready, multi-provider, claude-code, codex, bootstrap, setup, scaffold, context-optimized-v1.20.1"
@@ -155,7 +155,7 @@ manifest: un pack en Git o una carpeta local. Agregar una fuente solo los hace d
 por nombre con namespace (`acme/kafka-interno`), y un pack agrega capabilities, nunca un stack primario.
 Leer [references/profiles-and-lockfile.md](references/profiles-and-lockfile.md) (sección «Profile packs»)
 para declarar una fuente, explicar una colisión o un `Evaluation incomplete`;
-`examples/acme-profile-pack/` es un pack mínimo.
+`assets/examples/acme-profile-pack/` es un pack mínimo.
 
 Detección, packs, actualizaciones, refresco y chequeo de CI son opcionales y se configuran por separado,
 con defaults que funcionan sin configurar nada. La tabla de campos, variables y defaults, y la advertencia
@@ -333,7 +333,7 @@ Mostrar output del script sin alterarlo. En respuestas documentales, enumerar ad
 - **Frontend:** `rules/api-configuration.md`, `rules/api-validation-middleware.md`, `rules/cross-engine.md`, `rules/frontend-style.md`, `rules/hexagonal-architecture.md`, `rules/lodash.md`, `rules/no-unnecessary-mocks.md`, `rules/security.md`, `rules/server-first-data-flow.md`, `rules/testing.md`, `rules/upstream-contracts.md`, `rules/user-facing-feedback.md`, `agents/a11y-reviewer.md`, `agents/lint-reviewer.md`, `agents/perf-analyzer.md`, `agents/security-scanner.md`, `agents/test-reviewer.md`, `commands/review-pr.md`, `skills/api-endpoint/`, `skills/component-creation/`, `skills/karpathy-guidelines/`, `skills/logger/`, `skills/react-act-test-fixes/` y `skills/service/`.
 - **Profile `business-flows`:** `rules/business-flows.md` y `skills/business-flow-design/SKILL.md`.
 - **Profile packs:** los assets de cada profile seleccionado de `profileSources`, con los paths que publique su pack bajo `rules/`, `skills/`, `agents/` y `commands/`.
-- **Estado del repo:** `.agents/agent-ready.json` (manifest) y `.agents/agent-ready.lock.json` (lockfile). `assets/profiles.json` y `assets/providers.json` son catálogos internos de la skill y no se proyectan.
+- **Estado del repo:** `.agents/agent-ready.json` (manifest) y `.agents/agent-ready.lock.json` (lockfile). `assets/profiles.json` y `assets/providers.json` son catálogos internos de la skill, y `assets/examples/` guarda ejemplos para leer; ninguno se proyecta.
 
 Las skills que ya publica el plugin golfo-kit no se duplican en el catálogo de un stack: por ejemplo, el refactor de constantes se usa desde la skill `constants-refactor` del plugin y no se proyecta en `.agents/skills/`. Ningún stack publica hooks propios ni `mcp.json`: los únicos hooks proyectados son los comunes.
 

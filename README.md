@@ -256,8 +256,10 @@ El workflow `.github/workflows/version-bump.yml` corre en cada pull request el j
 El job `Shell suites` de `.github/workflows/tests.yml` corre `pnpm validate-portable-plugins`
 (`scripts/validate-portable-plugins.js`). Falla si un plugin no tiene `plugin.json` portable en su
 raíz, si ese manifest no declara el schema de Agent Plugins v1, usa otro `name`, agrega campos
-fuera del spec o difiere en versión del manifest de Claude, o si alguna `skills/*/SKILL.md` tiene
-un `name` distinto de su directorio o una `description` vacía o de más de 1024 caracteres.
+fuera del spec o difiere en versión del manifest de Claude, si alguna `skills/*/SKILL.md` tiene
+un `name` distinto de su directorio o una `description` vacía o de más de 1024 caracteres, o si hay
+un `SKILL.md` anidado dentro de una skill fuera de `assets/`, `references/`, `templates/` o
+`scripts/`: Hermes recorre `skills/` recursivamente y lo instalaría como una skill aparte.
 
 ---
 
