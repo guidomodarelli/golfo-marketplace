@@ -7,7 +7,7 @@
 setup() {
   repository_root="$(cd "$BATS_TEST_DIRNAME/../../../../.." && pwd)"
   skill_dir="$repository_root/plugins/golfo-kit/skills/agent-ready-setup"
-  example_pack="$skill_dir/examples/acme-profile-pack"
+  example_pack="$skill_dir/assets/examples/acme-profile-pack"
   test_root="$(mktemp -d)"
   test_root="$(cd "$test_root" && pwd -P)"
   export MSYS="${MSYS:+$MSYS }winsymlinks:nativestrict"
