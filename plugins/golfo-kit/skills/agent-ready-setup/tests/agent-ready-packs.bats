@@ -343,7 +343,7 @@ PY
 
   run_bootstrap --plan
   [ "$status" -eq 0 ]
-  [[ "$output" == *"acme differs from the lock: revision ${first_commit:0:12} -> ${pack_commit:0:12}"* ]]
+  [[ "$output" == *"acme differs from the lock:"*"revision ${first_commit:0:12} -> ${pack_commit:0:12}"* ]]
   [[ "$output" == *"+ create          .agents/rules/acme-new.md  [acme/kafka-interno]"* ]]
   run_state status --check
   [ "$status" -eq 4 ]
