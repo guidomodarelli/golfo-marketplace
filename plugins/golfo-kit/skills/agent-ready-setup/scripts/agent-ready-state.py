@@ -686,8 +686,20 @@ def enforce_adopted_sources(catalog, resolved, digests, lock):
         if item["selected"] and item["differences"]:
             raise IncompleteEvaluationError(
                 f"profile source '{name}' differs from the lock ({'; '.join(item['differences'])}); "
-                "SessionStart does not adopt it. Review it with bootstrap.sh --plan and adopt it with bootstrap.sh"
+                "SessionStart does not adopt it, so this repository keeps its committed assets until someone adopts the change"
             )
+
+
+def keep_locked_entries_of_unselected_sources(plan, lock):
+    """SessionStart does not adopt a source without selected profiles either: its drift stays visible."""
+    locked_sources = (lock or {}).get("profileSources", {})
+    for name, item in plan["sourceReport"].items():
+        if item["selected"] or not item["differences"]:
+            continue
+        if name in locked_sources:
+            plan["profileSources"][name] = locked_sources[name]
+        else:
+            plan["profileSources"].pop(name, None)
 
 
 def bash_executable():
@@ -1709,7 +1721,9 @@ def command_plan(arguments):
         print_incomplete_plan(arguments.project, arguments.skill_dir, selection, requested, incomplete_error)
         return INCOMPLETE_EVALUATION_STATUS
     if arguments.source_mode == SOURCE_MODE_SYNC:
-        enforce_adopted_sources(catalog, plan["profiles"], plan["profileDigests"], read_lock(arguments.project))
+        lock = read_lock(arguments.project)
+        enforce_adopted_sources(catalog, plan["profiles"], plan["profileDigests"], lock)
+        keep_locked_entries_of_unselected_sources(plan, lock)
     plan["profiles_requested"] = requested
     plan["selection"] = selection
     plan["addedDependencies"] = added_dependencies(catalog, requested, plan["profiles"])

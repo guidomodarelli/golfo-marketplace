@@ -833,6 +833,36 @@ EOF
   [ "$(tree_fingerprint)" = "$before" ]
 }
 
+@test "SessionStart does not adopt a changed source that the selection does not use" {
+  copy_example_pack
+  write_manifest node "acme=path:../acme-pack"
+  run_bootstrap --updates auto
+  [ "$status" -eq 0 ]
+  locked_digest="$(lock_value 'data["profileSources"]["acme"]["catalogDigest"]')"
+  edit_pack_catalog 'catalog["profiles"]["base"]["description"] = "Changed in the pack."'
+
+  run_sync_hook
+  [ "$status" -eq 0 ]
+  [ "$(lock_value 'data["profileSources"]["acme"]["catalogDigest"]')" = "$locked_digest" ]
+
+  run_state status --check
+  [ "$status" -eq 4 ]
+  [[ "$output" == *"acme differs from the lock: catalog changed"* ]]
+}
+
+@test "the messages of SessionStart about a source never ask to run bootstrap" {
+  copy_example_pack
+  write_manifest acme/kafka-interno "acme=path:../acme-pack"
+  run_bootstrap --updates auto
+  [ "$status" -eq 0 ]
+  printf 'changed locally\n' >> "$pack_dir/profiles/kafka-interno/rules/acme-kafka.md"
+
+  run_sync_hook
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"SessionStart does not adopt it"* ]]
+  [[ "$output" != *"bootstrap"* ]]
+}
+
 @test "a machine without the pinned revision downloads it in the background and a later session projects" {
   publish_pack_repository acme
   write_manifest acme/kafka-interno "acme=git+https://packs.example.invalid/acme#$pack_commit"

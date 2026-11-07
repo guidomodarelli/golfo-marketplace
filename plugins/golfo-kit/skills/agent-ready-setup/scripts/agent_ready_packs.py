@@ -443,7 +443,7 @@ def locate_source(declaration, locked_entry, project_root, pinned_commit=None):
     if tree:
         located.update(root=tree, state=SOURCE_AVAILABLE)
     else:
-        located["reason"] = f"commit {commit[:12]} is not in the local cache; only an apply downloads it"
+        located["reason"] = f"commit {commit[:12]} is not in the local cache"
     return located
 
 
