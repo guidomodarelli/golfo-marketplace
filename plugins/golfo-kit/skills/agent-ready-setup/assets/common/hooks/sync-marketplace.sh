@@ -573,43 +573,6 @@ if [[ "$manifest_updates" == pinned && "$explicit_selection" -eq 0 ]]; then
   exit 0
 fi
 
-profile_selection=()
-if [[ -n "$profiles_override" ]]; then
-  profile_selection=(--profiles "$profiles_override")
-elif [[ -n "$stack_override" ]]; then
-  profile_selection=(--stack "$stack_override")
-fi
-
-# Without flags, resolve uses the manifest and then the initial detection; if neither
-# determines one stack it names the matches and asks for an explicit selection.
-stack=""
-stack_dir=""
-resolved_tools=""
-requested_profiles=""
-selection_origin=""
-if ! profile_resolution="$(python3 "$state_script" resolve --project . --skill-dir "$skill_dir" \
-  ${profile_selection[@]+"${profile_selection[@]}"} \
-  --compose-dir "${XDG_CACHE_HOME:-$HOME/.cache}/agent-ready-setup/compose")"; then
-  printf 'WARNING: Agent Ready profiles could not be resolved; local projection skipped.\n' >&2
-  exit 0
-fi
-while IFS=$'\t' read -r resolution_key resolution_value; do
-  resolution_value="${resolution_value%$'\r'}"
-  case "$resolution_key" in
-    primary) stack="$resolution_value" ;;
-    stack_dir) stack_dir="$resolution_value" ;;
-    tools) resolved_tools="$resolution_value" ;;
-    requested) requested_profiles="$resolution_value" ;;
-    selection) selection_origin="$resolution_value" ;;
-  esac
-done <<< "$profile_resolution"
-# The sync projects what this resolution detected, even if the signals change meanwhile.
-if [[ "$selection_origin" == detection ]]; then
-  profile_selection=(--profiles "$requested_profiles")
-fi
-# Child scripts (normalization, managed block, background review) read the same tree.
-export AGENT_READY_SETUP_STACK_DIR="$stack_dir"
-
 # Per-user state for background tasks; nothing machine-specific lands in the project.
 background_cache_directory="${XDG_CACHE_HOME:-$HOME/.cache}/agent-ready-setup"
 
@@ -636,6 +599,53 @@ start_background_task() {
     printf 'WARNING: background task %s could not start; it retries in the next session.\n' "$log_name" >&2
   fi
 }
+
+profile_selection=()
+if [[ -n "$profiles_override" ]]; then
+  profile_selection=(--profiles "$profiles_override")
+elif [[ -n "$stack_override" ]]; then
+  profile_selection=(--stack "$stack_override")
+fi
+
+# Without flags, resolve uses the manifest and then the initial detection; if neither
+# determines one stack it names the matches and asks for an explicit selection.
+stack=""
+stack_dir=""
+resolved_tools=""
+requested_profiles=""
+selection_origin=""
+profile_resolution_status=0
+profile_resolution="$(python3 "$state_script" resolve --project . --skill-dir "$skill_dir" --source-mode sync \
+  ${profile_selection[@]+"${profile_selection[@]}"} \
+  --compose-dir "${XDG_CACHE_HOME:-$HOME/.cache}/agent-ready-setup/compose")" || profile_resolution_status=$?
+if [[ "$profile_resolution_status" -eq 5 ]]; then
+  # A profile source is missing or not adopted: updates of packs are always explicit, and the
+  # pinned revision downloads detached so a later session can project it.
+  printf 'WARNING: a profile source is not ready; local projection skipped and nothing was changed.\n' >&2
+  start_background_task "profile-sources-$(project_log_key)" \
+    python3 "$state_script" fetch-sources --project . --skill-dir "$skill_dir" --locked-only
+  exit 0
+fi
+if [[ "$profile_resolution_status" -ne 0 ]]; then
+  printf 'WARNING: Agent Ready profiles could not be resolved; local projection skipped.\n' >&2
+  exit 0
+fi
+while IFS=$'\t' read -r resolution_key resolution_value; do
+  resolution_value="${resolution_value%$'\r'}"
+  case "$resolution_key" in
+    primary) stack="$resolution_value" ;;
+    stack_dir) stack_dir="$resolution_value" ;;
+    tools) resolved_tools="$resolution_value" ;;
+    requested) requested_profiles="$resolution_value" ;;
+    selection) selection_origin="$resolution_value" ;;
+  esac
+done <<< "$profile_resolution"
+# The sync projects what this resolution detected, even if the signals change meanwhile.
+if [[ "$selection_origin" == detection ]]; then
+  profile_selection=(--profiles "$requested_profiles")
+fi
+# Child scripts (normalization, managed block, background review) read the same tree.
+export AGENT_READY_SETUP_STACK_DIR="$stack_dir"
 
 record_created() {
   created_assets+=("$1")
@@ -970,7 +980,7 @@ fi
 plan_file="$(mktemp "${TMPDIR:-/tmp}/agent-ready-plan.XXXXXX")"
 trap 'rm -f -- "$plan_file"; release_sync_lock' EXIT
 if ! protected_destinations="$(python3 "$state_script" plan --project . --skill-dir "$skill_dir" \
-  --format protected --save "$plan_file" ${profile_selection[@]+"${profile_selection[@]}"})"; then
+  --format protected --save "$plan_file" --source-mode sync ${profile_selection[@]+"${profile_selection[@]}"})"; then
   printf 'WARNING: Agent Ready plan could not be computed; no asset was changed.\n' >&2
   exit 0
 fi

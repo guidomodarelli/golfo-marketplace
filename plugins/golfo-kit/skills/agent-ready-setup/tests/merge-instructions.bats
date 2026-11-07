@@ -760,7 +760,7 @@ EOF
   cp "$skill_dir/scripts/asset-sync-common.sh" "$source_dir/scripts/asset-sync-common.sh"
   # Minimal sources still need the profile catalog and the state helper the hook resolves.
   cp "$skill_dir/scripts/agent-ready-state.py" "$source_dir/scripts/agent-ready-state.py"
-  cp "$skill_dir/scripts/agent_ready_detection.py" "$source_dir/scripts/agent_ready_detection.py"
+  cp "$skill_dir/scripts/"agent_ready_*.py "$source_dir/scripts/"
   cp "$skill_dir/assets/profiles.json" "$source_dir/assets/profiles.json"
   cp "$skill_dir/scripts/merge-managed-settings.py" "$source_dir/scripts/merge-managed-settings.py"
   printf '%s\n' '#!/bin/bash' > "$source_dir/scripts/normalize-instructions.sh"
@@ -822,7 +822,7 @@ EOF
   cp "$skill_dir/scripts/asset-sync-common.sh" "$source_dir/scripts/asset-sync-common.sh"
   # Minimal sources still need the profile catalog and the state helper the hook resolves.
   cp "$skill_dir/scripts/agent-ready-state.py" "$source_dir/scripts/agent-ready-state.py"
-  cp "$skill_dir/scripts/agent_ready_detection.py" "$source_dir/scripts/agent_ready_detection.py"
+  cp "$skill_dir/scripts/"agent_ready_*.py "$source_dir/scripts/"
   cp "$skill_dir/assets/profiles.json" "$source_dir/assets/profiles.json"
   cp "$skill_dir/scripts/merge-managed-settings.py" "$source_dir/scripts/merge-managed-settings.py"
   printf '%s\n' '#!/bin/bash' > "$source_dir/scripts/normalize-instructions.sh"

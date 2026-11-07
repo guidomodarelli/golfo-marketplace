@@ -15,12 +15,13 @@ configuration. Bash keeps doing the actual writes (atomic replacements, Claude
 views, settings merges); it consults the protected list that ``plan`` emits so
 locally modified assets are preserved instead of overwritten.
 
-Subcommands: resolve, manifest, detect, plan, finalize, status.
+Subcommands: resolve, manifest, detect, fetch-sources, plan, finalize, status.
+Only fetch-sources uses the network, and only the apply and the background
+download of SessionStart call it.
 """
 
 import argparse
 import difflib
-import hashlib
 import json
 import os
 import shutil
@@ -33,6 +34,15 @@ import tempfile
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from agent_ready_common import (  # noqa: E402
+    IncompleteEvaluationError,
+    ProfileError,
+    StateError,
+    read_json_file,
+    sha256_of_file,
+    sha256_of_text,
+    walk_files,
+)
 from agent_ready_detection import (  # noqa: E402
     STACK_PROFILE_KIND,
     STATUS_AMBIGUOUS,
@@ -41,6 +51,18 @@ from agent_ready_detection import (  # noqa: E402
     detect_profiles,
     format_evidence_list,
     validate_catalog_detection,
+)
+from agent_ready_packs import (  # noqa: E402
+    SOURCE_AVAILABLE,
+    SOURCE_TYPE_GIT,
+    download_declared_sources,
+    download_locked_sources_in_background,
+    is_pack_profile,
+    load_pack_catalog,
+    locate_source,
+    pack_cache_root,
+    parse_profile_sources,
+    source_of_profile,
 )
 
 MANIFEST_RELATIVE_PATH = ".agents/agent-ready.json"
@@ -74,6 +96,13 @@ PROFILE_ERROR_STATUS = 2
 DETECTION_UNRESOLVED_STATUS = 3
 # Exit status of `status --check` when the checkout or the source drifted from the lock.
 DRIFT_STATUS = 4
+# Exit status when a profile source the selection needs is not available or not adopted.
+INCOMPLETE_EVALUATION_STATUS = 5
+
+# How a command treats profile sources. Read-only evaluates what is there and reports
+# differences. Sync (SessionStart with automatic updates) also refuses to adopt them.
+SOURCE_MODE_READ_ONLY = "read-only"
+SOURCE_MODE_SYNC = "sync"
 
 # Where the effective selection came from, by precedence.
 SELECTION_PROFILES_FLAG = "--profiles"
@@ -133,14 +162,6 @@ ACTION_SYMBOLS = {
 }
 
 
-class ProfileError(Exception):
-    """Raised when profiles cannot be resolved or composed without ambiguity."""
-
-
-class StateError(Exception):
-    """Raised when the manifest or the lockfile cannot be read safely."""
-
-
 # ---------------------------------------------------------------------------
 # Output helpers
 # ---------------------------------------------------------------------------
@@ -171,23 +192,6 @@ def write_line(text="", stream=None):
 # Generic file helpers
 # ---------------------------------------------------------------------------
 
-def sha256_of_file(path):
-    """Return the hex sha256 of a file with CRLF line endings normalized to LF.
-
-    A checkout with core.autocrlf rewrites every line ending without anyone
-    editing the file, so hashing raw bytes would report the whole tree as locally
-    modified. A file with LF endings hashes to its plain sha256.
-    """
-    with open(path, "rb") as file_handle:
-        content = file_handle.read()
-    return hashlib.sha256(content.replace(b"\r\n", b"\n")).hexdigest()
-
-
-def sha256_of_text(text):
-    """Return the hex sha256 of UTF-8 text."""
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
-
-
 def local_state(path):
     """Describe a project path: absent, symlink, not-a-file or its sha256."""
     if os.path.islink(path):
@@ -212,18 +216,6 @@ def has_linked_parent(project_root, destination):
             return True
         parent = os.path.dirname(parent)
     return False
-
-
-def read_json_file(path, description):
-    """Read a JSON object, raising StateError with the path on failure."""
-    try:
-        with open(path, encoding="utf-8") as file_handle:
-            content = json.load(file_handle)
-    except (OSError, json.JSONDecodeError) as caught_error:
-        raise StateError(f"could not read {description} {path}: {caught_error}") from caught_error
-    if not isinstance(content, dict):
-        raise StateError(f"{description} {path} must contain a JSON object")
-    return content
 
 
 def serialize_json(content):
@@ -263,18 +255,6 @@ def write_text_if_changed(path, text):
     write_text_atomically(path, text)
 
 
-def walk_files(root):
-    """Yield (relative_posix_path, absolute_path) for every regular file, sorted."""
-    collected = []
-    for directory, directory_names, file_names in os.walk(root):
-        directory_names.sort()
-        for file_name in sorted(file_names):
-            absolute_path = os.path.join(directory, file_name)
-            relative_path = os.path.relpath(absolute_path, root).replace(os.sep, "/")
-            collected.append((relative_path, absolute_path))
-    return sorted(collected)
-
-
 # ---------------------------------------------------------------------------
 # Profiles
 # ---------------------------------------------------------------------------
@@ -294,6 +274,59 @@ def load_profile_catalog(skill_dir):
     except DetectionSchemaError as caught_error:
         raise ProfileError(f"profile catalog {catalog_path}: {caught_error}") from caught_error
     return catalog
+
+
+def declared_sources(project_root):
+    """Profile sources of the manifest, in a stable order."""
+    manifest = read_manifest(project_root)
+    if not manifest:
+        return []
+    return parse_profile_sources(manifest, os.path.join(project_root, MANIFEST_RELATIVE_PATH))
+
+
+def locked_sources_of(project_root):
+    """Profile sources recorded by the last apply."""
+    lock = read_lock(project_root)
+    return (lock or {}).get("profileSources", {})
+
+
+def load_effective_catalog(project_root, skill_dir, source_state=None):
+    """Golfo's catalog plus the profiles of every source available on this machine.
+
+    Pack profiles are namespaced, so they never replace a Golfo profile, and the global
+    fields of Golfo's catalog stay as they are. Nothing here uses the network or runs
+    anything from a pack. ``source_state`` holds the commits an apply just adopted.
+    """
+    catalog = load_profile_catalog(skill_dir)
+    golfo_profile_names = set(catalog["profiles"])
+    locked_sources = locked_sources_of(project_root)
+    catalog["sources"] = {}
+    catalog["packAssetRoots"] = {}
+    for declaration in declared_sources(project_root):
+        name = declaration["name"]
+        source = locate_source(declaration, locked_sources.get(name), project_root, (source_state or {}).get(name))
+        if source["state"] == SOURCE_AVAILABLE:
+            pack = load_pack_catalog(source, golfo_profile_names)
+            source["catalogDigest"] = pack["digest"]
+            source["availableProfiles"] = sorted(pack["profiles"])
+            catalog["profiles"].update(pack["profiles"])
+            catalog["packAssetRoots"].update(pack["assetRoots"])
+        catalog["sources"][name] = source
+    return catalog
+
+
+def raise_unknown_profile(catalog, name, requested_by):
+    """Explain a profile that is not in the catalog, naming the source when it has one."""
+    origin = f" (required by {requested_by})" if requested_by else ""
+    if is_pack_profile(name):
+        source_name = source_of_profile(name)
+        source = catalog.get("sources", {}).get(source_name)
+        if source is None:
+            raise ProfileError(f"profile '{name}'{origin} needs the source '{source_name}', which the manifest does not declare; packs cannot bring sources of their own")
+        if source["state"] != SOURCE_AVAILABLE:
+            raise IncompleteEvaluationError(f"profile '{name}'{origin} needs the source '{source_name}': {source['reason']}")
+    known = ", ".join(sorted(catalog["profiles"]))
+    raise ProfileError(f"unknown profile '{name}'{origin}; available profiles: {known}")
 
 
 def split_profile_names(raw_profiles):
@@ -332,9 +365,7 @@ def resolve_profiles(catalog, requested_names):
             cycle = " -> ".join(visiting + [name])
             raise ProfileError(f"profile dependency cycle: {cycle}")
         if name not in profiles:
-            origin = f" (required by {requested_by})" if requested_by else ""
-            known = ", ".join(sorted(profiles))
-            raise ProfileError(f"unknown profile '{name}'{origin}; available profiles: {known}")
+            raise_unknown_profile(catalog, name, requested_by)
         visiting.append(name)
         for dependency in profiles[name].get("requires", []):
             visit(dependency, name)
@@ -369,6 +400,8 @@ def primary_stack(catalog, resolved):
 
 def profile_asset_root(skill_dir, catalog, name):
     """Absolute asset directory of a profile, or None when it has no assets."""
+    if is_pack_profile(name):
+        return catalog["packAssetRoots"].get(name)
     relative_root = catalog["profiles"][name].get("assets")
     if not relative_root:
         return None
@@ -414,7 +447,13 @@ def compose_stack_directory(skill_dir, catalog, resolved, compose_root):
 
     if not compose_root:
         raise ProfileError("composing several asset profiles requires --compose-dir")
-    selection_key = sha256_of_text(os.path.abspath(skill_dir) + "\n" + ",".join(resolved))[:16]
+    # Two repositories can pin different revisions of a pack: they must not share a tree.
+    pack_digests = profile_digests(skill_dir, catalog, [name for name in resolved if is_pack_profile(name)]) if any(
+        is_pack_profile(name) for name in resolved
+    ) else {}
+    selection_key = sha256_of_text(
+        os.path.abspath(skill_dir) + "\n" + ",".join(resolved) + "\n" + json.dumps(pack_digests, sort_keys=True)
+    )[:16]
     destination = os.path.join(compose_root, selection_key)
     os.makedirs(compose_root, exist_ok=True)
     staging = tempfile.mkdtemp(prefix=".compose.", dir=compose_root)
@@ -467,8 +506,21 @@ def destinations_for_template(relative_path, is_stack_root):
     return destinations
 
 
+def template_origin(skill_dir, catalog, profile_name, absolute_path):
+    """Where a template comes from, without any path of this machine."""
+    if is_pack_profile(profile_name):
+        source_name = source_of_profile(profile_name)
+        pack_relative = os.path.relpath(absolute_path, catalog["sources"][source_name]["root"]).replace(os.sep, "/")
+        return f"{source_name}:{pack_relative}"
+    return os.path.relpath(absolute_path, skill_dir).replace(os.sep, "/")
+
+
 def desired_assets(skill_dir, catalog, resolved):
-    """Map every managed destination to its template, owning profile and hash."""
+    """Map every managed destination to its template, owning profile and hash.
+
+    Two templates cannot share a destination, including the skill adapters generated
+    for Codex and paths that differ only by case, which collide on Windows and macOS.
+    """
     # Bash projects every profile tree as the stack tree, so only the base
     # assets skip the Codex MCP bridge.
     sources = [(BASE_PROFILE_NAME, os.path.join(skill_dir, catalog.get("baseAssets", "assets/common")), False)]
@@ -478,20 +530,38 @@ def desired_assets(skill_dir, catalog, resolved):
             sources.append((name, root, True))
 
     assets = {}
+    destinations_by_folded_name = {}
     for profile_name, root, is_stack_root in sources:
         for relative_path, absolute_path in walk_files(root):
             for destination in destinations_for_template(relative_path, is_stack_root):
-                if destination in assets and assets[destination]["profile"] != profile_name:
+                previous = destinations_by_folded_name.setdefault(destination.casefold(), destination)
+                if previous in assets and assets[previous]["sourcePath"] != absolute_path:
                     raise ProfileError(
-                        f"profiles '{assets[destination]['profile']}' and '{profile_name}' both write {destination}"
+                        f"profiles '{assets[previous]['profile']}' and '{profile_name}' both write {destination}; "
+                        "nothing was written. Rename one of the assets"
                     )
                 assets[destination] = {
                     "profile": profile_name,
-                    "source": os.path.relpath(absolute_path, skill_dir).replace(os.sep, "/"),
+                    "source": template_origin(skill_dir, catalog, profile_name, absolute_path),
                     "sourcePath": absolute_path,
                     "sha256": sha256_of_file(absolute_path),
                 }
+    reject_destinations_inside_files(assets, destinations_by_folded_name)
     return assets
+
+
+def reject_destinations_inside_files(assets, destinations_by_folded_name):
+    """A destination cannot sit under another one: one of the two could not be written."""
+    for destination, entry in sorted(assets.items()):
+        parent = os.path.dirname(destination)
+        while parent:
+            blocking = destinations_by_folded_name.get(parent.casefold())
+            if blocking in assets:
+                raise ProfileError(
+                    f"profile '{assets[blocking]['profile']}' writes the file {blocking}, but profile "
+                    f"'{entry['profile']}' needs it as a directory for {destination}; nothing was written. Rename one of the assets"
+                )
+            parent = os.path.dirname(parent)
 
 
 def profile_digests(skill_dir, catalog, resolved):
@@ -517,6 +587,147 @@ def profile_digests(skill_dir, catalog, resolved):
 # ---------------------------------------------------------------------------
 # Source identity
 # ---------------------------------------------------------------------------
+
+def validate_pack_destinations(project_root, assets):
+    """A pack asset cannot reach outside the project through a symlink in its path."""
+    for destination, entry in sorted(assets.items()):
+        if not is_pack_profile(entry["profile"]):
+            continue
+        for path in (destination, claude_view_of(destination, entry["source"])):
+            if path and has_linked_parent(project_root, path):
+                raise ProfileError(
+                    f"profile '{entry['profile']}' would write {path} through a symlink, "
+                    "which can leave the project; nothing was written"
+                )
+
+
+def source_entries(catalog, resolved, digests, locked_sources):
+    """Lockfile entry of each declared source; a source without selected profiles has none."""
+    entries = {}
+    for name, source in sorted(catalog.get("sources", {}).items()):
+        if source["state"] != SOURCE_AVAILABLE:
+            # Unused by this selection and not on this machine: its last record stays.
+            if name in locked_sources:
+                entries[name] = locked_sources[name]
+            continue
+        selected = sorted(profile for profile in resolved if is_pack_profile(profile) and source_of_profile(profile) == name)
+        entries[name] = {
+            "type": source["type"],
+            "origin": source["origin"],
+            "requestedRef": source["requestedRef"],
+            "resolvedCommit": source["resolvedCommit"],
+            "catalogDigest": source["catalogDigest"],
+            "contentDigest": sha256_of_text("\n".join(f"{profile}\t{digests[profile]['digest']}" for profile in selected)),
+            "profiles": selected,
+        }
+    return entries
+
+
+def declaration_differences(declaration, locked_entry):
+    """What the manifest changed in a source; it needs neither the network nor its content."""
+    if not locked_entry:
+        return ["not adopted yet"]
+    differences = []
+    if declaration.get("origin") != locked_entry.get("origin"):
+        differences.append(f"origin changed to {declaration.get('origin')}")
+    if declaration.get("requestedRef") != locked_entry.get("requestedRef"):
+        differences.append(f"requested revision changed to {declaration.get('requestedRef')}")
+    return differences
+
+
+def source_differences(name, entry, lock):
+    """What changed in a source since the last apply, in words.
+
+    A digest of a selected profile counts only if the lock has that profile too, so
+    selecting one more profile of the same revision is a selection change, not an update.
+    """
+    locked_sources = (lock or {}).get("profileSources", {})
+    locked_entry = locked_sources.get(name)
+    if not locked_entry:
+        return ["not adopted yet"]
+    differences = declaration_differences(entry, locked_entry)
+    if entry.get("resolvedCommit") != locked_entry.get("resolvedCommit"):
+        locked_commit = (locked_entry.get("resolvedCommit") or "none")[:12]
+        differences.append(f"revision {locked_commit} -> {(entry.get('resolvedCommit') or 'none')[:12]}")
+    if entry.get("catalogDigest") != locked_entry.get("catalogDigest"):
+        differences.append("catalog changed")
+    return differences
+
+
+def changed_selected_profiles(digests, lock):
+    """Selected pack profiles whose content differs from the digest in the lock."""
+    locked_profiles = (lock or {}).get("profiles", {})
+    return sorted(
+        profile for profile, entry in digests.items()
+        if is_pack_profile(profile) and profile in locked_profiles and locked_profiles[profile].get("digest") != entry["digest"]
+    )
+
+
+def source_report(catalog, resolved, digests, lock):
+    """State of each declared source for plan and status, with its differences from the lock."""
+    locked_sources = (lock or {}).get("profileSources", {})
+    entries = source_entries(catalog, resolved, digests, locked_sources)
+    changed_profiles = changed_selected_profiles(digests, lock)
+    report = {}
+    for name, source in sorted(catalog.get("sources", {}).items()):
+        selected = sorted(profile for profile in resolved if is_pack_profile(profile) and source_of_profile(profile) == name)
+        item = {
+            "type": source["type"],
+            "origin": source["origin"],
+            "requestedRef": source["requestedRef"],
+            "resolvedCommit": source["resolvedCommit"],
+            "state": source["state"],
+            "reason": source["reason"],
+            "selected": selected,
+            "differences": [],
+        }
+        if source["state"] == SOURCE_AVAILABLE:
+            entry = entries[name]
+            item["catalogDigest"] = entry["catalogDigest"]
+            item["contentDigest"] = entry["contentDigest"]
+            item["differences"] = source_differences(name, entry, lock)
+            item["differences"] += [f"content of {profile} changed" for profile in changed_profiles if source_of_profile(profile) == name]
+        else:
+            item["differences"] = declaration_differences(source, locked_sources.get(name))
+        report[name] = item
+    return report
+
+
+def describe_source_item(name, item):
+    """One line about a declared source. Origins never carry credentials: the manifest rejects them."""
+    if item["state"] != SOURCE_AVAILABLE:
+        need = "needed by the selection" if item["selected"] else "not needed by this selection"
+        return f"{name} ({item['type']} {item['origin']}): not available: {item['reason']} ({need})"
+    details = []
+    if item["type"] == SOURCE_TYPE_GIT:
+        details.append(f"requested {item['requestedRef']}, commit {item['resolvedCommit'][:12]}")
+    details.append(f"catalog {item['catalogDigest'][:12]}, content {item['contentDigest'][:12]}")
+    details.append(f"profiles: {', '.join(item['selected']) or 'none selected'}")
+    return f"{name} ({item['type']} {item['origin']}): " + "; ".join(details)
+
+
+def enforce_adopted_sources(catalog, resolved, digests, lock):
+    """SessionStart with automatic updates never adopts a source: only an apply does."""
+    report = source_report(catalog, resolved, digests, lock)
+    for name, item in report.items():
+        if item["selected"] and item["differences"]:
+            raise IncompleteEvaluationError(
+                f"profile source '{name}' differs from the lock ({'; '.join(item['differences'])}); "
+                "SessionStart does not adopt it, so this repository keeps its committed assets until someone adopts the change"
+            )
+
+
+def keep_locked_entries_of_unselected_sources(plan, lock):
+    """SessionStart does not adopt a source without selected profiles either: its drift stays visible."""
+    locked_sources = (lock or {}).get("profileSources", {})
+    for name, item in plan["sourceReport"].items():
+        if item["selected"] or not item["differences"]:
+            continue
+        if name in locked_sources:
+            plan["profileSources"][name] = locked_sources[name]
+        else:
+            plan["profileSources"].pop(name, None)
+
 
 def bash_executable():
     """Bash from PATH; Windows process creation would find the WSL launcher in System32 first."""
@@ -629,6 +840,7 @@ def read_manifest(project_root):
     updates = manifest.get("updates", DEFAULT_UPDATE_MODE)
     if updates not in SUPPORTED_UPDATE_MODES:
         raise StateError(f"{path} 'updates' must be one of {', '.join(SUPPORTED_UPDATE_MODES)}")
+    parse_profile_sources(manifest, path)
     return manifest
 
 
@@ -645,14 +857,17 @@ def read_lock(project_root):
     return lock
 
 
-def build_manifest(profiles, updates, providers):
+def build_manifest(profiles, updates, providers, profile_sources):
     """Manifest content: desired configuration, edited by people."""
-    return {
+    manifest = {
         "schemaVersion": SCHEMA_VERSION,
         "profiles": list(profiles),
         "updates": updates,
         "providers": list(providers),
     }
+    if profile_sources is not None:
+        manifest["profileSources"] = profile_sources
+    return manifest
 
 
 # ---------------------------------------------------------------------------
@@ -736,11 +951,11 @@ def detached_views(project_root, assets, locked_assets):
     return edited, preserved
 
 
-def compute_plan(project_root, skill_dir, profile_names):
+def compute_plan(project_root, skill_dir, catalog, profile_names):
     """Build the read-only plan for the selected profiles."""
-    catalog = load_profile_catalog(skill_dir)
     resolved = resolve_profiles(catalog, profile_names)
     assets = desired_assets(skill_dir, catalog, resolved)
+    validate_pack_destinations(project_root, assets)
     lock = read_lock(project_root)
     locked_assets = lock["assets"] if lock else {}
     entries = []
@@ -777,6 +992,8 @@ def compute_plan(project_root, skill_dir, profile_names):
             "local": local,
         })
     merged = merged_template_entries(skill_dir, catalog, resolved)
+    digests = profile_digests(skill_dir, catalog, resolved)
+    golfo_assets = {destination: entry for destination, entry in assets.items() if not is_pack_profile(entry["profile"])}
     # Without a lockfile the first apply keeps the previous overwrite contract.
     edited_views, preserved_views = detached_views(project_root, assets, locked_assets) if lock else ([], [])
     return {
@@ -784,7 +1001,11 @@ def compute_plan(project_root, skill_dir, profile_names):
         "profiles": resolved,
         "primaryStack": primary_stack(catalog, resolved),
         "tools": resolved_tools(catalog, resolved),
-        "source": source_identity(skill_dir, assets, merged),
+        # Packs have their own entries: an update of a pack is not an update of Golfo.
+        "source": source_identity(skill_dir, golfo_assets, merged),
+        "profileDigests": digests,
+        "profileSources": source_entries(catalog, resolved, digests, (lock or {}).get("profileSources", {})),
+        "sourceReport": source_report(catalog, resolved, digests, lock),
         "lockedSource": lock.get("source") if lock else None,
         "hasLock": lock is not None,
         "entries": entries,
@@ -892,6 +1113,8 @@ def global_effects(plan, skip_marketplace_upgrade, browser_install_enabled):
     effects = []
     if not skip_marketplace_upgrade:
         effects.append(("user", "refresh the golfo-marketplace snapshot through the provider CLI before projecting"))
+    if any(item["type"] == SOURCE_TYPE_GIT for item in plan["sourceReport"].values()):
+        effects.append(("user-cache", f"download pinned profile sources that are missing under {pack_cache_root()}"))
     if BROWSER_TOOL_NAME in plan["tools"]:
         if browser_install_enabled:
             effects.append(("user-cache", "install or reuse browser tools under ~/.local/share/agent-ready-setup/browser-tools (profile browser)"))
@@ -1000,15 +1223,41 @@ def print_plan_detection(plan):
         write_line("")
 
 
+def added_dependencies(catalog, requested, resolved):
+    """Profiles that the selection did not name, with the profiles that require them."""
+    added = {}
+    for name in resolved:
+        if name not in requested:
+            added[name] = sorted(other for other in resolved if name in catalog["profiles"][other].get("requires", []))
+    return added
+
+
+def print_plan_sources(plan):
+    """Declared sources and how they differ from the lock."""
+    if not plan["sourceReport"]:
+        return
+    stream = sys.stdout
+    write_line(paint("Profile sources (updates are always explicit)", "heading", stream))
+    for name, item in plan["sourceReport"].items():
+        write_line(f"  {describe_source_item(name, item)}")
+        if item["differences"]:
+            changes = "; ".join(item["differences"])
+            write_line(paint(f"  ! {name} differs from the lock: {changes}; an apply adopts it", "warning", stream))
+    write_line("")
+
+
 def print_plan(project_root, skill_dir, plan, provider, skip_marketplace_upgrade, browser_install_enabled):
     """Human readable plan on stdout."""
     stream = sys.stdout
     write_line(paint("Agent Ready plan (read-only: nothing was written)", "heading", stream))
     write_line(f"Profiles: {', '.join(plan['profiles'])} (primary stack: {plan['primaryStack']})")
     write_line(f"Selected by: {plan['selection']}")
+    for name, requirers in plan["addedDependencies"].items():
+        write_line(f"Dependency added: {name} (required by {', '.join(requirers)})")
     write_line(f"Source:   {describe_source(plan['source'])}")
     write_line(f"Lock:     {describe_source(plan['lockedSource']) if plan['hasLock'] else 'none (first apply creates it)'}")
     write_line("")
+    print_plan_sources(plan)
     print_plan_detection(plan)
     write_line(paint("Project assets", "heading", stream))
     counts = {}
@@ -1159,12 +1408,11 @@ def finalize(project_root, skill_dir, plan, provider_list, updates):
 
     conflicts += [f"{view}: {DETACHED_VIEW_REASON}" for view in plan["detachedViews"]]
 
-    catalog = load_profile_catalog(skill_dir)
     lock = {
         "schemaVersion": SCHEMA_VERSION,
         "generator": {"name": SKILL_NAME, "version": plugin_version(skill_dir), "stateSchemaVersion": SCHEMA_VERSION},
         "source": plan["source"],
-        "profiles": profile_digests(skill_dir, catalog, plan["profiles"]),
+        "profiles": plan["profileDigests"],
         # The digests map is keyed by name; profileOrder keeps the resolution order.
         "profileOrder": plan["profiles"],
         "primaryStack": plan["primaryStack"],
@@ -1173,16 +1421,36 @@ def finalize(project_root, skill_dir, plan, provider_list, updates):
         "assets": lock_assets,
         "merged": plan["merged"],
     }
+    if plan["profileSources"]:
+        lock["profileSources"] = plan["profileSources"]
     write_text_if_changed(os.path.join(project_root, LOCK_RELATIVE_PATH), serialize_json(lock))
 
     manifest = read_manifest(project_root)
     manifest_providers = manifest.get("providers", list(provider_list)) if manifest else list(provider_list)
     manifest_updates = updates or (manifest.get("updates") if manifest else None) or DEFAULT_UPDATE_MODE
-    desired_manifest = build_manifest(plan["profiles_requested"], manifest_updates, manifest_providers)
+    desired_manifest = build_manifest(
+        plan["profiles_requested"], manifest_updates, manifest_providers, manifest.get("profileSources") if manifest else None,
+    )
     if manifest is None or {key: manifest.get(key) for key in desired_manifest} != desired_manifest:
         write_text_atomically(os.path.join(project_root, MANIFEST_RELATIVE_PATH), serialize_json(desired_manifest))
 
     return {"removed": removed, "retireConflicts": retire_conflicts, "failed": failed, "conflicts": conflicts}
+
+
+def print_incomplete_plan(project_root, skill_dir, selection, requested, incomplete_error):
+    """Say what could not be evaluated. This is not a plan, so it lists no asset decision."""
+    stream = sys.stdout
+    write_line(paint("Agent Ready plan INCOMPLETE (read-only: nothing was written or downloaded)", "error", stream))
+    write_line(f"Requested profiles: {', '.join(requested)}")
+    write_line(f"Selected by: {selection}")
+    write_line(paint(f"Could not evaluate: {incomplete_error}", "error", stream))
+    catalog = load_effective_catalog(project_root, skill_dir)
+    report = source_report_without_selection(catalog)
+    if report:
+        write_line("Profile sources:")
+        for name, line in report.items():
+            write_line(f"  {name}: {line}")
+    write_line("This is not a validated plan. An apply downloads pinned sources and validates the selection before writing.")
 
 
 def print_finalize_report(report):
@@ -1227,6 +1495,8 @@ def compute_status(project_root, skill_dir):
         "update": None,
         "capabilities": {},
         "errors": [],
+        "incomplete": None,
+        "sources": {},
     }
     if lock:
         for destination, entry in sorted(lock["assets"].items()):
@@ -1251,10 +1521,14 @@ def compute_status(project_root, skill_dir):
     profile_names = manifest["profiles"] if manifest else (lock.get("profileOrder") if lock else None)
     if profile_names and skill_dir:
         try:
-            plan = compute_plan(project_root, skill_dir, profile_names)
+            catalog = load_effective_catalog(project_root, skill_dir)
+            plan = compute_plan(project_root, skill_dir, catalog, profile_names)
+        except IncompleteEvaluationError as caught_error:
+            status["incomplete"] = str(caught_error)
         except (ProfileError, StateError) as caught_error:
             status["errors"].append(str(caught_error))
         else:
+            status["sources"] = plan["sourceReport"]
             changed = [entry["destination"] for entry in plan["entries"]
                        if entry["action"] not in (ACTION_UNCHANGED, ACTION_DROP)]
             status["checkout"]["modified"].extend(plan["editedViews"] + plan["detachedViews"])
@@ -1265,11 +1539,11 @@ def compute_status(project_root, skill_dir):
                     view for view in views if view and local_state(os.path.join(project_root, view)) == LOCAL_ABSENT
                 )
             locked = lock or {}
-            selection_changed = locked.get("profileOrder") != plan["profiles"] or locked.get("profiles") != profile_digests(
-                skill_dir, load_profile_catalog(skill_dir), plan["profiles"]
-            )
+            selection_changed = locked.get("profileOrder") != plan["profiles"] or locked.get("profiles") != plan["profileDigests"]
+            sources_changed = any(item["differences"] for item in plan["sourceReport"].values())
             status["update"] = {
-                "available": selection_changed or locked.get("source", {}).get("contentDigest") != plan["source"]["contentDigest"],
+                "available": selection_changed or sources_changed
+                or locked.get("source", {}).get("contentDigest") != plan["source"]["contentDigest"],
                 "source": plan["source"],
                 "changedDestinations": changed,
             }
@@ -1288,7 +1562,7 @@ def compute_status(project_root, skill_dir):
 
 def status_has_drift(status):
     """True when the checkout or the source differs from the lock, or the selection cannot resolve."""
-    if status["errors"]:
+    if status["errors"] or status["incomplete"]:
         return True
     checkout = status["checkout"]
     if any(checkout[key] for key in ("modified", "missing", "conflict", "failed", "retiredPreserved")):
@@ -1321,6 +1595,13 @@ def print_status(status, brief):
                                ("failed", "failed"), ("retiredPreserved", "retired but preserved")):
                 for destination in checkout[key]:
                     write_line(f"  ! {label}: {destination}")
+    for name, item in status["sources"].items():
+        if item["differences"] or item["state"] != SOURCE_AVAILABLE or not brief:
+            write_line(f"Profile source {describe_source_item(name, item)}")
+        if item["differences"]:
+            write_line(paint(f"  ! {name} differs from the lock: {'; '.join(item['differences'])}", "warning", stream))
+    if status["incomplete"]:
+        write_line(paint(f"Evaluation incomplete, nothing was validated: {status['incomplete']}", "warning", stream))
     update = status["update"]
     if update:
         if update["available"]:
@@ -1343,6 +1624,23 @@ def print_status(status, brief):
 # ---------------------------------------------------------------------------
 # Command line
 # ---------------------------------------------------------------------------
+
+def source_report_without_selection(catalog):
+    """Readable state of each declared source when no selection could be evaluated."""
+    report = {}
+    for name, source in sorted(catalog.get("sources", {}).items()):
+        if source["state"] == SOURCE_AVAILABLE:
+            report[name] = f"available ({source['type']} {source['origin']})"
+        else:
+            report[name] = f"not available ({source['type']} {source['origin']}): {source['reason']}"
+    return report
+
+
+def read_source_state(arguments):
+    """Commits an apply just adopted, or None outside an apply."""
+    state_path = getattr(arguments, "source_state", None)
+    return read_json_file(state_path, "profile source state") if state_path else None
+
 
 def stack_names_of(catalog):
     """Names of the stack profiles of a catalog, sorted."""
@@ -1378,10 +1676,12 @@ def command_resolve(arguments):
     # A manifest that cannot be read stops the apply even when flags pick the
     # profiles: it may declare a pinned repository that must not be written.
     read_manifest(arguments.project)
-    catalog = load_profile_catalog(arguments.skill_dir)
+    catalog = load_effective_catalog(arguments.project, arguments.skill_dir, read_source_state(arguments))
     requested, selection = resolve_selection(arguments, catalog)
     resolved = resolve_profiles(catalog, requested)
-    desired_assets(arguments.skill_dir, catalog, resolved)
+    validate_pack_destinations(arguments.project, desired_assets(arguments.skill_dir, catalog, resolved))
+    if arguments.source_mode == SOURCE_MODE_SYNC:
+        enforce_adopted_sources(catalog, resolved, profile_digests(arguments.skill_dir, catalog, resolved), read_lock(arguments.project))
     stack_dir = compose_stack_directory(arguments.skill_dir, catalog, resolved, arguments.compose_dir)
     if selection == SELECTION_DETECTION:
         detection = detect_profiles(catalog["profiles"], arguments.project)
@@ -1406,9 +1706,23 @@ def command_manifest(arguments):
     return 0
 
 
+def command_fetch_sources(arguments):
+    """Download profile sources; the only subcommand that uses the network."""
+    declarations = declared_sources(arguments.project)
+    locked_sources = locked_sources_of(arguments.project)
+    if arguments.locked_only:
+        for failure in download_locked_sources_in_background(declarations, locked_sources):
+            write_line(f"WARNING: {failure}", sys.stderr)
+        return 0
+    pins = download_declared_sources(declarations, locked_sources, arguments.update_source or [], arguments.project)
+    if arguments.state_file:
+        write_text_atomically(arguments.state_file, serialize_json(pins))
+    return 0
+
+
 def command_detect(arguments):
     """Print what the project signals say; it never changes a selection."""
-    catalog = load_profile_catalog(arguments.skill_dir)
+    catalog = load_effective_catalog(arguments.project, arguments.skill_dir)
     detection = detect_profiles(catalog["profiles"], arguments.project)
     write_line(f"Stack: {describe_detected_stack(detection)}")
     print_detection_matches(detection)
@@ -1424,11 +1738,22 @@ def command_detect(arguments):
 
 def command_plan(arguments):
     """Compute the plan; print it, save it, or list protected destinations."""
-    catalog = load_profile_catalog(arguments.skill_dir)
+    catalog = load_effective_catalog(arguments.project, arguments.skill_dir, read_source_state(arguments))
     requested, selection = resolve_selection(arguments, catalog)
-    plan = compute_plan(arguments.project, arguments.skill_dir, requested)
+    try:
+        plan = compute_plan(arguments.project, arguments.skill_dir, catalog, requested)
+    except IncompleteEvaluationError as incomplete_error:
+        if arguments.format == "protected":
+            raise
+        print_incomplete_plan(arguments.project, arguments.skill_dir, selection, requested, incomplete_error)
+        return INCOMPLETE_EVALUATION_STATUS
+    if arguments.source_mode == SOURCE_MODE_SYNC:
+        lock = read_lock(arguments.project)
+        enforce_adopted_sources(catalog, plan["profiles"], plan["profileDigests"], lock)
+        keep_locked_entries_of_unselected_sources(plan, lock)
     plan["profiles_requested"] = requested
     plan["selection"] = selection
+    plan["addedDependencies"] = added_dependencies(catalog, requested, plan["profiles"])
     if arguments.save:
         write_text_atomically(arguments.save, serialize_json(plan))
     if arguments.format == "protected":
@@ -1482,6 +1807,11 @@ def build_parser():
         group = subparser.add_mutually_exclusive_group()
         group.add_argument("--profiles", help="comma separated profiles, e.g. frontend,browser")
         group.add_argument("--stack", help="legacy alias: the stack profile plus its defaults")
+        subparser.add_argument("--source-state", help="commits adopted by fetch-sources during this apply")
+        subparser.add_argument(
+            "--source-mode", choices=(SOURCE_MODE_READ_ONLY, SOURCE_MODE_SYNC), default=SOURCE_MODE_READ_ONLY,
+            help="sync refuses a profile source that differs from the lock",
+        )
 
     resolve_parser = subparsers.add_parser("resolve", help="resolve and compose profiles")
     add_common(resolve_parser)
@@ -1496,6 +1826,13 @@ def build_parser():
     detect_parser = subparsers.add_parser("detect", help="read-only detection of stacks and capabilities")
     add_common(detect_parser)
     detect_parser.set_defaults(handler=command_detect)
+
+    fetch_parser = subparsers.add_parser("fetch-sources", help="download pinned profile sources into the user cache")
+    add_common(fetch_parser)
+    fetch_parser.add_argument("--update-source", action="append", help="resolve this source's ref again; repeatable")
+    fetch_parser.add_argument("--state-file", help="write the adopted commits here, for resolve and plan")
+    fetch_parser.add_argument("--locked-only", action="store_true", help="only download revisions already pinned, with a limit of attempts")
+    fetch_parser.set_defaults(handler=command_fetch_sources)
 
     plan_parser = subparsers.add_parser("plan", help="read-only plan")
     add_common(plan_parser)
@@ -1536,6 +1873,9 @@ def main(argv=None):
         arguments.skill_dir = os.path.abspath(arguments.skill_dir)
     try:
         return arguments.handler(arguments)
+    except IncompleteEvaluationError as caught_error:
+        sys.stderr.write(f"Evaluation incomplete: {caught_error}\n")
+        return INCOMPLETE_EVALUATION_STATUS
     except ProfileError as caught_error:
         sys.stderr.write(f"ERROR: agent-ready profiles: {caught_error}\n")
         return PROFILE_ERROR_STATUS

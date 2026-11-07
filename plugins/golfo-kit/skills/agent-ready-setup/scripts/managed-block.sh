@@ -96,7 +96,7 @@ validate_managed_block_inputs() {
     exit 1
   fi
 
-  STACK_TEMPLATE_DIRECTORY="$(resolve_stack_template_directory "$SKILL_DIR" "$STACK")"
+  STACK_TEMPLATE_DIRECTORY="$(resolve_stack_template_directory "$SKILL_DIR" "$STACK")" || exit 1
   TEMPLATE_FILE="$STACK_TEMPLATE_DIRECTORY/agents-template.md"
   RULES_DIRECTORY="$STACK_TEMPLATE_DIRECTORY/rules"
   COMMON_RULES_DIRECTORY="$SKILL_DIR/assets/common/rules"
