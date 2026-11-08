@@ -268,12 +268,16 @@ class ReviewCache:
             return {}
         return {unit: entry for unit, entry in data["entries"].items() if isinstance(entry, dict)}
 
-    def entries(self):
+    def entries(self, commit=None):
         """The entries status and review list read: the local ones and, with reviews.commit, the shared
-        ones the local cache lacks or has out of date, as long as they can be trusted."""
+        ones the local cache lacks or has out of date, as long as they can be trusted.
+
+        ``commit`` is the effective reviews.commit of the engine; the hooks leave it out and use the
+        options of the last apply, which a fresh clone does not have yet.
+        """
         data = self.read()
         entries = dict(data["entries"])
-        if not self.settings_of(data).get("commit"):
+        if not (self.settings_of(data).get("commit") if commit is None else commit):
             return entries
         for unit, shared in self.read_shared().items():
             local = entries.get(unit)

@@ -578,6 +578,8 @@ PY
 }
 
 @test "with reviews.commit a fresh checkout reuses the committed reviews whose key matches" {
+  # As an apply leaves it: the project configuration and the options it records for the hooks.
+  run_cli config set reviews.commit true
   write_settings true true none true
   two_findings
   run_hook .agents/rules/testing.md
@@ -599,6 +601,22 @@ PY
   printf 'Mock only the network.\n' >> .agents/rules/testing.md
   run_hook .agents/rules/testing.md
   [ "$(calls)" -eq 2 ]
+}
+
+@test "status and review list show the committed reviews of a fresh clone before any apply" {
+  write_settings true true none true
+  two_findings
+  run_hook .agents/rules/testing.md
+  # A fresh clone: no local cache and no options recorded by an apply, only the project configuration.
+  rm "$(cache_file)"
+  run_cli config set reviews.commit true
+  [ "$status" -eq 0 ]
+
+  run --separate-stderr python3 "$skill_dir/scripts/agent-ready-state.py" status --project . --format json
+  [ "$(python3 -c 'import json,sys; r=json.loads(sys.argv[1])["reviews"]; print(r["units"], len(r["findings"]))' "$output" | tr -d '\r')" = "2 2" ]
+  run_cli review list --json
+  [ "$(python3 -c 'import json,sys; print(len(json.loads(sys.argv[1])["findings"]))' "$output" | tr -d '\r')" -eq 2 ]
+  [ "$(calls)" -eq 1 ]
 }
 
 @test "a committed result that finds nothing never hides a finding the local cache knows" {

@@ -51,6 +51,7 @@ from agent_ready_common import (  # noqa: E402
     write_text_atomically,
 )
 from agent_ready_config import (  # noqa: E402
+    ConfigurationError,
     IGNORED_LOCKED,
     IGNORED_LOOSENS,
     LAYER_USER,
@@ -939,7 +940,13 @@ def review_findings(project_root, strict=False):
     ``strict`` refuses a decisions file that cannot be read instead of ignoring it.
     """
     module = review_cache_module()
-    entries = module.ReviewCache(project_root).entries()
+    # The effective configuration, not the options of the last apply: a fresh clone shows the
+    # committed reviews before anyone applies.
+    try:
+        commit = configuration_of(project_root).value(REVIEWS_COMMIT_KEY)
+    except ConfigurationError:
+        commit = None
+    entries = module.ReviewCache(project_root).entries(commit=commit)
     decisions = module.Decisions(project_root)
     recorded = decisions.read(strict=strict)
     findings = []
