@@ -409,6 +409,35 @@ class BrowserToolsTests(unittest.TestCase):
         self.register()
         self.assertEqual((self.project / ".gitignore").read_text(), ".agents/\n")
 
+    def test_should_unregister_only_managed_servers_and_keep_project_settings(self):
+        (self.project / ".mcp.json").write_text(json.dumps({"custom": "ñandú", "mcpServers": {"own": {"command": "own-server"}}}, ensure_ascii=False))
+        (self.project / ".codex").mkdir()
+        (self.project / ".codex/config.toml").write_text('# custom comment\nmodel = "custom-model"\n[mcp_servers.own]\ncommand = "own-server"\n')
+        (self.project / ".gitignore").write_text("node_modules/")
+        self.register()
+        changed = browser_setup.unregister_servers(self.project)
+        self.assertEqual(set(changed), {("edited", ".mcp.json"), ("edited", ".codex/config.toml"),
+                                        ("removed", ".agents/browser-tools.json"), ("edited", ".gitignore")})
+        claude, codex = self.project_servers()
+        self.assertEqual(claude, {"own": {"command": "own-server"}})
+        self.assertEqual(set(codex), {"own"})
+        self.assertIn("ñandú", (self.project / ".mcp.json").read_text())
+        self.assertIn("# custom comment", (self.project / ".codex/config.toml").read_text())
+        self.assertEqual((self.project / ".gitignore").read_text(), "node_modules/\n")
+        self.assertEqual(browser_setup.unregister_servers(self.project), [])
+
+    def test_should_unregister_through_dedicated_entry_point_and_delete_files_it_created(self):
+        self.register()
+        entry_point = HELPER_PATH.with_name("unregister-browser-servers.py")
+        result = subprocess.run([sys.executable, str(entry_point), "--project", str(self.project)],
+                                capture_output=True, text=True, check=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(set(result.stdout.splitlines()), {"removed\t.mcp.json", "removed\t.codex/config.toml",
+                                                           "removed\t.agents/browser-tools.json", "removed\t.gitignore"})
+        for created in (".mcp.json", ".codex/config.toml", ".gitignore", ".agents/browser-tools.json"):
+            self.assertFalse((self.project / created).exists(), created)
+        self.assertFalse(self.claude_user.exists())
+
     def test_should_preserve_symlinked_project_config_without_touching_target(self):
         target = self.root / "target.json"
         target.write_text("{}")

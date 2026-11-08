@@ -445,6 +445,94 @@ def register_servers(project, binaries, browser, allow_dependency_install=True):
     }, indent=2) + "\n")
 
 
+def remove_file(path, original):
+    """Delete a project file this setup wrote, unless it changed since it was read."""
+    ensure_safe_path(path)
+    if path.read_text(encoding="utf-8") != original:
+        raise RuntimeError(f"Browser setup preserved concurrent changes: {path}")
+    path.unlink()
+
+
+def unregister_provider(provider, destination, parser, key):
+    """Drop the managed servers of one project file; returns removed, edited or None."""
+    original, config = read_config(destination, parser)
+    servers = server_map(config, key, destination)
+    managed = [name for name, server in servers.items() if is_managed_server(server)]
+    if not managed:
+        return None
+    if provider == "Claude":
+        for name in managed:
+            del config[key][name]
+        if not config[key]:
+            del config[key]
+        updated = json.dumps(config, indent=2, ensure_ascii=False) + "\n" if config else ""
+    else:
+        editor = load_toml_editor(allow_install=False)
+        document = editor.parse(original)
+        for name in managed:
+            del document[key][name]
+        if not document[key]:
+            del document[key]
+        updated = editor.dumps(document)
+        tomllib.loads(updated)
+    if updated.strip():
+        atomic_write(destination, updated, original)
+        return "edited"
+    # The file only held what this setup registered.
+    remove_file(destination, original)
+    return "removed"
+
+
+def forget_browser_metadata(project):
+    """Delete the machine metadata and the .gitignore line that kept it out of version control."""
+    changed = []
+    metadata = project / BROWSER_METADATA_PATH
+    if metadata.is_file() and not metadata.is_symlink():
+        ensure_safe_path(metadata)
+        metadata.unlink()
+        changed.append(("removed", BROWSER_METADATA_PATH))
+    gitignore = project / ".gitignore"
+    if gitignore.is_file():
+        original = gitignore.read_text(encoding="utf-8")
+        lines = original.splitlines()
+        if BROWSER_METADATA_PATH in lines:
+            kept = [line for line in lines if line != BROWSER_METADATA_PATH]
+            if any(line.strip() for line in kept):
+                atomic_write(gitignore, "\n".join(kept) + "\n", original)
+            else:
+                remove_file(gitignore, original)
+            changed.append(("edited" if gitignore.exists() else "removed", ".gitignore"))
+    return changed
+
+
+def unregister_servers(project):
+    """Remove the portable servers this setup registered; every other setting stays.
+
+    Returns (outcome, relative path) pairs, the outcome being removed or edited.
+    Entry point: unregister-browser-servers.py, which `agent-ready remove` runs. Never
+    installs the TOML editor: without it, the Codex registrations stay and the error says so.
+    """
+    changed = []
+    failures = []
+    for provider, relative_path, parser, key in (
+        ("Claude", ".mcp.json", json.loads, "mcpServers"),
+        ("Codex", ".codex/config.toml", tomllib.loads, "mcp_servers"),
+    ):
+        destination = project / relative_path
+        if not destination.exists():
+            continue
+        try:
+            outcome = unregister_provider(provider, destination, parser, key)
+            if outcome:
+                changed.append((outcome, relative_path))
+        except (OSError, RuntimeError, ValueError) as error:
+            failures.append(f"{relative_path}: {error}")
+    changed += forget_browser_metadata(project)
+    if failures:
+        raise RuntimeError("; ".join(failures))
+    return changed
+
+
 def main():
     """Install once per pinned version and configure both supported providers."""
     parser = argparse.ArgumentParser(description=__doc__)

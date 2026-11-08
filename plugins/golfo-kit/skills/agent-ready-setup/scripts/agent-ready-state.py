@@ -2331,6 +2331,414 @@ def command_update_report(arguments):
     return 0
 
 
+# ---------------------------------------------------------------------------
+# Removal
+# ---------------------------------------------------------------------------
+
+REMOVAL_REMOVE = "remove"
+REMOVAL_EDIT = "edit"
+REMOVAL_KEEP = "keep"
+REMOVAL_SYMBOLS = {REMOVAL_REMOVE: "-", REMOVAL_EDIT: "~", REMOVAL_KEEP: "="}
+REMOVAL_COLORS = {REMOVAL_REMOVE: "retire", REMOVAL_EDIT: "update", REMOVAL_KEEP: "muted"}
+# What each entry is, in the order a removal runs: the lockfile goes last, so an
+# interrupted removal can run again and finish.
+REMOVAL_KINDS = ("browser", "git-config", "git-hook", "view", "asset", "instructions", "settings", "state", "config")
+# Same values as asset-sync-common.sh, which writes them.
+HARD_LINK_VIEWS_MANIFEST = ".claude/.agent-ready-hard-link-views"
+GIT_HOOK_SECTION = "hook.agent-ready-relink"
+GIT_HOOK_COMMAND = "sh .agents/hooks/relink-hard-link-views.sh"
+GIT_HOOK_FILE_NAME = "post-index-change"
+GIT_HOOK_MARKER = "# agent-ready-setup: relinks .claude hard-link views detached by git."
+# Same value as managed-block.sh, which writes it.
+INSTRUCTION_REVIEW_HASH_NAME = "agent-ready-instructions-reviewed.sha256"
+# Same values as setup-browser-tools.py, which registers the servers.
+BROWSER_SERVERS_MARKER = "/agent-ready-setup/browser-tools/"
+BROWSER_REGISTRATION_FILES = (".mcp.json", ".codex/config.toml")
+BROWSER_METADATA_RELATIVE_PATH = ".agents/browser-tools.json"
+UNREGISTER_BROWSER_RELATIVE_PATH = "scripts/unregister-browser-servers.py"
+MANAGED_ROOT_DIRECTORIES = (".agents", ".claude", ".codex", ".github")
+CHANGED_DURING_REMOVAL_REASON = "changed while removing; it was kept"
+
+
+def removal_entry(path, action, reason, kind, local=None):
+    """One line of the removal plan; ``local`` is the state it had, checked again before acting."""
+    return {"path": path, "action": action, "reason": reason, "kind": kind, "local": local}
+
+
+def view_mirrors(project_root, view, asset, base_hash):
+    """True when a .claude path is a view an apply made of an .agents path."""
+    view_path = os.path.join(project_root, view)
+    asset_path = os.path.join(project_root, asset)
+    if os.path.islink(view_path):
+        target = os.path.normpath(os.path.join(os.path.dirname(view_path), os.readlink(view_path)))
+        return target == os.path.normpath(asset_path)
+    if not os.path.isfile(view_path):
+        return False
+    if os.path.isfile(asset_path) and os.path.samefile(view_path, asset_path):
+        return True
+    # A hard link that git detached still holds what the apply wrote.
+    return base_hash is not None and sha256_of_file(view_path) == base_hash
+
+
+def asset_removal_entries(project_root, locked_assets):
+    """Managed assets go unless they changed since the last apply; project files always stay."""
+    entries = []
+    for destination, lock_entry in sorted(locked_assets.items()):
+        local = local_state(os.path.join(project_root, destination))
+        action, reason = classify_retired(local, lock_entry)
+        if action == ACTION_DROP:
+            if local != LOCAL_ABSENT:
+                entries.append(removal_entry(destination, REMOVAL_KEEP, reason, "asset"))
+            continue
+        if has_linked_parent(project_root, destination):
+            entries.append(removal_entry(destination, REMOVAL_KEEP, LINKED_PARENT_REASON, "asset"))
+        elif action == ACTION_RETIRE_CONFLICT:
+            entries.append(removal_entry(destination, REMOVAL_KEEP, "not a regular file", "asset"))
+        elif local != lock_entry.get("sha256"):
+            entries.append(removal_entry(destination, REMOVAL_KEEP,
+                                         "changed since the last apply; delete it by hand if you no longer need it", "asset"))
+        else:
+            entries.append(removal_entry(destination, REMOVAL_REMOVE, "published by agent-ready-setup", "asset", local))
+    return entries
+
+
+def view_removal_entries(project_root, locked_assets):
+    """Every .claude view of an .agents path: of managed assets and of the project's own rules."""
+    entries = []
+    for directory in CLAUDE_VIEW_DIRECTORIES:
+        root = os.path.join(project_root, ".claude", directory)
+        if is_link(root) or not os.path.isdir(root):
+            continue
+        for current, _, file_names in os.walk(root):
+            for file_name in sorted(file_names):
+                view = os.path.relpath(os.path.join(current, file_name), project_root).replace(os.sep, "/")
+                asset = ".agents/" + view[len(".claude/"):]
+                if has_linked_parent(project_root, view):
+                    continue
+                if view_mirrors(project_root, view, asset, locked_assets.get(asset, {}).get("sha256")):
+                    entries.append(removal_entry(view, REMOVAL_REMOVE, f"view of {asset}", "view",
+                                                 local_state(os.path.join(project_root, view))))
+    return entries
+
+
+def without_managed_block(text):
+    """AGENTS.md text without its managed block, or None when it has no block."""
+    start = text.find(MANAGED_BLOCK_START)
+    end = text.find(MANAGED_BLOCK_END)
+    if start < 0 or end < start:
+        return None
+    before = text[:start].rstrip()
+    after = text[end + len(MANAGED_BLOCK_END):].lstrip("\r\n").rstrip()
+    remaining = "\n\n".join(part for part in (before, after) if part)
+    return remaining + "\n" if remaining else ""
+
+
+def normalized_lines(text):
+    """Text compared without line endings or trailing spaces."""
+    return [line.rstrip() for line in text.replace("\r\n", "\n").strip().split("\n")]
+
+
+def template_skeleton(skill_dir, lock):
+    """What the AGENTS.md template puts outside the managed block, or None when it is unknown."""
+    template = ((lock or {}).get("merged") or {}).get("AGENTS.md", {}).get("template")
+    path = os.path.join(skill_dir, template) if template else None
+    if not path or not os.path.isfile(path):
+        return None
+    with open(path, encoding="utf-8") as file_handle:
+        return without_managed_block(file_handle.read())
+
+
+def instruction_removal_entries(project_root, skill_dir, lock):
+    """The managed block of AGENTS.md goes; the file goes too when nothing of the project is left."""
+    path = os.path.join(project_root, "AGENTS.md")
+    local = local_state(path)
+    if local in (LOCAL_ABSENT, LOCAL_NOT_A_FILE):
+        return []
+    if local == LOCAL_SYMLINK:
+        return [removal_entry("AGENTS.md", REMOVAL_KEEP, "a symlink; remove its managed block by hand", "instructions")]
+    with open(path, encoding="utf-8") as file_handle:
+        remaining = without_managed_block(file_handle.read())
+    if remaining is None:
+        return []
+    skeleton = template_skeleton(skill_dir, lock)
+    if remaining.strip() and (skeleton is None or normalized_lines(remaining) != normalized_lines(skeleton)):
+        return [removal_entry("AGENTS.md", REMOVAL_EDIT, "removes the managed block; the project's content stays",
+                              "instructions", local)]
+    entries = [removal_entry("AGENTS.md", REMOVAL_REMOVE, "only holds the managed block and the template", "instructions", local)]
+    proxy = os.path.join(project_root, "CLAUDE.md")
+    proxy_local = local_state(proxy)
+    if proxy_local == sha256_of_file(os.path.join(skill_dir, CLAUDE_PROXY_RELATIVE_PATH)):
+        entries.append(removal_entry("CLAUDE.md", REMOVAL_REMOVE, "proxy of AGENTS.md", "instructions", proxy_local))
+    return entries
+
+
+def without_managed_entries(document, template):
+    """A Claude settings or Codex hooks document without the permissions and hooks its template manages."""
+    result = json.loads(json.dumps(document))
+    managed_rules = template.get("permissions", {}).get("allow", [])
+    permissions = result.get("permissions")
+    if isinstance(permissions, dict) and isinstance(permissions.get("allow"), list):
+        permissions["allow"] = [rule for rule in permissions["allow"] if rule not in managed_rules]
+        if not permissions["allow"]:
+            del permissions["allow"]
+        if not permissions:
+            del result["permissions"]
+    managed_commands = {handler.get("command") for groups in template.get("hooks", {}).values()
+                        for group in groups for handler in group.get("hooks", [])}
+    hooks = result.get("hooks")
+    if not isinstance(hooks, dict):
+        return result
+    for event in list(hooks):
+        if not isinstance(hooks[event], list):
+            continue
+        kept_groups = []
+        for group in hooks[event]:
+            handlers = group.get("hooks") if isinstance(group, dict) else None
+            if isinstance(handlers, list) and handlers:
+                handlers = [handler for handler in handlers
+                            if not (isinstance(handler, dict) and handler.get("command") in managed_commands)]
+                if not handlers:
+                    continue
+                group = dict(group, hooks=handlers)
+            kept_groups.append(group)
+        if kept_groups:
+            hooks[event] = kept_groups
+        else:
+            del hooks[event]
+    if not hooks:
+        del result["hooks"]
+    return result
+
+
+def serialize_settings(document):
+    """Settings in the format merge-managed-settings.py writes them."""
+    return json.dumps(document, indent=2) + "\n"
+
+
+def settings_templates(skill_dir):
+    """Merged JSON files and the template each one is merged from."""
+    base_assets = load_profile_catalog(skill_dir).get("baseAssets", "assets/common")
+    return (
+        (".claude/settings.json", os.path.join(skill_dir, base_assets, CLAUDE_SETTINGS_TEMPLATE_NAME)),
+        (".codex/hooks.json", os.path.join(skill_dir, CODEX_HOOKS_TEMPLATE_RELATIVE_PATH)),
+    )
+
+
+def settings_without_managed_entries(project_root, destination, template_path):
+    """(current document, document without the managed entries), or None when it cannot be read."""
+    try:
+        with open(os.path.join(project_root, destination), encoding="utf-8") as file_handle:
+            current = json.load(file_handle)
+        with open(template_path, encoding="utf-8") as file_handle:
+            template = json.load(file_handle)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(current, dict):
+        return None
+    return current, without_managed_entries(current, template)
+
+
+def settings_removal_entries(project_root, skill_dir):
+    """Managed hooks and permissions leave the merged JSON files; custom entries stay."""
+    entries = []
+    for destination, template_path in settings_templates(skill_dir):
+        local = local_state(os.path.join(project_root, destination))
+        if local in (LOCAL_ABSENT, LOCAL_NOT_A_FILE):
+            continue
+        if local == LOCAL_SYMLINK:
+            entries.append(removal_entry(destination, REMOVAL_KEEP, "a symlink; remove its agent-ready hooks by hand", "settings"))
+            continue
+        documents = settings_without_managed_entries(project_root, destination, template_path)
+        if documents is None:
+            entries.append(removal_entry(destination, REMOVAL_KEEP, "invalid JSON; remove its agent-ready hooks by hand", "settings"))
+        elif documents[1] == documents[0]:
+            continue
+        elif not documents[1]:
+            entries.append(removal_entry(destination, REMOVAL_REMOVE, "only holds agent-ready hooks and permissions", "settings", local))
+        else:
+            entries.append(removal_entry(destination, REMOVAL_EDIT,
+                                         "removes the agent-ready hooks and permissions; custom entries stay", "settings", local))
+    return entries
+
+
+def browser_removal_entries(project_root):
+    """Browser MCP servers that agent-ready registered, and the metadata of this machine."""
+    entries = []
+    for destination in BROWSER_REGISTRATION_FILES:
+        path = os.path.join(project_root, destination)
+        if os.path.isfile(path) and not os.path.islink(path):
+            with open(path, encoding="utf-8", errors="replace") as file_handle:
+                if BROWSER_SERVERS_MARKER in file_handle.read():
+                    entries.append(removal_entry(destination, REMOVAL_EDIT,
+                                                 "unregisters the browser MCP servers agent-ready added; other servers stay", "browser"))
+    if os.path.isfile(os.path.join(project_root, BROWSER_METADATA_RELATIVE_PATH)):
+        entries.append(removal_entry(BROWSER_METADATA_RELATIVE_PATH, REMOVAL_REMOVE, "browser tools metadata of this machine", "browser"))
+    gitignore = os.path.join(project_root, ".gitignore")
+    if os.path.isfile(gitignore) and not os.path.islink(gitignore):
+        with open(gitignore, encoding="utf-8", errors="replace") as file_handle:
+            if BROWSER_METADATA_RELATIVE_PATH in file_handle.read().splitlines():
+                entries.append(removal_entry(".gitignore", REMOVAL_EDIT, "drops the line that ignored the browser metadata", "browser"))
+    return entries
+
+
+def git_path(project_root, relative):
+    """Absolute path of a file inside the Git directory, or None outside a Git worktree."""
+    located = run_quiet(["git", "rev-parse", "--git-path", relative], cwd=project_root)
+    return os.path.normpath(os.path.join(project_root, located)) if located else None
+
+
+def display_path(project_root, path):
+    """Path relative to the project, with forward slashes."""
+    return os.path.relpath(path, project_root).replace(os.sep, "/")
+
+
+def local_removal_entries(project_root):
+    """Git hooks and files that only this checkout has: they never reach the repository."""
+    entries = []
+    # Only the repository config: the setup registers the hook there, and removing it never touches the user's.
+    if run_quiet(["git", "config", "--local", "--get", f"{GIT_HOOK_SECTION}.command"], cwd=project_root) == GIT_HOOK_COMMAND:
+        entries.append(removal_entry(f"git config {GIT_HOOK_SECTION}", REMOVAL_REMOVE,
+                                     "relinks .claude hard-link views after git operations", "git-config"))
+    hook = git_path(project_root, f"hooks/{GIT_HOOK_FILE_NAME}")
+    if hook and os.path.isfile(hook) and not os.path.islink(hook):
+        with open(hook, encoding="utf-8", errors="replace") as file_handle:
+            if GIT_HOOK_MARKER in file_handle.read():
+                entries.append(removal_entry(display_path(project_root, hook), REMOVAL_REMOVE,
+                                             "relinks .claude hard-link views after git operations", "git-hook", local_state(hook)))
+    review_hash = git_path(project_root, f"info/{INSTRUCTION_REVIEW_HASH_NAME}")
+    for path, reason in ((os.path.join(project_root, HARD_LINK_VIEWS_MANIFEST), "list of .claude hard-link views"),
+                         (review_hash, "hash of the last instruction review")):
+        if path and os.path.isfile(path) and not os.path.islink(path):
+            entries.append(removal_entry(display_path(project_root, path), REMOVAL_REMOVE, reason, "state", local_state(path)))
+    return entries
+
+
+def config_removal_entries(project_root):
+    """The manifest and the lockfile, which make agent-ready-setup manage the repository."""
+    entries = []
+    for relative, reason in ((MANIFEST_RELATIVE_PATH, "agent-ready-setup configuration of the repository"),
+                             (LOCK_RELATIVE_PATH, "lockfile of the managed assets")):
+        local = local_state(os.path.join(project_root, relative))
+        if local == LOCAL_ABSENT:
+            continue
+        if local in (LOCAL_SYMLINK, LOCAL_NOT_A_FILE):
+            entries.append(removal_entry(relative, REMOVAL_KEEP, "not a regular file", "config"))
+        else:
+            entries.append(removal_entry(relative, REMOVAL_REMOVE, reason, "config", local))
+    return entries
+
+
+def plan_removal(project_root, skill_dir):
+    """What `agent-ready remove` deletes, edits and keeps, without writing anything.
+
+    It reads only the lockfile and the files themselves, not the configuration, so a
+    repository with an invalid manifest can still be cleaned.
+    """
+    lock = read_lock(project_root)
+    locked_assets = lock["assets"] if lock else {}
+    entries = (
+        browser_removal_entries(project_root)
+        + local_removal_entries(project_root)
+        + view_removal_entries(project_root, locked_assets)
+        + asset_removal_entries(project_root, locked_assets)
+        + instruction_removal_entries(project_root, skill_dir, lock)
+        + settings_removal_entries(project_root, skill_dir)
+        + config_removal_entries(project_root)
+    )
+    entries.sort(key=lambda entry: (REMOVAL_KINDS.index(entry["kind"]), entry["path"]))
+    return {"entries": entries, "changes": sum(entry["action"] != REMOVAL_KEEP for entry in entries)}
+
+
+def unchanged_since_plan(project_root, entry):
+    """True when a file still has the state the plan saw."""
+    return entry["local"] is None or local_state(os.path.join(project_root, entry["path"])) == entry["local"]
+
+
+def remove_managed_roots_if_empty(project_root):
+    """Drop .agents, .claude, .codex and .github when the removal left them empty."""
+    for directory in MANAGED_ROOT_DIRECTORIES:
+        path = os.path.join(project_root, directory)
+        if os.path.isdir(path) and not is_link(path):
+            try:
+                os.rmdir(path)
+            except OSError:
+                pass
+
+
+def unregister_browser_servers(project_root, skill_dir, report):
+    """Run the dedicated entry point once; it knows how to edit the TOML of Codex."""
+    command = [sys.executable, os.path.join(skill_dir, UNREGISTER_BROWSER_RELATIVE_PATH), "--project", project_root]
+    completed = subprocess.run(command, capture_output=True, encoding="utf-8", errors="replace", check=False)
+    # One "<removed|edited><TAB><path>" line per file the entry point changed.
+    for line in completed.stdout.splitlines():
+        outcome, _, changed_path = line.partition("\t")
+        if outcome in ("removed", "edited") and changed_path:
+            report[outcome].append(changed_path)
+    if completed.returncode != 0:
+        problem = completed.stderr.strip().splitlines()[-1] if completed.stderr.strip() else "the browser servers could not be removed"
+        report["failed"].append(problem)
+
+
+def apply_removal_entry(project_root, skill_dir, entry, report):
+    """Carry out one removal or edit, after checking that the file did not change."""
+    path = os.path.join(project_root, entry["path"])
+    if entry["kind"] == "git-config":
+        if subprocess.call(["git", "config", "--remove-section", GIT_HOOK_SECTION], cwd=project_root,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) == 0:
+            report["removed"].append(entry["path"])
+        else:
+            report["failed"].append(f"{entry['path']}: git config --remove-section failed")
+        return
+    if not unchanged_since_plan(project_root, entry):
+        report["kept"].append(f"{entry['path']}: {CHANGED_DURING_REMOVAL_REASON}")
+        return
+    if entry["action"] == REMOVAL_REMOVE:
+        os.unlink(path)
+        if entry["kind"] in ("view", "asset"):
+            # Only the folders that assets created; the Git directory keeps its own.
+            remove_empty_parents(project_root, path)
+        report["removed"].append(entry["path"])
+        return
+    if entry["kind"] == "instructions":
+        # Read and close before replacing: Windows refuses to replace an open file.
+        with open(path, encoding="utf-8") as file_handle:
+            current = file_handle.read()
+        write_text_atomically(path, without_managed_block(current))
+    else:
+        template_path = dict(settings_templates(skill_dir))[entry["path"]]
+        write_text_atomically(path, serialize_settings(settings_without_managed_entries(project_root, entry["path"], template_path)[1]))
+    report["edited"].append(entry["path"])
+
+
+def apply_removal(project_root, skill_dir, plan):
+    """Remove agent-ready-setup from the repository following a plan; returns what happened."""
+    report = {"removed": [], "edited": [], "kept": [], "failed": []}
+    report["kept"] += [f"{entry['path']}: {entry['reason']}" for entry in plan["entries"] if entry["action"] == REMOVAL_KEEP]
+    browser_done = False
+    for entry in plan["entries"]:
+        if entry["action"] == REMOVAL_KEEP:
+            continue
+        if entry["kind"] == "browser":
+            if not browser_done:
+                unregister_browser_servers(project_root, skill_dir, report)
+                browser_done = True
+            continue
+        try:
+            apply_removal_entry(project_root, skill_dir, entry, report)
+        except OSError as caught_error:
+            report["failed"].append(f"{entry['path']}: {caught_error}")
+    remove_managed_roots_if_empty(project_root)
+    return report
+
+
+def print_removal_plan(plan, stream):
+    """Text plan: one line per path with what happens to it and why."""
+    for entry in plan["entries"]:
+        symbol = REMOVAL_SYMBOLS[entry["action"]]
+        label = paint(f"{symbol} {entry['action']:<6}", REMOVAL_COLORS[entry["action"]], stream)
+        write_line(f"  {label} {entry['path']}  ({entry['reason']})", stream)
+
+
 def build_parser():
     """Command line parser for every subcommand."""
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
