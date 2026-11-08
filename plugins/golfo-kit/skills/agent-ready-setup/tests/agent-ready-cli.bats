@@ -407,3 +407,20 @@ publish_pack_repository() {
   [ "$status" -eq 2 ]
   [[ "$stderr" == *"the selection still uses beta/base; remove what brings them in first with agent-ready profiles remove alpha/base"* ]]
 }
+
+@test "sources add refuses a directory that is not a valid pack, and a broken pack can still be removed" {
+  run_cli init --profiles node --yes < /dev/null
+  [ "$status" -eq 0 ]
+  before="$(cksum < .agents/agent-ready.json)"
+  mkdir not-a-pack
+  run_cli sources add bad path:./not-a-pack
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"the source 'bad' is not a valid profile pack:"*"the manifest was left as it was"* ]]
+  [ "$(cksum < .agents/agent-ready.json)" = "$before" ]
+
+  run_cli sources add bad path:./not-a-pack --offline
+  [ "$status" -eq 0 ]
+  run_cli sources remove bad
+  [ "$status" -eq 0 ]
+  [ "$(json_value "$(cat .agents/agent-ready.json)" '"sources" in data')" = "False" ]
+}

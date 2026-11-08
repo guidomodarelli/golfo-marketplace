@@ -166,16 +166,24 @@ def command_sources_add(arguments):
     manifest_path = os.path.join(arguments.project_root, PROJECT_CONFIG_RELATIVE_PATH)
     previous = open(manifest_path, encoding="utf-8").read() if os.path.isfile(manifest_path) else None
     path, _ = write_layer(arguments, change)
+
+    def restore_manifest():
+        if previous is None:
+            os.unlink(manifest_path)
+        else:
+            write_text_atomically(manifest_path, previous)
+
     if not arguments.offline:
         # The same strict download an apply runs: a missing path or an unreachable repository fails here.
         command = [sys.executable, STATE_SCRIPT, "fetch-sources", "--project", arguments.project_root, "--skill-dir", SKILL_ROOT]
         if subprocess.call(command, cwd=arguments.project_root, stdout=sys.stderr) != EXIT_OK:
-            if previous is None:
-                os.unlink(manifest_path)
-            else:
-                write_text_atomically(manifest_path, previous)
+            restore_manifest()
             fail(f"could not bring the source '{arguments.name}' into the cache; the manifest was left as it was")
             return EXIT_SOURCE_UNAVAILABLE
+        problem = pack_problem(arguments.project_root, arguments.name)
+        if problem:
+            restore_manifest()
+            raise UsageError(f"the source '{arguments.name}' is not a valid profile pack: {problem}; the manifest was left as it was")
     sys.stderr.write(f"Source '{arguments.name}' declared in {path}. Its profiles are selected with "
                      f"{CLI_NAME} profiles add {arguments.name}/<profile>.\n")
     return EXIT_OK
@@ -193,11 +201,24 @@ def required_closure(catalog, name):
     return closure
 
 
+def pack_problem(project_root, name):
+    """Why the engine cannot load the catalog of a source just fetched, or None when it can."""
+    try:
+        source = engine().load_effective_catalog(project_root, SKILL_ROOT)["sources"].get(name, {})
+    except (ProfileError, StateError) as invalid_pack:
+        return str(invalid_pack)
+    return None if source.get("state") == "available" else (source.get("reason") or "it is not available")
+
+
 def command_sources_remove(arguments):
     """Remove a profile source from the manifest, unless selected profiles still come from it."""
     prefix = f"{arguments.name}{NAMESPACE_SEPARATOR}"
     selection = selected_profiles(arguments.project_root)
-    catalog = engine().load_effective_catalog(arguments.project_root, SKILL_ROOT)
+    try:
+        catalog = engine().load_effective_catalog(arguments.project_root, SKILL_ROOT)
+    except (ProfileError, StateError):
+        # A broken pack must still be removable: without a catalog, only the names themselves count.
+        catalog = {"profiles": {}}
     # A profile counts when it comes from the source or requires one that does, through any pack.
     closures = {name: required_closure(catalog, name) for name in selection}
     using = sorted({member for closure in closures.values() for member in closure if member.startswith(prefix)})
