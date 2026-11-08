@@ -790,7 +790,11 @@ def enforce_sync_policy(project_root, skill_dir, catalog, resolved, digests):
                 f"profile source '{name}' is pinned and differs from the lock ({'; '.join(item['differences'])}); "
                 "SessionStart does not adopt it, so this repository keeps its committed assets until someone adopts the change"
             )
-    if lock and golfo_kit.update_mode(configuration_of(project_root)) == UPDATES_PINNED:
+    marker = golfo_kit.read_marker(skill_dir)
+    projects_locked_revision = bool(marker) and marker.get("commit") == (lock or {}).get("source", {}).get("revision")
+    # The content digest covers engine-owned files too (hooks, settings templates): with the revision
+    # of the lock projected, a new engine is not a golfo-kit release and the sync goes on.
+    if lock and not projects_locked_revision and golfo_kit.update_mode(configuration_of(project_root)) == UPDATES_PINNED:
         assets = desired_assets(skill_dir, catalog, resolved)
         golfo_assets = {destination: entry for destination, entry in assets.items() if not is_pack_profile(entry["profile"])}
         identity = source_identity(skill_dir, golfo_assets, merged_template_entries(skill_dir, catalog, resolved))
@@ -2062,6 +2066,22 @@ def command_fetch_sources(arguments):
     return 0
 
 
+def golfo_kit_content_dir(project_root, skill_dir, offline=False, read_only=True):
+    """Skill directory with the golfo-kit content this repository uses, for a run that writes nothing.
+
+    Offline, a pinned revision missing from the cache falls back to ``skill_dir`` with a warning.
+    """
+    lock = read_lock(project_root)
+    engine_revision, _ = source_revision(skill_dir)
+    content_dir, warning = golfo_kit.content_skill_dir(
+        configuration_of(project_root, offline), skill_dir, engine_revision, (lock or {}).get("source"),
+        offline=offline, read_only=read_only,
+    )
+    if warning:
+        write_line(f"WARNING: {warning}", sys.stderr)
+    return content_dir
+
+
 def command_golfo_kit_source(arguments):
     """Print the composed skill directory when the golfo-kit content of this run is not the engine's; see agent_ready_golfo_kit."""
     lock = read_lock(arguments.project)
@@ -2275,11 +2295,16 @@ def evaluate_check(project_root, skill_dir, offline):
     if not offline:
         unavailable = refresh_declared_sources(declared_sources(project_root), locked_sources_of(project_root))
     # A repository that pins golfo-kit is checked against the content of its revision, like an apply.
+    locked_source = (read_lock(project_root) or {}).get("source")
+    golfo_kit.declaration_of(configuration, skill_dir, locked_source)  # an invalid declaration is a configuration error
     engine_revision, _ = source_revision(skill_dir)
-    content_dir, missing_content = golfo_kit.content_skill_dir(
-        configuration, skill_dir, engine_revision, (read_lock(project_root) or {}).get("source"),
-        offline=offline, read_only=True,
-    )
+    try:
+        content_dir, missing_content = golfo_kit.content_skill_dir(
+            configuration, skill_dir, engine_revision, locked_source, offline=offline, read_only=True,
+        )
+    except ProfileError as fetch_error:
+        # The revision or its ref could not be fetched: like a pack that cannot refresh.
+        content_dir, missing_content = skill_dir, str(fetch_error)
     if missing_content:
         # Comparing with the installed content would report changes an apply never makes.
         return {"status": CHECK_SOURCE_UNAVAILABLE, "ci": ci, "problems": [], "unavailable": unavailable + [missing_content]}

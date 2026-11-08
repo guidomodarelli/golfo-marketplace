@@ -304,8 +304,11 @@ agents, commands y templates de instrucciones) se puede fijar como un pack, con 
   el instalado. Solo `plan`, `status` y el inicio de sesión (que no escriben) comparan con el instalado, con un
   aviso, cuando la revisión no está en la caché y corren sin red. El inicio de sesión nunca usa la red en primer
   plano: resuelve la `ref` y descarga en la sincronización en segundo plano.
-- `agent-ready check` compara con el contenido fijado. Con `--offline` y sin esa revisión en la caché, informa
-  la fuente como no disponible en vez de cambios que un apply no haría.
+- `agent-ready check` compara con el contenido fijado. Si no tiene esa revisión (sin red o sin acceso al
+  repositorio), informa la fuente como no disponible, bajo el `ci.mode` vigente, en vez de cambios que un apply no
+  haría. `agent-ready profiles list|add|remove` e `init` eligen del catálogo de la revisión fijada.
+- Un motor nuevo (hooks o templates de settings distintos) no frena la sincronización de un golfo-kit fijado:
+  solo cambia lo que es del motor.
 - En un repositorio `pinned`, `sources.golfoKit.updates: auto` hace que el inicio de sesión adopte golfo-kit
   solo, como a un pack en `auto`.
 - **El motor nunca se fija.** Los scripts, los hooks (`assets/common/hooks/`, que se actualizan solos en cada

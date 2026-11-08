@@ -298,3 +298,70 @@ wait_for_background_update() {
   wait_for_background_update
   [ "$(lock_value 'data["source"]["revision"]')" = "$second_revision" ]
 }
+
+# An installed plugin outside the repository, so a test can change its engine.
+install_engine_copy() {
+  installed_plugin="$test_root/installed/golfo-kit"
+  engine_copy="$installed_plugin/skills/agent-ready-setup"
+  mkdir -p "$engine_copy"
+  cp "$repository_root/plugins/golfo-kit/plugin.json" "$installed_plugin/"
+  cp -R "$repository_root/plugins/golfo-kit/.claude-plugin" "$repository_root/plugins/golfo-kit/.codex-plugin" "$installed_plugin/"
+  cp -R "$skill_dir/assets" "$skill_dir/scripts" "$skill_dir/SKILL.md" "$engine_copy/"
+}
+
+@test "a new engine does not stop the sync of a pinned golfo-kit" {
+  install_engine_copy
+  write_manifest '{"profiles": ["node"], "sources": {"golfoKit": {"updates": "pinned"}}}'
+  run --separate-stderr env PATH="$fake_bin:$PATH" python3 "$engine_copy/scripts/agent-ready" update golfo-kit --to "$first_revision"
+  [ "$status" -eq 0 ]
+  # Only the engine changes: a hook, which is never pinned.
+  printf '\n# hook of a new engine\n' >> "$engine_copy/assets/common/hooks/check-harness-consistency.sh"
+  rm .agents/rules/verify-changes.md
+
+  run env PATH="$fake_bin:$PATH" AGENT_READY_SETUP_SKILL_DIR="$engine_copy" AGENT_READY_SETUP_SYNC_FOREGROUND=1 \
+    bash .agents/hooks/sync-marketplace.sh --provider claude
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"has a release pending"* ]]
+  grep -Fq 'Content of revision one.' .agents/rules/verify-changes.md
+  cmp -s .agents/hooks/check-harness-consistency.sh "$engine_copy/assets/common/hooks/check-harness-consistency.sh"
+  [ "$(lock_value 'data["source"]["revision"]')" = "$first_revision" ]
+}
+
+@test "a check that cannot fetch the pinned revision reports it unavailable under ci.mode warn" {
+  write_manifest '{"profiles": ["node"], "ci": {"mode": "warn"}, "sources": {"golfoKit": {"updates": "pinned"}}}'
+  run_cli update golfo-kit --to "$first_revision"
+  [ "$status" -eq 0 ]
+  rm -rf "$XDG_CACHE_HOME/agent-ready-setup"
+  git config --global --remove-section "url.file:///$(native_path "$marketplace" | sed 's#^/##')"
+  git config --global "url.file:///$(native_path "$test_root/unreachable" | sed 's#^/##').insteadOf" \
+    "https://github.com/guidomodarelli/golfo-marketplace"
+
+  run_cli check --json
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s' "$output" | python3 -c 'import json,sys; data=json.load(sys.stdin); print(data["status"], data["ci"]["mode"])' | tr -d '\r')" = \
+    "source-unavailable warn" ]
+}
+
+@test "profiles list and add read the catalog of the pinned golfo-kit" {
+  git -C "$marketplace" checkout -q -b legacy "$first_revision"
+  python3 - "$marketplace/plugins/golfo-kit/skills/agent-ready-setup/assets/profiles.json" <<'PY'
+import json, sys
+catalog = json.load(open(sys.argv[1], encoding="utf-8"))
+catalog["profiles"]["legacy-capability"] = dict(catalog["profiles"]["business-flows"], description="Only in this revision.")
+json.dump(catalog, open(sys.argv[1], "w", encoding="utf-8"), indent=2)
+PY
+  git -C "$marketplace" commit -qam "golfo-kit with a legacy capability"
+  legacy_revision="$(git -C "$marketplace" rev-parse HEAD)"
+  git -C "$marketplace" checkout -q main
+  write_manifest '{"profiles": ["node"], "sources": {"golfoKit": {"updates": "pinned"}}}'
+  run_cli update golfo-kit --to "$legacy_revision"
+  [ "$status" -eq 0 ]
+
+  run_cli profiles list
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"legacy-capability"* ]]
+  run_cli profiles add legacy-capability
+  [ "$status" -eq 0 ]
+  [ "$(python3 -c 'import json; print(json.load(open(".agents/agent-ready.json", encoding="utf-8"))["profiles"])' | tr -d '\r')" = \
+    "['node', 'legacy-capability']" ]
+}
