@@ -1,0 +1,36 @@
+{
+  "name": "@golfo/agent-ready",
+  "version": "0.1.0",
+  "description": "agent-ready on your PATH: runs the agent-ready-setup CLI of the golfo-kit plugin that Claude Code, Codex or Hermes installed.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Guido Modarelli",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/guidomodarelli/golfo-marketplace.git",
+    "directory": "packages/agent-ready"
+  },
+  "homepage": "https://github.com/guidomodarelli/golfo-marketplace/tree/main/packages/agent-ready#readme",
+  "bugs": "https://github.com/guidomodarelli/golfo-marketplace/issues",
+  "keywords": [
+    "agent-ready",
+    "ai-agents",
+    "claude-code",
+    "codex",
+    "golfo-kit"
+  ],
+  "bin": {
+    "agent-ready": "./bin/agent-ready.js"
+  },
+  "files": [
+    "bin",
+    "lib"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}

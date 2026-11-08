@@ -24,6 +24,8 @@
 │               ├── SKILL.md    # Definición del skill — requerido para cada skill
 │               └── evals/
 │                   └── eval-config.json
+├── packages/
+│   └── agent-ready/            # @golfo/agent-ready: el CLI agent-ready en el PATH
 └── skill-eval-runner/          # CLI para correr evals localmente
 ```
 
@@ -65,6 +67,22 @@ Si `CLAUDE.md` ya contiene instrucciones, el setup las promueve a un `AGENTS.md`
 Después de `marketplace upgrade`, la actualización global no reproyecta assets sobre proyectos ya preparados. La ejecución directa de `agent-ready-setup` y el hook canónico `.agents/hooks/sync-marketplace.sh` seleccionan la versión cacheada semver más nueva y actualizan los assets gestionados bajo `.claude/`, `.agents/` y `.codex/`; ambos providers usan el mismo comportamiento con sus caches respectivas. La proyección recorre `assets/common/` y `assets/stacks/<stack>/`, incluyendo rules, agents, commands, skills, MCP y hooks; los hooks permanecen canónicos bajo `.agents/hooks/`, mientras `.claude/` recibe symlinks para assets no-hook. El hook normaliza instrucciones mediante `bootstrap.sh --normalize-only` cuando la versión instalada lo soporta y ejecuta el merge semántico de `AGENTS.md`. La normalización ocurre desde la raíz Git e incluye `.claude/CLAUDE.md`; conflictos, symlinks y destinos inseguros se preservan y reportan. Muestra diffs y aplica siempre los templates: un asset gestionado editado se sobrescribe, un asset que ya no publica ningún profile se retira aunque tenga cambios, y solo se preservan como conflicto los archivos que ningún apply escribió según `.agents/agent-ready.lock.json`. En repos con `"updates": "pinned"` en `.agents/agent-ready.json` (default) el hook solo informa el estado; `bootstrap.sh --plan` y `--status` muestran qué cambiaría sin escribir. Profiles, manifest y lockfile: `plugins/golfo-kit/skills/agent-ready-setup/references/profiles-and-lockfile.md`. También combina el template con los settings JSON y preserva sus campos custom. El merge IA de `AGENTS.md` conserva cambios compatibles; si falla o queda sin resolución, aplica template y guarda backup temporal. `CLAUDE.md` nunca se modifica directamente por el merge IA.
 
 El flujo manual y `SessionStart` usan el hook sin flags de confirmación. La resolución IA trata documentos como datos no confiables, aplica cambios compatibles automáticamente y usa fallback template + backup ante salida inválida o conflicto irresoluble. `CLAUDE.md` permanece como proxy.
+
+### `agent-ready` en el PATH
+
+Los agentes corren el CLI por ruta, desde la skill. Una persona lo tiene en su PATH con el paquete
+npm [`@golfo/agent-ready`](packages/agent-ready/README.md), que usa el motor del plugin golfo-kit
+instalado en vez de traer otra copia:
+
+```bash
+npm install --global @golfo/agent-ready
+agent-ready doctor
+```
+
+Para publicar una versión nueva: subir `version` en `packages/agent-ready/package.json` en un PR,
+mergearlo y correr a mano el workflow **Release** (`.github/workflows/release.yml`) desde `main`
+con esa versión. Publica por trusted publishing (OIDC, sin tokens, con provenance) y crea el tag
+`agent-ready-vX.Y.Z` del commit publicado.
 
 ---
 
