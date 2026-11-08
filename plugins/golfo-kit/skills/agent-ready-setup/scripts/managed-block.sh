@@ -265,6 +265,22 @@ store_instructions_review() {
     "${REVIEW_CACHE_FILES[@]}" --result "$result_file" || true
 }
 
+# Prints on stderr, under the header $2, the findings of $1 (JSON with findings) that nobody
+# accepted or dismissed, each with its id; prints nothing when none is left to show.
+report_instructions_findings() {
+  local result_file="$1"
+  local header="$2"
+  local lines
+
+  review_cache_files
+  lines="$(python3 -B "$REVIEW_CACHE_SCRIPT" report --project . --check "$INSTRUCTIONS_CHECK" \
+    --version "$INSTRUCTIONS_CHECK_VERSION" --provider "${PROVIDER:-$TEMPLATE_REVIEWER}" \
+    "${REVIEW_CACHE_FILES[@]}" --result "$result_file")" || return 0
+  [[ -n "$lines" ]] || return 0
+  printf '%s\n%s\n' "$header" "$lines" >&2
+  printf '%s\n' '  Accept or dismiss one with: agent-ready review accept <id> --reason "..."' >&2
+}
+
 run_template_renderer() {
   local -a renderer_arguments=("$@")
 

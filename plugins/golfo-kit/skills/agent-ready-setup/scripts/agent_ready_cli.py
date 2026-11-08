@@ -44,6 +44,7 @@ from agent_ready_common import StateError, serialize_json
 from agent_ready_config import LAYER_PROJECT, ConfigurationError, format_value, load_schema, parse_text_value
 from agent_ready_options import SOURCES_ENABLED_KEY
 from agent_ready_cli_lifecycle import register as register_lifecycle_commands
+from agent_ready_cli_reviews import register as register_review_commands
 from agent_ready_cli_selection import register as register_selection_commands
 from agent_ready_prompts import Cancelled
 
@@ -321,6 +322,7 @@ def build_parser():
                             help="project (.agents/agent-ready.json, versioned) or user (this machine) (default: project)")
     register_selection_commands(subparsers, new_subparser)
     register_lifecycle_commands(subparsers, new_subparser)
+    register_review_commands(subparsers, new_subparser)
     return parser
 
 

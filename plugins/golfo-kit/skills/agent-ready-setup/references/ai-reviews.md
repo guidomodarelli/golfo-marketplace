@@ -1,8 +1,9 @@
 # Revisiones de IA y su caché
 
-Qué revisa la IA en agent-ready-setup, qué se guarda de cada revisión y cómo se
-configura. Leer al explicar por qué una revisión corrió o no corrió, al mostrar los
-hallazgos conocidos o al cambiar las opciones `reviews.*`.
+Qué revisa la IA en agent-ready-setup, qué se guarda de cada revisión, cómo se
+configura y cómo se acepta o descarta un hallazgo. Leer al explicar por qué una revisión
+corrió o no corrió, al mostrar los hallazgos conocidos, al cambiar las opciones `reviews.*`
+o cuando el usuario pide aceptar o descartar un hallazgo.
 
 ## Contenido
 
@@ -11,7 +12,7 @@ hallazgos conocidos o al cambiar las opciones `reviews.*`.
 3. Dónde se guarda
 4. Opciones
 5. Ver los hallazgos y forzar una revisión
-6. Límites
+6. Aceptar o descartar un hallazgo
 
 ## 1. Qué se revisa
 
@@ -77,16 +78,46 @@ guardadas sí se comparten entre worktrees.
 
 ## 5. Ver los hallazgos y forzar una revisión
 
-- `agent-ready status` muestra los hallazgos conocidos sin llamar al provider (`--json`:
-  objeto `reviews` con `units`, `stale` y `findings`). Una entrada cuyos archivos
-  cambiaron desde su revisión cuenta como desactualizada y vuelve a correr en la próxima
-  edición o apply.
+- Cada hallazgo lleva un id corto y estable (`! [3f9a1c2b7e] …`), calculado con su unidad,
+  su tipo y las líneas que cita. Si la revisión redacta el mismo problema de otra forma, el
+  id se mantiene. Un hallazgo sin líneas citadas usa su texto.
+- `agent-ready status` y `agent-ready plan` muestran los hallazgos conocidos sin llamar al
+  provider (`--json`: objeto `reviews` con `units`, `stale`, `findings`, `quiet` y
+  `decisions`). Una entrada cuyos archivos cambiaron desde su revisión cuenta como
+  desactualizada y vuelve a correr en la próxima edición o apply.
 - La revisión de `AGENTS.md` que sale de la caché repite sus inconsistencias en cada sync,
-  hasta que alguien edite el archivo o la rule.
+  hasta que alguien edite el archivo o la rule, o decida sobre ellas.
 - `agent-ready apply --recheck` ignora la caché de `AGENTS.md` y lo revisa otra vez.
 
-## 6. Límites
+## 6. Aceptar o descartar un hallazgo
 
-Todavía no se puede aceptar ni descartar un hallazgo: se sigue mostrando mientras su
-unidad no cambie. No inventar un comando para silenciarlo; para que deje de aparecer hay
-que resolver la contradicción en las rules o en `AGENTS.md`.
+Las decisiones del equipo se guardan en `.agents/agent-ready.reviews.json`, que se commitea.
+Cada una tiene el id del hallazgo, el motivo, quién la tomó (el `user.name` de Git) y cuándo.
+
+```bash
+agent-ready review list [--json]                                       # hallazgos con su id y estado
+agent-ready review accept <id> --reason "<motivo>" [--scope content|pair]  # es a propósito
+agent-ready review dismiss <id> --reason "<motivo>" [--scope content|pair] # no es un problema real
+agent-ready review reset <id>... | --all                               # vuelven a mostrarse
+```
+
+- **Motivo obligatorio.** Sin `--reason`, o con un motivo vacío, el comando falla (código
+  2) y no escribe nada. Un id que ningún hallazgo actual usa también falla.
+- **Alcance `content` (default).** La decisión vale mientras no cambie ninguno de los
+  archivos del hallazgo. Si cambia alguno, el hallazgo se revisa de nuevo y vuelve como
+  «a confirmar» (`? [id] … (accepted before the files changed: <motivo>)`). Se confirma
+  aceptándolo otra vez.
+- **Alcance `pair`.** La decisión vale para ese par de archivos aunque cambie su
+  contenido, hasta que alguien la quite con `reset`.
+- **Solo ese hallazgo.** Aceptar nunca modifica las rules ni silencia otros hallazgos del
+  mismo par: los demás se siguen mostrando con su propio id.
+- **Archivo ilegible.** Si `.agents/agent-ready.reviews.json` no es JSON válido, los hooks lo
+  ignoran y muestran todos los hallazgos. El CLI se niega a escribir encima y pide
+  corregirlo o borrarlo.
+- **Pedido en el chat.** Cuando el usuario pide aceptar un hallazgo («aceptá ese conflicto,
+  es a propósito»), el agente corre `agent-ready review accept <id> --reason "<motivo>"`
+  con el motivo que dio el usuario. Si no dio ninguno, se lo pregunta: nunca lo inventa.
+  Usa `--scope pair` solo si el usuario quiere que la decisión siga valiendo aunque cambien
+  los archivos.
+- `review list` también muestra las decisiones que ya no usa ningún hallazgo actual, para
+  quitarlas con `reset`. `agent-ready remove` conserva el archivo: son decisiones del equipo.

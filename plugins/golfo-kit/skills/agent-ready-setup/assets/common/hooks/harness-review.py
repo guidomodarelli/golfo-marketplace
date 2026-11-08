@@ -264,16 +264,24 @@ def review_root(bash, cache_module, cache, project_root, root, changed, provider
                 cache.store(records)
             except (OSError, cache_module.CacheLockTimeout) as caught_error:
                 print(f"{LOG_PREFIX} WARNING: the results were not cached: {caught_error}", file=sys.stderr)
-    findings = [finding for pair in sorted(known) for finding in known[pair]]
+    decisions = cache_module.Decisions(project_root)
+    recorded = decisions.read()
+    annotated = [finding for pair in sorted(known)
+                 for finding in decisions.annotate(cache_module.unit_id(CHECK, pair), known[pair], recorded)]
+    findings = cache_module.visible(annotated)
     for finding in findings:
-        print(f"{LOG_PREFIX} ! {finding['files'][0]} <-> {finding['files'][1]}: {finding['text']}")
+        print(f"{LOG_PREFIX} {cache_module.finding_line(finding)}")
         for line in finding.get("lines", []):
             print(f"{LOG_PREFIX}     {line}")
+    if findings:
+        print(f"{LOG_PREFIX} Accept or dismiss one with: agent-ready review accept <id> --reason \"...\"")
+    quiet = len(annotated) - len(findings)
+    quiet_note = f" ({quiet} accepted or dismissed)" if quiet else ""
     # A clean verdict needs every pair reviewed; pairs without an answer leave the check incomplete.
     if unreviewed:
-        print(f"{LOG_PREFIX} Check incomplete: {unreviewed} of {len(pairs)} pairs were not reviewed.")
+        print(f"{LOG_PREFIX} Check incomplete: {unreviewed} of {len(pairs)} pairs were not reviewed.{quiet_note}")
     elif not findings:
-        print(f"{LOG_PREFIX} No contradictions found.")
+        print(f"{LOG_PREFIX} No contradictions found.{quiet_note}")
 
 
 def main():

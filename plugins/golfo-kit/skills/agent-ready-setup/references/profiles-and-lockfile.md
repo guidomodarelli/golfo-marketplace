@@ -421,6 +421,7 @@ python3 "$SKILL_DIR/scripts/agent-ready" remove [--dry-run] [--yes] [--json]
   | servidores MCP del browser en `.mcp.json` y `.codex/config.toml` | los quita con `unregister-browser-servers.py` (Python 3.11+) y conserva los del proyecto |
   | hook `post-index-change` de las vistas hard link y su lista | los borra del checkout |
   | caché de las revisiones de IA (`.git/info/agent-ready/reviews.json`) | la borra |
+  | decisiones sobre los hallazgos (`.agents/agent-ready.reviews.json`) | las conserva: son del equipo |
   | manifest y lockfile | los borra al final, así una corrida interrumpida se puede repetir |
 
   Pide confirmación solo con terminal; sin terminal, con `CI` o con `--no-input` necesita `--yes` y

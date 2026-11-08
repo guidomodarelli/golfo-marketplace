@@ -78,6 +78,28 @@ run_hook() {
   run env PATH="$fake_bin:$PATH" bash "$hook" <<< "$(edit_payload "$1")"
 }
 
+run_cli() {
+  run --separate-stderr env PATH="$fake_bin:$PATH" python3 "$skill_dir/scripts/agent-ready" "$@"
+}
+
+# Two findings of the pair style.md <-> testing.md, each quoting its own lines.
+two_findings() {
+  printf '%s\n' '{"findings": [
+    {"pair": 1, "lines": ["Never mock dependencies.", "Mock every dependency."], "kind": "contradiction", "text": "Mocks are both required and forbidden."},
+    {"pair": 1, "lines": ["# Style", "# Testing"], "kind": "inconsistency", "text": "The headings use different conventions."}]}' > "$FAKE_RESPONSE"
+}
+
+# Id of the finding whose text starts with $1, from review list --json.
+finding_id_of() {
+  python3 -c 'import json,sys; print(next(f["id"] for f in json.loads(sys.argv[1])["findings"] if f["text"].startswith(sys.argv[2])))' \
+    "$(PATH="$fake_bin:$PATH" python3 "$skill_dir/scripts/agent-ready" review list --json)" "$1" | tr -d '\r'
+}
+
+decision_value() {
+  python3 -c 'import json,sys; data=json.load(open(sys.argv[1], encoding="utf-8")); print(eval(sys.argv[2], {"data": data}))' \
+    .agents/agent-ready.reviews.json "$1" | tr -d '\r'
+}
+
 cache_file() {
   printf '%s/.git/info/agent-ready/reviews.json' "$project_dir"
 }
@@ -148,7 +170,7 @@ PY
 @test "a finding is kept per pair and status shows it without calling the provider" {
   printf '%s\n' '{"findings": [{"pair": 1, "lines": ["Never mock dependencies.", "Mock every dependency."], "kind": "contradiction", "text": "One rule mocks every dependency and the other forbids mocks."}]}' > "$FAKE_RESPONSE"
   run_hook .agents/rules/testing.md
-  [[ "$output" == *"! .agents/rules/style.md <-> .agents/rules/testing.md: One rule mocks every dependency"* ]]
+  [[ "$output" == *"! ["*"] .agents/rules/style.md <-> .agents/rules/testing.md: One rule mocks every dependency"* ]]
   [ "$(calls)" -eq 1 ]
 
   run --separate-stderr env PATH="$fake_bin:$PATH" python3 "$skill_dir/scripts/agent-ready-state.py" status --project . --format json
@@ -157,7 +179,7 @@ PY
 
   run env PATH="$fake_bin:$PATH" python3 "$skill_dir/scripts/agent-ready-state.py" status --project .
   [[ "$output" == *"AI reviews: 1 known finding(s) in 2 reviewed unit(s), from the cache:"* ]]
-  [[ "$output" == *"! .agents/rules/style.md <-> .agents/rules/testing.md: One rule mocks every dependency"* ]]
+  [[ "$output" == *"! ["*"] .agents/rules/style.md <-> .agents/rules/testing.md: One rule mocks every dependency"* ]]
 
   printf 'Mock only the network.\n' >> .agents/rules/testing.md
   run --separate-stderr python3 "$skill_dir/scripts/agent-ready-state.py" status --project . --format json
@@ -371,6 +393,125 @@ PY
   run_hook .agents/rules/testing.md
   [ "$(argument_after --model)" = claude-sonnet-5-5 ]
   [ "$(argument_after --effort)" = medium ]
+}
+
+@test "each finding has an id and accepting one with a reason silences only that one" {
+  two_findings
+  run_hook .agents/rules/testing.md
+  mock_id="$(finding_id_of Mocks)"
+  heading_id="$(finding_id_of 'The headings')"
+  [ -n "$mock_id" ] && [ -n "$heading_id" ] && [ "$mock_id" != "$heading_id" ]
+  [[ "$output" == *"! [$mock_id] .agents/rules/style.md <-> .agents/rules/testing.md: Mocks are both required"* ]]
+
+  run_cli review accept "$mock_id"
+  [ "$status" -eq 2 ]
+  run_cli review accept "$mock_id" --reason "   "
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"--reason cannot be empty"* ]]
+  [ ! -e .agents/agent-ready.reviews.json ]
+  run_cli review accept 0000000000 --reason "on purpose"
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"no current finding has the id 0000000000"* ]]
+
+  git config user.name "Ada Reviewer"
+  run_cli review accept "$mock_id" --reason "golfo mocks the network on purpose"
+  [ "$status" -eq 0 ]
+  [ "$(decision_value "[data['decisions']['$mock_id'][key] for key in ('decision', 'scope', 'reason', 'by')]")" = \
+    "['accepted', 'content', 'golfo mocks the network on purpose', 'Ada Reviewer']" ]
+
+  # The hook, status and plan keep showing the other finding of the same pair.
+  run_hook .agents/rules/testing.md
+  [ "$(calls)" -eq 1 ]
+  [[ "$output" != *"[$mock_id]"* ]]
+  [[ "$output" == *"! [$heading_id]"* ]]
+  run --separate-stderr python3 "$skill_dir/scripts/agent-ready-state.py" status --project . --format json
+  [ "$(python3 -c 'import json,sys; r=json.loads(sys.argv[1])["reviews"]; print([f["id"] for f in r["findings"]], r["quiet"])' "$output" | tr -d '\r')" = \
+    "['$heading_id'] 1" ]
+  run python3 "$skill_dir/scripts/agent-ready-state.py" status --project .
+  [[ "$output" == *"1 known finding(s) in 2 reviewed unit(s), from the cache; 1 accepted or dismissed:"* ]]
+  [[ "$output" == *"! [$heading_id]"* ]]
+}
+
+@test "a content decision asks to be confirmed once its files change; a pair decision stays" {
+  two_findings
+  run_hook .agents/rules/testing.md
+  mock_id="$(finding_id_of Mocks)"
+  heading_id="$(finding_id_of 'The headings')"
+  run_cli review accept "$mock_id" --reason "on purpose"
+  run_cli review dismiss "$heading_id" --reason "not a real conflict" --scope pair
+
+  printf 'Keep tests fast.\n' >> .agents/rules/testing.md
+  run_hook .agents/rules/testing.md
+  [ "$(calls)" -eq 2 ]
+  [[ "$output" == *"? [$mock_id] .agents/rules/style.md <-> .agents/rules/testing.md: Mocks are both required and forbidden. (accepted before the files changed: on purpose)"* ]]
+  [[ "$output" != *"[$heading_id]"* ]]
+  run_cli review list --json
+  [ "$(python3 -c 'import json,sys; print(sorted((f["id"] == sys.argv[2], f["status"]) for f in json.loads(sys.argv[1])["findings"]))' "$output" "$mock_id" | tr -d '\r')" = \
+    "[(False, 'dismissed'), (True, 'to-confirm')]" ]
+
+  # Accepting it again records the current files, so it is quiet again.
+  run_cli review accept "$mock_id" --reason "still on purpose"
+  run_hook .agents/rules/testing.md
+  [[ "$output" != *"[$mock_id]"* ]]
+  [[ "$output" == *"No contradictions found. (2 accepted or dismissed)"* ]]
+}
+
+@test "reset brings findings back, and an unknown id or a missing target fails" {
+  two_findings
+  run_hook .agents/rules/testing.md
+  mock_id="$(finding_id_of Mocks)"
+  run_cli review accept "$mock_id" --reason "on purpose"
+  [ -f .agents/agent-ready.reviews.json ]
+
+  run_cli review reset
+  [ "$status" -eq 2 ]
+  run_cli review reset 1234567890
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"no decision has the id 1234567890"* ]]
+  run_cli review reset "$mock_id"
+  [ "$status" -eq 0 ]
+  # No decision left: the file goes away instead of staying empty.
+  [ ! -e .agents/agent-ready.reviews.json ]
+  run_hook .agents/rules/testing.md
+  [[ "$output" == *"! [$mock_id]"* ]]
+
+  run_cli review accept "$mock_id" --reason "on purpose"
+  run_cli review reset --all
+  [ "$status" -eq 0 ]
+  [ ! -e .agents/agent-ready.reviews.json ]
+}
+
+@test "a broken decisions file never blocks the hook and the CLI refuses to overwrite it" {
+  two_findings
+  run_hook .agents/rules/testing.md
+  mock_id="$(finding_id_of Mocks)"
+  printf '{ not json\n' > .agents/agent-ready.reviews.json
+
+  run_hook .agents/rules/testing.md
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"! [$mock_id]"* ]]
+  run_cli review accept "$mock_id" --reason "on purpose"
+  [ "$status" -eq 1 ]
+  [[ "$stderr" == *".agents/agent-ready.reviews.json is not valid JSON"* ]]
+  [ "$(cat .agents/agent-ready.reviews.json)" = "{ not json" ]
+}
+
+@test "merge-instructions shows the id of each inconsistency and hides the accepted ones" {
+  # As an apply leaves them: the template rules the review sees are in the repository.
+  cp "$skill_dir"/assets/common/rules/*.md "$skill_dir"/assets/stacks/node/rules/*.md .agents/rules/
+  printf '%s\n' '# Project' 'Mock every dependency.' > AGENTS.md
+  printf '%s\n' '{"project_content": "# Project\nMock every dependency.\n\n<!-- AGENT-READY MANAGED BLOCK -->", "removed": [], "inconsistencies": ["Mock every dependency. — conflicts with .agents/rules/style.md: it forbids mocks"], "reason": "One conflict."}' > "$FAKE_RESPONSE"
+  run env PATH="$fake_bin:$PATH" bash "$skill_dir/scripts/merge-instructions.sh" --provider claude --stack node --skill-dir "$skill_dir"
+  [ "$status" -eq 0 ]
+  inconsistency_id="$(finding_id_of 'Mock every dependency.')"
+  [[ "$output" == *"! [$inconsistency_id] Mock every dependency. — conflicts with .agents/rules/style.md"* ]]
+
+  run_cli review accept "$inconsistency_id" --reason "this repository mocks on purpose"
+  run env PATH="$fake_bin:$PATH" bash "$skill_dir/scripts/merge-instructions.sh" --provider claude --stack node --skill-dir "$skill_dir"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"already reviewed; AI review not required."* ]]
+  [[ "$output" != *"Instruction inconsistencies"* ]]
+  [ "$(calls)" -eq 1 ]
 }
 
 @test "the hook leaves no bytecode beside its scripts" {

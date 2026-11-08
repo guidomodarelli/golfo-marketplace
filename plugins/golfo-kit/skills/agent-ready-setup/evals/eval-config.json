@@ -3007,7 +3007,7 @@
         },
         {
           "type": "regex",
-          "pattern": "no se (re-?)?revisan|no (se )?vuelven? a revisar|se saltean|salen de la caché|siguen en la caché|solo participan|no compara entre sí",
+          "pattern": "no se (re-?)?revisan|no se tocan|no (se )?vuelven? a revisar|se saltean|salen de la caché|siguen en la caché|solo participan|no compara entre sí|no entran",
           "description": "Los pares que no incluyen la rule editada no se vuelven a revisar"
         }
       ]
@@ -3037,20 +3037,43 @@
       ]
     },
     {
-      "id": "reviews-finding-cannot-be-accepted-yet",
-      "description": "Un hallazgo todavía no se puede aceptar ni descartar: no inventa un subcomando para silenciarlo.",
-      "input": "El hook de consistencia de agent-ready-setup marca una contradicción entre dos rules, pero es intencional. ¿Cómo hago para aceptarla y que no aparezca más? No ejecutes Bash ni escribas archivos.",
+      "id": "reviews-accept-finding-with-the-users-reason",
+      "description": "Aceptar un hallazgo a pedido del usuario es agent-ready review accept con su id y el motivo que dio el usuario, que solo silencia ese hallazgo.",
+      "input": "El hook de consistencia de agent-ready-setup me marcó `! [3f9a1c2b7e] .agents/rules/golfo.md <-> .agents/rules/testing.md: una pide mockear la red y la otra lo prohíbe`. Es a propósito: golfo mockea la red porque sus tests corren sin conexión. Aceptalo. Decime el comando exacto que corrés y qué pasa si mañana alguien edita una de esas dos rules. No ejecutes Bash ni escribas archivos.",
       "assertions": [
         {
-          "type": "contains_any",
-          "values": ["todavía no", "aún no", "no se puede aceptar", "no hay forma", "no hay un comando", "no existe"],
-          "description": "Dice que aceptar un hallazgo todavía no está disponible, en vez de inventar un comando",
+          "type": "regex",
+          "pattern": "review accept 3f9a1c2b7e .{0,40}--reason",
+          "description": "Acepta el hallazgo por su id con --reason",
           "critical": true
         },
         {
+          "type": "contains_any",
+          "values": ["sin conexión", "corren sin conexión", "mockea la red"],
+          "description": "Usa el motivo que dio el usuario, sin inventar otro"
+        },
+        {
+          "type": "contains_any",
+          "values": ["a confirmar", "to-confirm", "confirmar", "vuelve a revisar", "se revisa de nuevo"],
+          "description": "Explica que con el alcance content la decisión vuelve a confirmarse si cambian los archivos"
+        }
+      ]
+    },
+    {
+      "id": "reviews-accept-without-reason-asks-first",
+      "description": "Sin motivo del usuario, el agente pregunta el motivo en vez de inventarlo, porque aceptar sin motivo falla.",
+      "input": "agent-ready-setup me muestra el hallazgo `! [9c0d11aa42] AGENTS.md: Mock every dependency. — conflicts with .agents/rules/testing.md`. Aceptalo y listo. No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
           "type": "regex",
-          "pattern": "(resolv|correg|edit|cambi|ajust|reescrib).{0,200}(rule|regla|contradicci)",
-          "description": "Propone resolver la contradicción en las rules para que deje de aparecer"
+          "pattern": "(motivo|razón|reason|por qué)",
+          "description": "Pide o menciona el motivo que exige la aceptación",
+          "critical": true
+        },
+        {
+          "type": "not_contains_any",
+          "values": ["--reason \"es intencional\"", "--reason \"intencional\"", "--reason \"aceptado\"", "--reason \"accepted\""],
+          "description": "No inventa un motivo genérico por el usuario"
         }
       ]
     }
