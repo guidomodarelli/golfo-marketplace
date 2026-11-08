@@ -76,6 +76,7 @@ from agent_ready_options import (  # noqa: E402
     PROVIDERS_KEY,
     REVIEWS_CACHE_KEY,
     REVIEWS_ENABLED_KEY,
+    REVIEWS_COMMIT_KEY,
     REVIEWS_TTL_KEY,
     SOURCES_ENABLED_KEY,
     SOURCES_PACKS_KEY,
@@ -938,7 +939,7 @@ def review_findings(project_root, strict=False):
     ``strict`` refuses a decisions file that cannot be read instead of ignoring it.
     """
     module = review_cache_module()
-    entries = module.ReviewCache(project_root).read()["entries"]
+    entries = module.ReviewCache(project_root).entries()
     decisions = module.Decisions(project_root)
     recorded = decisions.read(strict=strict)
     findings = []
@@ -971,7 +972,8 @@ def record_review_settings(project_root):
     try:
         module.ReviewCache(project_root).write_settings(configuration.value(REVIEWS_ENABLED_KEY),
                                                         configuration.value(REVIEWS_CACHE_KEY),
-                                                        configuration.value(REVIEWS_TTL_KEY))
+                                                        configuration.value(REVIEWS_TTL_KEY),
+                                                        configuration.value(REVIEWS_COMMIT_KEY))
     except (OSError, module.CacheLockTimeout) as caught_error:
         sys.stderr.write(f"WARNING: the review settings were not recorded: {caught_error}\n")
 
@@ -2728,7 +2730,7 @@ def other_worktree_using_agent_ready(project_root):
 
 
 def local_removal_entries(project_root):
-    """Git hooks and files that only this checkout has: they never reach the repository."""
+    """Git hooks and files of agent-ready-setup that the lockfile does not list."""
     entries = []
     # Only the repository config: the setup registers the hook there, and removing it never touches the user's.
     if run_quiet(["git", "config", "--local", "--get", f"{GIT_HOOK_SECTION}.command"], cwd=project_root) == GIT_HOOK_COMMAND:
@@ -2750,7 +2752,9 @@ def local_removal_entries(project_root):
         for entry in entries:
             entry.update(action=REMOVAL_KEEP, local=None,
                          reason=f"shared with the worktree {sharing_worktree}, which still uses agent-ready-setup")
-    for path, reason in ((os.path.join(project_root, HARD_LINK_VIEWS_MANIFEST), "list of .claude hard-link views"),):
+    for path, reason in ((os.path.join(project_root, HARD_LINK_VIEWS_MANIFEST), "list of .claude hard-link views"),
+                         (os.path.join(project_root, review_cache_module().SHARED_CACHE_RELATIVE_PATH),
+                          "shared cache of the AI reviews (reviews.commit)")):
         if path and os.path.isfile(path) and not os.path.islink(path):
             entries.append(removal_entry(display_path(project_root, path), REMOVAL_REMOVE, reason, "state", local_state(path)))
     return entries

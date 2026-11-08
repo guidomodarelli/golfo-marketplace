@@ -40,7 +40,12 @@ LOCK_POLL_SECONDS = 0.05
 LOCK_PERMISSION_SECONDS = 2
 REPLACE_ATTEMPTS = 20
 SECONDS_PER_HOUR = 3600
-DEFAULT_SETTINGS = {"enabled": True, "cache": True, "ttl": None}
+DEFAULT_SETTINGS = {"enabled": True, "cache": True, "ttl": None, "commit": False}
+# With reviews.commit, every result is also saved here, to be committed, so CI and the team skip
+# the reviews whose key matches. Anyone can edit a versioned file: see trusted_shared_entry().
+SHARED_CACHE_RELATIVE_PATH = ".agents/agent-ready.review-cache.json"
+SHARED_CACHE_LOCK_RELATIVE_PATH = ".agents/agent-ready.review-cache.lock"
+SOURCE_SHARED = "shared"
 # Model and reasoning effort of every AI review, the only copy: the hooks read it from here and the
 # Bash scripts with `defaults`. AGENT_READY_SETUP_MERGE_MODEL and
 # AGENT_READY_SETUP_MERGE_REASONING_EFFORT change them for the review of AGENTS.md.
@@ -151,6 +156,45 @@ def age_seconds(checked_at):
     return (datetime.datetime.now(datetime.timezone.utc) - checked).total_seconds()
 
 
+def write_json_atomically(path, data, prefix):
+    """Replace ``path`` atomically with sorted, indented JSON; Windows refuses the replace while a reader
+    has the file open, so retry."""
+    file_descriptor, temporary_path = tempfile.mkstemp(prefix=prefix, dir=os.path.dirname(path))
+    try:
+        with os.fdopen(file_descriptor, "w", encoding="utf-8", newline="\n") as file_handle:
+            json.dump(data, file_handle, indent=2, sort_keys=True, ensure_ascii=False)
+            file_handle.write("\n")
+        for attempt in range(REPLACE_ATTEMPTS):
+            try:
+                os.replace(temporary_path, path)
+                return
+            except PermissionError:
+                if attempt == REPLACE_ATTEMPTS - 1:
+                    raise
+                time.sleep(LOCK_POLL_SECONDS)
+    finally:
+        if os.path.exists(temporary_path):
+            os.unlink(temporary_path)
+
+
+def trusted_shared_entry(local, shared):
+    """Whether a shared entry may answer for its unit.
+
+    Anyone can edit the versioned cache, so it only saves a review whose key matches: a shared
+    entry that finds nothing never hides findings the local cache knows for the same unit. A
+    shared entry with findings only adds what to look at, so it is always welcome.
+    """
+    if shared.get("findings"):
+        return True
+    return not (isinstance(local, dict) and local.get("findings"))
+
+
+def matches_files(project_root, entry):
+    """Whether the files of an entry are on disk as they were when it was reviewed."""
+    files = entry.get("files", {}) if isinstance(entry, dict) else {}
+    return bool(files) and file_hashes(project_root, files) == files
+
+
 class ReviewCache:
     """Reads and writes the review cache of one repository."""
 
@@ -158,6 +202,7 @@ class ReviewCache:
         self.project_root = os.path.abspath(project_root)
         self.worktree = worktree_key(project_root)
         self.path = cache_path(project_root)
+        self.shared_path = os.path.join(self.project_root, SHARED_CACHE_RELATIVE_PATH)
 
     def read(self):
         """The whole cache; an absent or unreadable file is an empty one."""
@@ -187,19 +232,56 @@ class ReviewCache:
         return self.settings_of(self.read())
 
     def lookup(self, unit, key, recheck=False):
-        """The entry of a unit when its key is current, the cache is on and it has not expired."""
+        """The entry of a unit when its key is current, the cache is on and it has not expired.
+
+        The local cache answers first; with reviews.commit, the shared one answers what it misses.
+        """
         data = self.read()
         settings = self.settings_of(data)
         if recheck or not settings.get("cache", True):
             return None
-        entry = data["entries"].get(unit)
-        if not isinstance(entry, dict) or entry.get("key") != key:
-            return None
         ttl = settings.get("ttl")
-        age = age_seconds(entry.get("checkedAt"))
-        if ttl and (age is None or age > ttl * SECONDS_PER_HOUR):
-            return None
-        return entry
+
+        def current(entry):
+            if not isinstance(entry, dict) or entry.get("key") != key:
+                return False
+            age = age_seconds(entry.get("checkedAt"))
+            return not (ttl and (age is None or age > ttl * SECONDS_PER_HOUR))
+
+        local = data["entries"].get(unit)
+        if current(local):
+            return local
+        if settings.get("commit"):
+            shared = self.read_shared().get(unit)
+            if current(shared) and trusted_shared_entry(local, shared):
+                return dict(shared, source=SOURCE_SHARED)
+        return None
+
+    def read_shared(self):
+        """{unit: entry} of the versioned shared cache; empty when it is absent, unreadable or of another schema."""
+        try:
+            with open(self.shared_path, encoding="utf-8") as file_handle:
+                data = json.load(file_handle)
+        except (OSError, ValueError):
+            return {}
+        if not isinstance(data, dict) or data.get("schemaVersion") != SCHEMA_VERSION or not isinstance(data.get("entries"), dict):
+            return {}
+        return {unit: entry for unit, entry in data["entries"].items() if isinstance(entry, dict)}
+
+    def entries(self):
+        """The entries status and review list read: the local ones and, with reviews.commit, the shared
+        ones the local cache lacks or has out of date, as long as they can be trusted."""
+        data = self.read()
+        entries = dict(data["entries"])
+        if not self.settings_of(data).get("commit"):
+            return entries
+        for unit, shared in self.read_shared().items():
+            local = entries.get(unit)
+            if not trusted_shared_entry(local, shared) or not matches_files(self.project_root, shared):
+                continue
+            if local is None or not matches_files(self.project_root, local):
+                entries[unit] = dict(shared, source=SOURCE_SHARED)
+        return entries
 
     def store(self, records):
         """Save ``{unit: entry}``; other entries of files that no longer exist go away in the same write.
@@ -209,20 +291,35 @@ class ReviewCache:
         """
         if not self.path:
             return
+        stamped = {unit: dict(entry, checkedAt=entry.get("checkedAt") or now_text()) for unit, entry in records.items()}
         with self.locked():
             data = self.read()
-            for unit, entry in records.items():
-                data["entries"][unit] = dict(entry, checkedAt=entry.get("checkedAt") or now_text())
+            data["entries"].update(stamped)
             # What was just reviewed is current, even when a reviewed rule comes from the
             # template and the repository has no copy of it yet.
             self.prune(data, keep=records)
             self.write(data)
+        if self.settings_of(data).get("commit"):
+            self.store_shared(stamped)
 
-    def write_settings(self, enabled, cache, ttl):
+    def store_shared(self, records):
+        """Add ``records`` to the versioned shared cache; entries of files gone from this checkout leave it."""
+        os.makedirs(os.path.dirname(self.shared_path), exist_ok=True)
+        with directory_lock(os.path.join(self.project_root, SHARED_CACHE_LOCK_RELATIVE_PATH)):
+            entries = self.read_shared()
+            entries.update(records)
+            for unit, entry in list(entries.items()):
+                names = entry.get("files", {})
+                if unit not in records and any(not os.path.exists(os.path.join(self.project_root, name)) for name in names):
+                    del entries[unit]
+            write_json_atomically(self.shared_path, {"schemaVersion": SCHEMA_VERSION, "entries": entries},
+                                  ".agent-ready.review-cache.")
+
+    def write_settings(self, enabled, cache, ttl, commit=False):
         """Record the effective reviews options, so the hooks honor them without the engine."""
         if not self.path:
             return
-        settings = {"enabled": bool(enabled), "cache": bool(cache), "ttl": ttl}
+        settings = {"enabled": bool(enabled), "cache": bool(cache), "ttl": ttl, "commit": bool(commit)}
         if self.settings() == settings:
             return
         with self.locked():
@@ -251,24 +348,7 @@ class ReviewCache:
                 del data["entries"][unit]
 
     def write(self, data):
-        """Replace the file atomically; Windows refuses the replace while a reader has it open, so retry."""
-        directory = os.path.dirname(self.path)
-        file_descriptor, temporary_path = tempfile.mkstemp(prefix=".reviews.", dir=directory)
-        try:
-            with os.fdopen(file_descriptor, "w", encoding="utf-8", newline="\n") as file_handle:
-                json.dump(data, file_handle, indent=2, sort_keys=True, ensure_ascii=False)
-                file_handle.write("\n")
-            for attempt in range(REPLACE_ATTEMPTS):
-                try:
-                    os.replace(temporary_path, self.path)
-                    return
-                except PermissionError:
-                    if attempt == REPLACE_ATTEMPTS - 1:
-                        raise
-                    time.sleep(LOCK_POLL_SECONDS)
-        finally:
-            if os.path.exists(temporary_path):
-                os.unlink(temporary_path)
+        write_json_atomically(self.path, data, ".reviews.")
 
     def locked(self):
         """Hold the lock of the cache between processes."""

@@ -16,7 +16,7 @@ description: >-
   descartar un hallazgo de sus revisiones de IA.
 license: MIT
 metadata:
-  version: "1.12.0"
+  version: "1.13.0"
   author: "guponce"
   category: "developer-experience"
   tags: "agent-ready, multi-provider, claude-code, codex, bootstrap, setup, scaffold, context-optimized-v1.20.1"
@@ -333,7 +333,8 @@ provider. Cuando el usuario pide aceptar o descartar un hallazgo, correr
 `agent-ready review accept|dismiss <id> --reason "<motivo>"` con el motivo que dio. Si no dio ninguno,
 preguntárselo: nunca inventarlo. Leer [references/ai-reviews.md](references/ai-reviews.md) para
 explicar por qué una revisión corrió o no, mostrar sus hallazgos, elegir el alcance de una decisión
-(`content` o `pair`) o cambiar `reviews.enabled`, `reviews.cache` y `reviews.ttl`.
+(`content` o `pair`), cambiar `reviews.enabled`, `reviews.cache` y `reviews.ttl`, o compartir la caché con
+el CI y el equipo (`reviews.commit`).
 
 ### Resolución de diferencias por el agente
 

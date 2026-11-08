@@ -115,15 +115,28 @@ argument_after() {
     "$FAKE_ARGV" "$1"
 }
 
+# write_settings ENABLED CACHE TTL [COMMIT]: the reviews options as an apply records them.
 write_settings() {
-  python3 -B - "$skill_dir" "$1" "$2" "$3" <<'PY'
+  python3 -B - "$skill_dir" "$1" "$2" "$3" "${4:-false}" <<'PY'
 import importlib.util, os, sys
 spec = importlib.util.spec_from_file_location("review_cache", os.path.join(sys.argv[1], "assets/common/hooks/review-cache.py"))
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 ttl = None if sys.argv[4] == "none" else int(sys.argv[4])
-module.ReviewCache(".").write_settings(sys.argv[2] == "true", sys.argv[3] == "true", ttl)
+module.ReviewCache(".").write_settings(sys.argv[2] == "true", sys.argv[3] == "true", ttl, sys.argv[5] == "true")
 PY
+}
+
+shared_cache_value() {
+  python3 -c 'import json,sys; data=json.load(open(sys.argv[1], encoding="utf-8")); print(eval(sys.argv[2], {"data": data}))' \
+    .agents/agent-ready.review-cache.json "$1" | tr -d '\r'
+}
+
+# Rewrites every entry of the JSON cache file $1 with the Python statement $2 (on `entry`).
+edit_cache_entries() {
+  python3 -c 'import json,sys; path=sys.argv[1]; data=json.load(open(path, encoding="utf-8"))
+for entry in data["entries"].values(): exec(sys.argv[2], {"entry": entry})
+json.dump(data, open(path, "w", encoding="utf-8"))' "$1" "$2"
 }
 
 @test "the hook reviews only the pairs of the edited file, in one call, and reuses them until a file changes" {
@@ -556,6 +569,65 @@ PY
   wait "${decision_pids[@]}"
   [ "$(decision_value 'sorted(data["decisions"])')" = "$(python3 -c 'import sys; print(sorted(sys.argv[1:]))' "$mock_id" "$heading_id" | tr -d '\r')" ]
   [ ! -e .agents/agent-ready.reviews.lock ]
+}
+
+@test "reviews.commit off writes nothing to the repository" {
+  run_hook .agents/rules/testing.md
+  [ "$(calls)" -eq 1 ]
+  [ ! -e .agents/agent-ready.review-cache.json ]
+}
+
+@test "with reviews.commit a fresh checkout reuses the committed reviews whose key matches" {
+  write_settings true true none true
+  two_findings
+  run_hook .agents/rules/testing.md
+  [ "$(calls)" -eq 1 ]
+  [ "$(shared_cache_value 'sorted(data["entries"])')" = "$(cache_value 'sorted(data["entries"])')" ]
+
+  # As in CI or a new clone: the local cache is empty, the versioned one came with the checkout.
+  rm "$(cache_file)"
+  write_settings true true none true
+  run_hook .agents/rules/testing.md
+  [ "$status" -eq 0 ]
+  [ "$(calls)" -eq 1 ]
+  [[ "$output" == *"reviewing 0 of 2 pairs with claude (2 from the cache, 2 of them from the shared cache)"* ]]
+  [[ "$output" == *"Mocks are both required and forbidden."* ]]
+  run --separate-stderr python3 "$skill_dir/scripts/agent-ready-state.py" status --project . --format json
+  [ "$(python3 -c 'import json,sys; print(len(json.loads(sys.argv[1])["reviews"]["findings"]))' "$output" | tr -d '\r')" -eq 2 ]
+
+  # A shared entry for other content is never used.
+  printf 'Mock only the network.\n' >> .agents/rules/testing.md
+  run_hook .agents/rules/testing.md
+  [ "$(calls)" -eq 2 ]
+}
+
+@test "a committed result that finds nothing never hides a finding the local cache knows" {
+  write_settings true true none true
+  two_findings
+  run_hook .agents/rules/testing.md
+  [ "$(calls)" -eq 1 ]
+  # Someone edits the versioned cache so the pair looks consistent under the same key, and the
+  # local entry is out of date, so it no longer answers first.
+  edit_cache_entries .agents/agent-ready.review-cache.json 'entry["findings"] = []; entry["verdict"] = "consistent"'
+  edit_cache_entries "$(cache_file)" 'entry["key"] = "outdated"'
+
+  run_hook .agents/rules/testing.md
+  [ "$(calls)" -eq 2 ]
+  [[ "$output" == *"Mocks are both required and forbidden."* ]]
+}
+
+@test "remove deletes the shared review cache" {
+  write_settings true true none true
+  run_hook .agents/rules/testing.md
+  [ -f .agents/agent-ready.review-cache.json ]
+  run python3 -B -c 'import importlib.util, os, sys
+spec = importlib.util.spec_from_file_location("state", os.path.join(sys.argv[1], "scripts/agent-ready-state.py"))
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+entries = module.local_removal_entries(os.path.abspath("."))
+print([(entry["path"], entry["action"]) for entry in entries if "review-cache" in entry["path"]])' "$skill_dir"
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s' "$output" | tr -d '\r')" = "[('.agents/agent-ready.review-cache.json', 'remove')]" ]
 }
 
 @test "the hook leaves no bytecode beside its scripts" {
