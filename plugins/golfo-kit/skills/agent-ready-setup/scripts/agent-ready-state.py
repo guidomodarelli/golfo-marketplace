@@ -865,6 +865,9 @@ def lock_differences(plan, lock):
         locked_entry = lock.get("merged", {}).get(destination)
         if not locked_entry or locked_entry.get("templateSha256") != entry["templateSha256"]:
             differences.append(f"{golfo_kit.GOLFO_KIT_SOURCE_NAME}: the template of {destination} does not match the lock")
+        elif locked_entry.get("inputsSha256") != entry.get("inputsSha256"):
+            differences.append(f"{golfo_kit.GOLFO_KIT_SOURCE_NAME}: what {destination} is rendered with (the centralization "
+                               "and proxy texts) does not match the lock")
     return differences, engine_changes
 
 
@@ -1013,7 +1016,18 @@ def merged_template_entries(skill_dir, catalog, resolved):
                 "template": os.path.relpath(template, skill_dir).replace(os.sep, "/"),
                 "templateSha256": sha256_of_file(template),
             }
+    if "AGENTS.md" in entries:
+        entries["AGENTS.md"]["inputsSha256"] = rendered_inputs_digest(skill_dir)
     return entries
+
+
+def rendered_inputs_digest(skill_dir):
+    """Content the managed block of AGENTS.md is rendered with besides its template; the renderer is the engine's."""
+    lines = [f"{relative_path}\t{sha256_of_file(os.path.join(skill_dir, relative_path))}"
+             for relative_path in RENDERED_INSTRUCTION_INPUTS
+             if not golfo_kit.is_engine_owned(relative_path) and relative_path != RENDERER_RELATIVE_PATH
+             and os.path.isfile(os.path.join(skill_dir, relative_path))]
+    return sha256_of_text("\n".join(lines))
 
 
 # ---------------------------------------------------------------------------
@@ -2138,7 +2152,7 @@ def command_fetch_sources(arguments):
         return 0
     pins = download_declared_sources(declarations, locked_sources, arguments.update_source or [],
                                      configuration_of(arguments.project), arguments.project, to_ref=arguments.to,
-                                     from_lock=arguments.from_lock)
+                                     from_lock=arguments.from_lock, offline=arguments.offline)
     if arguments.state_file:
         write_text_atomically(arguments.state_file, serialize_json(pins))
     return 0
@@ -2219,7 +2233,10 @@ def command_plan(arguments):
         enforce_sync_policy(arguments.project, arguments.skill_dir, catalog, plan["profiles"], plan["profileDigests"])
         keep_locked_entries_of_unselected_sources(plan, read_lock(arguments.project))
     if arguments.from_lock:
-        enforce_lock_reproduction(plan, read_lock(arguments.project))
+        lock = read_lock(arguments.project)
+        enforce_lock_reproduction(plan, lock)
+        # Same revisions and digests: the lock keeps its entries, with the refs they came from.
+        plan["profileSources"] = dict((lock or {}).get("profileSources", {}))
     plan["profiles_requested"] = requested
     plan["selection"] = selection
     plan["addedDependencies"] = added_dependencies(catalog, requested, plan["profiles"])
@@ -3187,6 +3204,7 @@ def build_parser():
     fetch_parser.add_argument("--state-file", help="write the adopted commits here, for resolve and plan")
     fetch_parser.add_argument("--refresh", action="store_true", help="only update the cache and the last commit seen per ref")
     fetch_parser.add_argument("--from-lock", action="store_true", help="the commit of the lock for every source, whatever its mode")
+    fetch_parser.add_argument("--offline", action="store_true", help="download nothing: a revision missing from the cache fails")
     fetch_parser.set_defaults(handler=command_fetch_sources)
 
     check_parser = subparsers.add_parser(

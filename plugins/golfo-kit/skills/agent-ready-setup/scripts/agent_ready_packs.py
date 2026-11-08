@@ -426,13 +426,14 @@ def require_local_source(declaration, project_root):
 
 
 def download_declared_sources(declarations, locked_sources, update_names, configuration, project_root, to_ref=None,
-                              from_lock=False):
+                              from_lock=False, offline=False):
     """Resolve and download what an apply needs. Returns the commit adopted per Git source.
 
     A source in ``auto`` follows its ref; a pinned one keeps the lock until --update-source.
     ``to_ref`` (a tag, branch or full commit) is the revision the single source in
     ``update_names`` adopts instead of the latest of its ref. ``from_lock`` takes the commit
-    of the lock for every source and fails for one the lock does not have as declared.
+    of the lock for every source, whatever ref the manifest declares now, and fails for one the
+    lock does not have from the same origin. ``offline`` downloads nothing: a missing revision fails.
     """
     known = {declaration["name"]: declaration for declaration in declarations}
     for name in update_names:
@@ -448,15 +449,19 @@ def download_declared_sources(declarations, locked_sources, update_names, config
         name = declaration["name"]
         follow_ref = name in update_names or effective_update_mode(configuration, declaration) == UPDATES_AUTO
         if from_lock:
-            commit = locked_revision(declaration, locked_sources.get(name))
-            if not commit:
-                raise ProfileError(f"--from-lock: profile source '{name}' has no revision in the lock for its origin and "
-                                   "ref; apply without --from-lock to adopt it")
+            locked_entry = locked_sources.get(name) or {}
+            if not locked_entry.get("resolvedCommit") or locked_entry.get("origin") != declaration["origin"]:
+                raise ProfileError(f"--from-lock: profile source '{name}' has no revision in the lock from "
+                                   f"{declaration['origin']}; apply without --from-lock to adopt it")
+            commit = locked_entry["resolvedCommit"]
         elif to_ref and name in update_names:
             commit = revision_of_ref(declaration, to_ref)
         else:
             commit = revision_to_download(declaration, locked_sources.get(name), follow_ref)
         if not cached_tree(declaration["origin"], commit):
+            if offline:
+                raise ProfileError(f"profile source '{name}': revision {commit[:12]} is not in the cache of this machine "
+                                   "and this run uses no network")
             download_commit(name, declaration["origin"], commit)
         pins[name] = commit
     return pins

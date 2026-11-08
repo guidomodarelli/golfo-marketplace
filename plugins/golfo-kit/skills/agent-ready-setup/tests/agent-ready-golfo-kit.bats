@@ -517,3 +517,40 @@ PY
   [ "$status" -eq 0 ]
   [ ! -e .agents/rules/verify-changes.md ]
 }
+
+@test "apply --from-lock checks the texts the managed block of AGENTS.md is rendered with" {
+  install_engine_copy
+  run --separate-stderr env PATH="$fake_bin:$PATH" python3 "$engine_copy/scripts/agent-ready" apply --stack node
+  [ "$status" -eq 0 ]
+  printf '\nA new centralization sentence.\n' >> "$engine_copy/assets/instruction-centralization.md"
+  before_agents="$(cat AGENTS.md)"
+
+  run --separate-stderr env PATH="$fake_bin:$PATH" python3 "$engine_copy/scripts/agent-ready" apply --from-lock
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"what AGENTS.md is rendered with (the centralization and proxy texts) does not match the lock"* ]]
+  [ "$(cat AGENTS.md)" = "$before_agents" ]
+}
+
+@test "apply --from-lock aligns AGENTS.md with the pack revision of the lock, not a newer cached one" {
+  pack_repository="$test_root/acme"
+  cp -R "$skill_dir/assets/examples/acme-profile-pack" "$pack_repository"
+  git -C "$pack_repository" init -q
+  git -C "$pack_repository" add -A
+  git -C "$pack_repository" commit -qm initial
+  git config --global "url.file:///$(native_path "$pack_repository" | sed 's#^/##').insteadOf" "https://packs.example.invalid/acme"
+  write_manifest '{"profiles": ["node", "acme/kafka-interno"], "sources": {"packs": [{"name": "acme", "source": "git+https://packs.example.invalid/acme#main"}]}}'
+  run_cli apply
+  [ "$status" -eq 0 ]
+  # The pack moves on and a preview brings its new revision into the cache; the lock stays.
+  printf 'new rule\n' > "$pack_repository/profiles/kafka-interno/rules/acme-new.md"
+  git -C "$pack_repository" add -A
+  git -C "$pack_repository" commit -qm advance
+  run_cli plan
+  before_lock="$(cat .agents/agent-ready.lock.json)"
+
+  run_cli apply --from-lock
+  [ "$status" -eq 0 ]
+  [ ! -e .agents/rules/acme-new.md ]
+  ! grep -Fq 'acme-new' AGENTS.md
+  [ "$(cat .agents/agent-ready.lock.json)" = "$before_lock" ]
+}

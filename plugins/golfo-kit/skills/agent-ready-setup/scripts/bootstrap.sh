@@ -732,6 +732,8 @@ if [[ "$RUN_MODE" == apply || ${#UPDATE_SOURCES[@]} -gt 0 || "$FROM_LOCK" -eq 1 
   TEMPORARY_PATHS+=("$SOURCE_STATE_FILE")
   fetch_arguments=(fetch-sources --project . --skill-dir "$SKILL_DIR" --state-file "$SOURCE_STATE_FILE"
     ${FROM_LOCK_ARGUMENTS[@]+"${FROM_LOCK_ARGUMENTS[@]}"})
+  # A preview of the lock with updates.refresh off (or --offline) compares with the cache only.
+  [[ "$FROM_LOCK" -eq 1 && "$RUN_MODE" != apply && "$OFFLINE" -eq 1 ]] && fetch_arguments+=(--offline)
   for update_source in ${PACK_UPDATE_SOURCES[@]+"${PACK_UPDATE_SOURCES[@]}"}; do
     fetch_arguments+=(--update-source "$update_source")
   done
@@ -1180,7 +1182,11 @@ printf '\nStack: %s\n' "$STACK"
 printf 'Profiles: %s\n' "$RESOLVED_PROFILES"
 printf 'Providers: Claude Code + Codex-compatible shared tree\n'
 # Stable line the agent reads to run follow-up scripts from the resolved source.
-printf 'Resolved %s source: %s\n\n' "$SKILL_NAME" "$SKILL_DIR"
+printf 'Resolved %s source: %s\n' "$SKILL_NAME" "$SKILL_DIR"
+# The stack this apply composed, at the revisions it adopted: merge-instructions.sh renders from it
+# (AGENT_READY_SETUP_STACK_DIR) instead of resolving the sources again.
+[[ -n "${AGENT_READY_SETUP_STACK_DIR:-}" ]] && printf 'Resolved stack directory: %s\n' "$AGENT_READY_SETUP_STACK_DIR"
+printf '\n'
 
 if [[ ${#CREATED[@]} -gt 0 ]]; then
   echo "Created:"

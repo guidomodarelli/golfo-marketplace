@@ -368,11 +368,16 @@ produce los mismos bytes.
 **Apply reproducible.** `agent-ready apply --from-lock` aplica exactamente el lock, en otra máquina o un año
 después, sin importar `updates.mode` ni las `ref` del manifest:
 
-- Toma la selección del lock y la revisión de golfo-kit y de cada pack que registra. Las descarga en la caché
-  del usuario si faltan.
+- Toma la selección del lock y la revisión de golfo-kit y de cada pack que registra, aunque el manifest declare
+  ahora otra `ref` (el origen tiene que ser el mismo). Las descarga en la caché del usuario si faltan; con
+  `--dry-run` y `updates.refresh: false` no descarga nada y falla si falta una revisión.
 - Antes de escribir compara byte a byte: la selección, las revisiones, el digest de cada pack, el sha256 de cada
-  asset y el template de `AGENTS.md`. Si algo no coincide, falla sin escribir y nombra la fuente
+  asset, y el template y los textos con que se arma el bloque gestionado de `AGENTS.md`
+  (`merged["AGENTS.md"].inputsSha256`). Si algo no coincide, falla sin escribir y nombra la fuente
   (`golfo-kit`, un pack o `selection`) y el archivo.
+- `merge-instructions.sh` arma `AGENTS.md` desde el stack que compuso el apply (la línea
+  `Resolved stack directory:` de `bootstrap.sh`, en `AGENT_READY_SETUP_STACK_DIR`), así nunca toma una revisión
+  más nueva de un pack que esté en la caché.
 - Los archivos del motor (los hooks y los templates de `.claude/settings.json` y `.codex/hooks.json`) siguen al
   plugin instalado, porque el motor nunca se fija: `--from-lock` los proyecta del motor y dice cuántos difieren
   del lock.
