@@ -94,7 +94,7 @@ publish_pack_repository() {
   [ "$status" -eq 0 ]
   [[ "$output" == "agent-ready "* ]]
 
-  for subcommand in plan status check apply update config "config explain" "config get" "config set" "config unset"; do
+  for subcommand in plan status check apply update doctor remove config "config explain" "config get" "config set" "config unset"; do
     # shellcheck disable=SC2086
     run_cli $subcommand --help
     [ "$status" -eq 0 ]
@@ -442,4 +442,267 @@ publish_pack_repository() {
   [ "$(json_value "$(cat .agents/agent-ready.json)" 'data["profiles"]')" = "['node']" ]
   run_cli sources remove acme
   [ "$status" -eq 0 ]
+}
+
+@test "apply and then remove --yes leave the repository as it was" {
+  git add -A && git commit -qm initial
+  before="$(tree_fingerprint)"
+  run_cli apply --profiles node
+  [ "$status" -eq 0 ]
+  [ -f .claude/settings.json ]
+
+  run_cli remove --yes < /dev/null
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [[ "$stderr" == *"Removed "*" paths; kept 0."* ]]
+  [ "$(tree_fingerprint)" = "$before" ]
+  [ -z "$(git status --porcelain)" ]
+
+  run_cli remove --yes < /dev/null
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"there is nothing to remove"* ]]
+}
+
+@test "remove --dry-run lists every change and writes nothing; without a terminal it needs --yes" {
+  run_cli apply --profiles node
+  [ "$status" -eq 0 ]
+  before="$(tree_fingerprint)"
+
+  run_cli remove --dry-run
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"agent-ready remove would change these paths:"* ]]
+  [[ "$output" == *"remove .agents/rules/security.md"* ]]
+  [[ "$output" == *"remove .agents/agent-ready.lock.json"* ]]
+  [[ "$output" == *"AGENTS.md"* ]]
+  [ "$(tree_fingerprint)" = "$before" ]
+
+  run_cli remove --dry-run --json
+  [ "$status" -eq 0 ]
+  [ "$(json_value "$output" '[entry["action"] for entry in data["entries"] if entry["path"] == ".agents/agent-ready.json"]')" = "['remove']" ]
+
+  run_cli remove < /dev/null
+  [ "$status" -eq 2 ]
+  [ -z "$output" ]
+  [[ "$stderr" == *"missing --yes"*"there is no terminal to ask"* ]]
+  [ "$(tree_fingerprint)" = "$before" ]
+}
+
+@test "remove keeps the project's rules, its AGENTS.md content, its settings and the managed files it edited" {
+  run_cli apply --profiles node
+  [ "$status" -eq 0 ]
+  printf '# Own rule\n\nKeep it.\n' > .agents/rules/own-rule.md
+  run_cli apply --profiles node
+  [ "$status" -eq 0 ]
+  [ -e .claude/rules/own-rule.md ]
+  printf '\n## Project notes\n\nKeep me.\n' >> AGENTS.md
+  printf 'local edit\n' >> .agents/rules/security.md
+  python3 - <<'PY'
+import json
+settings = json.load(open(".claude/settings.json", encoding="utf-8"))
+settings["permissions"]["allow"].append("Bash(make test)")
+settings["hooks"]["PostToolUse"][0]["hooks"].append({"type": "command", "command": "make lint"})
+json.dump(settings, open(".claude/settings.json", "w", encoding="utf-8"), indent=2)
+PY
+
+  run_cli remove --yes --json < /dev/null
+  [ "$status" -eq 0 ]
+  [[ "$(json_value "$output" 'data["kept"]')" == *".agents/rules/security.md: changed since the last apply"* ]]
+  [ ! -e .agents/agent-ready.json ]
+  [ ! -e .agents/agent-ready.lock.json ]
+  [ ! -e .agents/hooks/sync-marketplace.sh ]
+  [ -f .agents/rules/own-rule.md ]
+  [ ! -e .claude/rules/own-rule.md ]
+  [ ! -e .claude/rules/security.md ]
+  grep -q 'local edit' .agents/rules/security.md
+  grep -q 'Keep me.' AGENTS.md
+  ! grep -q 'AGENT-READY MANAGED' AGENTS.md
+  [ -f CLAUDE.md ]
+  [ "$(json_value "$(cat .claude/settings.json)" 'data')" = "{'permissions': {'allow': ['Bash(make test)']}, 'hooks': {'PostToolUse': [{'matcher': 'Write|Edit', 'hooks': [{'type': 'command', 'command': 'make lint'}]}]}}" ]
+}
+
+@test "remove unregisters the browser servers it added and keeps the project's own servers" {
+  python3 -c 'import sys; sys.exit(sys.version_info < (3, 11))' || skip "unregistering the browser servers needs Python 3.11+"
+  run_cli apply --profiles node
+  [ "$status" -eq 0 ]
+  printf '%s\n' '{"mcpServers": {"playwright": {"command": "${HOME}/.local/share/agent-ready-setup/browser-tools/bin/playwright"}, "own": {"command": "own-server"}}}' > .mcp.json
+  printf '{}\n' > .agents/browser-tools.json
+  printf 'node_modules/\n.agents/browser-tools.json\n' > .gitignore
+
+  run_cli remove --dry-run
+  [[ "$output" == *"edit   .mcp.json"* ]]
+  [[ "$output" == *"edit   .gitignore"* ]]
+
+  run_cli remove --yes < /dev/null
+  [ "$status" -eq 0 ]
+  [ "$(json_value "$(cat .mcp.json)" 'data')" = "{'mcpServers': {'own': {'command': 'own-server'}}}" ]
+  [ ! -e .agents/browser-tools.json ]
+  [ "$(cat .gitignore)" = "node_modules/" ]
+}
+
+@test "doctor reports each requirement, and the fix of what is missing, on stdout" {
+  run_cli doctor --offline
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"git"*"bash"*"python"*"provider"*"engine"*"configuration"*"sources"*"hooks"* ]]
+  [[ "$output" == *"agent-ready-setup is not applied in this repository"* ]]
+  [[ "$stderr" == *"Everything agent-ready-setup needs is in place."* ]]
+
+  run_cli apply --profiles node
+  [ "$status" -eq 0 ]
+  run_cli doctor --offline --json
+  [ "$status" -eq 0 ]
+  [ "$(json_value "$output" '[check["status"] for check in data["checks"] if check["name"].startswith("hooks")]')" = "['ok', 'ok']" ]
+
+  python3 - <<'PY'
+import json
+settings = json.load(open(".claude/settings.json", encoding="utf-8"))
+del settings["hooks"]["SessionStart"]
+json.dump(settings, open(".claude/settings.json", "w", encoding="utf-8"), indent=2)
+PY
+  printf '%s\n' '{"profiles": ["node"], "sources": {"packs": [{"name": "local-pack", "source": "path:packs/missing"}]}}' > .agents/agent-ready.json
+  run_cli doctor --offline
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"hooks claude"*"missing: SessionStart: bash .agents/hooks/sync-marketplace.sh --provider claude"* ]]
+  [[ "$output" == *"fix: agent-ready apply"* ]]
+  [[ "$output" == *"source local-pack"*"path packs/missing does not exist"* ]]
+  [[ "$output" == *"fix: restore it, or agent-ready sources remove local-pack"* ]]
+  [[ "$stderr" == *"2 problems"* ]]
+
+  printf '{"updates": {"mode": "sometimes"}}\n' > .agents/agent-ready.json
+  run_cli doctor --offline --json
+  [ "$status" -eq 1 ]
+  [ "$(json_value "$output" '[check["status"] for check in data["checks"] if check["name"] == "configuration"]')" = "['missing']" ]
+}
+
+@test "doctor runs outside a repository and names the missing worktree; a missing agent CLI says how to fix it" {
+  mkdir "$test_root/plain"
+  cd "$test_root/plain"
+  run_cli doctor --offline
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"is not inside a Git worktree"* ]]
+  [[ "$output" == *"fix: run it from a repository, or pass --project <path>"* ]]
+
+  if PATH="$(getconf PATH 2>/dev/null || printf '/usr/bin:/bin')" command -v claude >/dev/null; then
+    skip "a real agent CLI is installed in the system PATH"
+  fi
+  cd "$project_dir"
+  run --separate-stderr env PATH="$(dirname "$(command -v git)"):$(dirname "$(command -v python3)"):$(dirname "$(command -v bash)")" python3 "$cli" doctor --offline
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"claude and codex are not on PATH"* ]]
+  [[ "$output" == *"fix: install Claude Code (claude) or Codex (codex)"* ]]
+}
+
+@test "doctor reads the repository root from a subdirectory and checks each hook in its own event" {
+  run_cli apply --profiles node
+  [ "$status" -eq 0 ]
+  mkdir src
+  cd src
+  run_cli doctor --offline --json
+  [ "$status" -eq 0 ]
+  [ "$(json_value "$output" '[check["status"] for check in data["checks"] if check["name"].startswith("hooks")]')" = "['ok', 'ok']" ]
+
+  cd "$project_dir"
+  python3 - <<'PY'
+import json
+settings = json.load(open(".claude/settings.json", encoding="utf-8"))
+settings["hooks"]["PostToolUse"] += settings["hooks"].pop("SessionStart")
+json.dump(settings, open(".claude/settings.json", "w", encoding="utf-8"), indent=2)
+PY
+  run_cli doctor --offline
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"missing: SessionStart: bash .agents/hooks/sync-marketplace.sh --provider claude"* ]]
+}
+
+@test "remove never changes files through a linked directory and waits for a running apply" {
+  run_cli apply --profiles node
+  [ "$status" -eq 0 ]
+  mv .claude "$test_root/shared-claude"
+  ln -s "$test_root/shared-claude" .claude 2>/dev/null || true
+  [ -L .claude ] || skip "this system cannot create symlinks"
+  shared_settings="$(cksum < "$test_root/shared-claude/settings.json")"
+
+  mkdir .agents/.agent-ready-assets.lock
+  run_cli remove --yes < /dev/null
+  [ "$status" -eq 1 ]
+  [[ "$stderr" == *"an apply or a session sync is running"* ]]
+  [ -f .agents/agent-ready.lock.json ]
+  [ -f .agents/rules/security.md ]
+  rmdir .agents/.agent-ready-assets.lock
+
+  run_cli remove --dry-run --json
+  [ "$(json_value "$output" '[entry["action"] for entry in data["entries"] if entry["path"] == ".claude/settings.json"]')" = "['keep']" ]
+  run_cli remove --yes < /dev/null
+  [ "$status" -eq 0 ]
+  [ "$(cksum < "$test_root/shared-claude/settings.json")" = "$shared_settings" ]
+  [ ! -e .agents/agent-ready.lock.json ]
+}
+
+@test "remove keeps the lockfile while a managed asset cannot be deleted, so it can run again" {
+  run_cli apply --profiles node
+  [ "$status" -eq 0 ]
+  chmod a-w .agents/rules
+  if touch .agents/rules/.probe 2>/dev/null; then
+    rm -f .agents/rules/.probe
+    chmod u+w .agents/rules
+    skip "this system lets a read-only directory lose its files"
+  fi
+  run_cli remove --yes --json < /dev/null
+  chmod u+w .agents/rules
+  [ "$status" -eq 1 ]
+  [[ "$(json_value "$output" 'data["failed"]')" == *".agents/rules/"* ]]
+  [ -f .agents/agent-ready.lock.json ]
+
+  run_cli remove --yes < /dev/null
+  [ "$status" -eq 0 ]
+  [ ! -e .agents/agent-ready.lock.json ]
+  [ ! -e .agents/rules/security.md ]
+}
+
+@test "doctor checks the version of the python3 that the session hooks run" {
+  real_python="$(command -v python3)"
+  printf '#!/bin/sh\necho "Python 3.6.9"\n' > "$fake_bin/python3"
+  chmod +x "$fake_bin/python3"
+  run --separate-stderr env PATH="$fake_bin:$PATH" "$real_python" "$cli" doctor --offline
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"reports 'Python 3.6.9'"* ]]
+  [[ "$output" == *"fix: install Python 3.8 or newer and put it first on PATH as python3"* ]]
+}
+
+@test "remove waits for a running AGENTS.md review and keeps project lines that only mention the markers" {
+  run_cli apply --profiles node
+  [ "$status" -eq 0 ]
+  printf 'Do not edit the block starting with <!-- BEGIN AGENT-READY MANAGED --> by hand.\n\nRelease policy: keep me.\n\n%s' "$(cat AGENTS.md)" > AGENTS.md
+
+  mkdir .agents/.agent-ready-instructions.lock
+  run_cli remove --yes < /dev/null
+  [ "$status" -eq 1 ]
+  [[ "$stderr" == *"an AGENTS.md review is running"* ]]
+  [ -f .agents/agent-ready.lock.json ]
+  rmdir .agents/.agent-ready-instructions.lock
+
+  run_cli remove --yes < /dev/null
+  [ "$status" -eq 0 ]
+  grep -q 'Release policy: keep me.' AGENTS.md
+  grep -q 'Do not edit the block starting with' AGENTS.md
+  ! grep -q '^<!-- END AGENT-READY MANAGED -->$' AGENTS.md
+}
+
+@test "remove keeps the Git hook that another worktree of the repository still needs" {
+  run_cli apply --profiles node
+  [ "$status" -eq 0 ]
+  git add -A && git commit -qm "agent ready"
+  git config hook.agent-ready-relink.event post-index-change
+  git config hook.agent-ready-relink.command "sh .agents/hooks/relink-hard-link-views.sh"
+  git worktree add -q "$test_root/linked"
+
+  cd "$test_root/linked"
+  run_cli remove --dry-run --json
+  [[ "$(json_value "$output" '[entry["reason"] for entry in data["entries"] if entry["kind"] == "git-config"]')" == *"shared with the worktree"* ]]
+  run_cli remove --yes < /dev/null
+  [ "$status" -eq 0 ]
+  [ "$(git config --get hook.agent-ready-relink.command)" = "sh .agents/hooks/relink-hard-link-views.sh" ]
+
+  cd "$project_dir"
+  run_cli remove --yes < /dev/null
+  [ "$status" -eq 0 ]
+  [ -z "$(git config --get hook.agent-ready-relink.command)" ]
 }

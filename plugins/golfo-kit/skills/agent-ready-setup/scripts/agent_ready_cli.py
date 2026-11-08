@@ -3,8 +3,9 @@
 It parses, resolves what is missing and delegates: ``bootstrap.sh`` projects and plans,
 ``agent-ready-state.py`` checks and reports, and ``agent_ready_config`` reads and writes the
 configuration layers. It never reimplements their logic. Data goes to stdout; progress,
-warnings and errors go to stderr. Only ``init`` (in ``agent_ready_cli_selection``) asks, and
-only with a terminal; every other subcommand runs the same with and without one.
+warnings and errors go to stderr. Only ``init`` (in ``agent_ready_cli_selection``) and ``remove``
+(in ``agent_ready_cli_lifecycle``) ask, and only with a terminal; every other subcommand runs the
+same with and without one.
 """
 
 import argparse
@@ -42,6 +43,7 @@ from agent_ready_cli_common import (
 from agent_ready_common import StateError, serialize_json
 from agent_ready_config import LAYER_PROJECT, ConfigurationError, format_value, load_schema, parse_text_value
 from agent_ready_options import SOURCES_ENABLED_KEY
+from agent_ready_cli_lifecycle import register as register_lifecycle_commands
 from agent_ready_cli_selection import register as register_selection_commands
 from agent_ready_prompts import Cancelled
 
@@ -316,6 +318,7 @@ def build_parser():
         action.add_argument("--layer", choices=WRITABLE_LAYERS, default=LAYER_PROJECT,
                             help="project (.agents/agent-ready.json, versioned) or user (this machine) (default: project)")
     register_selection_commands(subparsers, new_subparser)
+    register_lifecycle_commands(subparsers, new_subparser)
     return parser
 
 
@@ -334,7 +337,8 @@ def main(argv=None):
         parser.print_help(sys.stderr)
         return EXIT_USAGE
     try:
-        arguments.project_root = find_repository_root(arguments.project)
+        if getattr(arguments, "needs_repository", True):
+            arguments.project_root = find_repository_root(arguments.project)
         return arguments.handler(arguments)
     except UsageError as usage_error:
         fail(f"{usage_error}. Run {CLI_NAME} {arguments.command} --help")
