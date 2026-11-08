@@ -135,6 +135,8 @@ def validate_value(value, node, path):
     elif expected == "integer":
         if isinstance(value, bool) or not isinstance(value, int):
             raise InvalidValue(f"'{path}' must be an integer")
+        if "minimum" in node and value < node["minimum"]:
+            raise InvalidValue(f"'{path}' must be {node['minimum']} or more (got {value})")
     if "enum" in node and value not in node["enum"]:
         allowed = ", ".join(json.dumps(item) if not isinstance(item, str) else item for item in node["enum"])
         raise InvalidValue(f"'{path}' must be one of {allowed} (got {json.dumps(value)})")

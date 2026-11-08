@@ -51,11 +51,13 @@ después de aplicar el bloque literal con `scripts/apply-managed-block.sh` (un
 6. Si los marcadores están duplicados o desordenados, no modifica el archivo y
    termina con código `2` para revisión humana.
 
-La revisión completada se registra en
-`.git/info/agent-ready-instructions-reviewed.sha256` (hash de `AGENTS.md` más
-el contenido de las rules del template y propias). Mientras ninguno cambie, el sync no vuelve a
-invocar IA. La
-escritura es atómica y se cancela si `AGENTS.md` cambia durante el proceso.
+La revisión completada se guarda, con sus inconsistencias, en la caché de revisiones
+de IA, cuya clave incluye `AGENTS.md`, las rules del template y propias, el provider y
+el modelo. Mientras ninguno cambie, el sync no vuelve a invocar IA y repite las
+inconsistencias desde la caché. `agent-ready apply --recheck` fuerza la revisión y
+`reviews.enabled: false` la apaga. Unidad, clave, opciones y dónde vive la caché:
+[ai-reviews.md](ai-reviews.md). La escritura de `AGENTS.md` es atómica y se cancela si
+el archivo cambia durante el proceso.
 
 El modelo y el nivel de razonamiento de la revisión se pueden cambiar con
 `AGENT_READY_SETUP_MERGE_MODEL` y `AGENT_READY_SETUP_MERGE_REASONING_EFFORT`.

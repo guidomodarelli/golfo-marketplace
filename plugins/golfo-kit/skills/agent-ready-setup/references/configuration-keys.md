@@ -35,6 +35,16 @@ Señales estáticas del proyecto que eligen el stack primario de un repositorio 
 |---|---|---|---|---|---|---|
 | `detection.enabled` | boolean | `true` | todas | `AGENT_READY_SETUP_DETECTION` | — | Apagada, plan no muestra señales ni sugerencias y un repositorio sin selección pide --stack o --profiles. |
 
+## `reviews`: Revisiones de IA
+
+Caché de las revisiones de IA: la de AGENTS.md contra sus rules y la de consistencia entre rules y skills al editarlas.
+
+| Clave | Tipo | Default | Capas | Variable | Seguridad | Descripción |
+|---|---|---|---|---|---|---|
+| `reviews.enabled` | boolean | `true` | todas | — | — | Las revisiones de IA: la de AGENTS.md, que borra líneas redundantes fuera del bloque gestionado, y la de consistencia de las rules y skills que se editan. Apagado, el apply copia el bloque gestionado sin revisar y el hook no llama al provider. Los hooks lo toman del último apply. |
+| `reviews.cache` | boolean | `true` | todas | — | — | Guarda el resultado de cada revisión por unidad (AGENTS.md contra sus rules, o un par de rules o skills) en el directorio info de Git, fuera del repositorio. Una edición solo vuelve a revisar las unidades donde participa, y status muestra los hallazgos sin llamar al provider. Apagado, cada revisión llama al provider. Los hooks lo toman del último apply. |
+| `reviews.ttl` | integer | — | todas | — | — | Horas que vale una revisión guardada; pasado ese tiempo se revisa de nuevo aunque nada haya cambiado. Sin valor, no vence. |
+
 ## `security`: Seguridad
 
 Qué puede aflojar el manifest de un repositorio. Endurecer siempre se aplica; aflojar desde el proyecto requiere que la máquina haya aprobado el repositorio.

@@ -364,7 +364,7 @@ Para cambiar comportamiento, el proyecto agrega una rule propia bajo
 ```bash
 python3 "$SKILL_DIR/scripts/agent-ready" status [--offline] [--json]
 python3 "$SKILL_DIR/scripts/agent-ready" plan [--offline] [--json]
-python3 "$SKILL_DIR/scripts/agent-ready" apply [--profiles a,b] [--updates pinned|auto] [--dry-run]
+python3 "$SKILL_DIR/scripts/agent-ready" apply [--profiles a,b] [--updates pinned|auto] [--recheck] [--dry-run]
 python3 "$SKILL_DIR/scripts/agent-ready" update [<fuente>...] [--dry-run]
 python3 "$SKILL_DIR/scripts/agent-ready" doctor [--offline] [--json]
 python3 "$SKILL_DIR/scripts/agent-ready" remove [--dry-run] [--yes] [--json]
@@ -381,7 +381,8 @@ python3 "$SKILL_DIR/scripts/agent-ready" remove [--dry-run] [--yes] [--json]
   preservados, escrituras fallidas y retirados que no se pudieron borrar; además dice si el
   source resuelto o la selección de profiles difieren del lock (`Update
   available`). También cuenta como faltante una vista `.claude/` o un archivo fusionado que se borró; su
-  contenido gestionado lo revisa `plan`. `agent-ready-state.py
+  contenido gestionado lo revisa `plan`. Al final muestra los hallazgos conocidos de las revisiones de IA,
+  leídos de la caché sin llamar al provider ([ai-reviews.md](ai-reviews.md)). `agent-ready-state.py
   status --check` sale con 4 si hay drift o si la selección no se puede resolver.
 - `plan` muestra de dónde salió la selección, la configuración efectiva con su origen, las señales detectadas y las capabilities
   sugeridas con su evidencia (ver «Detección»). Lista cada destino con su acción,
@@ -392,8 +393,8 @@ python3 "$SKILL_DIR/scripts/agent-ready" remove [--dry-run] [--yes] [--json]
   disponibilidad.
 - `apply` corre `bootstrap.sh`: upgrade del marketplace, proyección con el gate de ownership,
   retirada, lockfile y manifest; después alinea el bloque gestionado de `AGENTS.md` con
-  `merge-instructions.sh`. Sin `--profiles` ni `--stack` usa los profiles del manifest y, si no
-  hay manifest, la detección inicial. Aplicar dos veces el mismo plan no cambia nada.
+  `merge-instructions.sh`, que con `--recheck` revisa `AGENTS.md` aunque la caché tenga su revisión.
+  Sin `--profiles` ni `--stack` usa los profiles del manifest y, si no hay manifest, la detección inicial. Aplicar dos veces el mismo plan no cambia nada.
 - `python3 scripts/agent-ready-state.py detect --project . --skill-dir "$SKILL_DIR"`
   muestra la detección sola. Sale con 0 si determina un stack primario y con 3 si no.
 - `doctor` solo lee. Revisa Git y el worktree, Bash, el Python que corre y el `python3` que usan
@@ -418,7 +419,8 @@ python3 "$SKILL_DIR/scripts/agent-ready" remove [--dry-run] [--yes] [--json]
   | proxy `CLAUDE.md` de un `AGENTS.md` que queda | lo conserva: es lo que hace que Claude Code cargue ese `AGENTS.md` |
   | `.claude/settings.json` y `.codex/hooks.json` | quita los hooks y permisos del template; si no queda nada, borra el archivo |
   | servidores MCP del browser en `.mcp.json` y `.codex/config.toml` | los quita con `unregister-browser-servers.py` (Python 3.11+) y conserva los del proyecto |
-  | hook `post-index-change` de las vistas hard link, su lista y el hash de la última revisión | los borra del checkout |
+  | hook `post-index-change` de las vistas hard link y su lista | los borra del checkout |
+  | caché de las revisiones de IA (`.git/info/agent-ready/reviews.json`) | la borra |
   | manifest y lockfile | los borra al final, así una corrida interrumpida se puede repetir |
 
   Pide confirmación solo con terminal; sin terminal, con `CI` o con `--no-input` necesita `--yes` y
@@ -427,8 +429,8 @@ python3 "$SKILL_DIR/scripts/agent-ready" remove [--dry-run] [--yes] [--json]
   (`.agents/.agent-ready-instructions.lock`), y vuelve a armar el plan: si un apply, el hook de
   sesión o la revisión en segundo plano tienen uno, sale con 1 sin tocar nada. Como `merge-instructions.sh`,
   solo toma como marcadores del bloque las líneas completas; si no son un único par, conserva
-  `AGENTS.md`. El hook de git y su configuración son de todos los worktrees del repositorio: quedan
-  mientras otro worktree tenga lockfile. Nunca cambia un archivo a través de un directorio que es un
+  `AGENTS.md`. El hook de git, su configuración y la caché de revisiones son de todos los worktrees del
+  repositorio: quedan mientras otro worktree tenga lockfile. Nunca cambia un archivo a través de un directorio que es un
   symlink (por ejemplo, `.claude` apuntando a `~/.claude`): lo conserva. Un archivo que cambió entre
   el plan y la escritura se conserva. Sale con 1 si algo no se pudo quitar y lo nombra; si es un
   asset o una vista, el lockfile y el manifest quedan para que la siguiente corrida termine.
@@ -462,10 +464,8 @@ adapters de skill en `.agents/skills/`, no subagentes ni comandos nativos, y
 las rules llegan por la lista del bloque gestionado de `AGENTS.md`.
 
 El hook de consistencia (`check-harness-consistency.sh`) revisa con la CLI del
-provider que editó: `claude --print` para Claude Code y `codex exec --sandbox
-read-only` para Codex (eventos `apply_patch`). Un entorno solo-Codex no
-necesita el binario de Claude; si falta la CLI del provider, el check se omite
-con un aviso.
+provider que editó, así que un entorno solo-Codex no necesita el binario de Claude.
+Qué revisa y cómo usa la caché: [ai-reviews.md](ai-reviews.md).
 
 Las herramientas de browser se instalan y registran solo si un profile
 seleccionado declara `tools: ["browser"]`; `tools.enabled: false` (o

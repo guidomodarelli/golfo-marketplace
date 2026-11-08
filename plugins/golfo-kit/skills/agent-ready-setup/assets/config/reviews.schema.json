@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Revisiones de IA",
+  "description": "Caché de las revisiones de IA: la de AGENTS.md contra sus rules y la de consistencia entre rules y skills al editarlas.",
+  "x-module": "reviews",
+  "x-mount": "reviews",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "enabled": {
+      "description": "Las revisiones de IA: la de AGENTS.md, que borra líneas redundantes fuera del bloque gestionado, y la de consistencia de las rules y skills que se editan. Apagado, el apply copia el bloque gestionado sin revisar y el hook no llama al provider. Los hooks lo toman del último apply.",
+      "type": "boolean",
+      "default": true
+    },
+    "cache": {
+      "description": "Guarda el resultado de cada revisión por unidad (AGENTS.md contra sus rules, o un par de rules o skills) en el directorio info de Git, fuera del repositorio. Una edición solo vuelve a revisar las unidades donde participa, y status muestra los hallazgos sin llamar al provider. Apagado, cada revisión llama al provider. Los hooks lo toman del último apply.",
+      "type": "boolean",
+      "default": true
+    },
+    "ttl": {
+      "description": "Horas que vale una revisión guardada; pasado ese tiempo se revisa de nuevo aunque nada haya cambiado. Sin valor, no vence.",
+      "type": "integer",
+      "minimum": 1
+    }
+  }
+}

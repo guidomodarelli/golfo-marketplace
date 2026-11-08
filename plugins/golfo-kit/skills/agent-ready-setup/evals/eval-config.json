@@ -2984,8 +2984,73 @@
         },
         {
           "type": "regex",
-          "pattern": "doctor[^\\n]{0,400}(arregl|fix)|(arregl|fix|aplic)[^\\n]{0,400}doctor",
+          "pattern": "doctor.{0,400}(arregl|fix)|(arregl|fix|aplic).{0,400}doctor",
           "description": "Arregla lo que doctor nombra, en vez de adivinar la causa"
+        }
+      ]
+    },
+    {
+      "id": "reviews-hook-reviews-only-the-pairs-of-the-edited-rule",
+      "description": "El hook de consistencia revisa de a pares solo lo que cambió y guarda cada par en la caché local compartida por los worktrees.",
+      "input": "En un repo con agent-ready-setup edité `.agents/rules/testing.md` tres veces seguidas, sin tocar las otras rules ni las skills. ¿Qué revisa el hook de consistencia en cada edición, a cuántas cosas le pide revisión al provider y dónde queda guardado el resultado? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": ".git/info/agent-ready/reviews.json",
+          "description": "Ubica la caché local en el directorio info de Git",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["par", "pares", "pair"],
+          "description": "Explica que la unidad es un par de documentos"
+        },
+        {
+          "type": "regex",
+          "pattern": "no se (re-?)?revisan|no (se )?vuelven? a revisar|se saltean|salen de la caché|siguen en la caché|solo participan|no compara entre sí",
+          "description": "Los pares que no incluyen la rule editada no se vuelven a revisar"
+        }
+      ]
+    },
+    {
+      "id": "reviews-recheck-and-turn-off",
+      "description": "Forzar la revisión de AGENTS.md es apply --recheck y apagar las revisiones es la opción reviews.enabled, sin inventar flags.",
+      "input": "Necesito dos cosas en agent-ready-setup: que la IA vuelva a revisar el `AGENTS.md` aunque nada haya cambiado, y en otro repo apagar todas las revisiones de IA. ¿Qué comandos corro? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "--recheck",
+          "description": "Fuerza la revisión con apply --recheck",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "reviews.enabled",
+          "description": "Apaga las revisiones con la opción reviews.enabled",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "config set.{0,80}reviews\\.enabled",
+          "description": "Cambia la opción con agent-ready config set"
+        }
+      ]
+    },
+    {
+      "id": "reviews-finding-cannot-be-accepted-yet",
+      "description": "Un hallazgo todavía no se puede aceptar ni descartar: no inventa un subcomando para silenciarlo.",
+      "input": "El hook de consistencia de agent-ready-setup marca una contradicción entre dos rules, pero es intencional. ¿Cómo hago para aceptarla y que no aparezca más? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["todavía no", "aún no", "no se puede aceptar", "no hay forma", "no hay un comando", "no existe"],
+          "description": "Dice que aceptar un hallazgo todavía no está disponible, en vez de inventar un comando",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(resolv|correg|edit|cambi|ajust|reescrib).{0,200}(rule|regla|contradicci)",
+          "description": "Propone resolver la contradicción en las rules para que deje de aparecer"
         }
       ]
     }

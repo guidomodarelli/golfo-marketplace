@@ -167,6 +167,8 @@ def apply_selection(arguments, provider, extra):
         return EXIT_FAILED
     merge_command = [bash_executable(), f"{resolved_source}/{MERGE_INSTRUCTIONS_RELATIVE_PATH}",
                      "--provider", provider, "--stack", stack, "--skill-dir", resolved_source]
+    if getattr(arguments, "recheck", False):
+        merge_command.append("--recheck")
     merge_status = run_bash(merge_command, arguments.project_root, stdout=sys.stderr)
     if merge_status != EXIT_OK:
         fail(f"merge-instructions.sh failed with exit status {merge_status}; the assets were applied, AGENTS.md was not aligned")

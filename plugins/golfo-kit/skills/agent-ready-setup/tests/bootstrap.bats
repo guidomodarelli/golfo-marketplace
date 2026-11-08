@@ -440,6 +440,8 @@ EOF
   [ ! -L .claude/hooks ]
   [ -f .agents/hooks/sync-marketplace.sh ]
   [ -f .agents/hooks/check-harness-consistency.sh ]
+  cmp -s .agents/hooks/harness-review.py "$skill_dir/assets/common/hooks/harness-review.py"
+  cmp -s .agents/hooks/review-cache.py "$skill_dir/assets/common/hooks/review-cache.py"
   [ ! -e .agents/hooks/pre-tool-use.md ]
   [ -f .codex/hooks.json ]
   cmp -s .agents/hooks/sync-marketplace.sh "$skill_dir/assets/common/hooks/sync-marketplace.sh"
@@ -1275,69 +1277,73 @@ EOF
   [[ "$output" == *".claude/rules"* ]]
 }
 
-@test "harness hooks inspect Claude and shared-agent paths" {
-  fake_bin="$test_root/bin"
-  invocation_log="$test_root/claude-invocation.log"
-  mkdir -p "$fake_bin"
+# A provider that logs where it ran, its arguments and the documents it read, and finds nothing.
+write_logging_claude() {
   cat > "$fake_bin/claude" <<'EOF'
 #!/bin/bash
-printf 'PWD=%s\nARGS=%s\n' "$PWD" "$*" > "$CLAUDE_INVOCATION_LOG"
+cat > "$PROVIDER_INPUT_LOG"
+printf 'PWD=%s\nARGS=%s\n' "$PWD" "$*" >> "$PROVIDER_INVOCATION_LOG"
+printf '%s\n' '{"structured_output": {"findings": []}}'
 EOF
   chmod +x "$fake_bin/claude"
-  mkdir -p .claude .agents
-
-  for stack in frontend node java go android; do
-    hook="$skill_dir/assets/common/hooks/check-harness-consistency.sh"
-    for provider_root in .claude .agents; do
-      : > "$invocation_log"
-      CLAUDE_INVOCATION_LOG="$invocation_log" PATH="$fake_bin:$PATH" \
-        bash "$hook" <<< "{\"tool_input\":{\"file_path\":\"$provider_root/rules/security.md\"}}"
-      grep -Fq "PWD=$project_dir/$provider_root" "$invocation_log"
-      grep -Fq "ARGS=--print Read all .md files in rules/" "$invocation_log"
-      grep -Fq "all SKILL.md files in skills/*/" "$invocation_log"
-    done
-  done
+  export PROVIDER_INVOCATION_LOG="$test_root/provider-invocation.log"
+  export PROVIDER_INPUT_LOG="$test_root/provider-input.log"
 }
 
-@test "harness hooks keep prompt independent from payload paths" {
-  fake_bin="$test_root/bin"
-  invocation_log="$test_root/claude-invocation.log"
-  mkdir -p "$fake_bin"
-  cat > "$fake_bin/claude" <<'EOF'
-#!/bin/bash
-printf 'PWD=%s\nARGS=%s\n' "$PWD" "$*" > "$CLAUDE_INVOCATION_LOG"
-EOF
-  chmod +x "$fake_bin/claude"
-  mkdir -p .claude .agents
+@test "harness hooks review the pairs of an edited rule in Claude and shared-agent paths" {
+  write_logging_claude
+  hook="$skill_dir/assets/common/hooks/check-harness-consistency.sh"
 
-  for stack in frontend node java go android; do
-    hook="$skill_dir/assets/common/hooks/check-harness-consistency.sh"
-    for provider_root in .claude .agents; do
-      : > "$invocation_log"
-      malicious_file_path="$provider_root/rules/security.md; echo INJECTED"
-      CLAUDE_INVOCATION_LOG="$invocation_log" PATH="$fake_bin:$PATH" \
-        bash "$hook" <<< "{\"tool_input\":{\"file_path\":\"$malicious_file_path\"}}"
-      grep -Fq "PWD=$project_dir/$provider_root" "$invocation_log"
-      grep -Fq 'ARGS=--print Read all .md files in rules/ and all SKILL.md files in skills/*/.' "$invocation_log"
-      ! grep -Fq 'INJECTED' "$invocation_log"
-    done
+  for provider_root in .claude .agents; do
+    mkdir -p "$provider_root/rules"
+    printf '%s\n' '# Security' > "$provider_root/rules/security.md"
+    printf '%s\n' '# Testing' > "$provider_root/rules/testing.md"
+    : > "$PROVIDER_INVOCATION_LOG"
+    run env PATH="$fake_bin:$PATH" bash "$hook" <<< "{\"tool_input\":{\"file_path\":\"$provider_root/rules/security.md\"}}"
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"$provider_root modified"*"reviewing 1 of 1 pairs with claude"* ]]
+    [ "$(grep -c '^PWD=' "$PROVIDER_INVOCATION_LOG")" -eq 1 ]
+    grep -Eq "^PWD=.*/project/$provider_root\$" "$PROVIDER_INVOCATION_LOG"
+    grep -Fq -- '--tools  --safe-mode --no-session-persistence' "$PROVIDER_INVOCATION_LOG"
+    grep -Fq "1. $provider_root/rules/security.md <-> $provider_root/rules/testing.md" "$PROVIDER_INVOCATION_LOG"
+    grep -Fq "<document path=\"$provider_root/rules/testing.md\">" "$PROVIDER_INPUT_LOG"
   done
+
+  # .claude/CLAUDE.md is reviewed with the rules of its root.
+  printf '%s\n' '# Claude instructions' > .claude/CLAUDE.md
+  : > "$PROVIDER_INVOCATION_LOG"
+  run env PATH="$fake_bin:$PATH" bash "$hook" <<< '{"tool_input":{"file_path":".claude/CLAUDE.md"}}'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *".claude modified"*"reviewing 2 of 2 pairs with claude"* ]]
+}
+
+@test "harness hooks build the prompt from the files on disk, never from payload paths" {
+  write_logging_claude
+  mkdir -p .agents/rules
+  printf '%s\n' '# Security' > .agents/rules/security.md
+  printf '%s\n' '# Testing' > .agents/rules/testing.md
+  hook="$skill_dir/assets/common/hooks/check-harness-consistency.sh"
+
+  run env PATH="$fake_bin:$PATH" bash "$hook" <<< '{"tool_input":{"file_path":".agents/rules/security.md; echo INJECTED"}}'
+  [ "$status" -eq 0 ]
+  [ ! -e "$PROVIDER_INVOCATION_LOG" ]
+  [[ "$output" != *INJECTED* ]]
+
+  run env PATH="$fake_bin:$PATH" bash "$hook" \
+    <<< '{"tool_input":{"file_path":".agents/rules/security.md","content":"echo INJECTED"}}'
+  [ "$status" -eq 0 ]
+  [ "$(grep -c '^PWD=' "$PROVIDER_INVOCATION_LOG")" -eq 1 ]
+  ! grep -Fq 'INJECTED' "$PROVIDER_INVOCATION_LOG"
 }
 
 @test "harness hooks ignore unrelated paths" {
-  fake_bin="$test_root/bin"
-  invocation_log="$test_root/claude-invocation.log"
-  mkdir -p "$fake_bin"
-  cat > "$fake_bin/claude" <<'EOF'
-#!/bin/bash
-printf '%s\n' "$*" > "$CLAUDE_INVOCATION_LOG"
-EOF
-  chmod +x "$fake_bin/claude"
+  write_logging_claude
 
-  CLAUDE_INVOCATION_LOG="$invocation_log" PATH="$fake_bin:$PATH" \
-    bash "$skill_dir/assets/common/hooks/check-harness-consistency.sh" \
+  run env PATH="$fake_bin:$PATH" bash "$skill_dir/assets/common/hooks/check-harness-consistency.sh" \
     <<< '{"tool_input":{"file_path":"README.md"}}'
-  [ ! -e "$invocation_log" ]
+  [ "$status" -eq 0 ]
+  [ ! -e "$PROVIDER_INVOCATION_LOG" ]
 }
 
 
@@ -1356,15 +1362,28 @@ EOF
   done
 }
 
-@test "Codex patches trigger harness checks once per affected root" {
-  invocation_log="$test_root/codex-invocation.log"
-  # Codex edits are reviewed with codex exec; marketplace calls are ignored.
+# A codex that ignores the marketplace calls of the sync and, for exec, logs where it ran
+# and answers no findings through --output-last-message.
+write_logging_codex() {
   cat > "$fake_bin/codex" <<'EOF'
 #!/bin/bash
 [[ "$1" == exec ]] || exit 0
 printf '%s\n' "$PWD" >> "$CODEX_INVOCATION_LOG"
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == --output-last-message ]]; then
+    printf '%s\n' '{"findings": []}' > "$2"
+    shift 2
+  else
+    shift
+  fi
+done
 EOF
   chmod +x "$fake_bin/codex"
+  export CODEX_INVOCATION_LOG="$test_root/codex-invocation.log"
+}
+
+@test "Codex patches review the installed hook once per root with edited documents" {
+  write_logging_codex
   patch='*** Begin Patch
 *** Update File: .agents/rules/testing.md
 @@
@@ -1383,25 +1402,29 @@ EOF
   for stack in frontend node java go android; do
     run_bootstrap "$stack"
     [ "$status" -eq 0 ]
-    : > "$invocation_log"
-    run env CODEX_INVOCATION_LOG="$invocation_log" PATH="$fake_bin:$PATH" \
-      bash .agents/hooks/check-harness-consistency.sh <<< "$payload"
+    [ -f .agents/hooks/harness-review.py ]
+    [ -f .agents/hooks/review-cache.py ]
+    # The patch already ran when PostToolUse fires: its files are on disk.
+    printf '%s\n' '# Testing' > .agents/rules/testing.md
+    mkdir -p .agents/skills/new
+    printf '%s\n' '---' 'name: new' '---' 'New skill.' > .agents/skills/new/SKILL.md
+    : > "$CODEX_INVOCATION_LOG"
+    run env PATH="$fake_bin:$PATH" bash .agents/hooks/check-harness-consistency.sh <<< "$payload"
+
     [ "$status" -eq 0 ]
-    [ "$(wc -l < "$invocation_log" | tr -d ' ')" -eq 2 ]
-    grep -Fxq "$project_dir/.agents" "$invocation_log"
-    grep -Fxq "$project_dir/.claude" "$invocation_log"
+    # A deleted rule leaves nothing to compare, so .claude is not reviewed.
+    [ "$(wc -l < "$CODEX_INVOCATION_LOG" | tr -d ' ')" -eq 1 ]
+    grep -Eq '/project/\.agents$' "$CODEX_INVOCATION_LOG"
+    [[ "$output" == *".agents modified"*"with codex (0 from the cache)"* ]]
+    rm -rf .agents/skills/new
   done
 }
 
 @test "Codex patches detect move destinations without reading hunk content as paths" {
   run_bootstrap node
   [ "$status" -eq 0 ]
-  invocation_log="$test_root/codex-invocation.log"
-  cat > "$fake_bin/codex" <<'EOF'
-#!/bin/bash
-printf '%s\n' "$PWD" >> "$CODEX_INVOCATION_LOG"
-EOF
-  chmod +x "$fake_bin/codex"
+  write_logging_codex
+  printf '%s\n' '# Moved rule' > .agents/rules/moved.md
   patch='*** Begin Patch
 *** Update File: README.md
 *** Move to: .agents/rules/moved.md
@@ -1411,10 +1434,10 @@ EOF
 +*** Add File: .claude/rules/not-a-file.md
 *** End Patch'
   payload="$(jq -n --arg command "$patch" '{tool_name:"apply_patch",tool_input:{command:$command}}')"
-  run env CODEX_INVOCATION_LOG="$invocation_log" PATH="$fake_bin:$PATH" \
-    bash .agents/hooks/check-harness-consistency.sh <<< "$payload"
+  run env PATH="$fake_bin:$PATH" bash .agents/hooks/check-harness-consistency.sh <<< "$payload"
   [ "$status" -eq 0 ]
-  [ "$(cat "$invocation_log")" = "$project_dir/.agents" ]
+  [ "$(wc -l < "$CODEX_INVOCATION_LOG" | tr -d ' ')" -eq 1 ]
+  grep -Eq '/project/\.agents$' "$CODEX_INVOCATION_LOG"
 }
 
 @test "harness hooks ignore malformed payloads and unrelated Codex patches" {

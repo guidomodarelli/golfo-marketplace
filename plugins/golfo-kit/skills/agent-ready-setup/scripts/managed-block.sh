@@ -18,10 +18,16 @@ SKILL_DIR=""
 NON_INTERACTIVE="${AGENT_READY_SETUP_NON_INTERACTIVE:-0}"
 TEMPORARY_DIRECTORY=""
 GIT_DIRECTORY=""
-GIT_INFO_DIRECTORY=""
-REVIEW_HASH_FILE=""
-TEMPORARY_HASH_FILE=""
+RECHECK=0
+CACHED_REVIEW_FILE=""
 MERGE_LOCK_DIRECTORY=".agents/.agent-ready-instructions.lock"
+# The review cache the hooks also use; its entries live in the Git info directory, not in the repository.
+REVIEW_CACHE_SCRIPT="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)/assets/common/hooks/review-cache.py"
+readonly INSTRUCTIONS_CHECK="instructions"
+# Bump when the review prompt or its schema changes: it is part of every cache key.
+readonly INSTRUCTIONS_CHECK_VERSION=1
+# An AGENTS.md created from the template needs no review, whatever the provider.
+readonly TEMPLATE_REVIEWER="template"
 # Where fcntl is missing (Windows), AGENTS.md writers coordinate through this file in the git dir.
 AGENTS_WRITE_LOCK_NAME="agent-ready-agents-md.lock"
 LOCK_ACQUIRED=0
@@ -30,9 +36,6 @@ LOCK_ACQUIRED=0
 cleanup() {
   if [[ -n "$TEMPORARY_DIRECTORY" && -d "$TEMPORARY_DIRECTORY" ]]; then
     rm -rf -- "$TEMPORARY_DIRECTORY"
-  fi
-  if [[ -n "$TEMPORARY_HASH_FILE" ]]; then
-    rm -f -- "$TEMPORARY_HASH_FILE"
   fi
   if [[ "$LOCK_ACQUIRED" -eq 1 ]]; then
     rmdir -- "$MERGE_LOCK_DIRECTORY" 2>/dev/null || true
@@ -65,6 +68,10 @@ parse_managed_block_arguments() {
         }
         SKILL_DIR="$2"
         shift 2
+        ;;
+      --recheck)
+        RECHECK=1
+        shift
         ;;
       *)
         echo "ERROR: Unknown argument: $1" >&2
@@ -137,11 +144,6 @@ validate_managed_block_inputs() {
     echo "ERROR: worktree Git path is not a safe directory for merge metadata" >&2
     exit 1
   fi
-  GIT_INFO_DIRECTORY="$GIT_DIRECTORY/info"
-  if [[ -L "$GIT_INFO_DIRECTORY" || ( -e "$GIT_INFO_DIRECTORY" && ! -d "$GIT_INFO_DIRECTORY" ) ]]; then
-    echo "ERROR: worktree Git info path is not a safe directory for merge metadata" >&2
-    exit 1
-  fi
 }
 
 prepare_managed_block_files() {
@@ -153,7 +155,6 @@ prepare_managed_block_files() {
   MERGED_FILE="$TEMPORARY_DIRECTORY/merged.md"
   SCHEMA_FILE="$TEMPORARY_DIRECTORY/result-schema.json"
   RESULT_FILE="$TEMPORARY_DIRECTORY/provider-result.json"
-  REVIEW_HASH_FILE="$GIT_INFO_DIRECTORY/agent-ready-instructions-reviewed.sha256"
   readonly MANAGED_BLOCK_START='<!-- BEGIN AGENT-READY MANAGED -->'
   readonly MANAGED_BLOCK_END='<!-- END AGENT-READY MANAGED -->'
   readonly MANAGED_BLOCK_PLACEHOLDER='<!-- AGENT-READY MANAGED BLOCK -->'
@@ -183,32 +184,67 @@ acquire_merge_lock() {
   LOCK_ACQUIRED=1
 }
 
-review_hash=""
-validate_review_hash_path() {
-  if [[ -L "$REVIEW_HASH_FILE" || ( -e "$REVIEW_HASH_FILE" && ! -f "$REVIEW_HASH_FILE" ) ]]; then
-    echo "ERROR: instruction review hash path is not a regular file" >&2
-    return 1
+# Model of the review, part of its cache key; the same defaults the review uses.
+review_model() {
+  if [[ "$PROVIDER" == codex ]]; then
+    printf '%s\n' "${AGENT_READY_SETUP_MERGE_MODEL:-gpt-6-luna}"
+  else
+    printf '%s\n' "${AGENT_READY_SETUP_MERGE_MODEL:-claude-sonnet-5-5}"
   fi
 }
 
-write_review_hash() {
-  if [[ -L "$GIT_INFO_DIRECTORY" || ( -e "$GIT_INFO_DIRECTORY" && ! -d "$GIT_INFO_DIRECTORY" ) ]]; then
-    echo "ERROR: Git info path is not a safe directory for merge metadata" >&2
-    return 1
-  fi
-  mkdir -p -- "$GIT_INFO_DIRECTORY"
-  if ! validate_review_hash_path; then
-    return 1
-  fi
+# --file arguments of the review cache: the AGENTS.md bytes and every rule the review sees.
+review_cache_files() {
+  local relative_path
+  local rule_file
 
-  TEMPORARY_HASH_FILE="$(mktemp "${REVIEW_HASH_FILE}.XXXXXX")"
-  if ! printf '%s\n' "$review_hash" > "$TEMPORARY_HASH_FILE"; then
-    return 1
-  fi
-  if ! mv -f -- "$TEMPORARY_HASH_FILE" "$REVIEW_HASH_FILE"; then
-    return 1
-  fi
-  TEMPORARY_HASH_FILE=""
+  REVIEW_CACHE_FILES=(--file "$AGENTS_FILE" "$AGENTS_FILE")
+  while IFS=$'\t' read -r relative_path rule_file; do
+    REVIEW_CACHE_FILES+=(--file ".agents/rules/$relative_path" "$rule_file")
+  done < "$RULE_FILES_LIST"
+}
+
+# Exit 0 when the review cache holds a current entry for the AGENTS.md and rules the
+# review would see: reviewed by this provider and model, or created from the template.
+# The entry is left in CACHED_REVIEW_FILE, so the caller can repeat its findings.
+instructions_review_cached() {
+  local -a recheck_arguments=()
+  local reviewer
+
+  CACHED_REVIEW_FILE="$TEMPORARY_DIRECTORY/cached-review.json"
+  [[ "$RECHECK" -eq 1 ]] && recheck_arguments=(--recheck)
+  review_cache_files
+  for reviewer in "$PROVIDER" "$TEMPLATE_REVIEWER"; do
+    [[ -n "$reviewer" ]] || continue
+    local model=""
+    [[ "$reviewer" == "$TEMPLATE_REVIEWER" ]] || model="$(review_model)"
+    if python3 -B "$REVIEW_CACHE_SCRIPT" lookup --project . --check "$INSTRUCTIONS_CHECK" \
+      --version "$INSTRUCTIONS_CHECK_VERSION" --provider "$reviewer" --model "$model" \
+      "${REVIEW_CACHE_FILES[@]}" ${recheck_arguments[@]+"${recheck_arguments[@]}"} \
+      > "$CACHED_REVIEW_FILE" 2>/dev/null; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+# Exit 0 while the AI reviews are on; the last apply recorded reviews.enabled for the hooks too.
+instruction_reviews_enabled() {
+  python3 -B "$REVIEW_CACHE_SCRIPT" enabled --project . >/dev/null 2>&1 || [[ $? -ne 1 ]]
+}
+
+# Records a finished review of the current AGENTS.md: $1 is the reviewer, $2 a JSON file
+# with findings and the fields to keep. A cache that cannot be written never fails the merge.
+store_instructions_review() {
+  local reviewer="$1"
+  local result_file="$2"
+  local model=""
+
+  [[ "$reviewer" == "$TEMPLATE_REVIEWER" ]] || model="$(review_model)"
+  review_cache_files
+  python3 -B "$REVIEW_CACHE_SCRIPT" store --project . --check "$INSTRUCTIONS_CHECK" \
+    --version "$INSTRUCTIONS_CHECK_VERSION" --provider "$reviewer" --model "$model" \
+    "${REVIEW_CACHE_FILES[@]}" --result "$result_file" || true
 }
 
 run_template_renderer() {
@@ -247,33 +283,12 @@ load_managed_block_rules() {
   fi
 }
 
-# The review is valid only for the exact AGENTS.md bytes and rule contents it
-# saw; any change to either requires a new redundancy review.
-compute_review_hash() {
-  local agents_path="$1"
-  local digest_input="$TEMPORARY_DIRECTORY/review-digest.txt"
-  local relative_path
-  local rule_file
-
-  {
-    sha256_file "$agents_path"
-    while IFS=$'\t' read -r relative_path rule_file; do
-      printf '%s %s\n' "$relative_path" "$(sha256_file "$rule_file")"
-    done < "$RULE_FILES_LIST"
-  } > "$digest_input"
-  sha256_file "$digest_input"
-}
-
-# Takes the merge lock and validates the review hash path before any AGENTS.md write.
+# Takes the merge lock before any AGENTS.md write.
 start_managed_block_update() {
   acquire_status=0
   acquire_merge_lock || acquire_status=$?
   if [[ "$acquire_status" -ne 0 ]]; then
     exit "$acquire_status"
-  fi
-
-  if ! validate_review_hash_path; then
-    exit 1
   fi
 }
 
@@ -289,8 +304,9 @@ create_agents_from_template_if_missing() {
     chmod 0644 "$temporary_destination"
     cat -- "$FULL_TEMPLATE_FILE" > "$temporary_destination"
     mv -f -- "$temporary_destination" "$AGENTS_FILE"
-    review_hash="$(compute_review_hash "$AGENTS_FILE")"
-    write_review_hash
+    printf '%s\n' '{"findings": [], "reason": "created from the template; nothing of the project to review"}' \
+      > "$TEMPORARY_DIRECTORY/template-review.json"
+    store_instructions_review "$TEMPLATE_REVIEWER" "$TEMPORARY_DIRECTORY/template-review.json"
     printf 'Created %s from %s; no project instructions existed.\n' "$AGENTS_FILE" "$TEMPLATE_FILE"
     exit 0
   fi

@@ -99,6 +99,16 @@ provider_call_count() {
   fi
 }
 
+# Prints the cached review of AGENTS.md, from the cache that every worktree of the repository
+# shares; fails when there is none.
+instructions_review_entry() {
+  local cache_file
+  cache_file="$(git rev-parse --path-format=absolute --git-common-dir)/info/agent-ready/reviews.json"
+  [[ -f "$cache_file" ]] || return 1
+  jq -ce '[.entries | to_entries[] | select(.key | startswith("instructions:")) | .value]
+    | if length == 1 then .[0] else error("expected one instructions entry") end' "$cache_file"
+}
+
 # Git Bash without native symlinks copies instead of linking; these tests check real symlinks.
 skip_without_symlinks() {
   local probe_target="$test_root/symlink-probe-target"
@@ -132,7 +142,8 @@ EOF
   [ "$(cat AGENTS.md)" = "$(printf '%s\n\n%s\n\n%s' '# Existing project instructions' 'Run make verify before merging.' "$(render_managed_block node)")" ]
   ! grep -Eq '@[^[:space:]]*rules/' AGENTS.md
   [[ "$output" == *"Removed redundant lines outside the managed block:"* ]]
-  [ -f .git/info/agent-ready-instructions-reviewed.sha256 ]
+  [ "$(instructions_review_entry | jq -r '[.provider, .model, .verdict] | join(" ")')" = "claude claude-sonnet-5-5 consistent" ]
+  [ ! -e .git/info/agent-ready-instructions-reviewed.sha256 ]
 
   cat > "$fake_bin/claude" <<'EOF'
 #!/bin/bash
@@ -234,6 +245,51 @@ EOF
   grep -Fxq 'Mock design system components in every test.' AGENTS.md
   [[ "$output" == *"Instruction inconsistencies (manual review required; content preserved):"* ]]
   [[ "$output" == *"conflicts with .agents/rules/testing.md"* ]]
+  [ "$(instructions_review_entry | jq -r '.verdict')" = findings ]
+
+  # The next sync takes the verdict from the cache and still reports what it found.
+  cat > "$fake_bin/claude" <<'EOF'
+#!/bin/bash
+exit 42
+EOF
+  run_merge frontend
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"already reviewed; AI review not required."* ]]
+  [[ "$output" == *"Instruction inconsistencies from the last review"* ]]
+  [[ "$output" == *"conflicts with .agents/rules/testing.md"* ]]
+}
+
+@test "the cached review of AGENTS.md stays until the model changes or --recheck asks for a new one" {
+  printf '%s\n' '# Existing project instructions' > AGENTS.md
+  write_review_response $'# Existing project instructions\n\n'"$managed_placeholder"
+
+  run_merge node
+  [ "$status" -eq 0 ]
+  run_merge node
+  [ "$(provider_call_count)" -eq 1 ]
+
+  AGENT_READY_SETUP_MERGE_MODEL=claude-other-model run_merge node
+  [ "$status" -eq 0 ]
+  [ "$(provider_call_count)" -eq 2 ]
+  [ "$(instructions_review_entry | jq -r '.model')" = claude-other-model ]
+
+  PATH="$fake_bin:$PATH" run bash "$skill_dir/scripts/merge-instructions.sh" \
+    --provider claude --stack node --skill-dir "$skill_dir" --recheck
+  [ "$status" -eq 0 ]
+  [ "$(provider_call_count)" -eq 3 ]
+}
+
+@test "an AGENTS.md created from the template needs no review from any provider" {
+  run_merge node
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"no project instructions existed"* ]]
+  [ "$(instructions_review_entry | jq -r '.provider')" = template ]
+
+  run_merge node
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"already reviewed; AI review not required."* ]]
+  [ "$(provider_call_count)" -eq 0 ]
 }
 
 @test "review that adds or rewrites lines is rejected and only the managed block is applied" {
@@ -245,7 +301,7 @@ EOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"review rejected: reviewed content adds or rewrites a line"* ]]
   [ "$(cat AGENTS.md)" = "$(printf '%s\n\n%s' '# Keep this file' "$(render_managed_block node)")" ]
-  [ ! -e .git/info/agent-ready-instructions-reviewed.sha256 ]
+  ! instructions_review_entry
 }
 
 @test "review output without the placeholder or with fences is rejected" {
@@ -422,7 +478,7 @@ EOF
   ! grep -Fq 'team-conventions.md' AGENTS.md
 }
 
-@test "review metadata is isolated per linked worktree" {
+@test "linked worktrees share the review cache of the repository" {
   git config user.email "agent-ready-tests@example.com"
   git config user.name "Agent Ready Tests"
   printf '%s\n' '# Initial repository content' > README.md
@@ -432,21 +488,19 @@ EOF
   linked_project_dir="$test_root/linked-project"
   git worktree add -q -b linked-worktree "$linked_project_dir"
   printf '%s\n' '# Existing project instructions' > AGENTS.md
-  printf '%s\n' '# Existing project instructions' > "$linked_project_dir/AGENTS.md"
   write_review_response $'# Existing project instructions\n\n'"$managed_placeholder"
 
   run_merge node
   [ "$status" -eq 0 ]
+  cp AGENTS.md "$linked_project_dir/AGENTS.md"
   cd "$linked_project_dir"
   run_merge node
-  [ "$status" -eq 0 ]
 
-  main_hash_file="$(git -C "$project_dir" rev-parse --absolute-git-dir)/info/agent-ready-instructions-reviewed.sha256"
-  linked_hash_file="$(git -C "$linked_project_dir" rev-parse --absolute-git-dir)/info/agent-ready-instructions-reviewed.sha256"
-  [ -f "$main_hash_file" ]
-  [ -f "$linked_hash_file" ]
-  [ "$main_hash_file" != "$linked_hash_file" ]
-  [ "$(provider_call_count)" -eq 2 ]
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"already reviewed; AI review not required."* ]]
+  [ "$(provider_call_count)" -eq 1 ]
+  [ -f "$(git -C "$project_dir" rev-parse --absolute-git-dir)/info/agent-ready/reviews.json" ]
+  [ ! -e "$(git rev-parse --absolute-git-dir)/info/agent-ready/reviews.json" ]
 }
 
 @test "successful merge replaces AGENTS atomically without temporary residue" {
@@ -646,7 +700,7 @@ EOF
   [ "$status" -eq 0 ]
   grep -Fq -- '--model gpt-6-luna -c model_reasoning_effort="high"' "$test_root/codex-args.log"
   [ "$(cat AGENTS.md)" = "$(printf '%s\n\n%s' '# Existing project instructions' "$(render_managed_block node)")" ]
-  [ -f .git/info/agent-ready-instructions-reviewed.sha256 ]
+  [ "$(instructions_review_entry | jq -r '[.provider, .model] | join(" ")')" = "codex gpt-6-luna" ]
 }
 
 @test "existing merge lock prevents a second provider invocation" {
