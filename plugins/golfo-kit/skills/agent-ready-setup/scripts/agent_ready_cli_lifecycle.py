@@ -6,6 +6,7 @@ the plan without touching anything.
 """
 
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -42,6 +43,7 @@ CHECK_COLORS = {CHECK_OK: "ok", CHECK_MISSING: "error", CHECK_WARNING: "warning"
 # The lockfile declares the same minimum; the hooks run python3 from PATH.
 MINIMUM_PYTHON = (3, 8)
 PROBE_TIMEOUT_SECONDS = 30
+PYTHON_VERSION_PATTERN = re.compile(r"Python (\d+)\.(\d+)")
 HOOK_SCRIPTS_DIRECTORY = ".agents/hooks/"
 # Where each provider reads the hooks that an apply merges.
 PROVIDER_HOOK_FILES = {"claude": ".claude/settings.json", "codex": ".codex/hooks.json"}
@@ -96,6 +98,11 @@ def check_python():
     if status != 0:
         return check("python", CHECK_MISSING, "python3 is not on PATH, and the session hooks run it",
                      f"install Python {minimum} or newer and make python3 reachable from PATH")
+    # The hooks run this python3, which can be older than the interpreter running doctor.
+    version = PYTHON_VERSION_PATTERN.search(" ".join(output))
+    if not version or (int(version.group(1)), int(version.group(2))) < MINIMUM_PYTHON:
+        return check("python", CHECK_MISSING, f"the python3 on PATH, which the session hooks run, reports '{output[0]}'",
+                     f"install Python {minimum} or newer and put it first on PATH as python3")
     return check("python", CHECK_OK, f"{output[0]} on PATH (this run: Python {running})")
 
 

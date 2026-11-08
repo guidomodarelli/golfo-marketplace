@@ -41,6 +41,10 @@ class BrowserToolsTests(unittest.TestCase):
         self.codex_user = self.root / ".codex/config.toml"
         self.environment = patch.dict(os.environ, {"HOME": str(self.root), "CODEX_HOME": str(self.root / ".codex"), "CLAUDE_CONFIG_DIR": ""})
         self.environment.start()
+        # An apply writes the lockfile before it registers the servers.
+        self.lockfile = self.project / browser_setup.AGENT_READY_LOCK_PATH
+        self.lockfile.parent.mkdir(parents=True)
+        self.lockfile.write_text("{}\n")
 
     def tearDown(self):
         self.environment.stop()
@@ -437,6 +441,24 @@ class BrowserToolsTests(unittest.TestCase):
         for created in (".mcp.json", ".codex/config.toml", ".gitignore", ".agents/browser-tools.json"):
             self.assertFalse((self.project / created).exists(), created)
         self.assertFalse(self.claude_user.exists())
+
+    def test_should_not_register_servers_once_agent_ready_was_removed(self):
+        self.install_fake_tools()
+        self.lockfile.unlink()
+        self.assertEqual(browser_setup.register_from_installation(self.project), 0)
+        with patch.object(browser_setup, "install_tools", return_value=(self.binaries, self.browser)), \
+                patch.object(sys, "argv", ["setup-browser-tools.py", "--project", str(self.project)]):
+            self.assertEqual(browser_setup.main(), 0)
+        self.assertFalse((self.project / ".mcp.json").exists())
+        self.assertFalse((self.project / ".codex/config.toml").exists())
+
+    def test_should_not_unregister_while_an_install_holds_the_lock(self):
+        self.register()
+        original = (self.project / ".mcp.json").read_text()
+        with browser_setup.exclusive_lock(self.tools_root / browser_setup.INSTALL_LOCK_NAME, "busy"):
+            with self.assertRaisesRegex(RuntimeError, "browser setup is installing the tools"):
+                browser_setup.unregister_servers(self.project)
+        self.assertEqual((self.project / ".mcp.json").read_text(), original)
 
     def test_should_preserve_symlinked_project_config_without_touching_target(self):
         target = self.root / "target.json"

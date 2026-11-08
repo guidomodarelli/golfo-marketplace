@@ -38,6 +38,8 @@ CURRENT_INSTALL_LINK = "current"
 # Commands under this fragment were registered by this setup and may be refreshed or removed.
 MANAGED_COMMAND_FRAGMENT = "/agent-ready-setup/browser-tools/"
 BROWSER_METADATA_PATH = ".agents/browser-tools.json"
+# Same path as agent-ready-state.py: `agent-ready remove` deletes it last.
+AGENT_READY_LOCK_PATH = ".agents/agent-ready.lock.json"
 # Fixed per-user install location; project registrations reach it through $HOME.
 TOOLS_HOME_RELATIVE_PATH = Path(".local/share/agent-ready-setup/browser-tools")
 # Generated launchers keep machine-specific paths out of project configuration.
@@ -388,6 +390,16 @@ def write_project_servers(provider, destination, original, config, key, pending,
     atomic_write(destination, updated, original)
 
 
+def is_set_up(project):
+    """True while agent-ready-setup manages the project: apply writes the lockfile before this runs."""
+    return (project / AGENT_READY_LOCK_PATH).is_file()
+
+
+def report_removed_project(project):
+    """A detached install can finish after `agent-ready remove`; it must not register servers again."""
+    print(f"Browser registration skipped: agent-ready-setup is no longer set up in {project}.", file=sys.stderr)
+
+
 def ignore_browser_metadata(project):
     """Keep machine-specific browser metadata out of version control."""
     check = subprocess.run(["git", "-C", str(project), "check-ignore", "--quiet", "--no-index", BROWSER_METADATA_PATH],
@@ -514,20 +526,23 @@ def unregister_servers(project):
     """
     changed = []
     failures = []
-    for provider, relative_path, parser, key in (
-        ("Claude", ".mcp.json", json.loads, "mcpServers"),
-        ("Codex", ".codex/config.toml", tomllib.loads, "mcp_servers"),
-    ):
-        destination = project / relative_path
-        if not destination.exists():
-            continue
-        try:
-            outcome = unregister_provider(provider, destination, parser, key)
-            if outcome:
-                changed.append((outcome, relative_path))
-        except (OSError, RuntimeError, ValueError) as error:
-            failures.append(f"{relative_path}: {error}")
-    changed += forget_browser_metadata(project)
+    # The install lock keeps a running install from registering the servers again halfway through.
+    with exclusive_lock(tools_root() / INSTALL_LOCK_NAME,
+                        "browser setup is installing the tools; run agent-ready remove again when it finishes"):
+        for provider, relative_path, parser, key in (
+            ("Claude", ".mcp.json", json.loads, "mcpServers"),
+            ("Codex", ".codex/config.toml", tomllib.loads, "mcp_servers"),
+        ):
+            destination = project / relative_path
+            if not destination.exists():
+                continue
+            try:
+                outcome = unregister_provider(provider, destination, parser, key)
+                if outcome:
+                    changed.append((outcome, relative_path))
+            except (OSError, RuntimeError, ValueError) as error:
+                failures.append(f"{relative_path}: {error}")
+        changed += forget_browser_metadata(project)
     if failures:
         raise RuntimeError("; ".join(failures))
     return changed
@@ -546,6 +561,9 @@ def main():
                             "Browser setup already running; rerun bootstrap after it finishes"):
             binaries, browser = install_tools(tools_root(), versions)
             write_launchers(binaries, browser)
+            if not is_set_up(arguments.project):
+                report_removed_project(arguments.project)
+                return 0
             register_servers(arguments.project, binaries, browser)
         print("Browser setup complete. Restart provider and trust project MCPs when required. cua remains host-provided.", file=sys.stderr)
         return 0
@@ -593,6 +611,9 @@ def register_from_installation(project):
         print("Browser registration skipped: no complete browser installation.", file=sys.stderr)
         return NO_INSTALLATION_EXIT_CODE
     binaries, browser = installation
+    if not is_set_up(project):
+        report_removed_project(project)
+        return 0
     try:
         ensure_safe_path(project)
         register_servers(project, binaries, browser, allow_dependency_install=False)

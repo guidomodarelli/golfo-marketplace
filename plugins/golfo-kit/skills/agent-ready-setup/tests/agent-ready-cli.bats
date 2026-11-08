@@ -656,3 +656,16 @@ PY
   [ ! -e .agents/agent-ready.lock.json ]
   [ ! -e .agents/rules/security.md ]
 }
+
+@test "doctor checks the version of the python3 that the session hooks run" {
+  case "$(uname -s)" in
+    MINGW* | MSYS* | CYGWIN*) skip "Windows resolves python3 without the fake one" ;;
+  esac
+  real_python="$(command -v python3)"
+  printf '#!/bin/sh\necho "Python 3.6.9"\n' > "$fake_bin/python3"
+  chmod +x "$fake_bin/python3"
+  run --separate-stderr env PATH="$fake_bin:$PATH" "$real_python" "$cli" doctor --offline
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"reports 'Python 3.6.9'"* ]]
+  [[ "$output" == *"fix: install Python 3.8 or newer and put it first on PATH as python3"* ]]
+}
