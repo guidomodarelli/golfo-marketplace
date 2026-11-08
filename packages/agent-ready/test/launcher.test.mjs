@@ -3,9 +3,10 @@
 // install hint when there is none. The engines here are small Python scripts in the
 // layouts that Claude Code, Codex and Hermes use; the last test runs the real engine.
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { once } from "node:events";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { constants, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -17,7 +18,8 @@ const LAUNCHER = join(PACKAGE_ROOT, "bin", "agent-ready.js");
 const REPOSITORY_SKILL = join(PACKAGE_ROOT, "..", "..", "plugins", "golfo-kit", "skills", "agent-ready-setup");
 const FAKE_ENGINE = [
   "import json, os, sys",
-  "print(json.dumps({'engine': os.environ['FAKE_ENGINE_NAME'], 'arguments': sys.argv[1:]}))",
+  "print(json.dumps({'engine': os.environ['FAKE_ENGINE_NAME'], 'arguments': sys.argv[1:],",
+  "                  'provider': os.environ.get('AGENT_READY_SETUP_ACTIVE_PROVIDER')}))",
   "sys.stderr.write('engine progress\\n')",
   "sys.exit(int(os.environ.get('FAKE_ENGINE_STATUS', '0')))",
 ].join("\n");
@@ -65,7 +67,7 @@ test("runs the newest installed engine with the same arguments, streams and exit
   const result = launch(["plan", "--json"], { FAKE_ENGINE_STATUS: "4" });
 
   assert.equal(result.status, 4);
-  assert.deepEqual(JSON.parse(result.stdout), { engine: "claude-0.40.0", arguments: ["plan", "--json"] });
+  assert.deepEqual(JSON.parse(result.stdout), { engine: "claude-0.40.0", arguments: ["plan", "--json"], provider: "claude" });
   // Python on Windows writes CRLF in text mode; the launcher passes the stream through untouched.
   assert.equal(result.stderr.replace(/\r\n/g, "\n"), "engine progress\n");
 });
@@ -89,6 +91,56 @@ test("reads the marketplace snapshots of Claude Code and Codex when there is no 
 
   assert.equal(result.status, 0);
   assert.equal(JSON.parse(result.stdout).engine, "codex-snapshot");
+});
+
+test("a local Codex marketplace counts from the source its config names", () => {
+  installPlugin(join(home, ".codex", "plugins", "cache", "golfo-marketplace", "golfo-kit", "0.40.0"), "0.40.0", "codex-cache");
+  const source = join(home, "clones", "golfo-marketplace");
+  installPlugin(join(source, "plugins", "golfo-kit"), "0.41.0", "codex-local");
+  writeFileSync(join(home, ".codex", "config.toml"),
+    `model = "x"\n\n[marketplaces.golfo-marketplace]\nsource_type = "local"\nsource = ${JSON.stringify(source)}\n`);
+
+  const result = launch(["status"]);
+
+  assert.deepEqual(JSON.parse(result.stdout), { engine: "codex-local", arguments: ["status"], provider: "codex" });
+});
+
+test("the provider of the installation reaches the engine, unless the person chose one", () => {
+  installPlugin(join(home, "custom-claude", "plugins", "cache", "golfo-marketplace", "golfo-kit", "0.40.0"), "0.40.0", "custom");
+
+  const found = launch(["status"], { CLAUDE_CONFIG_DIR: join(home, "custom-claude") });
+  assert.equal(JSON.parse(found.stdout).provider, "claude");
+
+  const chosen = launch(["status"], { CLAUDE_CONFIG_DIR: join(home, "custom-claude"), AGENT_READY_SETUP_ACTIVE_PROVIDER: "codex" });
+  assert.equal(JSON.parse(chosen.stdout).provider, "codex");
+});
+
+const WAITING_ENGINE = [
+  "import os, signal, sys, time",
+  "def stop(number, frame):",
+  "    open(os.environ['FAKE_ENGINE_MARKER'], 'w').write(str(number))",
+  "    sys.exit(130 if number == signal.SIGINT else 143)",
+  "signal.signal(signal.SIGINT, stop)",
+  "signal.signal(signal.SIGTERM, stop)",
+  "print('ready', flush=True)",
+  "time.sleep(30)",
+].join("\n");
+
+/** Starts the launcher on an engine that waits, sends it one signal and returns its exit status. */
+async function cancelWith(signal) {
+  const skill = installPlugin(join(home, ".claude", "plugins", "cache", "golfo-marketplace", "golfo-kit", "0.40.0"), "0.40.0", "waiting");
+  writeFileSync(join(skill, "scripts", "agent-ready"), WAITING_ENGINE);
+  const marker = join(home, "signal");
+  const launcher = spawn(process.execPath, [LAUNCHER, "apply"], { env: environment({ FAKE_ENGINE_MARKER: marker }) });
+  await new Promise((resolve) => launcher.stdout.once("data", resolve));
+  launcher.kill(signal);
+  const [status] = await once(launcher, "exit");
+  return { status, received: readFileSync(marker, "utf8") };
+}
+
+test("a SIGTERM or a SIGINT sent only to the launcher reaches the engine, which exits first", { skip: process.platform === "win32" && "POSIX signals" }, async () => {
+  assert.deepEqual(await cancelWith("SIGTERM"), { status: 143, received: String(constants.signals.SIGTERM) });
+  assert.deepEqual(await cancelWith("SIGINT"), { status: 130, received: String(constants.signals.SIGINT) });
 });
 
 test("AGENT_READY_SETUP_SKILL_DIR wins over every installation and must hold an engine", () => {

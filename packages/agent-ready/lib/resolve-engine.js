@@ -118,6 +118,39 @@ function claudeMarketplaceRoot(configDirectory) {
   return join(configDirectory, "plugins", "marketplaces", MARKETPLACE_NAME);
 }
 
+/** A value of [marketplaces.golfo-marketplace] in the Codex config, read like the session hook reads it. */
+function codexMarketplaceValue(codexDirectory, key) {
+  let text;
+  try {
+    text = readFileSync(join(codexDirectory, "config.toml"), "utf8");
+  } catch {
+    return null;
+  }
+  const section = `[marketplaces.${MARKETPLACE_NAME}]`;
+  const assignment = new RegExp(`^${key}\\s*=\\s*(["'])(.*?)\\1`);
+  let inSection = false;
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("[")) {
+      inSection = trimmed === section;
+      continue;
+    }
+    const match = inSection ? assignment.exec(trimmed) : null;
+    if (match) {
+      return match[2];
+    }
+  }
+  return null;
+}
+
+/** Where Codex keeps the marketplace: a local marketplace is its configured source, not a snapshot. */
+function codexMarketplaceRoot(codexDirectory) {
+  const source = codexMarketplaceValue(codexDirectory, "source_type") === "local"
+    ? codexMarketplaceValue(codexDirectory, "source")
+    : null;
+  return source || join(codexDirectory, ".tmp", "marketplaces", MARKETPLACE_NAME);
+}
+
 /**
  * Every place where a provider installs golfo-kit, the same ones the session hook reads.
  * @param {NodeJS.ProcessEnv} environment
@@ -138,7 +171,7 @@ export function engineCandidates(environment, home) {
     ...cachedSkillDirectories(cache(claudeDirectory)).map((skillDirectory) => ({ provider: "claude", skillDirectory })),
     { provider: "claude", skillDirectory: pluginSkill(claudeMarketplaceRoot(claudeDirectory)) },
     ...cachedSkillDirectories(cache(codexDirectory)).map((skillDirectory) => ({ provider: "codex", skillDirectory })),
-    { provider: "codex", skillDirectory: pluginSkill(join(codexDirectory, ".tmp", "marketplaces", MARKETPLACE_NAME)) },
+    { provider: "codex", skillDirectory: pluginSkill(codexMarketplaceRoot(codexDirectory)) },
     ...hermesDirectories.map((hermesHome) => ({ provider: "hermes", skillDirectory: pluginSkill(hermesHome) })),
   ];
 }

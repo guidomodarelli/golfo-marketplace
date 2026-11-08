@@ -26,6 +26,38 @@ const SIGNAL_EXIT_BASE = 128;
 const WINDOWS_STORE_ALIAS_STATUS = 9009;
 const PYTHON_COMMANDS = process.platform === "win32" ? [["python3"], ["py", "-3"], ["python"]] : [["python3"], ["python"]];
 const INFORMATION_FLAGS = new Set(["-h", "--help", "--version"]);
+// The engine reads the provider from here when --provider is not passed; the installation tells which one it is.
+const PROVIDER_VARIABLE = "AGENT_READY_SETUP_ACTIVE_PROVIDER";
+const ENGINE_PROVIDERS = new Set(["claude", "codex"]);
+const FORWARDED_SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP"];
+// A terminal Ctrl+C reaches the engine on its own. Waiting this long before forwarding one keeps it
+// from being interrupted twice, while a SIGINT sent only to the launcher still reaches it.
+const INTERRUPT_FORWARD_DELAY_MS = 1000;
+
+let runningEngine = null;
+let pendingInterrupt = null;
+
+/** Passes a cancellation on to the engine, which decides what to keep, and waits for it. */
+function forwardSignal(signal) {
+  if (!runningEngine || runningEngine.exitCode !== null || runningEngine.signalCode !== null) {
+    return;
+  }
+  if (signal !== "SIGINT") {
+    runningEngine.kill(signal);
+    return;
+  }
+  clearTimeout(pendingInterrupt);
+  pendingInterrupt = setTimeout(() => runningEngine?.kill("SIGINT"), INTERRUPT_FORWARD_DELAY_MS);
+}
+
+/** The environment of the engine: the provider of the installation, unless the person chose one. */
+function engineEnvironment(engine) {
+  const environment = { ...process.env };
+  if (!environment[PROVIDER_VARIABLE] && ENGINE_PROVIDERS.has(engine.provider)) {
+    environment[PROVIDER_VARIABLE] = engine.provider;
+  }
+  return environment;
+}
 
 function launcherVersion() {
   return JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
@@ -44,7 +76,11 @@ function runEngine(engine, engineArguments, pythonIndex = 0) {
   }
   const [command, ...pythonArguments] = PYTHON_COMMANDS[pythonIndex];
   const entryPoint = join(engine.skillDirectory, ENGINE_ENTRY_POINT);
-  const child = spawn(command, [...pythonArguments, entryPoint, ...engineArguments], { stdio: "inherit" });
+  const child = spawn(command, [...pythonArguments, entryPoint, ...engineArguments], {
+    stdio: "inherit",
+    env: engineEnvironment(engine),
+  });
+  runningEngine = child;
   child.on("error", (error) => {
     if (error.code === "ENOENT") {
       runEngine(engine, engineArguments, pythonIndex + 1);
@@ -53,6 +89,7 @@ function runEngine(engine, engineArguments, pythonIndex = 0) {
     fail(`could not start ${command}: ${error.message}`);
   });
   child.on("exit", (status, signal) => {
+    clearTimeout(pendingInterrupt);
     if (process.platform === "win32" && status === WINDOWS_STORE_ALIAS_STATUS) {
       runEngine(engine, engineArguments, pythonIndex + 1);
       return;
@@ -85,8 +122,10 @@ function main() {
     fail(problem);
     return;
   }
-  // Ctrl+C reaches the engine too: it answers with exit 130 and nothing written, so the launcher waits for it.
-  process.on("SIGINT", () => {});
+  // The engine answers a cancellation itself (exit 130, nothing left half written); the launcher waits for it.
+  for (const signal of FORWARDED_SIGNALS) {
+    process.on(signal, () => forwardSignal(signal));
+  }
   runEngine(engine, engineArguments);
 }
 
