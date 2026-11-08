@@ -107,17 +107,44 @@ def resolve_ref(declaration, ref, offline):
     return commit
 
 
-def target_commit(declaration, mode, locked_source, update, to_ref, offline):
-    """The revision whose content to project, or None for the content of the installed engine.
+def locked_revision_of_ref(locked_source, ref):
+    """The revision of the lock when it came from ``ref``, or None."""
+    locked = locked_source or {}
+    return locked["revision"] if locked.get("revision") and locked.get("requestedRef") == ref else None
+
+
+def follow_ref(declaration, ref, locked_source, offline, read_only):
+    """Commit ``ref`` points at and a warning or None.
+
+    Without the network the answer is the last commit this machine saw, then the revision of the
+    lock that came from that ref. A run that writes nothing also takes them when the remote cannot
+    be reached; a run that writes stops instead.
+    """
+    if offline:
+        return resolve_ref(declaration, ref, True) or locked_revision_of_ref(locked_source, ref), None
+    try:
+        return resolve_ref(declaration, ref, False), None
+    except ProfileError as resolution_error:
+        known = resolve_ref(declaration, ref, True) or locked_revision_of_ref(locked_source, ref) if read_only else None
+        if not known:
+            raise
+        return known, (f"golfo-kit: could not resolve '{ref}' ({resolution_error}); comparing with {known[:12]}, "
+                       "the last revision of it this machine knows")
+
+
+def target_commit(declaration, mode, locked_source, update, to_ref, offline, read_only=False):
+    """The revision whose content to project, or None for the installed engine, and a warning or None.
 
     --to wins; an update or the auto mode follow the declared ref (without one, the installed
     engine); pinned keeps the revision of the lock, and the first apply takes the engine's.
     """
     if to_ref:
-        return resolve_ref(declaration, to_ref, offline)
+        return resolve_ref(declaration, to_ref, offline), None
     if update or mode == UPDATES_AUTO:
-        return resolve_ref(declaration, declaration["requestedRef"], offline) if declaration["requestedRef"] else None
-    return (locked_source or {}).get("revision") or None
+        if not declaration["requestedRef"]:
+            return None, None
+        return follow_ref(declaration, declaration["requestedRef"], locked_source, offline, read_only)
+    return (locked_source or {}).get("revision") or None, None
 
 
 def read_marker(skill_dir):
@@ -236,14 +263,14 @@ def content_skill_dir(configuration, engine_dir, engine_revision, locked_source,
     """
     declaration = declaration_of(configuration, engine_dir, locked_source)
     mode = effective_update_mode(configuration, declaration)
-    commit = target_commit(declaration, mode, locked_source, update, to_ref, offline)
+    commit, resolution_warning = target_commit(declaration, mode, locked_source, update, to_ref, offline, read_only)
     if commit is None or commit == engine_revision:
-        return engine_dir, None
+        return engine_dir, resolution_warning
     if not declaration["origin"]:
         raise ProfileError("golfo-kit: the plugin manifest of this installation declares no https repository to fetch "
                            f"revision {commit[:12]} from")
     if not cached_tree(declaration["origin"], commit):
-        if offline and read_only:
+        if (offline or resolution_warning) and read_only:
             return engine_dir, (f"golfo-kit {commit[:12]} is not in the cache of this machine yet; comparing with the "
                                 f"installed one until a run with network downloads it")
         if offline:
@@ -251,7 +278,7 @@ def content_skill_dir(configuration, engine_dir, engine_revision, locked_source,
                                f"network; nothing was changed: run it with network to download that revision")
         download_commit(GOLFO_KIT_SOURCE_NAME, declaration["origin"], commit)
     requested_ref = to_ref or declaration["requestedRef"] or (locked_source or {}).get("requestedRef")
-    return compose(engine_dir, declaration["origin"], commit, requested_ref), None
+    return compose(engine_dir, declaration["origin"], commit, requested_ref), resolution_warning
 
 
 def is_pinned(configuration, engine_dir, locked_source):

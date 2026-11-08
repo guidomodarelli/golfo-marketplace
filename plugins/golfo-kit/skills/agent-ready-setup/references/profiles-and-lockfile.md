@@ -293,7 +293,9 @@ agents, commands y templates de instrucciones) se puede fijar como un pack, con 
   profile, recrear un asset borrado o adoptar otra fuente no cambia nada de golfo-kit. El primer apply adopta la
   revisión del plugin instalado.
 - `ref` (rama, tag o commit completo) es lo que sigue en `auto` y lo que adopta `agent-ready update golfo-kit`.
-  Sin `ref`, el update adopta la versión del plugin instalado.
+  Sin `ref`, el update adopta la versión del plugin instalado. Sin red, la `ref` vale el último commit que vio
+  esta máquina o, si no vio ninguno, la revisión del lock que vino de esa `ref`. Si el remoto no responde, `plan`,
+  `status` y `check` avisan y comparan con esa revisión; un apply falla antes de escribir.
 - `agent-ready update golfo-kit --to <tag|rama|commit>` adopta exactamente esa revisión, y `--to` también sirve
   para un pack (`agent-ready update acme --to v2`). La actualización es por fuente, nunca por archivo, y
   `--dry-run` muestra antes qué cambia. Hoy el marketplace no publica tags por versión de golfo-kit: usar un

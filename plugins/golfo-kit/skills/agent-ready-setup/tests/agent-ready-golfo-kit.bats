@@ -365,3 +365,34 @@ PY
   [ "$(python3 -c 'import json; print(json.load(open(".agents/agent-ready.json", encoding="utf-8"))["profiles"])' | tr -d '\r')" = \
     "['node', 'legacy-capability']" ]
 }
+
+@test "offline, a followed ref this machine never resolved takes the revision of the lock" {
+  write_manifest '{"profiles": ["node"], "sources": {"golfoKit": {"ref": "main"}}}'
+  run_cli apply
+  [ "$status" -eq 0 ]
+  [ "$(lock_value 'data["source"]["revision"]')" = "$second_revision" ]
+  rm -rf "$XDG_CACHE_HOME/agent-ready-setup/packs/latest"
+
+  run_cli check --offline
+  [ "$status" -eq 0 ]
+}
+
+@test "plan and status compare with the known revision of a ref when the remote cannot be reached" {
+  write_manifest '{"profiles": ["node"], "sources": {"golfoKit": {"ref": "main"}}}'
+  run_cli apply
+  [ "$status" -eq 0 ]
+  git config --global --remove-section "url.file:///$(native_path "$marketplace" | sed 's#^/##')"
+  git config --global "url.file:///$(native_path "$test_root/unreachable" | sed 's#^/##').insteadOf" \
+    "https://github.com/guidomodarelli/golfo-marketplace"
+
+  run_cli plan
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"could not resolve 'main'"* ]]
+  run_cli status
+  [ "$status" -eq 0 ]
+  # An apply still needs the remote: it stops before writing.
+  before="$(cat .agents/agent-ready.lock.json)"
+  run_cli apply
+  [ "$status" -ne 0 ]
+  [ "$(cat .agents/agent-ready.lock.json)" = "$before" ]
+}
