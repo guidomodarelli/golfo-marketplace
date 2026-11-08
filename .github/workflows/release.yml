@@ -1,0 +1,96 @@
+name: Release
+run-name: "@golfo/agent-ready ${{ inputs.version }}"
+
+# Publishes only packages/agent-ready to npm, through trusted publishing (OIDC): no token
+# lives in the repository. It runs by hand from main with the version already in the
+# package manifest, and tags the released commit as agent-ready-vX.Y.Z. Running it again
+# for the same version and commit finishes what a failed run left, and never publishes twice.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version of packages/agent-ready/package.json to publish (X.Y.Z)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-ready-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write # push the release tag
+      id-token: write # npm trusted publishing and provenance
+    env:
+      PACKAGE_DIRECTORY: packages/agent-ready
+      PACKAGE_NAME: "@golfo/agent-ready"
+      RELEASE_VERSION: ${{ inputs.version }}
+      RELEASE_SHA: ${{ github.sha }}
+    steps:
+      - name: Checkout the commit to release
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true # the tag is pushed with the job token
+
+      - name: Verify the release identity
+        run: |
+          set -euo pipefail
+          fail() { echo "::error title=Release not authorized::$1"; exit 1; }
+          version_pattern='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+          [[ "$RELEASE_VERSION" =~ $version_pattern ]] || fail "The version input is not a stable X.Y.Z version; nothing was published."
+          [[ "$GITHUB_REF" == "refs/heads/main" ]] || fail "Releases run from main, not from $GITHUB_REF; nothing was published."
+          git fetch --no-tags --quiet origin "+refs/heads/main:refs/remotes/origin/main" || fail "Could not fetch origin/main to verify the release."
+          [[ "$(git rev-parse HEAD)" == "$RELEASE_SHA" ]] || fail "The checkout is not at the dispatched commit $RELEASE_SHA."
+          git merge-base --is-ancestor "$RELEASE_SHA" refs/remotes/origin/main || fail "The commit $RELEASE_SHA is not on origin/main."
+          package_version="$(node -p "require('./$PACKAGE_DIRECTORY/package.json').version")"
+          [[ "$package_version" == "$RELEASE_VERSION" ]] || fail "$PACKAGE_DIRECTORY/package.json says $package_version, not $RELEASE_VERSION."
+          release_tag="agent-ready-v$RELEASE_VERSION"
+          git fetch --quiet origin "+refs/tags/$release_tag:refs/tags/$release_tag" 2>/dev/null || true
+          if tag_sha="$(git rev-parse --verify --quiet "refs/tags/$release_tag^{commit}")"; then
+            [[ "$tag_sha" == "$RELEASE_SHA" ]] || fail "$release_tag already points to $tag_sha, not to $RELEASE_SHA."
+          fi
+          echo "RELEASE_TAG=$release_tag" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Test the launcher
+        run: node --test "$PACKAGE_DIRECTORY/test/*.test.mjs"
+
+      - name: Use an npm with trusted publishing
+        run: npm install --global npm@11.5.1
+
+      - name: Check what npm already has
+        run: |
+          set -euo pipefail
+          if npm view "$PACKAGE_NAME@$RELEASE_VERSION" version >/dev/null 2>&1; then
+            if git rev-parse --verify --quiet "refs/tags/$RELEASE_TAG" >/dev/null; then
+              echo "$PACKAGE_NAME@$RELEASE_VERSION and $RELEASE_TAG already exist: nothing left to do."
+              echo "ALREADY_RELEASED=1" >> "$GITHUB_ENV"
+            else
+              echo "::error title=Release not authorized::$PACKAGE_NAME@$RELEASE_VERSION is already on npm without $RELEASE_TAG; bump the version."
+              exit 1
+            fi
+          fi
+
+      - name: Tag the released commit
+        if: env.ALREADY_RELEASED != '1'
+        run: |
+          set -euo pipefail
+          if ! git rev-parse --verify --quiet "refs/tags/$RELEASE_TAG" >/dev/null; then
+            git tag "$RELEASE_TAG" "$RELEASE_SHA"
+            git push origin "refs/tags/$RELEASE_TAG"
+          fi
+
+      - name: Publish to npm
+        if: env.ALREADY_RELEASED != '1'
+        working-directory: ${{ env.PACKAGE_DIRECTORY }}
+        run: npm publish --provenance --access public

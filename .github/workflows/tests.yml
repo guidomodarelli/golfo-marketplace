@@ -57,6 +57,8 @@ jobs:
       - run: pnpm run test:sibling-worktree
       - name: Skill coverage engine (temporary git repositories)
         run: pnpm run test:skill-coverage
+      - name: agent-ready npm launcher (@golfo/agent-ready)
+        run: pnpm run test:agent-ready-launcher
       - name: Install Chromium for the user-manual browser suite
         run: pnpm exec playwright-core install --with-deps chromium
       - name: User manual suites (validators and real browser)
