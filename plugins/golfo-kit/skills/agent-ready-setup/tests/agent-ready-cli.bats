@@ -424,3 +424,22 @@ publish_pack_repository() {
   [ "$status" -eq 0 ]
   [ "$(json_value "$(cat .agents/agent-ready.json)" '"sources" in data')" = "False" ]
 }
+
+@test "a selected pack that became invalid can still be removed with profiles remove and sources remove" {
+  run_cli init --profiles node --yes < /dev/null
+  [ "$status" -eq 0 ]
+  mkdir -p agent-packs
+  cp -R "$example_pack" agent-packs/acme
+  run_cli sources add acme path:./agent-packs/acme
+  [ "$status" -eq 0 ]
+  run_cli profiles add acme/kafka-interno
+  [ "$status" -eq 0 ]
+  printf 'not json\n' > agent-packs/acme/agent-ready-pack.json
+
+  run_cli profiles remove acme/kafka-interno
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"checked against golfo-kit's catalog only"* ]]
+  [ "$(json_value "$(cat .agents/agent-ready.json)" 'data["profiles"]')" = "['node']" ]
+  run_cli sources remove acme
+  [ "$status" -eq 0 ]
+}

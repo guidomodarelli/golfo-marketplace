@@ -87,14 +87,32 @@ def command_profiles_list(arguments):
     return EXIT_OK
 
 
-def change_selection(arguments, compute):
+def catalog_for_removal(project_root):
+    """The effective catalog, or golfo-kit's alone when a pack cannot load, so a broken pack can be dropped."""
+    try:
+        return engine().load_effective_catalog(project_root, SKILL_ROOT)
+    except (ProfileError, StateError) as broken_pack:
+        sys.stderr.write(f"WARNING: a profile source could not be loaded ({broken_pack}); "
+                         "the remaining selection is checked against golfo-kit's catalog only.\n")
+        return engine().load_profile_catalog(SKILL_ROOT)
+
+
+def change_selection(arguments, compute, removing=False):
     """Validate the new selection against the catalog and write it; the projection is apply's job."""
     current = selected_profiles(arguments.project_root)
     if not current:
         raise UsageError(f"this repository has no selection yet; start it with {CLI_NAME} init")
-    catalog = engine().load_effective_catalog(arguments.project_root, SKILL_ROOT)
+    if removing:
+        catalog = catalog_for_removal(arguments.project_root)
+    else:
+        catalog = engine().load_effective_catalog(arguments.project_root, SKILL_ROOT)
     selection = compute(current)
-    error = validate_selection(catalog, selection)
+    if removing and not all(name in catalog["profiles"] for name in selection):
+        # Without the pack catalog, a kept pack profile cannot be resolved: only the stack is checked.
+        selection_to_check = [name for name in selection if name in catalog["profiles"]]
+    else:
+        selection_to_check = selection
+    error = validate_selection(catalog, selection_to_check)
     if error:
         raise UsageError(error)
     path = write_project_selection(arguments.project_root, selection)
@@ -114,7 +132,8 @@ def command_profiles_remove(arguments):
     missing = [name for name in arguments.names if name not in current]
     if missing:
         raise UsageError(f"not selected: {', '.join(missing)}; the selection is {', '.join(current) or 'empty'}")
-    return change_selection(arguments, lambda selection: [name for name in selection if name not in arguments.names])
+    return change_selection(arguments, lambda selection: [name for name in selection if name not in arguments.names],
+                            removing=True)
 
 
 # ---------------------------------------------------------------------------
