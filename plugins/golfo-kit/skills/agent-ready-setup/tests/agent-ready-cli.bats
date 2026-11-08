@@ -561,7 +561,7 @@ PY
   printf '%s\n' '{"profiles": ["node"], "sources": {"packs": [{"name": "local-pack", "source": "path:packs/missing"}]}}' > .agents/agent-ready.json
   run_cli doctor --offline
   [ "$status" -eq 1 ]
-  [[ "$output" == *"hooks claude"*"missing: bash .agents/hooks/sync-marketplace.sh --provider claude"* ]]
+  [[ "$output" == *"hooks claude"*"missing: SessionStart: bash .agents/hooks/sync-marketplace.sh --provider claude"* ]]
   [[ "$output" == *"fix: agent-ready apply"* ]]
   [[ "$output" == *"source local-pack"*"path packs/missing does not exist"* ]]
   [[ "$output" == *"fix: restore it, or agent-ready sources remove local-pack"* ]]
@@ -589,4 +589,70 @@ PY
   [ "$status" -eq 1 ]
   [[ "$output" == *"claude and codex are not on PATH"* ]]
   [[ "$output" == *"fix: install Claude Code (claude) or Codex (codex)"* ]]
+}
+
+@test "doctor reads the repository root from a subdirectory and checks each hook in its own event" {
+  run_cli apply --profiles node
+  [ "$status" -eq 0 ]
+  mkdir src
+  cd src
+  run_cli doctor --offline --json
+  [ "$status" -eq 0 ]
+  [ "$(json_value "$output" '[check["status"] for check in data["checks"] if check["name"].startswith("hooks")]')" = "['ok', 'ok']" ]
+
+  cd "$project_dir"
+  python3 - <<'PY'
+import json
+settings = json.load(open(".claude/settings.json", encoding="utf-8"))
+settings["hooks"]["PostToolUse"] += settings["hooks"].pop("SessionStart")
+json.dump(settings, open(".claude/settings.json", "w", encoding="utf-8"), indent=2)
+PY
+  run_cli doctor --offline
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"missing: SessionStart: bash .agents/hooks/sync-marketplace.sh --provider claude"* ]]
+}
+
+@test "remove never changes files through a linked directory and waits for a running apply" {
+  run_cli apply --profiles node
+  [ "$status" -eq 0 ]
+  mv .claude "$test_root/shared-claude"
+  ln -s "$test_root/shared-claude" .claude 2>/dev/null || true
+  [ -L .claude ] || skip "this system cannot create symlinks"
+  shared_settings="$(cksum < "$test_root/shared-claude/settings.json")"
+
+  mkdir .agents/.agent-ready-assets.lock
+  run_cli remove --yes < /dev/null
+  [ "$status" -eq 1 ]
+  [[ "$stderr" == *"an apply or a session sync is running"* ]]
+  [ -f .agents/agent-ready.lock.json ]
+  [ -f .agents/rules/security.md ]
+  rmdir .agents/.agent-ready-assets.lock
+
+  run_cli remove --dry-run --json
+  [ "$(json_value "$output" '[entry["action"] for entry in data["entries"] if entry["path"] == ".claude/settings.json"]')" = "['keep']" ]
+  run_cli remove --yes < /dev/null
+  [ "$status" -eq 0 ]
+  [ "$(cksum < "$test_root/shared-claude/settings.json")" = "$shared_settings" ]
+  [ ! -e .agents/agent-ready.lock.json ]
+}
+
+@test "remove keeps the lockfile while a managed asset cannot be deleted, so it can run again" {
+  run_cli apply --profiles node
+  [ "$status" -eq 0 ]
+  chmod a-w .agents/rules
+  if touch .agents/rules/.probe 2>/dev/null; then
+    rm -f .agents/rules/.probe
+    chmod u+w .agents/rules
+    skip "this system lets a read-only directory lose its files"
+  fi
+  run_cli remove --yes --json < /dev/null
+  chmod u+w .agents/rules
+  [ "$status" -eq 1 ]
+  [[ "$(json_value "$output" 'data["failed"]')" == *".agents/rules/"* ]]
+  [ -f .agents/agent-ready.lock.json ]
+
+  run_cli remove --yes < /dev/null
+  [ "$status" -eq 0 ]
+  [ ! -e .agents/agent-ready.lock.json ]
+  [ ! -e .agents/rules/security.md ]
 }

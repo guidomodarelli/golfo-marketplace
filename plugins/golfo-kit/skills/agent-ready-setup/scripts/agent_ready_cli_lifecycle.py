@@ -21,6 +21,7 @@ from agent_ready_cli_common import (
     UsageError,
     declared_sources,
     engine,
+    find_repository_root,
 )
 from agent_ready_common import StateError, bash_executable, plugin_version, read_json_file, serialize_json
 from agent_ready_config import ConfigurationError, resolve_configuration
@@ -161,25 +162,23 @@ def check_sources(project, configuration, offline):
     return checks
 
 
-def managed_hook_commands(template_path):
-    """Commands of the hooks that a template merges into a provider file."""
-    document = read_json_file(template_path, "agent-ready hooks template")
-    return [handler.get("command") for groups in document.get("hooks", {}).values()
-            for group in groups for handler in group.get("hooks", []) if handler.get("command")]
-
-
-def present_hook_commands(path):
-    """Commands of every hook in a provider file, or None when it cannot be read."""
-    try:
-        document = read_json_file(path, "provider settings")
-    except StateError:
-        return None
+def hook_handlers(document):
+    """(event, matcher, command) of every command hook: a handler only runs in its event and matcher."""
     hooks = document.get("hooks")
     if not isinstance(hooks, dict):
-        return set()
-    return {handler.get("command") for groups in hooks.values() if isinstance(groups, list)
+        return []
+    return [(event, group.get("matcher"), handler["command"])
+            for event, groups in hooks.items() if isinstance(groups, list)
             for group in groups if isinstance(group, dict) and isinstance(group.get("hooks"), list)
-            for handler in group["hooks"] if isinstance(handler, dict)}
+            for handler in group["hooks"] if isinstance(handler, dict) and isinstance(handler.get("command"), str)]
+
+
+def present_hook_handlers(path):
+    """The hook handlers of a provider file, or None when it cannot be read."""
+    try:
+        return set(hook_handlers(read_json_file(path, "provider settings")))
+    except StateError:
+        return None
 
 
 def hook_scripts(commands):
@@ -200,14 +199,16 @@ def check_hooks(project, providers):
     checks = []
     for provider in providers:
         destination = PROVIDER_HOOK_FILES[provider]
-        expected = managed_hook_commands(templates[destination])
-        present = present_hook_commands(os.path.join(project, destination))
-        missing_scripts = [script for script in hook_scripts(expected) if not os.path.isfile(os.path.join(project, script))]
+        expected = hook_handlers(read_json_file(templates[destination], "agent-ready hooks template"))
+        present = present_hook_handlers(os.path.join(project, destination))
+        commands = [command for _, _, command in expected]
+        missing_scripts = [script for script in hook_scripts(commands) if not os.path.isfile(os.path.join(project, script))]
         if present is None:
             checks.append(check(f"hooks {provider}", CHECK_MISSING, f"{destination} is not valid JSON",
                                 f"fix it, then {CLI_NAME} apply"))
         elif not set(expected) <= present or missing_scripts:
-            missing = [command for command in expected if command not in present] + missing_scripts
+            missing = [f"{event}: {command}" for event, matcher, command in expected if (event, matcher, command) not in present]
+            missing += missing_scripts
             checks.append(check(f"hooks {provider}", CHECK_MISSING, f"missing: {', '.join(missing)}", f"{CLI_NAME} apply"))
         else:
             checks.append(check(f"hooks {provider}", CHECK_OK, f"{destination} runs the agent-ready hooks"))
@@ -243,7 +244,11 @@ def print_doctor_report(checks, stream):
 
 def command_doctor(arguments):
     """Check what the engine needs on this machine and in this repository; exits 1 when something is missing."""
-    project = os.path.abspath(arguments.project)
+    try:
+        # From a subdirectory, the configuration, the sources and the lockfile live at the root.
+        project = find_repository_root(arguments.project)
+    except UsageError:
+        project = os.path.abspath(arguments.project)
     checks = doctor_checks(project, arguments.offline)
     problems = [item for item in checks if item["status"] == CHECK_MISSING]
     if arguments.json:
@@ -297,7 +302,7 @@ def command_remove(arguments):
             return EXIT_OK
         asked = True
     try:
-        report = engine().apply_removal(arguments.project_root, SKILL_ROOT, plan)
+        report = engine().remove_from_repository(arguments.project_root, SKILL_ROOT)
     except KeyboardInterrupt:
         # Past the confirmation, part of the repository may already be clean; the lockfile goes last.
         sys.stderr.write(f"{CLI_NAME}: cancelled halfway: some paths were already removed; "

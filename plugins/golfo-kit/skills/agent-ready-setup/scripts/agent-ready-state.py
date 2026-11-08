@@ -2358,6 +2358,11 @@ BROWSER_METADATA_RELATIVE_PATH = ".agents/browser-tools.json"
 UNREGISTER_BROWSER_RELATIVE_PATH = "scripts/unregister-browser-servers.py"
 MANAGED_ROOT_DIRECTORIES = (".agents", ".claude", ".codex", ".github")
 CHANGED_DURING_REMOVAL_REASON = "changed while removing; it was kept"
+# Same directory as SYNC_LOCK_DIRECTORY in bootstrap.sh and the session hook.
+SYNC_LOCK_RELATIVE_PATH = ".agents/.agent-ready-assets.lock"
+# Kinds the lockfile inventories: while one of them is left, the lockfile stays for the next run.
+LOCK_INVENTORIED_KINDS = ("asset", "view")
+INVENTORY_KEPT_REASON = "kept because a managed path could not be removed; run agent-ready remove again"
 
 
 def removal_entry(path, action, reason, kind, local=None):
@@ -2645,6 +2650,11 @@ def plan_removal(project_root, skill_dir):
         + settings_removal_entries(project_root, skill_dir)
         + config_removal_entries(project_root)
     )
+    for entry in entries:
+        # A directory linked to ~/.claude or another shared place leads outside the repository.
+        if entry["action"] != REMOVAL_KEEP and entry["kind"] not in ("git-config", "git-hook") \
+                and has_linked_parent(project_root, entry["path"]):
+            entry.update(action=REMOVAL_KEEP, reason=LINKED_PARENT_REASON, local=None)
     entries.sort(key=lambda entry: (REMOVAL_KINDS.index(entry["kind"]), entry["path"]))
     return {"entries": entries, "changes": sum(entry["action"] != REMOVAL_KEEP for entry in entries)}
 
@@ -2715,6 +2725,7 @@ def apply_removal(project_root, skill_dir, plan):
     report = {"removed": [], "edited": [], "kept": [], "failed": []}
     report["kept"] += [f"{entry['path']}: {entry['reason']}" for entry in plan["entries"] if entry["action"] == REMOVAL_KEEP]
     browser_done = False
+    inventory_left = False
     for entry in plan["entries"]:
         if entry["action"] == REMOVAL_KEEP:
             continue
@@ -2723,10 +2734,41 @@ def apply_removal(project_root, skill_dir, plan):
                 unregister_browser_servers(project_root, skill_dir, report)
                 browser_done = True
             continue
+        if entry["kind"] == "config" and inventory_left:
+            # Without the lockfile, the next run would not know which files are still managed.
+            report["kept"].append(f"{entry['path']}: {INVENTORY_KEPT_REASON}")
+            continue
         try:
             apply_removal_entry(project_root, skill_dir, entry, report)
         except OSError as caught_error:
             report["failed"].append(f"{entry['path']}: {caught_error}")
+            inventory_left = inventory_left or entry["kind"] in LOCK_INVENTORIED_KINDS
+    return report
+
+
+def remove_from_repository(project_root, skill_dir):
+    """Plan again and remove holding the lock that apply and the session hook take.
+
+    Without it, a projection already running would write the assets and the lockfile
+    back after the removal reported success.
+    """
+    lock = os.path.join(project_root, SYNC_LOCK_RELATIVE_PATH)
+    locked = not has_linked_parent(project_root, SYNC_LOCK_RELATIVE_PATH) and not is_link(os.path.dirname(lock))
+    if locked:
+        os.makedirs(os.path.dirname(lock), exist_ok=True)
+        try:
+            os.mkdir(lock)
+        except FileExistsError:
+            raise StateError(f"an apply or a session sync is running ({SYNC_LOCK_RELATIVE_PATH} exists); run agent-ready "
+                             "remove again when it finishes, or delete that directory if no agent-ready process is running") from None
+    try:
+        report = apply_removal(project_root, skill_dir, plan_removal(project_root, skill_dir))
+    finally:
+        if locked:
+            try:
+                os.rmdir(lock)
+            except OSError:
+                pass
     remove_managed_roots_if_empty(project_root)
     return report
 
