@@ -257,8 +257,15 @@ else
     echo "Removed redundant lines outside the managed block:"
     jq -r '.removed[] | "  - " + .' "$RESULT_FILE"
   fi
-  # The entry the cache keeps: each inconsistency as a finding with a stable id.
-  jq '{findings: [.inconsistencies[] | {files: ["AGENTS.md"], lines: [], kind: "inconsistency", text: .}],
+  # The entry the cache keeps: each inconsistency as a finding with a stable id. The prompt
+  # asks for "<project line> — conflicts with <rule or managed block>: <explanation>", so the
+  # quoted line and the conflicting rule are part of the finding: editing either side asks
+  # to confirm a decision about it, and the wording of the explanation never changes its id.
+  jq '{findings: [.inconsistencies[]
+         | ((capture("^(?<line>.+?) — conflicts with (?<rule>[.]agents/rules/[^:]+):") // capture("^(?<line>.+?) — conflicts with")) // {}) as $parts
+         | {files: (["AGENTS.md"] + (if $parts.rule then [$parts.rule] else [] end)),
+            lines: (if $parts.line then [$parts.line | ltrimstr("\"") | rtrimstr("\"")] else [] end),
+            kind: "inconsistency", text: .}],
        removed: .removed, reason: .reason}' "$RESULT_FILE" > "$TEMPORARY_DIRECTORY/review-entry.json"
   report_instructions_findings "$TEMPORARY_DIRECTORY/review-entry.json" \
     "Instruction inconsistencies (manual review required; content preserved):"

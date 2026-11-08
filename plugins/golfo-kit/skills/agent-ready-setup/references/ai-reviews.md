@@ -68,7 +68,7 @@ Módulo `reviews` de la configuración ([configuration.md](configuration.md), cl
 | Clave | Default | Efecto |
 |---|---|---|
 | `reviews.enabled` | `true` | `false` apaga las dos revisiones: el apply copia el bloque gestionado sin revisar y el hook no llama al provider |
-| `reviews.cache` | `true` | `false` revisa todo cada vez y no guarda nada; funciona igual, solo más lento |
+| `reviews.cache` | `true` | `false` revisa todo cada vez y nunca reutiliza una entrada; igual guarda el último resultado, así `status` lo muestra y se puede decidir sobre sus hallazgos |
 | `reviews.ttl` | sin vencimiento | horas que vale una entrada; pasado ese tiempo se revisa otra vez aunque nada haya cambiado |
 
 Los hooks corren sin el motor, así que cada apply deja las tres opciones efectivas en la
@@ -78,9 +78,11 @@ guardadas sí se comparten entre worktrees.
 
 ## 5. Ver los hallazgos y forzar una revisión
 
-- Cada hallazgo lleva un id corto y estable (`! [3f9a1c2b7e] …`), calculado con su unidad,
-  su tipo y las líneas que cita. Si la revisión redacta el mismo problema de otra forma, el
-  id se mantiene. Un hallazgo sin líneas citadas usa su texto.
+- Cada hallazgo lleva un id corto y estable (`! [3f9a1c2b7e] …`), calculado con su chequeo,
+  los archivos que involucra, su tipo y las líneas que cita. Si la revisión redacta el mismo
+  problema de otra forma, el id se mantiene, y agregar una rule ajena no lo cambia. Un
+  hallazgo sin líneas citadas usa su texto. Una inconsistencia de `AGENTS.md` involucra la
+  línea del proyecto y la rule con la que choca.
 - `agent-ready status` y `agent-ready plan` muestran los hallazgos conocidos sin llamar al
   provider (`--json`: objeto `reviews` con `units`, `stale`, `findings`, `quiet` y
   `decisions`). Una entrada cuyos archivos cambiaron desde su revisión cuenta como
@@ -103,6 +105,8 @@ agent-ready review reset <id>... | --all                               # vuelven
 
 - **Motivo obligatorio.** Sin `--reason`, o con un motivo vacío, el comando falla (código
   2) y no escribe nada. Un id que ningún hallazgo actual usa también falla.
+- **Sesiones simultáneas.** Cada decisión lee y reescribe el archivo bajo un lock, así dos
+  sesiones que deciden a la vez conservan las dos decisiones.
 - **Alcance `content` (default).** La decisión vale mientras no cambie ninguno de los
   archivos del hallazgo. Si cambia alguno, el hallazgo se revisa de nuevo y vuelve como
   «a confirmar» (`? [id] … (accepted before the files changed: <motivo>)`). Se confirma

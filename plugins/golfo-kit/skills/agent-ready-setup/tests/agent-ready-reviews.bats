@@ -212,7 +212,7 @@ PY
   [[ "$output" == *"reviewing 2 of 2 pairs"* ]]
 }
 
-@test "reviews.enabled false skips the hook and reviews.cache false reviews every time without storing" {
+@test "reviews.enabled false skips the hook and reviews.cache false reviews every time, keeping only the last result" {
   write_settings false true none
   run_hook .agents/rules/testing.md
   [ "$status" -eq 0 ]
@@ -223,7 +223,21 @@ PY
   run_hook .agents/rules/testing.md
   run_hook .agents/rules/testing.md
   [ "$(calls)" -eq 2 ]
-  [ "$(cache_value 'len(data["entries"])')" -eq 0 ]
+  # Never reused, but kept: status shows it and its findings can be accepted.
+  [ "$(cache_value 'len(data["entries"])')" -eq 2 ]
+}
+
+@test "with reviews.cache false a finding the hook just reported can still be accepted" {
+  write_settings true false none
+  two_findings
+  run_hook .agents/rules/testing.md
+  mock_id="$(finding_id_of Mocks)"
+  [[ "$output" == *"! [$mock_id]"* ]]
+  run_cli review accept "$mock_id" --reason "on purpose"
+  [ "$status" -eq 0 ]
+  run_hook .agents/rules/testing.md
+  [ "$(calls)" -eq 2 ]
+  [[ "$output" != *"[$mock_id]"* ]]
 }
 
 @test "merge-instructions applies the managed block without the AI review when reviews are off" {
@@ -236,7 +250,7 @@ PY
   [ "$(calls)" -eq 0 ]
   grep -Fxq '<!-- BEGIN AGENT-READY MANAGED -->' AGENTS.md
 
-  # Without the cache, every sync reviews AGENTS.md again and nothing is stored.
+  # Without the cache, every sync reviews AGENTS.md again; only the last result is kept.
   write_settings true false none
   printf '%s\n' '{"project_content": "# Project\n\n<!-- AGENT-READY MANAGED BLOCK -->", "removed": [], "inconsistencies": [], "reason": "Nothing to remove."}' > "$FAKE_RESPONSE"
   for attempt in 1 2; do
@@ -245,7 +259,7 @@ PY
     [ "$status" -eq 0 ]
   done
   [ "$(calls)" -eq 2 ]
-  [ "$(cache_value 'len(data["entries"])')" -eq 0 ]
+  [ "$(cache_value 'len(data["entries"])')" -eq 1 ]
 }
 
 @test "an entry older than reviews.ttl hours is reviewed again" {
@@ -504,7 +518,8 @@ PY
   run env PATH="$fake_bin:$PATH" bash "$skill_dir/scripts/merge-instructions.sh" --provider claude --stack node --skill-dir "$skill_dir"
   [ "$status" -eq 0 ]
   inconsistency_id="$(finding_id_of 'Mock every dependency.')"
-  [[ "$output" == *"! [$inconsistency_id] Mock every dependency. — conflicts with .agents/rules/style.md"* ]]
+  # The conflicting rule is part of the finding, so a change on either side counts.
+  [[ "$output" == *"! [$inconsistency_id] AGENTS.md <-> .agents/rules/style.md: Mock every dependency. — conflicts with"* ]]
 
   run_cli review accept "$inconsistency_id" --reason "this repository mocks on purpose"
   run env PATH="$fake_bin:$PATH" bash "$skill_dir/scripts/merge-instructions.sh" --provider claude --stack node --skill-dir "$skill_dir"
@@ -512,6 +527,35 @@ PY
   [[ "$output" == *"already reviewed; AI review not required."* ]]
   [[ "$output" != *"Instruction inconsistencies"* ]]
   [ "$(calls)" -eq 1 ]
+
+  printf 'Never stub the clock either.\n' >> .agents/rules/style.md
+  run env PATH="$fake_bin:$PATH" bash "$skill_dir/scripts/merge-instructions.sh" --provider claude --stack node --skill-dir "$skill_dir"
+  [ "$(calls)" -eq 2 ]
+  [[ "$output" == *"? [$inconsistency_id] AGENTS.md <-> .agents/rules/style.md: Mock every dependency."*"(accepted before the files changed: this repository mocks on purpose)"* ]]
+
+  # A new rule the finding does not involve keeps its id: a pair decision still holds.
+  run_cli review dismiss "$inconsistency_id" --reason "the style rule is about production code" --scope pair
+  printf '# Unrelated\n' > .agents/rules/unrelated.md
+  run env PATH="$fake_bin:$PATH" bash "$skill_dir/scripts/merge-instructions.sh" --provider claude --stack node --skill-dir "$skill_dir"
+  [ "$status" -eq 0 ]
+  [ "$(calls)" -eq 3 ]
+  [[ "$output" != *"Instruction inconsistencies"* ]]
+  [ "$(finding_id_of 'Mock every dependency.')" = "$inconsistency_id" ]
+}
+
+@test "two sessions deciding at the same time keep both decisions" {
+  two_findings
+  run_hook .agents/rules/testing.md
+  mock_id="$(finding_id_of Mocks)"
+  heading_id="$(finding_id_of 'The headings')"
+  decision_pids=()
+  for identifier in "$mock_id" "$heading_id"; do
+    PATH="$fake_bin:$PATH" python3 "$skill_dir/scripts/agent-ready" review accept "$identifier" --reason "on purpose" 2>/dev/null &
+    decision_pids+=("$!")
+  done
+  wait "${decision_pids[@]}"
+  [ "$(decision_value 'sorted(data["decisions"])')" = "$(python3 -c 'import sys; print(sorted(sys.argv[1:]))' "$mock_id" "$heading_id" | tr -d '\r')" ]
+  [ ! -e .agents/agent-ready.reviews.lock ]
 }
 
 @test "the hook leaves no bytecode beside its scripts" {

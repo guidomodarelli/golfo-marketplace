@@ -30,6 +30,17 @@ def current_review(project_root):
     return findings, decisions
 
 
+def update_decisions(project_root, change):
+    """Apply ``change`` to the decisions under their lock, so two sessions never lose each other's decision."""
+    module = review_module()
+    try:
+        return module.Decisions(project_root).update(change)
+    except module.DecisionsError as decisions_error:
+        raise StateError(f"{decisions_error}; fix it or remove it before deciding on findings") from decisions_error
+    except (OSError, module.CacheLockTimeout) as write_error:
+        raise StateError(f"could not write {module.DECISIONS_RELATIVE_PATH}: {write_error}") from write_error
+
+
 def decider(project_root):
     """Who decides: the Git user of the repository, as a commit would name them."""
     completed = subprocess.run(["git", "config", "user.name"], cwd=project_root, capture_output=True,
@@ -71,14 +82,14 @@ def command_review_decide(arguments):
     reason = " ".join(arguments.reason.split())
     if not reason:
         raise UsageError(f"--reason cannot be empty: say why the finding is {DECISION_VERBS[arguments.review_action]}")
-    findings, decisions = current_review(arguments.project_root)
+    findings, _ = current_review(arguments.project_root)
     finding = next((candidate for candidate in findings if candidate["id"] == arguments.id), None)
     if finding is None:
         raise UsageError(f"no current finding has the id {arguments.id} (see {CLI_NAME} review list)")
     kind = DECISION_VERBS[arguments.review_action]
-    decisions[arguments.id] = module.decision_for(finding, kind, reason, arguments.scope, decider(arguments.project_root),
-                                                  arguments.project_root)
-    module.Decisions(arguments.project_root).write(decisions)
+    decision = module.decision_for(finding, kind, reason, arguments.scope, decider(arguments.project_root),
+                                   arguments.project_root)
+    update_decisions(arguments.project_root, lambda decisions: dict(decisions, **{arguments.id: decision}))
     lasts = ("while its files do not change" if arguments.scope == module.SCOPE_CONTENT
              else f"for this pair until {CLI_NAME} review reset {arguments.id}")
     sys.stderr.write(f"{kind} {arguments.id}: {finding.get('text', '')}\n"
@@ -92,14 +103,16 @@ def command_review_reset(arguments):
         raise UsageError("name the ids to reset, or pass --all")
     if arguments.ids and arguments.all:
         raise UsageError("pass either ids or --all, not both")
-    module = review_module()
-    _, decisions = current_review(arguments.project_root)
-    unknown = [identifier for identifier in arguments.ids if identifier not in decisions]
-    if unknown:
-        raise UsageError(f"no decision has the id {', '.join(unknown)} (see {CLI_NAME} review list)")
-    removed = sorted(decisions) if arguments.all else arguments.ids
-    remaining = {identifier: decision for identifier, decision in decisions.items() if identifier not in removed}
-    module.Decisions(arguments.project_root).write(remaining)
+    removed = []
+
+    def without_reset(decisions):
+        unknown = [identifier for identifier in arguments.ids if identifier not in decisions]
+        if unknown:
+            raise UsageError(f"no decision has the id {', '.join(unknown)} (see {CLI_NAME} review list)")
+        removed.extend(sorted(decisions) if arguments.all else arguments.ids)
+        return {identifier: decision for identifier, decision in decisions.items() if identifier not in removed}
+
+    update_decisions(arguments.project_root, without_reset)
     sys.stderr.write(f"Reset {len(removed)} decision(s); their findings show again.\n")
     return EXIT_OK
 

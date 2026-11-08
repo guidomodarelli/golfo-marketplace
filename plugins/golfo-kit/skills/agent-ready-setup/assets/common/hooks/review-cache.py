@@ -202,8 +202,12 @@ class ReviewCache:
         return entry
 
     def store(self, records):
-        """Save ``{unit: entry}``; other entries of files that no longer exist go away in the same write."""
-        if not self.path or not self.settings().get("cache", True):
+        """Save ``{unit: entry}``; other entries of files that no longer exist go away in the same write.
+
+        reviews.cache: false only stops reusing entries: the last result of each unit is still saved,
+        so status shows it and a finding can be accepted or dismissed.
+        """
+        if not self.path:
             return
         with self.locked():
             data = self.read()
@@ -266,46 +270,53 @@ class ReviewCache:
             if os.path.exists(temporary_path):
                 os.unlink(temporary_path)
 
-    @contextlib.contextmanager
     def locked(self):
-        """Hold the lock between processes; one left by a dead process expires."""
+        """Hold the lock of the cache between processes."""
         directory = os.path.dirname(self.path)
         os.makedirs(directory, exist_ok=True)
-        lock = os.path.join(directory, LOCK_DIRECTORY_NAME)
-        deadline = time.monotonic() + LOCK_WAIT_SECONDS
-        denied_since = None
-        while True:
-            try:
-                os.mkdir(lock)
-                break
-            except FileExistsError:
-                denied_since = None
-            except PermissionError:
-                # Windows answers access denied while another process removes the lock. With no lock
-                # there for a while, the directory itself is not writable: fail instead of waiting.
-                if os.path.isdir(lock):
-                    denied_since = None
-                else:
-                    denied_since = denied_since or time.monotonic()
-                    if time.monotonic() - denied_since > LOCK_PERMISSION_SECONDS:
-                        raise
-            try:
-                if time.time() - os.path.getmtime(lock) > LOCK_STALE_SECONDS:
-                    os.rmdir(lock)
-                    continue
-            except OSError:
-                pass
-            # Every path that waits observes the deadline and sleeps, so no failure spins.
-            if time.monotonic() > deadline:
-                raise CacheLockTimeout(f"{lock} has been held for more than {LOCK_WAIT_SECONDS} seconds") from None
-            time.sleep(LOCK_POLL_SECONDS)
+        return directory_lock(os.path.join(directory, LOCK_DIRECTORY_NAME))
+
+
+@contextlib.contextmanager
+def directory_lock(lock):
+    """Hold ``lock``, a directory, between processes; one left by a dead process expires.
+
+    Git never tracks an empty directory, so a lock left in the working tree never reaches a commit.
+    """
+    deadline = time.monotonic() + LOCK_WAIT_SECONDS
+    denied_since = None
+    while True:
         try:
-            yield
-        finally:
-            try:
+            os.mkdir(lock)
+            break
+        except FileExistsError:
+            denied_since = None
+        except PermissionError:
+            # Windows answers access denied while another process removes the lock. With no lock
+            # there for a while, the directory itself is not writable: fail instead of waiting.
+            if os.path.isdir(lock):
+                denied_since = None
+            else:
+                denied_since = denied_since or time.monotonic()
+                if time.monotonic() - denied_since > LOCK_PERMISSION_SECONDS:
+                    raise
+        try:
+            if time.time() - os.path.getmtime(lock) > LOCK_STALE_SECONDS:
                 os.rmdir(lock)
-            except OSError:
-                pass
+                continue
+        except OSError:
+            pass
+        # Every path that waits observes the deadline and sleeps, so no failure spins.
+        if time.monotonic() > deadline:
+            raise CacheLockTimeout(f"{lock} has been held for more than {LOCK_WAIT_SECONDS} seconds") from None
+        time.sleep(LOCK_POLL_SECONDS)
+    try:
+        yield
+    finally:
+        try:
+            os.rmdir(lock)
+        except OSError:
+            pass
 
 
 def entry_for(check, version, provider, model, engine, contents, key, verdict, findings, extra=None):
@@ -335,14 +346,18 @@ def collapsed(text):
 
 
 def finding_id(unit, finding):
-    """Short and stable: the unit, the kind and the lines the finding quotes.
+    """Short and stable: the check, the files the finding involves, its kind and the lines it quotes.
 
-    The quoted lines come from the files, so a review that words the same problem
-    differently keeps the id; a finding without quoted lines falls back to its text.
+    Only the files of the finding count, not every file of its unit: the review of AGENTS.md
+    sees every rule, and adding an unrelated one must not change the id of a conflict. The
+    quoted lines come from the files, so a review that words the same problem differently
+    keeps the id; a finding without quoted lines falls back to its text.
     """
+    check, _, unit_files = unit.partition(":")
+    files = sorted(finding.get("files") or unit_files.split("|"))
     lines = sorted(collapsed(line) for line in finding.get("lines", []) if collapsed(line))
     basis = lines or [collapsed(finding.get("text", ""))]
-    payload = "\0".join([unit, str(finding.get("kind", ""))] + basis)
+    payload = "\0".join([check, "|".join(files), str(finding.get("kind", ""))] + basis)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:FINDING_ID_LENGTH]
 
 
@@ -406,6 +421,18 @@ class Decisions:
             if os.path.exists(temporary_path):
                 os.unlink(temporary_path)
 
+    def update(self, change):
+        """Read the decisions, apply ``change`` (decisions -> new decisions) and write them, under a lock.
+
+        Two sessions deciding at the same time would otherwise each write their own copy and
+        lose the other one's decision.
+        """
+        os.makedirs(os.path.dirname(self.path), exist_ok=True)
+        with directory_lock(self.path[:-len(".json")] + ".lock"):
+            changed = change(self.read(strict=True))
+            self.write(changed)
+            return changed
+
     def status(self, decision):
         """accepted or dismissed while the decision holds; to-confirm once a content decision is older than its files."""
         if decision.get("scope") == SCOPE_PAIR:
@@ -422,8 +449,6 @@ class Decisions:
         for finding in findings:
             identifier = finding_id(unit, finding)
             decision = decisions.get(identifier)
-            if decision is not None and decision.get("unit") != unit:
-                decision = None
             annotated.append(dict(finding, id=identifier, unit=unit,
                                   status=self.status(decision) if decision else STATUS_OPEN,
                                   decision=decision))
@@ -439,7 +464,6 @@ def decision_for(finding, kind, reason, scope, by, project_root):
         "reason": reason,
         "by": by,
         "at": now_text(),
-        "unit": finding["unit"],
         "check": finding.get("check"),
         "kind": finding.get("kind"),
         "text": finding.get("text", ""),
