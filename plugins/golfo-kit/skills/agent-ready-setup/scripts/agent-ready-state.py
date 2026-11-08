@@ -857,14 +857,18 @@ def golfo_kit_pending(skill_dir):
     if not marker:
         return None
     engine_revision, _ = source_revision(marker["engineSkillDir"]) if os.path.isdir(marker["engineSkillDir"]) else (None, None)
-    if not engine_revision or engine_revision == marker["commit"]:
-        return None
     pinned_version, engine_version = plugin_version(skill_dir), marker.get("engineVersion")
+    if engine_revision == marker["commit"]:
+        return None
+    # An installed plugin outside a Git checkout (the provider cache) has no revision: its version decides.
+    if not engine_revision and engine_version == pinned_version:
+        return None
+    brings = f"{engine_version} ({engine_revision[:12]})" if engine_revision else f"{engine_version}"
     return {
         "pinnedRevision": marker["commit"], "pinnedVersion": pinned_version,
         "engineRevision": engine_revision, "engineVersion": engine_version,
         "message": (f"golfo-kit stays at {pinned_version} ({marker['commit'][:12]}); the installed plugin brings "
-                    f"{engine_version} ({engine_revision[:12]}). Adopt it with: agent-ready update golfo-kit"),
+                    f"{brings}. Adopt it with: agent-ready update golfo-kit"),
     }
 
 

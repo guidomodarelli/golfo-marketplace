@@ -396,3 +396,42 @@ PY
   [ "$status" -ne 0 ]
   [ "$(cat .agents/agent-ready.lock.json)" = "$before" ]
 }
+
+@test "two refs at the same commit record each its own requested ref" {
+  write_manifest '{"profiles": ["node"]}'
+  run_cli update golfo-kit --to "$second_revision"
+  [ "$status" -eq 0 ]
+  [ "$(lock_value 'data["source"]["requestedRef"]')" = "$second_revision" ]
+  write_manifest '{"profiles": ["node"], "sources": {"golfoKit": {"ref": "main"}}}'
+  run_cli apply
+  [ "$status" -eq 0 ]
+  [ "$(lock_value 'data["source"]["requestedRef"]')" = "main" ]
+}
+
+@test "offline, a ref nobody resolved yet makes the check report the source unavailable" {
+  run_cli apply --stack node
+  [ "$status" -eq 0 ]
+  write_manifest '{"profiles": ["node"], "sources": {"golfoKit": {"ref": "never-resolved-branch"}}}'
+  run_cli check --offline --json
+  [ "$status" -eq 5 ]
+  [ "$(printf '%s' "$output" | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])' | tr -d '\r')" = "source-unavailable" ]
+  [[ "$output" == *"never resolved 'never-resolved-branch'"* ]]
+}
+
+@test "status tells about a newer golfo-kit when the installed plugin is not a Git checkout" {
+  install_engine_copy
+  write_manifest '{"profiles": ["node"], "sources": {"golfoKit": {"updates": "pinned"}}}'
+  run --separate-stderr env PATH="$fake_bin:$PATH" python3 "$engine_copy/scripts/agent-ready" update golfo-kit --to "$first_revision"
+  [ "$status" -eq 0 ]
+  run --separate-stderr env PATH="$fake_bin:$PATH" python3 "$engine_copy/scripts/agent-ready" status --offline
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"golfo-kit stays at 1.0.0 (${first_revision:0:12}); the installed plugin brings $(engine_version)."* ]]
+}
+
+@test "a profile pack cannot take the name golfo-kit" {
+  mkdir -p agent-packs/golfo-kit
+  write_manifest '{"profiles": ["node"], "sources": {"packs": [{"name": "golfo-kit", "source": "path:./agent-packs/golfo-kit"}]}}'
+  run_cli sources list
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"reserved for golfo-kit itself"* ]]
+}

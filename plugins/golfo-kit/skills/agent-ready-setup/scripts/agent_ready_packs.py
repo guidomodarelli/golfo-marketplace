@@ -39,6 +39,8 @@ PACK_FORBIDDEN_ASSET_NAMES = ("agents.md", "claude.md")
 
 NAMESPACE_SEPARATOR = "/"
 KEBAB_CASE_NAME = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+# golfo-kit is a source of its own (agent_ready_golfo_kit.py): a pack cannot take its name.
+GOLFO_KIT_SOURCE_NAME = "golfo-kit"
 GOLFO_REFERENCE = KEBAB_CASE_NAME
 PACK_REFERENCE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*/[a-z0-9]+(?:-[a-z0-9]+)*$")
 
@@ -132,6 +134,9 @@ def parse_profile_sources(entries, manifest_path):
         name, text = entry["name"], entry["source"]
         if not KEBAB_CASE_NAME.fullmatch(name):
             raise StateError(f"{manifest_path} has a profile source with an invalid name '{name}'; use kebab-case")
+        if name == GOLFO_KIT_SOURCE_NAME:
+            raise StateError(f"{manifest_path} declares a profile source named '{name}', which is reserved for "
+                             "golfo-kit itself; give the pack another name")
         if name in declarations:
             raise StateError(f"{manifest_path} declares the profile source '{name}' more than once")
         declared_ref = entry.get("ref")

@@ -317,7 +317,11 @@ agents, commands y templates de instrucciones) se puede fijar como un pack, con 
   sync), los templates de `.claude/settings.json` y `.codex/hooks.json` que los conectan, los schemas de
   configuración y `providers.json` siguen siempre al plugin instalado. El lock registra la versión del contenido
   en `source.version` y la del motor en `generator.version`.
-- Con golfo-kit fijado, `status` avisa cuando el plugin instalado trae otra versión y cómo adoptarla.
+- Con golfo-kit fijado, `status` avisa cuando el plugin instalado trae otra versión y cómo adoptarla. Si el
+  plugin instalado no es un checkout de Git (la caché del provider), compara las versiones.
+- Sin red, una `ref` que esta máquina nunca resolvió y que el lock no registra deja a `check` con la fuente no
+  disponible y a `plan` y `status` comparando con el contenido instalado, con un aviso.
+- `golfo-kit` es un nombre reservado: un pack de `sources.packs` no puede llamarse así.
 
 `AGENT_READY_SETUP_SYNC_FOREGROUND=1`, o `--stack` y `--profiles` en el hook, corren la sincronización en
 primer plano. `AGENT_READY_SETUP_REVIEW_MODE=1` nunca actualiza, nunca usa la red y nunca escribe.

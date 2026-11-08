@@ -23,6 +23,7 @@ from agent_ready_common import ProfileError, plugin_version, read_json_file
 from agent_ready_options import SOURCES_GOLFO_KIT_REF_KEY, SOURCES_GOLFO_KIT_UPDATES_KEY, UPDATES_AUTO, UPDATES_PINNED
 from agent_ready_packs import (
     FULL_COMMIT,
+    GOLFO_KIT_SOURCE_NAME,
     SAFE_GIT_REF,
     SOURCE_TYPE_GIT,
     cached_tree,
@@ -36,7 +37,6 @@ from agent_ready_packs import (
     resolve_remote_ref,
 )
 
-GOLFO_KIT_SOURCE_NAME = "golfo-kit"
 PLUGIN_RELATIVE_PATH = "plugins/golfo-kit"
 SKILL_RELATIVE_PATH = "plugins/golfo-kit/skills/agent-ready-setup"
 PLUGIN_MANIFESTS = ("plugin.json", ".claude-plugin/plugin.json", ".codex-plugin/plugin.json")
@@ -121,7 +121,13 @@ def follow_ref(declaration, ref, locked_source, offline, read_only):
     be reached; a run that writes stops instead.
     """
     if offline:
-        return resolve_ref(declaration, ref, True) or locked_revision_of_ref(locked_source, ref), None
+        known = resolve_ref(declaration, ref, True) or locked_revision_of_ref(locked_source, ref)
+        if known:
+            return known, None
+        unknown = f"golfo-kit: this machine never resolved '{ref}' and the lock has no revision of it"
+        if not read_only:
+            raise ProfileError(f"{unknown}; run it with network")
+        return None, f"{unknown}; comparing with the installed one until a run with network resolves it"
     try:
         return resolve_ref(declaration, ref, False), None
     except ProfileError as resolution_error:
@@ -205,7 +211,8 @@ def compose(engine_dir, origin, commit, requested_ref):
         raise ProfileError(f"golfo-kit: {len(missing)} file(s) of revision {commit[:12]} could not be written to the cache "
                            f"(first: {missing[0]}); point XDG_CACHE_HOME to a shorter directory and try again")
     # A short name keeps the deepest asset under the path limit of Windows.
-    pair = hashlib.sha256(f"{commit}\0{engine_digest(engine_dir)}".encode("utf-8")).hexdigest()[:ENGINE_DIGEST_LENGTH]
+    identity = f"{commit}\0{engine_digest(engine_dir)}\0{requested_ref or ''}"
+    pair = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:ENGINE_DIGEST_LENGTH]
     root = os.path.join(composed_root(), pair)
     skill_dir = os.path.join(root, *SKILL_RELATIVE_PATH.split("/"))
     if os.path.isfile(os.path.join(skill_dir, MARKER_FILE_NAME)):
