@@ -11,10 +11,11 @@ description: >-
   agent ready", "bootstrap claude", "bootstrap codex", "inicializar configuración
   de agentes", "quiero ser agent ready", "make this repo agent ready", pida pasar
   Agent Ready Score, o pregunte qué versión de las rules usa el repo, qué cambiaría
-  una actualización de agent-ready-setup o por qué un asset quedó en conflicto.
+  una actualización de agent-ready-setup o por qué un asset quedó en conflicto, o pida
+  sacar agent-ready-setup del repo o saber por qué sus hooks no sincronizan.
 license: MIT
 metadata:
-  version: "1.9.0"
+  version: "1.10.0"
   author: "guponce"
   category: "developer-experience"
   tags: "agent-ready, multi-provider, claude-code, codex, bootstrap, setup, scaffold, context-optimized-v1.20.1"
@@ -112,6 +113,16 @@ explícito fuera del cache conservan prioridad para desarrollo local.
 | `agent-ready init [--profiles a,b \| --stack s] [--updates m] [--yes] [--no-input]` | primera configuración: detecta, pregunta lo que falta si hay terminal y aplica |
 | `agent-ready profiles list\|add\|remove` | la selección del manifest, validada contra el catálogo; después, `apply` |
 | `agent-ready sources list\|add\|remove` | las fuentes de packs del manifest; `add` además la trae a la caché |
+| `agent-ready doctor [--offline] [--json]` | revisa Git, Bash, Python, la CLI del provider, la configuración, las fuentes y los hooks, y dice cómo arreglar lo que falta |
+| `agent-ready remove [--dry-run] [--yes]` | saca agent-ready-setup del repo y conserva lo que escribió el proyecto |
+
+Ante «los hooks no corren», «el sync no hace nada» o una máquina nueva, correr primero
+`agent-ready doctor`: nombra lo que falta con su arreglo, en vez de adivinar la causa o
+reinstalar. Para sacar agent-ready-setup, mostrar `agent-ready remove --dry-run` y, con la
+confirmación del usuario, correr `agent-ready remove --yes`. Nunca borrar `.agents/`, `.claude/`
+o el `AGENTS.md` a mano: ahí también viven las rules propias, el contenido del proyecto fuera del
+bloque gestionado y los cambios locales, que `remove` conserva (sección 7 de
+[references/profiles-and-lockfile.md](references/profiles-and-lockfile.md)).
 
 `/agent-ready-setup status`, `/agent-ready-setup plan` y `/agent-ready-setup config` corren
 `agent-ready status`, `agent-ready plan` o `agent-ready config explain` y muestran su salida sin
@@ -119,9 +130,10 @@ alterarla. No escriben en el repo ni instalan herramientas. Por defecto refresca
 del repo para decir si todo está al día; `--offline` no toca la red. Cada subcomando tiene
 `--help` con ejemplos y códigos de salida (`0` bien, `1` falló, `2` uso o configuración inválidos,
 `4` desactualizado, `5` fuente no disponible, `130` cancelado), y `--version`; los datos salen por
-stdout y el progreso y los errores por stderr. Solo `init` pregunta, y solo con terminal: sin
-terminal, con `CI` definida o con `--no-input` sale con 2 y nombra los flags que faltan; si preguntó,
-imprime el comando equivalente. El resto corre igual en un hook o en CI. `plan`, `status` y `apply` necesitan el provider: lo infieren como `resolve-provider.sh`
+stdout y el progreso y los errores por stderr. Solo `init` y `remove` preguntan, y solo con
+terminal: `init` lo que falta y `remove` la confirmación. Sin terminal, con `CI` definida o con
+`--no-input` salen con 2 y nombran los flags que faltan (`remove` pide `--yes`); si preguntaron,
+imprimen el comando equivalente. El resto corre igual en un hook o en CI. `plan`, `status` y `apply` necesitan el provider: lo infieren como `resolve-provider.sh`
 (ver Step 3) o lo toman de `--provider claude|codex`. Para CI, en cualquier proveedor, `agent-ready
 check` compara y sale con códigos documentados, según `ci.mode`. Esta skill no crea workflows de CI;
 para armar un pipeline o explicar un código de salida, leer

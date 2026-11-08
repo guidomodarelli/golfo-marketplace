@@ -2945,6 +2945,49 @@
           "description": "Termina proyectando con apply"
         }
       ]
+    },
+    {
+      "id": "cli-remove-previews-and-keeps-project-content",
+      "description": "Sacar agent-ready-setup se hace con remove --dry-run y remove --yes, que conservan lo propio, en vez de borrar carpetas a mano.",
+      "input": "Ya no queremos usar agent-ready-setup en este repo. Tenemos rules propias en .agents/rules/ y una sección nuestra en AGENTS.md que hay que conservar. Sos un agente sin terminal interactiva: ¿qué comandos corrés para sacarlo y qué queda en el repo? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "remove --dry-run",
+          "description": "Muestra antes qué se borra, se edita y se conserva",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "remove --yes",
+          "description": "Sin terminal confirma con --yes",
+          "critical": true
+        },
+        {
+          "type": "not_contains_any",
+          "values": ["rm -rf .agents", "rm -rf .claude", "rm -r .agents", "Remove-Item -Recurse"],
+          "description": "No borra a mano las carpetas donde viven las rules propias",
+          "critical": true
+        }
+      ]
+    },
+    {
+      "id": "cli-doctor-before-guessing-why-hooks-do-nothing",
+      "description": "Cuando los hooks no hacen nada en una máquina, se corre agent-ready doctor antes de adivinar la causa o reinstalar.",
+      "input": "En una máquina nueva clonamos un repo que ya usa agent-ready-setup y al abrir Claude Code el hook de SessionStart no sincroniza nada. ¿Qué corrés primero para saber qué falta y cómo lo arreglás? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["agent-ready doctor", "agent-ready\" doctor"],
+          "description": "Corre doctor primero",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "doctor[^\\n]{0,400}(arregl|fix)|(arregl|fix|aplic)[^\\n]{0,400}doctor",
+          "description": "Arregla lo que doctor nombra, en vez de adivinar la causa"
+        }
+      ]
     }
   ]
 }

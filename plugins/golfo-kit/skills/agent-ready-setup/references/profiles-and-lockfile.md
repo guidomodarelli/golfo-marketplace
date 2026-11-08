@@ -13,7 +13,7 @@ un repositorio. La implementación vive en `scripts/agent-ready-state.py`.
 4. Configuración y actualizaciones
 5. Manifest y lockfile
 6. Ownership
-7. Operaciones: status, plan, check y apply
+7. Operaciones: status, plan, check, apply, doctor y remove
 8. SessionStart y modo review
 9. Providers y capacidades
 10. Límites conocidos
@@ -366,6 +366,8 @@ python3 "$SKILL_DIR/scripts/agent-ready" status [--offline] [--json]
 python3 "$SKILL_DIR/scripts/agent-ready" plan [--offline] [--json]
 python3 "$SKILL_DIR/scripts/agent-ready" apply [--profiles a,b] [--updates pinned|auto] [--dry-run]
 python3 "$SKILL_DIR/scripts/agent-ready" update [<fuente>...] [--dry-run]
+python3 "$SKILL_DIR/scripts/agent-ready" doctor [--offline] [--json]
+python3 "$SKILL_DIR/scripts/agent-ready" remove [--dry-run] [--yes] [--json]
 ```
 
 - `status` y `plan` no escriben en el repo ni instalan herramientas. Antes de
@@ -394,6 +396,43 @@ python3 "$SKILL_DIR/scripts/agent-ready" update [<fuente>...] [--dry-run]
   hay manifest, la detección inicial. Aplicar dos veces el mismo plan no cambia nada.
 - `python3 scripts/agent-ready-state.py detect --project . --skill-dir "$SKILL_DIR"`
   muestra la detección sola. Sale con 0 si determina un stack primario y con 3 si no.
+- `doctor` solo lee. Revisa Git y el worktree, Bash, el Python que corre y el `python3` que usan
+  los hooks (3.8 o más nuevo), la CLI de los providers que declara el repo (alcanza con una), la
+  versión de golfo-kit, cada capa de configuración, cada fuente de packs (un path que exista, un
+  repositorio que responda a `git ls-remote`; `--offline` no contacta ninguno) y, si el repo ya
+  tiene lockfile, los hooks que el apply fusiona en `.claude/settings.json` y `.codex/hooks.json`
+  junto con sus scripts. Imprime una línea por chequeo y, debajo de lo que falta, `fix:` con el
+  arreglo. Sale con 1 si falta algo y con 0 si no. Funciona también fuera de un repositorio, donde
+  avisa que falta el worktree.
+- `remove` saca agent-ready-setup del repo. Lee solo el lockfile y los archivos, no la
+  configuración, así que funciona con un manifest inválido. `--dry-run` lista cada path con su
+  acción (`remove`, `edit` o `keep`) y su motivo, sin escribir nada:
+
+  | Qué | Qué hace `remove` |
+  |---|---|
+  | asset gestionado igual a la base del lock | lo borra, y también las carpetas que quedan vacías |
+  | asset gestionado editado después del último apply | lo conserva y lo informa: borrarlo perdería el cambio |
+  | archivo del proyecto, rule propia de `.agents/rules/`, asset que no es un archivo regular o con un padre symlink | lo conserva |
+  | vista `.claude/` de un path de `.agents/` (symlink, hard link o copia con el contenido aplicado) | la borra, también las de rules propias |
+  | `AGENTS.md` | borra el bloque gestionado; si no queda más que el template, borra el archivo y su proxy `CLAUDE.md` |
+  | proxy `CLAUDE.md` de un `AGENTS.md` que queda | lo conserva: es lo que hace que Claude Code cargue ese `AGENTS.md` |
+  | `.claude/settings.json` y `.codex/hooks.json` | quita los hooks y permisos del template; si no queda nada, borra el archivo |
+  | servidores MCP del browser en `.mcp.json` y `.codex/config.toml` | los quita con `unregister-browser-servers.py` (Python 3.11+) y conserva los del proyecto |
+  | hook `post-index-change` de las vistas hard link, su lista y el hash de la última revisión | los borra del checkout |
+  | manifest y lockfile | los borra al final, así una corrida interrumpida se puede repetir |
+
+  Pide confirmación solo con terminal; sin terminal, con `CI` o con `--no-input` necesita `--yes` y
+  sin él sale con 2 sin tocar nada. Después de confirmar toma el lock de la sincronización
+  (`.agents/.agent-ready-assets.lock`) y el de la revisión de `AGENTS.md`
+  (`.agents/.agent-ready-instructions.lock`), y vuelve a armar el plan: si un apply, el hook de
+  sesión o la revisión en segundo plano tienen uno, sale con 1 sin tocar nada. Como `merge-instructions.sh`,
+  solo toma como marcadores del bloque las líneas completas; si no son un único par, conserva
+  `AGENTS.md`. El hook de git y su configuración son de todos los worktrees del repositorio: quedan
+  mientras otro worktree tenga lockfile. Nunca cambia un archivo a través de un directorio que es un
+  symlink (por ejemplo, `.claude` apuntando a `~/.claude`): lo conserva. Un archivo que cambió entre
+  el plan y la escritura se conserva. Sale con 1 si algo no se pudo quitar y lo nombra; si es un
+  asset o una vista, el lockfile y el manifest quedan para que la siguiente corrida termine.
+  Correrlo dos veces no cambia nada más.
 
 Preferir aplicar actualizaciones como un cambio revisable: correr el apply en
 una rama y abrir un PR con el diff de `.agents/`, `.claude/` y el lockfile.
