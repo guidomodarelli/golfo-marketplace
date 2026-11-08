@@ -18,10 +18,4 @@ hook_source="${BASH_SOURCE[0]}"
 [[ "$hook_source" == */* ]] || hook_source="./$hook_source"
 hook_directory="$(native_directory "${hook_source%/*}")"
 hook_bash="$(native_directory "${BASH%/*}")/${BASH##*/}"
-# Python exits with 2 when the script is missing, and a PostToolUse hook that exits with 2
-# blocks the agent: a checkout without it only loses the check.
-if [[ ! -f "$hook_directory/harness-review.py" ]]; then
-  echo "[harness-check] .agents/hooks/harness-review.py is missing; consistency check skipped. Run agent-ready apply to restore it." >&2
-  exit 0
-fi
 exec python3 -B "$hook_directory/harness-review.py" --bash "$hook_bash"

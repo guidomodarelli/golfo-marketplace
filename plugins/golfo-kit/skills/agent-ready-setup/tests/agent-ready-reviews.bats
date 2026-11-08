@@ -115,7 +115,9 @@ PY
   argument_after --json-schema | python3 -c 'import json, sys; assert json.load(sys.stdin)["required"] == ["findings"]'
   [ "$(argument_after --tools)" = "" ]
   [ "$(argument_after --effort)" = medium ]
-  [[ "$(argument_after -p)" == *"1. .agents/rules/style.md <-> .agents/rules/testing.md"* ]]
+  # The pairs travel on stdin with the documents, never in an argument that a bulk edit could overflow.
+  grep -Fxq '1. .agents/rules/style.md <-> .agents/rules/testing.md' "$FAKE_INPUT"
+  [[ "$(argument_after -p)" != *"<->"* ]]
 
   run_hook .agents/rules/testing.md
   [ "$(calls)" -eq 1 ]
@@ -344,13 +346,31 @@ PY
   [[ "$output" == *"codex CLI is not available; consistency check skipped."* ]]
 }
 
-@test "a hook without its review script skips the check instead of blocking the agent" {
-  mkdir -p lonely-hook
-  cp "$hook" lonely-hook/check-harness-consistency.sh
-  run env PATH="$fake_bin:$PATH" bash lonely-hook/check-harness-consistency.sh <<< "$(edit_payload .agents/rules/testing.md)"
+@test "an entry stays while another worktree still has its files" {
+  git -c user.email=tests@example.invalid -c user.name=Tests commit -q --allow-empty -m init
+  git worktree add -q -b other "$test_root/other-worktree"
+  printf 'only here\n' > main-only.md
+  printf '%s\n' '{"findings": []}' > result.json
+  python3 -B "$cache_script" store --project . --check worktrees --version 1 --provider claude --model m \
+    --file main-only.md main-only.md --result result.json
+
+  # A write from the worktree that lacks the file keeps the entry of this one.
+  (cd "$test_root/other-worktree" && write_settings true true 3)
+  [ "$(cache_value 'sorted(data["entries"])')" = "['worktrees:main-only.md']" ]
+
+  rm main-only.md
+  (cd "$test_root/other-worktree" && write_settings true true 4)
+  [ "$(cache_value 'len(data["entries"])')" -eq 0 ]
+}
+
+@test "the AGENTS.md review and the hook read the provider defaults from one place" {
+  run python3 -B "$cache_script" defaults --provider codex
   [ "$status" -eq 0 ]
-  [[ "$output" == *"harness-review.py is missing; consistency check skipped."* ]]
-  [ "$(calls)" -eq 0 ]
+  [ "$(printf '%s' "$output" | tr -d '\r')" = "gpt-6-luna high" ]
+
+  run_hook .agents/rules/testing.md
+  [ "$(argument_after --model)" = claude-sonnet-5-5 ]
+  [ "$(argument_after --effort)" = medium ]
 }
 
 @test "the hook leaves no bytecode beside its scripts" {

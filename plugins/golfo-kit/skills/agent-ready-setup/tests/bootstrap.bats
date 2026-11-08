@@ -1306,7 +1306,7 @@ EOF
     [ "$(grep -c '^PWD=' "$PROVIDER_INVOCATION_LOG")" -eq 1 ]
     grep -Eq "^PWD=.*/project/$provider_root\$" "$PROVIDER_INVOCATION_LOG"
     grep -Fq -- '--tools  --safe-mode --no-session-persistence' "$PROVIDER_INVOCATION_LOG"
-    grep -Fq "1. $provider_root/rules/security.md <-> $provider_root/rules/testing.md" "$PROVIDER_INVOCATION_LOG"
+    grep -Fq "1. $provider_root/rules/security.md <-> $provider_root/rules/testing.md" "$PROVIDER_INPUT_LOG"
     grep -Fq "<document path=\"$provider_root/rules/testing.md\">" "$PROVIDER_INPUT_LOG"
   done
 

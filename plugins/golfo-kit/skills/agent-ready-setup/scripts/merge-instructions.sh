@@ -123,12 +123,11 @@ EOF
 invoke_claude() {
   local schema_json
   schema_json="$(<"$SCHEMA_FILE")"
-  local model="${AGENT_READY_SETUP_MERGE_MODEL:-claude-sonnet-5-5}"
-  local reasoning_effort="${AGENT_READY_SETUP_MERGE_REASONING_EFFORT:-medium}"
+  resolve_review_model
 
   env -u CLAUDECODE claude -p "$merge_prompt" \
-    --model "$model" \
-    --effort "$reasoning_effort" \
+    --model "$REVIEW_MODEL" \
+    --effort "$REVIEW_EFFORT" \
     --output-format json \
     --json-schema "$schema_json" \
     --tools "" \
@@ -137,12 +136,11 @@ invoke_claude() {
 }
 
 invoke_codex() {
-  local model="${AGENT_READY_SETUP_MERGE_MODEL:-gpt-6-luna}"
-  local reasoning_effort="${AGENT_READY_SETUP_MERGE_REASONING_EFFORT:-high}"
+  resolve_review_model
 
   codex exec \
-    --model "$model" \
-    -c "model_reasoning_effort=\"$reasoning_effort\"" \
+    --model "$REVIEW_MODEL" \
+    -c "model_reasoning_effort=\"$REVIEW_EFFORT\"" \
     --cd "$PWD" \
     --skip-git-repo-check \
     --sandbox read-only \

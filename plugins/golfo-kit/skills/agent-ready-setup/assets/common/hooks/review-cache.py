@@ -39,6 +39,13 @@ LOCK_PERMISSION_SECONDS = 2
 REPLACE_ATTEMPTS = 20
 SECONDS_PER_HOUR = 3600
 DEFAULT_SETTINGS = {"enabled": True, "cache": True, "ttl": None}
+# Model and reasoning effort of every AI review, the only copy: the hooks read it from here and the
+# Bash scripts with `defaults`. AGENT_READY_SETUP_MERGE_MODEL and
+# AGENT_READY_SETUP_MERGE_REASONING_EFFORT change them for the review of AGENTS.md.
+PROVIDER_DEFAULTS = {
+    "claude": {"model": "claude-sonnet-5-5", "effort": "medium"},
+    "codex": {"model": "gpt-6-luna", "effort": "high"},
+}
 VERDICT_CONSISTENT = "consistent"
 VERDICT_FINDINGS = "findings"
 # Exit status of `lookup` when the unit has no current entry.
@@ -94,6 +101,17 @@ def cache_path(project_root):
     if completed.returncode != 0 or not common:
         return None
     return os.path.join(os.path.normpath(os.path.join(project_root, common)), "info", CACHE_DIRECTORY, CACHE_FILE_NAME)
+
+
+def worktree_roots(project_root):
+    """Every worktree of the repository: an entry is gone only when its files are gone from all of them."""
+    try:
+        completed = subprocess.run(["git", "worktree", "list", "--porcelain"], cwd=project_root, capture_output=True,
+                                   encoding="utf-8", errors="replace", check=False)
+    except OSError:
+        return [project_root]
+    roots = [line[len("worktree "):] for line in completed.stdout.splitlines() if line.startswith("worktree ")]
+    return roots if completed.returncode == 0 and roots else [project_root]
 
 
 def worktree_key(project_root):
@@ -195,11 +213,17 @@ class ReviewCache:
         for worktree in list(data["settings"]):
             if worktree != self.worktree and not os.path.isdir(worktree):
                 del data["settings"][worktree]
+        # Worktrees on other branches can have files this one lacks: their reviews stay.
+        roots = worktree_roots(self.project_root)
+
+        def gone(name):
+            return not os.path.isabs(name) and not any(os.path.exists(os.path.join(root, name)) for root in roots)
+
         for unit, entry in list(data["entries"].items()):
             if unit in keep:
                 continue
             names = entry.get("files", {}) if isinstance(entry, dict) else {}
-            if any(not os.path.isabs(name) and not os.path.exists(os.path.join(self.project_root, name)) for name in names):
+            if any(gone(name) for name in names):
                 del data["entries"][unit]
 
     def write(self, data):
@@ -326,12 +350,23 @@ def command_enabled(arguments):
     return 0 if ReviewCache(arguments.project).settings().get("enabled", True) else 1
 
 
+def command_defaults(arguments):
+    """Print the default model and reasoning effort of the provider, separated by a space."""
+    defaults = PROVIDER_DEFAULTS[arguments.provider]
+    sys.stdout.write(f"{defaults['model']} {defaults['effort']}\n")
+    return 0
+
+
 def build_parser():
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     subparsers = parser.add_subparsers(dest="command", required=True)
     enabled = subparsers.add_parser("enabled", help="exit 0 while the AI reviews are on")
     enabled.add_argument("--project", default=".")
     enabled.set_defaults(handler=command_enabled)
+    defaults = subparsers.add_parser("defaults", help="default model and reasoning effort of a provider")
+    defaults.add_argument("--provider", required=True, choices=sorted(PROVIDER_DEFAULTS))
+    defaults.add_argument("--project", default=".")
+    defaults.set_defaults(handler=command_defaults)
     for name, handler in (("lookup", command_lookup), ("store", command_store)):
         subparser = subparsers.add_parser(name)
         subparser.add_argument("--project", default=".")

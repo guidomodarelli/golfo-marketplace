@@ -61,9 +61,10 @@ el archivo cambia durante el proceso.
 
 El modelo y el nivel de razonamiento de la revisión se pueden cambiar con
 `AGENT_READY_SETUP_MERGE_MODEL` y `AGENT_READY_SETUP_MERGE_REASONING_EFFORT`.
-Valores por defecto: `claude-sonnet-5-5` con `medium` en Claude, y `gpt-6-luna`
-con `high` en Codex. El valor se pasa tal cual al CLI del provider
-(`claude --model/--effort`, `codex --model` y `model_reasoning_effort`).
+Los valores por defecto viven solo en `PROVIDER_DEFAULTS` de
+`assets/common/hooks/review-cache.py`, que también usa el hook de consistencia. El
+valor se pasa tal cual al CLI del provider (`claude --model/--effort`, `codex
+--model` y `model_reasoning_effort`).
 
 Los hooks generados no pasan flags de confirmación durante `SessionStart`.
 `CLAUDE.md` nunca se modifica durante este paso.

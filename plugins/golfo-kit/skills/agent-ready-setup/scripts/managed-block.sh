@@ -20,6 +20,8 @@ TEMPORARY_DIRECTORY=""
 GIT_DIRECTORY=""
 RECHECK=0
 CACHED_REVIEW_FILE=""
+REVIEW_MODEL=""
+REVIEW_EFFORT=""
 MERGE_LOCK_DIRECTORY=".agents/.agent-ready-instructions.lock"
 # The review cache the hooks also use; its entries live in the Git info directory, not in the repository.
 REVIEW_CACHE_SCRIPT="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)/assets/common/hooks/review-cache.py"
@@ -184,13 +186,23 @@ acquire_merge_lock() {
   LOCK_ACQUIRED=1
 }
 
-# Model of the review, part of its cache key; the same defaults the review uses.
-review_model() {
-  if [[ "$PROVIDER" == codex ]]; then
-    printf '%s\n' "${AGENT_READY_SETUP_MERGE_MODEL:-gpt-6-luna}"
-  else
-    printf '%s\n' "${AGENT_READY_SETUP_MERGE_MODEL:-claude-sonnet-5-5}"
+# Sets REVIEW_MODEL and REVIEW_EFFORT for the review of AGENTS.md: the defaults that
+# review-cache.py keeps for every AI review, unless AGENT_READY_SETUP_MERGE_MODEL or
+# AGENT_READY_SETUP_MERGE_REASONING_EFFORT change them. The model is part of the cache key.
+resolve_review_model() {
+  local default_model=""
+  local default_effort=""
+
+  [[ -z "$REVIEW_MODEL" ]] || return 0
+  read -r default_model default_effort < <(python3 -B "$REVIEW_CACHE_SCRIPT" defaults --provider "$PROVIDER") || true
+  # Native Windows Python ends the line with CRLF.
+  default_effort="${default_effort%$'\r'}"
+  if [[ -z "$default_model" || -z "$default_effort" ]]; then
+    echo "ERROR: could not read the review defaults of $PROVIDER from $REVIEW_CACHE_SCRIPT" >&2
+    exit 1
   fi
+  REVIEW_MODEL="${AGENT_READY_SETUP_MERGE_MODEL:-$default_model}"
+  REVIEW_EFFORT="${AGENT_READY_SETUP_MERGE_REASONING_EFFORT:-$default_effort}"
 }
 
 # --file arguments of the review cache: the AGENTS.md bytes and every rule the review sees.
@@ -217,7 +229,10 @@ instructions_review_cached() {
   for reviewer in "$PROVIDER" "$TEMPLATE_REVIEWER"; do
     [[ -n "$reviewer" ]] || continue
     local model=""
-    [[ "$reviewer" == "$TEMPLATE_REVIEWER" ]] || model="$(review_model)"
+    if [[ "$reviewer" != "$TEMPLATE_REVIEWER" ]]; then
+      resolve_review_model
+      model="$REVIEW_MODEL"
+    fi
     if python3 -B "$REVIEW_CACHE_SCRIPT" lookup --project . --check "$INSTRUCTIONS_CHECK" \
       --version "$INSTRUCTIONS_CHECK_VERSION" --provider "$reviewer" --model "$model" \
       "${REVIEW_CACHE_FILES[@]}" ${recheck_arguments[@]+"${recheck_arguments[@]}"} \
@@ -240,7 +255,10 @@ store_instructions_review() {
   local result_file="$2"
   local model=""
 
-  [[ "$reviewer" == "$TEMPLATE_REVIEWER" ]] || model="$(review_model)"
+  if [[ "$reviewer" != "$TEMPLATE_REVIEWER" ]]; then
+    resolve_review_model
+    model="$REVIEW_MODEL"
+  fi
   review_cache_files
   python3 -B "$REVIEW_CACHE_SCRIPT" store --project . --check "$INSTRUCTIONS_CHECK" \
     --version "$INSTRUCTIONS_CHECK_VERSION" --provider "$reviewer" --model "$model" \
