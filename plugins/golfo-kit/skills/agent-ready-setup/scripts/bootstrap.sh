@@ -660,7 +660,15 @@ for update_source in ${UPDATE_SOURCES[@]+"${UPDATE_SOURCES[@]}"}; do
     PACK_UPDATE_SOURCES+=("$update_source")
   fi
 done
-[[ "$OFFLINE" -eq 1 ]] && golfo_kit_arguments+=(--offline)
+# Plan and status stay off the network when asked to and may compare with the installed content.
+# An apply always gets the revision it writes, downloading it if missing (updates.refresh only
+# concerns plan and status), and review mode never uses the network: without it, it stops.
+if [[ "$RUN_MODE" != apply ]]; then
+  golfo_kit_arguments+=(--read-only)
+  [[ "$OFFLINE" -eq 1 ]] && golfo_kit_arguments+=(--offline)
+elif [[ "${AGENT_READY_SETUP_REVIEW_MODE:-0}" == 1 ]]; then
+  golfo_kit_arguments+=(--offline)
+fi
 if ! CONTENT_SKILL_DIR="$(python3 "$STATE_SCRIPT" "${golfo_kit_arguments[@]}")"; then
   echo "ERROR: could not prepare the golfo-kit content; no asset was changed" >&2
   exit 1

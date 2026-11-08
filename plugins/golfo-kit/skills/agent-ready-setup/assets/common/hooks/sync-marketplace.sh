@@ -588,9 +588,12 @@ while IFS=$'\t' read -r configuration_key configuration_value; do
   esac
 done <<< "$configuration"
 # golfo-kit is a source too: pinned, its content comes from the revision of the lock and the
-# engine stays this one (agent_ready_golfo_kit.py). Review mode never uses the network.
+# engine stays this one (agent_ready_golfo_kit.py). Review mode and a session start that hands
+# the sync to the background only read the cache: the detached sync resolves refs and downloads.
 golfo_kit_arguments=(golfo-kit-source --project . --skill-dir "$skill_dir")
-[[ "$review_mode" -eq 1 ]] && golfo_kit_arguments+=(--offline)
+if [[ "$review_mode" -eq 1 || "$defer_to_background" -eq 1 ]]; then
+  golfo_kit_arguments+=(--offline --read-only)
+fi
 if ! content_skill_dir="$(python3 "$state_script" "${golfo_kit_arguments[@]}")"; then
   printf 'WARNING: could not prepare the golfo-kit content; nothing was synchronized.\n' >&2
   exit 0

@@ -299,8 +299,15 @@ agents, commands y templates de instrucciones) se puede fijar como un pack, con 
   `--dry-run` muestra antes qué cambia. Hoy el marketplace no publica tags por versión de golfo-kit: usar un
   commit o una rama.
 - La revisión se descarga con Git del repositorio del marketplace (el `repository` del manifest del plugin) en
-  la caché del usuario, sin depender de la versión instalada. Si no se puede descargar, el apply falla antes de
-  escribir.
+  la caché del usuario, sin depender de la versión instalada. Un apply siempre la descarga si falta, aunque
+  `updates.refresh` esté apagado, y si no puede, falla antes de escribir: nunca reemplaza el contenido fijado por
+  el instalado. Solo `plan`, `status` y el inicio de sesión (que no escriben) comparan con el instalado, con un
+  aviso, cuando la revisión no está en la caché y corren sin red. El inicio de sesión nunca usa la red en primer
+  plano: resuelve la `ref` y descarga en la sincronización en segundo plano.
+- `agent-ready check` compara con el contenido fijado. Con `--offline` y sin esa revisión en la caché, informa
+  la fuente como no disponible en vez de cambios que un apply no haría.
+- En un repositorio `pinned`, `sources.golfoKit.updates: auto` hace que el inicio de sesión adopte golfo-kit
+  solo, como a un pack en `auto`.
 - **El motor nunca se fija.** Los scripts, los hooks (`assets/common/hooks/`, que se actualizan solos en cada
   sync), los templates de `.claude/settings.json` y `.codex/hooks.json` que los conectan, los schemas de
   configuración y `providers.json` siguen siempre al plugin instalado. El lock registra la versión del contenido

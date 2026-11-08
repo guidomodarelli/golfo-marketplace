@@ -776,9 +776,11 @@ def describe_source_item(name, item):
 def enforce_sync_policy(project_root, skill_dir, catalog, resolved, digests):
     """An unattended sync only adopts what is in ``auto``.
 
-    A pinned source that differs from the lock stops it. A pinned repository can have a
-    source in ``auto``, but a new Golfo release stops that source too: an apply writes
-    the whole selection, and it cannot update a pack without updating Golfo.
+    A pinned source that differs from the lock stops it, golfo-kit included: its mode is
+    ``sources.golfoKit.updates``, then ``updates.mode``. A pinned golfo-kit projects the
+    revision of the lock, so its content only differs when that revision cannot be fetched
+    (a local source without Git); then a pack in ``auto`` waits too, because an apply writes
+    the whole selection and cannot update a pack without updating golfo-kit.
     """
     lock = read_lock(project_root)
     report = source_report(catalog, resolved, digests, lock)
@@ -788,7 +790,7 @@ def enforce_sync_policy(project_root, skill_dir, catalog, resolved, digests):
                 f"profile source '{name}' is pinned and differs from the lock ({'; '.join(item['differences'])}); "
                 "SessionStart does not adopt it, so this repository keeps its committed assets until someone adopts the change"
             )
-    if lock and effective_update_mode(configuration_of(project_root)) == UPDATES_PINNED:
+    if lock and golfo_kit.update_mode(configuration_of(project_root)) == UPDATES_PINNED:
         assets = desired_assets(skill_dir, catalog, resolved)
         golfo_assets = {destination: entry for destination, entry in assets.items() if not is_pack_profile(entry["profile"])}
         identity = source_identity(skill_dir, golfo_assets, merged_template_entries(skill_dir, catalog, resolved))
@@ -1965,9 +1967,10 @@ def print_ignored_configuration(configuration, stream):
 
 
 def automatic_sources(configuration):
-    """Names of the declared sources whose effective update mode is auto."""
-    return [declaration["name"] for declaration in declared_sources(configuration.project_root)
-            if effective_update_mode(configuration, declaration) == UPDATES_AUTO]
+    """Names of the sources whose effective update mode is auto: golfo-kit, then the declared packs."""
+    names = [golfo_kit.GOLFO_KIT_SOURCE_NAME] if golfo_kit.update_mode(configuration) == UPDATES_AUTO else []
+    return names + [declaration["name"] for declaration in declared_sources(configuration.project_root)
+                    if effective_update_mode(configuration, declaration) == UPDATES_AUTO]
 
 
 def print_configuration_values(configuration, indent="  "):
@@ -1997,7 +2000,7 @@ def command_config(arguments):
     """Print the effective configuration: text explains it, json and tsv are for scripts.
 
     tsv prints one ``key<TAB>value`` line per option (booleans as true/false, lists joined
-    with commas) and the derived line ``auto_sources``: declared sources in auto.
+    with commas) and the derived line ``auto_sources``: golfo-kit and the declared sources in auto.
     """
     configuration = configuration_of(arguments.project, arguments.offline)
     if arguments.format == "json":
@@ -2068,7 +2071,7 @@ def command_golfo_kit_source(arguments):
     content_dir, warning = golfo_kit.content_skill_dir(
         configuration_of(arguments.project, arguments.offline), arguments.skill_dir,
         engine_revision, (lock or {}).get("source"),
-        update=arguments.update, to_ref=arguments.to, offline=arguments.offline,
+        update=arguments.update, to_ref=arguments.to, offline=arguments.offline, read_only=arguments.read_only,
     )
     if warning:
         write_line(f"WARNING: {warning}", sys.stderr)
@@ -2271,7 +2274,16 @@ def evaluate_check(project_root, skill_dir, offline):
     unavailable = []
     if not offline:
         unavailable = refresh_declared_sources(declared_sources(project_root), locked_sources_of(project_root))
-    problems, incomplete = check_problems(project_root, skill_dir)
+    # A repository that pins golfo-kit is checked against the content of its revision, like an apply.
+    engine_revision, _ = source_revision(skill_dir)
+    content_dir, missing_content = golfo_kit.content_skill_dir(
+        configuration, skill_dir, engine_revision, (read_lock(project_root) or {}).get("source"),
+        offline=offline, read_only=True,
+    )
+    if missing_content:
+        # Comparing with the installed content would report changes an apply never makes.
+        return {"status": CHECK_SOURCE_UNAVAILABLE, "ci": ci, "problems": [], "unavailable": unavailable + [missing_content]}
+    problems, incomplete = check_problems(project_root, content_dir)
     if incomplete:
         unavailable.append(incomplete)
     if unavailable:
@@ -3053,6 +3065,8 @@ def build_parser():
     golfo_kit_parser.add_argument("--update", action="store_true", help="adopt the latest revision of its ref, or of the installed engine")
     golfo_kit_parser.add_argument("--to", help="adopt this tag, branch or full commit")
     golfo_kit_parser.add_argument("--offline", action="store_true", help="use no network: only revisions already in the cache")
+    golfo_kit_parser.add_argument("--read-only", action="store_true",
+                                  help="the run writes nothing: offline, a missing revision compares with the installed one")
     golfo_kit_parser.set_defaults(handler=command_golfo_kit_source)
 
     detect_parser = subparsers.add_parser("detect", help="read-only detection of stacks and capabilities")

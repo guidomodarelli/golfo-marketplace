@@ -216,3 +216,85 @@ write_manifest() {
   [ ! -e .agents/agent-ready.lock.json ]
   [ ! -e .agents/rules ]
 }
+
+# A session start hands the sync to a detached process; this waits for its report.
+wait_for_background_update() {
+  local attempt
+  for attempt in $(seq 1 300); do
+    if [ -n "$(find "$XDG_CACHE_HOME/agent-ready-setup/updates" -name '*.json' 2>/dev/null | head -n 1)" ] && \
+      [ "$(find "$XDG_CACHE_HOME/agent-ready-setup/updates" -name '*.lock' 2>/dev/null | wc -l)" -eq 0 ]; then
+      return 0
+    fi
+    sleep 0.2
+  done
+  echo "the background update did not finish" >&2
+  return 1
+}
+
+@test "an apply downloads the pinned revision it lost from the cache, even with updates.refresh off" {
+  write_manifest '{"profiles": ["node"], "updates": {"refresh": false}, "sources": {"golfoKit": {"updates": "pinned"}}}'
+  run_cli update golfo-kit --to "$first_revision"
+  [ "$status" -eq 0 ]
+  rm -rf "$XDG_CACHE_HOME/agent-ready-setup"
+  rm .agents/rules/verify-changes.md
+
+  run_cli apply
+  [ "$status" -eq 0 ]
+  grep -Fq 'Content of revision one.' .agents/rules/verify-changes.md
+  [ "$(lock_value 'data["source"]["revision"]')" = "$first_revision" ]
+
+  # Plan and status may compare offline with the installed content; they write nothing.
+  rm -rf "$XDG_CACHE_HOME/agent-ready-setup"
+  before="$(cat .agents/agent-ready.lock.json)"
+  run_cli status --offline
+  [[ "$stderr" == *"golfo-kit ${first_revision:0:12} is not in the cache of this machine yet"* ]]
+  [ "$(cat .agents/agent-ready.lock.json)" = "$before" ]
+}
+
+@test "the check of a pinned repository compares with the pinned content" {
+  write_manifest '{"profiles": ["node"], "sources": {"golfoKit": {"updates": "pinned"}}}'
+  run_cli update golfo-kit --to "$first_revision"
+  [ "$status" -eq 0 ]
+  run_cli check --offline
+  [ "$status" -eq 0 ]
+
+  # Offline without the revision it cannot compare: the source is unavailable, nothing is outdated.
+  rm -rf "$XDG_CACHE_HOME/agent-ready-setup"
+  run_cli check --offline
+  [ "$status" -eq 5 ]
+  [[ "$output" == *"source not available"* ]]
+  [[ "$output" == *"golfo-kit ${first_revision:0:12} is not in the cache of this machine yet"* ]]
+  run_cli check
+  [ "$status" -eq 0 ]
+}
+
+@test "a pinned repository follows a golfo-kit in auto on SessionStart" {
+  write_manifest '{"profiles": ["node"], "sources": {"golfoKit": {"updates": "pinned"}}}'
+  run_cli update golfo-kit --to "$first_revision"
+  [ "$status" -eq 0 ]
+  write_manifest '{"profiles": ["node"], "updates": {"mode": "pinned"}, "sources": {"golfoKit": {"updates": "auto", "ref": "main"}}}'
+
+  run env PATH="$fake_bin:$PATH" AGENT_READY_SETUP_SKILL_DIR="$skill_dir" AGENT_READY_SETUP_SYNC_FOREGROUND=1 \
+    bash .agents/hooks/sync-marketplace.sh --provider claude
+  [ "$status" -eq 0 ]
+  [ "$(lock_value 'data["source"]["revision"]')" = "$second_revision" ]
+  grep -Fq 'Content of revision two.' .agents/rules/verify-changes.md
+}
+
+@test "a session start resolves no golfo-kit ref in the foreground: the detached sync does" {
+  write_manifest '{"profiles": ["node"], "sources": {"golfoKit": {"ref": "main"}}}'
+  run_cli apply
+  [ "$status" -eq 0 ]
+  [ "$(lock_value 'data["source"]["revision"]')" = "$second_revision" ]
+  # The marketplace is unreachable from now on: only the cache answers.
+  git config --global --remove-section "url.file:///$(native_path "$marketplace" | sed 's#^/##')"
+  git config --global "url.file:///$(native_path "$test_root/unreachable" | sed 's#^/##').insteadOf" \
+    "https://github.com/guidomodarelli/golfo-marketplace"
+
+  run env PATH="$fake_bin:$PATH" AGENT_READY_SETUP_SKILL_DIR="$skill_dir" \
+    bash .agents/hooks/sync-marketplace.sh --provider claude
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"could not prepare the golfo-kit content"* ]]
+  wait_for_background_update
+  [ "$(lock_value 'data["source"]["revision"]')" = "$second_revision" ]
+}
