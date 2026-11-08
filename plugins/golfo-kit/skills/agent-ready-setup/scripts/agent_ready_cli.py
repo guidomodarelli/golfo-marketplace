@@ -79,6 +79,9 @@ def command_apply(arguments):
     """Apply the selection: projection, lockfile, manifest and the managed block of AGENTS.md."""
     provider = resolve_provider(arguments.provider)
     selection = selection_arguments(arguments)
+    if arguments.from_lock and (selection or arguments.updates):
+        raise UsageError("--from-lock applies the selection and revisions of the lock; drop --profiles, --stack and --updates")
+    selection += ["--from-lock"] if arguments.from_lock else []
     if arguments.dry_run:
         return run_bash(bootstrap_command(provider, "--plan", *selection), arguments.project_root)
     extra = selection + (["--updates", arguments.updates] if arguments.updates else [])
@@ -293,11 +296,14 @@ def build_parser():
     check.add_argument("--format", choices=("text", "json"), default="text", help="same as --json with json (default: text)")
 
     apply_parser = new_subparser(subparsers, "apply", "Apply the selected profiles and align AGENTS.md.",
-                                 "  agent-ready apply\n  agent-ready apply --profiles node,business-flows --dry-run",
+                                 "  agent-ready apply\n  agent-ready apply --profiles node,business-flows --dry-run\n"
+                                 "  agent-ready apply --from-lock",
                                  command_apply, needs_provider=True)
     add_selection(apply_parser)
     apply_parser.add_argument("--updates", choices=UPDATE_MODES, help="write updates.mode into the manifest (auto removes it)")
     apply_parser.add_argument("-n", "--dry-run", action="store_true", help="show the plan instead of applying")
+    apply_parser.add_argument("--from-lock", action="store_true",
+                              help="apply exactly the lock: its selection and the revision of every source, or fail before writing")
     apply_parser.add_argument("--recheck", action="store_true",
                               help="review AGENTS.md with the provider even when the review cache holds a current result")
 

@@ -29,6 +29,8 @@
 # which needs no provider.
 # An apply follows the sources in auto; --update-source also moves a pinned one, golfo-kit
 # included, and --update-to picks the tag, branch or commit of that single source.
+# --from-lock applies exactly the lock: its selection and the revision of every source, and
+# fails before writing, naming the source, when a digest or a sha256 does not match.
 # Instruction normalization alone runs through normalize-instructions.sh.
 
 set -euo pipefail
@@ -57,6 +59,7 @@ REQUESTED_SKILL_DIR=""
 UPDATE_MODE=""
 UPDATE_SOURCES=()
 UPDATE_TO=""
+FROM_LOCK=0
 OFFLINE=0
 JSON_OUTPUT=0
 # apply (default), plan, status or config.
@@ -108,6 +111,10 @@ while [[ $# -gt 0 ]]; do
       UPDATE_TO="$2"
       shift 2
       ;;
+    --from-lock)
+      FROM_LOCK=1
+      shift
+      ;;
     --update-source)
       [[ $# -ge 2 && -n "${2:-}" ]] || { echo "ERROR: --update-source requires a source name" >&2; exit 1; }
       UPDATE_SOURCES+=("$2")
@@ -135,6 +142,14 @@ done
 
 if [[ "$RUN_MODE" != apply && "$RUN_MODE" != plan && ${#UPDATE_SOURCES[@]} -gt 0 ]]; then
   echo "ERROR: --update-source only works on an apply or a --plan" >&2
+  exit 1
+fi
+if [[ "$FROM_LOCK" -eq 1 && ( ${#UPDATE_SOURCES[@]} -gt 0 || -n "$STACK$PROFILES$UPDATE_MODE" ) ]]; then
+  echo "ERROR: --from-lock applies the selection and revisions of the lock; drop --update-source, --stack, --profiles and --updates" >&2
+  exit 1
+fi
+if [[ "$FROM_LOCK" -eq 1 && "$RUN_MODE" != apply && "$RUN_MODE" != plan ]]; then
+  echo "ERROR: --from-lock only works with an apply or --plan" >&2
   exit 1
 fi
 if [[ -n "$UPDATE_TO" && ${#UPDATE_SOURCES[@]} -ne 1 ]]; then
@@ -663,6 +678,15 @@ done
 # Plan and status stay off the network when asked to and may compare with the installed content.
 # An apply always gets the revision it writes, downloading it if missing (updates.refresh only
 # concerns plan and status), and review mode never uses the network: without it, it stops.
+FROM_LOCK_ARGUMENTS=()
+if [[ "$FROM_LOCK" -eq 1 ]]; then
+  if [[ ! -f .agents/agent-ready.lock.json ]]; then
+    echo "ERROR: --from-lock needs .agents/agent-ready.lock.json; this repository has no lockfile yet" >&2
+    exit 1
+  fi
+  FROM_LOCK_ARGUMENTS=(--from-lock)
+  golfo_kit_arguments+=(--from-lock)
+fi
 if [[ "$RUN_MODE" != apply ]]; then
   golfo_kit_arguments+=(--read-only)
   [[ "$OFFLINE" -eq 1 ]] && golfo_kit_arguments+=(--offline)
@@ -685,7 +709,7 @@ elif [[ -n "$STACK" ]]; then
   PROFILE_SELECTION=(--stack "$STACK")
 fi
 
-if [[ "$RUN_MODE" != apply && "$OFFLINE" -eq 0 ]]; then
+if [[ "$RUN_MODE" != apply && "$OFFLINE" -eq 0 && "$FROM_LOCK" -eq 0 ]]; then
   python3 "$STATE_SCRIPT" fetch-sources --project . --skill-dir "$SKILL_DIR" --refresh || true
 fi
 
@@ -703,10 +727,11 @@ remove_temporary_paths() {
 }
 trap remove_temporary_paths EXIT
 # A plan with --update-source resolves those sources the same way, into the user cache only.
-if [[ "$RUN_MODE" == apply || ${#UPDATE_SOURCES[@]} -gt 0 ]]; then
+if [[ "$RUN_MODE" == apply || ${#UPDATE_SOURCES[@]} -gt 0 || "$FROM_LOCK" -eq 1 ]]; then
   SOURCE_STATE_FILE="$(mktemp "${TMPDIR:-/tmp}/agent-ready-sources.XXXXXX")"
   TEMPORARY_PATHS+=("$SOURCE_STATE_FILE")
-  fetch_arguments=(fetch-sources --project . --skill-dir "$SKILL_DIR" --state-file "$SOURCE_STATE_FILE")
+  fetch_arguments=(fetch-sources --project . --skill-dir "$SKILL_DIR" --state-file "$SOURCE_STATE_FILE"
+    ${FROM_LOCK_ARGUMENTS[@]+"${FROM_LOCK_ARGUMENTS[@]}"})
   for update_source in ${PACK_UPDATE_SOURCES[@]+"${PACK_UPDATE_SOURCES[@]}"}; do
     fetch_arguments+=(--update-source "$update_source")
   done
@@ -764,7 +789,8 @@ done <<< "$resolution"
 if [[ "$RUN_MODE" == plan ]]; then
   python3 "$STATE_SCRIPT" plan --project . --skill-dir "$SKILL_DIR" --provider "$PROVIDER" \
     ${PROFILE_SELECTION[@]+"${PROFILE_SELECTION[@]}"} ${SOURCE_STATE_ARGUMENTS[@]+"${SOURCE_STATE_ARGUMENTS[@]}"} \
-    ${OFFLINE_ARGUMENTS[@]+"${OFFLINE_ARGUMENTS[@]}"} ${FORMAT_ARGUMENTS[@]+"${FORMAT_ARGUMENTS[@]}"} >&3
+    ${OFFLINE_ARGUMENTS[@]+"${OFFLINE_ARGUMENTS[@]}"} ${FORMAT_ARGUMENTS[@]+"${FORMAT_ARGUMENTS[@]}"} \
+    ${FROM_LOCK_ARGUMENTS[@]+"${FROM_LOCK_ARGUMENTS[@]}"} >&3
   exit $?
 fi
 
@@ -794,7 +820,7 @@ TEMPORARY_PATHS+=("$PLAN_FILE")
 trap 'remove_temporary_paths; release_sync_lock' EXIT
 if ! protected_destinations="$(python3 "$STATE_SCRIPT" plan --project . --skill-dir "$SKILL_DIR" \
   --format protected --save "$PLAN_FILE" ${PROFILE_SELECTION[@]+"${PROFILE_SELECTION[@]}"} \
-  ${SOURCE_STATE_ARGUMENTS[@]+"${SOURCE_STATE_ARGUMENTS[@]}"})"; then
+  ${SOURCE_STATE_ARGUMENTS[@]+"${SOURCE_STATE_ARGUMENTS[@]}"} ${FROM_LOCK_ARGUMENTS[@]+"${FROM_LOCK_ARGUMENTS[@]}"})"; then
   echo "ERROR: could not compute the Agent Ready plan; no asset was changed" >&2
   exit 1
 fi

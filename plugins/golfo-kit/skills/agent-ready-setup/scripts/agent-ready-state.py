@@ -805,6 +805,79 @@ def enforce_sync_policy(project_root, skill_dir, catalog, resolved, digests):
             )
 
 
+def asset_owner(entry):
+    """The source an asset of a plan or a lock comes from: a pack, or golfo-kit."""
+    profile = entry.get("profile") or ""
+    return source_of_profile(profile) if is_pack_profile(profile) else golfo_kit.GOLFO_KIT_SOURCE_NAME
+
+
+def is_engine_asset(entry):
+    """An asset the installed engine projects (hooks and what connects them): never pinned, so never compared."""
+    return asset_owner(entry) == golfo_kit.GOLFO_KIT_SOURCE_NAME and golfo_kit.is_engine_owned(entry.get("source") or "")
+
+
+def lock_differences(plan, lock):
+    """Why a plan does not reproduce the lock, one line per source, and how many engine files differ.
+
+    Content is compared byte for byte: the selection, the revision of golfo-kit and of each
+    pack, the digest of each pack and the sha256 of every asset and merged template. The files
+    of the engine follow the installed one, so they are only counted.
+    """
+    if not lock:
+        return ["there is no lockfile to apply from; run an apply first"], 0
+    differences = []
+    if plan["profiles"] != lock.get("profileOrder"):
+        differences.append(f"selection: the manifest resolves to {', '.join(plan['profiles'])} and the lock has "
+                           f"{', '.join(lock.get('profileOrder') or []) or 'none'}")
+    locked_revision = (lock.get("source") or {}).get("revision")
+    if locked_revision and plan["source"].get("revision") != locked_revision:
+        differences.append(f"{golfo_kit.GOLFO_KIT_SOURCE_NAME}: revision {(plan['source'].get('revision') or 'none')[:12]} "
+                           f"instead of {locked_revision[:12]}")
+    locked_sources = lock.get("profileSources", {})
+    for name in sorted(set(locked_sources) | set(plan["profileSources"])):
+        locked_entry, current = locked_sources.get(name), plan["profileSources"].get(name)
+        if not current:
+            differences.append(f"{name}: in the lock, but this repository no longer selects it")
+        elif not locked_entry:
+            differences.append(f"{name}: not in the lock")
+        elif current.get("resolvedCommit") != locked_entry.get("resolvedCommit"):
+            differences.append(f"{name}: revision {(current.get('resolvedCommit') or 'none')[:12]} instead of "
+                               f"{(locked_entry.get('resolvedCommit') or 'none')[:12]}")
+        elif current.get("contentDigest") != locked_entry.get("contentDigest"):
+            differences.append(f"{name}: its content does not match the digest of the lock")
+    locked_assets = lock.get("assets", {})
+    desired = {entry["destination"]: entry for entry in plan["entries"] if entry["sha256"]}
+    engine_changes = 0
+    for destination, entry in sorted(desired.items()):
+        locked_entry = locked_assets.get(destination)
+        if is_engine_asset(entry):
+            engine_changes += bool(locked_entry) and locked_entry.get("sha256") != entry["sha256"]
+        elif not locked_entry:
+            differences.append(f"{asset_owner(entry)}: {destination} is not in the lock")
+        elif locked_entry.get("state") == STATE_APPLIED and locked_entry.get("sha256") != entry["sha256"]:
+            differences.append(f"{asset_owner(entry)}: {destination} does not match the sha256 of the lock")
+    for destination, locked_entry in sorted(locked_assets.items()):
+        if destination not in desired and not is_engine_asset(locked_entry):
+            differences.append(f"{asset_owner(locked_entry)}: {destination} is in the lock but not in this resolution")
+    for destination, entry in sorted(plan["merged"].items()):
+        if golfo_kit.is_engine_owned(entry["template"]):
+            continue
+        locked_entry = lock.get("merged", {}).get(destination)
+        if not locked_entry or locked_entry.get("templateSha256") != entry["templateSha256"]:
+            differences.append(f"{golfo_kit.GOLFO_KIT_SOURCE_NAME}: the template of {destination} does not match the lock")
+    return differences, engine_changes
+
+
+def enforce_lock_reproduction(plan, lock):
+    """--from-lock projects exactly the lock or nothing: stop before writing and name what differs."""
+    differences, engine_changes = lock_differences(plan, lock)
+    if differences:
+        raise ProfileError("--from-lock cannot reproduce the lock, so nothing was changed:\n  - " + "\n  - ".join(differences))
+    if engine_changes:
+        write_line(f"--from-lock: {engine_changes} file(s) of the engine (hooks and their settings) follow the installed "
+                   "plugin and differ from the lock; the content is the lock's.", sys.stderr)
+
+
 def keep_locked_entries_of_unselected_sources(plan, lock):
     """SessionStart does not adopt a pinned source without selected profiles either: its drift stays visible."""
     locked_sources = (lock or {}).get("profileSources", {})
@@ -2064,7 +2137,8 @@ def command_fetch_sources(arguments):
             write_line(f"WARNING: comparing with the local cache: {failure}", sys.stderr)
         return 0
     pins = download_declared_sources(declarations, locked_sources, arguments.update_source or [],
-                                     configuration_of(arguments.project), arguments.project, to_ref=arguments.to)
+                                     configuration_of(arguments.project), arguments.project, to_ref=arguments.to,
+                                     from_lock=arguments.from_lock)
     if arguments.state_file:
         write_text_atomically(arguments.state_file, serialize_json(pins))
     return 0
@@ -2096,6 +2170,7 @@ def command_golfo_kit_source(arguments):
         configuration_of(arguments.project, arguments.offline), arguments.skill_dir,
         engine_revision, (lock or {}).get("source"),
         update=arguments.update, to_ref=arguments.to, offline=arguments.offline, read_only=arguments.read_only,
+        from_lock=arguments.from_lock,
     )
     if warning:
         write_line(f"WARNING: {warning}", sys.stderr)
@@ -2143,6 +2218,8 @@ def command_plan(arguments):
     if arguments.source_mode == SOURCE_MODE_SYNC:
         enforce_sync_policy(arguments.project, arguments.skill_dir, catalog, plan["profiles"], plan["profileDigests"])
         keep_locked_entries_of_unselected_sources(plan, read_lock(arguments.project))
+    if arguments.from_lock:
+        enforce_lock_reproduction(plan, read_lock(arguments.project))
     plan["profiles_requested"] = requested
     plan["selection"] = selection
     plan["addedDependencies"] = added_dependencies(catalog, requested, plan["profiles"])
@@ -3094,6 +3171,7 @@ def build_parser():
     golfo_kit_parser.add_argument("--update", action="store_true", help="adopt the latest revision of its ref, or of the installed engine")
     golfo_kit_parser.add_argument("--to", help="adopt this tag, branch or full commit")
     golfo_kit_parser.add_argument("--offline", action="store_true", help="use no network: only revisions already in the cache")
+    golfo_kit_parser.add_argument("--from-lock", action="store_true", help="the revision of the lock, whatever the mode")
     golfo_kit_parser.add_argument("--read-only", action="store_true",
                                   help="the run writes nothing: offline, a missing revision compares with the installed one")
     golfo_kit_parser.set_defaults(handler=command_golfo_kit_source)
@@ -3108,6 +3186,7 @@ def build_parser():
     fetch_parser.add_argument("--to", help="tag, branch or full commit the single --update-source adopts")
     fetch_parser.add_argument("--state-file", help="write the adopted commits here, for resolve and plan")
     fetch_parser.add_argument("--refresh", action="store_true", help="only update the cache and the last commit seen per ref")
+    fetch_parser.add_argument("--from-lock", action="store_true", help="the commit of the lock for every source, whatever its mode")
     fetch_parser.set_defaults(handler=command_fetch_sources)
 
     check_parser = subparsers.add_parser(
@@ -3138,6 +3217,8 @@ def build_parser():
     plan_parser.add_argument("--save", help="also save the full plan as JSON to this path")
     plan_parser.add_argument("--provider", default="claude", choices=SUPPORTED_PROVIDERS)
     plan_parser.add_argument("--offline", action="store_true", help="this run uses no network (updates.refresh: false)")
+    plan_parser.add_argument("--from-lock", action="store_true",
+                             help="fail unless the plan reproduces the lock: selection, revisions, digests and sha256")
     plan_parser.set_defaults(handler=command_plan)
 
     finalize_parser = subparsers.add_parser("finalize", help="retire assets and write the lockfile")

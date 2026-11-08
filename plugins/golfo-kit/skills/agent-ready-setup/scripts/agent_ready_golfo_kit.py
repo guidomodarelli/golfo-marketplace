@@ -259,32 +259,40 @@ def update_mode(configuration):
 
 
 def content_skill_dir(configuration, engine_dir, engine_revision, locked_source, update=False, to_ref=None,
-                      offline=False, read_only=False):
+                      offline=False, read_only=False, from_lock=False):
     """The skill directory whose content an apply, plan or status uses, and a warning or None.
 
     The installed engine directory when golfo-kit follows it; a composed one when the content
     comes from another revision. Offline, a revision this machine never downloaded falls back to
     the engine with a warning only for a run that writes nothing (plan, status, a session start
     that hands the sync to the background); a run that writes stops instead, so it never
-    replaces the pinned content with the installed one.
+    replaces the pinned content with the installed one. ``from_lock`` takes the revision of the
+    lock whatever the mode, and never falls back: it reproduces the lock or fails.
     """
     declaration = declaration_of(configuration, engine_dir, locked_source)
-    mode = effective_update_mode(configuration, declaration)
-    commit, resolution_warning = target_commit(declaration, mode, locked_source, update, to_ref, offline, read_only)
+    if from_lock:
+        commit, resolution_warning = (locked_source or {}).get("revision") or None, None
+    else:
+        mode = effective_update_mode(configuration, declaration)
+        commit, resolution_warning = target_commit(declaration, mode, locked_source, update, to_ref, offline, read_only)
     if commit is None or commit == engine_revision:
         return engine_dir, resolution_warning
     if not declaration["origin"]:
         raise ProfileError("golfo-kit: the plugin manifest of this installation declares no https repository to fetch "
                            f"revision {commit[:12]} from")
     if not cached_tree(declaration["origin"], commit):
-        if (offline or resolution_warning) and read_only:
+        if (offline or resolution_warning) and read_only and not from_lock:
             return engine_dir, (f"golfo-kit {commit[:12]} is not in the cache of this machine yet; comparing with the "
                                 f"installed one until a run with network downloads it")
         if offline:
             raise ProfileError(f"golfo-kit {commit[:12]} is not in the cache of this machine and this run uses no "
                                f"network; nothing was changed: run it with network to download that revision")
         download_commit(GOLFO_KIT_SOURCE_NAME, declaration["origin"], commit)
-    requested_ref = to_ref or declaration["requestedRef"] or (locked_source or {}).get("requestedRef")
+    # The lock records the ref it came from; reproducing it keeps that ref too.
+    if from_lock:
+        requested_ref = (locked_source or {}).get("requestedRef")
+    else:
+        requested_ref = to_ref or declaration["requestedRef"] or (locked_source or {}).get("requestedRef")
     return compose(engine_dir, declaration["origin"], commit, requested_ref), resolution_warning
 
 

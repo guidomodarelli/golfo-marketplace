@@ -425,12 +425,14 @@ def require_local_source(declaration, project_root):
         raise ProfileError(f"profile source '{declaration['name']}': the path {declaration['origin']} does not exist from the repository root")
 
 
-def download_declared_sources(declarations, locked_sources, update_names, configuration, project_root, to_ref=None):
+def download_declared_sources(declarations, locked_sources, update_names, configuration, project_root, to_ref=None,
+                              from_lock=False):
     """Resolve and download what an apply needs. Returns the commit adopted per Git source.
 
     A source in ``auto`` follows its ref; a pinned one keeps the lock until --update-source.
     ``to_ref`` (a tag, branch or full commit) is the revision the single source in
-    ``update_names`` adopts instead of the latest of its ref.
+    ``update_names`` adopts instead of the latest of its ref. ``from_lock`` takes the commit
+    of the lock for every source and fails for one the lock does not have as declared.
     """
     known = {declaration["name"]: declaration for declaration in declarations}
     for name in update_names:
@@ -445,7 +447,12 @@ def download_declared_sources(declarations, locked_sources, update_names, config
             continue
         name = declaration["name"]
         follow_ref = name in update_names or effective_update_mode(configuration, declaration) == UPDATES_AUTO
-        if to_ref and name in update_names:
+        if from_lock:
+            commit = locked_revision(declaration, locked_sources.get(name))
+            if not commit:
+                raise ProfileError(f"--from-lock: profile source '{name}' has no revision in the lock for its origin and "
+                                   "ref; apply without --from-lock to adopt it")
+        elif to_ref and name in update_names:
             commit = revision_of_ref(declaration, to_ref)
         else:
             commit = revision_to_download(declaration, locked_sources.get(name), follow_ref)
