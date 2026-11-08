@@ -257,7 +257,7 @@ publish_pack_repository() {
 
   run_cli update other
   [ "$status" -eq 2 ]
-  [[ "$stderr" == *"unknown profile source other; the manifest declares: acme"* ]]
+  [[ "$stderr" == *"unknown profile source other; the sources are: golfo-kit, acme"* ]]
 
   before="$(tree_fingerprint)"
   run_cli update acme --dry-run

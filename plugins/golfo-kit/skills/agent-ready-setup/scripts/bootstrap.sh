@@ -12,7 +12,7 @@
 #
 # Usage:
 #   bash bootstrap.sh --skill-dir <path> [--profiles <a,b> | --stack <frontend|node|java|go|android>]
-#     [--provider <claude|codex>] [--updates <pinned|auto>] [--update-source <name>]...
+#     [--provider <claude|codex>] [--updates <pinned|auto>] [--update-source <name>]... [--update-to <ref>]
 #     [--plan | --status | --config] [--offline] [--json]
 #
 # Without --profiles or --stack, the profiles come from .agents/agent-ready.json
@@ -27,7 +27,8 @@
 # source would change: it only downloads into the user cache. Every run validates the configuration first and fails before writing when a
 # layer has an unknown key or an invalid value. CI pipelines use "agent-ready-state.py check",
 # which needs no provider.
-# An apply follows the sources in auto; --update-source also moves a pinned one.
+# An apply follows the sources in auto; --update-source also moves a pinned one, golfo-kit
+# included, and --update-to picks the tag, branch or commit of that single source.
 # Instruction normalization alone runs through normalize-instructions.sh.
 
 set -euo pipefail
@@ -55,6 +56,7 @@ PROFILES=""
 REQUESTED_SKILL_DIR=""
 UPDATE_MODE=""
 UPDATE_SOURCES=()
+UPDATE_TO=""
 OFFLINE=0
 JSON_OUTPUT=0
 # apply (default), plan, status or config.
@@ -101,6 +103,11 @@ while [[ $# -gt 0 ]]; do
       UPDATE_MODE="$2"
       shift 2
       ;;
+    --update-to)
+      [[ $# -ge 2 && -n "${2:-}" ]] || { echo "ERROR: --update-to requires a tag, branch or commit" >&2; exit 1; }
+      UPDATE_TO="$2"
+      shift 2
+      ;;
     --update-source)
       [[ $# -ge 2 && -n "${2:-}" ]] || { echo "ERROR: --update-source requires a source name" >&2; exit 1; }
       UPDATE_SOURCES+=("$2")
@@ -128,6 +135,10 @@ done
 
 if [[ "$RUN_MODE" != apply && "$RUN_MODE" != plan && ${#UPDATE_SOURCES[@]} -gt 0 ]]; then
   echo "ERROR: --update-source only works on an apply or a --plan" >&2
+  exit 1
+fi
+if [[ -n "$UPDATE_TO" && ${#UPDATE_SOURCES[@]} -ne 1 ]]; then
+  echo "ERROR: --update-to needs exactly one --update-source" >&2
   exit 1
 fi
 if [[ "$OFFLINE" -eq 1 && ${#UPDATE_SOURCES[@]} -gt 0 ]]; then
@@ -634,6 +645,31 @@ if ! SKILL_DIR="$(resolve_skill_dir)"; then
 fi
 describe_skill_source "$SKILL_DIR"
 STATE_SCRIPT="$SKILL_DIR/scripts/agent-ready-state.py"
+
+# golfo-kit is a source too: pinned, its content comes from the revision of the lock and the
+# engine stays this installed one (agent_ready_golfo_kit.py). Everything below reads the
+# composed directory, so no step mixes two revisions of the content.
+GOLFO_KIT_SOURCE="golfo-kit"
+PACK_UPDATE_SOURCES=()
+golfo_kit_arguments=(golfo-kit-source --project . --skill-dir "$SKILL_DIR")
+for update_source in ${UPDATE_SOURCES[@]+"${UPDATE_SOURCES[@]}"}; do
+  if [[ "$update_source" == "$GOLFO_KIT_SOURCE" ]]; then
+    golfo_kit_arguments+=(--update)
+    [[ -n "$UPDATE_TO" ]] && golfo_kit_arguments+=(--to "$UPDATE_TO")
+  else
+    PACK_UPDATE_SOURCES+=("$update_source")
+  fi
+done
+[[ "$OFFLINE" -eq 1 ]] && golfo_kit_arguments+=(--offline)
+if ! CONTENT_SKILL_DIR="$(python3 "$STATE_SCRIPT" "${golfo_kit_arguments[@]}")"; then
+  echo "ERROR: could not prepare the golfo-kit content; no asset was changed" >&2
+  exit 1
+fi
+if [[ -n "$CONTENT_SKILL_DIR" ]]; then
+  echo "[marketplace-bootstrap] Using the golfo-kit content of $(python3 -c 'import json,sys; m=json.load(open(sys.argv[1], encoding="utf-8")); print(m["commit"][:12])' "$CONTENT_SKILL_DIR/.agent-ready-golfo-kit.json") with this engine."
+  SKILL_DIR="$CONTENT_SKILL_DIR"
+  STATE_SCRIPT="$SKILL_DIR/scripts/agent-ready-state.py"
+fi
 PROFILE_SELECTION=()
 if [[ -n "$PROFILES" ]]; then
   PROFILE_SELECTION=(--profiles "$PROFILES")
@@ -663,9 +699,12 @@ if [[ "$RUN_MODE" == apply || ${#UPDATE_SOURCES[@]} -gt 0 ]]; then
   SOURCE_STATE_FILE="$(mktemp "${TMPDIR:-/tmp}/agent-ready-sources.XXXXXX")"
   TEMPORARY_PATHS+=("$SOURCE_STATE_FILE")
   fetch_arguments=(fetch-sources --project . --skill-dir "$SKILL_DIR" --state-file "$SOURCE_STATE_FILE")
-  for update_source in ${UPDATE_SOURCES[@]+"${UPDATE_SOURCES[@]}"}; do
+  for update_source in ${PACK_UPDATE_SOURCES[@]+"${PACK_UPDATE_SOURCES[@]}"}; do
     fetch_arguments+=(--update-source "$update_source")
   done
+  if [[ -n "$UPDATE_TO" && ${#PACK_UPDATE_SOURCES[@]} -eq 1 ]]; then
+    fetch_arguments+=(--to "$UPDATE_TO")
+  fi
   if ! python3 "$STATE_SCRIPT" "${fetch_arguments[@]}"; then
     echo "ERROR: could not prepare the profile sources; no asset was changed" >&2
     exit 1

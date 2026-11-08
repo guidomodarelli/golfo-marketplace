@@ -64,12 +64,14 @@ Presets:
 
 ## `sources`: Profile packs
 
-Fuentes externas de profiles: un pack en Git o una carpeta local del repositorio.
+Fuentes de profiles: golfo-kit, packs en Git y carpetas locales del repositorio.
 
 | Clave | Tipo | Default | Capas | Variable | Seguridad | Descripción |
 |---|---|---|---|---|---|---|
 | `sources.enabled` | boolean | `true` | todas | — | `true` < `false` | Apagado, los packs declarados no se descargan ni se leen, y seleccionar un profile de un pack falla. Encenderlo desde el proyecto cuando otra capa lo apagó afloja la seguridad. |
 | `sources.packs` | lista de objetos | `[]` | project | — | — | Packs disponibles para seleccionar sus profiles por nombre con namespace (acme/kafka-interno). Declararlos no selecciona ninguno. |
+| `sources.golfoKit.ref` | string | — | todas | — | — | Rama, tag o commit completo del marketplace a seguir en auto o a adoptar con agent-ready update golfo-kit. Sin valor, la versión del plugin instalado. |
+| `sources.golfoKit.updates` | `auto` \| `pinned` | — | todas | — | — | Modo de actualización de golfo-kit; pisa updates.mode del repositorio. |
 
 Campos de cada elemento de `sources.packs`:
 

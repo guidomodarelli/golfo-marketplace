@@ -65,6 +65,7 @@ EXCLUDED_PATHS_FILE_NAME = "excluded.json"
 MATERIALIZED_TREE_DIRECTORY = "tree"
 EXECUTABLE_PERMISSIONS = 0o755
 URL_CREDENTIALS = re.compile(r"://[^/@\s]+@")
+WINDOWS_EXTENDED_PREFIX = "\\\\?\\"
 
 
 
@@ -168,6 +169,18 @@ def effective_update_mode(configuration, declaration=None):
 # ---------------------------------------------------------------------------
 # Per-user cache
 # ---------------------------------------------------------------------------
+
+def long_path(path):
+    """``path`` in the extended form Windows needs past 260 characters; unchanged elsewhere.
+
+    The cache of a revision nests the whole repository under the commit, so deep files go past
+    that limit there.
+    """
+    if os.name != "nt":
+        return path
+    absolute = os.path.abspath(path)
+    return absolute if absolute.startswith(WINDOWS_EXTENDED_PREFIX) else WINDOWS_EXTENDED_PREFIX + absolute
+
 
 def pack_cache_root():
     """Per-user directory of downloaded packs; nothing machine-specific lands in the project."""
@@ -319,7 +332,9 @@ def materialize_commit(name, origin, commit, repository):
         tree = os.path.join(staging, MATERIALIZED_TREE_DIRECTORY)
         os.makedirs(tree)
         for path, object_id, mode in regular_files:
-            target = os.path.join(tree, *path.split("/"))
+            # The cache nests the whole repository under the commit: deep files pass the path
+            # limit of Windows, which the extended form lifts.
+            target = long_path(os.path.join(tree, *path.split("/")))
             try:
                 os.makedirs(os.path.dirname(target), exist_ok=True)
                 with open(target, "wb") as file_handle:
@@ -387,6 +402,17 @@ def revision_to_download(declaration, locked_entry, follow_ref):
     return commit
 
 
+def revision_of_ref(declaration, ref):
+    """Commit of a full commit, tag or branch of a Git source, for an update that picks its revision."""
+    if FULL_COMMIT.fullmatch(ref):
+        return ref
+    if not SAFE_GIT_REF.fullmatch(ref):
+        raise ProfileError(f"profile source '{declaration['name']}': '{ref}' is not a full commit, a branch or a tag")
+    commit = resolve_remote_ref(dict(declaration, requestedRef=ref))
+    record_latest_commit(declaration["origin"], ref, commit)
+    return commit
+
+
 def require_local_source(declaration, project_root):
     """An apply needs every declared local source, also one without selected profiles."""
     root = os.path.join(project_root, *declaration["origin"].split("/"))
@@ -394,10 +420,12 @@ def require_local_source(declaration, project_root):
         raise ProfileError(f"profile source '{declaration['name']}': the path {declaration['origin']} does not exist from the repository root")
 
 
-def download_declared_sources(declarations, locked_sources, update_names, configuration, project_root):
+def download_declared_sources(declarations, locked_sources, update_names, configuration, project_root, to_ref=None):
     """Resolve and download what an apply needs. Returns the commit adopted per Git source.
 
     A source in ``auto`` follows its ref; a pinned one keeps the lock until --update-source.
+    ``to_ref`` (a tag, branch or full commit) is the revision the single source in
+    ``update_names`` adopts instead of the latest of its ref.
     """
     known = {declaration["name"]: declaration for declaration in declarations}
     for name in update_names:
@@ -412,7 +440,10 @@ def download_declared_sources(declarations, locked_sources, update_names, config
             continue
         name = declaration["name"]
         follow_ref = name in update_names or effective_update_mode(configuration, declaration) == UPDATES_AUTO
-        commit = revision_to_download(declaration, locked_sources.get(name), follow_ref)
+        if to_ref and name in update_names:
+            commit = revision_of_ref(declaration, to_ref)
+        else:
+            commit = revision_to_download(declaration, locked_sources.get(name), follow_ref)
         if not cached_tree(declaration["origin"], commit):
             download_commit(name, declaration["origin"], commit)
         pins[name] = commit

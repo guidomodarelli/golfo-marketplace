@@ -99,6 +99,7 @@ from agent_ready_detection import (  # noqa: E402
     format_evidence_list,
     validate_catalog_detection,
 )
+import agent_ready_golfo_kit as golfo_kit  # noqa: E402
 from agent_ready_packs import (  # noqa: E402
     SOURCE_AVAILABLE,
     SOURCE_TYPE_GIT,
@@ -821,6 +822,9 @@ def run_quiet(command, cwd=None):
     return completed.stdout.strip()
 
 
+SOURCE_KIND_GIT = "git"
+
+
 def source_kind(skill_dir):
     """Where the skill source comes from: marketplace snapshot, cache or local."""
     normalized = os.path.abspath(skill_dir).replace(os.sep, "/")
@@ -841,8 +845,35 @@ def source_revision(skill_dir):
     return revision, bool(porcelain)
 
 
+def golfo_kit_pending(skill_dir):
+    """A newer golfo-kit the installed plugin brings while the repository projects pinned content, or None."""
+    marker = golfo_kit.read_marker(skill_dir)
+    if not marker:
+        return None
+    engine_revision, _ = source_revision(marker["engineSkillDir"]) if os.path.isdir(marker["engineSkillDir"]) else (None, None)
+    if not engine_revision or engine_revision == marker["commit"]:
+        return None
+    pinned_version, engine_version = plugin_version(skill_dir), marker.get("engineVersion")
+    return {
+        "pinnedRevision": marker["commit"], "pinnedVersion": pinned_version,
+        "engineRevision": engine_revision, "engineVersion": engine_version,
+        "message": (f"golfo-kit stays at {pinned_version} ({marker['commit'][:12]}); the installed plugin brings "
+                    f"{engine_version} ({engine_revision[:12]}). Adopt it with: agent-ready update golfo-kit"),
+    }
+
+
+def engine_version_of(skill_dir):
+    """Version of the engine that projects ``skill_dir``: the installed one, also for pinned content."""
+    marker = golfo_kit.read_marker(skill_dir)
+    return marker["engineVersion"] if marker else plugin_version(skill_dir)
+
+
 def source_identity(skill_dir, assets, merged_templates):
-    """Identity of the resolved source; contentDigest is the immutable part."""
+    """Identity of the resolved source; contentDigest is the immutable part.
+
+    Pinned golfo-kit content records the Git origin and revision it came from, so the next apply
+    of a pinned repository fetches exactly that content again.
+    """
     digest_lines = [f"{destination}\t{entry['sha256']}" for destination, entry in sorted(assets.items())]
     digest_lines += [f"{destination}\t{entry['templateSha256']}" for destination, entry in sorted(merged_templates.items())]
     digest_lines += [
@@ -850,18 +881,35 @@ def source_identity(skill_dir, assets, merged_templates):
         for relative_path in RENDERED_INSTRUCTION_INPUTS
         if os.path.isfile(os.path.join(skill_dir, relative_path))
     ]
-    revision, dirty = source_revision(skill_dir)
+    marker = golfo_kit.read_marker(skill_dir)
+    if marker:
+        revision, dirty, kind = marker["commit"], False, SOURCE_KIND_GIT
+    else:
+        (revision, dirty), kind = source_revision(skill_dir), source_kind(skill_dir)
     identity = {
         "plugin": PLUGIN_NAME,
         "skill": SKILL_NAME,
         "version": plugin_version(skill_dir),
-        "kind": source_kind(skill_dir),
+        "kind": kind,
         "revision": revision,
         "contentDigest": sha256_of_text("\n".join(digest_lines)),
     }
+    origin = marker["origin"] if marker else golfo_kit_origin(skill_dir) if revision else None
+    if origin:
+        identity["origin"] = origin
+    if marker and marker.get("requestedRef"):
+        identity["requestedRef"] = marker["requestedRef"]
     if dirty:
         identity["revisionHasLocalChanges"] = True
     return identity
+
+
+def golfo_kit_origin(skill_dir):
+    """The marketplace a revision of this installation can be fetched from, or None."""
+    try:
+        return golfo_kit.engine_origin(skill_dir)
+    except ProfileError:
+        return None
 
 
 def merged_template_entries(skill_dir, catalog, resolved):
@@ -1560,7 +1608,7 @@ def finalize(project_root, skill_dir, plan, updates):
 
     lock = {
         "schemaVersion": SCHEMA_VERSION,
-        "generator": {"name": SKILL_NAME, "version": plugin_version(skill_dir), "stateSchemaVersion": SCHEMA_VERSION},
+        "generator": {"name": SKILL_NAME, "version": engine_version_of(skill_dir), "stateSchemaVersion": SCHEMA_VERSION},
         "source": plan["source"],
         "profiles": plan["profileDigests"],
         # The digests map is keyed by name; profileOrder keeps the resolution order.
@@ -1661,6 +1709,7 @@ def compute_status(project_root, skill_dir):
         "sources": {},
         "selectionDifferences": [],
         "reviews": review_summary(project_root),
+        "golfoKit": golfo_kit_pending(skill_dir) if skill_dir else None,
     }
     if lock:
         for destination, entry in sorted(lock["assets"].items()):
@@ -1771,6 +1820,8 @@ def print_status(status, brief):
         write_line(paint("No lockfile: applied assets are not pinned yet.", "warning", stream))
     else:
         write_line(f"Locked source: {describe_source(status['lockedSource'])}")
+        if status.get("golfoKit"):
+            write_line(paint(status["golfoKit"]["message"], "warning", stream))
         checkout = status["checkout"]
         write_line(
             "Checkout: "
@@ -2002,9 +2053,29 @@ def command_fetch_sources(arguments):
             write_line(f"WARNING: comparing with the local cache: {failure}", sys.stderr)
         return 0
     pins = download_declared_sources(declarations, locked_sources, arguments.update_source or [],
-                                     configuration_of(arguments.project), arguments.project)
+                                     configuration_of(arguments.project), arguments.project, to_ref=arguments.to)
     if arguments.state_file:
         write_text_atomically(arguments.state_file, serialize_json(pins))
+    return 0
+
+
+def command_golfo_kit_source(arguments):
+    """Print the composed skill directory when the golfo-kit content of this run is not the engine's; see agent_ready_golfo_kit."""
+    lock = read_lock(arguments.project)
+    # A revision of the lock that is the HEAD of the installed engine stays with it, local changes
+    # included: that is a checkout of the skill under development, not another revision to fetch.
+    engine_revision, _ = source_revision(arguments.skill_dir)
+    content_dir, warning = golfo_kit.content_skill_dir(
+        configuration_of(arguments.project, arguments.offline), arguments.skill_dir,
+        engine_revision, (lock or {}).get("source"),
+        update=arguments.update, to_ref=arguments.to, offline=arguments.offline,
+    )
+    if warning:
+        write_line(f"WARNING: {warning}", sys.stderr)
+    # Nothing when the installed engine brings the content; a forward-slash path that Bash on
+    # every system can use when it comes from a composed directory.
+    if content_dir != arguments.skill_dir:
+        write_line(content_dir.replace(os.sep, "/"))
     return 0
 
 
@@ -2977,6 +3048,13 @@ def build_parser():
     trust_parser.add_argument("--revoke", action="store_true", help="remove the approval")
     trust_parser.set_defaults(handler=command_trust)
 
+    golfo_kit_parser = subparsers.add_parser("golfo-kit-source", help="skill directory with the golfo-kit content of this run")
+    add_common(golfo_kit_parser)
+    golfo_kit_parser.add_argument("--update", action="store_true", help="adopt the latest revision of its ref, or of the installed engine")
+    golfo_kit_parser.add_argument("--to", help="adopt this tag, branch or full commit")
+    golfo_kit_parser.add_argument("--offline", action="store_true", help="use no network: only revisions already in the cache")
+    golfo_kit_parser.set_defaults(handler=command_golfo_kit_source)
+
     detect_parser = subparsers.add_parser("detect", help="read-only detection of stacks and capabilities")
     add_common(detect_parser)
     detect_parser.set_defaults(handler=command_detect)
@@ -2984,6 +3062,7 @@ def build_parser():
     fetch_parser = subparsers.add_parser("fetch-sources", help="bring profile sources into the user cache")
     add_common(fetch_parser)
     fetch_parser.add_argument("--update-source", action="append", help="resolve this source's ref again; repeatable")
+    fetch_parser.add_argument("--to", help="tag, branch or full commit the single --update-source adopts")
     fetch_parser.add_argument("--state-file", help="write the adopted commits here, for resolve and plan")
     fetch_parser.add_argument("--refresh", action="store_true", help="only update the cache and the last commit seen per ref")
     fetch_parser.set_defaults(handler=command_fetch_sources)

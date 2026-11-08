@@ -275,8 +275,37 @@ explícito de `bootstrap.sh` o una sincronización en primer plano cambian los a
 Se puede combinar por fuente. Un repo en `auto` puede fijar una fuente con `"updates": "pinned"`, y entonces
 un cambio de esa fuente frena el sync sin escribir nada. Un repo `pinned` puede seguir una fuente con
 `"updates": "auto"` (si el usuario o la organización fijaron `pinned`, eso cuenta como aflojar; ver
-[configuration.md](configuration.md)), pero un apply proyecta toda la selección: si golfo-kit tiene una versión pendiente, el
-sync no actualiza el pack solo y espera una adopción explícita de ambos.
+[configuration.md](configuration.md)). golfo-kit queda en la revisión del lock (ver «golfo-kit como fuente»), así que
+el pack se actualiza solo sin arrastrarlo. Si el lock no tiene una revisión de golfo-kit que se pueda descargar (un
+source local sin Git), un apply proyecta toda la selección: si golfo-kit tiene una versión pendiente, el sync no
+actualiza el pack solo y espera una adopción explícita de ambos.
+
+**golfo-kit como fuente.** El contenido de golfo-kit (catálogo, base, stacks, capabilities y sus rules, skills,
+agents, commands y templates de instrucciones) se puede fijar como un pack, con `sources.golfoKit` en el manifest:
+
+```json
+{ "sources": { "golfoKit": { "updates": "pinned", "ref": "main" } } }
+```
+
+- Sin declararlo, el contenido sigue al plugin instalado, como siempre.
+- `updates` pisa `updates.mode` solo para golfo-kit. En `pinned`, cada apply proyecta el contenido de la
+  revisión del lock (`source.revision` y `source.origin`), aunque el marketplace publique una nueva: sumar un
+  profile, recrear un asset borrado o adoptar otra fuente no cambia nada de golfo-kit. El primer apply adopta la
+  revisión del plugin instalado.
+- `ref` (rama, tag o commit completo) es lo que sigue en `auto` y lo que adopta `agent-ready update golfo-kit`.
+  Sin `ref`, el update adopta la versión del plugin instalado.
+- `agent-ready update golfo-kit --to <tag|rama|commit>` adopta exactamente esa revisión, y `--to` también sirve
+  para un pack (`agent-ready update acme --to v2`). La actualización es por fuente, nunca por archivo, y
+  `--dry-run` muestra antes qué cambia. Hoy el marketplace no publica tags por versión de golfo-kit: usar un
+  commit o una rama.
+- La revisión se descarga con Git del repositorio del marketplace (el `repository` del manifest del plugin) en
+  la caché del usuario, sin depender de la versión instalada. Si no se puede descargar, el apply falla antes de
+  escribir.
+- **El motor nunca se fija.** Los scripts, los hooks (`assets/common/hooks/`, que se actualizan solos en cada
+  sync), los templates de `.claude/settings.json` y `.codex/hooks.json` que los conectan, los schemas de
+  configuración y `providers.json` siguen siempre al plugin instalado. El lock registra la versión del contenido
+  en `source.version` y la del motor en `generator.version`.
+- Con golfo-kit fijado, `status` avisa cuando el plugin instalado trae otra versión y cómo adoptarla.
 
 `AGENT_READY_SETUP_SYNC_FOREGROUND=1`, o `--stack` y `--profiles` en el hook, corren la sincronización en
 primer plano. `AGENT_READY_SETUP_REVIEW_MODE=1` nunca actualiza, nunca usa la red y nunca escribe.
@@ -304,11 +333,14 @@ Comando, códigos de salida, autenticación y ejemplos: [ci-check.md](ci-check.m
 | `.agents/agent-ready.json` | personas (versionado) | `profiles` elegidos y lo que difiere de los defaults (capa de proyecto de [configuration.md](configuration.md)) |
 | `.agents/agent-ready.lock.json` | solo el apply | source resuelto, profiles con digest, fuentes de packs, inventario de assets, archivos fusionados |
 
-El lockfile registra `source.plugin`, `source.version`, `source.kind`
-(`marketplace-snapshot`, `plugin-cache` o `local`), `source.revision` (commit
-git del source cuando existe) y `source.contentDigest`, que identifica el
-contenido exacto (assets, templates fusionados y plantillas de instrucciones)
-aunque no haya revisión git. Por asset guarda `profile`,
+El lockfile registra `source.plugin`, `source.version` (versión del contenido de
+golfo-kit), `source.kind` (`marketplace-snapshot`, `plugin-cache`, `local` o `git`
+cuando golfo-kit está fijado), `source.revision` (commit git del source cuando
+existe), `source.origin` (repositorio del que se puede volver a descargar),
+`source.requestedRef` cuando un update eligió una ref, y `source.contentDigest`,
+que identifica el contenido exacto (assets, templates fusionados y plantillas de
+instrucciones) aunque no haya revisión git. `generator.version` es la versión del
+motor que proyectó. Por asset guarda `profile`,
 `source`, `sha256` aplicado y `state` (`applied`, `conflict`, `failed`,
 `retired-preserved`), más `viewPreserved` cuando un archivo del proyecto ocupa su
 vista `.claude/`. `merged` lista `AGENTS.md` (bloque gestionado),
@@ -365,7 +397,7 @@ Para cambiar comportamiento, el proyecto agrega una rule propia bajo
 python3 "$SKILL_DIR/scripts/agent-ready" status [--offline] [--json]
 python3 "$SKILL_DIR/scripts/agent-ready" plan [--offline] [--json]
 python3 "$SKILL_DIR/scripts/agent-ready" apply [--profiles a,b] [--updates pinned|auto] [--recheck] [--dry-run]
-python3 "$SKILL_DIR/scripts/agent-ready" update [<fuente>...] [--dry-run]
+python3 "$SKILL_DIR/scripts/agent-ready" update [<fuente>...] [--to <ref>] [--dry-run]
 python3 "$SKILL_DIR/scripts/agent-ready" doctor [--offline] [--json]
 python3 "$SKILL_DIR/scripts/agent-ready" remove [--dry-run] [--yes] [--json]
 ```
@@ -375,7 +407,8 @@ python3 "$SKILL_DIR/scripts/agent-ready" remove [--dry-run] [--yes] [--json]
   `updates.refresh: false` comparan contra lo ya disponible y no llaman a la CLI del provider.
 - `agent-ready check` compara para CI, y su código de salida sigue a `ci.mode` (sección 4).
 - `agent-ready config explain` muestra la configuración efectiva y la capa de cada valor.
-- `update` sin fuentes adopta la última revisión de cada fuente Git que sigue una `ref` y de golfo-kit;
+- `update` sin fuentes adopta la última revisión de cada fuente Git que sigue una `ref` y de golfo-kit (también
+  fijado, ver sección 4); `--to <ref>` elige la revisión de una sola fuente;
   con `--dry-run` muestra el plan de esa adopción y solo descarga en la caché del usuario.
 - `status` separa assets aplicados, modificados, faltantes, conflictos
   preservados, escrituras fallidas y retirados que no se pudieron borrar; además dice si el
@@ -481,9 +514,10 @@ seleccionado declara `tools: ["browser"]`; `tools.enabled: false` (o
   índice, para recuperar las que git separa cuando recrea el asset. Sin historial
   por vista no distingue ese caso de una edición guardada como archivo nuevo en la
   vista, que se pierde ahí. Para cambiar comportamiento, usar una rule propia.
-- Un asset faltante se recrea desde el source resuelto en el próximo apply, no
-  desde la versión del lock: el apply es un cambio explícito y revisable, y el
-  lock pasa a registrar la versión nueva. `status` avisa antes si el source
-  difiere del lock.
+- Sin `sources.golfoKit` en `pinned`, un asset faltante se recrea desde el source
+  resuelto en el próximo apply, no desde la versión del lock: el apply es un cambio
+  explícito y revisable, y el lock pasa a registrar la versión nueva. `status` avisa
+  antes si el source difiere del lock. Para que golfo-kit no cambie, fijarlo (sección 4,
+  «golfo-kit como fuente»).
 - Las rules y la skill de browser siguen en `assets/common/` porque otras rules
   comunes las enlazan; el profile `browser` controla solo la instalación.
