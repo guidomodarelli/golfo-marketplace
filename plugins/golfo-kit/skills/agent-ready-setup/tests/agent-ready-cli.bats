@@ -658,9 +658,6 @@ PY
 }
 
 @test "doctor checks the version of the python3 that the session hooks run" {
-  case "$(uname -s)" in
-    MINGW* | MSYS* | CYGWIN*) skip "Windows resolves python3 without the fake one" ;;
-  esac
   real_python="$(command -v python3)"
   printf '#!/bin/sh\necho "Python 3.6.9"\n' > "$fake_bin/python3"
   chmod +x "$fake_bin/python3"

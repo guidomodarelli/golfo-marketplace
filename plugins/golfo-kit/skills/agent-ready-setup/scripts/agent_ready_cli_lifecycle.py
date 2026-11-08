@@ -67,6 +67,17 @@ def run_probe(command, cwd=None):
     return completed.returncode, (completed.stdout.strip() or completed.stderr.strip()).splitlines() or [""]
 
 
+def run_in_hook_shell(script):
+    """Run a command line the way the session hooks do: through Bash, with its own PATH lookup.
+
+    Native Windows lookups only find files with a PATHEXT extension, while Bash also finds
+    the extensionless scripts and shims that the hooks end up running.
+    """
+    if not shutil.which("bash"):
+        return None, ["bash is not on PATH"]
+    return run_probe([bash_executable(), "-c", script])
+
+
 def check_git(project):
     """Git on PATH, and the project inside a worktree: the projection and the lockfile need both."""
     if not shutil.which("git"):
@@ -94,7 +105,7 @@ def check_python():
     minimum = ".".join(str(part) for part in MINIMUM_PYTHON)
     if sys.version_info[:2] < MINIMUM_PYTHON:
         return check("python", CHECK_MISSING, f"Python {running} is older than {minimum}", f"install Python {minimum} or newer")
-    status, output = run_probe(["python3", "--version"])
+    status, output = run_in_hook_shell("python3 --version")
     if status != 0:
         return check("python", CHECK_MISSING, "python3 is not on PATH, and the session hooks run it",
                      f"install Python {minimum} or newer and make python3 reachable from PATH")
@@ -113,7 +124,7 @@ def configured_providers(configuration):
 
 def check_provider_cli(providers):
     """At least one agent CLI of the declared providers: the hooks and the marketplace refresh run it."""
-    found = [provider for provider in providers if shutil.which(provider)]
+    found = [provider for provider in providers if run_in_hook_shell(f"command -v {provider}")[0] == 0]
     if not found:
         names = " or ".join({"claude": "Claude Code (claude)", "codex": "Codex (codex)"}[provider] for provider in providers)
         return check("provider", CHECK_MISSING, f"{' and '.join(providers)} {'is' if len(providers) == 1 else 'are'} not on PATH",
