@@ -857,7 +857,8 @@ def lock_differences(plan, lock):
         elif locked_entry.get("state") == STATE_APPLIED and locked_entry.get("sha256") != entry["sha256"]:
             differences.append(f"{asset_owner(entry)}: {destination} does not match the sha256 of the lock")
     for destination, locked_entry in sorted(locked_assets.items()):
-        if destination not in desired and not is_engine_asset(locked_entry):
+        # A retired asset the project kept (retired-preserved) is no longer published by any source.
+        if destination not in desired and locked_entry.get("state") != STATE_RETIRED_PRESERVED and not is_engine_asset(locked_entry):
             differences.append(f"{asset_owner(locked_entry)}: {destination} is in the lock but not in this resolution")
     for destination, entry in sorted(plan["merged"].items()):
         if golfo_kit.is_engine_owned(entry["template"]):

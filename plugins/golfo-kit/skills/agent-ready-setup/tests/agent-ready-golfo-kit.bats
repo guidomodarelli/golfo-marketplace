@@ -554,3 +554,17 @@ PY
   ! grep -Fq 'acme-new' AGENTS.md
   [ "$(cat .agents/agent-ready.lock.json)" = "$before_lock" ]
 }
+
+@test "apply --from-lock reproduces a lock with a retired asset the project kept" {
+  run_cli apply --profiles node,business-flows
+  [ "$status" -eq 0 ]
+  rm .agents/rules/business-flows.md
+  mkdir .agents/rules/business-flows.md
+  run_cli apply --profiles node
+  [ "$status" -eq 0 ]
+  [ "$(lock_value 'data["assets"][".agents/rules/business-flows.md"]["state"]')" = "retired-preserved" ]
+
+  run_cli apply --from-lock
+  [ "$status" -eq 0 ]
+  [ -d .agents/rules/business-flows.md ]
+}
