@@ -930,29 +930,38 @@ def review_cache_module():
     return _REVIEW_CACHE
 
 
-def review_summary(project_root):
-    """What the AI reviews found, read from the cache without calling the provider.
+def review_findings(project_root, strict=False):
+    """Every finding of the current reviews with its id and status, read without calling the provider.
 
-    An entry whose files changed since its review is out of date: it is counted, not shown,
-    and runs again on the next edit or apply.
+    Returns (findings, decisions, units, stale). An entry whose files changed since its review is
+    out of date: it is counted in stale, not shown, and runs again on the next edit or apply.
+    ``strict`` refuses a decisions file that cannot be read instead of ignoring it.
     """
     module = review_cache_module()
     entries = module.ReviewCache(project_root).read()["entries"]
-    current = []
+    decisions = module.Decisions(project_root)
+    recorded = decisions.read(strict=strict)
+    findings = []
+    units = 0
     stale = 0
     for unit, entry in sorted(entries.items()):
         files = entry.get("files", {}) if isinstance(entry, dict) else {}
-        try:
-            matches = all(module.text_hash(module.normalized_text(os.path.join(project_root, name))) == digest
-                          for name, digest in files.items())
-        except OSError:
-            matches = False
-        if matches:
-            current.append(entry)
+        if files and module.file_hashes(project_root, files) == files:
+            units += 1
+            findings += [dict(finding, check=entry.get("check"))
+                         for finding in decisions.annotate(unit, entry.get("findings", []), recorded)]
         else:
             stale += 1
-    findings = [dict(finding, check=entry.get("check")) for entry in current for finding in entry.get("findings", [])]
-    return {"units": len(current), "stale": stale, "findings": findings}
+    return findings, recorded, units, stale
+
+
+def review_summary(project_root):
+    """What status and plan show of the AI reviews: open findings and decisions to confirm."""
+    module = review_cache_module()
+    findings, decisions, units, stale = review_findings(project_root)
+    shown = module.visible(findings)
+    return {"units": units, "stale": stale, "findings": shown, "quiet": len(findings) - len(shown),
+            "decisions": len(decisions)}
 
 
 def record_review_settings(project_root):
@@ -1429,6 +1438,10 @@ def print_plan(project_root, skill_dir, plan, provider, skip_marketplace_upgrade
         write_line(paint("Diffs (local -> template)", "heading", stream))
         for entry in diff_entries:
             write_line(render_diff(project_root, entry).rstrip("\n"))
+    reviews = review_summary(project_root)
+    if reviews["units"] or reviews["stale"]:
+        write_line("")
+        print_review_summary(reviews, False, stream)
     write_line("")
     summary = ", ".join(f"{counts[action]} {action}" for action in sorted(counts) if action != ACTION_UNCHANGED) or "no changes"
     write_line(paint(f"Summary: {summary}", "heading", stream))
@@ -1714,18 +1727,20 @@ def status_has_drift(status):
 
 
 def print_review_summary(reviews, brief, stream):
-    """Known findings of the AI reviews, from the cache; nothing when there is no review yet."""
+    """Open findings of the AI reviews and decisions to confirm, from the cache; nothing when there is no review yet."""
     if not reviews or not (reviews["units"] or reviews["stale"]):
         return
+    module = review_cache_module()
+    quiet = f"; {reviews['quiet']} accepted or dismissed" if reviews.get("quiet") else ""
     if reviews["findings"]:
         write_line(paint(f"AI reviews: {len(reviews['findings'])} known finding(s) in {reviews['units']} reviewed unit(s), "
-                         "from the cache:", "warning", stream), stream)
+                         f"from the cache{quiet}:", "warning", stream), stream)
         if not brief:
             for finding in reviews["findings"]:
-                write_line(paint(f"  ! {' <-> '.join(finding.get('files', []))}: {finding.get('text', '')}", "warning", stream),
-                           stream)
+                write_line(paint(f"  {module.finding_line(finding)}", "warning", stream), stream)
+            write_line(f"  Accept or dismiss one with: agent-ready review accept <id> --reason \"...\"", stream)
     else:
-        write_line(paint(f"AI reviews: no known finding in {reviews['units']} reviewed unit(s).", "ok", stream), stream)
+        write_line(paint(f"AI reviews: no known finding in {reviews['units']} reviewed unit(s){quiet}.", "ok", stream), stream)
     if reviews["stale"] and not brief:
         write_line(f"  {reviews['stale']} review(s) are out of date and run again on the next edit or apply.", stream)
 
@@ -2079,6 +2094,7 @@ def plan_report(project_root, skill_dir, plan, configuration):
     ]
     report["claudeProxiesToNormalize"] = claude_proxy_drift(project_root, skill_dir)
     report["configuration"] = configuration_report(configuration)
+    report["reviews"] = review_summary(project_root)
     return report
 
 

@@ -12,10 +12,11 @@ description: >-
   de agentes", "quiero ser agent ready", "make this repo agent ready", pida pasar
   Agent Ready Score, o pregunte qué versión de las rules usa el repo, qué cambiaría
   una actualización de agent-ready-setup o por qué un asset quedó en conflicto, o pida
-  sacar agent-ready-setup del repo o saber por qué sus hooks no sincronizan.
+  sacar agent-ready-setup del repo, saber por qué sus hooks no sincronizan o aceptar o
+  descartar un hallazgo de sus revisiones de IA.
 license: MIT
 metadata:
-  version: "1.11.0"
+  version: "1.12.0"
   author: "guponce"
   category: "developer-experience"
   tags: "agent-ready, multi-provider, claude-code, codex, bootstrap, setup, scaffold, context-optimized-v1.20.1"
@@ -115,6 +116,7 @@ explícito fuera del cache conservan prioridad para desarrollo local.
 | `agent-ready sources list\|add\|remove` | las fuentes de packs del manifest; `add` además la trae a la caché |
 | `agent-ready doctor [--offline] [--json]` | revisa Git, Bash, Python, la CLI del provider, la configuración, las fuentes y los hooks, y dice cómo arreglar lo que falta |
 | `agent-ready remove [--dry-run] [--yes]` | saca agent-ready-setup del repo y conserva lo que escribió el proyecto |
+| `agent-ready review list\|accept\|dismiss\|reset` | los hallazgos de las revisiones de IA con su id, y las decisiones del equipo sobre ellos ([references/ai-reviews.md](references/ai-reviews.md)) |
 
 Ante «los hooks no corren», «el sync no hace nada» o una máquina nueva, correr primero
 `agent-ready doctor`: nombra lo que falta con su arreglo, en vez de adivinar la causa o
@@ -326,10 +328,12 @@ las rules propias, la revisión de redundancias y sus overrides de modelo.
 
 La revisión de `AGENTS.md` y el hook de consistencia de rules y skills guardan cada resultado por
 unidad en `.git/info/agent-ready/reviews.json`: una edición solo vuelve a revisar las unidades donde
-participa, y `agent-ready status` muestra los hallazgos conocidos sin llamar al provider. Leer
-[references/ai-reviews.md](references/ai-reviews.md) para explicar por qué una revisión corrió o no,
-mostrar sus hallazgos o cambiar `reviews.enabled`, `reviews.cache` y `reviews.ttl`. Un hallazgo todavía
-no se puede aceptar ni descartar: no inventar un comando para silenciarlo.
+participa, y `agent-ready status` muestra los hallazgos conocidos, cada uno con su id, sin llamar al
+provider. Cuando el usuario pide aceptar o descartar un hallazgo, correr
+`agent-ready review accept|dismiss <id> --reason "<motivo>"` con el motivo que dio. Si no dio ninguno,
+preguntárselo: nunca inventarlo. Leer [references/ai-reviews.md](references/ai-reviews.md) para
+explicar por qué una revisión corrió o no, mostrar sus hallazgos, elegir el alcance de una decisión
+(`content` o `pair`) o cambiar `reviews.enabled`, `reviews.cache` y `reviews.ttl`.
 
 ### Resolución de diferencias por el agente
 

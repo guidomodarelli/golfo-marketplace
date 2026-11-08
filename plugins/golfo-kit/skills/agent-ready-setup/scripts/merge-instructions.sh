@@ -34,10 +34,8 @@ if [[ "$agents_layout" == "managed" ]] && cmp -s "$AGENTS_FILE" "$DETERMINISTIC_
   instructions_review_cached; then
   echo "AGENTS.md managed block is current and project content was already reviewed; AI review not required."
   # A known inconsistency is still there until someone edits the file: repeat it from the cache.
-  if [[ "$(jq '.findings | length' "$CACHED_REVIEW_FILE")" -gt 0 ]]; then
-    echo "Instruction inconsistencies from the last review (manual review required; content preserved):" >&2
-    jq -r '.findings[] | "  ! " + .text' "$CACHED_REVIEW_FILE" >&2
-  fi
+  report_instructions_findings "$CACHED_REVIEW_FILE" \
+    "Instruction inconsistencies from the last review (manual review required; content preserved):"
   exit 0
 fi
 
@@ -259,10 +257,18 @@ else
     echo "Removed redundant lines outside the managed block:"
     jq -r '.removed[] | "  - " + .' "$RESULT_FILE"
   fi
-  if [[ "$(jq '.inconsistencies | length' "$RESULT_FILE")" -gt 0 ]]; then
-    echo "Instruction inconsistencies (manual review required; content preserved):" >&2
-    jq -r '.inconsistencies[] | "  ! " + .' "$RESULT_FILE" >&2
-  fi
+  # The entry the cache keeps: each inconsistency as a finding with a stable id. The prompt
+  # asks for "<project line> — conflicts with <rule or managed block>: <explanation>", so the
+  # quoted line and the conflicting rule are part of the finding: editing either side asks
+  # to confirm a decision about it, and the wording of the explanation never changes its id.
+  jq '{findings: [.inconsistencies[]
+         | ((capture("^(?<line>.+?) — conflicts with (?<rule>[.]agents/rules/[^:]+):") // capture("^(?<line>.+?) — conflicts with")) // {}) as $parts
+         | {files: (["AGENTS.md"] + (if $parts.rule then [$parts.rule] else [] end)),
+            lines: (if $parts.line then [$parts.line | ltrimstr("\"") | rtrimstr("\"")] else [] end),
+            kind: "inconsistency", text: .}],
+       removed: .removed, reason: .reason}' "$RESULT_FILE" > "$TEMPORARY_DIRECTORY/review-entry.json"
+  report_instructions_findings "$TEMPORARY_DIRECTORY/review-entry.json" \
+    "Instruction inconsistencies (manual review required; content preserved):"
 fi
 
 
@@ -283,7 +289,5 @@ fi
 # Only a completed review is cached; a failed review is retried next sync. The entry keeps
 # the inconsistencies, so status shows them without asking the provider again.
 if [[ "$review_completed" -eq 1 ]]; then
-  jq '{findings: [.inconsistencies[] | {files: ["AGENTS.md"], lines: [], kind: "inconsistency", text: .}],
-       removed: .removed, reason: .reason}' "$RESULT_FILE" > "$TEMPORARY_DIRECTORY/review-entry.json"
   store_instructions_review "$PROVIDER" "$TEMPORARY_DIRECTORY/review-entry.json"
 fi

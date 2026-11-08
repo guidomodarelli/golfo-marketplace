@@ -8,9 +8,11 @@ the engine version. An edit only invalidates the units it takes part in, and eac
 keeps its verdict and findings, so status shows the last result without the provider.
 
 The cache is local and never reaches Git: it lives in the info directory that every
-worktree of the repository shares. The session hooks load this file from .agents/hooks/
-and the engine from its own skill, so both use one implementation; the Bash scripts use
-its command line (enabled, lookup, store).
+worktree of the repository shares. The decisions of the team about findings do reach
+Git, in .agents/agent-ready.reviews.json: each finding has a stable id, and an accepted or
+dismissed one stays quiet while its decision holds. The session hooks load this file from
+.agents/hooks/ and the engine from its own skill, so both use one implementation; the Bash
+scripts use its command line (enabled, defaults, lookup, store, report).
 """
 
 import argparse
@@ -50,10 +52,28 @@ VERDICT_CONSISTENT = "consistent"
 VERDICT_FINDINGS = "findings"
 # Exit status of `lookup` when the unit has no current entry.
 MISS_STATUS = 3
+# Decisions of the team about findings: versioned with the repository, unlike the cache.
+DECISIONS_RELATIVE_PATH = ".agents/agent-ready.reviews.json"
+DECISIONS_SCHEMA_VERSION = 1
+DECISION_ACCEPTED = "accepted"
+DECISION_DISMISSED = "dismissed"
+DECISION_KINDS = (DECISION_ACCEPTED, DECISION_DISMISSED)
+# content: valid while the files of the finding stay as they were; pair: until someone removes it.
+SCOPE_CONTENT = "content"
+SCOPE_PAIR = "pair"
+DECISION_SCOPES = (SCOPE_CONTENT, SCOPE_PAIR)
+# A finding nobody decided on, and one whose content decision is older than its files.
+STATUS_OPEN = "open"
+STATUS_TO_CONFIRM = "to-confirm"
+FINDING_ID_LENGTH = 10
 
 
 class CacheLockTimeout(RuntimeError):
     """Another process held the cache lock for longer than a write takes."""
+
+
+class DecisionsError(ValueError):
+    """The decisions file exists but is not one this version can read; nothing overwrites it."""
 
 
 def normalized_text(path):
@@ -182,8 +202,12 @@ class ReviewCache:
         return entry
 
     def store(self, records):
-        """Save ``{unit: entry}``; other entries of files that no longer exist go away in the same write."""
-        if not self.path or not self.settings().get("cache", True):
+        """Save ``{unit: entry}``; other entries of files that no longer exist go away in the same write.
+
+        reviews.cache: false only stops reusing entries: the last result of each unit is still saved,
+        so status shows it and a finding can be accepted or dismissed.
+        """
+        if not self.path:
             return
         with self.locked():
             data = self.read()
@@ -246,46 +270,53 @@ class ReviewCache:
             if os.path.exists(temporary_path):
                 os.unlink(temporary_path)
 
-    @contextlib.contextmanager
     def locked(self):
-        """Hold the lock between processes; one left by a dead process expires."""
+        """Hold the lock of the cache between processes."""
         directory = os.path.dirname(self.path)
         os.makedirs(directory, exist_ok=True)
-        lock = os.path.join(directory, LOCK_DIRECTORY_NAME)
-        deadline = time.monotonic() + LOCK_WAIT_SECONDS
-        denied_since = None
-        while True:
-            try:
-                os.mkdir(lock)
-                break
-            except FileExistsError:
-                denied_since = None
-            except PermissionError:
-                # Windows answers access denied while another process removes the lock. With no lock
-                # there for a while, the directory itself is not writable: fail instead of waiting.
-                if os.path.isdir(lock):
-                    denied_since = None
-                else:
-                    denied_since = denied_since or time.monotonic()
-                    if time.monotonic() - denied_since > LOCK_PERMISSION_SECONDS:
-                        raise
-            try:
-                if time.time() - os.path.getmtime(lock) > LOCK_STALE_SECONDS:
-                    os.rmdir(lock)
-                    continue
-            except OSError:
-                pass
-            # Every path that waits observes the deadline and sleeps, so no failure spins.
-            if time.monotonic() > deadline:
-                raise CacheLockTimeout(f"{lock} has been held for more than {LOCK_WAIT_SECONDS} seconds") from None
-            time.sleep(LOCK_POLL_SECONDS)
+        return directory_lock(os.path.join(directory, LOCK_DIRECTORY_NAME))
+
+
+@contextlib.contextmanager
+def directory_lock(lock):
+    """Hold ``lock``, a directory, between processes; one left by a dead process expires.
+
+    Git never tracks an empty directory, so a lock left in the working tree never reaches a commit.
+    """
+    deadline = time.monotonic() + LOCK_WAIT_SECONDS
+    denied_since = None
+    while True:
         try:
-            yield
-        finally:
-            try:
+            os.mkdir(lock)
+            break
+        except FileExistsError:
+            denied_since = None
+        except PermissionError:
+            # Windows answers access denied while another process removes the lock. With no lock
+            # there for a while, the directory itself is not writable: fail instead of waiting.
+            if os.path.isdir(lock):
+                denied_since = None
+            else:
+                denied_since = denied_since or time.monotonic()
+                if time.monotonic() - denied_since > LOCK_PERMISSION_SECONDS:
+                    raise
+        try:
+            if time.time() - os.path.getmtime(lock) > LOCK_STALE_SECONDS:
                 os.rmdir(lock)
-            except OSError:
-                pass
+                continue
+        except OSError:
+            pass
+        # Every path that waits observes the deadline and sleeps, so no failure spins.
+        if time.monotonic() > deadline:
+            raise CacheLockTimeout(f"{lock} has been held for more than {LOCK_WAIT_SECONDS} seconds") from None
+        time.sleep(LOCK_POLL_SECONDS)
+    try:
+        yield
+    finally:
+        try:
+            os.rmdir(lock)
+        except OSError:
+            pass
 
 
 def entry_for(check, version, provider, model, engine, contents, key, verdict, findings, extra=None):
@@ -304,6 +335,156 @@ def entry_for(check, version, provider, model, engine, contents, key, verdict, f
     if extra:
         entry.update(extra)
     return entry
+
+
+# ---------------------------------------------------------------------------
+# Decisions of the team about findings
+# ---------------------------------------------------------------------------
+
+def collapsed(text):
+    return " ".join(str(text).split())
+
+
+def finding_id(unit, finding):
+    """Short and stable: the check, the files the finding involves, its kind and the lines it quotes.
+
+    Only the files of the finding count, not every file of its unit: the review of AGENTS.md
+    sees every rule, and adding an unrelated one must not change the id of a conflict. The
+    quoted lines come from the files, so a review that words the same problem differently
+    keeps the id; a finding without quoted lines falls back to its text.
+    """
+    check, _, unit_files = unit.partition(":")
+    files = sorted(finding.get("files") or unit_files.split("|"))
+    lines = sorted(collapsed(line) for line in finding.get("lines", []) if collapsed(line))
+    basis = lines or [collapsed(finding.get("text", ""))]
+    payload = "\0".join([check, "|".join(files), str(finding.get("kind", ""))] + basis)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:FINDING_ID_LENGTH]
+
+
+def file_hashes(project_root, names):
+    """{name: hash of its normalized text}, None for a file that is gone."""
+    hashes = {}
+    for name in names:
+        try:
+            hashes[name] = text_hash(normalized_text(os.path.join(project_root, name)))
+        except OSError:
+            hashes[name] = None
+    return hashes
+
+
+class Decisions:
+    """Accepted and dismissed findings of one repository, in .agents/agent-ready.reviews.json."""
+
+    def __init__(self, project_root):
+        self.project_root = os.path.abspath(project_root)
+        self.path = os.path.join(self.project_root, DECISIONS_RELATIVE_PATH)
+
+    def read(self, strict=False):
+        """{id: decision}. A missing file has none; an unreadable one too, unless ``strict``.
+
+        The hooks stay lenient, so a broken file never blocks a session; the CLI is strict,
+        so it never overwrites decisions it could not read.
+        """
+        try:
+            with open(self.path, encoding="utf-8") as file_handle:
+                data = json.load(file_handle)
+        except FileNotFoundError:
+            return {}
+        except (OSError, ValueError) as caught_error:
+            if strict:
+                raise DecisionsError(f"{DECISIONS_RELATIVE_PATH} is not valid JSON: {caught_error}") from caught_error
+            return {}
+        if (not isinstance(data, dict) or data.get("schemaVersion") != DECISIONS_SCHEMA_VERSION
+                or not isinstance(data.get("decisions"), dict)):
+            if strict:
+                raise DecisionsError(f"{DECISIONS_RELATIVE_PATH} needs schemaVersion {DECISIONS_SCHEMA_VERSION} "
+                                     "and a decisions object")
+            return {}
+        return {identifier: decision for identifier, decision in data["decisions"].items() if isinstance(decision, dict)}
+
+    def write(self, decisions):
+        """Replace the file atomically; with no decision left the file goes away."""
+        if not decisions:
+            if os.path.exists(self.path):
+                os.unlink(self.path)
+            return
+        directory = os.path.dirname(self.path)
+        os.makedirs(directory, exist_ok=True)
+        file_descriptor, temporary_path = tempfile.mkstemp(prefix=".agent-ready.reviews.", dir=directory)
+        try:
+            with os.fdopen(file_descriptor, "w", encoding="utf-8", newline="\n") as file_handle:
+                json.dump({"schemaVersion": DECISIONS_SCHEMA_VERSION, "decisions": decisions}, file_handle,
+                          indent=2, sort_keys=True, ensure_ascii=False)
+                file_handle.write("\n")
+            os.replace(temporary_path, self.path)
+        finally:
+            if os.path.exists(temporary_path):
+                os.unlink(temporary_path)
+
+    def update(self, change):
+        """Read the decisions, apply ``change`` (decisions -> new decisions) and write them, under a lock.
+
+        Two sessions deciding at the same time would otherwise each write their own copy and
+        lose the other one's decision.
+        """
+        os.makedirs(os.path.dirname(self.path), exist_ok=True)
+        with directory_lock(self.path[:-len(".json")] + ".lock"):
+            changed = change(self.read(strict=True))
+            self.write(changed)
+            return changed
+
+    def status(self, decision):
+        """accepted or dismissed while the decision holds; to-confirm once a content decision is older than its files."""
+        if decision.get("scope") == SCOPE_PAIR:
+            return decision.get("decision")
+        recorded = decision.get("files", {})
+        if isinstance(recorded, dict) and recorded and file_hashes(self.project_root, recorded) == recorded:
+            return decision.get("decision")
+        return STATUS_TO_CONFIRM
+
+    def annotate(self, unit, findings, decisions=None):
+        """Each finding with its id, its status and the decision about it, if any."""
+        decisions = self.read() if decisions is None else decisions
+        annotated = []
+        for finding in findings:
+            identifier = finding_id(unit, finding)
+            decision = decisions.get(identifier)
+            annotated.append(dict(finding, id=identifier, unit=unit,
+                                  status=self.status(decision) if decision else STATUS_OPEN,
+                                  decision=decision))
+        return annotated
+
+
+def decision_for(finding, kind, reason, scope, by, project_root):
+    """The record of a decision about an annotated finding; content decisions keep the hashes of its files."""
+    files = finding.get("files", [])
+    return {
+        "decision": kind,
+        "scope": scope,
+        "reason": reason,
+        "by": by,
+        "at": now_text(),
+        "check": finding.get("check"),
+        "kind": finding.get("kind"),
+        "text": finding.get("text", ""),
+        "files": file_hashes(project_root, files) if scope == SCOPE_CONTENT else {name: None for name in files},
+    }
+
+
+def visible(annotated):
+    """The findings to show: open ones and decisions to confirm; accepted and dismissed stay quiet."""
+    return [finding for finding in annotated if finding["status"] in (STATUS_OPEN, STATUS_TO_CONFIRM)]
+
+
+def finding_line(finding):
+    """One line of a hook or a report: `!` for an open finding, `?` for a decision to confirm."""
+    names = finding.get("files", [])
+    where = f"{' <-> '.join(names)}: " if len(names) > 1 else ""
+    if finding["status"] == STATUS_TO_CONFIRM:
+        decision = finding["decision"]
+        return (f"? [{finding['id']}] {where}{finding.get('text', '')} "
+                f"({decision.get('decision')} before the files changed: {decision.get('reason')})")
+    return f"! [{finding['id']}] {where}{finding.get('text', '')}"
 
 
 # ---------------------------------------------------------------------------
@@ -345,6 +526,17 @@ def command_store(arguments):
     return 0
 
 
+def command_report(arguments):
+    """Print the findings of --result to show, with their ids; accepted and dismissed ones stay quiet."""
+    unit = unit_id(arguments.check, [name for name, _ in arguments.file])
+    with open(arguments.result, encoding="utf-8") as file_handle:
+        findings = json.load(file_handle).get("findings", [])
+    for finding in visible(Decisions(arguments.project).annotate(unit, findings)):
+        # ASCII escapes would garble the text here, so print it as UTF-8 whatever the code page.
+        sys.stdout.buffer.write(f"  {finding_line(finding)}\n".encode("utf-8"))
+    return 0
+
+
 def command_enabled(arguments):
     """Exit 0 while the AI reviews are on, 1 when reviews.enabled is false."""
     return 0 if ReviewCache(arguments.project).settings().get("enabled", True) else 1
@@ -367,7 +559,7 @@ def build_parser():
     defaults.add_argument("--provider", required=True, choices=sorted(PROVIDER_DEFAULTS))
     defaults.add_argument("--project", default=".")
     defaults.set_defaults(handler=command_defaults)
-    for name, handler in (("lookup", command_lookup), ("store", command_store)):
+    for name, handler in (("lookup", command_lookup), ("store", command_store), ("report", command_report)):
         subparser = subparsers.add_parser(name)
         subparser.add_argument("--project", default=".")
         subparser.add_argument("--check", required=True, help="id of the review, such as instructions")
@@ -379,7 +571,7 @@ def build_parser():
         if name == "lookup":
             subparser.add_argument("--recheck", action="store_true", help="ignore the cached entry")
         else:
-            subparser.add_argument("--result", required=True, help="JSON with findings and any extra fields to keep")
+            subparser.add_argument("--result", required=True, help="JSON with the findings (and, for store, any extra fields to keep)")
         subparser.set_defaults(handler=handler)
     return parser
 
