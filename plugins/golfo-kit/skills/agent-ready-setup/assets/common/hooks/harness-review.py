@@ -236,6 +236,7 @@ def review_root(bash, cache_module, cache, project_root, root, changed, provider
     pairs = sorted({tuple(sorted((first, second))) for first in edited for second in names if second != first})
     known = {}
     pending = []
+    shared = 0
     for pair in pairs:
         contents = {name: texts[name] for name in pair}
         key = cache_module.unit_key(CHECK, CHECK_VERSION, provider, model, engine, contents)
@@ -244,8 +245,10 @@ def review_root(bash, cache_module, cache, project_root, root, changed, provider
             pending.append((pair, key, contents))
         else:
             known[pair] = entry.get("findings", [])
+            shared += entry.get("source") == cache_module.SOURCE_SHARED
+    shared_note = f", {shared} of them from the shared cache" if shared else ""
     print(f"{LOG_PREFIX} {root} modified — reviewing {len(pending)} of {len(pairs)} pairs with {provider} "
-          f"({len(pairs) - len(pending)} from the cache)...")
+          f"({len(pairs) - len(pending)} from the cache{shared_note})...")
     unreviewed = 0
     if pending:
         reviewed = review_pairs(bash, provider, model, effort, [pair for pair, _, _ in pending], texts, os.path.join(project_root, root))

@@ -21,6 +21,11 @@
       "description": "Horas que vale una revisión guardada; pasado ese tiempo se revisa de nuevo aunque nada haya cambiado. Sin valor, no vence.",
       "type": "integer",
       "minimum": 1
+    },
+    "commit": {
+      "description": "Además de la caché local, guarda cada resultado en .agents/agent-ready.review-cache.json para commitearlo, así el CI y el equipo saltean las revisiones cuyo hash coincide sin pagarlas de nuevo. Cualquiera puede editar un archivo versionado: un resultado de ahí solo evita repetir una revisión idéntica y nunca oculta un hallazgo que la caché local conoce. Los hooks lo toman del último apply.",
+      "type": "boolean",
+      "default": false
     }
   }
 }

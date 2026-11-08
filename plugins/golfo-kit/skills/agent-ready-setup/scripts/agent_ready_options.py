@@ -19,6 +19,7 @@ TRUSTED_PROJECTS_KEY = "security.trustedProjects"
 REVIEWS_ENABLED_KEY = "reviews.enabled"
 REVIEWS_CACHE_KEY = "reviews.cache"
 REVIEWS_TTL_KEY = "reviews.ttl"
+REVIEWS_COMMIT_KEY = "reviews.commit"
 
 UPDATES_AUTO = "auto"
 UPDATES_PINNED = "pinned"

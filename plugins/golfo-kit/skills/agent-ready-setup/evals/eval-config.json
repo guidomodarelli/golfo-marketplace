@@ -3076,6 +3076,29 @@
           "description": "No inventa un motivo genérico por el usuario"
         }
       ]
+    },
+    {
+      "id": "reviews-share-the-cache-with-ci",
+      "description": "Para que el CI no pague de nuevo las revisiones de IA se activa reviews.commit, que commitea la caché y nunca da por resuelto un hallazgo.",
+      "input": "En nuestro repo con agent-ready-setup, cada clon nuevo y cada job de CI vuelve a pagarle al provider las mismas revisiones de IA de rules y skills. ¿Qué configuro para reutilizarlas, qué archivo tengo que commitear y qué riesgo tiene? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "reviews.commit",
+          "description": "Activa la caché compartida con reviews.commit",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": ".agents/agent-ready.review-cache.json",
+          "description": "Nombra el archivo versionado que hay que commitear"
+        },
+        {
+          "type": "regex",
+          "pattern": "(cualquiera|editar|editable|modific|manipul|falsific).{0,300}(oculta|esconde|no da por|nunca da por|no marca|no acepta|no resuelve|nunca resuelve|clave coincide|hash coincide)|(oculta|esconde|no da por|nunca da por|no resuelve).{0,300}(cualquiera|editar|editable|modific)",
+          "description": "Explica que un archivo versionado se puede editar y por eso nunca oculta ni resuelve un hallazgo"
+        }
+      ]
     }
   ]
 }

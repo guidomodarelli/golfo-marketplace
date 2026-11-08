@@ -60,6 +60,23 @@ worktrees del repo, así una revisión no se repite en cada worktree.
 - `agent-ready remove` la borra mientras ningún otro worktree del repositorio siga usando
   agent-ready-setup.
 
+### Caché compartida (`reviews.commit`)
+
+Con `reviews.commit: true`, cada resultado se guarda también en
+`.agents/agent-ready.review-cache.json`, que se commitea. Un clon nuevo o el CI, que no tienen
+caché local, saltean las revisiones cuya clave coincide sin pagarlas de nuevo, y `status` muestra
+sus hallazgos. Está apagada por defecto, porque cualquiera puede editar un archivo versionado:
+
+- La caché local responde primero. La compartida solo cuenta para una unidad con la misma clave
+  y los mismos archivos.
+- Un resultado compartido que no encontró nada nunca oculta un hallazgo que la caché local
+  conoce para esa unidad: ahí la revisión vuelve a correr. Un resultado compartido con hallazgos
+  siempre se muestra, porque solo agrega qué mirar.
+- Nunca da un hallazgo por aceptado: eso solo lo hacen las decisiones de
+  `.agents/agent-ready.reviews.json` (sección 6), con su motivo.
+- Las entradas de archivos que ya no existen salen del archivo en la siguiente escritura, y
+  `agent-ready remove` lo borra.
+
 ## 4. Opciones
 
 Módulo `reviews` de la configuración ([configuration.md](configuration.md), claves en
@@ -70,8 +87,9 @@ Módulo `reviews` de la configuración ([configuration.md](configuration.md), cl
 | `reviews.enabled` | `true` | `false` apaga las dos revisiones: el apply copia el bloque gestionado sin revisar y el hook no llama al provider |
 | `reviews.cache` | `true` | `false` revisa todo cada vez y nunca reutiliza una entrada; igual guarda el último resultado, así `status` lo muestra y se puede decidir sobre sus hallazgos |
 | `reviews.ttl` | sin vencimiento | horas que vale una entrada; pasado ese tiempo se revisa otra vez aunque nada haya cambiado |
+| `reviews.commit` | `false` | `true` guarda además cada resultado en `.agents/agent-ready.review-cache.json` para commitearlo (ver «Caché compartida») |
 
-Los hooks corren sin el motor, así que cada apply deja las tres opciones efectivas en la
+Los hooks corren sin el motor, así que cada apply deja las opciones efectivas en la
 caché, una vez por worktree, y los hooks las leen de ahí: un cambio de configuración vale
 para los hooks después del siguiente `agent-ready apply` en ese worktree. Las revisiones
 guardadas sí se comparten entre worktrees.

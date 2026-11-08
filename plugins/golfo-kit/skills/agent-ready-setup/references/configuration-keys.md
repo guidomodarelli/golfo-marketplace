@@ -44,6 +44,7 @@ Caché de las revisiones de IA: la de AGENTS.md contra sus rules y la de consist
 | `reviews.enabled` | boolean | `true` | todas | — | — | Las revisiones de IA: la de AGENTS.md, que borra líneas redundantes fuera del bloque gestionado, y la de consistencia de las rules y skills que se editan. Apagado, el apply copia el bloque gestionado sin revisar y el hook no llama al provider. Los hooks lo toman del último apply. |
 | `reviews.cache` | boolean | `true` | todas | — | — | Guarda el resultado de cada revisión por unidad (AGENTS.md contra sus rules, o un par de rules o skills) en el directorio info de Git, fuera del repositorio. Una edición solo vuelve a revisar las unidades donde participa, y status muestra los hallazgos sin llamar al provider. Apagado, cada revisión llama al provider. Los hooks lo toman del último apply. |
 | `reviews.ttl` | integer | — | todas | — | — | Horas que vale una revisión guardada; pasado ese tiempo se revisa de nuevo aunque nada haya cambiado. Sin valor, no vence. |
+| `reviews.commit` | boolean | `false` | todas | — | — | Además de la caché local, guarda cada resultado en .agents/agent-ready.review-cache.json para commitearlo, así el CI y el equipo saltean las revisiones cuyo hash coincide sin pagarlas de nuevo. Cualquiera puede editar un archivo versionado: un resultado de ahí solo evita repetir una revisión idéntica y nunca oculta un hallazgo que la caché local conoce. Los hooks lo toman del último apply. |
 
 ## `security`: Seguridad
 
