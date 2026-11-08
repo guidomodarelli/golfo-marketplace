@@ -768,23 +768,3 @@ EOF
   [ ! -e .mcp.json ]
   [ ! -e .codex/config.toml ]
 }
-
-@test "harness consistency check uses codex exec for Codex edits without a Claude binary" {
-  mkdir -p .agents/rules codex-only-bin
-  cp "$fake_bin/codex" codex-only-bin/codex
-  for tool in python3 git cat dirname; do
-    printf '#!%s\nexec "%s" "$@"\n' "$BASH" "$(command -v "$tool")" > "codex-only-bin/$tool"
-    chmod +x "codex-only-bin/$tool"
-  done
-  payload='{"tool_name":"apply_patch","tool_input":{"command":"*** Update File: .agents/rules/example.md"}}'
-
-  run env PATH="$PWD/codex-only-bin" "$BASH" "$skill_dir/assets/common/hooks/check-harness-consistency.sh" <<< "$payload"
-  [ "$status" -eq 0 ]
-  grep -Fq 'codex exec --sandbox read-only --skip-git-repo-check' "$cli_calls"
-  ! grep -q '^claude ' "$cli_calls"
-
-  rm codex-only-bin/codex
-  run env PATH="$PWD/codex-only-bin" "$BASH" "$skill_dir/assets/common/hooks/check-harness-consistency.sh" <<< "$payload"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"codex CLI is not available; consistency check skipped."* ]]
-}

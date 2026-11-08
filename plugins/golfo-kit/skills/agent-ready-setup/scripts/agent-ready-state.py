@@ -74,6 +74,9 @@ from agent_ready_options import (  # noqa: E402
     DETECTION_ENABLED_KEY,
     PROFILES_KEY,
     PROVIDERS_KEY,
+    REVIEWS_CACHE_KEY,
+    REVIEWS_ENABLED_KEY,
+    REVIEWS_TTL_KEY,
     SOURCES_ENABLED_KEY,
     SOURCES_PACKS_KEY,
     SUPPORTED_PROVIDERS,
@@ -110,6 +113,9 @@ from agent_ready_packs import (  # noqa: E402
 )
 
 MANIFEST_RELATIVE_PATH = PROJECT_CONFIG_RELATIVE_PATH
+# The review cache lives with the hooks, which also run where the skill is not installed.
+REVIEW_CACHE_RELATIVE_PATH = "assets/common/hooks/review-cache.py"
+ENGINE_SKILL_DIRECTORY = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOCK_RELATIVE_PATH = ".agents/agent-ready.lock.json"
 PROFILE_CATALOG_RELATIVE_PATH = "assets/profiles.json"
 PROVIDER_CATALOG_RELATIVE_PATH = "assets/providers.json"
@@ -907,6 +913,60 @@ def read_lock(project_root):
     return lock
 
 
+_REVIEW_CACHE = None
+
+
+def review_cache_module():
+    """review-cache.py of this installation, loaded once; its file name is not importable directly."""
+    global _REVIEW_CACHE
+    if _REVIEW_CACHE is None:
+        import importlib.util
+
+        path = os.path.join(ENGINE_SKILL_DIRECTORY, REVIEW_CACHE_RELATIVE_PATH)
+        specification = importlib.util.spec_from_file_location("review_cache", path)
+        module = importlib.util.module_from_spec(specification)
+        specification.loader.exec_module(module)
+        _REVIEW_CACHE = module
+    return _REVIEW_CACHE
+
+
+def review_summary(project_root):
+    """What the AI reviews found, read from the cache without calling the provider.
+
+    An entry whose files changed since its review is out of date: it is counted, not shown,
+    and runs again on the next edit or apply.
+    """
+    module = review_cache_module()
+    entries = module.ReviewCache(project_root).read()["entries"]
+    current = []
+    stale = 0
+    for unit, entry in sorted(entries.items()):
+        files = entry.get("files", {}) if isinstance(entry, dict) else {}
+        try:
+            matches = all(module.text_hash(module.normalized_text(os.path.join(project_root, name))) == digest
+                          for name, digest in files.items())
+        except OSError:
+            matches = False
+        if matches:
+            current.append(entry)
+        else:
+            stale += 1
+    findings = [dict(finding, check=entry.get("check")) for entry in current for finding in entry.get("findings", [])]
+    return {"units": len(current), "stale": stale, "findings": findings}
+
+
+def record_review_settings(project_root):
+    """Leave the reviews options where the hooks read them, so they follow the configuration."""
+    configuration = configuration_of(project_root)
+    module = review_cache_module()
+    try:
+        module.ReviewCache(project_root).write_settings(configuration.value(REVIEWS_ENABLED_KEY),
+                                                        configuration.value(REVIEWS_CACHE_KEY),
+                                                        configuration.value(REVIEWS_TTL_KEY))
+    except (OSError, module.CacheLockTimeout) as caught_error:
+        sys.stderr.write(f"WARNING: the review settings were not recorded: {caught_error}\n")
+
+
 def build_manifest(previous, profiles, updates):
     """Manifest after an apply: the profiles it applied and, with --updates, the new mode.
 
@@ -1497,6 +1557,7 @@ def finalize(project_root, skill_dir, plan, updates):
     desired_manifest = build_manifest(manifest, plan["profiles_requested"], updates)
     if manifest != desired_manifest:
         write_text_atomically(os.path.join(project_root, MANIFEST_RELATIVE_PATH), serialize_json(desired_manifest))
+    record_review_settings(project_root)
 
     return {"removed": removed, "retireConflicts": retire_conflicts, "failed": failed, "conflicts": conflicts}
 
@@ -1577,6 +1638,7 @@ def compute_status(project_root, skill_dir):
         "incomplete": None,
         "sources": {},
         "selectionDifferences": [],
+        "reviews": review_summary(project_root),
     }
     if lock:
         for destination, entry in sorted(lock["assets"].items()):
@@ -1651,6 +1713,23 @@ def status_has_drift(status):
     return bool(status["update"] and status["update"]["available"]) or not status["hasLock"]
 
 
+def print_review_summary(reviews, brief, stream):
+    """Known findings of the AI reviews, from the cache; nothing when there is no review yet."""
+    if not reviews or not (reviews["units"] or reviews["stale"]):
+        return
+    if reviews["findings"]:
+        write_line(paint(f"AI reviews: {len(reviews['findings'])} known finding(s) in {reviews['units']} reviewed unit(s), "
+                         "from the cache:", "warning", stream), stream)
+        if not brief:
+            for finding in reviews["findings"]:
+                write_line(paint(f"  ! {' <-> '.join(finding.get('files', []))}: {finding.get('text', '')}", "warning", stream),
+                           stream)
+    else:
+        write_line(paint(f"AI reviews: no known finding in {reviews['units']} reviewed unit(s).", "ok", stream), stream)
+    if reviews["stale"] and not brief:
+        write_line(f"  {reviews['stale']} review(s) are out of date and run again on the next edit or apply.", stream)
+
+
 def print_status(status, brief):
     """Human readable status."""
     stream = sys.stdout
@@ -1699,6 +1778,7 @@ def print_status(status, brief):
             ))
         else:
             write_line(paint("Source matches the lock: no update pending.", "ok", stream))
+    print_review_summary(status.get("reviews"), brief, stream)
     if not brief and status["capabilities"]:
         write_line("Provider capabilities:")
         for provider, capabilities in status["capabilities"].items():
@@ -2342,15 +2422,16 @@ REMOVAL_SYMBOLS = {REMOVAL_REMOVE: "-", REMOVAL_EDIT: "~", REMOVAL_KEEP: "="}
 REMOVAL_COLORS = {REMOVAL_REMOVE: "retire", REMOVAL_EDIT: "update", REMOVAL_KEEP: "muted"}
 # What each entry is, in the order a removal runs: the lockfile goes last, so an
 # interrupted removal can run again and finish.
-REMOVAL_KINDS = ("browser", "git-config", "git-hook", "view", "asset", "instructions", "settings", "state", "config")
+REMOVAL_KINDS = ("browser", "git-config", "git-hook", "review-cache", "view", "asset", "instructions", "settings", "state",
+                 "config")
 # Same values as asset-sync-common.sh, which writes them.
 HARD_LINK_VIEWS_MANIFEST = ".claude/.agent-ready-hard-link-views"
 GIT_HOOK_SECTION = "hook.agent-ready-relink"
 GIT_HOOK_COMMAND = "sh .agents/hooks/relink-hard-link-views.sh"
 GIT_HOOK_FILE_NAME = "post-index-change"
 GIT_HOOK_MARKER = "# agent-ready-setup: relinks .claude hard-link views detached by git."
-# Same value as managed-block.sh, which writes it.
-INSTRUCTION_REVIEW_HASH_NAME = "agent-ready-instructions-reviewed.sha256"
+# Same place as review-cache.py, which writes it: the info directory every worktree shares.
+REVIEW_CACHE_INFO_PATH = "info/agent-ready/reviews.json"
 # Same values as setup-browser-tools.py, which registers the servers.
 BROWSER_SERVERS_MARKER = "/agent-ready-setup/browser-tools/"
 BROWSER_REGISTRATION_FILES = (".mcp.json", ".codex/config.toml")
@@ -2643,15 +2724,17 @@ def local_removal_entries(project_root):
             if GIT_HOOK_MARKER in file_handle.read():
                 entries.append(removal_entry(display_path(project_root, hook), REMOVAL_REMOVE,
                                              "relinks .claude hard-link views after git operations", "git-hook", local_state(hook)))
+    review_cache = git_path(project_root, REVIEW_CACHE_INFO_PATH)
+    if review_cache and os.path.isfile(review_cache) and not os.path.islink(review_cache):
+        entries.append(removal_entry(display_path(project_root, review_cache), REMOVAL_REMOVE,
+                                     "cache of the AI reviews", "review-cache", local_state(review_cache)))
     sharing_worktree = other_worktree_using_agent_ready(project_root)
     if sharing_worktree:
         # The Git config and the hooks directory belong to every worktree of the repository.
         for entry in entries:
             entry.update(action=REMOVAL_KEEP, local=None,
                          reason=f"shared with the worktree {sharing_worktree}, which still uses agent-ready-setup")
-    review_hash = git_path(project_root, f"info/{INSTRUCTION_REVIEW_HASH_NAME}")
-    for path, reason in ((os.path.join(project_root, HARD_LINK_VIEWS_MANIFEST), "list of .claude hard-link views"),
-                         (review_hash, "hash of the last instruction review")):
+    for path, reason in ((os.path.join(project_root, HARD_LINK_VIEWS_MANIFEST), "list of .claude hard-link views"),):
         if path and os.path.isfile(path) and not os.path.islink(path):
             entries.append(removal_entry(display_path(project_root, path), REMOVAL_REMOVE, reason, "state", local_state(path)))
     return entries
@@ -2746,6 +2829,11 @@ def apply_removal_entry(project_root, skill_dir, entry, report):
         if entry["kind"] in ("view", "asset"):
             # Only the folders that assets created; the Git directory keeps its own.
             remove_empty_parents(project_root, path)
+        elif entry["kind"] == "review-cache":
+            try:
+                os.rmdir(os.path.dirname(path))
+            except OSError:
+                pass
         report["removed"].append(entry["path"])
         return
     if entry["kind"] == "instructions":

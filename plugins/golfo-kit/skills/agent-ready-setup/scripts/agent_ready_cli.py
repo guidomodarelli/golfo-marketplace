@@ -289,6 +289,8 @@ def build_parser():
     add_selection(apply_parser)
     apply_parser.add_argument("--updates", choices=UPDATE_MODES, help="write updates.mode into the manifest (auto removes it)")
     apply_parser.add_argument("-n", "--dry-run", action="store_true", help="show the plan instead of applying")
+    apply_parser.add_argument("--recheck", action="store_true",
+                              help="review AGENTS.md with the provider even when the review cache holds a current result")
 
     update = new_subparser(subparsers, "update", "Adopt the latest revision of profile sources and of golfo-kit.",
                            "  agent-ready update\n  agent-ready update acme --dry-run", command_update, needs_provider=True)

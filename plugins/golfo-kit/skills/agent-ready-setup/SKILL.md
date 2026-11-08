@@ -15,7 +15,7 @@ description: >-
   sacar agent-ready-setup del repo o saber por qué sus hooks no sincronizan.
 license: MIT
 metadata:
-  version: "1.10.0"
+  version: "1.11.0"
   author: "guponce"
   category: "developer-experience"
   tags: "agent-ready, multi-provider, claude-code, codex, bootstrap, setup, scaffold, context-optimized-v1.20.1"
@@ -107,7 +107,7 @@ explícito fuera del cache conservan prioridad para desarrollo local.
 | `agent-ready plan [--offline] [--json]` | qué cambiaría un apply, sin escribir en el repo |
 | `agent-ready status [--offline] [--json]` | checkout contra el lockfile y las fuentes, sin escribir |
 | `agent-ready check [--offline] [--json]` | el chequeo de CI, con sus códigos `0`, `4`, `5` y `2` |
-| `agent-ready apply [--profiles a,b \| --stack s] [--updates auto\|pinned] [--dry-run]` | el Step 3 completo |
+| `agent-ready apply [--profiles a,b \| --stack s] [--updates auto\|pinned] [--recheck] [--dry-run]` | el Step 3 completo; `--recheck` vuelve a revisar `AGENTS.md` con IA aunque la caché tenga la revisión |
 | `agent-ready update [<fuente>...] [--dry-run]` | adopta la última revisión de esas fuentes (o de todas) y de golfo-kit |
 | `agent-ready config explain\|get\|set\|unset` | la configuración efectiva por capas ([references/configuration.md](references/configuration.md)) |
 | `agent-ready init [--profiles a,b \| --stack s] [--updates m] [--yes] [--no-input]` | primera configuración: detecta, pregunta lo que falta si hay terminal y aplica |
@@ -322,6 +322,15 @@ nunca se modifica en este paso. Leer
 reporte cambios, inconsistencias o revisión humana del bloque, o para explicar el render,
 las rules propias, la revisión de redundancias y sus overrides de modelo.
 
+### Revisiones de IA
+
+La revisión de `AGENTS.md` y el hook de consistencia de rules y skills guardan cada resultado por
+unidad en `.git/info/agent-ready/reviews.json`: una edición solo vuelve a revisar las unidades donde
+participa, y `agent-ready status` muestra los hallazgos conocidos sin llamar al provider. Leer
+[references/ai-reviews.md](references/ai-reviews.md) para explicar por qué una revisión corrió o no,
+mostrar sus hallazgos o cambiar `reviews.enabled`, `reviews.cache` y `reviews.ttl`. Un hallazgo todavía
+no se puede aceptar ni descartar: no inventar un comando para silenciarlo.
+
 ### Resolución de diferencias por el agente
 
 Durante bootstrap inicial, cuando existan diferencias entre `CLAUDE.md` y
@@ -352,7 +361,7 @@ copiados durante bootstrap. No modifica `~/.codex/config.toml`,
 
 Mostrar output del script sin alterarlo. En respuestas documentales, enumerar además del resumen cada asset del template detectado con su path relativo, copiado tal cual de este catálogo (el árbol de `assets/` manda si difiere). Cada uno se proyecta en `.agents/<path>`, con vista en `.claude/<path>` salvo los hooks:
 
-- **Todos los stacks** (`assets/common/`): `rules/browser-before-user-questions.md`, `rules/database.md`, `rules/environment-readiness.md`, `rules/error-handling.md`, `rules/established-libraries.md`, `rules/language-consistency.md`, `rules/lint-gate.md`, `rules/patterns-we-do-not-use.md`, `rules/root-cause-bug-fixes.md`, `rules/speculative-complexity-approval.md`, `rules/testing-scope.md`, `rules/user-actions-first.md`, `rules/verify-changes.md`, `skills/agent-browser/`, `skills/pr-review-workflow/`, `hooks/sync-marketplace.sh`, `hooks/check-harness-consistency.sh` y `settings.json`.
+- **Todos los stacks** (`assets/common/`): `rules/browser-before-user-questions.md`, `rules/database.md`, `rules/environment-readiness.md`, `rules/error-handling.md`, `rules/established-libraries.md`, `rules/language-consistency.md`, `rules/lint-gate.md`, `rules/patterns-we-do-not-use.md`, `rules/root-cause-bug-fixes.md`, `rules/speculative-complexity-approval.md`, `rules/testing-scope.md`, `rules/user-actions-first.md`, `rules/verify-changes.md`, `skills/agent-browser/`, `skills/pr-review-workflow/`, `hooks/sync-marketplace.sh`, `hooks/check-harness-consistency.sh` (con `hooks/harness-review.py` y `hooks/review-cache.py`) y `settings.json`.
 - **Android, Go, Java y Node:** `rules/coding-style.md`, `rules/security.md`, `rules/testing.md`, `agents/perf-analyzer.md`, `agents/security-scanner.md` y `commands/review-pr.md`.
 - **Frontend:** `rules/api-configuration.md`, `rules/api-validation-middleware.md`, `rules/cross-engine.md`, `rules/frontend-style.md`, `rules/hexagonal-architecture.md`, `rules/lodash.md`, `rules/no-unnecessary-mocks.md`, `rules/security.md`, `rules/server-first-data-flow.md`, `rules/testing.md`, `rules/upstream-contracts.md`, `rules/user-facing-feedback.md`, `agents/a11y-reviewer.md`, `agents/lint-reviewer.md`, `agents/perf-analyzer.md`, `agents/security-scanner.md`, `agents/test-reviewer.md`, `commands/review-pr.md`, `skills/api-endpoint/`, `skills/component-creation/`, `skills/karpathy-guidelines/`, `skills/logger/`, `skills/react-act-test-fixes/` y `skills/service/`.
 - **Profile `business-flows`:** `rules/business-flows.md` y `skills/business-flow-design/SKILL.md`.

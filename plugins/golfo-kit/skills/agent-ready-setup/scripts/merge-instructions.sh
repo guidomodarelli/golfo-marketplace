@@ -31,9 +31,13 @@ create_agents_from_template_if_missing
 read_agents_layout
 
 if [[ "$agents_layout" == "managed" ]] && cmp -s "$AGENTS_FILE" "$DETERMINISTIC_FILE" && \
-  [[ -f "$REVIEW_HASH_FILE" ]] && \
-  grep -Fqx "$(compute_review_hash "$AGENTS_FILE")" "$REVIEW_HASH_FILE"; then
+  instructions_review_cached; then
   echo "AGENTS.md managed block is current and project content was already reviewed; AI review not required."
+  # A known inconsistency is still there until someone edits the file: repeat it from the cache.
+  if [[ "$(jq '.findings | length' "$CACHED_REVIEW_FILE")" -gt 0 ]]; then
+    echo "Instruction inconsistencies from the last review (manual review required; content preserved):" >&2
+    jq -r '.findings[] | "  ! " + .text' "$CACHED_REVIEW_FILE" >&2
+  fi
   exit 0
 fi
 
@@ -119,12 +123,11 @@ EOF
 invoke_claude() {
   local schema_json
   schema_json="$(<"$SCHEMA_FILE")"
-  local model="${AGENT_READY_SETUP_MERGE_MODEL:-claude-sonnet-5-5}"
-  local reasoning_effort="${AGENT_READY_SETUP_MERGE_REASONING_EFFORT:-medium}"
+  resolve_review_model
 
   env -u CLAUDECODE claude -p "$merge_prompt" \
-    --model "$model" \
-    --effort "$reasoning_effort" \
+    --model "$REVIEW_MODEL" \
+    --effort "$REVIEW_EFFORT" \
     --output-format json \
     --json-schema "$schema_json" \
     --tools "" \
@@ -133,12 +136,11 @@ invoke_claude() {
 }
 
 invoke_codex() {
-  local model="${AGENT_READY_SETUP_MERGE_MODEL:-gpt-6-luna}"
-  local reasoning_effort="${AGENT_READY_SETUP_MERGE_REASONING_EFFORT:-high}"
+  resolve_review_model
 
   codex exec \
-    --model "$model" \
-    -c "model_reasoning_effort=\"$reasoning_effort\"" \
+    --model "$REVIEW_MODEL" \
+    -c "model_reasoning_effort=\"$REVIEW_EFFORT\"" \
     --cd "$PWD" \
     --skip-git-repo-check \
     --sandbox read-only \
@@ -221,10 +223,16 @@ PY
 
 review_completed=0
 review_failure=""
-case "$PROVIDER" in
-  claude) invoke_claude || review_failure="Claude review provider failed" ;;
-  codex) invoke_codex || review_failure="Codex review provider failed" ;;
-esac
+reviews_disabled=0
+if ! instruction_reviews_enabled; then
+  reviews_disabled=1
+  review_failure="AI reviews are off (reviews.enabled: false)"
+else
+  case "$PROVIDER" in
+    claude) invoke_claude || review_failure="Claude review provider failed" ;;
+    codex) invoke_codex || review_failure="Codex review provider failed" ;;
+  esac
+fi
 
 if [[ -z "$review_failure" ]]; then
   if ! structured_result="$(extract_result)"; then
@@ -240,7 +248,10 @@ if [[ -z "$review_failure" ]]; then
   fi
 fi
 
-if [[ "$review_completed" -eq 0 ]]; then
+if [[ "$review_completed" -eq 0 && "$reviews_disabled" -eq 1 ]]; then
+  printf '%s; applying the managed block without redundancy review.\n' "$review_failure"
+  cp -- "$DETERMINISTIC_FILE" "$MERGED_FILE"
+elif [[ "$review_completed" -eq 0 ]]; then
   printf 'WARNING: %s; applying the managed block without redundancy review.\n' "$review_failure" >&2
   cp -- "$DETERMINISTIC_FILE" "$MERGED_FILE"
 else
@@ -269,8 +280,10 @@ else
   echo "No instruction changes required; $AGENTS_FILE remains unchanged."
 fi
 
-# Only a completed review is cached; a failed review is retried next sync.
+# Only a completed review is cached; a failed review is retried next sync. The entry keeps
+# the inconsistencies, so status shows them without asking the provider again.
 if [[ "$review_completed" -eq 1 ]]; then
-  review_hash="$(compute_review_hash "$AGENTS_FILE")"
-  write_review_hash
+  jq '{findings: [.inconsistencies[] | {files: ["AGENTS.md"], lines: [], kind: "inconsistency", text: .}],
+       removed: .removed, reason: .reason}' "$RESULT_FILE" > "$TEMPORARY_DIRECTORY/review-entry.json"
+  store_instructions_review "$PROVIDER" "$TEMPORARY_DIRECTORY/review-entry.json"
 fi
