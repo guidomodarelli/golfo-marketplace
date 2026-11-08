@@ -369,11 +369,41 @@ publish_pack_repository() {
   [ "$status" -eq 0 ]
   run_cli sources remove acme
   [ "$status" -eq 2 ]
-  [[ "$stderr" == *"the selection still uses acme/kafka-interno"* ]]
+  [[ "$stderr" == *"the selection still uses acme/base, acme/kafka-interno; remove what brings them in first with agent-ready profiles remove acme/kafka-interno"* ]]
 
   run_cli profiles remove acme/kafka-interno
   [ "$status" -eq 0 ]
   run_cli sources remove acme
   [ "$status" -eq 0 ]
   [ "$(json_value "$(cat .agents/agent-ready.json)" '"sources" in data')" = "False" ]
+}
+
+@test "sources add fails with exit 5 and leaves the manifest as it was when the source cannot be fetched" {
+  run_cli init --profiles node --yes < /dev/null
+  [ "$status" -eq 0 ]
+  before="$(cksum < .agents/agent-ready.json)"
+  run_cli sources add missing path:./not-here
+  [ "$status" -eq 5 ]
+  [[ "$stderr" == *"could not bring the source 'missing' into the cache; the manifest was left as it was"* ]]
+  [ "$(cksum < .agents/agent-ready.json)" = "$before" ]
+}
+
+@test "sources remove refuses a source that a selected profile requires through another pack" {
+  run_cli init --profiles node --yes < /dev/null
+  [ "$status" -eq 0 ]
+  mkdir -p agent-packs/beta/profiles/base/rules agent-packs/alpha/profiles/base/rules
+  printf '%s\n' '{"schemaVersion": 1, "name": "beta", "profiles": {"base": {"kind": "capability", "assets": "profiles/base"}}}' > agent-packs/beta/agent-ready-pack.json
+  printf '# beta\n' > agent-packs/beta/profiles/base/rules/beta-base.md
+  printf '%s\n' '{"schemaVersion": 1, "name": "alpha", "profiles": {"base": {"kind": "capability", "assets": "profiles/base", "requires": ["beta/base"]}}}' > agent-packs/alpha/agent-ready-pack.json
+  printf '# alpha\n' > agent-packs/alpha/profiles/base/rules/alpha-base.md
+  run_cli sources add beta path:./agent-packs/beta
+  [ "$status" -eq 0 ]
+  run_cli sources add alpha path:./agent-packs/alpha
+  [ "$status" -eq 0 ]
+  run_cli profiles add alpha/base
+  [ "$status" -eq 0 ]
+
+  run_cli sources remove beta
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"the selection still uses beta/base; remove what brings them in first with agent-ready profiles remove alpha/base"* ]]
 }

@@ -6,24 +6,27 @@ to ``apply``. ``init`` is the only one that asks: with a terminal it asks what i
 and without one it needs its flags. Data goes to stdout; questions and progress to stderr.
 """
 
+import os
 import subprocess
 import sys
 
 from agent_ready_cli_common import (
     CLI_NAME,
     EXIT_OK,
+    EXIT_SOURCE_UNAVAILABLE,
     SKILL_ROOT,
     STATE_SCRIPT,
     UPDATE_MODES,
     UsageError,
     apply_selection,
     engine,
+    fail,
     resolve_provider,
     write_layer,
     write_project_selection,
 )
-from agent_ready_common import ProfileError, StateError, serialize_json
-from agent_ready_config import LAYER_PROJECT
+from agent_ready_common import ProfileError, StateError, serialize_json, write_text_atomically
+from agent_ready_config import LAYER_PROJECT, PROJECT_CONFIG_RELATIVE_PATH
 from agent_ready_options import (
     DETECTION_ENABLED_KEY,
     PROFILES_KEY,
@@ -160,24 +163,48 @@ def command_sources_add(arguments):
             raise UsageError(str(invalid_source)) from invalid_source
         return True
 
+    manifest_path = os.path.join(arguments.project_root, PROJECT_CONFIG_RELATIVE_PATH)
+    previous = open(manifest_path, encoding="utf-8").read() if os.path.isfile(manifest_path) else None
     path, _ = write_layer(arguments, change)
+    if not arguments.offline:
+        # The same strict download an apply runs: a missing path or an unreachable repository fails here.
+        command = [sys.executable, STATE_SCRIPT, "fetch-sources", "--project", arguments.project_root, "--skill-dir", SKILL_ROOT]
+        if subprocess.call(command, cwd=arguments.project_root, stdout=sys.stderr) != EXIT_OK:
+            if previous is None:
+                os.unlink(manifest_path)
+            else:
+                write_text_atomically(manifest_path, previous)
+            fail(f"could not bring the source '{arguments.name}' into the cache; the manifest was left as it was")
+            return EXIT_SOURCE_UNAVAILABLE
     sys.stderr.write(f"Source '{arguments.name}' declared in {path}. Its profiles are selected with "
                      f"{CLI_NAME} profiles add {arguments.name}/<profile>.\n")
-    if arguments.offline:
-        return EXIT_OK
-    command = [sys.executable, STATE_SCRIPT, "fetch-sources", "--project", arguments.project_root,
-               "--skill-dir", SKILL_ROOT, "--refresh"]
-    subprocess.call(command, cwd=arguments.project_root, stdout=sys.stderr)
     return EXIT_OK
+
+
+def required_closure(catalog, name):
+    """A profile and every profile it requires, transitively, as far as the catalog knows them."""
+    closure, pending = [], [name]
+    while pending:
+        current = pending.pop()
+        if current in closure:
+            continue
+        closure.append(current)
+        pending.extend(catalog["profiles"].get(current, {}).get("requires", []))
+    return closure
 
 
 def command_sources_remove(arguments):
     """Remove a profile source from the manifest, unless selected profiles still come from it."""
     prefix = f"{arguments.name}{NAMESPACE_SEPARATOR}"
-    using = [name for name in selected_profiles(arguments.project_root) if name.startswith(prefix)]
+    selection = selected_profiles(arguments.project_root)
+    catalog = engine().load_effective_catalog(arguments.project_root, SKILL_ROOT)
+    # A profile counts when it comes from the source or requires one that does, through any pack.
+    closures = {name: required_closure(catalog, name) for name in selection}
+    using = sorted({member for closure in closures.values() for member in closure if member.startswith(prefix)})
+    culprits = [name for name, closure in closures.items() if any(member.startswith(prefix) for member in closure)]
     if using:
-        raise UsageError(f"the selection still uses {', '.join(using)}; remove them first with "
-                         f"{CLI_NAME} profiles remove {' '.join(using)}")
+        raise UsageError(f"the selection still uses {', '.join(using)}; remove what brings them in first with "
+                         f"{CLI_NAME} profiles remove {' '.join(culprits)}")
     arguments.layer = LAYER_PROJECT
 
     def change(schema, document):
@@ -266,7 +293,8 @@ def command_init(arguments):
             return EXIT_OK
         asked = True
     if asked:
-        command = [CLI_NAME, "init", "--profiles", profiles] + (["--updates", updates] if updates else []) + ["--yes"]
+        command = [CLI_NAME, "init", "--profiles", profiles] + (["--updates", updates] if updates else [])
+        command += (["--project", arguments.project] if arguments.project != "." else []) + ["--provider", provider, "--yes"]
         sys.stderr.write(f"Equivalent command: {equivalent_command(command)}\n")
     extra = ["--profiles", profiles] + (["--updates", updates] if updates else [])
     return apply_selection(arguments, provider, extra)
