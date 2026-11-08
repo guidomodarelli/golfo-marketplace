@@ -24,7 +24,7 @@ import sys
 import tempfile
 import time
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 CACHE_DIRECTORY = "agent-ready"
 CACHE_FILE_NAME = "reviews.json"
 LOCK_DIRECTORY_NAME = "reviews.lock"
@@ -34,6 +34,8 @@ LOCK_WAIT_SECONDS = 30
 # A lock older than this belongs to a process that died; writes take milliseconds.
 LOCK_STALE_SECONDS = 120
 LOCK_POLL_SECONDS = 0.05
+# Access denied with no lock present for this long means the directory is not writable.
+LOCK_PERMISSION_SECONDS = 2
 REPLACE_ATTEMPTS = 20
 SECONDS_PER_HOUR = 3600
 DEFAULT_SETTINGS = {"enabled": True, "cache": True, "ttl": None}
@@ -94,6 +96,11 @@ def cache_path(project_root):
     return os.path.join(os.path.normpath(os.path.join(project_root, common)), "info", CACHE_DIRECTORY, CACHE_FILE_NAME)
 
 
+def worktree_key(project_root):
+    """Each worktree keeps its own reviews options inside the shared cache."""
+    return os.path.normcase(os.path.realpath(project_root))
+
+
 def now_text():
     return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -110,12 +117,13 @@ class ReviewCache:
     """Reads and writes the review cache of one repository."""
 
     def __init__(self, project_root):
-        self.project_root = project_root
+        self.project_root = os.path.abspath(project_root)
+        self.worktree = worktree_key(project_root)
         self.path = cache_path(project_root)
 
     def read(self):
         """The whole cache; an absent or unreadable file is an empty one."""
-        empty = {"schemaVersion": SCHEMA_VERSION, "settings": dict(DEFAULT_SETTINGS), "entries": {}}
+        empty = {"schemaVersion": SCHEMA_VERSION, "settings": {}, "entries": {}}
         if not self.path:
             return empty
         try:
@@ -125,17 +133,25 @@ class ReviewCache:
             return empty
         if not isinstance(data, dict) or data.get("schemaVersion") != SCHEMA_VERSION or not isinstance(data.get("entries"), dict):
             return empty
-        data["settings"] = {**DEFAULT_SETTINGS, **(data.get("settings") if isinstance(data.get("settings"), dict) else {})}
+        if not isinstance(data.get("settings"), dict):
+            data["settings"] = {}
         return data
 
+    def settings_of(self, data):
+        """reviews.enabled, reviews.cache and reviews.ttl as the last apply of this worktree resolved them.
+
+        The entries are shared by every worktree, but two worktrees can configure the reviews differently.
+        """
+        own = data["settings"].get(self.worktree)
+        return {**DEFAULT_SETTINGS, **(own if isinstance(own, dict) else {})}
+
     def settings(self):
-        """reviews.enabled, reviews.cache and reviews.ttl as the last apply resolved them."""
-        return self.read()["settings"]
+        return self.settings_of(self.read())
 
     def lookup(self, unit, key, recheck=False):
         """The entry of a unit when its key is current, the cache is on and it has not expired."""
         data = self.read()
-        settings = data["settings"]
+        settings = self.settings_of(data)
         if recheck or not settings.get("cache", True):
             return None
         entry = data["entries"].get(unit)
@@ -165,15 +181,20 @@ class ReviewCache:
         if not self.path:
             return
         settings = {"enabled": bool(enabled), "cache": bool(cache), "ttl": ttl}
-        if self.read()["settings"] == settings:
+        if self.settings() == settings:
             return
         with self.locked():
             data = self.read()
-            data["settings"] = settings
+            data["settings"][self.worktree] = settings
+            self.prune(data)
             self.write(data)
 
     def prune(self, data, keep=()):
-        """Drop entries that name a project file that is gone, except the units in ``keep``."""
+        """Drop entries that name a project file that is gone, except the units in ``keep``, and the options
+        of worktrees that no longer exist."""
+        for worktree in list(data["settings"]):
+            if worktree != self.worktree and not os.path.isdir(worktree):
+                del data["settings"][worktree]
         for unit, entry in list(data["entries"].items()):
             if unit in keep:
                 continue
@@ -208,21 +229,32 @@ class ReviewCache:
         os.makedirs(directory, exist_ok=True)
         lock = os.path.join(directory, LOCK_DIRECTORY_NAME)
         deadline = time.monotonic() + LOCK_WAIT_SECONDS
+        denied_since = None
         while True:
             try:
                 os.mkdir(lock)
                 break
-            # Windows answers access denied while another process is removing the same directory.
-            except (FileExistsError, PermissionError):
-                try:
-                    if time.time() - os.path.getmtime(lock) > LOCK_STALE_SECONDS:
-                        os.rmdir(lock)
-                        continue
-                except OSError:
+            except FileExistsError:
+                denied_since = None
+            except PermissionError:
+                # Windows answers access denied while another process removes the lock. With no lock
+                # there for a while, the directory itself is not writable: fail instead of waiting.
+                if os.path.isdir(lock):
+                    denied_since = None
+                else:
+                    denied_since = denied_since or time.monotonic()
+                    if time.monotonic() - denied_since > LOCK_PERMISSION_SECONDS:
+                        raise
+            try:
+                if time.time() - os.path.getmtime(lock) > LOCK_STALE_SECONDS:
+                    os.rmdir(lock)
                     continue
-                if time.monotonic() > deadline:
-                    raise CacheLockTimeout(f"{lock} has been held for more than {LOCK_WAIT_SECONDS} seconds") from None
-                time.sleep(LOCK_POLL_SECONDS)
+            except OSError:
+                pass
+            # Every path that waits observes the deadline and sleeps, so no failure spins.
+            if time.monotonic() > deadline:
+                raise CacheLockTimeout(f"{lock} has been held for more than {LOCK_WAIT_SECONDS} seconds") from None
+            time.sleep(LOCK_POLL_SECONDS)
         try:
             yield
         finally:
@@ -267,7 +299,8 @@ def command_lookup(arguments):
     entry = ReviewCache(arguments.project).lookup(unit, key, recheck=arguments.recheck)
     if entry is None:
         return MISS_STATUS
-    sys.stdout.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    # ASCII escapes: the Bash scripts read this with jq, whatever the code page of a Windows console.
+    sys.stdout.write(json.dumps(entry, ensure_ascii=True) + "\n")
     return 0
 
 

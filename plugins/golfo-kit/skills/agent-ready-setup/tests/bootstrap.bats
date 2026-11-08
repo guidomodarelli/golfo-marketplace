@@ -1404,10 +1404,11 @@ EOF
     [ "$status" -eq 0 ]
     [ -f .agents/hooks/harness-review.py ]
     [ -f .agents/hooks/review-cache.py ]
-    # The patch already ran when PostToolUse fires: its files are on disk.
-    printf '%s\n' '# Testing' > .agents/rules/testing.md
+    # The patch already ran when PostToolUse fires: its files are on disk. Their content is new
+    # for each stack, so no pair of them comes from the review cache of the previous stack.
+    printf '%s\n' "# Testing for $stack" > .agents/rules/testing.md
     mkdir -p .agents/skills/new
-    printf '%s\n' '---' 'name: new' '---' 'New skill.' > .agents/skills/new/SKILL.md
+    printf '%s\n' '---' 'name: new' '---' "New skill for $stack." > .agents/skills/new/SKILL.md
     : > "$CODEX_INVOCATION_LOG"
     run env PATH="$fake_bin:$PATH" bash .agents/hooks/check-harness-consistency.sh <<< "$payload"
 

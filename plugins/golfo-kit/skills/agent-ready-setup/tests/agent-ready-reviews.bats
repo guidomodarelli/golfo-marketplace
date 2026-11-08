@@ -29,15 +29,26 @@ setup() {
   export FAKE_INPUT="$test_root/provider-input.log"
   export FAKE_ARGUMENTS="$test_root/provider-arguments.log"
   export FAKE_RESPONSE="$test_root/provider-response.json"
+  export FAKE_ARGV="$test_root/provider-argv.bin"
   : > "$FAKE_CALLS"
   printf '%s\n' '{"findings": []}' > "$FAKE_RESPONSE"
-  # A provider that counts its calls, keeps the documents it received and answers FAKE_RESPONSE.
+  # A provider that counts its calls, keeps the documents and the exact arguments it received
+  # (NUL-separated) and answers FAKE_RESPONSE: on stdout like claude, or in the
+  # --output-last-message file like codex exec.
   for provider_cli in claude codex; do
     cat > "$fake_bin/$provider_cli" <<'EOF'
 #!/bin/bash
 cat > "$FAKE_INPUT"
 basename "$0" >> "$FAKE_CALLS"
 printf '%s\n' "$(basename "$0") $*" >> "$FAKE_ARGUMENTS"
+printf '%s\0' "$@" > "$FAKE_ARGV"
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == --output-last-message ]]; then
+    cat "$FAKE_RESPONSE" > "$2"
+    exit 0
+  fi
+  shift
+done
 printf '{"structured_output": %s}\n' "$(cat "$FAKE_RESPONSE")"
 EOF
     chmod +x "$fake_bin/$provider_cli"
@@ -76,6 +87,12 @@ cache_value() {
     "$(cache_file)" "$1" | tr -d '\r'
 }
 
+# The argument the provider received right after $1, exactly as it arrived.
+argument_after() {
+  python3 -c 'import sys; arguments = open(sys.argv[1], "rb").read().split(b"\0")[:-1]; sys.stdout.write(arguments[arguments.index(sys.argv[2].encode()) + 1].decode())' \
+    "$FAKE_ARGV" "$1"
+}
+
 write_settings() {
   python3 -B - "$skill_dir" "$1" "$2" "$3" <<'PY'
 import importlib.util, os, sys
@@ -93,6 +110,12 @@ PY
   [ "$(calls)" -eq 1 ]
   [[ "$output" == *"reviewing 2 of 2 pairs with claude (0 from the cache)"* ]]
   grep -Fq '<document path=".agents/rules/style.md">' "$FAKE_INPUT"
+  # Each argument arrives whole, also the ones with double quotes, which a native Windows
+  # process starting bash.exe would split.
+  argument_after --json-schema | python3 -c 'import json, sys; assert json.load(sys.stdin)["required"] == ["findings"]'
+  [ "$(argument_after --tools)" = "" ]
+  [ "$(argument_after --effort)" = medium ]
+  [[ "$(argument_after -p)" == *"1. .agents/rules/style.md <-> .agents/rules/testing.md"* ]]
 
   run_hook .agents/rules/testing.md
   [ "$(calls)" -eq 1 ]
@@ -109,6 +132,15 @@ PY
   # Only the two pairs of style.md go to the provider; testing.md <-> SKILL.md stays cached.
   [[ "$output" == *"reviewing 2 of 2 pairs"* ]]
   [ "$(cache_value 'len(data["entries"])')" -eq 3 ]
+}
+
+@test "pairs the provider did not answer leave the check incomplete, never clean" {
+  printf '%s\n' 'not json' > "$FAKE_RESPONSE"
+  run_hook .agents/rules/testing.md
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Check incomplete: 2 of 2 pairs were not reviewed."* ]]
+  [[ "$output" != *"No contradictions found."* ]]
+  [ ! -e "$(cache_file)" ]
 }
 
 @test "a finding is kept per pair and status shows it without calling the provider" {
@@ -222,13 +254,67 @@ PY
     printf 'rule %s\n' "$index" > "rule-$index.md"
     printf '%s\n' '{"findings": []}' > "result-$index.json"
   done
+  writer_pids=()
   for index in $(seq 1 8); do
     python3 -B "$cache_script" store --project . --check concurrency --version 1 --provider claude --model m \
       --file "rule-$index.md" "rule-$index.md" --result "result-$index.json" &
+    writer_pids+=("$!")
   done
-  wait
+  # Only the writers: a bare wait would also wait for the timer of BATS_TEST_TIMEOUT.
+  wait "${writer_pids[@]}"
   [ "$(cache_value 'len(data["entries"])')" -eq 8 ]
   [ ! -e .git/info/agent-ready/reviews.lock ]
+}
+
+@test "a cache directory that cannot be written fails fast instead of waiting for the lock" {
+  run python3 -B - "$cache_script" <<'PY'
+import importlib.util, os, sys, time
+spec = importlib.util.spec_from_file_location("review_cache", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+def denied(path, *arguments, **keywords):
+    raise PermissionError(13, "Permission denied", path)
+module.os.mkdir = denied
+started = time.monotonic()
+try:
+    module.ReviewCache(".").store({"unit": {"files": {}, "findings": []}})
+except PermissionError:
+    elapsed = time.monotonic() - started
+    print("denied in time" if elapsed < module.LOCK_WAIT_SECONDS else f"denied after {elapsed:.0f}s")
+PY
+  [ "$status" -eq 0 ]
+  [ "$output" = "denied in time" ]
+}
+
+@test "a lookup prints ASCII JSON, so a legacy code page never turns a cached entry into a miss" {
+  printf 'rule\n' > rule.md
+  printf '%s\n' '{"findings": [{"files": ["rule.md"], "lines": [], "kind": "inconsistency", "text": "usa → en vez de ⇒"}]}' > result.json
+  python3 -B "$cache_script" store --project . --check codepage --version 1 --provider claude --model m \
+    --file rule.md rule.md --result result.json
+  run env PYTHONIOENCODING=cp1252 python3 -B "$cache_script" lookup --project . --check codepage --version 1 \
+    --provider claude --model m --file rule.md rule.md
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s' "$output" | jq -r '.findings[0].text' | tr -d '\r')" = "usa → en vez de ⇒" ]
+}
+
+@test "each worktree keeps its own reviews options while the entries stay shared" {
+  git -c user.email=tests@example.invalid -c user.name=Tests commit -q --allow-empty -m init
+  git worktree add -q -b other "$test_root/other-worktree"
+  write_settings false true none
+  (cd "$test_root/other-worktree" && write_settings true true 2)
+
+  run python3 -B - "$cache_script" "$project_dir" "$test_root/other-worktree" <<'PY'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("review_cache", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+main, other = module.ReviewCache(sys.argv[2]), module.ReviewCache(sys.argv[3])
+print(main.path == other.path, main.settings()["enabled"], other.settings()["enabled"], other.settings()["ttl"])
+PY
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s' "$output" | tr -d '\r')" = "True False True 2" ]
+  run_hook .agents/rules/testing.md
+  [[ "$output" == *"AI reviews are off (reviews.enabled: false)"* ]]
 }
 
 @test "a Codex edit is reviewed with codex exec, through the Bash of the hook, without a Claude binary" {
@@ -247,7 +333,10 @@ PY
   [ "$status" -eq 0 ]
   [ "$(cat "$FAKE_CALLS")" = "codex" ]
   grep -Fq 'codex exec --model gpt-6-luna' "$FAKE_ARGUMENTS"
-  grep -Fq -- '--sandbox read-only' "$FAKE_ARGUMENTS"
+  [ "$(argument_after -c)" = 'model_reasoning_effort="high"' ]
+  [ "$(argument_after --sandbox)" = read-only ]
+  # The answer came back through --output-last-message, so both pairs are cached.
+  [ "$(cache_value 'len(data["entries"])')" -eq 2 ]
 
   rm codex-only-bin/codex
   run env PATH="$only_codex" "$BASH" "$hook" <<< "$payload"

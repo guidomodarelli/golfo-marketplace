@@ -25,7 +25,9 @@ Los pares que ya están en la caché no se vuelven a revisar. Los que faltan van
 que hizo la edición en una sola llamada: `claude -p` en Claude Code y `codex exec
 --sandbox read-only` en Codex (eventos `apply_patch`). Los documentos le llegan por stdin
 y se tratan como datos, nunca como instrucciones. Si falta la CLI del provider, el
-chequeo se omite con un aviso. Un documento borrado no deja nada que comparar.
+chequeo se omite con un aviso. Si el provider no da una respuesta válida, el hook informa el
+chequeo como incompleto, nunca como limpio, y esos pares se revisan en la próxima edición. Un
+documento borrado no deja nada que comparar.
 
 ## 2. Unidad y clave
 
@@ -69,8 +71,9 @@ Módulo `reviews` de la configuración ([configuration.md](configuration.md), cl
 | `reviews.ttl` | sin vencimiento | horas que vale una entrada; pasado ese tiempo se revisa otra vez aunque nada haya cambiado |
 
 Los hooks corren sin el motor, así que cada apply deja las tres opciones efectivas en la
-caché y los hooks las leen de ahí: un cambio de configuración vale para los hooks después
-del siguiente `agent-ready apply`.
+caché, una vez por worktree, y los hooks las leen de ahí: un cambio de configuración vale
+para los hooks después del siguiente `agent-ready apply` en ese worktree. Las revisiones
+guardadas sí se comparten entre worktrees.
 
 ## 5. Ver los hallazgos y forzar una revisión
 

@@ -32,9 +32,14 @@ SKILLS_DIRECTORY = "skills"
 SKILL_FILE_NAME = "SKILL.md"
 LOG_PREFIX = "[harness-check]"
 # The provider runs through the Bash of the hook: it finds the CLIs the session finds, including
-# shims without an extension that native Windows process creation cannot start.
-RUN_THROUGH_BASH = 'exec "$0" "$@"'
+# shims without an extension that native Windows process creation cannot start. Its arguments
+# travel in a NUL-separated file: on Windows, a native process that starts the MSYS bash.exe
+# loses every argument with a double quote (-c key="value", the prompt, the JSON schema), and
+# the ones after it, such as --sandbox read-only, would run fused into it.
+RUN_ARGUMENTS_FILE_THROUGH_BASH = ('arguments=(); while IFS= read -r -d "" argument; do arguments+=("$argument"); '
+                                   'done < "$1"; exec "${arguments[@]}"')
 FIND_THROUGH_BASH = 'command -v "$0" >/dev/null 2>&1'
+ARGUMENTS_FILE_NAME = "arguments"
 RESULT_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
@@ -170,31 +175,39 @@ def provider_available(bash, provider):
     return subprocess.run([bash, "-c", FIND_THROUGH_BASH, provider], check=False).returncode == 0
 
 
+def run_through_bash(bash, command, scratch, documents_text, working_directory, environment=None):
+    """Run ``command`` (the CLI and its arguments) with the Bash of the hook, documents on stdin."""
+    arguments_path = os.path.join(scratch, ARGUMENTS_FILE_NAME)
+    with open(arguments_path, "wb") as arguments_file:
+        arguments_file.write(b"".join(argument.encode("utf-8") + b"\0" for argument in command))
+    return subprocess.run([bash, "-c", RUN_ARGUMENTS_FILE_THROUGH_BASH, "harness-review", arguments_path],
+                          input=documents_text, cwd=working_directory, env=environment, capture_output=True,
+                          encoding="utf-8", errors="replace", check=False)
+
+
 def run_provider(bash, provider, model, prompt, documents_text, working_directory):
     """Run the provider CLI without tools or session; returns the parsed result or None."""
-    if provider == "codex":
-        with tempfile.TemporaryDirectory() as scratch:
+    with tempfile.TemporaryDirectory() as scratch:
+        if provider == "codex":
             schema_path = os.path.join(scratch, "schema.json")
             result_path = os.path.join(scratch, "result.json")
             with open(schema_path, "w", encoding="utf-8") as schema_file:
                 json.dump(RESULT_SCHEMA, schema_file)
-            completed = subprocess.run(
-                [bash, "-c", RUN_THROUGH_BASH, "codex", "exec", "--model", model, "-c", f'model_reasoning_effort="{CODEX_REASONING_EFFORT}"',
-                 "--sandbox", "read-only", "--skip-git-repo-check", "--ephemeral", "--ignore-rules",
-                 "--output-schema", schema_path, "--output-last-message", result_path, prompt],
-                input=documents_text, cwd=working_directory, capture_output=True, encoding="utf-8", errors="replace",
-                check=False)
+            completed = run_through_bash(
+                bash, ["codex", "exec", "--model", model, "-c", f'model_reasoning_effort="{CODEX_REASONING_EFFORT}"',
+                       "--sandbox", "read-only", "--skip-git-repo-check", "--ephemeral", "--ignore-rules",
+                       "--output-schema", schema_path, "--output-last-message", result_path, prompt],
+                scratch, documents_text, working_directory)
             if completed.returncode != 0 or not os.path.isfile(result_path):
                 return None
             with open(result_path, encoding="utf-8", errors="replace") as result_file:
                 return extract_result(result_file.read())
-    environment = {name: value for name, value in os.environ.items() if name != "CLAUDECODE"}
-    completed = subprocess.run(
-        [bash, "-c", RUN_THROUGH_BASH, "claude", "-p", prompt, "--model", model, "--effort", CLAUDE_REASONING_EFFORT, "--output-format", "json",
-         "--json-schema", json.dumps(RESULT_SCHEMA), "--tools", "", "--safe-mode", "--no-session-persistence"],
-        input=documents_text, cwd=working_directory, env=environment, capture_output=True, encoding="utf-8",
-        errors="replace", check=False)
-    return extract_result(completed.stdout) if completed.returncode == 0 else None
+        environment = {name: value for name, value in os.environ.items() if name != "CLAUDECODE"}
+        completed = run_through_bash(
+            bash, ["claude", "-p", prompt, "--model", model, "--effort", CLAUDE_REASONING_EFFORT, "--output-format", "json",
+                   "--json-schema", json.dumps(RESULT_SCHEMA), "--tools", "", "--safe-mode", "--no-session-persistence"],
+            scratch, documents_text, working_directory, environment)
+        return extract_result(completed.stdout) if completed.returncode == 0 else None
 
 
 def review_pairs(bash, provider, model, pairs, texts, working_directory):
@@ -236,9 +249,11 @@ def review_root(bash, cache_module, cache, project_root, root, changed, provider
             known[pair] = entry.get("findings", [])
     print(f"{LOG_PREFIX} {root} modified — reviewing {len(pending)} of {len(pairs)} pairs with {provider} "
           f"({len(pairs) - len(pending)} from the cache)...")
+    unreviewed = 0
     if pending:
         reviewed = review_pairs(bash, provider, model, [pair for pair, _, _ in pending], texts, os.path.join(project_root, root))
         if reviewed is None:
+            unreviewed = len(pending)
             print(f"{LOG_PREFIX} WARNING: {provider} gave no valid answer; the pending pairs are reviewed again on the next edit.",
                   file=sys.stderr)
         else:
@@ -253,13 +268,15 @@ def review_root(bash, cache_module, cache, project_root, root, changed, provider
             except (OSError, cache_module.CacheLockTimeout) as caught_error:
                 print(f"{LOG_PREFIX} WARNING: the results were not cached: {caught_error}", file=sys.stderr)
     findings = [finding for pair in sorted(known) for finding in known[pair]]
-    if not findings:
-        print(f"{LOG_PREFIX} No contradictions found.")
-        return
     for finding in findings:
         print(f"{LOG_PREFIX} ! {finding['files'][0]} <-> {finding['files'][1]}: {finding['text']}")
         for line in finding.get("lines", []):
             print(f"{LOG_PREFIX}     {line}")
+    # A clean verdict needs every pair reviewed; pairs without an answer leave the check incomplete.
+    if unreviewed:
+        print(f"{LOG_PREFIX} Check incomplete: {unreviewed} of {len(pairs)} pairs were not reviewed.")
+    elif not findings:
+        print(f"{LOG_PREFIX} No contradictions found.")
 
 
 def main():
