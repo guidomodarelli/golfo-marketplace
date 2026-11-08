@@ -283,3 +283,163 @@ publish_pack_repository() {
   [ "$status" -eq 2 ]
   [[ "$stderr" == *"profile sources are off (sources.enabled: false)"* ]]
 }
+
+@test "init without a terminal names every missing flag, writes nothing, and with its flags applies" {
+  printf '%s\n' '{"dependencies": {"react": "19.0.0"}}' > package.json
+  before="$(tree_fingerprint)"
+  run --separate-stderr env PATH="$fake_bin:$PATH" python3 "$cli" init < /dev/null
+  [ "$status" -eq 2 ]
+  [ -z "$output" ]
+  [[ "$stderr" == *"missing --profiles <a,b> (or --stack <s>) and --yes; there is no terminal to ask"* ]]
+  [ "$(tree_fingerprint)" = "$before" ]
+
+  run --separate-stderr env PATH="$fake_bin:$PATH" python3 "$cli" init --profiles nope --yes < /dev/null
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"--profiles: unknown profile 'nope'; available profiles:"* ]]
+  [ "$(tree_fingerprint)" = "$before" ]
+
+  run --separate-stderr env PATH="$fake_bin:$PATH" CI=1 python3 "$cli" init --stack frontend < /dev/null
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"missing --yes"* ]]
+
+  run --separate-stderr env PATH="$fake_bin:$PATH" python3 "$cli" init --stack frontend --yes < /dev/null
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ "$(json_value "$(cat .agents/agent-ready.json)" 'data["profiles"]')" = "['frontend', 'browser']" ]
+  [ "$(grep -c 'BEGIN AGENT-READY MANAGED' AGENTS.md)" -eq 1 ]
+
+  run_cli init --profiles node --yes
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"this repository is already set up"* ]]
+}
+
+@test "profiles list, add and remove validate the selection against the catalog before writing" {
+  run_cli profiles add browser
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"no selection yet; start it with agent-ready init"* ]]
+
+  run_cli init --profiles node --yes < /dev/null
+  [ "$status" -eq 0 ]
+  run_cli profiles list --json
+  [ "$status" -eq 0 ]
+  [ "$(json_value "$output" '[row["name"] for row in data if row["selected"]]')" = "['node']" ]
+
+  run_cli profiles add business-flows
+  [ "$status" -eq 0 ]
+  [ "$(json_value "$(cat .agents/agent-ready.json)" 'data["profiles"]')" = "['node', 'business-flows']" ]
+  [[ "$stderr" == *"Run agent-ready apply to project them"* ]]
+
+  before="$(cksum < .agents/agent-ready.json)"
+  run_cli profiles remove node
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"select at least one stack profile"* ]]
+  run_cli profiles add nope
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"unknown profile 'nope'"* ]]
+  run_cli profiles remove browser
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"not selected: browser"* ]]
+  [ "$(cksum < .agents/agent-ready.json)" = "$before" ]
+
+  run_cli profiles remove business-flows
+  [ "$status" -eq 0 ]
+  [ "$(json_value "$(cat .agents/agent-ready.json)" 'data["profiles"]')" = "['node']" ]
+}
+
+@test "sources add, list and remove keep the manifest valid and protect the profiles in use" {
+  run_cli init --profiles node --yes < /dev/null
+  [ "$status" -eq 0 ]
+  mkdir -p agent-packs
+  cp -R "$example_pack" agent-packs/acme
+
+  run_cli sources add acme path:./agent-packs/acme
+  [ "$status" -eq 0 ]
+  run_cli sources list --json
+  [ "$status" -eq 0 ]
+  [ "$(json_value "$output" '[(row["name"], row["state"], len(row["profiles"])) for row in data["sources"]]')" = "[('acme', 'available', 2)]" ]
+
+  run_cli sources add acme path:./agent-packs/acme
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"already declares the source 'acme'"* ]]
+  run_cli sources add Bad path:./agent-packs/acme
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"invalid name 'Bad'"* ]]
+
+  run_cli profiles add acme/kafka-interno
+  [ "$status" -eq 0 ]
+  run_cli sources remove acme
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"the selection still uses acme/base, acme/kafka-interno; remove what brings them in first with agent-ready profiles remove acme/kafka-interno"* ]]
+
+  run_cli profiles remove acme/kafka-interno
+  [ "$status" -eq 0 ]
+  run_cli sources remove acme
+  [ "$status" -eq 0 ]
+  [ "$(json_value "$(cat .agents/agent-ready.json)" '"sources" in data')" = "False" ]
+}
+
+@test "sources add fails with exit 5 and leaves the manifest as it was when the source cannot be fetched" {
+  run_cli init --profiles node --yes < /dev/null
+  [ "$status" -eq 0 ]
+  before="$(cksum < .agents/agent-ready.json)"
+  run_cli sources add missing path:./not-here
+  [ "$status" -eq 5 ]
+  [[ "$stderr" == *"could not bring the source 'missing' into the cache; the manifest was left as it was"* ]]
+  [ "$(cksum < .agents/agent-ready.json)" = "$before" ]
+}
+
+@test "sources remove refuses a source that a selected profile requires through another pack" {
+  run_cli init --profiles node --yes < /dev/null
+  [ "$status" -eq 0 ]
+  mkdir -p agent-packs/beta/profiles/base/rules agent-packs/alpha/profiles/base/rules
+  printf '%s\n' '{"schemaVersion": 1, "name": "beta", "profiles": {"base": {"kind": "capability", "assets": "profiles/base"}}}' > agent-packs/beta/agent-ready-pack.json
+  printf '# beta\n' > agent-packs/beta/profiles/base/rules/beta-base.md
+  printf '%s\n' '{"schemaVersion": 1, "name": "alpha", "profiles": {"base": {"kind": "capability", "assets": "profiles/base", "requires": ["beta/base"]}}}' > agent-packs/alpha/agent-ready-pack.json
+  printf '# alpha\n' > agent-packs/alpha/profiles/base/rules/alpha-base.md
+  run_cli sources add beta path:./agent-packs/beta
+  [ "$status" -eq 0 ]
+  run_cli sources add alpha path:./agent-packs/alpha
+  [ "$status" -eq 0 ]
+  run_cli profiles add alpha/base
+  [ "$status" -eq 0 ]
+
+  run_cli sources remove beta
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"the selection still uses beta/base; remove what brings them in first with agent-ready profiles remove alpha/base"* ]]
+}
+
+@test "sources add refuses a directory that is not a valid pack, and a broken pack can still be removed" {
+  run_cli init --profiles node --yes < /dev/null
+  [ "$status" -eq 0 ]
+  before="$(cksum < .agents/agent-ready.json)"
+  mkdir not-a-pack
+  run_cli sources add bad path:./not-a-pack
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"the source 'bad' is not a valid profile pack:"*"the manifest was left as it was"* ]]
+  [ "$(cksum < .agents/agent-ready.json)" = "$before" ]
+
+  run_cli sources add bad path:./not-a-pack --offline
+  [ "$status" -eq 0 ]
+  run_cli sources remove bad
+  [ "$status" -eq 0 ]
+  [ "$(json_value "$(cat .agents/agent-ready.json)" '"sources" in data')" = "False" ]
+}
+
+@test "a selected pack that became invalid can still be removed with profiles remove and sources remove" {
+  run_cli init --profiles node --yes < /dev/null
+  [ "$status" -eq 0 ]
+  mkdir -p agent-packs
+  cp -R "$example_pack" agent-packs/acme
+  run_cli sources add acme path:./agent-packs/acme
+  [ "$status" -eq 0 ]
+  run_cli profiles add acme/kafka-interno
+  [ "$status" -eq 0 ]
+  printf 'not json\n' > agent-packs/acme/agent-ready-pack.json
+
+  run_cli profiles remove acme/kafka-interno
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"checked against golfo-kit's catalog only"* ]]
+  [ "$(json_value "$(cat .agents/agent-ready.json)" 'data["profiles"]')" = "['node']" ]
+  run_cli sources remove acme
+  [ "$status" -eq 0 ]
+}

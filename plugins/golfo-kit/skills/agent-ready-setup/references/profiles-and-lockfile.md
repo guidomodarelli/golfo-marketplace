@@ -163,6 +163,10 @@ npm ni instaladores propios de un pack.
 }
 ```
 
+`agent-ready sources add <nombre> <fuente> [--ref r] [--updates m]` la declara (validada antes de
+escribir) y la trae a la caché; `agent-ready sources remove` la saca si ningún profile seleccionado la usa, y
+`agent-ready profiles add acme/kafka-interno` selecciona un profile suyo.
+
 `sources.enabled: false` (por ejemplo, desde la organización) apaga los packs: no se descargan ni se leen, y
 seleccionar uno de sus profiles falla antes de escribir.
 
