@@ -666,3 +666,43 @@ PY
   [[ "$output" == *"reports 'Python 3.6.9'"* ]]
   [[ "$output" == *"fix: install Python 3.8 or newer and put it first on PATH as python3"* ]]
 }
+
+@test "remove waits for a running AGENTS.md review and keeps project lines that only mention the markers" {
+  run_cli apply --profiles node
+  [ "$status" -eq 0 ]
+  printf 'Do not edit the block starting with <!-- BEGIN AGENT-READY MANAGED --> by hand.\n\nRelease policy: keep me.\n\n%s' "$(cat AGENTS.md)" > AGENTS.md
+
+  mkdir .agents/.agent-ready-instructions.lock
+  run_cli remove --yes < /dev/null
+  [ "$status" -eq 1 ]
+  [[ "$stderr" == *"an AGENTS.md review is running"* ]]
+  [ -f .agents/agent-ready.lock.json ]
+  rmdir .agents/.agent-ready-instructions.lock
+
+  run_cli remove --yes < /dev/null
+  [ "$status" -eq 0 ]
+  grep -q 'Release policy: keep me.' AGENTS.md
+  grep -q 'Do not edit the block starting with' AGENTS.md
+  ! grep -q '^<!-- END AGENT-READY MANAGED -->$' AGENTS.md
+}
+
+@test "remove keeps the Git hook that another worktree of the repository still needs" {
+  run_cli apply --profiles node
+  [ "$status" -eq 0 ]
+  git add -A && git commit -qm "agent ready"
+  git config hook.agent-ready-relink.event post-index-change
+  git config hook.agent-ready-relink.command "sh .agents/hooks/relink-hard-link-views.sh"
+  git worktree add -q "$test_root/linked"
+
+  cd "$test_root/linked"
+  run_cli remove --dry-run --json
+  [[ "$(json_value "$output" '[entry["reason"] for entry in data["entries"] if entry["kind"] == "git-config"]')" == *"shared with the worktree"* ]]
+  run_cli remove --yes < /dev/null
+  [ "$status" -eq 0 ]
+  [ "$(git config --get hook.agent-ready-relink.command)" = "sh .agents/hooks/relink-hard-link-views.sh" ]
+
+  cd "$project_dir"
+  run_cli remove --yes < /dev/null
+  [ "$status" -eq 0 ]
+  [ -z "$(git config --get hook.agent-ready-relink.command)" ]
+}

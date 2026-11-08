@@ -2358,8 +2358,15 @@ BROWSER_METADATA_RELATIVE_PATH = ".agents/browser-tools.json"
 UNREGISTER_BROWSER_RELATIVE_PATH = "scripts/unregister-browser-servers.py"
 MANAGED_ROOT_DIRECTORIES = (".agents", ".claude", ".codex", ".github")
 CHANGED_DURING_REMOVAL_REASON = "changed while removing; it was kept"
-# Same directory as SYNC_LOCK_DIRECTORY in bootstrap.sh and the session hook.
+# Same directories as SYNC_LOCK_DIRECTORY in bootstrap.sh and the session hook, and as
+# MERGE_LOCK_DIRECTORY in managed-block.sh, which the detached instruction review holds.
 SYNC_LOCK_RELATIVE_PATH = ".agents/.agent-ready-assets.lock"
+INSTRUCTIONS_LOCK_RELATIVE_PATH = ".agents/.agent-ready-instructions.lock"
+REMOVAL_LOCKS = (
+    (SYNC_LOCK_RELATIVE_PATH, "an apply or a session sync is running"),
+    (INSTRUCTIONS_LOCK_RELATIVE_PATH, "an AGENTS.md review is running"),
+)
+AMBIGUOUS_MARKERS_REASON = "its managed block markers are not one pair of whole lines; remove the block by hand"
 # Kinds the lockfile inventories: while one of them is left, the lockfile stays for the next run.
 LOCK_INVENTORIED_KINDS = ("asset", "view")
 INVENTORY_KEPT_REASON = "kept because a managed path could not be removed; run agent-ready remove again"
@@ -2427,13 +2434,20 @@ def view_removal_entries(project_root, locked_assets):
 
 
 def without_managed_block(text):
-    """AGENTS.md text without its managed block, or None when it has no block."""
-    start = text.find(MANAGED_BLOCK_START)
-    end = text.find(MANAGED_BLOCK_END)
-    if start < 0 or end < start:
+    """AGENTS.md text without its managed block, or None when it has no block.
+
+    Like managed-block.sh, only whole lines are markers, so a line that mentions one stays.
+    Raises ValueError when the markers are not exactly one pair in order.
+    """
+    lines = text.splitlines()
+    starts = [index for index, line in enumerate(lines) if line == MANAGED_BLOCK_START]
+    ends = [index for index, line in enumerate(lines) if line == MANAGED_BLOCK_END]
+    if not starts and not ends:
         return None
-    before = text[:start].rstrip()
-    after = text[end + len(MANAGED_BLOCK_END):].lstrip("\r\n").rstrip()
+    if len(starts) != 1 or len(ends) != 1 or starts[0] > ends[0]:
+        raise ValueError(AMBIGUOUS_MARKERS_REASON)
+    before = "\n".join(lines[:starts[0]]).rstrip()
+    after = "\n".join(lines[ends[0] + 1:]).lstrip("\n").rstrip()
     remaining = "\n\n".join(part for part in (before, after) if part)
     return remaining + "\n" if remaining else ""
 
@@ -2450,7 +2464,10 @@ def template_skeleton(skill_dir, lock):
     if not path or not os.path.isfile(path):
         return None
     with open(path, encoding="utf-8") as file_handle:
-        return without_managed_block(file_handle.read())
+        try:
+            return without_managed_block(file_handle.read())
+        except ValueError:
+            return None
 
 
 def instruction_removal_entries(project_root, skill_dir, lock):
@@ -2462,7 +2479,10 @@ def instruction_removal_entries(project_root, skill_dir, lock):
     if local == LOCAL_SYMLINK:
         return [removal_entry("AGENTS.md", REMOVAL_KEEP, "a symlink; remove its managed block by hand", "instructions")]
     with open(path, encoding="utf-8") as file_handle:
-        remaining = without_managed_block(file_handle.read())
+        try:
+            remaining = without_managed_block(file_handle.read())
+        except ValueError:
+            return [removal_entry("AGENTS.md", REMOVAL_KEEP, AMBIGUOUS_MARKERS_REASON, "instructions")]
     if remaining is None:
         return []
     skeleton = template_skeleton(skill_dir, lock)
@@ -2597,6 +2617,19 @@ def display_path(project_root, path):
     return os.path.relpath(path, project_root).replace(os.sep, "/")
 
 
+def other_worktree_using_agent_ready(project_root):
+    """Another worktree of the same repository with a lockfile: it shares the Git config and hooks."""
+    listed = run_quiet(["git", "worktree", "list", "--porcelain"], cwd=project_root) or ""
+    here = os.path.normcase(os.path.realpath(project_root))
+    for line in listed.splitlines():
+        if not line.startswith("worktree "):
+            continue
+        worktree = line[len("worktree "):]
+        if os.path.normcase(os.path.realpath(worktree)) != here and os.path.isfile(os.path.join(worktree, LOCK_RELATIVE_PATH)):
+            return worktree
+    return None
+
+
 def local_removal_entries(project_root):
     """Git hooks and files that only this checkout has: they never reach the repository."""
     entries = []
@@ -2610,6 +2643,12 @@ def local_removal_entries(project_root):
             if GIT_HOOK_MARKER in file_handle.read():
                 entries.append(removal_entry(display_path(project_root, hook), REMOVAL_REMOVE,
                                              "relinks .claude hard-link views after git operations", "git-hook", local_state(hook)))
+    sharing_worktree = other_worktree_using_agent_ready(project_root)
+    if sharing_worktree:
+        # The Git config and the hooks directory belong to every worktree of the repository.
+        for entry in entries:
+            entry.update(action=REMOVAL_KEEP, local=None,
+                         reason=f"shared with the worktree {sharing_worktree}, which still uses agent-ready-setup")
     review_hash = git_path(project_root, f"info/{INSTRUCTION_REVIEW_HASH_NAME}")
     for path, reason in ((os.path.join(project_root, HARD_LINK_VIEWS_MANIFEST), "list of .claude hard-link views"),
                          (review_hash, "hash of the last instruction review")):
@@ -2747,26 +2786,28 @@ def apply_removal(project_root, skill_dir, plan):
 
 
 def remove_from_repository(project_root, skill_dir):
-    """Plan again and remove holding the lock that apply and the session hook take.
+    """Plan again and remove holding the locks of apply, the session hook and the AGENTS.md review.
 
-    Without it, a projection already running would write the assets and the lockfile
-    back after the removal reported success.
+    Without them, a projection or a review already running would write the assets, the
+    lockfile or AGENTS.md back after the removal reported success.
     """
-    lock = os.path.join(project_root, SYNC_LOCK_RELATIVE_PATH)
-    locked = not has_linked_parent(project_root, SYNC_LOCK_RELATIVE_PATH) and not is_link(os.path.dirname(lock))
-    if locked:
-        os.makedirs(os.path.dirname(lock), exist_ok=True)
-        try:
-            os.mkdir(lock)
-        except FileExistsError:
-            raise StateError(f"an apply or a session sync is running ({SYNC_LOCK_RELATIVE_PATH} exists); run agent-ready "
-                             "remove again when it finishes, or delete that directory if no agent-ready process is running") from None
+    held = []
+    agents_directory = os.path.join(project_root, ".agents")
     try:
+        if not is_link(agents_directory):
+            os.makedirs(agents_directory, exist_ok=True)
+            for relative, running in REMOVAL_LOCKS:
+                try:
+                    os.mkdir(os.path.join(project_root, relative))
+                except FileExistsError:
+                    raise StateError(f"{running} ({relative} exists); run agent-ready remove again when it finishes, "
+                                     "or delete that directory if no agent-ready process is running") from None
+                held.append(relative)
         report = apply_removal(project_root, skill_dir, plan_removal(project_root, skill_dir))
     finally:
-        if locked:
+        for relative in reversed(held):
             try:
-                os.rmdir(lock)
+                os.rmdir(os.path.join(project_root, relative))
             except OSError:
                 pass
     remove_managed_roots_if_empty(project_root)

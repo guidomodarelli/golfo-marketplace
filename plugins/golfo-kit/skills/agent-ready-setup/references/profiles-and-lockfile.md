@@ -423,8 +423,12 @@ python3 "$SKILL_DIR/scripts/agent-ready" remove [--dry-run] [--yes] [--json]
 
   Pide confirmación solo con terminal; sin terminal, con `CI` o con `--no-input` necesita `--yes` y
   sin él sale con 2 sin tocar nada. Después de confirmar toma el lock de la sincronización
-  (`.agents/.agent-ready-assets.lock`) y vuelve a armar el plan: si un apply o el hook de sesión lo
-  tienen, sale con 1 sin tocar nada. Nunca cambia un archivo a través de un directorio que es un
+  (`.agents/.agent-ready-assets.lock`) y el de la revisión de `AGENTS.md`
+  (`.agents/.agent-ready-instructions.lock`), y vuelve a armar el plan: si un apply, el hook de
+  sesión o la revisión en segundo plano tienen uno, sale con 1 sin tocar nada. Como `merge-instructions.sh`,
+  solo toma como marcadores del bloque las líneas completas; si no son un único par, conserva
+  `AGENTS.md`. El hook de git y su configuración son de todos los worktrees del repositorio: quedan
+  mientras otro worktree tenga lockfile. Nunca cambia un archivo a través de un directorio que es un
   symlink (por ejemplo, `.claude` apuntando a `~/.claude`): lo conserva. Un archivo que cambió entre
   el plan y la escritura se conserva. Sale con 1 si algo no se pudo quitar y lo nombra; si es un
   asset o una vista, el lockfile y el manifest quedan para que la siguiente corrida termine.
