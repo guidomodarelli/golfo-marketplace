@@ -66,17 +66,29 @@ jobs:
   # each: line endings, code pages and hard-link views on Windows; Bash 3.2 and BSD
   # tools on macOS. The Linux run of these suites lives in the jobs around this one.
   agent-ready-cross-platform:
-    name: Agent Ready (${{ matrix.os }}, Python ${{ matrix.python }})
+    name: Agent Ready (${{ matrix.os }}, Python ${{ matrix.python }}${{ matrix.shard && format(', shard {0}', matrix.shard) || '' }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
         include:
-          # bootstrap.bats would not fit in the time budget of a Windows runner.
+          # Git Bash pays for every process it starts, and these suites start thousands, so
+          # on Windows the same suites take about four times as long as on macOS. Three
+          # shards of similar length (about 9, 9 and 11 minutes of tests) keep the Windows
+          # run close to the others. bootstrap.bats would not fit in its time budget at all.
           - os: windows-latest
             python: "3.13"
-            suites: agent-ready-state.bats agent-ready-detection.bats agent-ready-packs.bats agent-ready-updates.bats agent-ready-config.bats agent-ready-cli.bats
+            shard: 1/3
+            suites: agent-ready-state.bats agent-ready-config.bats
+          - os: windows-latest
+            python: "3.13"
+            shard: 2/3
+            suites: agent-ready-updates.bats agent-ready-detection.bats
+          - os: windows-latest
+            python: "3.13"
+            shard: 3/3
+            suites: agent-ready-packs.bats agent-ready-cli.bats
           - os: macos-latest
             python: "3.13"
             suites: agent-ready-state.bats agent-ready-detection.bats agent-ready-packs.bats agent-ready-updates.bats agent-ready-config.bats agent-ready-cli.bats merge-instructions.bats bootstrap.bats
@@ -89,6 +101,18 @@ jobs:
       run:
         shell: bash
     steps:
+      # Defender scans every file the tests write in their temporary repositories. The
+      # runner is thrown away after the job, so excluding these directories costs nothing.
+      - name: Keep Windows Defender out of the test directories
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          try {
+            Add-MpPreference -ExclusionPath $env:TEMP, $env:RUNNER_TEMP, $env:GITHUB_WORKSPACE -ErrorAction Stop
+            Write-Output "Defender exclusions: $((Get-MpPreference).ExclusionPath -join ', ')"
+          } catch {
+            Write-Output "::warning::Defender exclusions were not applied: $($_.Exception.Message)"
+          }
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
