@@ -587,6 +587,24 @@ while IFS=$'\t' read -r configuration_key configuration_value; do
     auto_sources) auto_sources="$configuration_value" ;;
   esac
 done <<< "$configuration"
+# golfo-kit is a source too: pinned, its content comes from the revision of the lock and the
+# engine stays this one (agent_ready_golfo_kit.py). Review mode and a session start that hands
+# the sync to the background only read the cache: the detached sync resolves refs and downloads.
+golfo_kit_arguments=(golfo-kit-source --project . --skill-dir "$skill_dir")
+if [[ "$review_mode" -eq 1 || "$defer_to_background" -eq 1 ]]; then
+  golfo_kit_arguments+=(--offline --read-only)
+fi
+if ! content_skill_dir="$(python3 "$state_script" "${golfo_kit_arguments[@]}")"; then
+  printf 'WARNING: could not prepare the golfo-kit content; nothing was synchronized.\n' >&2
+  exit 0
+fi
+if [[ -n "$content_skill_dir" ]]; then
+  skill_dir="$content_skill_dir"
+  state_script="$skill_dir/scripts/agent-ready-state.py"
+  # shellcheck disable=SC2034
+  ASSET_SYNC_SKILL_DIR="$skill_dir"
+fi
+
 # A pinned repository with a source in auto still syncs; its policy guards the rest.
 only_check=0
 if [[ "$update_mode" == pinned && -z "$auto_sources" && "$explicit_selection" -eq 0 ]]; then

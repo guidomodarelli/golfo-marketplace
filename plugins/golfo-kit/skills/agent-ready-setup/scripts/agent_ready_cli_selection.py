@@ -19,6 +19,7 @@ from agent_ready_cli_common import (
     UPDATE_MODES,
     UsageError,
     apply_selection,
+    content_root,
     engine,
     fail,
     resolve_provider,
@@ -66,7 +67,7 @@ def profile_names(text):
 
 def command_profiles_list(arguments):
     """Every profile the repository can select, with its kind, source and whether it is selected."""
-    catalog = engine().load_effective_catalog(arguments.project_root, SKILL_ROOT)
+    catalog = engine().load_effective_catalog(arguments.project_root, content_root(arguments.project_root))
     selected = set(selected_profiles(arguments.project_root))
     rows = []
     for name, profile in sorted(catalog["profiles"].items()):
@@ -90,11 +91,11 @@ def command_profiles_list(arguments):
 def catalog_for_removal(project_root):
     """The effective catalog, or golfo-kit's alone when a pack cannot load, so a broken pack can be dropped."""
     try:
-        return engine().load_effective_catalog(project_root, SKILL_ROOT)
+        return engine().load_effective_catalog(project_root, content_root(project_root))
     except (ProfileError, StateError) as broken_pack:
         sys.stderr.write(f"WARNING: a profile source could not be loaded ({broken_pack}); "
                          "the remaining selection is checked against golfo-kit's catalog only.\n")
-        return engine().load_profile_catalog(SKILL_ROOT)
+        return engine().load_profile_catalog(content_root(project_root))
 
 
 def change_selection(arguments, compute, removing=False):
@@ -105,7 +106,7 @@ def change_selection(arguments, compute, removing=False):
     if removing:
         catalog = catalog_for_removal(arguments.project_root)
     else:
-        catalog = engine().load_effective_catalog(arguments.project_root, SKILL_ROOT)
+        catalog = engine().load_effective_catalog(arguments.project_root, content_root(arguments.project_root))
     selection = compute(current)
     if removing and not all(name in catalog["profiles"] for name in selection):
         # Without the pack catalog, a kept pack profile cannot be resolved: only the stack is checked.
@@ -143,7 +144,7 @@ def command_profiles_remove(arguments):
 def command_sources_list(arguments):
     """Declared profile sources and whether this machine has them."""
     configuration = engine().configuration_of(arguments.project_root)
-    catalog = engine().load_effective_catalog(arguments.project_root, SKILL_ROOT)
+    catalog = engine().load_effective_catalog(arguments.project_root, content_root(arguments.project_root))
     rows = []
     for name, source in sorted(catalog.get("sources", {}).items()):
         rows.append({"name": name, "type": source["type"], "origin": source["origin"],
@@ -229,7 +230,7 @@ def required_closure(catalog, name):
 def pack_problem(project_root, name):
     """Why the engine cannot load the catalog of a source just fetched, or None when it can."""
     try:
-        source = engine().load_effective_catalog(project_root, SKILL_ROOT)["sources"].get(name, {})
+        source = engine().load_effective_catalog(project_root, content_root(project_root))["sources"].get(name, {})
     except (ProfileError, StateError) as invalid_pack:
         return str(invalid_pack)
     return None if source.get("state") == "available" else (source.get("reason") or "it is not available")
@@ -240,7 +241,7 @@ def command_sources_remove(arguments):
     prefix = f"{arguments.name}{NAMESPACE_SEPARATOR}"
     selection = selected_profiles(arguments.project_root)
     try:
-        catalog = engine().load_effective_catalog(arguments.project_root, SKILL_ROOT)
+        catalog = engine().load_effective_catalog(arguments.project_root, content_root(arguments.project_root))
     except (ProfileError, StateError):
         # A broken pack must still be removable: without a catalog, only the names themselves count.
         catalog = {"profiles": {}}
@@ -294,7 +295,7 @@ def command_init(arguments):
         raise UsageError(f"this repository is already set up; change it with {CLI_NAME} profiles add|remove "
                          f"and {CLI_NAME} apply")
     provider = resolve_provider(arguments.provider)
-    catalog = engine().load_effective_catalog(arguments.project_root, SKILL_ROOT)
+    catalog = engine().load_effective_catalog(arguments.project_root, content_root(arguments.project_root))
     if arguments.stack:
         try:
             arguments.profiles = ",".join(engine().profiles_for_stack(catalog, arguments.stack))

@@ -45,6 +45,7 @@ from agent_ready_config import LAYER_PROJECT, ConfigurationError, format_value, 
 from agent_ready_options import SOURCES_ENABLED_KEY
 from agent_ready_cli_lifecycle import register as register_lifecycle_commands
 from agent_ready_cli_reviews import register as register_review_commands
+from agent_ready_golfo_kit import GOLFO_KIT_SOURCE_NAME as GOLFO_KIT_SOURCE
 from agent_ready_cli_selection import register as register_selection_commands
 from agent_ready_prompts import Cancelled
 
@@ -85,18 +86,25 @@ def command_apply(arguments):
 
 
 def command_update(arguments):
-    """Adopt the latest revision of some sources, or of every declared one, and of golfo-kit."""
+    """Adopt the latest revision of some sources, or of every declared one, and of golfo-kit.
+
+    golfo-kit is always a source; --to picks the tag, branch or commit of a single one.
+    """
+    if arguments.to and len(arguments.sources) != 1:
+        raise UsageError("--to needs exactly one source, e.g. agent-ready update golfo-kit --to <tag>")
     sources = declared_sources(arguments.project_root)
-    if sources is None and arguments.sources:
+    packs = [name for name in arguments.sources if name != GOLFO_KIT_SOURCE]
+    if sources is None and packs:
         raise UsageError(f"profile sources are off ({SOURCES_ENABLED_KEY}: false), so there is no source to update")
     declarations = {declaration["name"]: declaration for declaration in sources or []}
-    unknown = [name for name in arguments.sources if name not in declarations]
+    unknown = [name for name in packs if name not in declarations]
     if unknown:
-        known = ", ".join(sorted(declarations)) or "none"
-        raise UsageError(f"unknown profile source {', '.join(unknown)}; the manifest declares: {known}")
-    names = arguments.sources or [name for name, declaration in sorted(declarations.items()) if follows_a_ref(declaration)]
+        known = ", ".join([GOLFO_KIT_SOURCE] + sorted(declarations))
+        raise UsageError(f"unknown profile source {', '.join(unknown)}; the sources are: {known}")
+    names = arguments.sources or [GOLFO_KIT_SOURCE] + [
+        name for name, declaration in sorted(declarations.items()) if follows_a_ref(declaration)]
     provider = resolve_provider(arguments.provider)
-    extra = update_source_arguments(names)
+    extra = update_source_arguments(names) + (["--update-to", arguments.to] if arguments.to else [])
     if arguments.dry_run:
         return run_bash(bootstrap_command(provider, "--plan", *extra), arguments.project_root)
     return apply_selection(arguments, provider, extra)
@@ -294,8 +302,10 @@ def build_parser():
                               help="review AGENTS.md with the provider even when the review cache holds a current result")
 
     update = new_subparser(subparsers, "update", "Adopt the latest revision of profile sources and of golfo-kit.",
-                           "  agent-ready update\n  agent-ready update acme --dry-run", command_update, needs_provider=True)
-    update.add_argument("sources", nargs="*", metavar="source", help="sources to adopt (default: every declared source)")
+                           "  agent-ready update\n  agent-ready update acme --dry-run\n  agent-ready update golfo-kit --to <tag>", command_update, needs_provider=True)
+    update.add_argument("sources", nargs="*", metavar="source",
+                        help="sources to adopt: golfo-kit or a pack (default: golfo-kit and every declared source)")
+    update.add_argument("--to", metavar="REF", help="tag, branch or full commit the single source adopts (default: the latest of its ref)")
     update.add_argument("-n", "--dry-run", action="store_true", help="show what would change instead of applying")
 
     config = new_subparser(subparsers, "config", "Read and write the layered configuration.",

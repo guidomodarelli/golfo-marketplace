@@ -3099,6 +3099,34 @@
           "description": "Explica que un archivo versionado se puede editar y por eso nunca oculta ni resuelve un hallazgo"
         }
       ]
+    },
+    {
+      "id": "golfo-kit-pinned-for-a-delivered-solution",
+      "description": "Para que golfo-kit no cambie en un repo entregado se fija con sources.golfoKit en pinned y se actualiza solo con agent-ready update golfo-kit; el motor sigue al plugin.",
+      "input": "Entregamos a un cliente un repo que usa agent-ready-setup. Necesito que las rules de golfo-kit no cambien aunque se publique una versión nueva del plugin, y poder pasar a una versión concreta solo cuando lo decidamos. ¿Qué configuro y qué comando uso para actualizar? ¿Qué parte sigue actualizándose sola? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "golfoKit",
+          "description": "Declara golfo-kit como fuente en sources.golfoKit",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "pinned",
+          "description": "Usa el modo pinned"
+        },
+        {
+          "type": "regex",
+          "pattern": "update golfo-kit.{0,40}--to",
+          "description": "Actualiza con agent-ready update golfo-kit --to"
+        },
+        {
+          "type": "regex",
+          "pattern": "(motor|engine|scripts|hooks).{0,200}(plugin instalado|siguen?|actualiza|nunca se fija|no se fija)",
+          "description": "Explica que el motor sigue al plugin instalado"
+        }
+      ]
     }
   ]
 }

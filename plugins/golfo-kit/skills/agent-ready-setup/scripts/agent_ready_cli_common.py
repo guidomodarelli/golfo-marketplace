@@ -205,6 +205,14 @@ def version_text():
 _ENGINE = None
 
 
+def content_root(project_root):
+    """Skill directory whose catalog the repository selects from: its pinned golfo-kit revision, or this installation.
+
+    It reads only the cache, so choosing profiles never needs the network.
+    """
+    return engine().golfo_kit_content_dir(project_root, SKILL_ROOT, offline=True)
+
+
 def engine():
     """The agent-ready-state.py module of this installation, loaded once, to reuse its functions."""
     global _ENGINE
