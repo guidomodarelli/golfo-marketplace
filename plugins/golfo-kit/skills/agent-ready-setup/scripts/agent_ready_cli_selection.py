@@ -195,11 +195,17 @@ def command_sources_add(arguments):
     if not arguments.offline:
         # The same strict download an apply runs: a missing path or an unreachable repository fails here.
         command = [sys.executable, STATE_SCRIPT, "fetch-sources", "--project", arguments.project_root, "--skill-dir", SKILL_ROOT]
-        if subprocess.call(command, cwd=arguments.project_root, stdout=sys.stderr) != EXIT_OK:
+        try:
+            fetch_status = subprocess.call(command, cwd=arguments.project_root, stdout=sys.stderr)
+            problem = pack_problem(arguments.project_root, arguments.name) if fetch_status == EXIT_OK else None
+        except KeyboardInterrupt:
+            # Cancelling leaves the manifest as it was, as the cancellation message promises.
+            restore_manifest()
+            raise
+        if fetch_status != EXIT_OK:
             restore_manifest()
             fail(f"could not bring the source '{arguments.name}' into the cache; the manifest was left as it was")
             return EXIT_SOURCE_UNAVAILABLE
-        problem = pack_problem(arguments.project_root, arguments.name)
         if problem:
             restore_manifest()
             raise UsageError(f"the source '{arguments.name}' is not a valid profile pack: {problem}; the manifest was left as it was")
