@@ -46,8 +46,9 @@ Sin el preset, el repositorio sigue en `auto`, como siempre: es opt-in por repos
   sha256. Si algo no coincide, falla antes de escribir y nombra la fuente o el archivo. Un asset
   borrado vuelve desde la revisión del lock, no desde una versión nueva.
 - Un manifest editado a mano que cambia la selección no se aplica en silencio: el apply falla y
-  pide decidirlo. Para cambiar la selección, pasarla explícita con `--profiles` o `--stack` (o
-  `agent-ready profiles add|remove`); usa las revisiones fijadas.
+  pide decidirlo. Para cambiar la selección, pasarla explícita con `--profiles` o `--stack`; usa
+  las revisiones fijadas. `agent-ready profiles add|remove` cambian el manifest y dicen el
+  `agent-ready apply --profiles <selección>` que lo aplica.
 - `agent-ready check` en el CI sale con `4` si el repo se apartó del lock
   ([ci-check.md](ci-check.md)).
 

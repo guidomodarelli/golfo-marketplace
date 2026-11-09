@@ -750,4 +750,12 @@ PY
   [ "$status" -eq 0 ]
   [ "$(lock_value 'data["profileOrder"]')" = "['node', 'browser']" ]
   [ "$(lock_value 'data["source"]["revision"]')" = "$first_revision" ]
+
+  # profiles add|remove change the manifest and name the explicit apply that projects it.
+  run_cli profiles remove browser
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"Run agent-ready apply --profiles node to project them"* ]]
+  run_cli apply --profiles node
+  [ "$status" -eq 0 ]
+  [ "$(lock_value 'data["profileOrder"]')" = "['node']" ]
 }

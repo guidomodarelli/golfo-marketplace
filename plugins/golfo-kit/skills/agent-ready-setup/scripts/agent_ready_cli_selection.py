@@ -32,6 +32,7 @@ from agent_ready_options import (
     DETECTION_ENABLED_KEY,
     PROFILES_KEY,
     SOURCES_ENABLED_KEY,
+    UPDATES_FROM_LOCK_KEY,
     UPDATES_MODE_KEY,
 )
 from agent_ready_packs import NAMESPACE_SEPARATOR, parse_profile_sources
@@ -98,6 +99,15 @@ def catalog_for_removal(project_root):
         return engine().load_profile_catalog(content_root(project_root))
 
 
+def apply_command_for(project_root, selection):
+    """The apply that projects a new selection: explicit when updates.fromLock reproduces the lock."""
+    command = f"{CLI_NAME} apply"
+    state = engine()
+    reproduces_lock = (state.configuration_of(project_root).value(UPDATES_FROM_LOCK_KEY)
+                       and os.path.isfile(os.path.join(project_root, state.LOCK_RELATIVE_PATH)))
+    return command + (f" --profiles {','.join(selection)}" if reproduces_lock else "")
+
+
 def change_selection(arguments, compute, removing=False):
     """Validate the new selection against the catalog and write it; the projection is apply's job."""
     current = selected_profiles(arguments.project_root)
@@ -117,8 +127,9 @@ def change_selection(arguments, compute, removing=False):
     if error:
         raise UsageError(error)
     path = write_project_selection(arguments.project_root, selection)
-    sys.stderr.write(f"Profiles in {path}: {', '.join(selection)}. Run {CLI_NAME} apply to project them "
-                     f"({CLI_NAME} apply --dry-run shows what would change).\n")
+    apply_command = apply_command_for(arguments.project_root, selection)
+    sys.stderr.write(f"Profiles in {path}: {', '.join(selection)}. Run {apply_command} to project them "
+                     f"({apply_command} --dry-run shows what would change).\n")
     return EXIT_OK
 
 
