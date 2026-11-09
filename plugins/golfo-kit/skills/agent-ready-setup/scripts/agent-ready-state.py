@@ -99,6 +99,7 @@ from agent_ready_detection import (  # noqa: E402
     format_evidence_list,
     validate_catalog_detection,
 )
+import agent_ready_compatibility as compatibility  # noqa: E402
 import agent_ready_golfo_kit as golfo_kit  # noqa: E402
 from agent_ready_packs import (  # noqa: E402
     SOURCE_AVAILABLE,
@@ -136,6 +137,8 @@ SKILL_NAME = "agent-ready-setup"
 PLUGIN_NAME = "golfo-kit"
 BASE_PROFILE_NAME = "common"
 SCHEMA_VERSION = 1
+# The schemaVersion of golfo-kit's catalog this engine reads; a newer one asks for a newer plugin.
+GOLFO_CATALOG_SCHEMA_VERSION = 1
 MANAGED_BLOCK_START = "<!-- BEGIN AGENT-READY MANAGED -->"
 MANAGED_BLOCK_END = "<!-- END AGENT-READY MANAGED -->"
 SETTINGS_TEMPLATE_FALLBACK_STATUS = 10
@@ -309,12 +312,19 @@ def write_text_if_changed(path, text):
 # ---------------------------------------------------------------------------
 
 def load_profile_catalog(skill_dir):
-    """Load and validate the profile catalog of the skill source."""
+    """Load and validate the profile catalog of the skill source.
+
+    Content that needs a newer engine than the installed one (``minEngine``, ``schemaVersion``)
+    stops here, before anything is written.
+    """
     catalog_path = os.path.join(skill_dir, PROFILE_CATALOG_RELATIVE_PATH)
     try:
         catalog = read_json_file(catalog_path, "profile catalog")
     except StateError as caught_error:
         raise ProfileError(str(caught_error)) from caught_error
+    label = f"the {golfo_kit.GOLFO_KIT_SOURCE_NAME} catalog"
+    compatibility.require_engine(label, catalog, engine_version_of(skill_dir), GOLFO_CATALOG_SCHEMA_VERSION)
+    compatibility.validate_compatibility(label, catalog)
     profiles = catalog.get("profiles")
     if not isinstance(profiles, dict) or not profiles:
         raise ProfileError(f"profile catalog {catalog_path} has no profiles")
@@ -363,8 +373,10 @@ def load_effective_catalog(project_root, skill_dir, source_state=None):
         update_mode = effective_update_mode(configuration, declaration)
         source = locate_source(declaration, locked_sources.get(name), project_root, update_mode, (source_state or {}).get(name))
         if source["state"] == SOURCE_AVAILABLE:
-            pack = load_pack_catalog(source, golfo_profile_names)
+            pack = load_pack_catalog(source, golfo_profile_names, engine_version_of(skill_dir))
             source["catalogDigest"] = pack["digest"]
+            source["version"] = pack["version"]
+            source["changes"] = pack["changes"]
             source["availableProfiles"] = sorted(pack["profiles"])
             catalog["profiles"].update(pack["profiles"])
             catalog["packAssetRoots"].update(pack["assetRoots"])
@@ -679,7 +691,29 @@ def source_entries(catalog, resolved, digests, locked_sources):
             "contentDigest": sha256_of_text("\n".join(f"{profile}\t{digests[profile]['digest']}" for profile in selected)),
             "profiles": selected,
         }
+        if source.get("version"):
+            entries[name]["version"] = source["version"]
     return entries
+
+
+def version_changes(catalog, plan_source, lock):
+    """Each source whose version moves from the lock, with its declared changelog, newest first."""
+    if not lock:
+        return []
+    changes = []
+    golfo_change = compatibility.version_change(golfo_kit.GOLFO_KIT_SOURCE_NAME, (lock.get("source") or {}).get("version"),
+                                                plan_source.get("version"), catalog.get("changes", []))
+    if golfo_change:
+        changes.append(golfo_change)
+    locked_sources = lock.get("profileSources", {})
+    for name, source in sorted(catalog.get("sources", {}).items()):
+        if source["state"] != SOURCE_AVAILABLE:
+            continue
+        change = compatibility.version_change(name, (locked_sources.get(name) or {}).get("version"),
+                                              source.get("version"), source.get("changes", []))
+        if change:
+            changes.append(change)
+    return changes
 
 
 def declaration_differences(declaration, locked_entry):
@@ -1278,16 +1312,18 @@ def compute_plan(project_root, skill_dir, catalog, profile_names):
     golfo_assets = {destination: entry for destination, entry in assets.items() if not is_pack_profile(entry["profile"])}
     # Without a lockfile the first apply keeps the previous overwrite contract.
     edited_views, preserved_views = detached_views(project_root, assets, locked_assets) if lock else ([], [])
+    identity = source_identity(skill_dir, golfo_assets, merged)
     return {
         "schemaVersion": SCHEMA_VERSION,
         "profiles": resolved,
         "primaryStack": primary_stack(catalog, resolved),
         "tools": resolved_tools(catalog, resolved),
         # Packs have their own entries: an update of a pack is not an update of Golfo.
-        "source": source_identity(skill_dir, golfo_assets, merged),
+        "source": identity,
         "profileDigests": digests,
         "profileSources": source_entries(catalog, resolved, digests, (lock or {}).get("profileSources", {})),
         "sourceReport": source_report(catalog, resolved, digests, lock),
+        "versionChanges": version_changes(catalog, identity, lock),
         "lockedSource": lock.get("source") if lock else None,
         "hasLock": lock is not None,
         "entries": entries,
@@ -1541,6 +1577,25 @@ def print_plan_sources(plan):
     write_line("")
 
 
+def print_plan_versions(plan):
+    """Version jumps of the sources and the changes they declare, breaking ones first in the eye."""
+    if not plan.get("versionChanges"):
+        return
+    stream = sys.stdout
+    write_line(paint("Version changes (what each source declares in its changelog)", "heading", stream))
+    for item in plan["versionChanges"]:
+        jump = paint("  (major version jump)", "warning", stream) if item["majorJump"] else ""
+        write_line(f"  {item['source']} {item['from']} -> {item['to']}{jump}")
+        if not item["changes"]:
+            write_line(paint("    no changelog declared for these versions", "muted", stream))
+        for change in item["changes"]:
+            if change.get("breaking"):
+                write_line(paint(f"    ! breaking {change['version']}: {change['summary']}", "error", stream))
+            else:
+                write_line(f"    - {change['version']}: {change['summary']}")
+    write_line("")
+
+
 def print_plan(project_root, skill_dir, plan, provider, skip_marketplace_upgrade, configuration):
     """Human readable plan on stdout."""
     stream = sys.stdout
@@ -1557,6 +1612,7 @@ def print_plan(project_root, skill_dir, plan, provider, skip_marketplace_upgrade
     print_ignored_configuration(configuration, stream)
     write_line("")
     print_plan_sources(plan)
+    print_plan_versions(plan)
     print_plan_detection(plan)
     write_line(paint("Project assets", "heading", stream))
     counts = {}

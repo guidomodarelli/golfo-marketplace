@@ -947,3 +947,77 @@ PY
   [[ "$output" == *"is not in the cache of this machine and this run uses no network"* ]]
   [ ! -d "$XDG_CACHE_HOME/agent-ready-setup/packs" ] || [ -z "$(find "$XDG_CACHE_HOME/agent-ready-setup/packs" -name agent-ready-pack.json)" ]
 }
+
+# Sets top-level fields of the catalog of the published pack and commits them.
+set_pack_catalog_fields() {
+  python3 - "$pack_repository/agent-ready-pack.json" "$1" <<'PY'
+import json, sys
+path = sys.argv[1]
+catalog = json.load(open(path, encoding="utf-8"))
+catalog.update(json.loads(sys.argv[2]))
+json.dump(catalog, open(path, "w", encoding="utf-8"), indent=2)
+PY
+  git -C "$pack_repository" commit -qam "catalog fields"
+  pack_commit="$(git -C "$pack_repository" rev-parse HEAD)"
+}
+
+@test "a pack that needs a newer engine stops before writing and names the plugin version" {
+  publish_pack_repository acme
+  set_pack_catalog_fields '{"minEngine": "99.0.0"}'
+  write_manifest acme/kafka-interno "acme=git+https://packs.example.invalid/acme#main"
+  before="$(tree_fingerprint)"
+
+  run_bootstrap
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"pack 'acme' needs the agent-ready-setup engine 99.0.0 or newer"* ]]
+  [[ "$output" == *"install the golfo-kit plugin 99.0.0 or newer"* ]]
+  [ "$(tree_fingerprint)" = "$before" ]
+}
+
+@test "a pack with a catalog schema this engine does not know asks for a newer plugin" {
+  publish_pack_repository acme
+  set_pack_catalog_fields '{"schemaVersion": 2}'
+  write_manifest acme/kafka-interno "acme=git+https://packs.example.invalid/acme#main"
+
+  run_bootstrap
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"pack 'acme' uses catalog schemaVersion 2"* ]]
+  [[ "$output" == *"reads up to 1: update the golfo-kit plugin"* ]]
+}
+
+@test "a pack with an invalid changelog is rejected and a met minEngine applies" {
+  publish_pack_repository acme
+  set_pack_catalog_fields '{"changes": [{"version": "1.0.0", "summary": "First", "breaking": "yes"}]}'
+  write_manifest acme/kafka-interno "acme=git+https://packs.example.invalid/acme#main"
+  run_bootstrap
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"pack 'acme': change 1: breaking must be true or false"* ]]
+
+  set_pack_catalog_fields '{"minEngine": "0.1.0", "changes": [{"version": "1.0.0", "summary": "First"}]}'
+  run_bootstrap --update-source acme
+  [ "$status" -eq 0 ]
+}
+
+@test "the update plan shows the version jump of a pack and its changelog, breaking changes first in the eye" {
+  publish_pack_repository acme
+  set_pack_catalog_fields '{"version": "1.0.0", "changes": [{"version": "1.0.0", "summary": "First release"}]}'
+  write_manifest acme/kafka-interno "acme=git+https://packs.example.invalid/acme#main"
+  run_bootstrap
+  [ "$status" -eq 0 ]
+  [ "$(lock_value 'data["profileSources"]["acme"]["version"]')" = "1.0.0" ]
+  set_pack_catalog_fields '{"version": "2.0.0", "changes": [{"version": "2.0.0", "summary": "Kafka topics renamed", "breaking": true}, {"version": "1.1.0", "summary": "A new rule"}, {"version": "1.0.0", "summary": "First release"}]}'
+  before="$(tree_fingerprint)"
+
+  run_bootstrap --plan --update-source acme
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"acme 1.0.0 -> 2.0.0  (major version jump)"* ]]
+  [[ "$output" == *"! breaking 2.0.0: Kafka topics renamed"* ]]
+  [[ "$output" == *"- 1.1.0: A new rule"* ]]
+  [[ "$output" != *"- 1.0.0: First release"* ]]
+  [ "$(tree_fingerprint)" = "$before" ]
+
+  run --separate-stderr env PATH="$fake_bin:$PATH" bash "$skill_dir/scripts/bootstrap.sh" --skill-dir "$skill_dir"     --provider claude --plan --update-source acme --json
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s' "$output" | python3 -c 'import json,sys; item=json.load(sys.stdin)["versionChanges"][0]; print(item["source"], item["majorJump"], [c["version"] for c in item["breaking"]])' | tr -d '\r')" = \
+    "acme True ['2.0.0']" ]
+}

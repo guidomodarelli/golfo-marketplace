@@ -195,6 +195,37 @@ significado de la sección 1, y estos límites:
 - Las rules de un pack entran en la lista del bloque gestionado de `AGENTS.md`, como las de cualquier
   profile. Un pack no cambia el template ni las instrucciones propias del proyecto.
 
+**Compatibilidad declarada.** El catálogo de un pack, y el de golfo-kit (`assets/profiles.json`),
+pueden declarar tres campos opcionales:
+
+```json
+{
+  "schemaVersion": 1,
+  "name": "acme",
+  "version": "2.0.0",
+  "minEngine": "0.46.0",
+  "changes": [
+    { "version": "2.0.0", "summary": "Los topics de Kafka cambian de nombre", "breaking": true },
+    { "version": "1.1.0", "summary": "Rule nueva para el cliente interno" }
+  ],
+  "profiles": {}
+}
+```
+
+- `version` es la versión semver del contenido. Sin `version`, golfo-kit usa la de su plugin.
+- `minEngine` es la versión más vieja del motor (el plugin golfo-kit que corre agent-ready-setup)
+  que tiene lo que el contenido usa. No hay tope: el motor nunca se fija y un motor más nuevo sigue
+  aplicando. Con un motor más viejo, el apply, el plan o el status fallan antes de escribir y dicen
+  qué versión del plugin instalar.
+- `schemaVersion` sube solo si el formato del catálogo cambia de forma incompatible. Un motor que
+  no conoce ese `schemaVersion` falla con el mismo pedido de actualizar el plugin.
+- `changes` es el changelog: `version`, `summary` y `breaking` opcional.
+
+El plan de una actualización (`agent-ready update <fuente> --dry-run` o `--plan --update-source`)
+muestra en «Version changes» la versión del lock y la nueva de cada fuente. Debajo lista los cambios
+declarados entre las dos, del más nuevo al más viejo, con los `breaking` resaltados. Un salto de
+versión mayor (o de minor en `0.x`) se marca aparte. El JSON del plan los trae en `versionChanges`.
+
 | Referencia | Significado |
 |---|---|
 | `node` | profile de Golfo |
@@ -356,7 +387,8 @@ existe), `source.origin` (repositorio del que se puede volver a descargar),
 `source.requestedRef` cuando un update eligió una ref, y `source.contentDigest`,
 que identifica el contenido exacto (assets, templates fusionados y plantillas de
 instrucciones) aunque no haya revisión git. `generator.version` es la versión del
-motor que proyectó. Por asset guarda `profile`,
+motor que proyectó. Cada fuente de `profileSources` guarda además su `version`, si el
+catálogo la declara. Por asset guarda `profile`,
 `source`, `sha256` aplicado y `state` (`applied`, `conflict`, `failed`,
 `retired-preserved`), más `viewPreserved` cuando un archivo del proyecto ocupa su
 vista `.claude/`. `merged` lista `AGENTS.md` (bloque gestionado),
