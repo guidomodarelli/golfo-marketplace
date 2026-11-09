@@ -154,7 +154,7 @@ gestionadas contradicen lo que el proyecto escribió, en dos direcciones:
 
 | Dirección | Qué se compara | Marca en el plan |
 |---|---|---|
-| update | cada rule gestionada que el apply crea, actualiza o adopta, con el contenido que va a escribir, contra cada rule propia (`.agents/rules/` sin equivalente gestionado) y contra el `AGENTS.md` del proyecto | `(this update)` |
+| update | cada rule gestionada que el apply crea, actualiza o adopta, con el contenido que va a escribir, contra cada rule propia (`.agents/rules/` sin equivalente gestionado) y contra lo que el proyecto escribió en su `AGENTS.md`, fuera del bloque gestionado que el mismo apply puede reemplazar | `(this update)` |
 | project | cada rule propia contra cada rule gestionada ya aplicada que no cambia | `(a project rule)` |
 
 - **Misma revisión y misma caché.** Usa el prompt, la llamada al provider y la caché de

@@ -61,11 +61,14 @@ def project_rules(project_root, managed):
     return sorted(found)
 
 
-def conflict_pairs(project_root, entries, locked_assets, read_text):
-    """Pairs to review, the text of each document and the direction of each pair.
+def conflict_pairs(project_root, entries, locked_assets, read_text, project_owned):
+    """Pairs to review, the text the review reads of each document, the text that identifies it in
+    the cache, and the direction of each pair.
 
     ``entries`` are the plan entries; a managed rule the apply creates or changes is reviewed
     with the content it would write (its ``sourcePath``), everything else with what is on disk.
+    Of ``AGENTS.md`` the review reads only what ``project_owned`` keeps (the text outside the
+    managed block, which the same apply may replace); the cache still keys it by the whole file.
     """
     desired = {entry["destination"]: entry for entry in entries if entry.get("sha256") and is_rule(entry["destination"])}
     managed = set(desired) | {destination for destination in locked_assets if is_rule(destination)}
@@ -82,9 +85,14 @@ def conflict_pairs(project_root, entries, locked_assets, read_text):
         texts[destination] = read_text(os.path.join(project_root, destination))
     agents_path = os.path.join(project_root, AGENTS_FILE)
     counterparts = list(own)
+    identities = {}
     if os.path.isfile(agents_path) and not os.path.islink(agents_path):
-        texts[AGENTS_FILE] = read_text(agents_path)
-        counterparts.append(AGENTS_FILE)
+        whole = read_text(agents_path)
+        owned = project_owned(whole)
+        if owned.strip():
+            texts[AGENTS_FILE] = owned
+            identities[AGENTS_FILE] = whole
+            counterparts.append(AGENTS_FILE)
     directions = {}
     for managed_rule in changing:
         for counterpart in counterparts:
@@ -92,7 +100,7 @@ def conflict_pairs(project_root, entries, locked_assets, read_text):
     for own_rule in own:
         for managed_rule in applied:
             directions.setdefault(tuple(sorted((own_rule, managed_rule))), DIRECTION_PROJECT)
-    return directions, texts
+    return directions, texts, {name: identities.get(name, text) for name, text in texts.items()}
 
 
 def engine_can_review(engine_dir):
@@ -101,13 +109,15 @@ def engine_can_review(engine_dir):
 
 
 def review_conflicts(project_root, engine_dir, cache_module, provider, directions, texts, bash, use_provider,
-                     settings=None):
+                     settings=None, identities=None):
     """Review the pairs that are not in the cache and return what plan reports.
 
     ``use_provider`` false (offline, review mode) answers from the cache only. A pair without an
     answer stays unchecked, never clean. ``settings`` are the effective reviews options (cache,
-    ttl, commit) of this run.
+    ttl, commit) of this run. ``identities`` are the texts that key each document in the cache, when
+    they differ from what the review reads.
     """
+    identities = identities or texts
     harness = load_harness_review(engine_dir)
     pairs = sorted(directions)
     report = {"pairs": len(pairs), "fromCache": 0, "reviewed": 0, "unchecked": 0, "uncheckedUpdate": 0,
@@ -121,7 +131,7 @@ def review_conflicts(project_root, engine_dir, cache_module, provider, direction
     known = {}
     pending = []
     for pair in pairs:
-        contents = {name: texts[name] for name in pair}
+        contents = {name: identities[name] for name in pair}
         key = cache_module.unit_key(harness.CHECK, harness.CHECK_VERSION, provider, model, engine, contents)
         entry = cache.lookup(cache_module.unit_id(harness.CHECK, pair), key)
         if entry is None:
@@ -159,7 +169,7 @@ def review_conflicts(project_root, engine_dir, cache_module, provider, direction
     for pair in sorted(known):
         # A decision holds for the content that was reviewed, which for an update is what the
         # apply will write, not what is on disk.
-        reviewed_files = {name: cache_module.text_hash(texts[name]) for name in pair}
+        reviewed_files = {name: cache_module.text_hash(identities[name]) for name in pair}
         for finding in decisions.annotate(cache_module.unit_id(harness.CHECK, pair), known[pair], recorded):
             if finding["decision"]:
                 finding["status"] = decision_status(cache_module, finding["decision"], reviewed_files)

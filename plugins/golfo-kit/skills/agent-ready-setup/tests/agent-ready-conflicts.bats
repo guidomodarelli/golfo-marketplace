@@ -55,6 +55,10 @@ text = sys.stdin.read()
 with open(os.environ["FAKE_INPUT"], "a", encoding="utf-8") as log:
     log.write(text)
 findings = []
+# FAKE_REQUIRE_TEXT: report only when the documents sent contain this text.
+if os.environ.get("FAKE_REQUIRE_TEXT", "") not in text:
+    print(json.dumps({"structured_output": {"findings": []}}))
+    sys.exit(0)
 for number, first, second in re.findall(r"^(\d+)\. (\S+) <-> (\S+)$", text, re.M):
     names = (first, second)
     if any(os.environ["FAKE_CONFLICT_FIRST"] in name for name in names) and any(
@@ -136,6 +140,9 @@ first_conflict_id() {
   # The managed rule is reviewed with the content the update would write, and AGENTS.md is in.
   grep -Fq 'Verify every change.' "$FAKE_INPUT"
   grep -Eq '^[0-9]+\. \.agents/rules/verify-changes\.md <-> AGENTS\.md$' "$FAKE_INPUT"
+  # Of AGENTS.md only what the project wrote: the managed block is the engine's.
+  grep -Fq '# [Project Name]' "$FAKE_INPUT"
+  ! grep -Fq 'BEGIN AGENT-READY MANAGED' "$FAKE_INPUT"
   # Only reports: nothing in the repository changed.
   ! grep -Fq 'Verify every change.' .agents/rules/verify-changes.md
 }
@@ -290,4 +297,26 @@ first_conflict_id() {
   agent_ready apply
   [ "$status" -eq 0 ]
   grep -Fq 'Verify every change.' .agents/rules/verify-changes.md
+}
+
+@test "an instruction inside the managed block of AGENTS.md never blocks the update that replaces it" {
+  write_manifest '{"profiles": ["node"], "conflicts": {"block": true}}'
+  agent_ready apply
+  [ "$status" -eq 0 ]
+  change_managed_rule
+  # An obsolete managed instruction that the same update would replace.
+  python3 - <<'PY'
+import re
+path = "AGENTS.md"
+text = open(path, encoding="utf-8").read()
+text = text.replace("<!-- END AGENT-READY MANAGED -->", "Never verify changes.\n<!-- END AGENT-READY MANAGED -->", 1)
+open(path, "w", encoding="utf-8").write(text)
+PY
+  export FAKE_CONFLICT_SECOND="AGENTS.md" FAKE_REQUIRE_TEXT="Never verify changes."
+
+  agent_ready plan
+  [ "$status" -eq 0 ]
+  grep -Eq '^[0-9]+\. \.agents/rules/verify-changes\.md <-> AGENTS\.md$' "$FAKE_INPUT"
+  [[ "$output" != *"(this update)"* ]]
+  [[ "$output" == *"No conflicts found"* ]]
 }
