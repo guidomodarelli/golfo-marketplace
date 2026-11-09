@@ -3229,6 +3229,29 @@
           "description": "Indica actualizar de forma controlada con agent-ready update"
         }
       ]
+    },
+    {
+      "id": "pack-tool-blocked-until-the-source-is-trusted",
+      "description": "Un pack declara un CLI y un script, y plan los muestra bloqueados porque la fuente no es de confianza: se confía con agent-ready trust add, sin aflojar la política desde el manifest.",
+      "input": "Agregamos el pack acme de mi empresa y agent-ready plan dice: - blocked: cli acme 1.4.2 (artifacts) [acme/kafka-interno]: the source acme is not trusted on this machine; trust it with agent-ready trust add acme. ¿Es un error? ¿Lo destrabo poniendo security.checks.trustedSource en false en el .agents/agent-ready.json del repo? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "trust add acme",
+          "description": "Indica confiar en la fuente con agent-ready trust add acme",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(afloj|ignor|no se toma|aprob|no conviene|no lo hagas|no lo recomiendo)",
+          "description": "Explica que apagar el check desde el manifest afloja la política y no se toma sin aprobación"
+        },
+        {
+          "type": "regex",
+          "pattern": "(máquina|machine|config de usuario|tu usuario)",
+          "description": "Aclara que la confianza es por máquina y no queda en el repo"
+        }
+      ]
     }
   ]
 }

@@ -35,7 +35,8 @@ from agent_ready_options import (
     UPDATES_FROM_LOCK_KEY,
     UPDATES_MODE_KEY,
 )
-from agent_ready_packs import NAMESPACE_SEPARATOR, parse_profile_sources
+from agent_ready_cli_trust import change_trusted_sources
+from agent_ready_packs import NAMESPACE_SEPARATOR, SOURCE_TYPE_GIT, parse_profile_sources
 from agent_ready_prompts import ask_confirmation, ask_text, can_prompt, equivalent_command
 
 GOLFO_SOURCE_LABEL = "golfo-kit"
@@ -223,6 +224,13 @@ def command_sources_add(arguments):
             raise UsageError(f"the source '{arguments.name}' is not a valid profile pack: {problem}; the manifest was left as it was")
     sys.stderr.write(f"Source '{arguments.name}' declared in {path}. Its profiles are selected with "
                      f"{CLI_NAME} profiles add {arguments.name}/<profile>.\n")
+    declaration = next(item for item in parse_profile_sources([entry], "the new source"))
+    if declaration["type"] == SOURCE_TYPE_GIT:
+        # Whoever adds a source approves it, on their own machine only.
+        trusted_path, _ = change_trusted_sources(arguments, [declaration["origin"]], adding=True)
+        sys.stderr.write(f"Trusted on this machine, because you added it: {declaration['origin']} ({trusted_path}). "
+                         f"A teammate who gets it through Git trusts it with {CLI_NAME} trust add {arguments.name}; "
+                         f"undo it with {CLI_NAME} trust remove {arguments.name}.\n")
     return EXIT_OK
 
 

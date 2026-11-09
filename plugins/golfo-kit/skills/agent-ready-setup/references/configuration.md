@@ -96,7 +96,13 @@ python3 "$SKILL_DIR/scripts/agent-ready-state.py" trust --project .           # 
 python3 "$SKILL_DIR/scripts/agent-ready-state.py" trust --revoke --project .  # quita la aprobación
 ```
 
-`trust` guarda la raíz del repo en `security.trustedProjects` de la config de usuario y no escribe en el repo.
+`trust` guarda la raíz del repo en `security.trustedProjects` de la config de usuario y no escribe en el repo;
+`agent-ready trust add --project .` hace lo mismo desde el CLI.
+
+Una lista sensible declara cómo afloja en vez de un orden: `permits` (sumar valores afloja, como
+`security.trustedSources` o `security.execution.events`), `restricts` (vaciar o ampliar una lista no vacía
+afloja, como `security.allow.*`) y `rules` (sumar una regla `allow` afloja, como `security.rules`).
+La política de las herramientas de un pack está en [pack-tools.md](pack-tools.md).
 `security.enabled: false` en el usuario o la organización deja aflojar a todos los proyectos sin aprobación.
 
 ## 6. `locked` de la organización
