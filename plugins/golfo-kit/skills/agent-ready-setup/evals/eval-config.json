@@ -3206,6 +3206,29 @@
           "description": "Indica volver a correr el apply después de decidir"
         }
       ]
+    },
+    {
+      "id": "delivered-solution-with-one-preset",
+      "description": "Para dejar estable una solución entregada a un cliente se usa el preset delivered (agent-ready preset delivered), que fija pinned, apaga el refresco, reproduce el lock y deja el CI en fail; se actualiza solo con agent-ready update.",
+      "input": "Le entregamos a un estudio de abogados una herramienta armada con agent-ready-setup. Necesito que quede estable: que no cambie sola ni golfo-kit ni los packs, que cada apply deje exactamente lo que dice el lock y que el CI falle si el repo se aparta. ¿Hay una forma de configurar todo eso de una vez, y cómo actualizo cuando lo decidamos? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "(preset delivered|preset.{0,20}delivered)",
+          "description": "Usa el preset delivered",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(fromLock|from-lock|reproduc)",
+          "description": "Explica que cada apply reproduce el lock"
+        },
+        {
+          "type": "regex",
+          "pattern": "update.{0,60}(--to|--dry-run)",
+          "description": "Indica actualizar de forma controlada con agent-ready update"
+        }
+      ]
     }
   ]
 }

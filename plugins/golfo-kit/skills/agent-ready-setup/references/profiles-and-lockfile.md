@@ -419,6 +419,9 @@ después, sin importar `updates.mode` ni las `ref` del manifest:
 - Un apply de un repositorio `pinned` ya proyecta las revisiones del lock. `--from-lock` agrega la verificación
   y rechaza cualquier cambio de selección, así que es explícito: sumar un profile en `pinned` sigue siendo un
   apply normal.
+- Con `updates.fromLock: true` (lo enciende `updates.preset: delivered`), cada apply o plan que no actualiza
+  ninguna fuente ni pasa `--profiles`, `--stack` o `--updates` corre como `--from-lock`, una vez que hay
+  lockfile. La guía completa para una solución entregada: [stable-delivery.md](stable-delivery.md).
 
 No confundir con `.agents/.agent-ready-assets.lock` (lock de concurrencia del
 sync) ni con el hash de revisión de instrucciones bajo `.git/`. Fijar la

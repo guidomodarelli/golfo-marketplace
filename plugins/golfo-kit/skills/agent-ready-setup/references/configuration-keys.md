@@ -106,5 +106,12 @@ Cómo se mantienen al día los assets: la actualización en segundo plano del in
 | `updates.enabled` | boolean | `true` | todas | — | — | El inicio de sesión busca actualizaciones en segundo plano e informa el resultado. Apagado, SessionStart no actualiza, no chequea ni refresca nada, y solo un apply explícito cambia los assets. |
 | `updates.mode` | `auto` \| `pinned` | `"auto"` | todas | `AGENT_READY_SETUP_UPDATES` | `auto` < `pinned` | auto aplica las actualizaciones solo, sin bloquear la sesión; pinned solo informa drift y updates pendientes, sin escribir. Seguir una ref en auto deja que quien pushee al pack cambie las instrucciones del agente. |
 | `updates.refresh` | boolean | `true` | todas | `AGENT_READY_SETUP_REFRESH` | — | plan, status y el inicio de sesión de un repositorio pinned refrescan la caché fuera del repositorio para decir si todo está al día. Apagado, comparan con lo que ya hay, como --offline. |
+| `updates.preset` | `none` \| `delivered` | `"none"` | todas | — | `none` < `delivered` | Conjunto de valores con una sola clave: none (los defaults) o delivered, para una solución entregada a un cliente que no cambia hasta que alguien decide actualizarla: updates.mode pinned, golfo-kit pinned, updates.refresh apagado, updates.fromLock encendido y ci.mode fail. Cualquier clave se puede pisar en la misma capa o en una superior. |
+| `updates.fromLock` | boolean | `false` | todas | — | `false` < `true` | Un apply o un plan que no actualiza ninguna fuente ni cambia la selección reproduce el lock, como --from-lock: misma selección, misma revisión de cada fuente y mismos sha256, o falla antes de escribir. Para adoptar una versión nueva se usa agent-ready update; para cambiar la selección, --profiles o --stack. Sin lockfile, el primer apply resuelve como siempre. |
+
+Presets:
+
+- `updates.preset: none` → sin cambios
+- `updates.preset: delivered` → `updates.mode: pinned`, `sources.golfoKit.updates: pinned`, `updates.refresh: false`, `updates.fromLock: true`, `ci.mode: fail`
 
 `locked` es una lista de claves (o namespaces enteros) que solo declara la organización.

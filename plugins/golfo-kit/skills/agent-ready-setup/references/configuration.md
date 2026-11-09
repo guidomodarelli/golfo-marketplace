@@ -108,7 +108,9 @@ declara `locked`, y cada entrada tiene que existir en los schemas.
 ## 7. Presets
 
 Un preset fija varias claves con una sola. `security.preset` es `standard` (default), `strict` (además
-`updates.mode: pinned`) u `off` (`security.enabled: false`). Dentro de una capa, el preset se aplica primero y las
+`updates.mode: pinned`) u `off` (`security.enabled: false`). `updates.preset` es `none` (default) o
+`delivered`, para una solución entregada a un cliente ([stable-delivery.md](stable-delivery.md)); se elige
+también con `agent-ready preset delivered`. Dentro de una capa, el preset se aplica primero y las
 claves explícitas de esa misma capa lo pisan; las capas superiores también. Cada clave que fija pasa por las mismas
 reglas de aflojar y de `locked` que si se hubiera escrito a mano, y el origen lo muestra: `user (preset
 security.preset=strict)`. El preset de default coincide con los defaults.

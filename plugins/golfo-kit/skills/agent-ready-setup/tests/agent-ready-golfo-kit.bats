@@ -670,3 +670,84 @@ PY
   [ "$status" -eq 0 ]
   [ "$(lock_value 'data["source"]["version"]')" = "2.5.0" ]
 }
+
+config_value() {
+  run_cli config get "$1"
+  [ "$status" -eq 0 ]
+  printf '%s' "$output" | tr -d '\r'
+}
+
+@test "agent-ready preset delivered sets what a delivered solution needs, and each value can be overridden" {
+  write_manifest '{"profiles": ["node"]}'
+  # Without configuration nothing changes: updates stay auto.
+  [ "$(config_value updates.mode)" = auto ]
+  [ "$(config_value updates.fromLock)" = false ]
+  run_cli preset
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"* none"* ]]
+
+  run_cli preset delivered
+  [ "$status" -eq 0 ]
+  [ "$(python3 -c 'import json; print(json.load(open(".agents/agent-ready.json"))["updates"]["preset"])' | tr -d '\r')" = delivered ]
+  [ "$(config_value updates.mode)" = pinned ]
+  [ "$(config_value sources.golfoKit.updates)" = pinned ]
+  [ "$(config_value updates.refresh)" = false ]
+  [ "$(config_value updates.fromLock)" = true ]
+  [ "$(config_value ci.mode)" = fail ]
+  run_cli config explain updates.fromLock
+  [[ "$output" == *"preset updates.preset=delivered"* ]]
+
+  run_cli config set updates.refresh true
+  [ "$status" -eq 0 ]
+  [ "$(config_value updates.refresh)" = true ]
+  [ "$(config_value updates.mode)" = pinned ]
+  run_cli preset
+  [[ "$output" == *"* delivered"* ]]
+  run_cli preset frozen
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"unknown preset 'frozen'"* ]]
+}
+
+@test "a delivered repository keeps its golfo-kit revision, and only an update adopts a new one" {
+  write_manifest '{"profiles": ["node"], "updates": {"preset": "delivered"}}'
+  run_cli update golfo-kit --to "$first_revision"
+  [ "$status" -eq 0 ]
+  grep -Fq 'Content of revision one.' .agents/rules/verify-changes.md
+
+  # main is at revision two: a deleted asset comes back from the revision of the lock.
+  rm .agents/rules/verify-changes.md
+  run_cli apply
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"updates.fromLock: this run reproduces the lock"* ]]
+  grep -Fq 'Content of revision one.' .agents/rules/verify-changes.md
+  ! grep -Fq 'Content of revision two.' .agents/rules/verify-changes.md
+  [ "$(lock_value 'data["source"]["revision"]')" = "$first_revision" ]
+
+  run_cli update golfo-kit --to main
+  [ "$status" -eq 0 ]
+  grep -Fq 'Content of revision two.' .agents/rules/verify-changes.md
+  [ "$(lock_value 'data["source"]["revision"]')" = "$second_revision" ]
+}
+
+@test "a delivered repository does not apply a selection changed by hand, only an explicit one" {
+  write_manifest '{"profiles": ["node"], "updates": {"preset": "delivered"}}'
+  run_cli update golfo-kit --to "$first_revision"
+  [ "$status" -eq 0 ]
+  python3 - <<'PY'
+import json
+path = ".agents/agent-ready.json"
+manifest = json.load(open(path, encoding="utf-8"))
+manifest["profiles"] = ["node", "browser"]
+json.dump(manifest, open(path, "w", encoding="utf-8"), indent=2)
+PY
+
+  run_cli apply
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"cannot reproduce the lock"*"selection"* ]]
+  [ "$(lock_value 'data["profileOrder"]')" = "['node']" ]
+
+  run_cli apply --profiles node,browser
+  [ "$status" -eq 0 ]
+  [ "$(lock_value 'data["profileOrder"]')" = "['node', 'browser']" ]
+  [ "$(lock_value 'data["source"]["revision"]')" = "$first_revision" ]
+}
