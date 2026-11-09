@@ -723,6 +723,12 @@ config_value() {
   ! grep -Fq 'Content of revision two.' .agents/rules/verify-changes.md
   [ "$(lock_value 'data["source"]["revision"]')" = "$first_revision" ]
 
+  # The preview of an explicit update resolves the revision it asks for, despite updates.refresh off.
+  run_cli update golfo-kit --to main --dry-run
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"golfo-kit 1.0.0 -> 2.0.0"* ]]
+  ! grep -Fq 'Content of revision two.' .agents/rules/verify-changes.md
+
   run_cli update golfo-kit --to main
   [ "$status" -eq 0 ]
   grep -Fq 'Content of revision two.' .agents/rules/verify-changes.md

@@ -589,8 +589,9 @@ FROM_LOCK_CONFIGURED=false
 while IFS=$'\t' read -r configuration_key configuration_value; do
   configuration_value="${configuration_value%$'\r'}"
   case "$configuration_key" in
-    # updates.refresh false keeps plan and status off the network, like --offline.
-    updates.refresh) [[ "$configuration_value" == false ]] && OFFLINE=1 ;;
+    # updates.refresh false keeps plan and status off the network, like --offline. An explicit
+    # update, its preview included, always resolves the revision it asks for.
+    updates.refresh) [[ "$configuration_value" == false && ${#UPDATE_SOURCES[@]} -eq 0 ]] && OFFLINE=1 ;;
     tools.enabled) TOOLS_ENABLED="$configuration_value" ;;
     profiles) CONFIGURED_PROFILES="$configuration_value" ;;
     updates.fromLock) FROM_LOCK_CONFIGURED="$configuration_value" ;;

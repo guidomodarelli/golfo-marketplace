@@ -21,7 +21,7 @@
       "x-security": { "strictness": ["auto", "pinned"] }
     },
     "refresh": {
-      "description": "plan, status y el inicio de sesión de un repositorio pinned refrescan la caché fuera del repositorio para decir si todo está al día. Apagado, comparan con lo que ya hay, como --offline.",
+      "description": "plan, status y el inicio de sesión de un repositorio pinned refrescan la caché fuera del repositorio para decir si todo está al día. Apagado, comparan con lo que ya hay, como --offline. Una actualización explícita (agent-ready update, también con --dry-run) siempre resuelve la revisión que pide.",
       "type": "boolean",
       "default": true,
       "x-env": "AGENT_READY_SETUP_REFRESH"
