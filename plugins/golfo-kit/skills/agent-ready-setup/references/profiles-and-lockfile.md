@@ -225,6 +225,8 @@ El plan de una actualización (`agent-ready update <fuente> --dry-run` o `--plan
 muestra en «Version changes» la versión del lock y la nueva de cada fuente. Debajo lista los cambios
 declarados entre las dos, del más nuevo al más viejo, con los `breaking` resaltados. Un salto de
 versión mayor (o de minor en `0.x`) se marca aparte. El JSON del plan los trae en `versionChanges`.
+Después, «Semantic conflicts» lista lo que la actualización contradice de las rules propias y del
+`AGENTS.md` del proyecto ([ai-reviews.md](ai-reviews.md), sección 7).
 
 | Referencia | Significado |
 |---|---|

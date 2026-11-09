@@ -1063,7 +1063,7 @@ fi
 plan_file="$(mktemp "${TMPDIR:-/tmp}/agent-ready-plan.XXXXXX")"
 trap 'rm -f -- "$plan_file" "$source_state_file"; release_sync_lock' EXIT
 if ! protected_destinations="$(python3 "$state_script" plan --project . --skill-dir "$skill_dir" \
-  --format protected --save "$plan_file" "${sync_policy[@]}" ${profile_selection[@]+"${profile_selection[@]}"})"; then
+  --provider "$provider" --format protected --save "$plan_file" "${sync_policy[@]}" ${profile_selection[@]+"${profile_selection[@]}"})"; then
   printf 'WARNING: Agent Ready plan could not be computed; no asset was changed.\n' >&2
   exit 0
 fi

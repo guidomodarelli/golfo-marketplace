@@ -27,6 +27,15 @@ agent-ready-state.py check compara las fuentes, el lockfile y los assets commite
 | `ci.enabled` | boolean | `true` | todas | — | — | Apagado, el chequeo no compara nada, no usa la red y sale con 0. |
 | `ci.mode` | `fail` \| `warn` | `"fail"` | todas | `AGENT_READY_SETUP_CI` | — | fail sale con el código de cada resultado; warn informa lo mismo y sale con 0. |
 
+## `conflicts`: Conflictos semánticos
+
+Revisión de IA de las rules gestionadas contra las propias del proyecto y su AGENTS.md, en las dos direcciones. Solo informa: nunca borra ni reescribe.
+
+| Clave | Tipo | Default | Capas | Variable | Seguridad | Descripción |
+|---|---|---|---|---|---|---|
+| `conflicts.enabled` | boolean | `true` | todas | — | — | plan y el apply revisan con IA una rule gestionada nueva o cambiada contra las rules propias y el AGENTS.md del proyecto, y una rule propia contra las gestionadas. Usa la caché y las decisiones de las revisiones de IA. Apagado, no se revisa. También se apaga con reviews.enabled: false. |
+| `conflicts.block` | boolean | `false` | todas | — | `false` < `true` | Un apply que trae un conflicto semántico con lo propio del proyecto, o que no pudo revisarlo, se frena antes de escribir. Apagado, el conflicto solo se informa. |
+
 ## `detection`: Detección
 
 Señales estáticas del proyecto que eligen el stack primario de un repositorio sin selección y sugieren capabilities en plan.

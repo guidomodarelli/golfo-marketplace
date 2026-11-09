@@ -16,7 +16,7 @@ description: >-
   descartar un hallazgo de sus revisiones de IA.
 license: MIT
 metadata:
-  version: "1.16.0"
+  version: "1.17.0"
   author: "guponce"
   category: "developer-experience"
   tags: "agent-ready, multi-provider, claude-code, codex, bootstrap, setup, scaffold, context-optimized-v1.20.1"
@@ -330,12 +330,14 @@ las rules propias, la revisión de redundancias y sus overrides de modelo.
 La revisión de `AGENTS.md` y el hook de consistencia de rules y skills guardan cada resultado por
 unidad en `.git/info/agent-ready/reviews.json`: una edición solo vuelve a revisar las unidades donde
 participa, y `agent-ready status` muestra los hallazgos conocidos, cada uno con su id, sin llamar al
-provider. Cuando el usuario pide aceptar o descartar un hallazgo, correr
+provider. El plan y el apply también buscan conflictos semánticos entre las rules gestionadas y las
+propias del proyecto o su `AGENTS.md`: solo informan, y `conflicts.block` frena el apply que trae uno.
+Cuando el usuario pide aceptar o descartar un hallazgo, correr
 `agent-ready review accept|dismiss <id> --reason "<motivo>"` con el motivo que dio. Si no dio ninguno,
 preguntárselo: nunca inventarlo. Leer [references/ai-reviews.md](references/ai-reviews.md) para
 explicar por qué una revisión corrió o no, mostrar sus hallazgos, elegir el alcance de una decisión
-(`content` o `pair`), cambiar `reviews.enabled`, `reviews.cache` y `reviews.ttl`, o compartir la caché con
-el CI y el equipo (`reviews.commit`).
+(`content` o `pair`), cambiar `reviews.enabled`, `reviews.cache`, `reviews.ttl` o `conflicts.*`, explicar
+un conflicto semántico del plan, o compartir la caché con el CI y el equipo (`reviews.commit`).
 
 ### Resolución de diferencias por el agente
 

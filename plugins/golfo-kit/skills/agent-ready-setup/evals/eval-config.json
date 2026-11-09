@@ -3178,6 +3178,34 @@
           "description": "Explica que el motor no se fija"
         }
       ]
+    },
+    {
+      "id": "update-brings-a-semantic-conflict",
+      "description": "Con conflicts.block, una actualización trae una rule gestionada que contradice una rule propia: el apply no escribió nada y se destraba cambiando la rule o aceptando el hallazgo con el motivo del usuario.",
+      "input": "Corrí agent-ready apply y falló con: conflicts.block: this apply brings 1 semantic conflict(s) with the project, so nothing was changed: [fbef35ed76] .agents/rules/team.md <-> .agents/rules/verify-changes.md: One rule verifies every change and the other forbids it. La rule team.md es a propósito: en este repo no verificamos cada cambio porque lo hace el CI. ¿Quedó algo a medias y cómo sigo? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "review accept fbef35ed76",
+          "description": "Da el comando para aceptar ese hallazgo por su id",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "--reason.{0,10}[\"'].{0,160}(CI|a propósito|verific)",
+          "description": "Usa el motivo que dio el usuario"
+        },
+        {
+          "type": "regex",
+          "pattern": "(nada|no se escribi|no cambi|antes de escribir|sin escribir)",
+          "description": "Aclara que el apply no dejó nada a medias"
+        },
+        {
+          "type": "regex",
+          "pattern": "((volvé|volver|de nuevo|otra vez|reintent|corré).{0,80}apply|apply.{0,200}(de nuevo|otra vez|reintent))",
+          "description": "Indica volver a correr el apply después de decidir"
+        }
+      ]
     }
   ]
 }
