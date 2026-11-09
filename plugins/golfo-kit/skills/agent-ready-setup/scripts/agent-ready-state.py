@@ -1601,7 +1601,7 @@ def semantic_conflicts(arguments, plan):
     lock = read_lock(arguments.project)
     directions, texts, identities = conflicts_review.conflict_pairs(
         arguments.project, plan["entries"], (lock or {}).get("assets", {}), module.normalized_text,
-        project_owned_instructions)
+        project_owned_instructions, ENGINE_SKILL_DIRECTORY)
     # Offline runs and automated reviews answer from the cache only.
     use_provider = not arguments.offline and os.environ.get("AGENT_READY_SETUP_REVIEW_MODE") != "1"
     # The options of this run: the hooks' copy of them only changes when an apply finishes.
@@ -1609,7 +1609,7 @@ def semantic_conflicts(arguments, plan):
                 "ttl": configuration.value(REVIEWS_TTL_KEY), "commit": configuration.value(REVIEWS_COMMIT_KEY)}
     report = conflicts_review.review_conflicts(arguments.project, ENGINE_SKILL_DIRECTORY, module, arguments.provider,
                                                directions, texts, bash_executable(), use_provider, settings,
-                                               identities)
+                                               identities, publish=arguments.format == "protected")
     conflicts_review.record_pending(arguments.project, report.pop("pending", []))
     report["block"] = configuration.value(CONFLICTS_BLOCK_KEY)
     return report
@@ -1878,6 +1878,8 @@ def finalize(project_root, skill_dir, plan, updates):
     if manifest != desired_manifest:
         write_text_atomically(os.path.join(project_root, MANIFEST_RELATIVE_PATH), serialize_json(desired_manifest))
     record_review_settings(project_root)
+    # The update the last plan reviewed is on disk now: its conflicts are the current ones.
+    conflicts_review.record_pending(project_root, [])
 
     return {"removed": removed, "retireConflicts": retire_conflicts, "failed": failed, "conflicts": conflicts}
 

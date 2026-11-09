@@ -107,6 +107,11 @@ calls() {
   wc -l < "$FAKE_CALLS" | tr -d ' '
 }
 
+# Reviews of pairs only: an apply also reviews AGENTS.md with the same CLI.
+pair_reviews() {
+  grep -c '^<pairs>$' "$FAKE_INPUT" || true
+}
+
 write_manifest() {
   mkdir -p .agents
   printf '%s\n' "$1" > .agents/agent-ready.json
@@ -319,4 +324,55 @@ PY
   grep -Eq '^[0-9]+\. \.agents/rules/verify-changes\.md <-> AGENTS\.md$' "$FAKE_INPUT"
   [[ "$output" != *"(this update)"* ]]
   [[ "$output" == *"No conflicts found"* ]]
+}
+
+@test "a preview keeps its review out of the versioned cache, and the apply publishes it" {
+  agent_ready apply --stack node
+  [ "$status" -eq 0 ]
+  project_rule
+  write_manifest '{"profiles": ["node"], "reviews": {"commit": true}}'
+
+  agent_ready plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"(a project rule)"* ]]
+  [ ! -e .agents/agent-ready.review-cache.json ]
+  reviewed_pairs="$(pair_reviews)"
+
+  agent_ready apply
+  [ "$status" -eq 0 ]
+  [ "$(pair_reviews)" -eq "$reviewed_pairs" ]
+  grep -Fq '.agents/rules/team.md' .agents/agent-ready.review-cache.json
+}
+
+@test "after the apply, a decision on its conflict follows the files again" {
+  write_manifest '{"profiles": ["node"], "conflicts": {"block": true}}'
+  agent_ready apply
+  [ "$status" -eq 0 ]
+  project_rule
+  change_managed_rule
+  conflict_id="$(first_conflict_id)"
+  agent_ready review accept "$conflict_id" --reason "The team rule is on purpose"
+  [ "$status" -eq 0 ]
+  agent_ready apply
+  [ "$status" -eq 0 ]
+
+  # The team edits its rule: the decision was about the old text, so it asks to confirm it again.
+  printf 'Not even small changes.\n' >> .agents/rules/team.md
+  run env PATH="$fake_bin:$PATH" bash .agents/hooks/check-harness-consistency.sh \
+    <<< '{"tool_name":"Edit","tool_input":{"file_path":".agents/rules/team.md"}}'
+  agent_ready review list
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"$conflict_id  to-confirm"* ]]
+}
+
+@test "the first apply reviews the CLAUDE.md that it promotes to AGENTS.md" {
+  printf '# Team\nNever verify changes.\n' > CLAUDE.md
+  write_manifest '{"profiles": ["node"], "conflicts": {"block": true}}'
+  export FAKE_CONFLICT_SECOND="CLAUDE.md"
+
+  agent_ready apply
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"conflicts.block: this apply brings"*"CLAUDE.md"* ]]
+  [ ! -e AGENTS.md ]
+  grep -Fq 'Never verify changes.' CLAUDE.md
 }

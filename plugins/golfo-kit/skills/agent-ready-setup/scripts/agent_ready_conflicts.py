@@ -16,6 +16,7 @@ in the Git directory of the worktree: ``agent-ready review`` can accept or dismi
 apply writes the rule, and a decision is checked against the content that was reviewed.
 """
 
+import filecmp
 import importlib.util
 import json
 import os
@@ -25,6 +26,9 @@ import tempfile
 RULES_PREFIX = ".agents/rules/"
 RULE_SUFFIX = ".md"
 AGENTS_FILE = "AGENTS.md"
+CLAUDE_FILE = "CLAUDE.md"
+# The root CLAUDE.md that only points to AGENTS.md (instruction-normalization.sh).
+CLAUDE_PROXY_TEMPLATE_RELATIVE_PATH = "assets/claude-proxy.md"
 DIRECTION_UPDATE = "update"
 DIRECTION_PROJECT = "project"
 HARNESS_REVIEW_RELATIVE_PATH = "assets/common/hooks/harness-review.py"
@@ -61,7 +65,27 @@ def project_rules(project_root, managed):
     return sorted(found)
 
 
-def conflict_pairs(project_root, entries, locked_assets, read_text, project_owned):
+def project_instructions(project_root, engine_dir):
+    """The file with the project's own instructions, or None.
+
+    AGENTS.md, or, while there is none, the root CLAUDE.md that the apply promotes to AGENTS.md
+    (instruction-normalization.sh), unless it is only the proxy to AGENTS.md.
+    """
+    agents_path = os.path.join(project_root, AGENTS_FILE)
+    if os.path.lexists(agents_path):
+        return AGENTS_FILE if os.path.isfile(agents_path) and not os.path.islink(agents_path) else None
+    claude_path = os.path.join(project_root, CLAUDE_FILE)
+    if not os.path.isfile(claude_path) or os.path.islink(claude_path):
+        return None
+    try:
+        if filecmp.cmp(claude_path, os.path.join(engine_dir, CLAUDE_PROXY_TEMPLATE_RELATIVE_PATH), shallow=False):
+            return None
+    except OSError:
+        pass
+    return CLAUDE_FILE
+
+
+def conflict_pairs(project_root, entries, locked_assets, read_text, project_owned, engine_dir):
     """Pairs to review, the text the review reads of each document, the text that identifies it in
     the cache, and the direction of each pair.
 
@@ -69,6 +93,7 @@ def conflict_pairs(project_root, entries, locked_assets, read_text, project_owne
     with the content it would write (its ``sourcePath``), everything else with what is on disk.
     Of ``AGENTS.md`` the review reads only what ``project_owned`` keeps (the text outside the
     managed block, which the same apply may replace); the cache still keys it by the whole file.
+    Before the first apply, the root CLAUDE.md that the apply promotes takes its place.
     """
     desired = {entry["destination"]: entry for entry in entries if entry.get("sha256") and is_rule(entry["destination"])}
     managed = set(desired) | {destination for destination in locked_assets if is_rule(destination)}
@@ -83,16 +108,16 @@ def conflict_pairs(project_root, entries, locked_assets, read_text, project_owne
         texts[destination] = read_text(desired[destination]["sourcePath"])
     for destination in applied:
         texts[destination] = read_text(os.path.join(project_root, destination))
-    agents_path = os.path.join(project_root, AGENTS_FILE)
     counterparts = list(own)
     identities = {}
-    if os.path.isfile(agents_path) and not os.path.islink(agents_path):
-        whole = read_text(agents_path)
+    instructions = project_instructions(project_root, engine_dir)
+    if instructions:
+        whole = read_text(os.path.join(project_root, instructions))
         owned = project_owned(whole)
         if owned.strip():
-            texts[AGENTS_FILE] = owned
-            identities[AGENTS_FILE] = whole
-            counterparts.append(AGENTS_FILE)
+            texts[instructions] = owned
+            identities[instructions] = whole
+            counterparts.append(instructions)
     directions = {}
     for managed_rule in changing:
         for counterpart in counterparts:
@@ -109,13 +134,15 @@ def engine_can_review(engine_dir):
 
 
 def review_conflicts(project_root, engine_dir, cache_module, provider, directions, texts, bash, use_provider,
-                     settings=None, identities=None):
+                     settings=None, identities=None, publish=False):
     """Review the pairs that are not in the cache and return what plan reports.
 
     ``use_provider`` false (offline, review mode) answers from the cache only. A pair without an
     answer stays unchecked, never clean. ``settings`` are the effective reviews options (cache,
     ttl, commit) of this run. ``identities`` are the texts that key each document in the cache, when
-    they differ from what the review reads.
+    they differ from what the review reads. Only an apply (``publish``) writes the versioned cache of
+    reviews.commit, with what this review and the previews before it found; a preview keeps its
+    results in the local cache, so it never changes a file of the repository.
     """
     identities = identities or texts
     harness = load_harness_review(engine_dir)
@@ -125,6 +152,10 @@ def review_conflicts(project_root, engine_dir, cache_module, provider, direction
     if not pairs:
         return report
     cache = cache_module.ReviewCache(project_root, settings=settings)
+    shares = bool(cache.settings().get("commit"))
+    writer = cache if publish or not shares else cache_module.ReviewCache(
+        project_root, settings=dict(cache.settings(), commit=False))
+    local_hits = {}
     model = cache_module.PROVIDER_DEFAULTS[provider]["model"]
     effort = cache_module.PROVIDER_DEFAULTS[provider]["effort"]
     engine = cache_module.engine_version(project_root)
@@ -133,11 +164,14 @@ def review_conflicts(project_root, engine_dir, cache_module, provider, direction
     for pair in pairs:
         contents = {name: identities[name] for name in pair}
         key = cache_module.unit_key(harness.CHECK, harness.CHECK_VERSION, provider, model, engine, contents)
-        entry = cache.lookup(cache_module.unit_id(harness.CHECK, pair), key)
+        unit = cache_module.unit_id(harness.CHECK, pair)
+        entry = cache.lookup(unit, key)
         if entry is None:
             pending.append((pair, key, contents))
         else:
             known[pair] = entry.get("findings", [])
+            if entry.get("source") != cache_module.SOURCE_SHARED:
+                local_hits[unit] = entry
     report["fromCache"] = len(known)
     unchecked_update = sum(directions[pair] == DIRECTION_UPDATE for pair, _, _ in pending)
     if pending and not use_provider:
@@ -160,9 +194,18 @@ def review_conflicts(project_root, engine_dir, cache_module, provider, direction
                 known[pair] = reviewed[pair]
             report["reviewed"] = len(pending)
             try:
-                cache.store(records)
+                writer.store(records)
             except (OSError, cache_module.CacheLockTimeout):
                 pass
+    if publish and shares and local_hits:
+        # What a preview reviewed reaches the versioned cache with the apply.
+        try:
+            shared = cache.read_shared()
+            missing = {unit: entry for unit, entry in local_hits.items() if shared.get(unit) != entry}
+            if missing:
+                cache.store_shared(missing)
+        except (OSError, cache_module.CacheLockTimeout):
+            pass
     decisions = cache_module.Decisions(project_root)
     recorded = decisions.read()
     annotated = []
