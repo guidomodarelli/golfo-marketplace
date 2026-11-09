@@ -198,11 +198,14 @@ def matches_files(project_root, entry):
 class ReviewCache:
     """Reads and writes the review cache of one repository."""
 
-    def __init__(self, project_root):
+    def __init__(self, project_root, settings=None):
+        """``settings`` are the effective reviews options when the engine resolved them; the hooks
+        leave them out and use the ones the last apply recorded."""
         self.project_root = os.path.abspath(project_root)
         self.worktree = worktree_key(project_root)
         self.path = cache_path(project_root)
         self.shared_path = os.path.join(self.project_root, SHARED_CACHE_RELATIVE_PATH)
+        self.overrides = settings
 
     def read(self):
         """The whole cache; an absent or unreadable file is an empty one."""
@@ -225,6 +228,8 @@ class ReviewCache:
 
         The entries are shared by every worktree, but two worktrees can configure the reviews differently.
         """
+        if self.overrides is not None:
+            return {**DEFAULT_SETTINGS, **self.overrides}
         own = data["settings"].get(self.worktree)
         return {**DEFAULT_SETTINGS, **(own if isinstance(own, dict) else {})}
 

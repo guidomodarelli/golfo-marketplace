@@ -1595,14 +1595,19 @@ def semantic_conflicts(arguments, plan):
     if not configuration.value(CONFLICTS_ENABLED_KEY) or not configuration.value(REVIEWS_ENABLED_KEY):
         conflicts_review.record_pending(arguments.project, [])
         return None
+    if not conflicts_review.engine_can_review(ENGINE_SKILL_DIRECTORY):
+        return None
     module = review_cache_module()
     lock = read_lock(arguments.project)
     directions, texts = conflicts_review.conflict_pairs(arguments.project, plan["entries"], (lock or {}).get("assets", {}),
                                                         module.normalized_text)
     # Offline runs and automated reviews answer from the cache only.
     use_provider = not arguments.offline and os.environ.get("AGENT_READY_SETUP_REVIEW_MODE") != "1"
+    # The options of this run: the hooks' copy of them only changes when an apply finishes.
+    settings = {"enabled": True, "cache": configuration.value(REVIEWS_CACHE_KEY),
+                "ttl": configuration.value(REVIEWS_TTL_KEY), "commit": configuration.value(REVIEWS_COMMIT_KEY)}
     report = conflicts_review.review_conflicts(arguments.project, ENGINE_SKILL_DIRECTORY, module, arguments.provider,
-                                               directions, texts, bash_executable(), use_provider)
+                                               directions, texts, bash_executable(), use_provider, settings)
     conflicts_review.record_pending(arguments.project, report.pop("pending", []))
     report["block"] = configuration.value(CONFLICTS_BLOCK_KEY)
     return report

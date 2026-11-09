@@ -160,6 +160,9 @@ gestionadas contradicen lo que el proyecto escribió, en dos direcciones:
 - **Misma revisión y misma caché.** Usa el prompt, la llamada al provider y la caché de
   `harness-consistency`: un par que el hook ya revisó no se paga de nuevo, `status` muestra sus
   hallazgos sin llamar al provider y se aceptan o descartan con `agent-ready review` (sección 6).
+  Toma `reviews.cache`, `reviews.ttl` y `reviews.commit` de la configuración de esa corrida, sin
+  esperar a que un apply los registre, y revisa con el provider de la sesión, también en la
+  sincronización en segundo plano.
 - **Decidir antes del apply.** Un conflicto de dirección update habla de una rule que todavía no
   está en disco, así que el plan lo guarda en el directorio de Git del worktree
   (`agent-ready/semantic-conflicts.json`). `review list`, `accept` y `dismiss` lo conocen desde ahí.

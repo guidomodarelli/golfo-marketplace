@@ -32,10 +32,12 @@ def current_review(project_root):
         findings, decisions, _, _ = engine().review_findings(project_root, strict=True)
     except review_module().DecisionsError as decisions_error:
         raise StateError(f"{decisions_error}; fix it or remove it before deciding on findings") from decisions_error
-    known = {finding["id"] for finding in findings}
-    findings += [finding for finding in agent_ready_conflicts.pending_findings(review_module(), project_root, decisions)
-                 if finding["id"] not in known]
-    return findings, decisions
+    # The same id can be on disk and in a pending update when the hook reviewed the applied rule
+    # after the plan: the pending one wins, so a decision covers the content the apply will write.
+    pending = {finding["id"]: finding
+               for finding in agent_ready_conflicts.pending_findings(review_module(), project_root, decisions)}
+    merged = [pending.pop(finding["id"], finding) for finding in findings]
+    return merged + list(pending.values()), decisions
 
 
 def update_decisions(project_root, change):

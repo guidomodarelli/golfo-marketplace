@@ -45,9 +45,9 @@ teardown() {
   rm -rf "$test_root"
 }
 
-# claude answers one contradiction for the pair named in FAKE_CONFLICT_*, if it is among the
-# numbered pairs of the input; FAKE_FAIL=1 makes it fail. Only a review (claude -p) is logged:
-# the marketplace refresh of an apply (claude plugin ...) succeeds without reading stdin.
+# claude and codex answer one contradiction for the pair named in FAKE_CONFLICT_*, if it is among
+# the numbered pairs of the input; FAKE_FAIL=1 makes them fail. Only a review (claude -p, codex exec)
+# is logged: the marketplace refresh of an apply (claude plugin ...) succeeds without reading stdin.
 write_fake_provider() {
   cat > "$fake_bin/fake-provider.py" <<'PY'
 import json, os, re, sys
@@ -71,6 +71,18 @@ printf 'claude\n' >> "\$FAKE_CALLS"
 python3 "$fake_bin/fake-provider.py"
 EOF
   chmod +x "$fake_bin/claude"
+  cat > "$fake_bin/codex" <<EOF
+#!/bin/bash
+[[ "\$1" == exec ]] || exit 0
+printf 'codex\n' >> "\$FAKE_CALLS"
+[[ "\${FAKE_FAIL:-0}" == 1 ]] && { cat > /dev/null; exit 1; }
+while [[ \$# -gt 0 ]]; do
+  [[ "\$1" == --output-last-message ]] && result_path="\$2"
+  shift
+done
+python3 "$fake_bin/fake-provider.py" > "\$result_path"
+EOF
+  chmod +x "$fake_bin/codex"
 }
 
 # An installed plugin outside the repository, so a test can change what its content brings.
@@ -229,4 +241,53 @@ first_conflict_id() {
   [ "$status" -eq 0 ]
   [[ "$output" != *"Semantic conflicts"* ]]
   [ "$(calls)" -eq 0 ]
+}
+
+@test "the conflict review follows reviews.cache of this run, before an apply records it" {
+  agent_ready apply --stack node
+  [ "$status" -eq 0 ]
+  project_rule
+  agent_ready plan
+  [ "$status" -eq 0 ]
+  reviewed_calls="$(calls)"
+
+  write_manifest '{"profiles": ["node"], "reviews": {"cache": false}}'
+  agent_ready plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"(a project rule)"* ]]
+  [ "$(calls)" -gt "$reviewed_calls" ]
+}
+
+@test "the background sync reviews with the provider it runs for" {
+  agent_ready apply --stack node
+  [ "$status" -eq 0 ]
+  project_rule
+  : > "$FAKE_CALLS"
+  # The AGENTS.md review that the sync leaves running detached is not what this test checks, and
+  # it would outlive the test: the engine copy starts nothing in the background.
+  printf 'import sys\nsys.exit(0)\n' > "$engine_copy/scripts/run-detached.py"
+
+  run env PATH="$fake_bin:$PATH" AGENT_READY_SETUP_SKILL_DIR="$engine_copy" AGENT_READY_SETUP_SYNC_FOREGROUND=1 \
+    bash .agents/hooks/sync-marketplace.sh --provider codex
+  [ "$status" -eq 0 ]
+  grep -Fxq codex "$FAKE_CALLS"
+  ! grep -Fxq claude "$FAKE_CALLS"
+}
+
+@test "a decision before the apply covers the update even after the hook reviewed the applied rule" {
+  write_manifest '{"profiles": ["node"], "conflicts": {"block": true}}'
+  agent_ready apply
+  [ "$status" -eq 0 ]
+  project_rule
+  change_managed_rule
+  conflict_id="$(first_conflict_id)"
+  # The edit hook reviews the rule on disk again: the same finding, with the applied content.
+  run env PATH="$fake_bin:$PATH" bash .agents/hooks/check-harness-consistency.sh \
+    <<< '{"tool_name":"Edit","tool_input":{"file_path":".agents/rules/team.md"}}'
+
+  agent_ready review accept "$conflict_id" --reason "The team rule is on purpose"
+  [ "$status" -eq 0 ]
+  agent_ready apply
+  [ "$status" -eq 0 ]
+  grep -Fq 'Verify every change.' .agents/rules/verify-changes.md
 }

@@ -28,6 +28,9 @@ AGENTS_FILE = "AGENTS.md"
 DIRECTION_UPDATE = "update"
 DIRECTION_PROJECT = "project"
 HARNESS_REVIEW_RELATIVE_PATH = "assets/common/hooks/harness-review.py"
+REVIEW_CACHE_RELATIVE_PATH = "assets/common/hooks/review-cache.py"
+# What the review needs from the engine; every installed engine ships both.
+REVIEW_SCRIPTS = (HARNESS_REVIEW_RELATIVE_PATH, REVIEW_CACHE_RELATIVE_PATH)
 # Per worktree (git rev-parse --git-path): the update conflicts of the last plan.
 PENDING_GIT_PATH = "agent-ready/semantic-conflicts.json"
 PENDING_FIELDS = ("id", "unit", "check", "direction", "files", "lines", "kind", "text", "reviewedFiles")
@@ -92,11 +95,18 @@ def conflict_pairs(project_root, entries, locked_assets, read_text):
     return directions, texts
 
 
-def review_conflicts(project_root, engine_dir, cache_module, provider, directions, texts, bash, use_provider):
+def engine_can_review(engine_dir):
+    """True when the engine has the review scripts; a stripped copy of it cannot review."""
+    return all(os.path.isfile(os.path.join(engine_dir, relative)) for relative in REVIEW_SCRIPTS)
+
+
+def review_conflicts(project_root, engine_dir, cache_module, provider, directions, texts, bash, use_provider,
+                     settings=None):
     """Review the pairs that are not in the cache and return what plan reports.
 
     ``use_provider`` false (offline, review mode) answers from the cache only. A pair without an
-    answer stays unchecked, never clean.
+    answer stays unchecked, never clean. ``settings`` are the effective reviews options (cache,
+    ttl, commit) of this run.
     """
     harness = load_harness_review(engine_dir)
     pairs = sorted(directions)
@@ -104,7 +114,7 @@ def review_conflicts(project_root, engine_dir, cache_module, provider, direction
               "reason": None, "findings": [], "quiet": 0}
     if not pairs:
         return report
-    cache = cache_module.ReviewCache(project_root)
+    cache = cache_module.ReviewCache(project_root, settings=settings)
     model = cache_module.PROVIDER_DEFAULTS[provider]["model"]
     effort = cache_module.PROVIDER_DEFAULTS[provider]["effort"]
     engine = cache_module.engine_version(project_root)
