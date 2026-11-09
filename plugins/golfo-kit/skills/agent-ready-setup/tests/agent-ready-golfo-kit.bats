@@ -435,3 +435,160 @@ PY
   [ "$status" -ne 0 ]
   [[ "$stderr" == *"reserved for golfo-kit itself"* ]]
 }
+
+@test "apply --from-lock reproduces the golfo-kit revision of the lock on a fresh cache" {
+  write_manifest '{"profiles": ["node"], "sources": {"golfoKit": {"ref": "main"}}}'
+  run_cli update golfo-kit --to "$first_revision"
+  [ "$status" -eq 0 ]
+  before_lock="$(cat .agents/agent-ready.lock.json)"
+  rule_sha="$(lock_value 'data["assets"][".agents/rules/verify-changes.md"]["sha256"]')"
+  # Another machine: nothing in the cache, and the ref of the manifest is at another revision.
+  rm -rf "$XDG_CACHE_HOME/agent-ready-setup" .agents/rules/verify-changes.md
+
+  run_cli apply --from-lock
+  [ "$status" -eq 0 ]
+  grep -Fq 'Content of revision one.' .agents/rules/verify-changes.md
+  [ "$(sha256sum .agents/rules/verify-changes.md | cut -d' ' -f1)" = "$rule_sha" ]
+  [ "$(cat .agents/agent-ready.lock.json)" = "$before_lock" ]
+
+  # Without --from-lock the ref in auto moves on.
+  run_cli apply
+  [ "$status" -eq 0 ]
+  [ "$(lock_value 'data["source"]["revision"]')" = "$second_revision" ]
+}
+
+@test "apply --from-lock stops before writing and names what does not match the lock" {
+  write_manifest '{"profiles": ["node"], "sources": {"golfoKit": {"updates": "pinned"}}}'
+  run_cli update golfo-kit --to "$first_revision"
+  [ "$status" -eq 0 ]
+  write_manifest '{"profiles": ["node", "business-flows"], "sources": {"golfoKit": {"updates": "pinned"}}}'
+  before_lock="$(cat .agents/agent-ready.lock.json)"
+
+  run_cli apply --from-lock
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"--from-lock cannot reproduce the lock, so nothing was changed"* ]]
+  [[ "$stderr" == *"selection: the manifest resolves to"* ]]
+  [ "$(cat .agents/agent-ready.lock.json)" = "$before_lock" ]
+  [ ! -d .agents/skills/business-flows ] || ! ls .agents/rules | grep -q business
+
+  # A content asset whose sha256 the lock does not match: the source is named, the file is not recreated.
+  write_manifest '{"profiles": ["node"], "sources": {"golfoKit": {"updates": "pinned"}}}'
+  python3 - <<'PY'
+import json
+path = ".agents/agent-ready.lock.json"
+lock = json.load(open(path, encoding="utf-8"))
+lock["assets"][".agents/rules/verify-changes.md"]["sha256"] = "0" * 64
+json.dump(lock, open(path, "w", encoding="utf-8"), indent=2)
+PY
+  rm .agents/rules/verify-changes.md
+  run_cli apply --from-lock
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"golfo-kit: .agents/rules/verify-changes.md does not match the sha256 of the lock"* ]]
+  [ ! -e .agents/rules/verify-changes.md ]
+}
+
+@test "apply --from-lock lets the engine files follow the installed plugin" {
+  install_engine_copy
+  write_manifest '{"profiles": ["node"], "sources": {"golfoKit": {"updates": "pinned"}}}'
+  run --separate-stderr env PATH="$fake_bin:$PATH" python3 "$engine_copy/scripts/agent-ready" update golfo-kit --to "$first_revision"
+  [ "$status" -eq 0 ]
+  printf '\n# hook of a new engine\n' >> "$engine_copy/assets/common/hooks/check-harness-consistency.sh"
+
+  run --separate-stderr env PATH="$fake_bin:$PATH" python3 "$engine_copy/scripts/agent-ready" apply --from-lock
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"file(s) of the engine (hooks and their settings) follow the installed plugin"* ]]
+  cmp -s .agents/hooks/check-harness-consistency.sh "$engine_copy/assets/common/hooks/check-harness-consistency.sh"
+  grep -Fq 'Content of revision one.' .agents/rules/verify-changes.md
+}
+
+@test "apply --from-lock needs a lockfile, takes no selection and previews with --dry-run" {
+  run_cli apply --from-lock
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"--from-lock needs .agents/agent-ready.lock.json"* ]]
+  run_cli apply --from-lock --profiles node
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"--from-lock applies the selection and revisions of the lock"* ]]
+
+  write_manifest '{"profiles": ["node"], "sources": {"golfoKit": {"updates": "pinned"}}}'
+  run_cli update golfo-kit --to "$first_revision"
+  [ "$status" -eq 0 ]
+  rm .agents/rules/verify-changes.md
+  run_cli apply --from-lock --dry-run
+  [ "$status" -eq 0 ]
+  [ ! -e .agents/rules/verify-changes.md ]
+}
+
+@test "apply --from-lock checks the texts the managed block of AGENTS.md is rendered with" {
+  install_engine_copy
+  run --separate-stderr env PATH="$fake_bin:$PATH" python3 "$engine_copy/scripts/agent-ready" apply --stack node
+  [ "$status" -eq 0 ]
+  printf '\nA new centralization sentence.\n' >> "$engine_copy/assets/instruction-centralization.md"
+  before_agents="$(cat AGENTS.md)"
+
+  run --separate-stderr env PATH="$fake_bin:$PATH" python3 "$engine_copy/scripts/agent-ready" apply --from-lock
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"what AGENTS.md is rendered with (the centralization and proxy texts) does not match the lock"* ]]
+  [ "$(cat AGENTS.md)" = "$before_agents" ]
+}
+
+@test "apply --from-lock aligns AGENTS.md with the pack revision of the lock, not a newer cached one" {
+  pack_repository="$test_root/acme"
+  cp -R "$skill_dir/assets/examples/acme-profile-pack" "$pack_repository"
+  git -C "$pack_repository" init -q
+  git -C "$pack_repository" add -A
+  git -C "$pack_repository" commit -qm initial
+  git config --global "url.file:///$(native_path "$pack_repository" | sed 's#^/##').insteadOf" "https://packs.example.invalid/acme"
+  write_manifest '{"profiles": ["node", "acme/kafka-interno"], "sources": {"packs": [{"name": "acme", "source": "git+https://packs.example.invalid/acme#main"}]}}'
+  run_cli apply
+  [ "$status" -eq 0 ]
+  # The pack moves on and a preview brings its new revision into the cache; the lock stays.
+  printf 'new rule\n' > "$pack_repository/profiles/kafka-interno/rules/acme-new.md"
+  git -C "$pack_repository" add -A
+  git -C "$pack_repository" commit -qm advance
+  run_cli plan
+  before_lock="$(cat .agents/agent-ready.lock.json)"
+
+  run_cli apply --from-lock
+  [ "$status" -eq 0 ]
+  [ ! -e .agents/rules/acme-new.md ]
+  ! grep -Fq 'acme-new' AGENTS.md
+  [ "$(cat .agents/agent-ready.lock.json)" = "$before_lock" ]
+}
+
+@test "apply --from-lock reproduces a lock with a retired asset the project kept" {
+  run_cli apply --profiles node,business-flows
+  [ "$status" -eq 0 ]
+  rm .agents/rules/business-flows.md
+  mkdir .agents/rules/business-flows.md
+  run_cli apply --profiles node
+  [ "$status" -eq 0 ]
+  [ "$(lock_value 'data["assets"][".agents/rules/business-flows.md"]["state"]')" = "retired-preserved" ]
+
+  run_cli apply --from-lock
+  [ "$status" -eq 0 ]
+  [ -d .agents/rules/business-flows.md ]
+}
+
+@test "apply --from-lock verifies the content of an asset the lock records in conflict" {
+  install_engine_copy
+  agent_ready() { run --separate-stderr env PATH="$fake_bin:$PATH" python3 "$engine_copy/scripts/agent-ready" "$@"; }
+  agent_ready apply --stack node
+  [ "$status" -eq 0 ]
+  rm .agents/rules/verify-changes.md
+  mkdir .agents/rules/verify-changes.md
+  agent_ready apply
+  [ "$(lock_value 'data["assets"][".agents/rules/verify-changes.md"]["state"]')" = "conflict" ]
+
+  # The same sources reproduce the lock, conflict included.
+  agent_ready apply --from-lock
+  [ "$status" -eq 0 ]
+  [ -d .agents/rules/verify-changes.md ]
+
+  # The source changed what it publishes there: the lock cannot be reproduced.
+  rmdir .agents/rules/verify-changes.md
+  printf '\nAn edit of the source.\n' >> "$engine_copy/assets/common/rules/verify-changes.md"
+  agent_ready apply --from-lock
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"golfo-kit: .agents/rules/verify-changes.md does not match the sha256 of the lock"* ]]
+  [ ! -e .agents/rules/verify-changes.md ]
+}

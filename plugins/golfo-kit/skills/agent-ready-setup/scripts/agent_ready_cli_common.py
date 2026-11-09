@@ -32,6 +32,8 @@ PROVIDER_RESOLVER_SCRIPT = os.path.join(SCRIPT_DIRECTORY, "resolve-provider.sh")
 MERGE_INSTRUCTIONS_RELATIVE_PATH = "scripts/merge-instructions.sh"
 RESOLVED_SOURCE_PREFIX = "Resolved agent-ready-setup source: "
 RESOLVED_STACK_PREFIX = "Stack: "
+RESOLVED_STACK_DIRECTORY_PREFIX = "Resolved stack directory: "
+STACK_DIRECTORY_VARIABLE = "AGENT_READY_SETUP_STACK_DIR"
 PROVIDER_VARIABLE = "AGENT_READY_SETUP_ACTIVE_PROVIDER"
 SUPPORTED_PROVIDERS = ("claude", "codex")
 UPDATE_MODES = ("auto", "pinned")
@@ -82,9 +84,9 @@ def bash_environment():
     return {key: value for key, value in os.environ.items() if key not in PATH_CONVERSION_VARIABLES}
 
 
-def run_bash(command, cwd, **options):
+def run_bash(command, cwd, extra_environment=None, **options):
     """Run a Bash command of the engine and return its exit status."""
-    return subprocess.call(command, cwd=cwd, env=bash_environment(), **options)
+    return subprocess.call(command, cwd=cwd, env=dict(bash_environment(), **(extra_environment or {})), **options)
 
 
 def resolve_provider(requested):
@@ -169,7 +171,11 @@ def apply_selection(arguments, provider, extra):
                      "--provider", provider, "--stack", stack, "--skill-dir", resolved_source]
     if getattr(arguments, "recheck", False):
         merge_command.append("--recheck")
-    merge_status = run_bash(merge_command, arguments.project_root, stdout=sys.stderr)
+    # The stack bootstrap composed at the revisions it adopted: resolving the sources again could
+    # take a newer cached revision of a pack than the one projected.
+    stack_directory = last_value(lines, RESOLVED_STACK_DIRECTORY_PREFIX)
+    extra_environment = {STACK_DIRECTORY_VARIABLE: stack_directory} if stack_directory else None
+    merge_status = run_bash(merge_command, arguments.project_root, extra_environment, stdout=sys.stderr)
     if merge_status != EXIT_OK:
         fail(f"merge-instructions.sh failed with exit status {merge_status}; the assets were applied, AGENTS.md was not aligned")
         return EXIT_FAILED

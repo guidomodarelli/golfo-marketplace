@@ -365,6 +365,27 @@ fusionan con contenido del proyecto, así que no se comparan con una base. El JS
 determinista (sin timestamps ni paths de la máquina): la misma resolución
 produce los mismos bytes.
 
+**Apply reproducible.** `agent-ready apply --from-lock` aplica exactamente el lock, en otra máquina o un año
+después, sin importar `updates.mode` ni las `ref` del manifest:
+
+- Toma la selección del lock y la revisión de golfo-kit y de cada pack que registra, aunque el manifest declare
+  ahora otra `ref` (el origen tiene que ser el mismo). Las descarga en la caché del usuario si faltan; con
+  `--dry-run` y `updates.refresh: false` no descarga nada y falla si falta una revisión.
+- Antes de escribir compara byte a byte: la selección, las revisiones, el digest de cada pack, el sha256 de cada
+  asset, y el template y los textos con que se arma el bloque gestionado de `AGENTS.md`
+  (`merged["AGENTS.md"].inputsSha256`). Si algo no coincide, falla sin escribir y nombra la fuente
+  (`golfo-kit`, un pack o `selection`) y el archivo.
+- `merge-instructions.sh` arma `AGENTS.md` desde el stack que compuso el apply (la línea
+  `Resolved stack directory:` de `bootstrap.sh`, en `AGENT_READY_SETUP_STACK_DIR`), así nunca toma una revisión
+  más nueva de un pack que esté en la caché.
+- Los archivos del motor (los hooks y los templates de `.claude/settings.json` y `.codex/hooks.json`) siguen al
+  plugin instalado, porque el motor nunca se fija: `--from-lock` los proyecta del motor y dice cuántos difieren
+  del lock.
+- No acepta `--profiles`, `--stack` ni `--updates`, y `--dry-run` muestra el plan con la misma verificación.
+- Un apply de un repositorio `pinned` ya proyecta las revisiones del lock. `--from-lock` agrega la verificación
+  y rechaza cualquier cambio de selección, así que es explícito: sumar un profile en `pinned` sigue siendo un
+  apply normal.
+
 No confundir con `.agents/.agent-ready-assets.lock` (lock de concurrencia del
 sync) ni con el hash de revisión de instrucciones bajo `.git/`. Fijar la
 configuración de un MCP remoto no fija el comportamiento del servicio.
@@ -413,6 +434,7 @@ Para cambiar comportamiento, el proyecto agrega una rule propia bajo
 python3 "$SKILL_DIR/scripts/agent-ready" status [--offline] [--json]
 python3 "$SKILL_DIR/scripts/agent-ready" plan [--offline] [--json]
 python3 "$SKILL_DIR/scripts/agent-ready" apply [--profiles a,b] [--updates pinned|auto] [--recheck] [--dry-run]
+python3 "$SKILL_DIR/scripts/agent-ready" apply --from-lock [--dry-run]
 python3 "$SKILL_DIR/scripts/agent-ready" update [<fuente>...] [--to <ref>] [--dry-run]
 python3 "$SKILL_DIR/scripts/agent-ready" doctor [--offline] [--json]
 python3 "$SKILL_DIR/scripts/agent-ready" remove [--dry-run] [--yes] [--json]
@@ -530,10 +552,12 @@ seleccionado declara `tools: ["browser"]`; `tools.enabled: false` (o
   índice, para recuperar las que git separa cuando recrea el asset. Sin historial
   por vista no distingue ese caso de una edición guardada como archivo nuevo en la
   vista, que se pierde ahí. Para cambiar comportamiento, usar una rule propia.
-- Sin `sources.golfoKit` en `pinned`, un asset faltante se recrea desde el source
-  resuelto en el próximo apply, no desde la versión del lock: el apply es un cambio
-  explícito y revisable, y el lock pasa a registrar la versión nueva. `status` avisa
-  antes si el source difiere del lock. Para que golfo-kit no cambie, fijarlo (sección 4,
-  «golfo-kit como fuente»).
+- Si el lock no tiene una revisión de golfo-kit que se pueda descargar (un source local
+  sin Git), un asset faltante se recrea desde el source resuelto en el próximo apply, no
+  desde la versión del lock: el apply es un cambio explícito y revisable, y el lock pasa a
+  registrar la versión nueva. `status` avisa antes si el source difiere del lock, y
+  `--from-lock` falla en vez de proyectar otro contenido.
+- `--from-lock` reproduce el contenido, no el motor: en otra versión del plugin, los
+  hooks y los templates de settings que los conectan pueden diferir del lock.
 - Las rules y la skill de browser siguen en `assets/common/` porque otras rules
   comunes las enlazan; el profile `browser` controla solo la instalación.

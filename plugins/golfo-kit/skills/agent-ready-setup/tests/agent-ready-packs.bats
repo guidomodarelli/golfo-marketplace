@@ -872,3 +872,78 @@ EOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"+ create          .agents/rules/acme-conventions.md  [acme/base]"* ]]
 }
+
+@test "--from-lock keeps every pack at the commit of the lock, even in auto and on a fresh cache" {
+  publish_pack_repository acme
+  adopted_commit="$pack_commit"
+  write_manifest acme/kafka-interno "acme=git+https://packs.example.invalid/acme#main"
+  run_bootstrap
+  [ "$status" -eq 0 ]
+  python3 - <<'PY'
+import json
+path = ".agents/agent-ready.json"
+manifest = json.load(open(path, encoding="utf-8"))
+manifest["updates"] = {"mode": "auto"}
+json.dump(manifest, open(path, "w", encoding="utf-8"))
+PY
+  advance_pack_repository
+  rm -rf "$XDG_CACHE_HOME/agent-ready-setup"
+  before="$(tree_fingerprint)"
+
+  run_bootstrap --from-lock
+  [ "$status" -eq 0 ]
+  [ ! -e .agents/rules/acme-new.md ]
+  [ "$(lock_value 'data["profileSources"]["acme"]["resolvedCommit"]')" = "$adopted_commit" ]
+  [ "$(tree_fingerprint)" = "$before" ]
+}
+
+@test "--from-lock names the pack whose content no longer matches the lock and writes nothing" {
+  copy_example_pack
+  write_manifest acme/kafka-interno "acme=path:../acme-pack"
+  run_bootstrap
+  [ "$status" -eq 0 ]
+  printf 'An edit after the lock.\n' >> "$pack_dir/profiles/kafka-interno/rules/acme-kafka.md"
+  before="$(tree_fingerprint)"
+
+  run_bootstrap --from-lock
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"--from-lock cannot reproduce the lock, so nothing was changed"* ]]
+  [[ "$output" == *"acme: its content does not match the digest of the lock"* ]]
+  [ "$(tree_fingerprint)" = "$before" ]
+}
+
+@test "--from-lock takes the commit of the lock even when the manifest now declares another ref" {
+  publish_pack_repository acme
+  adopted_commit="$pack_commit"
+  write_manifest acme/kafka-interno "acme=git+https://packs.example.invalid/acme#main"
+  run_bootstrap
+  [ "$status" -eq 0 ]
+  before_lock="$(cat .agents/agent-ready.lock.json)"
+  write_manifest acme/kafka-interno "acme=git+https://packs.example.invalid/acme#release"
+  rm -rf "$XDG_CACHE_HOME/agent-ready-setup"
+
+  run_bootstrap --from-lock
+  [ "$status" -eq 0 ]
+  [ "$(lock_value 'data["profileSources"]["acme"]["resolvedCommit"]')" = "$adopted_commit" ]
+  [ "$(cat .agents/agent-ready.lock.json)" = "$before_lock" ]
+}
+
+@test "an offline preview of the lock compares with the cache and downloads nothing" {
+  publish_pack_repository acme
+  write_manifest acme/kafka-interno "acme=git+https://packs.example.invalid/acme#main"
+  run_bootstrap
+  [ "$status" -eq 0 ]
+  python3 - <<'PY'
+import json
+path = ".agents/agent-ready.json"
+manifest = json.load(open(path, encoding="utf-8"))
+manifest["updates"]["refresh"] = False
+json.dump(manifest, open(path, "w", encoding="utf-8"))
+PY
+  rm -rf "$XDG_CACHE_HOME/agent-ready-setup"
+
+  run_bootstrap --plan --from-lock
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"is not in the cache of this machine and this run uses no network"* ]]
+  [ ! -d "$XDG_CACHE_HOME/agent-ready-setup/packs" ] || [ -z "$(find "$XDG_CACHE_HOME/agent-ready-setup/packs" -name agent-ready-pack.json)" ]
+}

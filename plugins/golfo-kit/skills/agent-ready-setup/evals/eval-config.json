@@ -3127,6 +3127,29 @@
           "description": "Explica que el motor sigue al plugin instalado"
         }
       ]
+    },
+    {
+      "id": "apply-from-lock-on-another-machine",
+      "description": "Para reproducir exactamente el lock en otra máquina se usa agent-ready apply --from-lock, que verifica revisiones y sha256 y falla antes de escribir.",
+      "input": "Tenemos un repo con agent-ready-setup aplicado hace meses y su lockfile commiteado. En la máquina de un cliente necesito que quede exactamente igual a lo que dice el lock, sin traer versiones nuevas de golfo-kit ni de los packs, y que falle si no se puede. ¿Qué comando corro y qué pasa si algo no coincide? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "--from-lock",
+          "description": "Usa agent-ready apply --from-lock",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(sha256|digest|revisi)",
+          "description": "Explica que verifica revisiones o sha256 del lock"
+        },
+        {
+          "type": "regex",
+          "pattern": "(antes de escribir|sin escribir|no escribe|nada cambia|no cambia nada|falla)",
+          "description": "Dice que falla antes de escribir si algo no coincide"
+        }
+      ]
     }
   ]
 }
