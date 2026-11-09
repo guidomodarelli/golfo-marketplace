@@ -22,6 +22,7 @@ never changes above it. Ignored values are reported, never dropped in silence.
 """
 
 import copy
+import fnmatch
 import json
 import os
 import re
@@ -74,6 +75,7 @@ LIST_RESTRICTS = "restricts"
 LIST_RULES = "rules"
 LIST_SECURITY_KINDS = (LIST_PERMITS, LIST_RESTRICTS, LIST_RULES)
 RULE_ALLOW = "allow"
+GLOB_CHARACTERS = "*?["
 
 
 class ConfigurationError(StateError):
@@ -471,6 +473,16 @@ def loosens(node, value, previous):
     return order.index(json.dumps(value)) < order.index(json.dumps(previous))
 
 
+def covered_by(item, patterns):
+    """True when a plain name falls under one of the glob patterns.
+
+    Only a name without wildcards counts: whether one pattern is narrower than another cannot be
+    told from the text, so a new pattern is taken as wider.
+    """
+    return (isinstance(item, str) and not any(character in item for character in GLOB_CHARACTERS)
+            and any(isinstance(pattern, str) and fnmatch.fnmatchcase(item, pattern) for pattern in patterns))
+
+
 def list_loosens(kind, value, previous):
     """True when a sensitive list lets more happen than ``previous``."""
     added = [item for item in value if item not in previous]
@@ -478,7 +490,7 @@ def list_loosens(kind, value, previous):
         return bool(added)
     if kind == LIST_RESTRICTS:
         # An empty allow list restricts nothing: emptying one, or widening it, loosens.
-        return bool(previous) and (not value or bool(added))
+        return bool(previous) and (not value or any(not covered_by(item, previous) for item in added))
     return any(isinstance(item, dict) and item.get("action") == RULE_ALLOW for item in added)
 
 

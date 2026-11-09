@@ -42,6 +42,7 @@ from agent_ready_common import (  # noqa: E402
     StateError,
     acquire_directory_lock,
     bash_executable,
+    is_link,
     plugin_version,
     read_json_file,
     serialize_json,
@@ -279,11 +280,6 @@ def local_state(path):
     if not os.path.isfile(path):
         return LOCAL_NOT_A_FILE
     return sha256_of_file(path)
-
-
-def is_link(path):
-    """True for a symlink or, on Windows, a directory junction."""
-    return os.path.islink(path) or (hasattr(os.path, "isjunction") and os.path.isjunction(path))
 
 
 def has_linked_parent(project_root, destination):

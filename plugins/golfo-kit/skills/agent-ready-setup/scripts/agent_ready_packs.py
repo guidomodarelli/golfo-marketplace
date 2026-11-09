@@ -18,7 +18,7 @@ import urllib.parse
 
 from agent_ready_compatibility import require_engine, validate_compatibility
 import agent_ready_pack_tools as pack_tools
-from agent_ready_common import ProfileError, StateError, read_json_file, sha256_of_file, sha256_of_text
+from agent_ready_common import ProfileError, StateError, is_link, read_json_file, sha256_of_file, sha256_of_text
 from agent_ready_config import LAYER_ENVIRONMENT, LAYER_FLAGS
 from agent_ready_options import UPDATES_AUTO, UPDATES_MODE_KEY
 from agent_ready_detection import (
@@ -571,11 +571,6 @@ def validate_reference_list(source_name, profile_name, field, values):
     for value in values:
         if not isinstance(value, str) or not (GOLFO_REFERENCE.fullmatch(value) or PACK_REFERENCE.fullmatch(value)):
             raise ProfileError(f"pack '{source_name}' profile '{profile_name}': invalid reference '{value}' in '{field}'; use <profile> or <source>/<profile>")
-
-
-def is_link(path):
-    """True for a symlink or, on Windows, a directory junction."""
-    return os.path.islink(path) or (hasattr(os.path, "isjunction") and os.path.isjunction(path))
 
 
 def validate_asset_tree(source, profile_name, asset_root, relative_root):

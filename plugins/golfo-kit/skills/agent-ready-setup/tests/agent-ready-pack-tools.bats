@@ -288,3 +288,38 @@ PY
     git -C "$pack_repository" reset -q --hard HEAD~1
   done
 }
+
+@test "a project narrows an allow list of the machine without approval, even under a glob" {
+  run_cli trust add acme
+  # Without this check the npm package of acme-helper reaches the allow list, which decides.
+  run_cli config set security.checks.artifactSha256 false --layer user
+  run_cli config set security.allow.clis 'acme*' --layer user
+  run_cli config set security.allow.clis acme
+  [ "$status" -eq 0 ]
+  plan_tools
+  [ "$(decision_of cli acme)" = "cli acme allowed " ]
+  [[ "$(decision_of cli acme-helper)" == *"blocked security.allow.clis does not include acme-helper"* ]]
+
+  # A new pattern is taken as wider: it needs the approval of the repository.
+  run_cli config set security.allow.clis 'acme-h*'
+  run_cli plan
+  [[ "$output" == *"security.allow.clis"*"was ignored"* ]]
+}
+
+@test "a script path through a symlink or a Windows junction stops the apply" {
+  mkdir -p packs outside
+  cp -R "$pack_repository" packs/acme
+  rm -rf packs/acme/.git packs/acme/scripts
+  printf '#!/bin/bash\necho outside\n' > outside/setup.sh
+  printf '#!/bin/bash\necho outside\n' > outside/refresh.sh
+  case "$(uname -s)" in
+    MINGW* | MSYS*) cmd //c "mklink /J $(cygpath -w "$PWD/packs/acme/scripts") $(cygpath -w "$PWD/outside")" > /dev/null ;;
+    *) ln -s "$PWD/outside" packs/acme/scripts ;;
+  esac
+  write_manifest '{"profiles": ["acme/kafka-interno"], "sources": {"packs": [{"name": "acme", "source": "path:packs/acme"}]}}'
+
+  run_cli apply
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"pack 'acme' profile 'kafka-interno': script 1 path scripts/setup.sh goes through a symlink or a junction"* ]]
+  [ ! -e .agents/agent-ready.lock.json ]
+}

@@ -18,6 +18,8 @@ import os
 import re
 import urllib.parse
 
+from agent_ready_common import is_link
+
 TOOL_CLI = "cli"
 TOOL_MCP_SERVER = "mcpServer"
 TOOL_SCRIPT = "script"
@@ -209,10 +211,18 @@ def validate_script(script, what, pack_root, is_contained):
     current = pack_root
     for part in path.split("/"):
         current = os.path.join(current, part)
-        if os.path.islink(current):
-            raise DeclarationError(f"{what} path {path} goes through a symlink, which packs cannot use")
+        if is_link(current):
+            raise DeclarationError(f"{what} path {path} goes through a symlink or a junction, which packs cannot use")
     if not os.path.isfile(absolute):
         raise DeclarationError(f"{what} path {path} is missing from the pack")
+    real_pack = os.path.normcase(os.path.realpath(pack_root))
+    real_script = os.path.normcase(os.path.realpath(absolute))
+    try:
+        inside = os.path.commonpath([real_pack, real_script]) == real_pack
+    except ValueError:
+        inside = False
+    if not inside:
+        raise DeclarationError(f"{what} path {path} resolves outside the pack")
 
 
 def validate_declarations(entry, pack_root, is_contained):
