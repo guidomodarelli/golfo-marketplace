@@ -585,15 +585,25 @@ fi
 rm -f -- "$configuration_messages"
 CONFIGURED_PROFILES=""
 TOOLS_ENABLED=true
+FROM_LOCK_CONFIGURED=false
 while IFS=$'\t' read -r configuration_key configuration_value; do
   configuration_value="${configuration_value%$'\r'}"
   case "$configuration_key" in
-    # updates.refresh false keeps plan and status off the network, like --offline.
-    updates.refresh) [[ "$configuration_value" == false ]] && OFFLINE=1 ;;
+    # updates.refresh false keeps plan and status off the network, like --offline. An explicit
+    # update, its preview included, always resolves the revision it asks for.
+    updates.refresh) [[ "$configuration_value" == false && ${#UPDATE_SOURCES[@]} -eq 0 ]] && OFFLINE=1 ;;
     tools.enabled) TOOLS_ENABLED="$configuration_value" ;;
     profiles) CONFIGURED_PROFILES="$configuration_value" ;;
+    updates.fromLock) FROM_LOCK_CONFIGURED="$configuration_value" ;;
   esac
 done <<< "$CONFIGURATION"
+# updates.fromLock: an apply or a plan that neither updates a source nor changes the selection
+# reproduces the lock, like --from-lock, once there is one.
+if [[ "$FROM_LOCK" -eq 0 && "$FROM_LOCK_CONFIGURED" == true && ( "$RUN_MODE" == apply || "$RUN_MODE" == plan ) &&
+      ${#UPDATE_SOURCES[@]} -eq 0 && -z "$STACK$PROFILES$UPDATE_MODE" && -f .agents/agent-ready.lock.json ]]; then
+  FROM_LOCK=1
+  echo "updates.fromLock: this run reproduces the lock. Adopt a new version with agent-ready update <source>, or change the selection with --profiles or --stack." >&2
+fi
 OFFLINE_ARGUMENTS=()
 [[ "$OFFLINE" -eq 1 ]] && OFFLINE_ARGUMENTS=(--offline)
 

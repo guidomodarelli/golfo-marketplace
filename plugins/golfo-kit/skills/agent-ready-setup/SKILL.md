@@ -16,7 +16,7 @@ description: >-
   descartar un hallazgo de sus revisiones de IA.
 license: MIT
 metadata:
-  version: "1.17.0"
+  version: "1.18.0"
   author: "guponce"
   category: "developer-experience"
   tags: "agent-ready, multi-provider, claude-code, codex, bootstrap, setup, scaffold, context-optimized-v1.20.1"
@@ -112,6 +112,7 @@ explícito fuera del cache conservan prioridad para desarrollo local.
 | `agent-ready apply --from-lock [--dry-run]` | aplica exactamente el lock (selección, revisiones y sha256) o falla antes de escribir nombrando la fuente; ver «Apply reproducible» en [profiles-and-lockfile.md](references/profiles-and-lockfile.md) |
 | `agent-ready update [<fuente>...] [--to <ref>] [--dry-run]` | adopta la última revisión de esas fuentes (o de todas) y de golfo-kit; `--to` elige la revisión de una sola, golfo-kit incluido ([references/profiles-and-lockfile.md](references/profiles-and-lockfile.md), «golfo-kit como fuente»). `--dry-run` muestra además la versión actual y la nueva, el changelog y los cambios `breaking` («Compatibilidad declarada») |
 | `agent-ready config explain\|get\|set\|unset` | la configuración efectiva por capas ([references/configuration.md](references/configuration.md)) |
+| `agent-ready preset [delivered\|none]` | elige un preset con una sola clave o los lista; `delivered` deja una solución entregada estable hasta que alguien decida actualizarla ([references/stable-delivery.md](references/stable-delivery.md)) |
 | `agent-ready init [--profiles a,b \| --stack s] [--updates m] [--yes] [--no-input]` | primera configuración: detecta, pregunta lo que falta si hay terminal y aplica |
 | `agent-ready profiles list\|add\|remove` | la selección del manifest, validada contra el catálogo; después, `apply` |
 | `agent-ready sources list\|add\|remove` | las fuentes de packs del manifest; `add` además la trae a la caché |

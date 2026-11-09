@@ -21,10 +21,33 @@
       "x-security": { "strictness": ["auto", "pinned"] }
     },
     "refresh": {
-      "description": "plan, status y el inicio de sesión de un repositorio pinned refrescan la caché fuera del repositorio para decir si todo está al día. Apagado, comparan con lo que ya hay, como --offline.",
+      "description": "plan, status y el inicio de sesión de un repositorio pinned refrescan la caché fuera del repositorio para decir si todo está al día. Apagado, comparan con lo que ya hay, como --offline. Una actualización explícita (agent-ready update, también con --dry-run) siempre resuelve la revisión que pide.",
       "type": "boolean",
       "default": true,
       "x-env": "AGENT_READY_SETUP_REFRESH"
+    },
+    "preset": {
+      "description": "Conjunto de valores con una sola clave: none (los defaults) o delivered, para una solución entregada a un cliente que no cambia hasta que alguien decide actualizarla: updates.mode pinned, golfo-kit pinned, updates.refresh apagado, updates.fromLock encendido y ci.mode fail. Cualquier clave se puede pisar en la misma capa o en una superior.",
+      "type": "string",
+      "enum": ["none", "delivered"],
+      "default": "none",
+      "x-security": { "strictness": ["none", "delivered"] },
+      "x-presets": {
+        "none": {},
+        "delivered": {
+          "updates.mode": "pinned",
+          "sources.golfoKit.updates": "pinned",
+          "updates.refresh": false,
+          "updates.fromLock": true,
+          "ci.mode": "fail"
+        }
+      }
+    },
+    "fromLock": {
+      "description": "Un apply o un plan que no actualiza ninguna fuente ni cambia la selección reproduce el lock, como --from-lock: misma selección, misma revisión de cada fuente y mismos sha256, o falla antes de escribir. Para adoptar una versión nueva se usa agent-ready update; para cambiar la selección, --profiles o --stack. Sin lockfile, el primer apply resuelve como siempre.",
+      "type": "boolean",
+      "default": false,
+      "x-security": { "strictness": [false, true] }
     }
   }
 }

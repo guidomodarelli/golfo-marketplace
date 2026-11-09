@@ -42,7 +42,7 @@ from agent_ready_cli_common import (
 )
 from agent_ready_common import StateError, serialize_json
 from agent_ready_config import LAYER_PROJECT, ConfigurationError, format_value, load_schema, parse_text_value
-from agent_ready_options import SOURCES_ENABLED_KEY
+from agent_ready_options import SOURCES_ENABLED_KEY, UPDATES_PRESET_KEY
 from agent_ready_cli_lifecycle import register as register_lifecycle_commands
 from agent_ready_cli_reviews import register as register_review_commands
 from agent_ready_golfo_kit import GOLFO_KIT_SOURCE_NAME as GOLFO_KIT_SOURCE
@@ -226,6 +226,28 @@ def command_config_unset(arguments):
     return report_effective(arguments)
 
 
+def command_preset(arguments):
+    """Choose a configuration preset with one key, or list them; each value can still be overridden."""
+    _, node = leaf_of(UPDATES_PRESET_KEY)
+    presets = node["x-presets"]
+    if arguments.name is None:
+        report = effective_configuration(arguments)
+        current = value_at(report["values"], UPDATES_PRESET_KEY) if UPDATES_PRESET_KEY in report["origins"] else node["default"]
+        for name, assignments in presets.items():
+            marker = "*" if name == current else " "
+            values = ", ".join(f"{key}: {format_value(value)}" for key, value in assignments.items()) or "the defaults"
+            sys.stdout.write(f"{marker} {name:<10} {values}\n")
+        sys.stdout.write(f"Choose one with: {CLI_NAME} preset <name>; override any value with {CLI_NAME} config set.\n")
+        return EXIT_OK
+    if arguments.name not in presets:
+        raise UsageError(f"unknown preset '{arguments.name}'; the presets are: {', '.join(presets)}")
+    arguments.key, arguments.value = UPDATES_PRESET_KEY, arguments.name
+    status = command_config_set(arguments)
+    for key, value in presets[arguments.name].items():
+        sys.stderr.write(f"  {key}={format_value(value)}\n")
+    return status
+
+
 def report_effective(arguments):
     """After a write, say on stderr what is in force now and whether something ignores it."""
     explanation = explain_key(effective_configuration(arguments), arguments.key)
@@ -336,6 +358,12 @@ def build_parser():
             action.add_argument("value", help="booleans: true|false; lists: a,b or JSON")
         action.add_argument("--layer", choices=WRITABLE_LAYERS, default=LAYER_PROJECT,
                             help="project (.agents/agent-ready.json, versioned) or user (this machine) (default: project)")
+    preset = new_subparser(subparsers, "preset", "Choose a configuration preset with one key, or list them.",
+                           "  agent-ready preset\n  agent-ready preset delivered\n  agent-ready preset none --layer user",
+                           command_preset)
+    preset.add_argument("name", nargs="?", help="delivered (a solution delivered to a client) or none (default: list them)")
+    preset.add_argument("--layer", choices=WRITABLE_LAYERS, default=LAYER_PROJECT,
+                        help="project (.agents/agent-ready.json, versioned) or user (this machine) (default: project)")
     register_selection_commands(subparsers, new_subparser)
     register_lifecycle_commands(subparsers, new_subparser)
     register_review_commands(subparsers, new_subparser)
