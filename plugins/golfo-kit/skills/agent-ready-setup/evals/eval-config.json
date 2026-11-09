@@ -3150,6 +3150,34 @@
           "description": "Dice que falla antes de escribir si algo no coincide"
         }
       ]
+    },
+    {
+      "id": "pack-needs-newer-engine",
+      "description": "Un pack declara minEngine más alto que el motor instalado: el apply falla antes de escribir y hay que actualizar el plugin golfo-kit; el motor no se fija.",
+      "input": "Aplicamos agent-ready-setup y falló con: pack 'acme' needs the agent-ready-setup engine 0.50.0 or newer, and this installation runs golfo-kit 0.46.0. ¿Qué significa, quedó algo a medias y cómo lo resuelvo? ¿Puedo fijar el motor viejo para no actualizar? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "minEngine",
+          "description": "Explica que el pack declara minEngine",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(actualiz|instal).{0,80}(plugin|golfo-kit)",
+          "description": "Indica actualizar el plugin golfo-kit"
+        },
+        {
+          "type": "regex",
+          "pattern": "(nada|no se escribi|no cambi|antes de escribir|sin escribir)",
+          "description": "Aclara que no quedó nada a medias"
+        },
+        {
+          "type": "regex",
+          "pattern": "(motor|engine).{0,120}(no se fija|nunca se fija|no se puede fijar|siempre)",
+          "description": "Explica que el motor no se fija"
+        }
+      ]
     }
   ]
 }

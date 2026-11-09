@@ -592,3 +592,81 @@ PY
   [[ "$stderr" == *"golfo-kit: .agents/rules/verify-changes.md does not match the sha256 of the lock"* ]]
   [ ! -e .agents/rules/verify-changes.md ]
 }
+
+# A branch of the marketplace from $2 whose golfo-kit catalog gets the fields $3; prints its commit.
+catalog_branch() {
+  git -C "$marketplace" checkout -q -b "$1" "$2"
+  python3 - "$marketplace/plugins/golfo-kit/skills/agent-ready-setup/assets/profiles.json" "$3" <<'PY'
+import json, sys
+catalog = json.load(open(sys.argv[1], encoding="utf-8"))
+catalog.update(json.loads(sys.argv[2]))
+json.dump(catalog, open(sys.argv[1], "w", encoding="utf-8"), indent=2)
+PY
+  git -C "$marketplace" commit -qam "catalog of $1"
+  git -C "$marketplace" rev-parse HEAD
+  git -C "$marketplace" checkout -q main
+}
+
+@test "golfo-kit content that needs a newer engine stops before writing" {
+  future_revision="$(catalog_branch future "$second_revision" '{"minEngine": "99.0.0"}')"
+  write_manifest '{"profiles": ["node"], "sources": {"golfoKit": {"updates": "pinned"}}}'
+  run_cli update golfo-kit --to "$first_revision"
+  [ "$status" -eq 0 ]
+  before_lock="$(cat .agents/agent-ready.lock.json)"
+
+  run_cli update golfo-kit --to "$future_revision"
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"the golfo-kit catalog needs the agent-ready-setup engine 99.0.0 or newer"* ]]
+  [ "$(cat .agents/agent-ready.lock.json)" = "$before_lock" ]
+  grep -Fq 'Content of revision one.' .agents/rules/verify-changes.md
+}
+
+@test "update golfo-kit --dry-run shows its version jump and the changes it declares" {
+  changelog_revision="$(catalog_branch changelog "$second_revision" '{"changes": [{"version": "2.0.0", "summary": "Rules renamed", "breaking": true}, {"version": "1.5.0", "summary": "A new rule"}, {"version": "1.0.0", "summary": "First"}]}')"
+  write_manifest '{"profiles": ["node"], "sources": {"golfoKit": {"updates": "pinned"}}}'
+  run_cli update golfo-kit --to "$first_revision"
+  [ "$status" -eq 0 ]
+
+  run_cli update golfo-kit --to "$changelog_revision" --dry-run
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"golfo-kit 1.0.0 -> 2.0.0  (major version jump)"* ]]
+  [[ "$output" == *"! breaking 2.0.0: Rules renamed"* ]]
+  [[ "$output" == *"- 1.5.0: A new rule"* ]]
+  [[ "$output" != *"- 1.0.0: First"* ]]
+  [ "$(lock_value 'data["source"]["revision"]')" = "$first_revision" ]
+}
+
+@test "a pre-release engine below the minEngine of the content stops before writing" {
+  install_engine_copy
+  python3 - "$installed_plugin" <<'PY'
+import json, os, sys
+for manifest in ("plugin.json", ".claude-plugin/plugin.json", ".codex-plugin/plugin.json"):
+    path = os.path.join(sys.argv[1], manifest)
+    data = json.load(open(path, encoding="utf-8"))
+    data["version"] = "1.0.0-rc.1"
+    json.dump(data, open(path, "w", encoding="utf-8"), indent=2)
+PY
+  future_revision="$(catalog_branch rc "$second_revision" '{"minEngine": "1.0.0-rc.2"}')"
+  write_manifest '{"profiles": ["node"], "sources": {"golfoKit": {"updates": "pinned"}}}'
+
+  run --separate-stderr env PATH="$fake_bin:$PATH" python3 "$engine_copy/scripts/agent-ready" update golfo-kit --to "$future_revision"
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"needs the agent-ready-setup engine 1.0.0-rc.2 or newer, and this installation runs golfo-kit 1.0.0-rc.1"* ]]
+  [ ! -e .agents/agent-ready.lock.json ]
+}
+
+@test "the version golfo-kit's catalog declares is the version of its content" {
+  declared_revision="$(catalog_branch declared "$first_revision" '{"version": "2.5.0", "changes": [{"version": "2.5.0", "summary": "Declared in the catalog"}]}')"
+  write_manifest '{"profiles": ["node"], "sources": {"golfoKit": {"updates": "pinned"}}}'
+  run_cli update golfo-kit --to "$first_revision"
+  [ "$status" -eq 0 ]
+  [ "$(lock_value 'data["source"]["version"]')" = "1.0.0" ]
+
+  run_cli update golfo-kit --to "$declared_revision" --dry-run
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"golfo-kit 1.0.0 -> 2.5.0  (major version jump)"* ]]
+  [[ "$output" == *"- 2.5.0: Declared in the catalog"* ]]
+  run_cli update golfo-kit --to "$declared_revision"
+  [ "$status" -eq 0 ]
+  [ "$(lock_value 'data["source"]["version"]')" = "2.5.0" ]
+}

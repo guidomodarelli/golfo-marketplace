@@ -16,6 +16,7 @@ import subprocess
 import tempfile
 import urllib.parse
 
+from agent_ready_compatibility import require_engine, validate_compatibility
 from agent_ready_common import ProfileError, StateError, read_json_file, sha256_of_file, sha256_of_text
 from agent_ready_config import LAYER_ENVIRONMENT, LAYER_FLAGS
 from agent_ready_options import UPDATES_AUTO, UPDATES_MODE_KEY
@@ -27,7 +28,8 @@ from agent_ready_detection import (
 
 PACK_CATALOG_FILE_NAME = "agent-ready-pack.json"
 PACK_SCHEMA_VERSION = 1
-PACK_ALLOWED_TOP_LEVEL_KEYS = ("schemaVersion", "name", "profiles")
+# version, minEngine and changes declare compatibility (agent_ready_compatibility.py).
+PACK_ALLOWED_TOP_LEVEL_KEYS = ("schemaVersion", "name", "profiles", "version", "minEngine", "changes")
 PACK_ALLOWED_PROFILE_KEYS = ("kind", "description", "assets", "requires", "conflicts", "tools", "detect")
 PACK_PROFILE_KIND = "capability"
 # Tools the engine knows how to install; a pack cannot bring its own installer.
@@ -632,8 +634,12 @@ def validate_pack_profile(source, short_name, entry, golfo_profile_names):
     return asset_root
 
 
-def load_pack_catalog(source, golfo_profile_names):
-    """Read and validate a pack. Returns its catalog digest and its namespaced profiles."""
+def load_pack_catalog(source, golfo_profile_names, engine_version=None):
+    """Read and validate a pack. Returns its catalog digest, its namespaced profiles and what it declares.
+
+    A pack that needs a newer engine (``minEngine``, ``schemaVersion``) stops here, before
+    anything is written.
+    """
     source_name = source["name"]
     catalog_path = os.path.join(source["root"], PACK_CATALOG_FILE_NAME)
     if os.path.islink(catalog_path) or not os.path.isfile(catalog_path):
@@ -645,8 +651,11 @@ def load_pack_catalog(source, golfo_profile_names):
     extra_keys = sorted(set(catalog) - set(PACK_ALLOWED_TOP_LEVEL_KEYS))
     if extra_keys:
         raise ProfileError(f"pack '{source_name}' has fields a pack cannot declare: {', '.join(extra_keys)}")
+    label = f"pack '{source_name}'"
+    require_engine(label, catalog, engine_version, PACK_SCHEMA_VERSION)
     if catalog.get("schemaVersion") != PACK_SCHEMA_VERSION:
         raise ProfileError(f"pack '{source_name}' must declare schemaVersion {PACK_SCHEMA_VERSION}")
+    validate_compatibility(label, catalog)
     if catalog.get("name") != source_name:
         raise ProfileError(
             f"profile source '{source_name}' points to a pack named '{catalog.get('name')}'; "
@@ -667,4 +676,5 @@ def load_pack_catalog(source, golfo_profile_names):
         validate_catalog_detection(namespaced)
     except DetectionSchemaError as caught_error:
         raise ProfileError(f"pack '{source_name}': {caught_error}") from caught_error
-    return {"digest": sha256_of_file(catalog_path), "profiles": namespaced, "assetRoots": asset_roots}
+    return {"digest": sha256_of_file(catalog_path), "profiles": namespaced, "assetRoots": asset_roots,
+            "version": catalog.get("version"), "changes": catalog.get("changes", [])}
