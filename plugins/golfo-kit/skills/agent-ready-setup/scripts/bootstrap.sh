@@ -821,7 +821,7 @@ PLAN_FILE="$(mktemp "${TMPDIR:-/tmp}/agent-ready-plan.XXXXXX")"
 TEMPORARY_PATHS+=("$PLAN_FILE")
 trap 'remove_temporary_paths; release_sync_lock' EXIT
 if ! protected_destinations="$(python3 "$STATE_SCRIPT" plan --project . --skill-dir "$SKILL_DIR" \
-  --format protected --save "$PLAN_FILE" ${PROFILE_SELECTION[@]+"${PROFILE_SELECTION[@]}"} \
+  --provider "$PROVIDER" --format protected --save "$PLAN_FILE" ${PROFILE_SELECTION[@]+"${PROFILE_SELECTION[@]}"} \
   ${SOURCE_STATE_ARGUMENTS[@]+"${SOURCE_STATE_ARGUMENTS[@]}"} ${FROM_LOCK_ARGUMENTS[@]+"${FROM_LOCK_ARGUMENTS[@]}"})"; then
   echo "ERROR: could not compute the Agent Ready plan; no asset was changed" >&2
   exit 1

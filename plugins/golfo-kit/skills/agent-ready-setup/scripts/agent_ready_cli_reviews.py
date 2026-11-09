@@ -9,6 +9,7 @@ findings of the same pair keep showing.
 import subprocess
 import sys
 
+import agent_ready_conflicts
 from agent_ready_cli_common import CLI_NAME, EXIT_OK, UsageError, engine
 from agent_ready_common import StateError, serialize_json
 
@@ -22,11 +23,18 @@ def review_module():
 
 
 def current_review(project_root):
-    """(findings, decisions) of the repository; a decisions file that cannot be read stops the command."""
+    """(findings, decisions) of the repository; a decisions file that cannot be read stops the command.
+
+    Besides the findings of what is on disk, the update conflicts of the last plan, so the team can
+    decide on one before the apply writes the rule.
+    """
     try:
         findings, decisions, _, _ = engine().review_findings(project_root, strict=True)
     except review_module().DecisionsError as decisions_error:
         raise StateError(f"{decisions_error}; fix it or remove it before deciding on findings") from decisions_error
+    known = {finding["id"] for finding in findings}
+    findings += [finding for finding in agent_ready_conflicts.pending_findings(review_module(), project_root, decisions)
+                 if finding["id"] not in known]
     return findings, decisions
 
 
@@ -89,6 +97,10 @@ def command_review_decide(arguments):
     kind = DECISION_VERBS[arguments.review_action]
     decision = module.decision_for(finding, kind, reason, arguments.scope, decider(arguments.project_root),
                                    arguments.project_root)
+    if arguments.scope == module.SCOPE_CONTENT and finding.get("reviewedFiles"):
+        # A semantic conflict is decided on the content that was reviewed: for an update, the rule
+        # the apply will write, not the one on disk.
+        decision["files"] = finding["reviewedFiles"]
     update_decisions(arguments.project_root, lambda decisions: dict(decisions, **{arguments.id: decision}))
     lasts = ("while its files do not change" if arguments.scope == module.SCOPE_CONTENT
              else f"for this pair until {CLI_NAME} review reset {arguments.id}")

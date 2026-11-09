@@ -3,7 +3,8 @@
 Qué revisa la IA en agent-ready-setup, qué se guarda de cada revisión, cómo se
 configura y cómo se acepta o descarta un hallazgo. Leer al explicar por qué una revisión
 corrió o no corrió, al mostrar los hallazgos conocidos, al cambiar las opciones `reviews.*`
-o cuando el usuario pide aceptar o descartar un hallazgo.
+o `conflicts.*`, al explicar un conflicto semántico del plan o cuando el usuario pide aceptar o
+descartar un hallazgo.
 
 ## Contenido
 
@@ -13,6 +14,7 @@ o cuando el usuario pide aceptar o descartar un hallazgo.
 4. Opciones
 5. Ver los hallazgos y forzar una revisión
 6. Aceptar o descartar un hallazgo
+7. Conflictos semánticos con lo propio del proyecto
 
 ## 1. Qué se revisa
 
@@ -20,6 +22,7 @@ o cuando el usuario pide aceptar o descartar un hallazgo.
 |---|---|---|
 | `instructions` | `merge-instructions.sh` en el apply y en la sincronización en segundo plano ([managed-agents-block.md](managed-agents-block.md)) | `AGENTS.md` junto con todas las rules que ve la revisión, del template y propias |
 | `harness-consistency` | el hook `PostToolUse` `.agents/hooks/check-harness-consistency.sh`, después de editar una rule, una skill o `.claude/CLAUDE.md` | un par de documentos del mismo root (`.agents/` o `.claude/`) |
+| `harness-consistency` (conflictos semánticos) | `agent-ready plan` y el plan de cada apply (sección 7) | un par: una rule gestionada y una rule propia o el `AGENTS.md` del proyecto |
 
 El hook compara cada documento editado contra todos los demás de su root, de a pares.
 Los pares que ya están en la caché no se vuelven a revisar. Los que faltan van al provider
@@ -84,7 +87,7 @@ Módulo `reviews` de la configuración ([configuration.md](configuration.md), cl
 
 | Clave | Default | Efecto |
 |---|---|---|
-| `reviews.enabled` | `true` | `false` apaga las dos revisiones: el apply copia el bloque gestionado sin revisar y el hook no llama al provider |
+| `reviews.enabled` | `true` | `false` apaga todas las revisiones: el apply copia el bloque gestionado sin revisar, el hook no llama al provider y el plan no busca conflictos semánticos |
 | `reviews.cache` | `true` | `false` revisa todo cada vez y nunca reutiliza una entrada; igual guarda el último resultado, así `status` lo muestra y se puede decidir sobre sus hallazgos |
 | `reviews.ttl` | sin vencimiento | horas que vale una entrada; pasado ese tiempo se revisa otra vez aunque nada haya cambiado |
 | `reviews.commit` | `false` | `true` guarda además cada resultado en `.agents/agent-ready.review-cache.json` para commitearlo (ver «Caché compartida») |
@@ -143,3 +146,42 @@ agent-ready review reset <id>... | --all                               # vuelven
   los archivos.
 - `review list` también muestra las decisiones que ya no usa ningún hallazgo actual, para
   quitarlas con `reset`. `agent-ready remove` conserva el archivo: son decisiones del equipo.
+
+## 7. Conflictos semánticos con lo propio del proyecto
+
+`agent-ready plan`, y el plan que corre antes de cada apply, revisan con IA si las rules
+gestionadas contradicen lo que el proyecto escribió, en dos direcciones:
+
+| Dirección | Qué se compara | Marca en el plan |
+|---|---|---|
+| update | cada rule gestionada que el apply crea, actualiza o adopta, con el contenido que va a escribir, contra cada rule propia (`.agents/rules/` sin equivalente gestionado) y contra el `AGENTS.md` del proyecto | `(this update)` |
+| project | cada rule propia contra cada rule gestionada ya aplicada que no cambia | `(a project rule)` |
+
+- **Misma revisión y misma caché.** Usa el prompt, la llamada al provider y la caché de
+  `harness-consistency`: un par que el hook ya revisó no se paga de nuevo, `status` muestra sus
+  hallazgos sin llamar al provider y se aceptan o descartan con `agent-ready review` (sección 6).
+- **Decidir antes del apply.** Un conflicto de dirección update habla de una rule que todavía no
+  está en disco, así que el plan lo guarda en el directorio de Git del worktree
+  (`agent-ready/semantic-conflicts.json`). `review list`, `accept` y `dismiss` lo conocen desde ahí.
+  Una decisión de alcance `content` vale para el contenido revisado, el que el apply va a escribir,
+  así sigue valiendo después del apply. Si la rule gestionada cambia otra vez, el hallazgo vuelve
+  «a confirmar».
+- **Solo informa.** Nunca borra ni reescribe una rule. El plan los lista en «Semantic conflicts»
+  con su id y el apply los repite como avisos en stderr antes de escribir. En el JSON del plan van
+  en `semanticConflicts`, con `pairs`, `fromCache`, `reviewed`, `unchecked`, `uncheckedUpdate`,
+  `reason`, `findings` (cada uno con su `direction`), `quiet` y `block`.
+- **Nunca limpio sin respuesta.** Un par sin revisar deja el chequeo como «Check incomplete»,
+  con el motivo. Pasa sin red (`--offline`), en una revisión automática
+  (`AGENT_READY_SETUP_REVIEW_MODE=1`), sin la CLI del provider o si el provider no da una
+  respuesta válida. En los dos primeros casos responde solo la caché.
+
+Módulo `conflicts` de la configuración:
+
+| Clave | Default | Efecto |
+|---|---|---|
+| `conflicts.enabled` | `true` | `false` no busca conflictos semánticos; `reviews.enabled: false` también los apaga |
+| `conflicts.block` | `false` | `true` frena antes de escribir un apply cuya actualización trae un conflicto visible o que no pudo revisar algún par de la actualización |
+
+Con `conflicts.block`, los conflictos de dirección project no frenan, porque ya están en el
+repositorio. Para destrabar el apply: cambiar la rule, o aceptar o descartar cada hallazgo con
+`agent-ready review accept|dismiss <id> --reason "<motivo>"`.

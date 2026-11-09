@@ -76,6 +76,8 @@ from agent_ready_options import (  # noqa: E402
     PROFILES_KEY,
     PROVIDERS_KEY,
     REVIEWS_CACHE_KEY,
+    CONFLICTS_BLOCK_KEY,
+    CONFLICTS_ENABLED_KEY,
     REVIEWS_ENABLED_KEY,
     REVIEWS_COMMIT_KEY,
     REVIEWS_TTL_KEY,
@@ -100,6 +102,7 @@ from agent_ready_detection import (  # noqa: E402
     validate_catalog_detection,
 )
 import agent_ready_compatibility as compatibility  # noqa: E402
+import agent_ready_conflicts as conflicts_review  # noqa: E402
 import agent_ready_golfo_kit as golfo_kit  # noqa: E402
 from agent_ready_packs import (  # noqa: E402
     SOURCE_AVAILABLE,
@@ -1586,6 +1589,62 @@ def print_plan_sources(plan):
     write_line("")
 
 
+def semantic_conflicts(arguments, plan):
+    """The AI review of managed rules against the project's own, or None when it is off."""
+    configuration = configuration_of(arguments.project, arguments.offline)
+    if not configuration.value(CONFLICTS_ENABLED_KEY) or not configuration.value(REVIEWS_ENABLED_KEY):
+        conflicts_review.record_pending(arguments.project, [])
+        return None
+    module = review_cache_module()
+    lock = read_lock(arguments.project)
+    directions, texts = conflicts_review.conflict_pairs(arguments.project, plan["entries"], (lock or {}).get("assets", {}),
+                                                        module.normalized_text)
+    # Offline runs and automated reviews answer from the cache only.
+    use_provider = not arguments.offline and os.environ.get("AGENT_READY_SETUP_REVIEW_MODE") != "1"
+    report = conflicts_review.review_conflicts(arguments.project, ENGINE_SKILL_DIRECTORY, module, arguments.provider,
+                                               directions, texts, bash_executable(), use_provider)
+    conflicts_review.record_pending(arguments.project, report.pop("pending", []))
+    report["block"] = configuration.value(CONFLICTS_BLOCK_KEY)
+    return report
+
+
+def describe_conflict(finding):
+    direction = "this update" if finding["direction"] == conflicts_review.DIRECTION_UPDATE else "a project rule"
+    return f"{review_cache_module().finding_line(finding)} ({direction})"
+
+
+def print_conflict_warnings(report):
+    """The apply shows its semantic conflicts on stderr, before writing; the protected list stays on stdout."""
+    for finding in report["findings"]:
+        write_line(f"WARNING: semantic conflict {describe_conflict(finding)}", sys.stderr)
+    if report["unchecked"]:
+        write_line(f"WARNING: {report['unchecked']} pair(s) were not checked for semantic conflicts: {report['reason']}",
+                   sys.stderr)
+
+
+def print_plan_conflicts(plan):
+    """Semantic conflicts of managed rules with the project's own, from the AI review and its cache."""
+    report = plan.get("semanticConflicts")
+    if not report or not report["pairs"]:
+        return
+    stream = sys.stdout
+    write_line(paint("Semantic conflicts (AI review of the managed rules and the project's own)", "heading", stream))
+    for finding in report["findings"]:
+        write_line(paint(f"  {describe_conflict(finding)}", "warning", stream))
+        for line in finding.get("lines", []):
+            write_line(f"      {line}")
+    if report["findings"]:
+        write_line("  Accept or dismiss one with: agent-ready review accept <id> --reason \"...\"")
+    if report["unchecked"]:
+        write_line(paint(f"  Check incomplete: {report['unchecked']} of {report['pairs']} pairs were not reviewed "
+                         f"({report['reason']}).", "warning", stream))
+    elif not report["findings"]:
+        write_line(f"  No conflicts found ({report['pairs']} pairs, {report['fromCache']} from the cache).")
+    if report["block"]:
+        write_line("  conflicts.block: an apply that brings a conflict stops before writing.")
+    write_line("")
+
+
 def print_plan_versions(plan):
     """Version jumps of the sources and the changes they declare, breaking ones first in the eye."""
     if not plan.get("versionChanges"):
@@ -1622,6 +1681,7 @@ def print_plan(project_root, skill_dir, plan, provider, skip_marketplace_upgrade
     write_line("")
     print_plan_sources(plan)
     print_plan_versions(plan)
+    print_plan_conflicts(plan)
     print_plan_detection(plan)
     write_line(paint("Project assets", "heading", stream))
     counts = {}
@@ -2308,6 +2368,15 @@ def command_plan(arguments):
     if arguments.source_mode == SOURCE_MODE_SYNC:
         enforce_sync_policy(arguments.project, arguments.skill_dir, catalog, plan["profiles"], plan["profileDigests"])
         keep_locked_entries_of_unselected_sources(plan, read_lock(arguments.project))
+    conflicts = semantic_conflicts(arguments, plan)
+    if conflicts is not None:
+        plan["semanticConflicts"] = conflicts
+        if arguments.format == "protected":
+            print_conflict_warnings(conflicts)
+            if conflicts["block"]:
+                problem = conflicts_review.blocking_problem(conflicts)
+                if problem:
+                    raise ProfileError(problem)
     if arguments.from_lock:
         lock = read_lock(arguments.project)
         enforce_lock_reproduction(plan, lock)
@@ -3043,7 +3112,8 @@ def local_removal_entries(project_root):
                          reason=f"shared with the worktree {sharing_worktree}, which still uses agent-ready-setup")
     for path, reason in ((os.path.join(project_root, HARD_LINK_VIEWS_MANIFEST), "list of .claude hard-link views"),
                          (os.path.join(project_root, review_cache_module().SHARED_CACHE_RELATIVE_PATH),
-                          "shared cache of the AI reviews (reviews.commit)")):
+                          "shared cache of the AI reviews (reviews.commit)"),
+                         (conflicts_review.pending_path(project_root), "semantic conflicts of the last plan")):
         if path and os.path.isfile(path) and not os.path.islink(path):
             entries.append(removal_entry(display_path(project_root, path), REMOVAL_REMOVE, reason, "state", local_state(path)))
     return entries
