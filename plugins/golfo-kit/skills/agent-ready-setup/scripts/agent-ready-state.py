@@ -1153,10 +1153,20 @@ def review_findings(project_root, strict=False):
     stale = 0
     for unit, entry in sorted(entries.items()):
         files = entry.get("files", {}) if isinstance(entry, dict) else {}
-        if files and module.file_hashes(project_root, files) == files:
+        # A semantic conflict with AGENTS.md is about what the project wrote there, not the managed block.
+        semantic = (isinstance(entry, dict) and entry.get("check") == conflicts_review.CONFLICT_CHECK
+                    and conflicts_review.AGENTS_FILE in files)
+        current = (conflicts_review.current_hashes(module, project_root, files, project_owned_instructions)
+                   if semantic else module.file_hashes(project_root, files))
+        if files and current == files:
             units += 1
-            findings += [dict(finding, check=entry.get("check"))
-                         for finding in decisions.annotate(unit, entry.get("findings", []), recorded)]
+            annotated = decisions.annotate(unit, entry.get("findings", []), recorded)
+            if semantic:
+                for finding in annotated:
+                    finding["reviewedFiles"] = current
+                    if finding["decision"]:
+                        finding["status"] = conflicts_review.decision_status(module, finding["decision"], current)
+            findings += [dict(finding, check=entry.get("check")) for finding in annotated]
         else:
             stale += 1
     return findings, recorded, units, stale
@@ -1599,7 +1609,7 @@ def semantic_conflicts(arguments, plan):
         return None
     module = review_cache_module()
     lock = read_lock(arguments.project)
-    directions, texts, identities = conflicts_review.conflict_pairs(
+    directions, texts = conflicts_review.conflict_pairs(
         arguments.project, plan["entries"], (lock or {}).get("assets", {}), module.normalized_text,
         project_owned_instructions, ENGINE_SKILL_DIRECTORY)
     # Offline runs and automated reviews answer from the cache only.
@@ -1609,7 +1619,7 @@ def semantic_conflicts(arguments, plan):
                 "ttl": configuration.value(REVIEWS_TTL_KEY), "commit": configuration.value(REVIEWS_COMMIT_KEY)}
     report = conflicts_review.review_conflicts(arguments.project, ENGINE_SKILL_DIRECTORY, module, arguments.provider,
                                                directions, texts, bash_executable(), use_provider, settings,
-                                               identities, publish=arguments.format == "protected")
+                                               publish=arguments.format == "protected")
     conflicts_review.record_pending(arguments.project, report.pop("pending", []))
     report["block"] = configuration.value(CONFLICTS_BLOCK_KEY)
     return report

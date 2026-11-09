@@ -365,14 +365,36 @@ PY
   [[ "$output" == *"$conflict_id  to-confirm"* ]]
 }
 
-@test "the first apply reviews the CLAUDE.md that it promotes to AGENTS.md" {
-  printf '# Team\nNever verify changes.\n' > CLAUDE.md
-  write_manifest '{"profiles": ["node"], "conflicts": {"block": true}}'
-  export FAKE_CONFLICT_SECOND="CLAUDE.md"
+@test "the first apply reviews the CLAUDE.md that it promotes to AGENTS.md, in any case" {
+  for claude_file in CLAUDE.md claude.md; do
+    rm -f CLAUDE.md claude.md
+    printf '# Team\nNever verify changes.\n' > "$claude_file"
+    write_manifest '{"profiles": ["node"], "conflicts": {"block": true}}'
+    export FAKE_CONFLICT_SECOND="AGENTS.md"
+
+    agent_ready apply
+    [ "$status" -ne 0 ]
+    [[ "$stderr" == *"conflicts.block: this apply brings"*"<-> AGENTS.md"* ]]
+    [ ! -e AGENTS.md ]
+    grep -Fq 'Never verify changes.' "$claude_file"
+  done
+}
+
+@test "a conflict of the first apply with AGENTS.md stays listed after the apply writes its managed block" {
+  printf '# Team\nNever verify changes.\n' > AGENTS.md
+  write_manifest '{"profiles": ["node"]}'
+  export FAKE_CONFLICT_SECOND="AGENTS.md"
 
   agent_ready apply
-  [ "$status" -ne 0 ]
-  [[ "$stderr" == *"conflicts.block: this apply brings"*"CLAUDE.md"* ]]
-  [ ! -e AGENTS.md ]
-  grep -Fq 'Never verify changes.' CLAUDE.md
+  [ "$status" -eq 0 ]
+  grep -Fq 'BEGIN AGENT-READY MANAGED' AGENTS.md
+  agent_ready review list
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"open"*".agents/rules/verify-changes.md <-> AGENTS.md"* ]]
+  conflict_id="$(printf '%s\n' "$output" | awk '/verify-changes.md <-> AGENTS.md/ {print $1; exit}')"
+  agent_ready review accept "$conflict_id" --reason "The team instruction is on purpose"
+  [ "$status" -eq 0 ]
+  agent_ready status
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"One rule verifies every change and the other forbids it."* ]]
 }

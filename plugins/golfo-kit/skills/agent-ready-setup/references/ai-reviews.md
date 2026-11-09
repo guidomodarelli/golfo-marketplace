@@ -164,8 +164,13 @@ gestionadas contradicen lo que el proyecto escribió, en dos direcciones:
   esperar a que un apply los registre, y revisa con el provider de la sesión, también en la
   sincronización en segundo plano. Un `plan` guarda lo que revisó solo en la caché local: con
   `reviews.commit`, el apply lo publica en `.agents/agent-ready.review-cache.json`.
+- **Lo propio de `AGENTS.md`.** De `AGENTS.md` la revisión lee, y la caché identifica, solo lo que
+  el proyecto escribió, sin el bloque gestionado. Por eso un conflicto con `AGENTS.md` sigue
+  listado y se puede decidir aunque el mismo apply reescriba el bloque.
 - **Antes del primer apply.** Sin `AGENTS.md`, el `CLAUDE.md` raíz que el apply va a promover a
-  `AGENTS.md` ocupa su lugar en la revisión, salvo que sea solo el proxy.
+  `AGENTS.md` ocupa su lugar en la revisión, con el nombre `AGENTS.md`, salvo que sea solo el proxy.
+  También vale para una variante de mayúsculas (`claude.md`) si es la única y Git no la ignora,
+  que es la que la normalización renombra.
 - **Decidir antes del apply.** Un conflicto de dirección update habla de una rule que todavía no
   está en disco, así que el plan lo guarda en el directorio de Git del worktree
   (`agent-ready/semantic-conflicts.json`). `review list`, `accept` y `dismiss` lo conocen desde ahí.

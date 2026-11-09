@@ -31,6 +31,8 @@ CLAUDE_FILE = "CLAUDE.md"
 CLAUDE_PROXY_TEMPLATE_RELATIVE_PATH = "assets/claude-proxy.md"
 DIRECTION_UPDATE = "update"
 DIRECTION_PROJECT = "project"
+# The check of harness-review.py, under which the conflicts are cached and decided.
+CONFLICT_CHECK = "harness-consistency"
 HARNESS_REVIEW_RELATIVE_PATH = "assets/common/hooks/harness-review.py"
 REVIEW_CACHE_RELATIVE_PATH = "assets/common/hooks/review-cache.py"
 # What the review needs from the engine; every installed engine ships both.
@@ -65,16 +67,38 @@ def project_rules(project_root, managed):
     return sorted(found)
 
 
-def project_instructions(project_root, engine_dir):
-    """The file with the project's own instructions, or None.
+def git_ignored(project_root, name):
+    completed = subprocess.run(["git", "check-ignore", "-q", "--", name], cwd=project_root, capture_output=True,
+                               check=False)
+    return completed.returncode == 0
 
-    AGENTS.md, or, while there is none, the root CLAUDE.md that the apply promotes to AGENTS.md
-    (instruction-normalization.sh), unless it is only the proxy to AGENTS.md.
+
+def root_claude_file(project_root):
+    """CLAUDE.md, or its only case variant that is not ignored, which normalization renames to it."""
+    if os.path.lexists(os.path.join(project_root, CLAUDE_FILE)):
+        return CLAUDE_FILE
+    try:
+        names = os.listdir(project_root)
+    except OSError:
+        return None
+    variants = [name for name in names if name.lower() == CLAUDE_FILE.lower() and not git_ignored(project_root, name)]
+    return variants[0] if len(variants) == 1 else None
+
+
+def project_instructions(project_root, engine_dir):
+    """The file that holds the project's own instructions now, or None.
+
+    AGENTS.md, or, while there is none, the root CLAUDE.md (or its only case variant) that the apply
+    renames and promotes to AGENTS.md (instruction-normalization.sh), unless it is only the proxy to
+    AGENTS.md. Either way the review names it AGENTS.md: where the apply leaves those instructions.
     """
     agents_path = os.path.join(project_root, AGENTS_FILE)
     if os.path.lexists(agents_path):
         return AGENTS_FILE if os.path.isfile(agents_path) and not os.path.islink(agents_path) else None
-    claude_path = os.path.join(project_root, CLAUDE_FILE)
+    claude_name = root_claude_file(project_root)
+    if not claude_name:
+        return None
+    claude_path = os.path.join(project_root, claude_name)
     if not os.path.isfile(claude_path) or os.path.islink(claude_path):
         return None
     try:
@@ -82,18 +106,35 @@ def project_instructions(project_root, engine_dir):
             return None
     except OSError:
         pass
-    return CLAUDE_FILE
+    return claude_name
+
+
+def instructions_text(project_owned, text):
+    """What the project wrote in its instructions, without the managed block nor surrounding blank lines."""
+    owned = project_owned(text).strip()
+    return owned + "\n" if owned else ""
+
+
+def current_hashes(cache_module, project_root, names, project_owned):
+    """The hash of what a conflict review reads of each file now: of AGENTS.md, only the project's part.
+
+    An apply that changes the managed block leaves the conflicts about the rest of AGENTS.md current.
+    """
+    hashes = cache_module.file_hashes(project_root, names)
+    if hashes.get(AGENTS_FILE) is not None:
+        text = cache_module.normalized_text(os.path.join(project_root, AGENTS_FILE))
+        hashes[AGENTS_FILE] = cache_module.text_hash(instructions_text(project_owned, text))
+    return hashes
 
 
 def conflict_pairs(project_root, entries, locked_assets, read_text, project_owned, engine_dir):
-    """Pairs to review, the text the review reads of each document, the text that identifies it in
-    the cache, and the direction of each pair.
+    """Pairs to review, the text of each document and the direction of each pair.
 
     ``entries`` are the plan entries; a managed rule the apply creates or changes is reviewed
     with the content it would write (its ``sourcePath``), everything else with what is on disk.
-    Of ``AGENTS.md`` the review reads only what ``project_owned`` keeps (the text outside the
-    managed block, which the same apply may replace); the cache still keys it by the whole file.
-    Before the first apply, the root CLAUDE.md that the apply promotes takes its place.
+    Of AGENTS.md the review reads, and the cache keys, only what the project wrote (the managed
+    block is the engine's, and the same apply may replace it). Before the first apply, the root
+    CLAUDE.md that the apply promotes takes its place, under the name AGENTS.md.
     """
     desired = {entry["destination"]: entry for entry in entries if entry.get("sha256") and is_rule(entry["destination"])}
     managed = set(desired) | {destination for destination in locked_assets if is_rule(destination)}
@@ -109,15 +150,12 @@ def conflict_pairs(project_root, entries, locked_assets, read_text, project_owne
     for destination in applied:
         texts[destination] = read_text(os.path.join(project_root, destination))
     counterparts = list(own)
-    identities = {}
     instructions = project_instructions(project_root, engine_dir)
     if instructions:
-        whole = read_text(os.path.join(project_root, instructions))
-        owned = project_owned(whole)
-        if owned.strip():
-            texts[instructions] = owned
-            identities[instructions] = whole
-            counterparts.append(instructions)
+        owned = instructions_text(project_owned, read_text(os.path.join(project_root, instructions)))
+        if owned:
+            texts[AGENTS_FILE] = owned
+            counterparts.append(AGENTS_FILE)
     directions = {}
     for managed_rule in changing:
         for counterpart in counterparts:
@@ -125,7 +163,7 @@ def conflict_pairs(project_root, entries, locked_assets, read_text, project_owne
     for own_rule in own:
         for managed_rule in applied:
             directions.setdefault(tuple(sorted((own_rule, managed_rule))), DIRECTION_PROJECT)
-    return directions, texts, {name: identities.get(name, text) for name, text in texts.items()}
+    return directions, texts
 
 
 def engine_can_review(engine_dir):
@@ -134,17 +172,15 @@ def engine_can_review(engine_dir):
 
 
 def review_conflicts(project_root, engine_dir, cache_module, provider, directions, texts, bash, use_provider,
-                     settings=None, identities=None, publish=False):
+                     settings=None, publish=False):
     """Review the pairs that are not in the cache and return what plan reports.
 
     ``use_provider`` false (offline, review mode) answers from the cache only. A pair without an
     answer stays unchecked, never clean. ``settings`` are the effective reviews options (cache,
-    ttl, commit) of this run. ``identities`` are the texts that key each document in the cache, when
-    they differ from what the review reads. Only an apply (``publish``) writes the versioned cache of
+    ttl, commit) of this run. Only an apply (``publish``) writes the versioned cache of
     reviews.commit, with what this review and the previews before it found; a preview keeps its
     results in the local cache, so it never changes a file of the repository.
     """
-    identities = identities or texts
     harness = load_harness_review(engine_dir)
     pairs = sorted(directions)
     report = {"pairs": len(pairs), "fromCache": 0, "reviewed": 0, "unchecked": 0, "uncheckedUpdate": 0,
@@ -162,7 +198,7 @@ def review_conflicts(project_root, engine_dir, cache_module, provider, direction
     known = {}
     pending = []
     for pair in pairs:
-        contents = {name: identities[name] for name in pair}
+        contents = {name: texts[name] for name in pair}
         key = cache_module.unit_key(harness.CHECK, harness.CHECK_VERSION, provider, model, engine, contents)
         unit = cache_module.unit_id(harness.CHECK, pair)
         entry = cache.lookup(unit, key)
@@ -212,7 +248,7 @@ def review_conflicts(project_root, engine_dir, cache_module, provider, direction
     for pair in sorted(known):
         # A decision holds for the content that was reviewed, which for an update is what the
         # apply will write, not what is on disk.
-        reviewed_files = {name: cache_module.text_hash(identities[name]) for name in pair}
+        reviewed_files = {name: cache_module.text_hash(texts[name]) for name in pair}
         for finding in decisions.annotate(cache_module.unit_id(harness.CHECK, pair), known[pair], recorded):
             if finding["decision"]:
                 finding["status"] = decision_status(cache_module, finding["decision"], reviewed_files)
