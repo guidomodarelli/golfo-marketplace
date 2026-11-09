@@ -568,3 +568,27 @@ PY
   [ "$status" -eq 0 ]
   [ -d .agents/rules/business-flows.md ]
 }
+
+@test "apply --from-lock verifies the content of an asset the lock records in conflict" {
+  install_engine_copy
+  agent_ready() { run --separate-stderr env PATH="$fake_bin:$PATH" python3 "$engine_copy/scripts/agent-ready" "$@"; }
+  agent_ready apply --stack node
+  [ "$status" -eq 0 ]
+  rm .agents/rules/verify-changes.md
+  mkdir .agents/rules/verify-changes.md
+  agent_ready apply
+  [ "$(lock_value 'data["assets"][".agents/rules/verify-changes.md"]["state"]')" = "conflict" ]
+
+  # The same sources reproduce the lock, conflict included.
+  agent_ready apply --from-lock
+  [ "$status" -eq 0 ]
+  [ -d .agents/rules/verify-changes.md ]
+
+  # The source changed what it publishes there: the lock cannot be reproduced.
+  rmdir .agents/rules/verify-changes.md
+  printf '\nAn edit of the source.\n' >> "$engine_copy/assets/common/rules/verify-changes.md"
+  agent_ready apply --from-lock
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"golfo-kit: .agents/rules/verify-changes.md does not match the sha256 of the lock"* ]]
+  [ ! -e .agents/rules/verify-changes.md ]
+}

@@ -816,6 +816,13 @@ def is_engine_asset(entry):
     return asset_owner(entry) == golfo_kit.GOLFO_KIT_SOURCE_NAME and golfo_kit.is_engine_owned(entry.get("source") or "")
 
 
+def locked_desired_sha256(locked_entry):
+    """The content a source published for an asset of the lock: applied, or wanted when it ended in conflict."""
+    if locked_entry.get("state") == STATE_APPLIED:
+        return locked_entry.get("sha256")
+    return locked_entry.get("desiredSha256")
+
+
 def lock_differences(plan, lock):
     """Why a plan does not reproduce the lock, one line per source, and how many engine files differ.
 
@@ -854,7 +861,7 @@ def lock_differences(plan, lock):
             engine_changes += bool(locked_entry) and locked_entry.get("sha256") != entry["sha256"]
         elif not locked_entry:
             differences.append(f"{asset_owner(entry)}: {destination} is not in the lock")
-        elif locked_entry.get("state") == STATE_APPLIED and locked_entry.get("sha256") != entry["sha256"]:
+        elif locked_desired_sha256(locked_entry) != entry["sha256"]:
             differences.append(f"{asset_owner(entry)}: {destination} does not match the sha256 of the lock")
     for destination, locked_entry in sorted(locked_assets.items()):
         # A retired asset the project kept (retired-preserved) is no longer published by any source.
@@ -1678,6 +1685,8 @@ def finalize(project_root, skill_dir, plan, updates):
                 "profile": entry["profile"],
                 "source": entry["source"],
                 "sha256": entry["baseSha256"],
+                # What the source wanted to write: --from-lock verifies the content against it.
+                "desiredSha256": entry["sha256"],
                 "state": STATE_CONFLICT,
             }
             continue
@@ -1694,6 +1703,7 @@ def finalize(project_root, skill_dir, plan, updates):
                 "profile": entry["profile"],
                 "source": entry["source"],
                 "sha256": entry["baseSha256"],
+                "desiredSha256": entry["sha256"],
                 "state": STATE_FAILED,
             }
 
