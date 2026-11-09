@@ -26,6 +26,178 @@
         "strict": { "security.enabled": true, "updates.mode": "pinned" }
       }
     },
+    "execution": {
+      "description": "Qué pueden hacer las herramientas que declara un pack: instalar CLIs, registrar servidores MCP y correr scripts.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "description": "Las herramientas de un pack que pasan la política se instalan, registran y corren en un apply. Apagado, ningún pack ejecuta nada; sus rules y skills se proyectan igual.",
+          "type": "boolean",
+          "default": true,
+          "x-security": { "strictness": [true, false] }
+        },
+        "events": {
+          "description": "Eventos en los que puede correr un script de un pack: install, post-apply o session-start. session-start corre en cada inicio de sesión, por eso está apagado por defecto.",
+          "type": "array",
+          "items": { "type": "string", "enum": ["install", "post-apply", "session-start"] },
+          "default": ["install", "post-apply"],
+          "uniqueItems": true,
+          "x-security": { "list": "permits" }
+        }
+      }
+    },
+    "checks": {
+      "description": "Verificaciones que tiene que pasar cada herramienta de un pack antes de ejecutarse; cada una se apaga por separado.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "trustedSource": {
+          "description": "La fuente del pack tiene que ser de confianza en esta máquina (agent-ready trust add <fuente>). Una fuente path:, que vive en el repositorio, es de confianza si el repositorio está aprobado.",
+          "type": "boolean",
+          "default": true,
+          "x-security": { "strictness": [false, true] }
+        },
+        "signature": {
+          "description": "El commit o tag de la fuente tiene que estar firmado por una clave conocida. Apagado por defecto: un pack personal sin firmas funciona igual.",
+          "type": "boolean",
+          "default": false,
+          "x-security": { "strictness": [false, true] }
+        },
+        "artifactSha256": {
+          "description": "Cada artefacto de un CLI declara su sha256 y se verifica al descargarlo. Un paquete de npm, pip, brew o winget sin sha256 no se instala.",
+          "type": "boolean",
+          "default": true,
+          "x-security": { "strictness": [false, true] }
+        },
+        "lockDigest": {
+          "description": "Lo que se ejecuta coincide con el digest que registra el lock para esa herramienta.",
+          "type": "boolean",
+          "default": true,
+          "x-security": { "strictness": [false, true] }
+        }
+      }
+    },
+    "allow": {
+      "description": "Listas opcionales de lo único que se permite, con patrones de nombre (glob). Vacías, no restringen nada.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "clis": {
+          "description": "Nombres de CLIs que un pack puede instalar.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "default": [],
+          "uniqueItems": true,
+          "x-security": { "list": "restricts" }
+        },
+        "commands": {
+          "description": "Comandos que puede lanzar un servidor MCP de un pack.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "default": [],
+          "uniqueItems": true,
+          "x-security": { "list": "restricts" }
+        },
+        "scripts": {
+          "description": "Scripts que pueden correr, como <fuente>/<ruta en el pack>.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "default": [],
+          "uniqueItems": true,
+          "x-security": { "list": "restricts" }
+        },
+        "mcpServers": {
+          "description": "Nombres de servidores MCP que un pack puede registrar.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "default": [],
+          "uniqueItems": true,
+          "x-security": { "list": "restricts" }
+        }
+      }
+    },
+    "deny": {
+      "description": "Lo que nunca se permite, con patrones glob; gana siempre sobre allow y rules, y se une entre capas.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "commands": {
+          "description": "CLIs o comandos de servidores MCP que no se instalan ni se lanzan.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "default": [],
+          "uniqueItems": true,
+          "x-merge": "union"
+        },
+        "scripts": {
+          "description": "Scripts que no corren, como <fuente>/<ruta en el pack>.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "default": [],
+          "uniqueItems": true,
+          "x-merge": "union"
+        }
+      }
+    },
+    "rules": {
+      "description": "Restricciones propias: cada regla elige herramientas por fuente, profile, tipo, patrón de nombre o texto del script, y las permite o las prohíbe. Una regla deny gana sobre una allow; ninguna saltea las verificaciones de checks ni las listas deny.",
+      "type": "array",
+      "default": [],
+      "uniqueItems": true,
+      "x-merge": "union",
+      "x-security": { "list": "rules" },
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["match", "action"],
+        "properties": {
+          "match": {
+            "description": "Qué herramientas elige; vacío elige todas.",
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "source": {
+                "description": "Nombre de la fuente (glob).",
+                "type": "string"
+              },
+              "profile": {
+                "description": "Profile con namespace, como acme/kafka-interno (glob).",
+                "type": "string"
+              },
+              "type": {
+                "description": "cli, mcpServer o script.",
+                "type": "string",
+                "enum": ["cli", "mcpServer", "script"]
+              },
+              "pattern": {
+                "description": "Nombre del CLI o del servidor MCP, o <fuente>/<ruta> del script (glob).",
+                "type": "string"
+              },
+              "contains": {
+                "description": "Texto que tiene que aparecer en el script, como | sh para un pipe al shell.",
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "action": {
+            "description": "allow o deny.",
+            "type": "string",
+            "enum": ["allow", "deny"]
+          }
+        }
+      }
+    },
+    "trustedSources": {
+      "description": "Orígenes de las fuentes de packs en las que esta máquina confía para ejecutar sus herramientas. Se agregan con agent-ready trust add <fuente> y agent-ready sources add; se unen entre capas, y sumarlos desde el proyecto afloja.",
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "default": [],
+      "uniqueItems": true,
+      "x-merge": "union",
+      "x-security": { "list": "permits" }
+    },
     "trustedProjects": {
       "description": "Raíces de los repositorios que esta máquina aprobó para aflojar desde su manifest. Se agregan con agent-ready-state.py trust y se unen entre capas.",
       "type": "array",

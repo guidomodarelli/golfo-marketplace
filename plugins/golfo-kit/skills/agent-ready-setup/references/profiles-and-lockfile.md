@@ -184,7 +184,8 @@ profiles, pero no selecciona ninguno ni proyecta sus assets.
 **Pack.** Tiene `agent-ready-pack.json` en la raíz, con `schemaVersion`, `name` y `profiles`. `name`
 debe ser igual al de la fuente en el manifest, porque los profiles se referencian por él. Cada
 profile acepta `kind`, `description`, `assets`, `requires`, `conflicts`, `tools` y `detect`, con el
-significado de la sección 1, y estos límites:
+significado de la sección 1, más `clis`, `mcpServers` y `scripts` ([pack-tools.md](pack-tools.md)), y
+estos límites:
 
 - `kind` es siempre `capability`. Un profile que necesita un stack lo declara en `requires`.
 - `tools` solo acepta herramientas que el motor ya conoce (`browser`).
@@ -363,8 +364,9 @@ primer plano. `AGENT_READY_SETUP_REVIEW_MODE=1` nunca actualiza, nunca usa la re
 agente en todos los repos consumidores en su próxima sesión. El diff del lockfile y el chequeo de CI son el
 control. Si eso no alcanza para una fuente, fijarla con un commit completo o con `"updates": "pinned"`; para todos los
 repos de una máquina, `updates.mode: pinned` o `security.preset: strict` en la config de usuario.
-Credenciales y ejecución de scripts del pack no cambian: nunca entran al manifest, al lock ni a los logs, y
-ningún script de un pack se ejecuta.
+Las credenciales nunca entran al manifest, al lock ni a los logs: un pack declara variables de entorno solo
+por referencia. Los CLIs, servidores MCP y scripts que declara pasan por la política de `security`
+([pack-tools.md](pack-tools.md)); por ahora el motor solo informa su veredicto y no ejecuta nada.
 
 **Refresco.** `--plan` y `--status` actualizan por defecto la caché fuera del repo (snapshot del marketplace
 y última revisión de cada `ref`) para decir si todo está al día, sin escribir en el repo. `--offline`,

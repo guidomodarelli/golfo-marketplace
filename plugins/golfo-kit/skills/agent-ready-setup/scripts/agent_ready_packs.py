@@ -17,7 +17,8 @@ import tempfile
 import urllib.parse
 
 from agent_ready_compatibility import require_engine, validate_compatibility
-from agent_ready_common import ProfileError, StateError, read_json_file, sha256_of_file, sha256_of_text
+import agent_ready_pack_tools as pack_tools
+from agent_ready_common import ProfileError, StateError, is_link, read_json_file, sha256_of_file, sha256_of_text
 from agent_ready_config import LAYER_ENVIRONMENT, LAYER_FLAGS
 from agent_ready_options import UPDATES_AUTO, UPDATES_MODE_KEY
 from agent_ready_detection import (
@@ -30,12 +31,15 @@ PACK_CATALOG_FILE_NAME = "agent-ready-pack.json"
 PACK_SCHEMA_VERSION = 1
 # version, minEngine and changes declare compatibility (agent_ready_compatibility.py).
 PACK_ALLOWED_TOP_LEVEL_KEYS = ("schemaVersion", "name", "profiles", "version", "minEngine", "changes")
-PACK_ALLOWED_PROFILE_KEYS = ("kind", "description", "assets", "requires", "conflicts", "tools", "detect")
+# clis, mcpServers and scripts are declarations: the security policy decides whether they run
+# (agent_ready_pack_tools.py), never the pack.
+PACK_ALLOWED_PROFILE_KEYS = ("kind", "description", "assets", "requires", "conflicts", "tools", "detect") + pack_tools.DECLARATION_KEYS
 PACK_PROFILE_KIND = "capability"
 # Tools the engine knows how to install; a pack cannot bring its own installer.
 KNOWN_TOOLS = ("browser",)
-# Packs add rules, skills, agents and commands. Hooks, settings, MCP registration and
-# the AGENTS.md template stay under the control of the skill and the project.
+# Packs add rules, skills, agents and commands as files. Hooks, settings and the AGENTS.md
+# template stay under the control of the skill and the project; the tools a pack declares
+# (clis, mcpServers, scripts) only run through the security policy.
 PACK_ALLOWED_ASSET_DIRECTORIES = ("rules", "skills", "agents", "commands")
 PACK_FORBIDDEN_ASSET_NAMES = ("agents.md", "claude.md")
 
@@ -569,11 +573,6 @@ def validate_reference_list(source_name, profile_name, field, values):
             raise ProfileError(f"pack '{source_name}' profile '{profile_name}': invalid reference '{value}' in '{field}'; use <profile> or <source>/<profile>")
 
 
-def is_link(path):
-    """True for a symlink or, on Windows, a directory junction."""
-    return os.path.islink(path) or (hasattr(os.path, "isjunction") and os.path.isjunction(path))
-
-
 def validate_asset_tree(source, profile_name, asset_root, relative_root):
     """Assets stay inside the pack, in the allowed directories, without symlinks."""
     source_name, pack_root = source["name"], source["root"]
@@ -622,6 +621,10 @@ def validate_pack_profile(source, short_name, entry, golfo_profile_names):
     tools = entry.get("tools", [])
     if not isinstance(tools, list) or any(tool not in KNOWN_TOOLS for tool in tools):
         raise ProfileError(f"pack '{source_name}' profile '{short_name}': 'tools' only accepts {', '.join(KNOWN_TOOLS)}")
+    try:
+        pack_tools.validate_declarations(entry, source["root"], is_contained_pattern)
+    except pack_tools.DeclarationError as declaration_error:
+        raise ProfileError(f"pack '{source_name}' profile '{short_name}': {declaration_error}") from declaration_error
     relative_root = entry.get("assets")
     if relative_root is None:
         return None

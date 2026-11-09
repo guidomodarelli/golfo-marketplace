@@ -16,7 +16,7 @@ description: >-
   descartar un hallazgo de sus revisiones de IA.
 license: MIT
 metadata:
-  version: "1.18.0"
+  version: "1.19.0"
   author: "guponce"
   category: "developer-experience"
   tags: "agent-ready, multi-provider, claude-code, codex, bootstrap, setup, scaffold, context-optimized-v1.20.1"
@@ -118,6 +118,7 @@ explícito fuera del cache conservan prioridad para desarrollo local.
 | `agent-ready sources list\|add\|remove` | las fuentes de packs del manifest; `add` además la trae a la caché |
 | `agent-ready doctor [--offline] [--json]` | revisa Git, Bash, Python, la CLI del provider, la configuración, las fuentes y los hooks, y dice cómo arreglar lo que falta |
 | `agent-ready remove [--dry-run] [--yes]` | saca agent-ready-setup del repo y conserva lo que escribió el proyecto |
+| `agent-ready trust list\|add\|remove` | confía en una fuente o aprueba el repo en esta máquina; las herramientas de un pack pasan por la política de seguridad ([references/pack-tools.md](references/pack-tools.md)) |
 | `agent-ready review list\|accept\|dismiss\|reset` | los hallazgos de las revisiones de IA con su id, y las decisiones del equipo sobre ellos ([references/ai-reviews.md](references/ai-reviews.md)) |
 
 Ante «los hooks no corren», «el sync no hace nada» o una máquina nueva, correr primero

@@ -63,6 +63,20 @@ Qué puede aflojar el manifest de un repositorio. Endurecer siempre se aplica; a
 |---|---|---|---|---|---|---|
 | `security.enabled` | boolean | `true` | todas | — | `false` < `true` | Exige la aprobación de la máquina para que el proyecto afloje una clave sensible. Apagado, el proyecto afloja sin aprobación. |
 | `security.preset` | `off` \| `standard` \| `strict` | `"standard"` | todas | — | `off` < `standard` < `strict` | Conjunto de valores con una sola clave: standard (los defaults), strict (además, updates.mode pinned) u off (sin exigir aprobación). Cualquier clave se puede pisar en la misma capa o en una superior; off desde el proyecto cuenta como aflojar. |
+| `security.execution.enabled` | boolean | `true` | todas | — | `true` < `false` | Las herramientas de un pack que pasan la política se instalan, registran y corren en un apply. Apagado, ningún pack ejecuta nada; sus rules y skills se proyectan igual. |
+| `security.execution.events` | lista de string (`install`, `post-apply`, `session-start`) | `["install", "post-apply"]` | todas | — | sumar valores afloja | Eventos en los que puede correr un script de un pack: install, post-apply o session-start. session-start corre en cada inicio de sesión, por eso está apagado por defecto. |
+| `security.checks.trustedSource` | boolean | `true` | todas | — | `false` < `true` | La fuente del pack tiene que ser de confianza en esta máquina (agent-ready trust add <fuente>). Una fuente path:, que vive en el repositorio, es de confianza si el repositorio está aprobado. |
+| `security.checks.signature` | boolean | `false` | todas | — | `false` < `true` | El commit o tag de la fuente tiene que estar firmado por una clave conocida. Apagado por defecto: un pack personal sin firmas funciona igual. |
+| `security.checks.artifactSha256` | boolean | `true` | todas | — | `false` < `true` | Cada artefacto de un CLI declara su sha256 y se verifica al descargarlo. Un paquete de npm, pip, brew o winget sin sha256 no se instala. |
+| `security.checks.lockDigest` | boolean | `true` | todas | — | `false` < `true` | Lo que se ejecuta coincide con el digest que registra el lock para esa herramienta. |
+| `security.allow.clis` | lista de string | `[]` | todas | — | vaciar o ampliar una lista no vacía afloja | Nombres de CLIs que un pack puede instalar. |
+| `security.allow.commands` | lista de string | `[]` | todas | — | vaciar o ampliar una lista no vacía afloja | Comandos que puede lanzar un servidor MCP de un pack. |
+| `security.allow.scripts` | lista de string | `[]` | todas | — | vaciar o ampliar una lista no vacía afloja | Scripts que pueden correr, como <fuente>/<ruta en el pack>. |
+| `security.allow.mcpServers` | lista de string | `[]` | todas | — | vaciar o ampliar una lista no vacía afloja | Nombres de servidores MCP que un pack puede registrar. |
+| `security.deny.commands` | lista de string; se une entre capas | `[]` | todas | — | — | CLIs o comandos de servidores MCP que no se instalan ni se lanzan. |
+| `security.deny.scripts` | lista de string; se une entre capas | `[]` | todas | — | — | Scripts que no corren, como <fuente>/<ruta en el pack>. |
+| `security.rules` | lista de objetos; se une entre capas | `[]` | todas | — | sumar una regla allow afloja | Restricciones propias: cada regla elige herramientas por fuente, profile, tipo, patrón de nombre o texto del script, y las permite o las prohíbe. Una regla deny gana sobre una allow; ninguna saltea las verificaciones de checks ni las listas deny. |
+| `security.trustedSources` | lista de string; se une entre capas | `[]` | todas | — | sumar valores afloja | Orígenes de las fuentes de packs en las que esta máquina confía para ejecutar sus herramientas. Se agregan con agent-ready trust add <fuente> y agent-ready sources add; se unen entre capas, y sumarlos desde el proyecto afloja. |
 | `security.trustedProjects` | lista de string; se une entre capas | `[]` | organization, user | — | — | Raíces de los repositorios que esta máquina aprobó para aflojar desde su manifest. Se agregan con agent-ready-state.py trust y se unen entre capas. |
 
 Presets:
@@ -70,6 +84,11 @@ Presets:
 - `security.preset: off` → `security.enabled: false`, `updates.mode: auto`
 - `security.preset: standard` → `security.enabled: true`, `updates.mode: auto`
 - `security.preset: strict` → `security.enabled: true`, `updates.mode: pinned`
+
+Campos de cada elemento de `security.rules`:
+
+- `match` (object, obligatorio): Qué herramientas elige; vacío elige todas.
+- `action` (`allow` | `deny`, obligatorio): allow o deny.
 
 ## `sources`: Profile packs
 

@@ -66,6 +66,11 @@ def acquire_directory_lock(lock_path):
     return True
 
 
+def is_link(path):
+    """True for a symlink or, on Windows, a directory junction."""
+    return os.path.islink(path) or (hasattr(os.path, "isjunction") and os.path.isjunction(path))
+
+
 def walk_files(root):
     """Yield (relative_posix_path, absolute_path) for every regular file, sorted."""
     collected = []

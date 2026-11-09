@@ -42,6 +42,7 @@ from agent_ready_common import (  # noqa: E402
     StateError,
     acquire_directory_lock,
     bash_executable,
+    is_link,
     plugin_version,
     read_json_file,
     serialize_json,
@@ -103,6 +104,7 @@ from agent_ready_detection import (  # noqa: E402
 )
 import agent_ready_compatibility as compatibility  # noqa: E402
 import agent_ready_conflicts as conflicts_review  # noqa: E402
+import agent_ready_pack_tools as pack_tools  # noqa: E402
 import agent_ready_golfo_kit as golfo_kit  # noqa: E402
 from agent_ready_packs import (  # noqa: E402
     SOURCE_AVAILABLE,
@@ -278,11 +280,6 @@ def local_state(path):
     if not os.path.isfile(path):
         return LOCAL_NOT_A_FILE
     return sha256_of_file(path)
-
-
-def is_link(path):
-    """True for a symlink or, on Windows, a directory junction."""
-    return os.path.islink(path) or (hasattr(os.path, "isjunction") and os.path.isjunction(path))
 
 
 def has_linked_parent(project_root, destination):
@@ -1352,6 +1349,8 @@ def compute_plan(project_root, skill_dir, catalog, profile_names):
         "editedViews": edited_views,
         "detachedViews": preserved_views,
         "merged": merged,
+        # What the selected pack profiles declare besides files; the policy judges them later.
+        "packToolDeclarations": pack_tools.declared_tools(catalog, resolved, source_of_profile, is_pack_profile),
     }
 
 
@@ -1709,6 +1708,7 @@ def print_plan(project_root, skill_dir, plan, provider, skip_marketplace_upgrade
     print_plan_sources(plan)
     print_plan_versions(plan)
     print_plan_conflicts(plan)
+    print_pack_tools(plan.get("packTools"), sys.stdout)
     print_plan_detection(plan)
     write_line(paint("Project assets", "heading", stream))
     counts = {}
@@ -1971,6 +1971,7 @@ def compute_status(project_root, skill_dir):
         "sources": {},
         "selectionDifferences": [],
         "reviews": review_summary(project_root),
+        "packTools": None,
         "golfoKit": golfo_kit_pending(skill_dir) if skill_dir else None,
     }
     if lock:
@@ -2005,6 +2006,7 @@ def compute_status(project_root, skill_dir):
         else:
             status["sources"] = plan["sourceReport"]
             status["plan"] = plan
+            status["packTools"] = pack_tools.report(plan["packToolDeclarations"], catalog, configuration)
             changed = [entry["destination"] for entry in plan["entries"]
                        if entry["action"] not in (ACTION_UNCHANGED, ACTION_DROP)]
             status["checkout"]["modified"].extend(plan["editedViews"] + plan["detachedViews"])
@@ -2044,6 +2046,28 @@ def status_has_drift(status):
     if any(checkout[key] for key in ("modified", "missing", "conflict", "failed", "retiredPreserved")):
         return True
     return bool(status["update"] and status["update"]["available"]) or not status["hasLock"]
+
+
+def print_pack_tools(report, stream, brief=False):
+    """What the selected packs declare besides files, and what the security policy decides about each one."""
+    if not report:
+        return
+    blocked = sum(tool["decision"] == pack_tools.DECISION_BLOCKED for tool in report["tools"])
+    write_line(paint("Pack tools (what the security policy allows; this engine does not install or run them yet)",
+                     "heading", stream), stream)
+    for tool in report["tools"]:
+        label = f"{pack_tools.describe_tool(tool)} [{tool['profile']}]"
+        if tool["decision"] == pack_tools.DECISION_ALLOWED:
+            write_line(paint(f"  + allowed: {label}", "ok", stream), stream)
+        else:
+            write_line(paint(f"  - blocked: {label}: {tool['reason']}", "warning", stream), stream)
+    if not brief:
+        write_line("  Policy:", stream)
+        for key, item in report["policy"].items():
+            write_line(f"    {key}: {format_value(item['value'])} ({item['origin']})", stream)
+    elif blocked:
+        write_line(f"  {blocked} blocked; agent-ready plan shows the policy and the layer of each value.", stream)
+    write_line("", stream)
 
 
 def print_review_summary(reviews, brief, stream):
@@ -2116,6 +2140,7 @@ def print_status(status, brief):
         else:
             write_line(paint("Source matches the lock: no update pending.", "ok", stream))
     print_review_summary(status.get("reviews"), brief, stream)
+    print_pack_tools(status.get("packTools"), stream, brief=True)
     if not brief and status["capabilities"]:
         write_line("Provider capabilities:")
         for provider, capabilities in status["capabilities"].items():
@@ -2397,6 +2422,10 @@ def command_plan(arguments):
     if arguments.source_mode == SOURCE_MODE_SYNC:
         enforce_sync_policy(arguments.project, arguments.skill_dir, catalog, plan["profiles"], plan["profileDigests"])
         keep_locked_entries_of_unselected_sources(plan, read_lock(arguments.project))
+    tools_report = pack_tools.report(plan["packToolDeclarations"], catalog,
+                                     configuration_of(arguments.project, arguments.offline))
+    if tools_report:
+        plan["packTools"] = tools_report
     conflicts = semantic_conflicts(arguments, plan)
     if conflicts is not None:
         plan["semanticConflicts"] = conflicts

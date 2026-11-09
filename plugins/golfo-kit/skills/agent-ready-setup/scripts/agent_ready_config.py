@@ -22,6 +22,7 @@ never changes above it. Ignored values are reported, never dropped in silence.
 """
 
 import copy
+import fnmatch
 import json
 import os
 import re
@@ -66,6 +67,15 @@ MOUNT_NAME = re.compile(r"^[a-z][A-Za-z0-9]*$")
 
 IGNORED_LOCKED = "locked"
 IGNORED_LOOSENS = "loosens"
+# How a sensitive list loosens: permits adds what may happen (trusted sources, events),
+# restricts narrows what may happen when it is not empty (allow lists), and rules loosens with
+# each new rule that allows.
+LIST_PERMITS = "permits"
+LIST_RESTRICTS = "restricts"
+LIST_RULES = "rules"
+LIST_SECURITY_KINDS = (LIST_PERMITS, LIST_RESTRICTS, LIST_RULES)
+RULE_ALLOW = "allow"
+GLOB_CHARACTERS = "*?["
 
 
 class ConfigurationError(StateError):
@@ -207,6 +217,12 @@ class Schema:
     def _validate_security(self, path, node):
         security = node.get("x-security")
         if security is None:
+            return
+        if node.get("type") == "array":
+            if not isinstance(security, dict) or security.get("list") not in LIST_SECURITY_KINDS:
+                self._fail(f"'{path}' x-security of a list must say how it loosens: list is one of {', '.join(LIST_SECURITY_KINDS)}")
+            if "default" not in node:
+                self._fail(f"'{path}' is sensitive, so it needs a default to compare against")
             return
         strictness = security.get("strictness") if isinstance(security, dict) else None
         if node.get("type") == "boolean":
@@ -451,8 +467,38 @@ def loosens(node, value, previous):
     security = node.get("x-security")
     if not security:
         return False
+    if "list" in security:
+        return list_loosens(security["list"], value or [], previous or [])
     order = [json.dumps(item) for item in security["strictness"]]
     return order.index(json.dumps(value)) < order.index(json.dumps(previous))
+
+
+def covered_by(item, patterns):
+    """True when a plain name falls under one of the glob patterns.
+
+    Only a name without wildcards counts: whether one pattern is narrower than another cannot be
+    told from the text, so a new pattern is taken as wider.
+    """
+    return (isinstance(item, str) and not any(character in item for character in GLOB_CHARACTERS)
+            and any(isinstance(pattern, str) and fnmatch.fnmatchcase(item, pattern) for pattern in patterns))
+
+
+def list_loosens(kind, value, previous):
+    """True when a sensitive list lets more happen than ``previous``."""
+    added = [item for item in value if item not in previous]
+    if kind == LIST_PERMITS:
+        return bool(added)
+    if kind == LIST_RESTRICTS:
+        # An empty allow list restricts nothing: emptying one, or widening it, loosens.
+        return bool(previous) and (not value or any(not covered_by(item, previous) for item in added))
+    return any(isinstance(item, dict) and item.get("action") == RULE_ALLOW for item in added)
+
+
+LIST_SECURITY_LABELS = {
+    LIST_PERMITS: "sumar valores afloja",
+    LIST_RESTRICTS: "vaciar o ampliar una lista no vacía afloja",
+    LIST_RULES: "sumar una regla allow afloja",
+}
 
 
 class Configuration:
@@ -686,7 +732,12 @@ def render_reference(schema):
             layers = ", ".join(node.get("x-layers", ())) or "todas"
             variable = f"`{node['x-env']}`" if node.get("x-env") else "—"
             security = node.get("x-security")
-            strictness = " < ".join(f"`{format_value(item)}`" for item in security["strictness"]) if security else "—"
+            if not security:
+                strictness = "—"
+            elif "list" in security:
+                strictness = LIST_SECURITY_LABELS[security["list"]]
+            else:
+                strictness = " < ".join(f"`{format_value(item)}`" for item in security["strictness"])
             lines.append(f"| `{key}` | {markdown_cell(describe_type(node))} | {markdown_cell(default)} | {layers} | {variable} | "
                          f"{markdown_cell(strictness)} | {markdown_cell(node['description'])} |")
             for preset_value, assignments in (node.get("x-presets") or {}).items():
