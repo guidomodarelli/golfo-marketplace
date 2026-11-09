@@ -990,6 +990,15 @@ def golfo_kit_pending(skill_dir):
     }
 
 
+def content_version(skill_dir):
+    """Version of the golfo-kit content: the ``version`` its catalog declares, else its plugin's."""
+    try:
+        declared = read_json_file(os.path.join(skill_dir, PROFILE_CATALOG_RELATIVE_PATH), "profile catalog").get("version")
+    except StateError:
+        declared = None
+    return declared if isinstance(declared, str) and compatibility.semver_key(declared) else plugin_version(skill_dir)
+
+
 def engine_version_of(skill_dir):
     """Version of the engine that projects ``skill_dir``: the installed one, also for pinned content."""
     marker = golfo_kit.read_marker(skill_dir)
@@ -1017,7 +1026,7 @@ def source_identity(skill_dir, assets, merged_templates):
     identity = {
         "plugin": PLUGIN_NAME,
         "skill": SKILL_NAME,
-        "version": plugin_version(skill_dir),
+        "version": content_version(skill_dir),
         "kind": kind,
         "revision": revision,
         "contentDigest": sha256_of_text("\n".join(digest_lines)),

@@ -24,15 +24,21 @@ ENGINE_PLUGIN = "golfo-kit"
 
 
 def semver_key(text):
-    """Comparable (major, minor, patch, release) of a semver, or None when it is not one.
+    """A key that orders versions by semver precedence, or None when ``text`` is not one.
 
-    A pre-release sorts before its release; build metadata does not count.
+    A pre-release sorts before its release and its identifiers compare one by one: numbers by
+    value and below text, and a shorter list first when the rest is equal. Build metadata does
+    not count.
     """
     match = SEMVER.fullmatch(text or "") if isinstance(text, str) else None
     if not match:
         return None
     major, minor, patch = (int(part) for part in match.groups())
-    return major, minor, patch, 0 if "-" in text.split("+", 1)[0] else 1
+    core = text.split("+", 1)[0]
+    if "-" not in core:
+        return major, minor, patch, 1, ()
+    identifiers = tuple((0, int(part), "") if part.isdigit() else (1, 0, part) for part in core.split("-", 1)[1].split("."))
+    return major, minor, patch, 0, identifiers
 
 
 def validate_compatibility(label, catalog):
@@ -66,8 +72,13 @@ def require_engine(label, catalog, engine_version, supported_schema):
                            f"{engine_version or 'unknown'}) reads up to {supported_schema}: update the {ENGINE_PLUGIN} "
                            "plugin and run it again; nothing was changed")
     minimum = catalog.get("minEngine")
+    if minimum is None:
+        return
+    minimum_key = semver_key(minimum)
+    if minimum_key is None:
+        raise ProfileError(f"{label}: minEngine must be a semantic version such as 1.2.0, not {minimum!r}")
     engine_key = semver_key(engine_version)
-    if minimum and engine_key and engine_key < semver_key(minimum):
+    if engine_key and engine_key < minimum_key:
         raise ProfileError(f"{label} needs the agent-ready-setup engine {minimum} or newer, and this installation "
                            f"runs {ENGINE_PLUGIN} {engine_version}: install the {ENGINE_PLUGIN} plugin {minimum} or "
                            "newer and run it again; nothing was changed")

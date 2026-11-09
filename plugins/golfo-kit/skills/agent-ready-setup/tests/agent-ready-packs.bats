@@ -1021,3 +1021,16 @@ PY
   [ "$(printf '%s' "$output" | python3 -c 'import json,sys; item=json.load(sys.stdin)["versionChanges"][0]; print(item["source"], item["majorJump"], [c["version"] for c in item["breaking"]])' | tr -d '\r')" = \
     "acme True ['2.0.0']" ]
 }
+
+@test "an invalid minEngine is a catalog error, also for the CI check" {
+  publish_pack_repository acme
+  set_pack_catalog_fields '{"minEngine": "0.46"}'
+  write_manifest acme/kafka-interno "acme=git+https://packs.example.invalid/acme#main"
+  run_bootstrap
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"pack 'acme': minEngine must be a semantic version such as 1.2.0, not '0.46'"* ]]
+
+  run --separate-stderr python3 "$skill_dir/scripts/agent-ready-state.py" check --project . --skill-dir "$skill_dir" --format json
+  [ "$status" -eq 2 ]
+  [ "$(printf '%s' "$output" | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])' | tr -d '\r')" = "config-error" ]
+}
