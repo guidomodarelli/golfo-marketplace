@@ -30,7 +30,8 @@ setup() {
   git config --global init.defaultBranch main
   git config --global core.autocrlf false
   git config --global protocol.file.allow always
-  unset CODEX_HOME AGENT_READY_SETUP_UPDATES AGENT_READY_SETUP_STACK_DIR AGENT_READY_SETUP_STACK AGENT_READY_SETUP_PROFILES
+  # GitHub Actions sets CI, which keeps the tools of a pack from running (security.execution.ci).
+  unset CI CODEX_HOME AGENT_READY_SETUP_UPDATES AGENT_READY_SETUP_STACK_DIR AGENT_READY_SETUP_STACK AGENT_READY_SETUP_PROFILES
   for provider_cli in claude codex; do
     printf '#!/bin/bash\nexit 0\n' > "$fake_bin/$provider_cli"
     chmod +x "$fake_bin/$provider_cli"

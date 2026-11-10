@@ -44,6 +44,12 @@
           "default": ["install", "post-apply"],
           "uniqueItems": true,
           "x-security": { "list": "permits" }
+        },
+        "ci": {
+          "description": "En integración continua (CI definida) las herramientas de un pack solo se instalan, registran y corren si un workflow lo pide con su propia configuración.",
+          "type": "boolean",
+          "default": false,
+          "x-security": { "strictness": [true, false] }
         }
       }
     },

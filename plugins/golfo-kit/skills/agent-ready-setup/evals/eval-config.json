@@ -3298,6 +3298,29 @@
           "description": "Desaconseja apagar security.checks.artifactSha256"
         }
       ]
+    },
+    {
+      "id": "pack-script-blocked-in-ci",
+      "description": "En el workflow de CI, agent-ready apply no corre el install script del pack aunque la fuente sea de confianza: la ejecución en CI está apagada hasta que el workflow prenda security.execution.ci en su propia configuración.",
+      "input": "En GitHub Actions corremos agent-ready apply y el plan dice: - blocked: script acme/scripts/setup.sh on install (bash) [acme/kafka-interno]: this runs in continuous integration (CI is set) and security.execution.ci is false. En mi máquina el mismo script corre bien. ¿Por qué en CI no, y cómo hago para que corra solo en ese workflow? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "security\\.execution\\.ci",
+          "description": "Nombra la clave security.execution.ci",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(workflow|CI).{0,200}(config|configuración|AGENT_READY|variable|--layer|capa)",
+          "description": "Explica que se prende desde la configuración del workflow, no en el manifest del repo para todos"
+        },
+        {
+          "type": "regex",
+          "pattern": "(por defecto|default|apagad|false)",
+          "description": "Dice que en CI la ejecución está apagada por defecto"
+        }
+      ]
     }
   ]
 }
