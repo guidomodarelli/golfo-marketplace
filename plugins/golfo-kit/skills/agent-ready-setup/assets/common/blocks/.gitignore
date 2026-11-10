@@ -1,0 +1,5 @@
+# Local state of agent-ready-setup on this machine, never versioned: the lock of a sync in
+# progress, the paths of the browser tools and the views Windows links without symlinks.
+.agents/.agent-ready-assets.lock/
+.agents/browser-tools.json
+.claude/.agent-ready-hard-link-views

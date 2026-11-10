@@ -16,7 +16,7 @@ description: >-
   descartar un hallazgo de sus revisiones de IA.
 license: MIT
 metadata:
-  version: "1.25.0"
+  version: "1.26.0"
   author: "guponce"
   category: "developer-experience"
   tags: "agent-ready, multi-provider, claude-code, codex, bootstrap, setup, scaffold, context-optimized-v1.20.1"
@@ -48,6 +48,10 @@ operación. El bootstrap distribuye assets según responsabilidad:
   secciones fuera del bloque; el contrato de los bloques está en
   [references/managed-agents-block.md](references/managed-agents-block.md). No ejecuta
   scripts ni calcula cantidad de archivos. Hooks incluyen `statusMessage` para mostrar progreso.
+- `.gitignore`: bloque gestionado común (`assets/common/blocks/.gitignore`) que ignora el
+  estado local de agent-ready-setup: el lock de una sincronización en curso, la metadata
+  del navegador (`.agents/browser-tools.json`) y el manifest de vistas por hard link. Las
+  reglas propias del proyecto van fuera del bloque.
 
 `AGENTS.md` es la fuente canónica. Debe incluir una sección de referencias de
 rules que indique a todos los providers leer y seguir cada archivo bajo
@@ -375,7 +379,7 @@ copiados durante bootstrap. No modifica `~/.codex/config.toml`,
 
 Mostrar output del script sin alterarlo. En respuestas documentales, enumerar además del resumen cada asset del template detectado con su path relativo, copiado tal cual de este catálogo (el árbol de `assets/` manda si difiere). Cada uno se proyecta en `.agents/<path>`, con vista en `.claude/<path>` salvo los hooks:
 
-- **Todos los stacks** (`assets/common/`): `rules/browser-before-user-questions.md`, `rules/database.md`, `rules/environment-readiness.md`, `rules/error-handling.md`, `rules/established-libraries.md`, `rules/language-consistency.md`, `rules/lint-gate.md`, `rules/patterns-we-do-not-use.md`, `rules/root-cause-bug-fixes.md`, `rules/speculative-complexity-approval.md`, `rules/testing-scope.md`, `rules/user-actions-first.md`, `rules/verify-changes.md`, `skills/agent-browser/`, `skills/pr-review-workflow/`, `hooks/sync-marketplace.sh`, `hooks/check-harness-consistency.sh` (con `hooks/harness-review.py` y `hooks/review-cache.py`), `settings.json` y el bloque `blocks/.github/pull_request_template.md`.
+- **Todos los stacks** (`assets/common/`): `rules/browser-before-user-questions.md`, `rules/database.md`, `rules/environment-readiness.md`, `rules/error-handling.md`, `rules/established-libraries.md`, `rules/language-consistency.md`, `rules/lint-gate.md`, `rules/patterns-we-do-not-use.md`, `rules/root-cause-bug-fixes.md`, `rules/speculative-complexity-approval.md`, `rules/testing-scope.md`, `rules/user-actions-first.md`, `rules/verify-changes.md`, `skills/agent-browser/`, `skills/pr-review-workflow/`, `hooks/sync-marketplace.sh`, `hooks/check-harness-consistency.sh` (con `hooks/harness-review.py` y `hooks/review-cache.py`), `settings.json` y los bloques `blocks/.github/pull_request_template.md` y `blocks/.gitignore`.
 - **Android, Go, Java y Node:** `rules/coding-style.md`, `rules/security.md`, `rules/testing.md`, `agents/perf-analyzer.md`, `agents/security-scanner.md` y `commands/review-pr.md`.
 - **Frontend:** `rules/api-configuration.md`, `rules/api-validation-middleware.md`, `rules/cross-engine.md`, `rules/frontend-style.md`, `rules/hexagonal-architecture.md`, `rules/lodash.md`, `rules/no-unnecessary-mocks.md`, `rules/security.md`, `rules/server-first-data-flow.md`, `rules/testing.md`, `rules/upstream-contracts.md`, `rules/user-facing-feedback.md`, `agents/a11y-reviewer.md`, `agents/lint-reviewer.md`, `agents/perf-analyzer.md`, `agents/security-scanner.md`, `agents/test-reviewer.md`, `commands/review-pr.md`, `skills/api-endpoint/`, `skills/component-creation/`, `skills/karpathy-guidelines/`, `skills/logger/`, `skills/react-act-test-fixes/` y `skills/service/`.
 - **Profile `business-flows`:** `rules/business-flows.md` y `skills/business-flow-design/SKILL.md`.

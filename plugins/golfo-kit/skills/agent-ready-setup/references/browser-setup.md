@@ -44,8 +44,10 @@ vuelve a instalación. El launcher de agent-browser exporta Chromium mediante
 
 `.agents/browser-tools.json` registra paths de CLI y browser para skill común
 `agent-browser`; agents y comandos también pueden usar el MCP registrado. Como
-contiene paths de la máquina, bootstrap agrega `.agents/browser-tools.json` a
-`.gitignore` cuando `git check-ignore` no lo cubre.
+contiene paths de la máquina, el bloque gestionado de `.gitignore` del profile `common`
+(`assets/common/blocks/.gitignore`) lo ignora. El setup del navegador no edita `.gitignore`:
+si `git check-ignore` no lo cubre, por ejemplo porque el bloque quedó en conflicto, no
+escribe el archivo, avisa con `WARNING:` y deja los servidores registrados.
 Generar configuración no concede confianza: reiniciar provider y completar su
 confirmación de MCP/proyecto cuando corresponda. Codex carga configuración local
 solo en proyectos confiables. Bootstrap no modifica confianza, SSO/MFA, remote

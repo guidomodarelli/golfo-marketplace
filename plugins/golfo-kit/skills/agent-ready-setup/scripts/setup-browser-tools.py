@@ -400,18 +400,17 @@ def report_removed_project(project):
     print(f"Browser registration skipped: agent-ready-setup is no longer set up in {project}.", file=sys.stderr)
 
 
-def ignore_browser_metadata(project):
-    """Keep machine-specific browser metadata out of version control."""
+def browser_metadata_is_ignored(project):
+    """True when Git ignores the machine-specific browser metadata.
+
+    The .gitignore block of the common profile ignores it (assets/common/blocks/.gitignore), and
+    an apply writes that block before it registers the servers; this script never edits .gitignore.
+    """
     check = subprocess.run(["git", "-C", str(project), "check-ignore", "--quiet", "--no-index", BROWSER_METADATA_PATH],
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
-    if check.returncode == 0:
-        return
-    if check.returncode != 1:
+    if check.returncode not in (0, 1):
         raise RuntimeError(f"Browser setup requires a Git worktree to ignore {BROWSER_METADATA_PATH}: {project}")
-    gitignore = project / ".gitignore"
-    original = gitignore.read_text() if gitignore.exists() else ""
-    separator = "\n" if original and not original.endswith("\n") else ""
-    atomic_write(gitignore, f"{original}{separator}{BROWSER_METADATA_PATH}\n", original)
+    return check.returncode == 0
 
 
 def register_servers(project, binaries, browser, allow_dependency_install=True):
@@ -451,7 +450,12 @@ def register_servers(project, binaries, browser, allow_dependency_install=True):
         raise RuntimeError("; ".join(failures))
     if toml_editor_missing is not None:
         raise toml_editor_missing
-    ignore_browser_metadata(project)
+    if not browser_metadata_is_ignored(project):
+        # Machine paths must never become committable: the servers stay registered without them.
+        print(f"WARNING: {BROWSER_METADATA_PATH} was not written because Git does not ignore it; the managed "
+              ".gitignore block of agent-ready-setup ignores it, so run an apply and check .gitignore",
+              file=sys.stderr)
+        return
     write_if_changed(project / BROWSER_METADATA_PATH, json.dumps({
         "agent_browser": str(binaries / "agent-browser"), "browser_executable": str(browser),
     }, indent=2) + "\n")
@@ -496,24 +500,13 @@ def unregister_provider(provider, destination, parser, key):
 
 
 def forget_browser_metadata(project):
-    """Delete the machine metadata and the .gitignore line that kept it out of version control."""
+    """Delete the machine metadata; the .gitignore block that ignores it goes with the lock (remove)."""
     changed = []
     metadata = project / BROWSER_METADATA_PATH
     if metadata.is_file() and not metadata.is_symlink():
         ensure_safe_path(metadata)
         metadata.unlink()
         changed.append(("removed", BROWSER_METADATA_PATH))
-    gitignore = project / ".gitignore"
-    if gitignore.is_file():
-        original = gitignore.read_text(encoding="utf-8")
-        lines = original.splitlines()
-        if BROWSER_METADATA_PATH in lines:
-            kept = [line for line in lines if line != BROWSER_METADATA_PATH]
-            if any(line.strip() for line in kept):
-                atomic_write(gitignore, "\n".join(kept) + "\n", original)
-            else:
-                remove_file(gitignore, original)
-            changed.append(("edited" if gitignore.exists() else "removed", ".gitignore"))
     return changed
 
 

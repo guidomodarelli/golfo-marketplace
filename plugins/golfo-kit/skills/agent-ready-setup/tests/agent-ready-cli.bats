@@ -526,7 +526,7 @@ PY
   [ "$status" -eq 0 ]
   printf '%s\n' '{"mcpServers": {"playwright": {"command": "${HOME}/.local/share/agent-ready-setup/browser-tools/bin/playwright"}, "own": {"command": "own-server"}}}' > .mcp.json
   printf '{}\n' > .agents/browser-tools.json
-  printf 'node_modules/\n.agents/browser-tools.json\n' > .gitignore
+  printf 'node_modules/\n\n' | cat - .gitignore > .gitignore.new && mv .gitignore.new .gitignore
 
   run_cli remove --dry-run
   [[ "$output" == *"edit   .mcp.json"* ]]

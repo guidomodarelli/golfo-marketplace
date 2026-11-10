@@ -76,7 +76,10 @@ Los hooks generados no pasan flags de confirmación durante `SessionStart`.
 
 Un profile, de golfo-kit o de un pack, publica la parte que le toca de un archivo compartido con el
 proyecto como `blocks/<ruta en el repo>` en su árbol de assets. Por ejemplo, el profile `common` publica
-`assets/common/blocks/.github/pull_request_template.md`. `scripts/agent_ready_blocks.py` lo aplica en
+`assets/common/blocks/.github/pull_request_template.md` y `assets/common/blocks/.gitignore`, que ignora
+el estado local de agent-ready-setup: el lock de una sincronización en curso
+(`.agents/.agent-ready-assets.lock/`), la metadata del navegador (`.agents/browser-tools.json`) y el
+manifest de vistas por hard link (`.claude/.agent-ready-hard-link-views`). `scripts/agent_ready_blocks.py` lo aplica en
 `finalize`, después de la proyección; bootstrap y el hook de sync no copian `blocks/`.
 
 - **Marcadores.** El bloque va entre dos líneas con el id, que es el nombre del profile, y la sintaxis de
