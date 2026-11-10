@@ -247,8 +247,7 @@ def publish(staging, key, marker):
     if os.path.normcase(os.path.abspath(staging)) == os.path.normcase(os.path.abspath(destination)):
         # Built in place (a virtual environment cannot move): the marker written last is the publication.
         return
-    if os.path.lexists(destination):
-        shutil.rmtree(destination)
+    remove_install_directory(destination)
     os.makedirs(os.path.dirname(destination), exist_ok=True)
     os.replace(staging, destination)
 
@@ -272,6 +271,9 @@ def install_artifact(cli, key, machine_platform, staging):
         extract_zip(download_path, files)
     else:
         suffix = next((ending for ending in WINDOWS_EXECUTABLE_SUFFIXES if lowered.endswith(ending)), "")
+        if binary.lower().endswith(suffix):
+            # binary already names the extension (acme.exe): it is not added twice.
+            suffix = ""
         target = os.path.join(files, binary + suffix)
         os.replace(download_path, target)
         os.chmod(target, 0o755)
@@ -309,7 +311,9 @@ def install_npm(cli, staging):
     downloads = os.path.join(staging, "download")
     os.makedirs(downloads)
     npm = shutil.which(MANAGER_NPM) or MANAGER_NPM
-    run_package_manager([npm, "pack", f"{package['name']}@{cli['version']}", "--pack-destination", downloads], what)
+    # --ignore-scripts: no lifecycle script of the package runs before its sha256 is checked.
+    run_package_manager([npm, "pack", f"{package['name']}@{cli['version']}", "--ignore-scripts",
+                         "--pack-destination", downloads], what)
     tarball = only_file(downloads, what)
     if package.get("sha256"):
         verify_sha256(tarball, package["sha256"], what)
@@ -369,15 +373,17 @@ def declaration_identity(cli, machine_platform):
     Two packs that declare the same name and version with different bytes get different installs,
     so one never replaces the files another repository runs.
     """
-    sha256 = expected_sha256(cli, machine_platform)
-    if sha256:
-        return sha256[:INSTALL_IDENTITY_LENGTH]
     if "package" in cli:
-        source = f"{cli['package']['manager']}:{cli['package']['name']}"
+        declared = cli["package"]
+        source = f"{declared['manager']}:{declared['name']}"
     else:
-        artifact = next((item for item in cli["artifacts"] if item["platform"] == machine_platform), {})
-        source = artifact.get("url", "")
-    return sha256_of_text(source)[:INSTALL_IDENTITY_LENGTH]
+        declared = next((item for item in cli["artifacts"] if item["platform"] == machine_platform), {})
+        source = declared.get("url", "")
+    # The executable is part of what is installed: the same bytes under another binary name are
+    # another layout, so they never reuse an install that lacks the executable they need.
+    identity = {"sha256": expected_sha256(cli, machine_platform) or source,
+                "binary": declared.get("binary", cli["name"])}
+    return sha256_of_text(json.dumps(identity, sort_keys=True))[:INSTALL_IDENTITY_LENGTH]
 
 
 def expected_sha256(cli, machine_platform):
@@ -399,8 +405,7 @@ def install_one(cli, machine_platform):
     if "package" in cli and cli["package"]["manager"] == MANAGER_PIP:
         # Built where it stays (see install_pip); the marker, written last, makes it installed.
         staging = install_directory(key)
-        if os.path.lexists(staging):
-            shutil.rmtree(staging)
+        remove_install_directory(staging)
         os.makedirs(staging)
     else:
         staging = tempfile.mkdtemp(prefix=".install-", dir=installs_root())
@@ -480,6 +485,27 @@ def keys_in_use():
     return used
 
 
+def managed_directory(path):
+    """A real directory of the cache of CLIs: no symlink or junction, and inside installs_root."""
+    if is_link(path) or not os.path.isdir(path):
+        return False
+    root = os.path.normcase(os.path.realpath(installs_root()))
+    real = os.path.normcase(os.path.realpath(path))
+    try:
+        return os.path.commonpath([root, real]) == root and real != root
+    except ValueError:
+        return False
+
+
+def remove_install_directory(path):
+    """Delete an install directory to rebuild it; a link or a path outside the cache is refused."""
+    if not os.path.lexists(path):
+        return
+    if not managed_directory(path):
+        raise InstallError(f"{path} is a link or leaves the cache of CLIs, so it was not deleted")
+    shutil.rmtree(path)
+
+
 def clean_unused():
     """Delete every install no repository uses; returns their keys."""
     used = keys_in_use()
@@ -489,14 +515,15 @@ def clean_unused():
         return removed
     for name in sorted(os.listdir(root)):
         name_directory = os.path.join(root, name)
-        if name.startswith(".") or is_link(name_directory) or not os.path.isdir(name_directory):
+        if name.startswith(".") or not managed_directory(name_directory):
             continue
         for version in sorted(os.listdir(name_directory)):
-            if not os.path.isdir(os.path.join(name_directory, version)):
+            # A link anywhere in the cache leads outside it: it is never followed nor deleted through.
+            if not managed_directory(os.path.join(name_directory, version)):
                 continue
             for origin in sorted(os.listdir(os.path.join(name_directory, version))):
                 key = install_key(name, version, origin)
-                if key not in used:
+                if key not in used and managed_directory(install_directory(key)):
                     shutil.rmtree(install_directory(key), ignore_errors=True)
                     removed.append(key)
             try:

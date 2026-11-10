@@ -48,7 +48,8 @@ un valor fuera del schema frena el apply antes de escribir y nombra el pack y el
   - Lleva `artifacts` o `package`, nunca los dos.
   - `artifacts` tiene un archivo por plataforma (`linux-x64`, `linux-arm64`, `darwin-x64`,
     `darwin-arm64`, `windows-x64`, `windows-arm64`), con una `url` https sin credenciales y su `sha256`.
-  - `package` usa `npm`, `pip`, `brew` o `winget`, con un `sha256` opcional.
+  - `package` usa `npm`, `pip`, `brew` o `winget`, con un `sha256` opcional. Con `npm` y `pip`, `name` es
+    un nombre del registro: nunca una ruta, una URL ni un spec de Git.
   - `binary` es el nombre del ejecutable, si no es el `name` del CLI.
 - **`mcpServers`**
   - Por nombre en kebab-case: un `command` (el nombre de un ejecutable, sin ruta ni argumentos), con
@@ -156,7 +157,7 @@ o `~/.cache/agent-ready-setup/clis`), nunca en el repositorio:
 | Origen | Qué hace el apply |
 |---|---|
 | `artifacts` | Descarga por https el archivo de la plataforma de la máquina y compara su `sha256` antes de abrirlo. Un `.tar.gz`, `.tgz` o `.zip` se extrae sin links ni rutas que salgan de su directorio; cualquier otro archivo es el ejecutable. |
-| `npm` | `npm pack` baja el tarball, se compara su `sha256` y recién después `npm install` lo instala en un prefijo propio. |
+| `npm` | `npm pack --ignore-scripts` baja el tarball sin correr sus scripts, se compara su `sha256` y recién después `npm install` lo instala en un prefijo propio. |
 | `pip` | Solo wheels: un paquete fuente correría su build antes de que el `sha256` pudiera rechazarlo. `pip download --no-deps --only-binary=:all:` lo baja, con el `sha256` como hash de la requirement para que pip lo verifique, y se instala en un entorno virtual propio, creado donde queda. |
 | `brew`, `winget` | Nunca se ejecutan, porque instalan para toda la máquina. El apply dice el comando para instalarlo a mano y si el ejecutable ya está en el PATH. |
 
@@ -166,7 +167,8 @@ o `~/.cache/agent-ready-setup/clis`), nunca en el repositorio:
 - **Una versión por máquina.** Cada versión vive una vez en la caché
   (`installs/<nombre>/<versión>/<origen>-<id>`, donde `<id>` sale del `sha256` declarado) y la comparten
   los repositorios que declaran los mismos bytes. Dos packs con el mismo nombre y versión pero otro
-  `sha256` quedan en instalaciones distintas, así uno nunca reemplaza lo que corre el otro. Cada
+  `sha256` (o otro `binary`) quedan en instalaciones distintas, así uno nunca reemplaza lo que corre el
+  otro. La limpieza nunca sigue un symlink ni un junction dentro de la caché. Cada
   repositorio anota cuáles usa (`projects/<clave>.json`); una versión que ningún repositorio usa se
   borra en el próximo apply o `remove` de cualquiera de ellos.
 - **PATH del repositorio.** Los directorios de los ejecutables quedan, uno por línea, en

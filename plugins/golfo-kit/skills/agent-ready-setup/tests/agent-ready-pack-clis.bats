@@ -338,10 +338,13 @@ PY
 @test "an npm package is checked by the sha256 of its tarball before npm installs it" {
   cat > "$fake_bin/npm" <<'SH'
 #!/bin/bash
-# Answers only what the engine runs: npm pack <spec> --pack-destination <dir> and npm install --prefix <dir> ... <tarball>.
+# Answers only what the engine runs: npm pack <spec> --ignore-scripts --pack-destination <dir> and
+# npm install --prefix <dir> ... <tarball>. A pack that would run the lifecycle scripts fails.
 printf '%s\n' "$*" >> "$NPM_CALLS"
 case "$1" in
-  pack) printf 'helper tarball\n' > "$4/acme-helper-2.0.0.tgz" ;;
+  pack)
+    [ "$3" = --ignore-scripts ] || exit 1
+    printf 'helper tarball\n' > "$5/acme-helper-2.0.0.tgz" ;;
   install)
     mkdir -p "$3/node_modules/.bin"
     printf '#!/bin/sh\necho "helper works"\n' > "$3/node_modules/.bin/acme-helper"
@@ -379,4 +382,43 @@ SH
   [ "$status" -eq 0 ]
   [[ "$stderr" == *"acme: brew installs for the whole machine, so install it yourself with brew install acme/tap/acme"* ]]
   [ ! -e "$test_root/brew-calls.log" ]
+}
+
+@test "the cleanup never follows a link in the cache of CLIs" {
+  mkdir -p "$test_root/user-data/keep" "$XDG_CACHE_HOME/agent-ready-setup/clis/installs/tool"
+  printf 'mine\n' > "$test_root/user-data/keep/file.txt"
+  link="$XDG_CACHE_HOME/agent-ready-setup/clis/installs/tool/1.0"
+  case "$(uname -s)" in
+    MINGW* | MSYS*) cmd //c "mklink /J $(cygpath -w "$link") $(cygpath -w "$test_root/user-data")" > /dev/null ;;
+    *) ln -s "$test_root/user-data" "$link" ;;
+  esac
+  PYTHONPATH="$skill_dir/scripts" python3 -c 'import agent_ready_pack_clis as clis; print(clis.clean_unused())'
+  [ -f "$test_root/user-data/keep/file.txt" ]
+}
+
+@test "the executable name is part of the install, and an extension it already has is not added again" {
+  printf '#!/bin/sh\necho raw\n' > "$served/tool.exe"
+  PYTHONPATH="$skill_dir/scripts" python3 - "$machine_platform" "$server_url" "$(sha256_of "$served/tool.exe")" <<'PY'
+import os, sys
+import agent_ready_pack_clis as clis
+machine_platform, url, sha256 = sys.argv[1:4]
+def declaration(binary):
+    return {"name": "tool", "version": "1.0.0", "artifacts": [
+        {"platform": machine_platform, "url": f"{url}/tool.exe", "sha256": sha256, "binary": binary}]}
+first_key, first_marker, _ = clis.install_one(declaration("tool.exe"), machine_platform)
+directory = os.path.join(clis.install_directory(first_key), *first_marker["pathDirectory"].split("/"))
+assert sorted(os.listdir(directory)) == ["tool.exe"], os.listdir(directory)
+second_key, second_marker, reused = clis.install_one(declaration("acme"), machine_platform)
+assert second_key != first_key and not reused, (first_key, second_key, reused)
+directory = os.path.join(clis.install_directory(second_key), *second_marker["pathDirectory"].split("/"))
+assert sorted(os.listdir(directory)) == ["acme.exe"], os.listdir(directory)
+PY
+}
+
+@test "a package name that is a path or a URL stops the apply before anything runs" {
+  publish_pack '[{"name": "acme-helper", "version": "2.0.0", "package": {"manager": "npm", "name": "./acme-helper@2.0.0", "sha256": "'"$(printf '1%.0s' $(seq 1 64))"'"}}]'
+  run_cli trust add acme
+  run_cli apply
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"package name must be a npm registry name, not a path or URL"* ]]
 }

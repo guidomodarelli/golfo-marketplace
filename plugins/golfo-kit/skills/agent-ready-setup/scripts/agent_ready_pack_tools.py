@@ -56,6 +56,11 @@ ENVIRONMENT_NAME = re.compile(r"^[A-Z][A-Z0-9_]*$")
 REFERENCE = re.compile(r"^\$\{(?P<name>[A-Z][A-Z0-9_]*)\}$")
 BEARER_REFERENCE = re.compile(r"^Bearer \$\{(?P<name>[A-Z][A-Z0-9_]*)\}$")
 HEADER_NAME = re.compile(r"^[A-Za-z0-9-]+$")
+# Package names as each registry writes them: never a path, URL, Git spec or local directory.
+REGISTRY_PACKAGE_NAMES = {
+    "npm": re.compile(r"^(?:@[a-z0-9][a-z0-9._~-]*/)?[a-z0-9][a-z0-9._~-]*$"),
+    "pip": re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$"),
+}
 AUTHORIZATION_HEADER = "authorization"
 
 APPLIED_TOOL_TYPES = (TOOL_CLI, TOOL_MCP_SERVER)
@@ -160,6 +165,10 @@ def validate_cli(cli, what):
         raise DeclarationError(f"{what} package needs a manager: one of {', '.join(PACKAGE_MANAGERS)}")
     if not isinstance(package.get("name"), str) or not package["name"].strip():
         raise DeclarationError(f"{what} package needs the name of the package")
+    registry_name = REGISTRY_PACKAGE_NAMES.get(package["manager"])
+    if registry_name and not registry_name.fullmatch(package["name"]):
+        # A path, URL or Git spec would let the manager run code from somewhere the sha256 never saw.
+        raise DeclarationError(f"{what} package name must be a {package['manager']} registry name, not a path or URL")
     if "sha256" in package and (not isinstance(package["sha256"], str) or not SHA256.fullmatch(package["sha256"])):
         raise DeclarationError(f"{what} package sha256 must be 64 lowercase hex characters")
     if "binary" in package and (not isinstance(package["binary"], str) or not COMMAND_NAME.fullmatch(package["binary"])):
