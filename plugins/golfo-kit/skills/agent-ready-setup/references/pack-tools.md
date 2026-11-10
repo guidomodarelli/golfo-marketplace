@@ -201,7 +201,9 @@ o `~/.cache/agent-ready-setup/clis`), nunca en el repositorio:
   borra en el próximo apply o `remove` de cualquiera de ellos.
 - **PATH del repositorio.** Los directorios de los ejecutables quedan, uno por línea, en
   `agent-ready/cli-path` dentro del directorio de Git (`git rev-parse --git-path agent-ready/cli-path`).
-  De ahí los toma el runner de los scripts del pack.
+  De ahí los toma el runner de los scripts del pack. Ningún otro proceso los recibe solo: ni el shell
+  del agente ni el de la persona. Una rule que pide correr el CLI dice cómo sumar esos directorios al
+  PATH; `assets/examples/personal-tools-pack/` lo muestra en bash y PowerShell.
 - **Sin escrituras de más.** Un apply que no cambia nada no reescribe el registro del repositorio ni
   `agent-ready/cli-path`.
 - **Lock.** `clis` guarda, por nombre, la fuente, el profile, la versión, el origen y el `sha256`.

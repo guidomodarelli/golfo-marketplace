@@ -17,11 +17,11 @@ git push origin v2.4.0
 ```
 
 Un tag firmado vale por el commit al que apunta, aunque el commit no esté firmado. Cada repositorio
-declara la fuente fijada a ese tag:
+declara la fuente fijada a ese tag, junto con su stack (acá `node`): un pack solo suma capabilities.
 
 ```json
 {
-  "profiles": ["acme-platform/platform"],
+  "profiles": ["node", "acme-platform/platform"],
   "sources": {
     "packs": [
       { "name": "acme-platform", "source": "git+https://git.acme.example/platform/agent-ready-pack#v2.4.0" }

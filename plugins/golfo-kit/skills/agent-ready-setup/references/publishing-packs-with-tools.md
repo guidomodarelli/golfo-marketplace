@@ -31,7 +31,10 @@ Todo es opcional: un pack sin herramientas sigue funcionando igual, y cada check
 ## 2. Armar el pack
 
 - **CLIs.** Preferí artefactos de release con `sha256` por plataforma. Un paquete de npm o pip también
-  necesita su `sha256`, salvo que la política lo apague. brew y winget nunca se ejecutan.
+  necesita su `sha256`, salvo que la política lo apague. brew y winget nunca se ejecutan. El CLI queda
+  en el caché del usuario y solo los scripts del pack lo tienen en el PATH. Si una rule le pide al agente
+  que lo corra, tiene que decir cómo sumar los directorios de `agent-ready/cli-path`, como la rule del
+  ejemplo personal.
 - **Servidores MCP.** Los secretos van por referencia (`${ACME_TOKEN}`) y nunca con su valor: el
   catálogo se publica. Un servidor local se lanza con el `command` que encuentre el provider en su PATH.
   Un CLI que instala el pack vive en el caché del usuario y no está en ese PATH, así que no sirve de
