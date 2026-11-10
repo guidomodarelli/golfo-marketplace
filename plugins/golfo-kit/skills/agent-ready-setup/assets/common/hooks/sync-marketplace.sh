@@ -974,6 +974,10 @@ project_assets() {
   while IFS= read -r -d '' source_asset; do
     relative_asset="${source_asset#"$source_root/"}"
     case "$relative_asset" in
+      blocks/*)
+        # Managed blocks go inside files shared with the project: finalize writes them.
+        continue
+        ;;
       github/*)
         sync_file "$source_asset" ".github/${relative_asset#github/}"
         ;;

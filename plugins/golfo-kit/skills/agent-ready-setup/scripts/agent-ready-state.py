@@ -109,6 +109,7 @@ import agent_ready_pack_clis as pack_clis  # noqa: E402
 import agent_ready_pack_mcp as pack_mcp  # noqa: E402
 import agent_ready_pack_scripts as pack_scripts  # noqa: E402
 import agent_ready_pack_signatures as pack_signatures  # noqa: E402
+import agent_ready_blocks as managed_blocks  # noqa: E402
 import agent_ready_pack_tools as pack_tools  # noqa: E402
 import agent_ready_golfo_kit as golfo_kit  # noqa: E402
 from agent_ready_packs import (  # noqa: E402
@@ -499,6 +500,9 @@ def compose_stack_directory(skill_dir, catalog, resolved, compose_root):
         for relative_path, _ in walk_files(profile_asset_root(skill_dir, catalog, name)):
             if relative_path == AGENTS_TEMPLATE_NAME and name != primary:
                 continue
+            if managed_blocks.destination_of(relative_path) is not None:
+                # Each profile keeps its own block of a shared file (desired_blocks).
+                continue
             if relative_path in owners:
                 raise ProfileError(
                     f"profiles '{owners[relative_path]}' and '{name}' both publish {relative_path}; "
@@ -551,6 +555,9 @@ def destinations_for_template(relative_path, is_stack_root):
     template are handled separately and return no verbatim destination.
     """
     if relative_path in (AGENTS_TEMPLATE_NAME, CLAUDE_SETTINGS_TEMPLATE_NAME):
+        return []
+    if managed_blocks.destination_of(relative_path) is not None:
+        # A block goes inside a file shared with the project (desired_blocks), never as a whole file.
         return []
     if relative_path.startswith("github/"):
         return [".github/" + relative_path[len("github/"):]]
@@ -609,6 +616,41 @@ def desired_assets(skill_dir, catalog, resolved):
                 }
     reject_destinations_inside_files(assets, destinations_by_folded_name)
     return assets
+
+
+def desired_blocks(skill_dir, catalog, resolved, assets):
+    """{(destination, id): {profile, source, content}} of every block the selection publishes.
+
+    The id of a block is the name of its profile, so two profiles keep two blocks in one file.
+    A file cannot be a whole managed asset and hold blocks at the same time.
+    """
+    sources = [(BASE_PROFILE_NAME, os.path.join(skill_dir, catalog.get("baseAssets", "assets/common")))]
+    sources += [(name, profile_asset_root(skill_dir, catalog, name)) for name in resolved]
+    blocks = {}
+    folded_assets = {destination.casefold() for destination in assets}
+    # On a case-insensitive filesystem PULL_REQUEST_TEMPLATE.md and pull_request_template.md are one
+    # file: every block of it goes under the first spelling, so they are applied together.
+    spelling_by_folded = {}
+    for profile_name, root in sources:
+        if not root:
+            continue
+        for relative_path, absolute_path in walk_files(root):
+            destination = managed_blocks.destination_of(relative_path)
+            if destination is None:
+                continue
+            managed_blocks.validate_destination(destination, profile_name)
+            destination = spelling_by_folded.setdefault(destination.casefold(), destination)
+            if destination.casefold() in folded_assets:
+                raise ProfileError(f"profile '{profile_name}' publishes a block for {destination}, which another "
+                                   "profile writes as a whole file; nothing was written")
+            with open(absolute_path, encoding="utf-8", newline="") as template_file:
+                content = managed_blocks.normalized_content(template_file.read())
+            blocks[(destination, profile_name)] = {
+                "profile": profile_name,
+                "source": template_origin(skill_dir, catalog, profile_name, absolute_path),
+                "content": content,
+            }
+    return blocks
 
 
 def reject_destinations_inside_files(assets, destinations_by_folded_name):
@@ -821,7 +863,8 @@ def enforce_sync_policy(project_root, skill_dir, catalog, resolved, digests):
     if lock and not projects_locked_revision and golfo_kit.update_mode(configuration_of(project_root)) == UPDATES_PINNED:
         assets = desired_assets(skill_dir, catalog, resolved)
         golfo_assets = {destination: entry for destination, entry in assets.items() if not is_pack_profile(entry["profile"])}
-        identity = source_identity(skill_dir, golfo_assets, merged_template_entries(skill_dir, catalog, resolved))
+        identity = source_identity(skill_dir, golfo_assets, merged_template_entries(skill_dir, catalog, resolved),
+                                   golfo_blocks(desired_blocks(skill_dir, catalog, resolved, assets)))
         if lock.get("source", {}).get("contentDigest") != identity["contentDigest"]:
             raise IncompleteEvaluationError(
                 "this repository pins golfo-kit and has a release pending, and SessionStart cannot update a pack alone; "
@@ -891,6 +934,19 @@ def lock_differences(plan, lock):
         # A retired asset the project kept (retired-preserved) is no longer published by any source.
         if destination not in desired and locked_entry.get("state") != STATE_RETIRED_PRESERVED and not is_engine_asset(locked_entry):
             differences.append(f"{asset_owner(locked_entry)}: {destination} is in the lock but not in this resolution")
+    locked_blocks = lock.get("blocks") or {}
+    desired_blocks_by_key = {(entry["destination"], entry["id"]): entry for entry in plan.get("blocks", []) if entry["sha256"]}
+    for (destination, block_id), entry in sorted(desired_blocks_by_key.items()):
+        locked_entry = (locked_blocks.get(destination) or {}).get(block_id)
+        if not locked_entry:
+            differences.append(f"{entry['profile']}: the block {block_id} of {destination} is not in the lock")
+        elif locked_desired_sha256(locked_entry) != entry["sha256"]:
+            differences.append(f"{entry['profile']}: the block {block_id} of {destination} does not match the sha256 of the lock")
+    for destination, file_blocks in sorted(locked_blocks.items()):
+        for block_id, locked_entry in sorted(file_blocks.items()):
+            if (destination, block_id) not in desired_blocks_by_key:
+                differences.append(f"{locked_entry.get('profile')}: the block {block_id} of {destination} is in the lock "
+                                   "but not in this resolution")
     for destination, entry in sorted(plan["merged"].items()):
         if golfo_kit.is_engine_owned(entry["template"]):
             continue
@@ -995,7 +1051,12 @@ def engine_version_of(skill_dir):
     return marker["engineVersion"] if marker else plugin_version(skill_dir)
 
 
-def source_identity(skill_dir, assets, merged_templates):
+def golfo_blocks(blocks):
+    """The managed blocks golfo-kit publishes: packs have their own digest."""
+    return {key: item for key, item in blocks.items() if not is_pack_profile(item["profile"])}
+
+
+def source_identity(skill_dir, assets, merged_templates, blocks):
     """Identity of the resolved source; contentDigest is the immutable part.
 
     Pinned golfo-kit content records the Git origin and revision it came from, so the next apply
@@ -1003,6 +1064,8 @@ def source_identity(skill_dir, assets, merged_templates):
     """
     digest_lines = [f"{destination}\t{entry['sha256']}" for destination, entry in sorted(assets.items())]
     digest_lines += [f"{destination}\t{entry['templateSha256']}" for destination, entry in sorted(merged_templates.items())]
+    digest_lines += [f"{destination}\t{block_id}\t{sha256_of_text(item['content'])}"
+                     for (destination, block_id), item in sorted(blocks.items())]
     digest_lines += [
         f"{relative_path}\t{sha256_of_file(os.path.join(skill_dir, relative_path))}"
         for relative_path in RENDERED_INSTRUCTION_INPUTS
@@ -1299,6 +1362,9 @@ def compute_plan(project_root, skill_dir, catalog, profile_names):
             "baseSha256": lock_entry.get("sha256") if lock_entry else None,
             "local": local,
         })
+    blocks = desired_blocks(skill_dir, catalog, resolved, assets)
+    block_destinations = {destination for destination, _ in blocks}
+    retiring_block_files = set()
     for destination, lock_entry in sorted(locked_assets.items()):
         if destination in assets:
             continue
@@ -1306,6 +1372,8 @@ def compute_plan(project_root, skill_dir, catalog, profile_names):
         action, reason = classify_retired(local, lock_entry)
         if action == ACTION_RETIRE and has_linked_parent(project_root, destination):
             action, reason = ACTION_RETIRE_CONFLICT, LINKED_PARENT_REASON
+        if action == ACTION_RETIRE and destination in block_destinations:
+            retiring_block_files.add(destination)
         entries.append({
             "destination": destination,
             "action": action,
@@ -1321,7 +1389,7 @@ def compute_plan(project_root, skill_dir, catalog, profile_names):
     golfo_assets = {destination: entry for destination, entry in assets.items() if not is_pack_profile(entry["profile"])}
     # Without a lockfile the first apply keeps the previous overwrite contract.
     edited_views, preserved_views = detached_views(project_root, assets, locked_assets) if lock else ([], [])
-    identity = source_identity(skill_dir, golfo_assets, merged)
+    identity = source_identity(skill_dir, golfo_assets, merged, golfo_blocks(blocks))
     return {
         "schemaVersion": SCHEMA_VERSION,
         "profiles": resolved,
@@ -1336,6 +1404,7 @@ def compute_plan(project_root, skill_dir, catalog, profile_names):
         "lockedSource": lock.get("source") if lock else None,
         "hasLock": lock is not None,
         "entries": entries,
+        "blocks": managed_blocks.classify(project_root, blocks, (lock or {}).get("blocks", {}), retiring_block_files),
         "editedViews": edited_views,
         "detachedViews": preserved_views,
         "merged": merged,
@@ -1680,6 +1749,32 @@ def print_plan_versions(plan):
     write_line("")
 
 
+def print_plan_blocks(project_root, plan, counts, stream):
+    """The managed blocks of files shared with the project, with the diff of each one that changes."""
+    entries = plan.get("blocks", [])
+    if not entries:
+        return
+    write_line(paint("Managed blocks (the rest of each file is the project's)", "heading", stream))
+    for entry in entries:
+        counts[entry["action"]] = counts.get(entry["action"], 0) + 1
+        if entry["action"] == ACTION_UNCHANGED:
+            continue
+        symbol = ACTION_SYMBOLS.get(entry["action"], "!")
+        label = f"{symbol} {entry['action']:<15} {entry['destination']} (block {entry['id']})"
+        write_line("  " + paint(label, entry["action"] if entry["action"] in ANSI_COLORS else "muted", stream)
+                   + f"  {entry['reason']}")
+        if entry["action"] in (ACTION_CREATE, ACTION_UPDATE, ACTION_RETIRE):
+            before, after = managed_blocks.diff_text(project_root, entry)
+            if entry["action"] == ACTION_RETIRE:
+                after = ""
+            diff = difflib.unified_diff(before.splitlines(keepends=True), after.splitlines(keepends=True),
+                                        f"{entry['destination']} (block {entry['id']}, local)",
+                                        f"{entry['destination']} (block {entry['id']}, template)")
+            for line in diff:
+                write_line("      " + line.rstrip("\n"))
+    write_line("")
+
+
 def print_plan(project_root, skill_dir, plan, provider, skip_marketplace_upgrade, configuration):
     """Human readable plan on stdout."""
     stream = sys.stdout
@@ -1721,6 +1816,7 @@ def print_plan(project_root, skill_dir, plan, provider, skip_marketplace_upgrade
             write_line("  " + paint(label, action, stream) + f"  [view] {reason}")
     write_line(f"  = unchanged: {counts.get(ACTION_UNCHANGED, 0)}")
     write_line("")
+    print_plan_blocks(project_root, plan, counts, stream)
     write_line(paint("Merged files (project content preserved)", "heading", stream))
     for destination, action, reason in merged_file_changes(project_root, skill_dir, plan):
         write_line(f"  {ACTION_SYMBOLS[action]} {destination}: {reason}")
@@ -1855,6 +1951,9 @@ def finalize(project_root, skill_dir, plan, updates):
             lock_assets[entry["destination"]]["viewPreserved"] = True
 
     conflicts += [f"{view}: {DETACHED_VIEW_REASON}" for view in plan["detachedViews"]]
+    block_report = managed_blocks.apply(project_root, plan.get("blocks", []))
+    conflicts += block_report["conflicts"]
+    failed += [f"managed blocks of {problem}" for problem in block_report["failed"]]
 
     lock = {
         "schemaVersion": SCHEMA_VERSION,
@@ -1869,6 +1968,8 @@ def finalize(project_root, skill_dir, plan, updates):
         "assets": lock_assets,
         "merged": plan["merged"],
     }
+    if block_report["lock"]:
+        lock["blocks"] = block_report["lock"]
     if plan["profileSources"]:
         lock["profileSources"] = plan["profileSources"]
     mcp_report = register_pack_mcp_servers(project_root, plan, previous_lock)
@@ -1892,7 +1993,7 @@ def finalize(project_root, skill_dir, plan, updates):
     conflicts_review.record_pending(project_root, [])
 
     return {"removed": removed, "retireConflicts": retire_conflicts, "failed": failed, "conflicts": conflicts,
-            "mcpServers": mcp_report, "clis": cli_report, "scripts": script_report}
+            "blocks": block_report, "mcpServers": mcp_report, "clis": cli_report, "scripts": script_report}
 
 
 def run_pack_scripts(project_root, plan, previous_lock):
@@ -1992,6 +2093,19 @@ def print_incomplete_plan(project_root, skill_dir, selection, requested, incompl
     write_line("This is not a validated plan. Run it without --offline, or an apply, to download what is missing.")
 
 
+def print_block_report(report, stream):
+    """Which files an apply changed through their managed blocks, and which it kept."""
+    if not report:
+        return
+    for path in report["changed"]:
+        write_line(f"Managed blocks written: {path}", stream)
+    for path in report["removed"]:
+        write_line(f"Removed, only held managed blocks: {path}", stream)
+    for conflict in report["conflicts"]:
+        # WARNING: at the start of the line: the background update reports it in the next session.
+        write_line(paint(f"WARNING: managed block kept: {conflict}", "warning", stream), stream)
+
+
 def print_finalize_report(report):
     """Report retirement, preserved conflicts and the overall result."""
     stream = sys.stdout
@@ -2008,6 +2122,7 @@ def print_finalize_report(report):
         write_line(paint("Managed assets that could not be applied (see conflicts above):", "error", stream))
         for path in report["failed"]:
             write_line(f"  ! {path}")
+    print_block_report(report.get("blocks"), stream)
     print_pack_mcp_report(report.get("mcpServers"), stream)
     print_pack_cli_report(report.get("clis"), stream)
     print_pack_script_report(report.get("scripts"), stream)
@@ -2080,6 +2195,8 @@ def compute_status(project_root, skill_dir):
         for destination in sorted(lock.get("merged", {})):
             if local_state(os.path.join(project_root, destination)) == LOCAL_ABSENT:
                 status["checkout"]["missing"].append(destination)
+        status["checkout"]["failed"].extend(
+            label for label, entry in sorted(managed_blocks.inventory(lock).items()) if entry.get("state") == STATE_FAILED)
 
     profile_names = configuration.value(PROFILES_KEY) or (lock.get("profileOrder") if lock else None)
     if profile_names and skill_dir:
@@ -2096,7 +2213,18 @@ def compute_status(project_root, skill_dir):
             status["packTools"] = pack_tools_report(plan, catalog, configuration)
             changed = [entry["destination"] for entry in plan["entries"]
                        if entry["action"] not in (ACTION_UNCHANGED, ACTION_DROP)]
+            changed += [f"{entry['destination']} (block {entry['id']})" for entry in plan.get("blocks", [])
+                        if entry["action"] not in (ACTION_UNCHANGED, ACTION_DROP)]
             status["checkout"]["modified"].extend(plan["editedViews"] + plan["detachedViews"])
+            # A block someone edited by hand, or whose file lost it: the next apply writes it again.
+            status["checkout"]["modified"].extend(
+                f"{entry['destination']} (block {entry['id']})" for entry in plan.get("blocks", [])
+                if entry["baseSha256"] and entry["sha256"] and entry["localSha256"] != entry["baseSha256"]
+                and entry["action"] not in (ACTION_CONFLICT, ACTION_RETIRE_CONFLICT))
+            # A block the apply cannot write: broken markers, or the file or a directory on its path is a symlink.
+            status["checkout"]["conflict"].extend(
+                f"{entry['destination']} (block {entry['id']})" for entry in plan.get("blocks", [])
+                if entry["action"] in (ACTION_CONFLICT, ACTION_RETIRE_CONFLICT))
             if lock:
                 published = [entry for entry in plan["entries"] if entry["sha256"]]
                 views = [claude_view_of(entry["destination"], entry["source"]) for entry in published]
@@ -2821,16 +2949,18 @@ def lock_for_comparison(project_root):
 def assets_needing_attention(lock):
     """Assets an update could not leave as published: the next session must hear about them."""
     labels = {STATE_CONFLICT: "preserved conflict", STATE_FAILED: "could not be applied", STATE_RETIRED_PRESERVED: "retired but preserved"}
+    inventory = {**lock.get("assets", {}), **managed_blocks.inventory(lock)}
     return [
         f"{labels[entry.get('state')]}: {destination}"
-        for destination, entry in sorted(lock.get("assets", {}).items())
+        for destination, entry in sorted(inventory.items())
         if entry.get("state") in labels
     ]
 
 
 def summarize_lock_changes(before, after):
     """What an update changed, from the two lockfiles."""
-    assets_before, assets_after = before.get("assets", {}), after.get("assets", {})
+    assets_before = {**before.get("assets", {}), **managed_blocks.inventory(before)}
+    assets_after = {**after.get("assets", {}), **managed_blocks.inventory(after)}
     changes = {
         "created": sorted(set(assets_after) - set(assets_before)),
         "updated": sorted(
@@ -2855,10 +2985,16 @@ def summarize_lock_changes(before, after):
 
 def locally_changed_assets(project_root, lock):
     """Managed files that differ from what the lock recorded, or that someone deleted."""
-    return sorted(
+    changed = [
         destination for destination, entry in lock.get("assets", {}).items()
         if entry.get("sha256") and local_state(os.path.join(project_root, destination)) != entry["sha256"]
-    )
+    ]
+    changed += [
+        f"{destination} (block {block_id})"
+        for destination, blocks in (lock.get("blocks") or {}).items() for block_id, entry in blocks.items()
+        if entry.get("sha256") and managed_blocks.local_sha256(project_root, destination, block_id) != entry["sha256"]
+    ]
+    return sorted(changed)
 
 
 def terminate_process_tree(process):
@@ -2924,7 +3060,8 @@ def command_background_update(arguments):
         still_changed = set(locally_changed_assets(arguments.project, after))
         changes["restored"] = sorted(
             destination for destination in changed_before
-            if destination not in still_changed and destination in after.get("assets", {})
+            if destination not in still_changed
+            and destination in {**after.get("assets", {}), **managed_blocks.inventory(after)}
             and destination not in changes["updated"]
         )
         backup_line = next((line.strip() for line in output.splitlines() if line.startswith(BACKUPS_LINE_PREFIX)), None)
@@ -2984,8 +3121,8 @@ REMOVAL_SYMBOLS = {REMOVAL_REMOVE: "-", REMOVAL_EDIT: "~", REMOVAL_KEEP: "="}
 REMOVAL_COLORS = {REMOVAL_REMOVE: "retire", REMOVAL_EDIT: "update", REMOVAL_KEEP: "muted"}
 # What each entry is, in the order a removal runs: the lockfile goes last, so an
 # interrupted removal can run again and finish.
-REMOVAL_KINDS = ("pack-mcp", "pack-cli", "browser", "git-config", "git-hook", "review-cache", "view", "asset", "instructions", "settings", "state",
-                 "config")
+REMOVAL_KINDS = ("pack-mcp", "pack-cli", "browser", "git-config", "git-hook", "review-cache", "view", "asset", "block",
+                 "instructions", "settings", "state", "config")
 # Not a project path: the CLIs live in the cache of the user, shared by the repositories of the machine.
 PACK_CLI_REMOVAL_LABEL = "CLIs of profile packs (cache of the user)"
 # Same values as asset-sync-common.sh, which writes them.
@@ -3013,7 +3150,7 @@ REMOVAL_LOCKS = (
 )
 AMBIGUOUS_MARKERS_REASON = "its managed block markers are not one pair of whole lines; remove the block by hand"
 # Kinds the lockfile inventories: while one of them is left, the lockfile stays for the next run.
-LOCK_INVENTORIED_KINDS = ("asset", "view")
+LOCK_INVENTORIED_KINDS = ("asset", "view", "block")
 INVENTORY_KEPT_REASON = "kept because a managed path could not be removed; run agent-ready remove again"
 
 
@@ -3113,6 +3250,39 @@ def template_skeleton(skill_dir, lock):
             return without_managed_block(file_handle.read())
         except ValueError:
             return None
+
+
+def block_removal_entries(project_root, lock):
+    """Each file with managed blocks loses them; a file that only held blocks goes."""
+    entries = []
+    for destination, blocks in sorted(((lock or {}).get("blocks") or {}).items()):
+        path = os.path.join(project_root, destination)
+        local = local_state(path)
+        if local == LOCAL_ABSENT:
+            continue
+        if local in (LOCAL_SYMLINK, LOCAL_NOT_A_FILE) or managed_blocks.has_linked_directory(project_root, destination):
+            entries.append(removal_entry(destination, REMOVAL_KEEP, "not a regular file; remove its managed blocks by hand",
+                                         "block"))
+            continue
+        with open(path, encoding="utf-8", newline="") as file_handle:
+            text = file_handle.read()
+        try:
+            remaining = text
+            for block_id in sorted(blocks):
+                remaining = managed_blocks.without_block(remaining, destination, block_id)
+        except managed_blocks.MarkerError:
+            entries.append(removal_entry(destination, REMOVAL_KEEP, AMBIGUOUS_MARKERS_REASON, "block"))
+            continue
+        if remaining == text:
+            continue
+        if managed_blocks.is_empty(remaining):
+            entry = removal_entry(destination, REMOVAL_REMOVE, "only holds managed blocks", "block", local)
+        else:
+            entry = removal_entry(destination, REMOVAL_EDIT, "removes its managed blocks; the project's content stays",
+                                  "block", local)
+        entry["blocks"] = sorted(blocks)
+        entries.append(entry)
+    return entries
 
 
 def instruction_removal_entries(project_root, skill_dir, lock):
@@ -3353,6 +3523,7 @@ def plan_removal(project_root, skill_dir):
         + local_removal_entries(project_root)
         + view_removal_entries(project_root, locked_assets)
         + asset_removal_entries(project_root, locked_assets)
+        + block_removal_entries(project_root, lock)
         + instruction_removal_entries(project_root, skill_dir, lock)
         + settings_removal_entries(project_root, skill_dir)
         + config_removal_entries(project_root)
@@ -3414,6 +3585,30 @@ def unregister_browser_servers(project_root, skill_dir, report):
     if completed.returncode != 0:
         problem = completed.stderr.strip().splitlines()[-1] if completed.stderr.strip() else "the browser servers could not be removed"
         report["failed"].append(problem)
+
+
+def remove_blocks_now(project_root, entry, report):
+    """Take the blocks of one file out of what it holds now; False when the file keeps them."""
+    path = os.path.join(project_root, entry["path"])
+    if local_state(path) in (LOCAL_ABSENT, LOCAL_SYMLINK, LOCAL_NOT_A_FILE) or \
+            managed_blocks.has_linked_directory(project_root, entry["path"]):
+        report["kept"].append(f"{entry['path']}: {CHANGED_DURING_REMOVAL_REASON}")
+        return False
+    with open(path, encoding="utf-8", newline="") as file_handle:
+        remaining = file_handle.read()
+    try:
+        for block_id in entry["blocks"]:
+            remaining = managed_blocks.without_block(remaining, entry["path"], block_id)
+    except managed_blocks.MarkerError:
+        report["kept"].append(f"{entry['path']}: {AMBIGUOUS_MARKERS_REASON}")
+        return False
+    if managed_blocks.is_empty(remaining):
+        os.unlink(path)
+        report["removed"].append(entry["path"])
+    else:
+        write_text_atomically(path, remaining)
+        report["edited"].append(entry["path"])
+    return True
 
 
 def apply_removal_entry(project_root, skill_dir, entry, report):
@@ -3484,6 +3679,14 @@ def apply_removal(project_root, skill_dir, plan):
         if entry["kind"] == "config" and inventory_left:
             # Without the lockfile, the next run would not know which files are still managed.
             report["kept"].append(f"{entry['path']}: {INVENTORY_KEPT_REASON}")
+            continue
+        if entry["kind"] == "block":
+            try:
+                # A file that keeps its blocks keeps the lock, so the next remove finds them.
+                inventory_left = not remove_blocks_now(project_root, entry, report) or inventory_left
+            except OSError as caught_error:
+                report["failed"].append(f"{entry['path']}: {caught_error}")
+                inventory_left = True
             continue
         try:
             apply_removal_entry(project_root, skill_dir, entry, report)

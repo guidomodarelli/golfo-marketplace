@@ -17,6 +17,7 @@ import tempfile
 import urllib.parse
 
 from agent_ready_compatibility import require_engine, validate_compatibility
+import agent_ready_blocks as managed_blocks
 import agent_ready_pack_tools as pack_tools
 from agent_ready_common import ProfileError, StateError, is_link, read_json_file, sha256_of_file, sha256_of_text
 from agent_ready_config import LAYER_ENVIRONMENT, LAYER_FLAGS
@@ -37,10 +38,11 @@ PACK_ALLOWED_PROFILE_KEYS = ("kind", "description", "assets", "requires", "confl
 PACK_PROFILE_KIND = "capability"
 # Tools the engine knows how to install; a pack cannot bring its own installer.
 KNOWN_TOOLS = ("browser",)
-# Packs add rules, skills, agents and commands as files. Hooks, settings and the AGENTS.md
+# Packs add rules, skills, agents and commands as files, and managed blocks inside files of the
+# project (blocks/, agent_ready_blocks.py). Hooks, settings and the AGENTS.md
 # template stay under the control of the skill and the project; the tools a pack declares
 # (clis, mcpServers, scripts) only run through the security policy.
-PACK_ALLOWED_ASSET_DIRECTORIES = ("rules", "skills", "agents", "commands")
+PACK_ALLOWED_ASSET_DIRECTORIES = ("rules", "skills", "agents", "commands", managed_blocks.BLOCK_DIRECTORY)
 PACK_FORBIDDEN_ASSET_NAMES = ("agents.md", "claude.md")
 
 NAMESPACE_SEPARATOR = "/"
@@ -645,6 +647,11 @@ def validate_asset_tree(source, profile_name, asset_root, relative_root):
                 if "/" not in relative_path or relative_path.split("/", 1)[0] not in PACK_ALLOWED_ASSET_DIRECTORIES:
                     allowed = ", ".join(PACK_ALLOWED_ASSET_DIRECTORIES)
                     raise ProfileError(f"pack '{source_name}' profile '{profile_name}': {relative_path} is outside the directories a pack can publish ({allowed})")
+                block_destination = managed_blocks.destination_of(relative_path)
+                if block_destination is not None:
+                    # A block goes inside a file of the project (agent_ready_blocks.py).
+                    managed_blocks.validate_destination(block_destination, f"{source_name}/{profile_name}")
+                    continue
                 if entry_name.casefold() in PACK_FORBIDDEN_ASSET_NAMES:
                     raise ProfileError(f"pack '{source_name}' profile '{profile_name}': {relative_path} would change the instructions of the project, which packs cannot do")
 

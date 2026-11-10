@@ -3372,6 +3372,29 @@
           "description": "Explica cómo adoptarlo (sources add, post-apply) o remite al ejemplo o la guía"
         }
       ]
+    },
+    {
+      "id": "pr-template-own-section-outside-block",
+      "description": "Para sumar una sección propia al template de PR sin que el próximo apply la pise, se escribe fuera del bloque gestionado (marcadores BEGIN/END AGENT-READY MANAGED: common); lo de adentro se pisa en cada apply.",
+      "input": "Quiero agregar al .github/pull_request_template.md de mi repo una sección '## Deploy notes'. Agent Ready lo gestiona. ¿Dónde la pongo para que el próximo apply no me la borre? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "(fuera|afuera|outside|despu[eé]s|antes).{0,80}(bloque|marcador|block|marker)",
+          "description": "Dice que va fuera del bloque gestionado",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "AGENT-READY MANAGED",
+          "description": "Nombra los marcadores del bloque"
+        },
+        {
+          "type": "regex",
+          "pattern": "(adentro|dentro|inside).{0,120}(pisa|reemplaza|sobrescrib|overwrit|se pierde)",
+          "description": "Advierte que lo de adentro del bloque se pisa en cada apply"
+        }
+      ]
     }
   ]
 }
