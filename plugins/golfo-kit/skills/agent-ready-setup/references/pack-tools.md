@@ -3,7 +3,8 @@
 Qué puede declarar un profile de un pack además de archivos (CLIs, servidores MCP y scripts), y la
 política que decide, en cada máquina, si cada herramienta puede ejecutarse. Leer al publicar un pack
 con herramientas, al explicar por qué una herramienta quedó bloqueada, al confiar en una fuente o al
-cambiar las claves `security.*`.
+cambiar las claves `security.*`. Cómo publicar un pack así, personal o corporativo firmado, está en
+[publishing-packs-with-tools.md](publishing-packs-with-tools.md).
 
 > **Estado.** Un apply registra los servidores MCP (sección 5), instala los CLIs (sección 6) y corre
 > los scripts (sección 7) que la política permite. Con `security.checks.signature: true` verifica la

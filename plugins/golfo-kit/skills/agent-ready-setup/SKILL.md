@@ -16,7 +16,7 @@ description: >-
   descartar un hallazgo de sus revisiones de IA.
 license: MIT
 metadata:
-  version: "1.23.0"
+  version: "1.24.0"
   author: "guponce"
   category: "developer-experience"
   tags: "agent-ready, multi-provider, claude-code, codex, bootstrap, setup, scaffold, context-optimized-v1.20.1"
@@ -191,7 +191,10 @@ manifest: un pack en Git o una carpeta local. Agregar una fuente solo los hace d
 por nombre con namespace (`acme/kafka-interno`), y un pack agrega capabilities, nunca un stack primario.
 Leer [references/profiles-and-lockfile.md](references/profiles-and-lockfile.md) (sección «Profile packs»)
 para declarar una fuente, explicar una colisión o un `Evaluation incomplete`;
-`assets/examples/acme-profile-pack/` es un pack mínimo.
+`assets/examples/acme-profile-pack/` es un pack mínimo. Para publicar un pack con CLIs, servidores MCP o
+scripts, personal o corporativo firmado, leer
+[references/publishing-packs-with-tools.md](references/publishing-packs-with-tools.md); sus ejemplos son
+`assets/examples/personal-tools-pack/` y `assets/examples/corporate-signed-pack/`.
 
 Detección, packs, actualizaciones, refresco, chequeo de CI y herramientas son opcionales y se configuran
 por separado, con defaults que funcionan sin configurar nada. La configuración va en capas (organización,
