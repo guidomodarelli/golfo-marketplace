@@ -52,7 +52,8 @@ Todo es opcional: un pack sin herramientas sigue funcionando igual, y cada check
 ## 3. Pack personal
 
 1. Publicá el pack en un repositorio propio, sin firmar nada.
-2. En cada proyecto:
+2. En cada proyecto, que ya tiene que tener su selección (si no, `agent-ready init` elige el stack
+   primero, porque un pack solo suma capabilities):
 
    ```bash
    agent-ready sources add mytools "git+https://github.com/<vos>/mytools#main"

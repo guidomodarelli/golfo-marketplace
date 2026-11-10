@@ -14,6 +14,9 @@ por defecto. La guía completa está en `references/publishing-packs-with-tools.
 
 ## Usarlo en un proyecto
 
+En un proyecto que todavía no usa agent-ready, primero `agent-ready init` elige su stack: un pack solo
+suma capabilities y `profiles add` necesita una selección.
+
 ```bash
 agent-ready sources add mytools "git+https://github.com/<vos>/mytools#main"
 agent-ready profiles add mytools/dev
