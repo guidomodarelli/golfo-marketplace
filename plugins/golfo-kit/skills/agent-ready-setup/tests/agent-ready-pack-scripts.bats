@@ -285,3 +285,44 @@ PY
   sleep 2
   [ "$(count_lines ran-child)" = "$lines" ]
 }
+
+@test "an install script two selected profiles declare runs once per apply" {
+  python3 - "$test_root/repositories/acme/agent-ready-pack.json" <<'PY'
+import json, sys
+path = sys.argv[1]
+catalog = json.load(open(path, encoding="utf-8"))
+shared = [{"event": "install", "path": "scripts/install.sh", "interpreter": "bash", "timeoutSeconds": 60}]
+catalog["profiles"]["kafka-interno"]["scripts"] = shared
+catalog["profiles"]["base"]["scripts"] = shared
+json.dump(catalog, open(path, "w", encoding="utf-8"), indent=2)
+PY
+  git -C "$test_root/repositories/acme" commit -qam "shared install"
+  run_cli trust add acme
+  run_cli apply
+  [ "$status" -eq 0 ]
+  [ "$(count_lines ran-install)" = 1 ]
+}
+
+@test "a failed session-start script is shown once in the next session" {
+  publish_pack 'echo install >> ran-install' 'true' 60 'exit 4'
+  set_user_configuration '{"security": {"execution": {"events": ["install", "post-apply", "session-start"]}}}'
+  run_cli trust add acme
+  run_cli apply
+  run python3 "$skill_dir/scripts/agent-ready-state.py" pack-scripts --project . --skill-dir "$skill_dir"
+  [ "$status" -ne 0 ]
+  run python3 "$skill_dir/scripts/agent-ready-state.py" pack-scripts --project . --skill-dir "$skill_dir" --previous-report
+  [[ "$output" == *"A session-start script of a profile pack failed: session-start acme/scripts/session.sh: exited with 4"* ]]
+  run python3 "$skill_dir/scripts/agent-ready-state.py" pack-scripts --project . --skill-dir "$skill_dir" --previous-report
+  [ -z "$output" ]
+}
+
+@test "stopping a sync stops the pack scripts it left running in their own session" {
+  case "$(uname -s)" in MINGW* | MSYS*) skip "sessions are POSIX; Windows stops the tree with taskkill" ;; esac
+  pid="$(python3 -c 'import subprocess; print(subprocess.Popen(["sleep", "30"], start_new_session=True).pid)')"
+  mkdir -p "$(git rev-parse --absolute-git-dir)/agent-ready/scripts"
+  printf '%s\n' "$pid" > "$(git rev-parse --absolute-git-dir)/agent-ready/scripts/running"
+  PYTHONPATH="$skill_dir/scripts" python3 -c 'import agent_ready_pack_scripts as scripts; scripts.stop_running_scripts(".")'
+  sleep 0.5
+  ! kill -0 "$pid" 2> /dev/null
+  [ ! -e "$(git rev-parse --absolute-git-dir)/agent-ready/scripts/running" ]
+}

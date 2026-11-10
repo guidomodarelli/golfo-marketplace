@@ -13,6 +13,7 @@ the CLIs of the packs first on the PATH. Its output goes to a private log in the
 out is reported, and the apply does not count as complete.
 """
 
+import json
 import os
 import shutil
 import signal
@@ -31,6 +32,11 @@ CLI_PATH_FILE = "agent-ready/cli-path"
 PRIVATE_FILE_MODE = 0o600
 TERMINATE_GRACE_SECONDS = 5
 SESSION_LOCK_NAME = ".session-start.lock"
+# The process groups of the scripts running now, one per line: whoever stops the sync that started
+# them stops them too (stop_running_scripts), since each one runs in a session of its own.
+RUNNING_FILE_NAME = "running"
+# The result of the last session-start run, shown once by the next session (previous_session_report).
+SESSION_REPORT_NAME = "session-start-report.json"
 # What a script learns about the run, besides the environment it inherits.
 PACK_ROOT_VARIABLE = "AGENT_READY_PACK_ROOT"
 PROJECT_ROOT_VARIABLE = "AGENT_READY_PROJECT_ROOT"
@@ -73,6 +79,43 @@ def cli_path_directories(project_root):
             return [line.strip() for line in path_file if line.strip()]
     except OSError:
         return []
+
+
+def scripts_directory(project_root):
+    directory = git_directory(project_root) or os.path.join(project_root, ".git")
+    return os.path.join(directory, *LOG_DIRECTORY.split("/"))
+
+
+def running_groups(project_root):
+    try:
+        with open(os.path.join(scripts_directory(project_root), RUNNING_FILE_NAME), encoding="utf-8") as running_file:
+            return [int(line) for line in running_file if line.strip().isdigit()]
+    except OSError:
+        return []
+
+
+def write_running_groups(project_root, groups):
+    path = os.path.join(scripts_directory(project_root), RUNNING_FILE_NAME)
+    if not groups:
+        if os.path.exists(path):
+            os.unlink(path)
+        return
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as running_file:
+        running_file.write("".join(f"{group}\n" for group in groups))
+
+
+def stop_running_scripts(project_root):
+    """Stop every script a sync of this project left running, as the sync's own timeout does."""
+    for group in running_groups(project_root):
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/T", "/F", "/PID", str(group)], capture_output=True, check=False)
+            continue
+        try:
+            os.killpg(group, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
+    write_running_groups(project_root, [])
 
 
 def log_path(project_root, name, event):
@@ -165,12 +208,14 @@ def run_script(project_root, script, event):
             process = subprocess.Popen(command, cwd=project_root, env=environment, stdin=subprocess.DEVNULL,
                                        stdout=log_file, stderr=subprocess.STDOUT, **options)
             job = WindowsJob(process) if os.name == "nt" else None
+            write_running_groups(project_root, running_groups(project_root) + [process.pid])
             try:
                 code = process.wait(timeout=script["timeoutSeconds"])
             except subprocess.TimeoutExpired:
                 stop_process_tree(process, job)
                 return False, f"did not finish in {script['timeoutSeconds']} seconds and was stopped; log: {log}"
             finally:
+                write_running_groups(project_root, [group for group in running_groups(project_root) if group != process.pid])
                 if job:
                     job.close()
     except OSError as problem:
@@ -211,6 +256,9 @@ def run_apply_events(project_root, report, previous):
     result = {"ran": [], "failed": [], "lock": {}}
     for event in APPLY_EVENTS:
         for script in allowed_scripts(report, event):
+            if lock_key(script) in result["lock"]:
+                # Another selected profile declares the same script for this event: it ran already.
+                continue
             before = previous.get(lock_key(script), {})
             if event == EVENT_INSTALL and before.get("sha256") == script["sha256"] and before.get("installed"):
                 # Already installed with these very bytes: install runs only for a new or changed script.
@@ -243,12 +291,37 @@ def run_session_start(project_root, report, locked, check_digest):
         return result
     try:
         run_session_scripts(project_root, report, locked, check_digest, result)
+        write_session_report(project_root, result)
     finally:
         try:
             os.rmdir(lock)
         except OSError:
             pass
     return result
+
+
+def write_session_report(project_root, result):
+    """Keep what failed in this session-start run, for the next session to show once."""
+    path = os.path.join(scripts_directory(project_root), SESSION_REPORT_NAME)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as report_file:
+        json.dump({"failed": result["failed"], "reported": False}, report_file, indent=2)
+
+
+def previous_session_report(project_root):
+    """The failures of the last session-start run, once: reading them marks them as reported."""
+    path = os.path.join(scripts_directory(project_root), SESSION_REPORT_NAME)
+    try:
+        with open(path, encoding="utf-8") as report_file:
+            report = json.load(report_file)
+    except (OSError, ValueError):
+        return []
+    if not isinstance(report, dict) or report.get("reported"):
+        return []
+    report["reported"] = True
+    with open(path, "w", encoding="utf-8") as report_file:
+        json.dump(report, report_file, indent=2)
+    return [problem for problem in report.get("failed", []) if isinstance(problem, str)]
 
 
 def run_session_scripts(project_root, report, locked, check_digest, result):

@@ -205,7 +205,8 @@ o `node` y `pwsh` del PATH:
   (`agent-ready/scripts/<id>-<evento>.log`). El motor nunca imprime variables de entorno; lo que el
   script imprima es responsabilidad del script.
 - **Timeout.** Un script que se pasa de `timeoutSeconds` se corta con todo lo que lanzó (en Windows,
-  con un job object) y se informa.
+  con un job object) y se informa. Si se corta el sync que lo lanzó, el script se corta con él. Un script que
+  declaran dos profiles corre una sola vez por apply.
 - **Falla.** Un script que sale con un código distinto de 0 o se corta se informa con su log (una línea
   `ERROR:`, que la actualización en segundo plano muestra en la sesión siguiente), y el apply termina
   como `partial`. Un `install` que falló vuelve a correr en el próximo apply.
@@ -213,6 +214,7 @@ o `node` y `pwsh` del PATH:
   el `install` ya corrió bien. Un mismo script declarado en dos eventos tiene una entrada por evento.
 - **`session-start` y el lock.** Con `security.checks.lockDigest` (default `true`), el hook corre solo
   el script exacto que registró el último apply: un pack que cambió espera al próximo apply. Dos
-  sesiones que arrancan juntas en el mismo checkout nunca los corren a la vez.
+  sesiones que arrancan juntas en el mismo checkout nunca los corren a la vez. Si uno falla, la sesión
+  siguiente lo muestra una vez.
 - **Solo un apply o el hook.** `plan`, `status`, la detección y las revisiones automáticas
   (`AGENT_READY_SETUP_REVIEW_MODE=1`) nunca corren scripts.

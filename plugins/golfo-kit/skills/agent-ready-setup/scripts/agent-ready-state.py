@@ -2598,7 +2598,14 @@ def status_report(status):
 
 
 def command_pack_scripts(arguments):
-    """Run the session-start scripts of the packs; only the session hook calls it, in the background."""
+    """Run the session-start scripts of the packs; only the session hook calls it, in the background.
+
+    With --previous-report it only shows, once, what failed in the last run.
+    """
+    if arguments.previous_report:
+        for problem in pack_scripts.previous_session_report(arguments.project):
+            write_line(f"[marketplace-sync] A session-start script of a profile pack failed: {problem}")
+        return 0
     lock = read_lock(arguments.project)
     locked = (lock or {}).get("scripts", {})
     if os.environ.get("AGENT_READY_SETUP_REVIEW_MODE") == "1" or not any(
@@ -2872,6 +2879,8 @@ def run_sync(command, project_root, environment, timeout_seconds):
         return output, process.returncode
     except subprocess.TimeoutExpired:
         terminate_process_tree(process)
+        # Each script of a pack runs in a session of its own, outside the group just stopped.
+        pack_scripts.stop_running_scripts(project_root)
         output, _ = process.communicate()
         return f"{output}ERROR: the sync did not finish in {timeout_seconds} seconds and was stopped\n", 1
 
@@ -3615,6 +3624,8 @@ def build_parser():
 
     scripts_parser = subparsers.add_parser("pack-scripts", help="run the session-start scripts of the packs")
     add_common(scripts_parser)
+    scripts_parser.add_argument("--previous-report", action="store_true",
+                                help="show once what failed in the last session-start run")
     scripts_parser.set_defaults(handler=command_pack_scripts)
 
     status_parser = subparsers.add_parser("status", help="read-only status")

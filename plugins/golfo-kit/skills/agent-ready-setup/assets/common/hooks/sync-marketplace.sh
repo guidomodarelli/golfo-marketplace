@@ -650,6 +650,7 @@ start_background_task() {
 # in the background and only as the last apply recorded them (agent_ready_pack_scripts.py).
 if [[ "$defer_to_background" -eq 1 && -f .agents/agent-ready.lock.json ]] &&
   grep -q '"session-start"' .agents/agent-ready.lock.json; then
+  python3 "$state_script" pack-scripts --project . --skill-dir "$skill_dir" --previous-report || true
   start_background_task "pack-scripts-$(project_log_key)" \
     python3 "$state_script" pack-scripts --project . --skill-dir "$skill_dir"
 fi
