@@ -122,8 +122,8 @@ count_lines() {
   python3 - <<'PY'
 import json
 scripts = json.load(open(".agents/agent-ready.lock.json", encoding="utf-8"))["scripts"]
-assert scripts["acme/scripts/install.sh"]["installed"] is True, scripts
-assert len(scripts["acme/scripts/install.sh"]["sha256"]) == 64
+assert scripts["install:acme/scripts/install.sh"]["installed"] is True, scripts
+assert len(scripts["install:acme/scripts/install.sh"]["sha256"]) == 64
 PY
 
   run_cli apply
@@ -145,7 +145,7 @@ PY
   publish_pack 'echo trying >> ran-install; exit 3' 'echo post-apply >> ran-post-apply' 60
   run_cli trust add acme
   run_cli apply
-  [[ "$stderr" == *"Script of a profile pack failed: install acme/scripts/install.sh: exited with 3"* ]]
+  [[ "$stderr" == *"ERROR: script of a profile pack failed: install acme/scripts/install.sh: exited with 3"* ]]
   [[ "$stderr" == *"partial: a script of a profile pack failed"* ]]
   run_cli apply
   [ "$(count_lines ran-install)" = 2 ]
@@ -215,11 +215,73 @@ PY
 import json
 path = ".agents/agent-ready.lock.json"
 lock = json.load(open(path, encoding="utf-8"))
-lock["scripts"]["acme/scripts/session.sh"]["sha256"] = "0" * 64
+lock["scripts"]["session-start:acme/scripts/session.sh"]["sha256"] = "0" * 64
 json.dump(lock, open(path, "w", encoding="utf-8"), indent=2)
 PY
   run python3 "$skill_dir/scripts/agent-ready-state.py" pack-scripts --project . --skill-dir "$skill_dir"
   [ "$status" -eq 0 ]
   [[ "$output" == *"skipped acme/scripts/session.sh: not the script the last apply recorded"* ]]
   [ "$(count_lines ran-session-start)" = 1 ]
+}
+
+# Replace the scripts of kafka-interno with the given JSON list and publish the pack again.
+declare_scripts() {
+  local pack_repository="$test_root/repositories/acme"
+  python3 - "$pack_repository/agent-ready-pack.json" "$1" <<'PY'
+import json, sys
+path = sys.argv[1]
+catalog = json.load(open(path, encoding="utf-8"))
+catalog["profiles"]["kafka-interno"]["scripts"] = json.loads(sys.argv[2])
+json.dump(catalog, open(path, "w", encoding="utf-8"), indent=2)
+PY
+  git -C "$pack_repository" add -A
+  git -C "$pack_repository" commit -qm "declared scripts"
+}
+
+@test "one script shared by install and session-start keeps its install state apart" {
+  declare_scripts '[{"event": "install", "path": "scripts/install.sh", "interpreter": "bash", "timeoutSeconds": 60},
+                    {"event": "session-start", "path": "scripts/install.sh", "interpreter": "bash", "timeoutSeconds": 60}]'
+  set_user_configuration '{"security": {"execution": {"events": ["install", "post-apply", "session-start"]}}}'
+  run_cli trust add acme
+  run_cli apply
+  run_cli apply
+  [ "$status" -eq 0 ]
+  [ "$(count_lines ran-install)" = 1 ]
+}
+
+@test "the interpreter a pack installs wins over the one of the host" {
+  mkdir -p "$test_root/clis"
+  printf '#!/bin/sh\necho pack-node >> ran-node\n' > "$test_root/clis/node"
+  chmod +x "$test_root/clis/node"
+  # On Windows the runner finds the interpreter as node.cmd, as an installed node has it.
+  printf '@bash "%%~dp0node" %%*\r\n' > "$test_root/clis/node.cmd"
+  mkdir -p "$(git rev-parse --absolute-git-dir)/agent-ready"
+  native_path "$test_root/clis" > "$(git rev-parse --absolute-git-dir)/agent-ready/cli-path"
+  declare_scripts '[{"event": "post-apply", "path": "scripts/post-apply.sh", "interpreter": "node", "timeoutSeconds": 60}]'
+  run_cli trust add acme
+  run_cli apply
+  [ "$status" -eq 0 ]
+  grep -q pack-node ran-node
+}
+
+@test "a second session never runs the session-start scripts while another one does" {
+  set_user_configuration '{"security": {"execution": {"events": ["install", "post-apply", "session-start"]}}}'
+  run_cli trust add acme
+  run_cli apply
+  mkdir -p "$(git rev-parse --absolute-git-dir)/agent-ready/scripts/.session-start.lock"
+  run python3 "$skill_dir/scripts/agent-ready-state.py" pack-scripts --project . --skill-dir "$skill_dir"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"another session of this checkout is running the session-start scripts"* ]]
+  [ ! -e ran-session-start ]
+}
+
+@test "a child that ignores SIGTERM is killed with its script" {
+  case "$(uname -s)" in MINGW* | MSYS*) skip "process groups are POSIX; Windows uses a job object" ;; esac
+  publish_pack '( trap "" TERM; while true; do echo x >> ran-child; sleep 0.2; done ) & sleep 30' 'true' 1
+  run_cli trust add acme
+  run_cli apply
+  [[ "$stderr" == *"did not finish in 1 seconds and was stopped"* ]]
+  lines="$(count_lines ran-child)"
+  sleep 2
+  [ "$(count_lines ran-child)" = "$lines" ]
 }

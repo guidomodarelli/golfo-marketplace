@@ -1912,7 +1912,9 @@ def print_pack_script_report(report, stream):
     for line in report["ran"]:
         write_line(paint(f"Script of a profile pack ran: {line}", "ok", stream), stream)
     for problem in report["failed"]:
-        write_line(paint(f"  ! Script of a profile pack failed: {problem}", "error", stream), stream)
+        # ERROR: at the start of the line: the background update reports it in the next session and
+        # counts it among the consecutive failures.
+        write_line(paint(f"ERROR: script of a profile pack failed: {problem}", "error", stream), stream)
 
 
 def install_pack_clis(project_root, plan, previous_lock):

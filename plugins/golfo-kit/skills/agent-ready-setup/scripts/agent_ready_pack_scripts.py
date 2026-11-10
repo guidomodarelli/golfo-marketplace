@@ -20,7 +20,7 @@ import subprocess
 import sys
 import time
 
-from agent_ready_common import bash_executable, sha256_of_file, sha256_of_text
+from agent_ready_common import acquire_directory_lock, bash_executable, sha256_of_file, sha256_of_text
 
 EVENT_INSTALL = "install"
 EVENT_POST_APPLY = "post-apply"
@@ -30,14 +30,23 @@ LOG_DIRECTORY = "agent-ready/scripts"
 CLI_PATH_FILE = "agent-ready/cli-path"
 PRIVATE_FILE_MODE = 0o600
 TERMINATE_GRACE_SECONDS = 5
+SESSION_LOCK_NAME = ".session-start.lock"
 # What a script learns about the run, besides the environment it inherits.
 PACK_ROOT_VARIABLE = "AGENT_READY_PACK_ROOT"
 PROJECT_ROOT_VARIABLE = "AGENT_READY_PROJECT_ROOT"
 EVENT_VARIABLE = "AGENT_READY_EVENT"
 
 
-def interpreter_command(interpreter):
-    """The executable for a declared interpreter; the bash of PATH, never the WSL launcher."""
+def interpreter_command(interpreter, pack_directories):
+    """The executable for a declared interpreter.
+
+    One that a pack installed (agent-ready/cli-path) wins; otherwise the bash of PATH (never the
+    WSL launcher), the Python of the engine, or node and pwsh from the PATH.
+    """
+    if pack_directories:
+        installed = shutil.which(interpreter, path=os.pathsep.join(pack_directories))
+        if installed:
+            return installed
     if interpreter == "bash":
         return bash_executable()
     if interpreter == "python3":
@@ -126,21 +135,29 @@ def stop_process_tree(process, job=None):
         return
     try:
         os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    try:
         process.wait(timeout=TERMINATE_GRACE_SECONDS)
     except subprocess.TimeoutExpired:
+        pass
+    time.sleep(TERMINATE_GRACE_SECONDS if process.poll() is None else 0.2)
+    try:
+        # The parent may have accepted SIGTERM while a child ignored it: the whole group goes.
         os.killpg(process.pid, signal.SIGKILL)
-    except ProcessLookupError:
+    except (ProcessLookupError, PermissionError):
         pass
 
 
 def run_script(project_root, script, event):
     """(succeeded, message) of one script; the message names the log, never the environment."""
     environment = dict(os.environ)
-    environment["PATH"] = os.pathsep.join(cli_path_directories(project_root) + [environment.get("PATH", "")])
+    pack_directories = cli_path_directories(project_root)
+    environment["PATH"] = os.pathsep.join(pack_directories + [environment.get("PATH", "")])
     environment.update({PACK_ROOT_VARIABLE: script["root"], PROJECT_ROOT_VARIABLE: project_root,
                         EVENT_VARIABLE: event})
     log = log_path(project_root, script["name"], event)
-    command = [interpreter_command(script["interpreter"]), script["file"]]
+    command = [interpreter_command(script["interpreter"], pack_directories), script["file"]]
     started = time.monotonic()
     try:
         with open_private_log(log) as log_file:
@@ -176,6 +193,11 @@ def allowed_scripts(report, event):
     return scripts
 
 
+def lock_key(script):
+    """The lock keeps each event of a script apart: one script can be the install and the session-start."""
+    return f"{script['event']}:{script['name']}"
+
+
 def lock_entry(script, installed):
     entry = {"source": script["source"], "profile": script["profile"], "event": script["event"],
              "path": script["path"], "interpreter": script["interpreter"], "sha256": script["sha256"]}
@@ -189,28 +211,51 @@ def run_apply_events(project_root, report, previous):
     result = {"ran": [], "failed": [], "lock": {}}
     for event in APPLY_EVENTS:
         for script in allowed_scripts(report, event):
-            before = previous.get(script["name"], {})
+            before = previous.get(lock_key(script), {})
             if event == EVENT_INSTALL and before.get("sha256") == script["sha256"] and before.get("installed"):
                 # Already installed with these very bytes: install runs only for a new or changed script.
-                result["lock"][script["name"]] = before
+                result["lock"][lock_key(script)] = before
                 continue
             succeeded, message = run_script(project_root, script, event)
             (result["ran"] if succeeded else result["failed"]).append(f"{event} {script['name']}: {message}")
-            result["lock"][script["name"]] = lock_entry(script, succeeded)
+            result["lock"][lock_key(script)] = lock_entry(script, succeeded)
     # session-start scripts are recorded so the session hook runs exactly these bytes.
     for script in allowed_scripts(report, EVENT_SESSION_START):
-        result["lock"][script["name"]] = lock_entry(script, False)
+        result["lock"][lock_key(script)] = lock_entry(script, False)
     return result
 
 
+def session_lock_path(project_root):
+    directory = git_directory(project_root) or os.path.join(project_root, ".git")
+    return os.path.join(directory, *LOG_DIRECTORY.split("/"), SESSION_LOCK_NAME)
+
+
 def run_session_start(project_root, report, locked, check_digest):
-    """Run the allowed session-start scripts; with check_digest, only what the lock recorded."""
+    """Run the allowed session-start scripts; with check_digest, only what the lock recorded.
+
+    Two sessions that start together in one checkout never run them at the same time: the second
+    one finds the lock taken and leaves them to the first.
+    """
     result = {"ran": [], "failed": [], "skipped": []}
+    lock = session_lock_path(project_root)
+    if not acquire_directory_lock(lock):
+        result["skipped"].append("another session of this checkout is running the session-start scripts")
+        return result
+    try:
+        run_session_scripts(project_root, report, locked, check_digest, result)
+    finally:
+        try:
+            os.rmdir(lock)
+        except OSError:
+            pass
+    return result
+
+
+def run_session_scripts(project_root, report, locked, check_digest, result):
     for script in allowed_scripts(report, EVENT_SESSION_START):
-        recorded = locked.get(script["name"], {})
+        recorded = locked.get(lock_key(script), {})
         if check_digest and recorded.get("sha256") != script["sha256"]:
             result["skipped"].append(f"{script['name']}: not the script the last apply recorded; run agent-ready apply")
             continue
         succeeded, message = run_script(project_root, script, EVENT_SESSION_START)
         (result["ran"] if succeeded else result["failed"]).append(f"{EVENT_SESSION_START} {script['name']}: {message}")
-    return result

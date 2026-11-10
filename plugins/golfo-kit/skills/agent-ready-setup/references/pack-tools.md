@@ -188,8 +188,9 @@ o `~/.cache/agent-ready-setup/clis`), nunca en el repositorio:
 
 ## 7. Scripts
 
-Un script permitido corre con su `interpreter` (el `bash` del PATH, el mismo Python del motor, `node` o
-`pwsh`) desde la raíz del proyecto, con su `timeoutSeconds`:
+Un script permitido corre con su `interpreter` desde la raíz del proyecto, con su `timeoutSeconds`. Si un
+pack instaló ese intérprete (sección 6), se usa ese; si no, el `bash` del PATH, el mismo Python del motor,
+o `node` y `pwsh` del PATH:
 
 | Evento | Cuándo corre |
 |---|---|
@@ -205,11 +206,13 @@ Un script permitido corre con su `interpreter` (el `bash` del PATH, el mismo Pyt
   script imprima es responsabilidad del script.
 - **Timeout.** Un script que se pasa de `timeoutSeconds` se corta con todo lo que lanzó (en Windows,
   con un job object) y se informa.
-- **Falla.** Un script que sale con un código distinto de 0 o se corta se informa con su log, y el
-  apply termina como `partial`. Un `install` que falló vuelve a correr en el próximo apply.
-- **Lock.** `scripts` guarda, por `<fuente>/<ruta>`, el evento, el intérprete y el sha256 del script, y
-  si el `install` ya corrió bien.
+- **Falla.** Un script que sale con un código distinto de 0 o se corta se informa con su log (una línea
+  `ERROR:`, que la actualización en segundo plano muestra en la sesión siguiente), y el apply termina
+  como `partial`. Un `install` que falló vuelve a correr en el próximo apply.
+- **Lock.** `scripts` guarda, por `<evento>:<fuente>/<ruta>`, el intérprete y el sha256 del script, y si
+  el `install` ya corrió bien. Un mismo script declarado en dos eventos tiene una entrada por evento.
 - **`session-start` y el lock.** Con `security.checks.lockDigest` (default `true`), el hook corre solo
-  el script exacto que registró el último apply: un pack que cambió espera al próximo apply.
+  el script exacto que registró el último apply: un pack que cambió espera al próximo apply. Dos
+  sesiones que arrancan juntas en el mismo checkout nunca los corren a la vez.
 - **Solo un apply o el hook.** `plan`, `status`, la detección y las revisiones automáticas
   (`AGENT_READY_SETUP_REVIEW_MODE=1`) nunca corren scripts.
