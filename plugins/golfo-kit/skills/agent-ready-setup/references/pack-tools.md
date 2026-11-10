@@ -5,9 +5,9 @@ política que decide, en cada máquina, si cada herramienta puede ejecutarse. Le
 con herramientas, al explicar por qué una herramienta quedó bloqueada, al confiar en una fuente o al
 cambiar las claves `security.*`.
 
-> **Estado.** El motor valida las declaraciones y evalúa la política, pero todavía no instala,
-> registra ni corre nada. `plan` y `status` muestran el veredicto de cada herramienta. La instalación
-> llega en las próximas partes de #65.
+> **Estado.** Un apply registra los servidores MCP que la política permite (sección 5). Todavía no
+> instala CLIs ni corre scripts: `plan` y `status` muestran su veredicto, y eso llega en las próximas
+> partes de #65.
 
 ## Contenido
 
@@ -15,6 +15,7 @@ cambiar las claves `security.*`.
 2. Política
 3. Confiar en una fuente o aprobar un repositorio
 4. Ver el veredicto
+5. Registro de servidores MCP
 
 ## 1. Declaraciones
 
@@ -50,9 +51,10 @@ un valor fuera del schema frena el apply antes de escribir y nombra el pack y el
 - **`mcpServers`**
   - Por nombre en kebab-case: un `command` (el nombre de un ejecutable, sin ruta ni argumentos), con
     `args` y `env`, o una `url` https con `headers`.
-  - Los valores de `env` son solo referencias (`${ACME_TOKEN}`). Los de `headers` admiten una
-    palabra antes (`Bearer ${ACME_TOKEN}`). Nunca un valor: ningún secreto entra al pack, al
-    manifest ni al lock.
+  - Los valores son solo referencias, nunca un valor: ningún secreto entra al pack, al manifest, al
+    lock ni a la config de los providers. En `env`, cada variable pasa con su propio nombre
+    (`"ACME_TOKEN": "${ACME_TOKEN}"`). En `headers`, el valor es `${VAR}`, y solo `Authorization`
+    acepta `Bearer ${VAR}`. Así los dos providers leen la variable de su entorno.
 - **`scripts`**
   - `event` es `install`, `post-apply` o `session-start`.
   - `path` es un archivo dentro del pack, sin symlinks.
@@ -121,5 +123,25 @@ agent-ready trust list [--json]     # si el repo está aprobado y en qué fuente
 `agent-ready plan` lista cada herramienta como `allowed` o `blocked` con su motivo, y la política
 efectiva con la capa de cada valor. `agent-ready status` muestra lo mismo de forma breve. En el JSON
 del plan van en `packTools`, con `policy` (`value` y `origin` de cada clave), `tools` (cada una con
-`decision` y `reason`) y `executes: false`. Las rules y skills de un pack se proyectan siempre,
-pase lo que pase con sus herramientas.
+`decision` y `reason`) y `applies`, los tipos que un apply ya aplica (`mcpServer`). Las rules y
+skills de un pack se proyectan siempre, pase lo que pase con sus herramientas.
+
+## 5. Registro de servidores MCP
+
+Un apply registra cada servidor MCP permitido para los providers del repo (`providers`):
+
+| Provider | Archivo | Cómo pasan las referencias |
+|---|---|---|
+| Claude Code | `.mcp.json`, en `mcpServers` | `env` y `headers` tal cual: Claude Code expande `${VAR}` |
+| Codex | `.codex/config.toml`, entre `# BEGIN AGENT-READY PACK MCP SERVERS` y `# END AGENT-READY PACK MCP SERVERS` | `env_vars` con los nombres de `env`; `bearer_token_env_var` para `Authorization: Bearer ${VAR}`; `env_http_headers` para los demás headers |
+
+- **Ownership por el lock.** El lock guarda cada servidor registrado en `mcpServers`, con su
+  fuente, su profile, el sha256 de la declaración y los providers. Un servidor que el lock registra
+  se reemplaza o se borra libremente. Uno del proyecto con el mismo nombre nunca se toca: el apply
+  lo informa como conflicto y no registra el del pack para ese provider.
+- **Se desregistra solo.** Un servidor que deja de estar permitido (se quita la confianza, una regla
+  lo prohíbe) o cuyo profile se retira se borra en el próximo apply.
+  `agent-ready remove` desregistra todos los de los packs y deja los del proyecto.
+- **Solo un apply.** `plan`, `status`, la detección y las revisiones automáticas
+  (`AGENT_READY_SETUP_REVIEW_MODE=1`) nunca cambian los servidores registrados.
+- **Si dos packs declaran el mismo nombre,** se registra el primero y se informa el otro.

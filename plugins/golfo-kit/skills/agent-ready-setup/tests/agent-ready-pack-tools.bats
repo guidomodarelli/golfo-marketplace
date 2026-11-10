@@ -1,8 +1,8 @@
 #!/usr/bin/env bats
 # Tools a profile pack declares besides files (CLIs, MCP servers and scripts) and the security
-# policy that decides whether each one may run on this machine. Nothing is installed, registered
-# or run yet: plan and status report the verdict of every tool. The pack is a Git repository
-# reached through url.insteadOf, so the manifest keeps its real URL.
+# policy that decides whether each one may run on this machine. An apply registers the allowed
+# MCP servers for Claude Code and Codex; CLIs and scripts are only reported yet. The pack is a Git
+# repository reached through url.insteadOf, so the manifest keeps its real URL.
 
 bats_require_minimum_version 1.5.0
 
@@ -119,6 +119,26 @@ decision_of() {
   grep -F "$1 $2 " "$test_root/tools.txt"
 }
 
+# Asserts a Python expression about the parsed JSON file ($1), given as data.
+assert_json() {
+  python3 -c 'import json, sys; data = json.load(open(sys.argv[1], encoding="utf-8")); assert eval(sys.argv[2]), data' "$1" "$2"
+}
+
+# Adds a remote MCP server to kafka-interno and commits it to the pack.
+add_remote_server() {
+  python3 - "$pack_repository/agent-ready-pack.json" <<'PY'
+import json, sys
+path = sys.argv[1]
+catalog = json.load(open(path, encoding="utf-8"))
+catalog["profiles"]["kafka-interno"]["mcpServers"]["acme-remote"] = {
+    "url": "https://mcp.example.invalid/acme",
+    "headers": {"Authorization": "Bearer ${ACME_TOKEN}", "X-Api-Key": "${ACME_KEY}"},
+}
+json.dump(catalog, open(path, "w", encoding="utf-8"), indent=2)
+PY
+  git -C "$pack_repository" commit -qam "remote server"
+}
+
 @test "without configuration a pack with tools projects its rules and skills and runs nothing" {
   run_cli apply
   [ "$status" -eq 0 ]
@@ -133,7 +153,7 @@ decision_of() {
 
   run_cli status
   [ "$status" -eq 0 ]
-  [[ "$output" == *"Pack tools (what the security policy allows; this engine does not install or run them yet)"* ]]
+  [[ "$output" == *"Pack tools (what the security policy allows; an apply registers the allowed MCP servers, and does not install CLIs or run scripts yet)"* ]]
   [[ "$output" == *"- blocked: cli acme 1.4.2 (artifacts) [acme/kafka-interno]"* ]]
 }
 
@@ -263,12 +283,13 @@ decision_of() {
   }
   [ "$(policy security.checks.trustedSource)" = "True defaults" ]
   [ "$(policy security.deny.scripts)" = "['acme/*'] user" ]
-  [ "$(printf '%s' "$output" | python3 -c 'import json,sys; print(json.load(sys.stdin)["packTools"]["executes"])' | tr -d '\r')" = False ]
+  [ "$(printf '%s' "$output" | python3 -c 'import json,sys; print(json.load(sys.stdin)["packTools"]["applies"])' | tr -d '\r')" = "['mcpServer']" ]
 }
 
 @test "a declaration outside the schema stops the apply before writing" {
   for change in \
     'catalog["profiles"]["kafka-interno"]["mcpServers"]["acme-docs"]["env"]["ACME_TOKEN"] = "plain-secret"' \
+    'catalog["profiles"]["kafka-interno"]["mcpServers"]["acme-docs"]["env"]["ACME_TOKEN"] = "${OTHER_TOKEN}"' \
     'catalog["profiles"]["kafka-interno"]["clis"][0]["version"] = "^1.4"' \
     'catalog["profiles"]["kafka-interno"]["scripts"][0]["path"] = "scripts/missing.sh"' \
     'catalog["profiles"]["kafka-interno"]["clis"][0]["artifacts"][0]["url"] = "http://downloads.example.invalid/acme"'; do
@@ -322,4 +343,83 @@ PY
   [ "$status" -ne 0 ]
   [[ "$stderr" == *"pack 'acme' profile 'kafka-interno': script 1 path scripts/setup.sh goes through a symlink or a junction"* ]]
   [ ! -e .agents/agent-ready.lock.json ]
+}
+
+
+@test "an apply registers an allowed MCP server for Claude Code and Codex, with its variables by reference" {
+  run_cli trust add acme
+  run_cli apply
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"MCP servers of profile packs in .mcp.json: acme-docs"* ]]
+  assert_json .mcp.json 'data["mcpServers"]["acme-docs"] == {"command": "acme", "args": ["mcp"], "env": {"ACME_TOKEN": "${ACME_TOKEN}"}}'
+  grep -Fxq '# BEGIN AGENT-READY PACK MCP SERVERS' .codex/config.toml
+  grep -Fxq '[mcp_servers.acme-docs]' .codex/config.toml
+  grep -Fxq 'env_vars = ["ACME_TOKEN"]' .codex/config.toml
+  assert_json .agents/agent-ready.lock.json 'data["mcpServers"]["acme-docs"]["providers"] == ["claude", "codex"]'
+
+  # Applying again changes nothing.
+  cp .mcp.json "$test_root/mcp-before.json"
+  run_cli apply
+  [ "$status" -eq 0 ]
+  cmp -s .mcp.json "$test_root/mcp-before.json"
+}
+
+@test "an http server passes its token and headers by reference to both providers" {
+  add_remote_server
+  run_cli trust add acme
+  run_cli apply
+  [ "$status" -eq 0 ]
+  assert_json .mcp.json 'data["mcpServers"]["acme-remote"] == {"type": "http", "url": "https://mcp.example.invalid/acme", "headers": {"Authorization": "Bearer ${ACME_TOKEN}", "X-Api-Key": "${ACME_KEY}"}}'
+  grep -Fxq 'bearer_token_env_var = "ACME_TOKEN"' .codex/config.toml
+  grep -Fxq 'env_http_headers = { "X-Api-Key" = "ACME_KEY" }' .codex/config.toml
+  python3 -c 'import sys, tomllib; tomllib.load(open(".codex/config.toml", "rb"))' 2>/dev/null || python3 -c 'import sys; sys.exit(0 if sys.version_info < (3, 11) else 1)'
+}
+
+@test "losing the trust or retiring the profile unregisters the pack server" {
+  run_cli trust add acme
+  run_cli apply
+  grep -Fq acme-docs .mcp.json
+
+  run_cli trust remove acme
+  run_cli apply
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"Unregistered from .mcp.json: acme-docs"* ]]
+  ! grep -qs acme-docs .mcp.json
+  ! grep -qs acme-docs .codex/config.toml
+  assert_json .agents/agent-ready.lock.json '"mcpServers" not in data'
+
+  run_cli trust add acme
+  run_cli apply
+  grep -Fq acme-docs .mcp.json
+  write_manifest '{"profiles": ["node"], "sources": {"packs": [{"name": "acme", "source": "git+https://packs.example.invalid/acme#main"}]}}'
+  run_cli apply
+  [ "$status" -eq 0 ]
+  ! grep -qs acme-docs .mcp.json
+  ! grep -qs acme-docs .codex/config.toml
+}
+
+@test "a project server with the same name stays as the project has it" {
+  printf '%s\n' '{"mcpServers": {"acme-docs": {"command": "mine"}}}' > .mcp.json
+  mkdir -p .codex
+  printf '[mcp_servers.acme-docs]\ncommand = "mine"\n' > .codex/config.toml
+  run_cli trust add acme
+  run_cli apply
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"MCP server kept as the project has it: acme-docs: .mcp.json already has a server with that name"* ]]
+  assert_json .mcp.json 'data["mcpServers"]["acme-docs"] == {"command": "mine"}'
+  grep -Fxq 'command = "mine"' .codex/config.toml
+  ! grep -Fq 'AGENT-READY PACK MCP SERVERS' .codex/config.toml
+  assert_json .agents/agent-ready.lock.json '"mcpServers" not in data'
+}
+
+@test "agent-ready remove unregisters the pack servers and keeps the project's" {
+  printf '%s\n' '{"mcpServers": {"mine": {"command": "mine"}}}' > .mcp.json
+  run_cli trust add acme
+  run_cli apply
+  grep -Fq acme-docs .mcp.json
+
+  run_cli remove --yes
+  [ "$status" -eq 0 ]
+  assert_json .mcp.json 'data["mcpServers"] == {"mine": {"command": "mine"}}'
+  ! grep -qs 'AGENT-READY PACK MCP SERVERS' .codex/config.toml
 }

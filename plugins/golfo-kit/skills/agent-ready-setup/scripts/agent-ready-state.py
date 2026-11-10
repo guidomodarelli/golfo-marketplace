@@ -104,6 +104,7 @@ from agent_ready_detection import (  # noqa: E402
 )
 import agent_ready_compatibility as compatibility  # noqa: E402
 import agent_ready_conflicts as conflicts_review  # noqa: E402
+import agent_ready_pack_mcp as pack_mcp  # noqa: E402
 import agent_ready_pack_tools as pack_tools  # noqa: E402
 import agent_ready_golfo_kit as golfo_kit  # noqa: E402
 from agent_ready_packs import (  # noqa: E402
@@ -1881,6 +1882,9 @@ def finalize(project_root, skill_dir, plan, updates):
     }
     if plan["profileSources"]:
         lock["profileSources"] = plan["profileSources"]
+    mcp_report = register_pack_mcp_servers(project_root, plan, previous_lock)
+    if mcp_report["lock"]:
+        lock["mcpServers"] = mcp_report["lock"]
     write_text_if_changed(os.path.join(project_root, LOCK_RELATIVE_PATH), serialize_json(lock))
 
     manifest = read_manifest(project_root)
@@ -1891,7 +1895,37 @@ def finalize(project_root, skill_dir, plan, updates):
     # The update the last plan reviewed is on disk now: its conflicts are the current ones.
     conflicts_review.record_pending(project_root, [])
 
-    return {"removed": removed, "retireConflicts": retire_conflicts, "failed": failed, "conflicts": conflicts}
+    return {"removed": removed, "retireConflicts": retire_conflicts, "failed": failed, "conflicts": conflicts,
+            "mcpServers": mcp_report}
+
+
+def register_pack_mcp_servers(project_root, plan, previous_lock):
+    """Register the MCP servers of the packs that the policy allows; automated reviews change none."""
+    previous = (previous_lock or {}).get("mcpServers", {})
+    if os.environ.get("AGENT_READY_SETUP_REVIEW_MODE") == "1":
+        return {"registered": {}, "removed": {}, "conflicts": [], "failed": [], "lock": previous,
+                "skipped": "automated reviews never change the MCP servers the providers start"}
+    providers = configuration_of(project_root).value(PROVIDERS_KEY)
+    return pack_mcp.register(project_root, plan.get("packTools"), previous, providers)
+
+
+def print_pack_mcp_report(report, stream):
+    """What an apply registered, unregistered or left alone among the MCP servers of the packs."""
+    if not report:
+        return
+    if report.get("skipped"):
+        write_line(f"MCP servers of profile packs: unchanged ({report['skipped']}).", stream)
+        return
+    for path, names in sorted(report["registered"].items()):
+        if names:
+            write_line(paint(f"MCP servers of profile packs in {path}: {', '.join(names)}", "ok", stream), stream)
+    for path, names in sorted(report["removed"].items()):
+        if names:
+            write_line(f"Unregistered from {path}: {', '.join(names)}", stream)
+    for conflict in report["conflicts"]:
+        write_line(paint(f"  ! MCP server kept as the project has it: {conflict}", "warning", stream), stream)
+    for problem in report["failed"]:
+        write_line(paint(f"  ! {problem}", "error", stream), stream)
 
 
 def print_incomplete_plan(project_root, skill_dir, selection, requested, incomplete_error):
@@ -1926,6 +1960,7 @@ def print_finalize_report(report):
         write_line(paint("Managed assets that could not be applied (see conflicts above):", "error", stream))
         for path in report["failed"]:
             write_line(f"  ! {path}")
+    print_pack_mcp_report(report.get("mcpServers"), stream)
     if report["failed"]:
         result = "partial: some managed assets could not be applied"
     elif report["conflicts"] or report["retireConflicts"]:
@@ -2053,12 +2088,13 @@ def print_pack_tools(report, stream, brief=False):
     if not report:
         return
     blocked = sum(tool["decision"] == pack_tools.DECISION_BLOCKED for tool in report["tools"])
-    write_line(paint("Pack tools (what the security policy allows; this engine does not install or run them yet)",
-                     "heading", stream), stream)
+    write_line(paint("Pack tools (what the security policy allows; an apply registers the allowed MCP servers, "
+                     "and does not install CLIs or run scripts yet)", "heading", stream), stream)
     for tool in report["tools"]:
         label = f"{pack_tools.describe_tool(tool)} [{tool['profile']}]"
         if tool["decision"] == pack_tools.DECISION_ALLOWED:
-            write_line(paint(f"  + allowed: {label}", "ok", stream), stream)
+            effect = "" if tool["type"] in report.get("applies", []) else " (not installed or run yet)"
+            write_line(paint(f"  + allowed: {label}{effect}", "ok", stream), stream)
         else:
             write_line(paint(f"  - blocked: {label}: {tool['reason']}", "warning", stream), stream)
     if not brief:
@@ -2856,7 +2892,7 @@ REMOVAL_SYMBOLS = {REMOVAL_REMOVE: "-", REMOVAL_EDIT: "~", REMOVAL_KEEP: "="}
 REMOVAL_COLORS = {REMOVAL_REMOVE: "retire", REMOVAL_EDIT: "update", REMOVAL_KEEP: "muted"}
 # What each entry is, in the order a removal runs: the lockfile goes last, so an
 # interrupted removal can run again and finish.
-REMOVAL_KINDS = ("browser", "git-config", "git-hook", "review-cache", "view", "asset", "instructions", "settings", "state",
+REMOVAL_KINDS = ("pack-mcp", "browser", "git-config", "git-hook", "review-cache", "view", "asset", "instructions", "settings", "state",
                  "config")
 # Same values as asset-sync-common.sh, which writes them.
 HARD_LINK_VIEWS_MANIFEST = ".claude/.agent-ready-hard-link-views"
@@ -3101,6 +3137,13 @@ def settings_removal_entries(project_root, skill_dir):
     return entries
 
 
+def pack_mcp_removal_entries(project_root, lock):
+    """The provider configurations that hold MCP servers of profile packs, from the lock."""
+    managed = (lock or {}).get("mcpServers", {})
+    return [removal_entry(path, REMOVAL_EDIT, "unregisters the MCP servers of profile packs; the project's own stay", "pack-mcp")
+            for path in pack_mcp.managed_files(project_root, managed)]
+
+
 def browser_removal_entries(project_root):
     """Browser MCP servers that agent-ready registered, and the metadata of this machine."""
     entries = []
@@ -3201,7 +3244,8 @@ def plan_removal(project_root, skill_dir):
     lock = read_lock(project_root)
     locked_assets = lock["assets"] if lock else {}
     entries = (
-        browser_removal_entries(project_root)
+        pack_mcp_removal_entries(project_root, lock)
+        + browser_removal_entries(project_root)
         + local_removal_entries(project_root)
         + view_removal_entries(project_root, locked_assets)
         + asset_removal_entries(project_root, locked_assets)
@@ -3232,6 +3276,16 @@ def remove_managed_roots_if_empty(project_root):
                 os.rmdir(path)
             except OSError:
                 pass
+
+
+def unregister_pack_mcp_servers(project_root, report):
+    """Drop every MCP server of the packs that the lock records; the project's own servers stay."""
+    lock = read_lock(project_root) or {}
+    result = pack_mcp.unregister_all(project_root, lock.get("mcpServers", {}))
+    for path, names in result["removed"].items():
+        if names:
+            report["edited"].append(path)
+    report["failed"] += result["failed"]
 
 
 def unregister_browser_servers(project_root, skill_dir, report):
@@ -3289,9 +3343,15 @@ def apply_removal(project_root, skill_dir, plan):
     report = {"removed": [], "edited": [], "kept": [], "failed": []}
     report["kept"] += [f"{entry['path']}: {entry['reason']}" for entry in plan["entries"] if entry["action"] == REMOVAL_KEEP]
     browser_done = False
+    pack_mcp_done = False
     inventory_left = False
     for entry in plan["entries"]:
         if entry["action"] == REMOVAL_KEEP:
+            continue
+        if entry["kind"] == "pack-mcp":
+            if not pack_mcp_done:
+                unregister_pack_mcp_servers(project_root, report)
+                pack_mcp_done = True
             continue
         if entry["kind"] == "browser":
             if not browser_done:

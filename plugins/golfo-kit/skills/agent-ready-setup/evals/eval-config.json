@@ -3252,6 +3252,29 @@
           "description": "Aclara que la confianza es por máquina y no queda en el repo"
         }
       ]
+    },
+    {
+      "id": "pack-mcp-server-kept-by-a-project-server",
+      "description": "El apply no registra el servidor MCP de un pack porque el proyecto ya tiene uno con ese nombre: se conserva el del proyecto y se resuelve renombrando uno de los dos.",
+      "input": "Después de confiar en el pack acme, agent-ready apply dice: ! MCP server kept as the project has it: acme-docs: .mcp.json already has a server with that name, which belongs to the project; rename one of them. El acme-docs que tenemos en .mcp.json lo armamos a mano hace meses. ¿Por qué no lo reemplaza y qué hago? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "(lock|del proyecto|propio|ownership|nunca toca|no toca|no lo pisa|no pisa)",
+          "description": "Explica que un servidor que el lock no registra es del proyecto y no se toca",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(renombr|cambiar el nombre|otro nombre|borr|quit|elimin)",
+          "description": "Propone renombrar o quitar el servidor propio para que el apply registre el del pack"
+        },
+        {
+          "type": "regex",
+          "pattern": "(apply|aplic)",
+          "description": "Indica volver a correr el apply"
+        }
+      ]
     }
   ]
 }
