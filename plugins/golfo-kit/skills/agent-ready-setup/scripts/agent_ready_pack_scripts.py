@@ -42,6 +42,10 @@ OWNER_VARIABLE = "AGENT_READY_SETUP_SCRIPT_OWNER"
 INSTALLED_FILE_NAME = "installed.json"
 # The result of the last session-start run, shown once by the next session (previous_session_report).
 SESSION_REPORT_NAME = "session-start-report.json"
+# Like the background update: after this many failed session-start runs in a row, the next one
+# waits this long, so a broken script does not download or install again at every session start.
+SESSION_MAX_FAILURES = 3
+SESSION_RETRY_AFTER_SECONDS = 3600
 # What a script learns about the run, besides the environment it inherits.
 PACK_ROOT_VARIABLE = "AGENT_READY_PACK_ROOT"
 PROJECT_ROOT_VARIABLE = "AGENT_READY_PROJECT_ROOT"
@@ -228,6 +232,10 @@ def run_script(project_root, script, event):
             except subprocess.TimeoutExpired:
                 stop_process_tree(process, job)
                 return False, f"did not finish in {script['timeoutSeconds']} seconds and was stopped; log: {log}"
+            except BaseException:
+                # Ctrl-C reaches the runner, not the script in its own session: stop it before leaving.
+                stop_process_tree(process, job)
+                raise
             finally:
                 write_running_groups(project_root, [group for group in running_groups(project_root) if group != process.pid])
                 if job:
@@ -272,6 +280,8 @@ def read_installed(project_root):
 
 
 def write_installed(project_root, installed):
+    if installed == read_installed(project_root):
+        return
     path = os.path.join(scripts_directory(project_root), INSTALLED_FILE_NAME)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as installed_file:
@@ -298,6 +308,12 @@ def run_apply_events(project_root, report, previous):
                     installed[lock_key(script)] = script["sha256"]
                 else:
                     installed.pop(lock_key(script), None)
+    # An apply is the retry the waiting session-start runs point to: the count of failures starts over.
+    session_report = read_session_report(project_root)
+    if session_report.get("consecutiveFailures"):
+        session_report["consecutiveFailures"] = 0
+        with open(os.path.join(scripts_directory(project_root), SESSION_REPORT_NAME), "w", encoding="utf-8") as report_file:
+            json.dump(session_report, report_file, indent=2)
     if any(entry["event"] == EVENT_INSTALL for entry in result["lock"].values()) or installed:
         write_installed(project_root, {key: digest for key, digest in installed.items() if key in result["lock"]})
     # session-start scripts are recorded so the session hook runs exactly these bytes.
@@ -318,6 +334,10 @@ def run_session_start(project_root, report, locked, check_digest):
     one finds the lock taken and leaves them to the first.
     """
     result = {"ran": [], "failed": [], "skipped": []}
+    waiting = waiting_after_failures(project_root)
+    if waiting:
+        result["skipped"].append(waiting)
+        return result
     lock = session_lock_path(project_root)
     if not acquire_directory_lock(lock):
         result["skipped"].append("another session of this checkout is running the session-start scripts")
@@ -333,12 +353,34 @@ def run_session_start(project_root, report, locked, check_digest):
     return result
 
 
+def read_session_report(project_root):
+    try:
+        with open(os.path.join(scripts_directory(project_root), SESSION_REPORT_NAME), encoding="utf-8") as report_file:
+            report = json.load(report_file)
+    except (OSError, ValueError):
+        return {}
+    return report if isinstance(report, dict) else {}
+
+
 def write_session_report(project_root, result):
-    """Keep what failed in this session-start run, for the next session to show once."""
+    """Keep what failed in this session-start run, for the next session to show once, and count failures in a row."""
+    failures = read_session_report(project_root).get("consecutiveFailures", 0) + 1 if result["failed"] else 0
     path = os.path.join(scripts_directory(project_root), SESSION_REPORT_NAME)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as report_file:
-        json.dump({"failed": result["failed"], "reported": False}, report_file, indent=2)
+        json.dump({"failed": result["failed"], "reported": False, "consecutiveFailures": failures,
+                   "finishedAt": time.time()}, report_file, indent=2)
+
+
+def waiting_after_failures(project_root):
+    """Why this session-start run waits, or None: too many failed runs in a row, too recently."""
+    report = read_session_report(project_root)
+    failures = report.get("consecutiveFailures", 0)
+    finished = report.get("finishedAt", 0)
+    if failures >= SESSION_MAX_FAILURES and time.time() - finished < SESSION_RETRY_AFTER_SECONDS:
+        return (f"{failures} session-start runs failed in a row; the next attempt waits "
+                f"{SESSION_RETRY_AFTER_SECONDS} seconds, or run agent-ready apply after fixing the script")
+    return None
 
 
 def previous_session_report(project_root):
@@ -358,7 +400,12 @@ def previous_session_report(project_root):
 
 
 def run_session_scripts(project_root, report, locked, check_digest, result):
+    seen = set()
     for script in allowed_scripts(report, EVENT_SESSION_START):
+        if lock_key(script) in seen:
+            # Another selected profile declares the same script: it runs once.
+            continue
+        seen.add(lock_key(script))
         recorded = locked.get(lock_key(script), {})
         if check_digest and recorded.get("sha256") != script["sha256"]:
             result["skipped"].append(f"{script['name']}: not the script the last apply recorded; run agent-ready apply")

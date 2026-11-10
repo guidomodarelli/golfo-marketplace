@@ -217,6 +217,7 @@ o `node` y `pwsh` del PATH:
 - **`session-start` y el lock.** Con `security.checks.lockDigest` (default `true`), el hook corre solo
   el script exacto que registró el último apply: un pack que cambió espera al próximo apply. Dos
   sesiones que arrancan juntas en el mismo checkout nunca los corren a la vez. Si uno falla, la sesión
-  siguiente lo muestra una vez.
+  siguiente lo muestra una vez. Después de 3 corridas fallidas seguidas, la siguiente espera una hora;
+  un apply vuelve a contar de cero. Un script que declaran dos profiles corre una vez.
 - **Solo un apply o el hook.** `plan`, `status`, la detección y las revisiones automáticas
   (`AGENT_READY_SETUP_REVIEW_MODE=1`) nunca corren scripts.

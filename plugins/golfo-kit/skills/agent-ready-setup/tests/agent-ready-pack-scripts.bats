@@ -127,9 +127,13 @@ assert len(entry["sha256"]) == 64 and "installed" not in entry, entry
 assert json.load(open(sys.argv[1], encoding="utf-8"))["install:acme/scripts/install.sh"] == entry["sha256"]
 PY
 
+  installed="$(git rev-parse --absolute-git-dir)/agent-ready/scripts/installed.json"
+  touch -t 200101010000 "$installed"
   run_cli apply
   [ "$status" -eq 0 ]
   [ "$(count_lines ran-install)" = 1 ] && [ "$(count_lines ran-post-apply)" = 2 ]
+  # Nothing changed for install: its state in the checkout is not even rewritten.
+  python3 -c 'import os, sys; assert os.path.getmtime(sys.argv[1]) < 1.1e9, "rewritten"' "$installed"
 }
 
 @test "a fresh checkout with the committed lock runs install for itself" {
@@ -345,4 +349,40 @@ PY
   [ ! -e "$scripts_directory/running-sync-1" ]
   kill -0 "$other"
   kill "$other"
+}
+
+@test "session-start runs that fail in a row wait before trying again, and an apply starts over" {
+  publish_pack 'true' 'true' 60 'echo try >> ran-session-start; exit 4'
+  set_user_configuration '{"security": {"execution": {"events": ["install", "post-apply", "session-start"]}}}'
+  run_cli trust add acme
+  run_cli apply
+  for attempt in 1 2 3; do
+    run python3 "$skill_dir/scripts/agent-ready-state.py" pack-scripts --project . --skill-dir "$skill_dir"
+  done
+  run python3 "$skill_dir/scripts/agent-ready-state.py" pack-scripts --project . --skill-dir "$skill_dir"
+  [[ "$output" == *"3 session-start runs failed in a row; the next attempt waits"* ]]
+  [ "$(count_lines ran-session-start)" = 3 ]
+
+  run_cli apply
+  run python3 "$skill_dir/scripts/agent-ready-state.py" pack-scripts --project . --skill-dir "$skill_dir"
+  [ "$(count_lines ran-session-start)" = 4 ]
+}
+
+@test "a session-start script two selected profiles declare runs once" {
+  python3 - "$test_root/repositories/acme/agent-ready-pack.json" <<'PY'
+import json, sys
+path = sys.argv[1]
+catalog = json.load(open(path, encoding="utf-8"))
+shared = [{"event": "session-start", "path": "scripts/session.sh", "interpreter": "bash", "timeoutSeconds": 60}]
+catalog["profiles"]["kafka-interno"]["scripts"] = shared
+catalog["profiles"]["base"]["scripts"] = shared
+json.dump(catalog, open(path, "w", encoding="utf-8"), indent=2)
+PY
+  git -C "$test_root/repositories/acme" commit -qam "shared session-start"
+  set_user_configuration '{"security": {"execution": {"events": ["install", "post-apply", "session-start"]}}}'
+  run_cli trust add acme
+  run_cli apply
+  run python3 "$skill_dir/scripts/agent-ready-state.py" pack-scripts --project . --skill-dir "$skill_dir"
+  [ "$status" -eq 0 ]
+  [ "$(count_lines ran-session-start)" = 1 ]
 }
