@@ -27,8 +27,14 @@ EVERY_SOURCE = "*"
 # tags in the "git" namespace, and prints the principal of the key that verified a signature.
 ALLOWED_SIGNER_PRINCIPAL = "agent-ready-signer"
 SIGNATURE_NAMESPACE = "git"
-# What ssh-keygen prints for a good signature of a key in the file; a GPG signature never prints it.
-GOOD_SIGNATURE_TEXT = f'Good "{SIGNATURE_NAMESPACE}" signature for {ALLOWED_SIGNER_PRINCIPAL} '
+# The whole line ssh-keygen prints for a good signature of a key in the file. Only a full line
+# counts: a GPG status line carries the UID of a key verbatim, and a UID can say anything.
+GOOD_SSH_SIGNATURE_LINE = re.compile(
+    rf'Good "{SIGNATURE_NAMESPACE}" signature for {ALLOWED_SIGNER_PRINCIPAL} with [A-Z0-9-]+ key SHA256:[A-Za-z0-9+/]+=*')
+# Git hands an OpenPGP or X.509 signature to these programs. Pointing them at a program that does
+# not exist makes such a signature fail: only ssh-keygen, with the allowed signers file, can say yes.
+NON_SSH_SIGNATURE_PROGRAMS = ("gpg.program", "gpg.openpgp.program", "gpg.x509.program")
+MISSING_PROGRAM = "agent-ready-setup-no-gpg-verification"
 TAG_OBJECT_TYPE = "tag"
 # A public key as a .pub file writes it; the comment is dropped from the allowed signers file.
 SSH_PUBLIC_KEY = re.compile(
@@ -56,12 +62,14 @@ def allowed_signers_text(keys):
 
 def has_good_signature(source_name, repository, subcommand, revision, allowed_signers_file):
     """True when ``git verify-commit`` or ``verify-tag`` finds a good SSH signature of a listed key."""
-    completed = packs.run_git(source_name, [
+    disabled = [argument for key in NON_SSH_SIGNATURE_PROGRAMS for argument in ("-c", f"{key}={MISSING_PROGRAM}")]
+    completed = packs.run_git(source_name, disabled + [
         "-c", f"gpg.ssh.allowedSignersFile={allowed_signers_file}",
         "--git-dir", repository, subcommand, "--raw", revision,
     ])
     output = (completed.stdout + completed.stderr).decode("utf-8", "replace")
-    return completed.returncode == 0 and GOOD_SIGNATURE_TEXT in output
+    return completed.returncode == 0 and any(GOOD_SSH_SIGNATURE_LINE.fullmatch(line.strip())
+                                             for line in output.splitlines())
 
 
 def tags_pointing_at(source_name, repository, commit):

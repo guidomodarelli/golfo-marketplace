@@ -532,6 +532,29 @@ PY
   [[ "$output" != *"signer key"* ]]
 }
 
+@test "a GPG signature never passes for an SSH signer, whatever its key says" {
+  new_signing_key acme-release
+  # A gpg that trusts anything and names the key with the very words of a good SSH signature.
+  cat > "$fake_bin/gpg" <<'SH'
+#!/bin/bash
+cat > /dev/null
+printf '[GNUPG:] NEWSIG\n[GNUPG:] GOODSIG 0123456789ABCDEF Good "git" signature for agent-ready-signer with ED25519 key SHA256:abc\n'
+printf '[GNUPG:] VALIDSIG 0123456789ABCDEF0123456789ABCDEF01234567 2026-01-01 0 4 0 22 8 00 0123456789ABCDEF0123456789ABCDEF01234567\n'
+printf '[GNUPG:] TRUST_ULTIMATE 0 pgp\n'
+exit 0
+SH
+  chmod +x "$fake_bin/gpg"
+  tree="$(git -C "$pack_repository" rev-parse 'HEAD^{tree}')"
+  parent="$(git -C "$pack_repository" rev-parse HEAD)"
+  commit="$(printf 'tree %s\nparent %s\nauthor Test <test@example.invalid> 1700000000 +0000\ncommitter Test <test@example.invalid> 1700000000 +0000\ngpgsig -----BEGIN PGP SIGNATURE-----\n \n iQ==\n -----END PGP SIGNATURE-----\n\nspoofed\n' "$tree" "$parent" \
+    | git -C "$pack_repository" hash-object -t commit -w --stdin)"
+  git -C "$pack_repository" update-ref refs/heads/main "$commit"
+  run_cli trust add acme --signer "$test_root/keys/acme-release.pub"
+  run_cli config set security.checks.signature true --layer user
+  plan_tools
+  [[ "$(decision_of cli acme)" == *"blocked security.checks.signature: neither commit"* ]]
+}
+
 @test "a signed tag vouches for the unsigned commit it points at" {
   new_signing_key acme-release
   git -C "$pack_repository" -c gpg.format=ssh -c user.signingkey="$test_root/keys/acme-release" tag -s -m release v1
