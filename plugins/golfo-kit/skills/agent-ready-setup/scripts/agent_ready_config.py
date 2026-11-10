@@ -139,6 +139,9 @@ def validate_value(value, node, path):
             raise InvalidValue(f"'{path}' must be a string")
         if len(value) < node.get("minLength", 0):
             raise InvalidValue(f"'{path}' must not be empty")
+        # The pattern has to match the whole value, so no line break slips past it.
+        if "pattern" in node and not re.fullmatch(node["pattern"], value):
+            raise InvalidValue(f"'{path}' does not have the expected form (got {json.dumps(value[:80])})")
     elif expected == "boolean":
         if not isinstance(value, bool):
             raise InvalidValue(f"'{path}' must be true or false")

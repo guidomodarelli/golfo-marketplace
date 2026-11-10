@@ -117,6 +117,17 @@ for tool in report["tools"]:
     print(tool["type"], tool["name"], tool["decision"], tool["reason"] or "")' | tr -d '\r' > "$test_root/tools.txt"
 }
 
+# An SSH key pair to sign the pack with: $test_root/keys/<name> and <name>.pub.
+new_signing_key() {
+  mkdir -p "$test_root/keys"
+  ssh-keygen -q -t ed25519 -N "" -C "$1@example.invalid" -f "$test_root/keys/$1"
+}
+
+# Commits the pack again, signed with one key: the source then resolves to a signed commit.
+sign_pack_commit() {
+  git -C "$pack_repository" -c gpg.format=ssh -c user.signingkey="$test_root/keys/$1" commit -q -S --allow-empty -m signed
+}
+
 decision_of() {
   grep -F "$1 $2 " "$test_root/tools.txt"
 }
@@ -236,7 +247,7 @@ PY
 
   run_cli config set security.checks.signature true --layer user
   plan_tools
-  [[ "$(decision_of cli acme)" == *"blocked security.checks.signature: the signature of acme is not verified"* ]]
+  [[ "$(decision_of cli acme)" == *"blocked security.checks.signature: no key of security.signers covers the source acme; add the key its maintainers sign with: agent-ready trust add acme --signer <public key file>"* ]]
   run_cli config unset security.checks.signature --layer user
 
   run_cli trust remove acme
@@ -486,4 +497,112 @@ PY
   run_cli remove --yes
   [ -f .agents/agent-ready.lock.json ]
   ! grep -qs 'AGENT-READY PACK MCP SERVERS' .codex/config.toml
+}
+
+@test "a source signed by a key of security.signers passes the signature check, and any other does not" {
+  new_signing_key acme-release
+  new_signing_key someone-else
+  sign_pack_commit acme-release
+  run_cli trust add acme
+  run_cli config set security.checks.signature true --layer user
+  plan_tools
+  [[ "$(decision_of cli acme)" == *"blocked security.checks.signature: no key of security.signers covers the source acme"* ]]
+
+  run_cli trust add acme --signer "$test_root/keys/someone-else.pub"
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"Signed by 1 key(s) of security.signers"* ]]
+  plan_tools
+  [[ "$(decision_of cli acme)" == *"blocked security.checks.signature: neither commit "*" of acme nor a tag of its origin that points at it has a good SSH signature from a key of security.signers for this source"* ]]
+
+  run_cli trust add acme --signer "$test_root/keys/acme-release.pub"
+  plan_tools
+  [ "$(decision_of cli acme)" = "cli acme allowed " ]
+  [ "$(decision_of mcpServer acme-docs)" = "mcpServer acme-docs allowed " ]
+  run_cli trust list
+  [[ "$output" == *"acme  trusted"*"2 signer key(s)"* ]]
+
+  # A new unsigned commit on the ref is not vouched for by the old signature.
+  git -C "$pack_repository" commit -q --allow-empty -m unsigned
+  plan_tools
+  [[ "$(decision_of cli acme)" == *"blocked security.checks.signature: neither commit"* ]]
+
+  # Removing the trust of a source drops its keys too.
+  run_cli trust remove acme
+  run_cli trust list
+  [[ "$output" != *"signer key"* ]]
+}
+
+@test "a GPG signature never passes for an SSH signer, whatever its key says" {
+  new_signing_key acme-release
+  # A gpg that trusts anything and names the key with the very words of a good SSH signature.
+  cat > "$fake_bin/gpg" <<'SH'
+#!/bin/bash
+cat > /dev/null
+printf '[GNUPG:] NEWSIG\n[GNUPG:] GOODSIG 0123456789ABCDEF Good "git" signature for agent-ready-signer with ED25519 key SHA256:abc\n'
+printf '[GNUPG:] VALIDSIG 0123456789ABCDEF0123456789ABCDEF01234567 2026-01-01 0 4 0 22 8 00 0123456789ABCDEF0123456789ABCDEF01234567\n'
+printf '[GNUPG:] TRUST_ULTIMATE 0 pgp\n'
+exit 0
+SH
+  chmod +x "$fake_bin/gpg"
+  tree="$(git -C "$pack_repository" rev-parse 'HEAD^{tree}')"
+  parent="$(git -C "$pack_repository" rev-parse HEAD)"
+  commit="$(printf 'tree %s\nparent %s\nauthor Test <test@example.invalid> 1700000000 +0000\ncommitter Test <test@example.invalid> 1700000000 +0000\ngpgsig -----BEGIN PGP SIGNATURE-----\n \n iQ==\n -----END PGP SIGNATURE-----\n\nspoofed\n' "$tree" "$parent" \
+    | git -C "$pack_repository" hash-object -t commit -w --stdin)"
+  git -C "$pack_repository" update-ref refs/heads/main "$commit"
+  run_cli trust add acme --signer "$test_root/keys/acme-release.pub"
+  run_cli config set security.checks.signature true --layer user
+  plan_tools
+  [[ "$(decision_of cli acme)" == *"blocked security.checks.signature: neither commit"* ]]
+}
+
+@test "a signed tag vouches for the unsigned commit it points at" {
+  new_signing_key acme-release
+  git -C "$pack_repository" -c gpg.format=ssh -c user.signingkey="$test_root/keys/acme-release" tag -s -m release v1
+  write_manifest '{"profiles": ["acme/kafka-interno"], "sources": {"packs": [{"name": "acme", "source": "git+https://packs.example.invalid/acme#v1"}]}}'
+  run_cli trust add acme --signer "$test_root/keys/acme-release.pub"
+  run_cli config set security.checks.signature true --layer user
+  plan_tools
+  [ "$(decision_of cli acme)" = "cli acme allowed " ]
+
+  # The same tag vouches for a source that follows the branch it is the tip of.
+  rm -rf "$XDG_CACHE_HOME/agent-ready-setup/packs"
+  write_manifest '{"profiles": ["acme/kafka-interno"], "sources": {"packs": [{"name": "acme", "source": "git+https://packs.example.invalid/acme#main"}]}}'
+  plan_tools
+  [ "$(decision_of cli acme)" = "cli acme allowed " ]
+}
+
+@test "trust add --signer takes only SSH public keys, and a repository cannot add its own signer" {
+  new_signing_key acme-release
+  sign_pack_commit acme-release
+  run_cli trust add acme --signer "$test_root/keys/acme-release"
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"not an SSH public key (the .pub file, never the private key)"* ]]
+  ! grep -qs signers "$XDG_CONFIG_HOME/agent-ready-setup/config.json"
+  run_cli trust add --signer "$test_root/keys/acme-release.pub"
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"--signer needs the sources its key signs"* ]]
+
+  # The manifest of a repository this machine has not approved cannot vouch for its own packs.
+  run_cli trust add acme
+  run_cli config set security.checks.signature true --layer user
+  run_cli config set security.signers "[{\"key\": \"$(cat "$test_root/keys/acme-release.pub")\"}]" --layer project
+  [ "$status" -eq 0 ]
+  plan_tools
+  [[ "$(decision_of cli acme)" == *"blocked security.checks.signature: no key of security.signers covers the source acme"* ]]
+
+  # A key is one line: a second one hidden after a line break would reach the allowed signers file.
+  run_cli config set security.signers '[{"key": "ssh-ed25519 AAAA\nssh-ed25519 BBBB"}]' --layer user
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"does not have the expected form"* ]]
+}
+
+@test "with the signature check on, a path source is never signed" {
+  mkdir -p packs
+  cp -R "$pack_repository/." packs/acme
+  rm -rf packs/acme/.git
+  write_manifest '{"profiles": ["acme/kafka-interno"], "sources": {"packs": [{"name": "acme", "source": "path:packs/acme"}]}}'
+  run_cli trust add --project .
+  run_cli config set security.checks.signature true --layer user
+  plan_tools
+  [[ "$(decision_of cli acme)" == *"blocked security.checks.signature: the source acme lives in this repository and has no revision of its own to verify"* ]]
 }

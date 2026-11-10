@@ -108,6 +108,7 @@ import agent_ready_conflicts as conflicts_review  # noqa: E402
 import agent_ready_pack_clis as pack_clis  # noqa: E402
 import agent_ready_pack_mcp as pack_mcp  # noqa: E402
 import agent_ready_pack_scripts as pack_scripts  # noqa: E402
+import agent_ready_pack_signatures as pack_signatures  # noqa: E402
 import agent_ready_pack_tools as pack_tools  # noqa: E402
 import agent_ready_golfo_kit as golfo_kit  # noqa: E402
 from agent_ready_packs import (  # noqa: E402
@@ -2092,7 +2093,7 @@ def compute_status(project_root, skill_dir):
         else:
             status["sources"] = plan["sourceReport"]
             status["plan"] = plan
-            status["packTools"] = pack_tools.report(plan["packToolDeclarations"], catalog, configuration)
+            status["packTools"] = pack_tools_report(plan, catalog, configuration)
             changed = [entry["destination"] for entry in plan["entries"]
                        if entry["action"] not in (ACTION_UNCHANGED, ACTION_DROP)]
             status["checkout"]["modified"].extend(plan["editedViews"] + plan["detachedViews"])
@@ -2132,6 +2133,12 @@ def status_has_drift(status):
     if any(checkout[key] for key in ("modified", "missing", "conflict", "failed", "retiredPreserved")):
         return True
     return bool(status["update"] and status["update"]["available"]) or not status["hasLock"]
+
+
+def pack_tools_report(plan, catalog, configuration):
+    """The verdict of every tool the selected profiles declare, with the signature of each source checked locally."""
+    return pack_tools.report(plan["packToolDeclarations"], catalog, configuration,
+                             verify_signature=pack_signatures.verifier(configuration))
 
 
 def print_pack_tools(report, stream, brief=False):
@@ -2424,7 +2431,8 @@ def command_fetch_sources(arguments):
     declarations = declared_sources(arguments.project)
     locked_sources = locked_sources_of(arguments.project)
     if arguments.refresh:
-        for failure in refresh_declared_sources(declarations, locked_sources):
+        with_tags = configuration_of(arguments.project).value(pack_tools.CHECK_SIGNATURE_KEY)
+        for failure in refresh_declared_sources(declarations, locked_sources, with_tags):
             write_line(f"WARNING: comparing with the local cache: {failure}", sys.stderr)
         return 0
     pins = download_declared_sources(declarations, locked_sources, arguments.update_source or [],
@@ -2509,8 +2517,7 @@ def command_plan(arguments):
     if arguments.source_mode == SOURCE_MODE_SYNC:
         enforce_sync_policy(arguments.project, arguments.skill_dir, catalog, plan["profiles"], plan["profileDigests"])
         keep_locked_entries_of_unselected_sources(plan, read_lock(arguments.project))
-    tools_report = pack_tools.report(plan["packToolDeclarations"], catalog,
-                                     configuration_of(arguments.project, arguments.offline))
+    tools_report = pack_tools_report(plan, catalog, configuration_of(arguments.project, arguments.offline))
     if tools_report:
         plan["packTools"] = tools_report
     conflicts = semantic_conflicts(arguments, plan)
@@ -2614,7 +2621,7 @@ def command_pack_scripts(arguments):
     configuration = configuration_of(arguments.project, True)
     catalog = load_effective_catalog(arguments.project, arguments.skill_dir)
     plan = compute_plan(arguments.project, arguments.skill_dir, catalog, lock.get("profileOrder") or [])
-    report = pack_tools.report(plan["packToolDeclarations"], catalog, configuration)
+    report = pack_tools_report(plan, catalog, configuration)
     result = pack_scripts.run_session_start(arguments.project, report, locked,
                                             configuration.value(pack_tools.CHECK_LOCK_DIGEST_KEY))
     for line in result["ran"]:

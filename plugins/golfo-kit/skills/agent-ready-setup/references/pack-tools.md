@@ -6,8 +6,8 @@ con herramientas, al explicar por qué una herramienta quedó bloqueada, al conf
 cambiar las claves `security.*`.
 
 > **Estado.** Un apply registra los servidores MCP (sección 5), instala los CLIs (sección 6) y corre
-> los scripts (sección 7) que la política permite. Todavía no verifica firmas: con
-> `security.checks.signature: true` nada se permite.
+> los scripts (sección 7) que la política permite. Con `security.checks.signature: true` verifica la
+> firma SSH de la revisión de cada fuente (sección 3); las firmas GPG todavía no cuentan.
 
 ## Contenido
 
@@ -77,8 +77,9 @@ este orden, y la primera que la frena da el motivo:
    workflow que quiere las herramientas de sus packs lo prende en su propia configuración.
 2. Los `checks`, que se apagan por separado:
    - `trustedSource` (default `true`): la fuente tiene que ser de confianza en esta máquina.
-   - `signature` (default `false`): el commit o tag firmado. El motor todavía no verifica firmas, así
-     que con `true` nada se permite.
+   - `signature` (default `false`): el commit de la fuente, o un tag de su origen que apunta a ese
+     commit, tiene una firma SSH válida de una clave de `security.signers` para esa fuente (sección 3).
+     Una fuente `path:` no tiene revisión propia, así que con `true` sus herramientas no pasan.
    - `artifactSha256` (default `true`): cada artefacto de un CLI declara su `sha256`. Un paquete sin
      `sha256` queda bloqueado.
    - `lockDigest` (default `true`): lo que se ejecute tiene que coincidir con el digest del lock. Se
@@ -123,6 +124,24 @@ agent-ready trust list [--json]     # si el repo está aprobado y en qué fuente
 - **Quien agrega una fuente la aprueba.** `agent-ready sources add` confía en ella en la máquina de
   quien la agrega. Un compañero que la recibe por Git la aprueba una vez con `agent-ready trust add <fuente>`.
 - **Fuentes `path:`.** Viven en el repositorio, así que son de confianza si el repositorio está aprobado.
+
+### Claves que firman una fuente
+
+```bash
+agent-ready trust add acme --signer ~/.ssh/acme-release.pub   # confía en acme y en esa clave para firmarla
+agent-ready config set security.checks.signature true --layer user
+```
+
+- **Qué se guarda.** `--signer` lee la clave pública SSH (el `.pub`, nunca la privada) y la suma a
+  `security.signers` de la config de usuario como `{"key": "<clave>", "source": "acme"}`. Sin
+  `source`, una clave firma todas las fuentes. `trust remove acme` borra también sus claves.
+- **Qué se verifica.** Git verifica, contra un archivo de firmantes permitidos armado solo con esas
+  claves, la firma del commit al que resolvió la fuente o la de un tag de su origen que apunta a ese
+  commit. Cuando el check está prendido, un apply o un plan trae al mirror del caché los tags anotados
+  del origen que apuntan a ese commit, sea cual sea el ref que sigue la fuente. Verificar no usa la red. Un commit nuevo sin firma en el ref vuelve a bloquear.
+- **Solo SSH.** Una firma GPG no cuenta: verificarla depende del keyring y del agente de cada máquina.
+- **Sumar claves afloja.** `security.signers` se une entre capas, y el manifest de un repositorio
+  solo suma claves si la máquina lo aprobó: un PR no puede firmar sus propios packs.
 
 ## 4. Ver el veredicto
 
