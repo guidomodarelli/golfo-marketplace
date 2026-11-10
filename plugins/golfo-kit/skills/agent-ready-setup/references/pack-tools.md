@@ -137,8 +137,8 @@ agent-ready config set security.checks.signature true --layer user
   `source`, una clave firma todas las fuentes. `trust remove acme` borra también sus claves.
 - **Qué se verifica.** Git verifica, contra un archivo de firmantes permitidos armado solo con esas
   claves, la firma del commit al que resolvió la fuente o la de un tag de su origen que apunta a ese
-  commit. Cuando el check está prendido, un apply o un plan trae el tag del ref declarado al mirror del
-  caché. Verificar no usa la red. Un commit nuevo sin firma en el ref vuelve a bloquear.
+  commit. Cuando el check está prendido, un apply o un plan trae al mirror del caché los tags anotados
+  del origen que apuntan a ese commit, sea cual sea el ref que sigue la fuente. Verificar no usa la red. Un commit nuevo sin firma en el ref vuelve a bloquear.
 - **Solo SSH.** Una firma GPG no cuenta: verificarla depende del keyring y del agente de cada máquina.
 - **Sumar claves afloja.** `security.signers` se une entre capas, y el manifest de un repositorio
   solo suma claves si la máquina lo aprobó: un PR no puede firmar sus propios packs.

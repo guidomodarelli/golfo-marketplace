@@ -563,6 +563,12 @@ SH
   run_cli config set security.checks.signature true --layer user
   plan_tools
   [ "$(decision_of cli acme)" = "cli acme allowed " ]
+
+  # The same tag vouches for a source that follows the branch it is the tip of.
+  rm -rf "$XDG_CACHE_HOME/agent-ready-setup/packs"
+  write_manifest '{"profiles": ["acme/kafka-interno"], "sources": {"packs": [{"name": "acme", "source": "git+https://packs.example.invalid/acme#main"}]}}'
+  plan_tools
+  [ "$(decision_of cli acme)" = "cli acme allowed " ]
 }
 
 @test "trust add --signer takes only SSH public keys, and a repository cannot add its own signer" {
