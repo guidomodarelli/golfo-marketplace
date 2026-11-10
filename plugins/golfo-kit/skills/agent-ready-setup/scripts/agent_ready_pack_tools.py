@@ -9,8 +9,8 @@ evaluates, for each one, the ``security`` policy of the layered configuration:
 3. ``deny``, which always wins; then ``rules``, where a deny rule wins over an allow rule; then
    the ``allow`` lists, which restrict only when they are not empty.
 
-The engine does not install, register or run anything yet: plan and status report the verdict
-of every declared tool, so a team sees what its policy allows before execution exists.
+An apply registers the MCP servers the policy allows (agent_ready_pack_mcp.py); it does not
+install CLIs or run scripts yet. plan and status report the verdict of every declared tool.
 """
 
 import fnmatch
@@ -49,11 +49,15 @@ SHA256 = re.compile(r"^[0-9a-f]{64}$")
 # A bare executable name, resolved from the PATH; never a path or a shell line.
 COMMAND_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]*$")
 ENVIRONMENT_NAME = re.compile(r"^[A-Z][A-Z0-9_]*$")
-# Values only by reference: ${ACME_TOKEN}, or a scheme word before it in a header (Bearer ${ACME_TOKEN}).
-ENVIRONMENT_REFERENCE = re.compile(r"^\$\{[A-Z][A-Z0-9_]*\}$")
-HEADER_REFERENCE = re.compile(r"^(?:[A-Za-z]+ )?\$\{[A-Z][A-Z0-9_]*\}$")
+# Values only by reference, in a form both providers expand without a secret in their config:
+# a variable passes under its own name (${ACME_TOKEN} for ACME_TOKEN), a header is ${VAR}, and
+# only Authorization takes Bearer ${VAR}.
+REFERENCE = re.compile(r"^\$\{(?P<name>[A-Z][A-Z0-9_]*)\}$")
+BEARER_REFERENCE = re.compile(r"^Bearer \$\{(?P<name>[A-Z][A-Z0-9_]*)\}$")
 HEADER_NAME = re.compile(r"^[A-Za-z0-9-]+$")
+AUTHORIZATION_HEADER = "authorization"
 
+APPLIED_TOOL_TYPES = (TOOL_MCP_SERVER,)
 DECISION_ALLOWED = "allowed"
 DECISION_BLOCKED = "blocked"
 SOURCE_TYPE_PATH = "path"
@@ -161,14 +165,34 @@ def validate_cli(cli, what):
         raise DeclarationError(f"{what} package: binary is the name of the executable it installs")
 
 
-def validate_references(values, pattern, what, kind):
+def referenced_variable(value, header=None):
+    """The variable a declared value references, or None when it is not a reference both providers expand."""
+    if not isinstance(value, str):
+        return None
+    match = REFERENCE.fullmatch(value)
+    if not match and header is not None and header.lower() == AUTHORIZATION_HEADER:
+        match = BEARER_REFERENCE.fullmatch(value)
+    return match.group("name") if match else None
+
+
+def validate_environment(values, what):
     require_object(values, what)
     for name, value in values.items():
-        name_pattern = ENVIRONMENT_NAME if kind == "variable" else HEADER_NAME
-        if not name_pattern.fullmatch(name):
-            raise DeclarationError(f"{what} has an invalid {kind} name '{name}'")
-        if not isinstance(value, str) or not pattern.fullmatch(value):
-            raise DeclarationError(f"{what} {name} must be a reference such as ${{ACME_TOKEN}}, never a value")
+        if not ENVIRONMENT_NAME.fullmatch(name):
+            raise DeclarationError(f"{what} has an invalid variable name '{name}'")
+        if referenced_variable(value) != name:
+            raise DeclarationError(f"{what} {name} must be the reference ${{{name}}}: the variable passes under its own "
+                                   "name, never as a value")
+
+
+def validate_headers(values, what):
+    require_object(values, what)
+    for name, value in values.items():
+        if not HEADER_NAME.fullmatch(name):
+            raise DeclarationError(f"{what} has an invalid header name '{name}'")
+        if referenced_variable(value, header=name) is None:
+            raise DeclarationError(f"{what} {name} must be a reference such as ${{ACME_TOKEN}} (or Bearer ${{ACME_TOKEN}} "
+                                   "for Authorization), never a value")
 
 
 def validate_mcp_server(name, server, what):
@@ -185,13 +209,13 @@ def validate_mcp_server(name, server, what):
         require_list(arguments, f"{what} args")
         if any(not isinstance(argument, str) for argument in arguments):
             raise DeclarationError(f"{what} args must be strings")
-        validate_references(server.get("env", {}), ENVIRONMENT_REFERENCE, f"{what} env", "variable")
+        validate_environment(server.get("env", {}), f"{what} env")
         return
     require_keys(server, MCP_URL_KEYS, what)
     parsed = urllib.parse.urlsplit(server["url"]) if isinstance(server["url"], str) else None
     if not parsed or parsed.scheme != ARTIFACT_URL_SCHEME or not parsed.netloc or parsed.username or parsed.password:
         raise DeclarationError(f"{what} needs an https url without credentials")
-    validate_references(server.get("headers", {}), HEADER_REFERENCE, f"{what} headers", "header")
+    validate_headers(server.get("headers", {}), f"{what} headers")
 
 
 def validate_script(script, what, pack_root, is_contained):
@@ -260,8 +284,9 @@ def declared_tools(catalog, resolved, source_of_profile, is_pack_profile):
                               package=package["manager"] if package else None,
                               sha256=bool(package.get("sha256")) if package else True))
         for name, server in sorted(entry.get("mcpServers", {}).items()):
+            # The whole declaration: an apply registers it as it is, references and all.
             tools.append(dict(common, type=TOOL_MCP_SERVER, name=name, command=server.get("command"),
-                              url=server.get("url")))
+                              url=server.get("url"), server=server))
         for script in entry.get("scripts", []):
             tools.append(dict(common, type=TOOL_SCRIPT, name=f"{source_name}/{script['path']}", event=script["event"],
                               interpreter=script["interpreter"], path=script["path"]))
@@ -393,7 +418,8 @@ def report(tools, catalog, configuration):
         decision, reason = evaluate(checked, policy, source, configuration.project_approved)
         evaluated.append(dict(tool, decision=decision, reason=reason))
     return {
-        "executes": False,
+        # What an apply does with an allowed tool today: CLIs and scripts come in later versions.
+        "applies": list(APPLIED_TOOL_TYPES),
         "policy": {key: {"value": policy[key], "origin": configuration.origin(key)} for key in POLICY_KEYS},
         "tools": evaluated,
     }
