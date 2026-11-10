@@ -72,10 +72,18 @@ start_https_server() {
   SSL_CERT_FILE="$(native_path "$test_root")/server.crt"
   export SSL_CERT_FILE
   cat > "$test_root/server.py" <<'PY'
-import functools, http.server, os, ssl, sys
+import functools, http.server, os, socketserver, ssl, sys
 root, certificate, key, port_file = sys.argv[1:5]
+
+class Server(http.server.ThreadingHTTPServer):
+    def server_bind(self):
+        # HTTPServer.server_bind resolves the host name with socket.getfqdn, which can stall for
+        # many seconds on macOS; the name is never needed here.
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
+
 handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=root)
-server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+server = Server(("127.0.0.1", 0), handler)
 context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
 context.load_cert_chain(certificate, key)
 server.socket = context.wrap_socket(server.socket, server_side=True)
@@ -88,11 +96,15 @@ PY
   (cd "$test_root" && exec python3 server.py served server.crt server.key port > server.log 2>&1) &
   server_pid=$!
   local attempt
-  for attempt in $(seq 1 100); do
+  for attempt in $(seq 1 300); do
     [ -f "$test_root/port" ] && break
     sleep 0.1
   done
-  [ -f "$test_root/port" ] || { cat "$test_root/server.log" >&2; return 1; }
+  if [ ! -f "$test_root/port" ]; then
+    kill -0 "$server_pid" 2> /dev/null && echo "the https server is still starting after 30 seconds" >&2
+    cat "$test_root/server.log" >&2
+    return 1
+  fi
   server_url="https://127.0.0.1:$(cat "$test_root/port")"
 }
 
