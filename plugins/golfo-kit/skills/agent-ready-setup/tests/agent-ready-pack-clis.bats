@@ -63,9 +63,12 @@ native_path() {
 
 # A self-signed certificate for 127.0.0.1 and an https server of $served on a free port.
 start_https_server() {
+  # A configuration file instead of -subj and -addext: the LibreSSL of macOS has no -addext, and
   # Git Bash would turn /CN=... into a Windows path.
-  MSYS2_ARG_CONV_EXCL='/CN=' openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=127.0.0.1" \
-    -addext "subjectAltName=IP:127.0.0.1" -keyout "$test_root/server.key" -out "$test_root/server.crt" 2> /dev/null
+  printf '%s\n' '[req]' 'prompt = no' 'distinguished_name = name' 'x509_extensions = extensions' \
+    '[name]' 'CN = 127.0.0.1' '[extensions]' 'subjectAltName = IP:127.0.0.1' > "$test_root/openssl.cnf"
+  (cd "$test_root" && openssl req -x509 -newkey rsa:2048 -nodes -days 1 -config openssl.cnf \
+    -keyout server.key -out server.crt > openssl.log 2>&1) || { cat "$test_root/openssl.log" >&2; return 1; }
   SSL_CERT_FILE="$(native_path "$test_root")/server.crt"
   export SSL_CERT_FILE
   cat > "$test_root/server.py" <<'PY'
@@ -89,6 +92,7 @@ PY
     [ -f "$test_root/port" ] && break
     sleep 0.1
   done
+  [ -f "$test_root/port" ] || { cat "$test_root/server.log" >&2; return 1; }
   server_url="https://127.0.0.1:$(cat "$test_root/port")"
 }
 
