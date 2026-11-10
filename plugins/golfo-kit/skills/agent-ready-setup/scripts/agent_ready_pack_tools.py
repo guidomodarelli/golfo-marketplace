@@ -391,8 +391,11 @@ def in_continuous_integration():
     return os.environ.get(CONTINUOUS_INTEGRATION_VARIABLE, "").lower() not in CONTINUOUS_INTEGRATION_OFF_VALUES
 
 
-def evaluate(tool, policy, source, project_approved, signature_verified=False):
-    """(decision, reason) of one declared tool under the effective policy."""
+def evaluate(tool, policy, source, project_approved, signature=(False, None)):
+    """(decision, reason) of one declared tool under the effective policy.
+
+    ``signature`` is (verified, reason) for the revision of its source (agent_ready_pack_signatures.py).
+    """
     if not policy[EXECUTION_ENABLED_KEY]:
         return DECISION_BLOCKED, f"{EXECUTION_ENABLED_KEY} is false"
     if in_continuous_integration() and not policy[EXECUTION_CI_KEY]:
@@ -406,8 +409,9 @@ def evaluate(tool, policy, source, project_approved, signature_verified=False):
                                       "approve it with agent-ready trust add --project")
         return DECISION_BLOCKED, (f"the source {tool['source']} is not trusted on this machine; "
                                   f"trust it with agent-ready trust add {tool['source']}")
-    if policy[CHECK_SIGNATURE_KEY] and not signature_verified:
-        return DECISION_BLOCKED, f"{CHECK_SIGNATURE_KEY}: the signature of {tool['source']} is not verified"
+    if policy[CHECK_SIGNATURE_KEY] and not signature[0]:
+        why = signature[1]
+        return DECISION_BLOCKED, f"{CHECK_SIGNATURE_KEY}: {why or 'the signature of ' + tool['source'] + ' is not verified'}"
     if tool["type"] == TOOL_CLI and policy[CHECK_ARTIFACT_SHA256_KEY] and not tool["sha256"]:
         return DECISION_BLOCKED, (f"{CHECK_ARTIFACT_SHA256_KEY}: the {tool['package']} package of {tool['name']} "
                                   "declares no sha256")
@@ -426,8 +430,12 @@ def evaluate(tool, policy, source, project_approved, signature_verified=False):
     return DECISION_ALLOWED, None
 
 
-def report(tools, catalog, configuration):
-    """The policy with the layer of each value and the verdict of every declared tool, or None without tools."""
+def report(tools, catalog, configuration, verify_signature=None):
+    """The policy with the layer of each value and the verdict of every declared tool, or None without tools.
+
+    ``verify_signature(source name, source)`` gives (verified, reason) for security.checks.signature;
+    without it no source counts as signed.
+    """
     if not tools:
         return None
     policy = {key: configuration.value(key) for key in POLICY_KEYS}
@@ -438,7 +446,10 @@ def report(tools, catalog, configuration):
         if tool["type"] == TOOL_SCRIPT and source.get("root"):
             # Only to read the text a rule may match; the report keeps the path inside the pack.
             checked["file"] = os.path.join(source["root"], *tool["path"].split("/"))
-        decision, reason = evaluate(checked, policy, source, configuration.project_approved)
+        signature = (False, None)
+        if policy[CHECK_SIGNATURE_KEY] and verify_signature:
+            signature = verify_signature(tool["source"], source)
+        decision, reason = evaluate(checked, policy, source, configuration.project_approved, signature)
         entry = dict(tool, decision=decision, reason=reason)
         if tool["type"] == TOOL_SCRIPT and checked.get("file"):
             # Where the runner finds the script and the pack it belongs to (agent_ready_pack_scripts.py).

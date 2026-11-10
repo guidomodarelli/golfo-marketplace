@@ -59,6 +59,10 @@ SSH_URL_SCHEME = "ssh"
 FULL_COMMIT = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 SAFE_GIT_REF = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
 
+# Where the mirror of an origin keeps its tags: the signature check reads the ones that point at
+# the revision of a source (agent_ready_pack_signatures.py).
+MIRROR_TAG_NAMESPACE = "refs/agent-ready/tags/"
+
 SOURCE_AVAILABLE = "available"
 SOURCE_MISSING = "missing"
 
@@ -258,9 +262,28 @@ def resolve_remote_ref(declaration):
     raise ProfileError(f"profile source '{name}': {origin} has no tag or branch named '{ref}'")
 
 
+def mirror_repository(origin):
+    """The bare mirror that keeps the commits (and, for the signature check, the tags) of one origin."""
+    return os.path.join(pack_cache_root(), "repos", origin_key(origin) + ".git")
+
+
+def mirror_has_commit(name, repository, commit):
+    return os.path.isdir(repository) and run_git(
+        name, ["--git-dir", repository, "cat-file", "-e", f"{commit}^{{commit}}"]).returncode == 0
+
+
+def fetch_tag(name, origin, ref):
+    """Bring the tag a source asks for into its mirror, for the signature check; a branch has none."""
+    repository = mirror_repository(origin)
+    if FULL_COMMIT.fullmatch(ref) or not SAFE_GIT_REF.fullmatch(ref) or not os.path.isdir(repository):
+        return
+    run_git(name, ["--git-dir", repository, "fetch", "--quiet", "--no-tags", "--depth", "1", "--", origin,
+                   f"+refs/tags/{ref}:{MIRROR_TAG_NAMESPACE}{ref}"])
+
+
 def fetch_commit(name, origin, commit):
     """Bring one commit into the bare mirror of its repository and return the mirror path."""
-    repository = os.path.join(pack_cache_root(), "repos", origin_key(origin) + ".git")
+    repository = mirror_repository(origin)
     os.makedirs(os.path.dirname(repository), exist_ok=True)
     if not os.path.isdir(repository):
         # An empty template: this repository never runs a hook.
@@ -269,7 +292,7 @@ def fetch_commit(name, origin, commit):
             raise ProfileError(f"profile source '{name}': could not create its cache: {sanitized_git_error(completed)}")
 
     def has_commit():
-        return run_git(name, ["--git-dir", repository, "cat-file", "-e", f"{commit}^{{commit}}"]).returncode == 0
+        return mirror_has_commit(name, repository, commit)
 
     if has_commit():
         return repository
@@ -279,7 +302,7 @@ def fetch_commit(name, origin, commit):
     # Some servers only serve commits that a ref points at.
     completed = run_git(name, [
         "--git-dir", repository, "fetch", "--quiet", "--no-tags", "--", origin,
-        "+refs/heads/*:refs/agent-ready/heads/*", "+refs/tags/*:refs/agent-ready/tags/*",
+        "+refs/heads/*:refs/agent-ready/heads/*", f"+refs/tags/*:{MIRROR_TAG_NAMESPACE}*",
     ])
     if not has_commit():
         raise ProfileError(
@@ -469,15 +492,19 @@ def download_declared_sources(declarations, locked_sources, update_names, config
                 raise ProfileError(f"profile source '{name}': revision {commit[:12]} is not in the cache of this machine "
                                    "and this run uses no network")
             download_commit(name, declaration["origin"], commit)
+        if configuration.value(pack_tools.CHECK_SIGNATURE_KEY) and not offline:
+            # A signed tag vouches for the commit it points at, as much as a signed commit does.
+            fetch_tag(name, declaration["origin"], to_ref if to_ref and name in update_names else declaration["requestedRef"])
         pins[name] = commit
     return pins
 
 
-def refresh_declared_sources(declarations, locked_sources):
+def refresh_declared_sources(declarations, locked_sources, with_tags=False):
     """Update the cache to know whether everything is current; the repository is not touched.
 
     Returns one message per source that could not be refreshed: the caller compares with
-    what the cache already has and reports the limit instead of failing.
+    what the cache already has and reports the limit instead of failing. ``with_tags`` also
+    brings the tag of each ref, for the signature check.
     """
     failures = []
     for declaration in declarations:
@@ -493,6 +520,8 @@ def refresh_declared_sources(declarations, locked_sources):
             for commit in sorted(commit for commit in commits if commit):
                 if not cached_tree(origin, commit):
                     download_commit(name, origin, commit)
+            if with_tags:
+                fetch_tag(name, origin, ref)
         except ProfileError as refresh_error:
             failures.append(str(refresh_error))
     return failures

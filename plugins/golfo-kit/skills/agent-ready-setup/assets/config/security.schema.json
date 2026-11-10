@@ -65,7 +65,7 @@
           "x-security": { "strictness": [false, true] }
         },
         "signature": {
-          "description": "El commit o tag de la fuente tiene que estar firmado por una clave conocida. Apagado por defecto: un pack personal sin firmas funciona igual.",
+          "description": "El commit de la fuente, o un tag de su origen que apunte a ese commit, tiene que tener una firma SSH válida de una clave de security.signers para esa fuente. Una fuente path:, sin revisión propia, no pasa. Apagado por defecto: un pack personal sin firmas funciona igual.",
           "type": "boolean",
           "default": false,
           "x-security": { "strictness": [false, true] }
@@ -203,6 +203,31 @@
       "uniqueItems": true,
       "x-merge": "union",
       "x-security": { "list": "permits" }
+    },
+    "signers": {
+      "description": "Claves públicas SSH con las que firman los mantenedores de una fuente, para security.checks.signature. Se agregan con agent-ready trust add <fuente> --signer <archivo .pub>; se unen entre capas, y sumarlas desde el proyecto afloja.",
+      "type": "array",
+      "default": [],
+      "uniqueItems": true,
+      "x-merge": "union",
+      "x-security": { "list": "permits" },
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key"],
+        "properties": {
+          "key": {
+            "description": "La clave pública SSH en una línea, como la de un archivo .pub: tipo, clave en base64 y un comentario opcional.",
+            "type": "string",
+            "pattern": "(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp256|ecdsa-sha2-nistp384|ecdsa-sha2-nistp521|sk-ssh-ed25519@openssh\\.com|sk-ecdsa-sha2-nistp256@openssh\\.com) [A-Za-z0-9+/]+={0,3}( [^\\r\\n]*)?"
+          },
+          "source": {
+            "description": "Fuentes que firma esta clave (glob sobre el nombre de la fuente); sin source, todas.",
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
     },
     "trustedProjects": {
       "description": "Raíces de los repositorios que esta máquina aprobó para aflojar desde su manifest. Se agregan con agent-ready-state.py trust y se unen entre capas.",

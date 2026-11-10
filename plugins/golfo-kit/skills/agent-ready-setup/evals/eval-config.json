@@ -3321,6 +3321,29 @@
           "description": "Dice que en CI la ejecución está apagada por defecto"
         }
       ]
+    },
+    {
+      "id": "pack-signature-needs-signer-key",
+      "description": "Con security.checks.signature prendido, una fuente bloqueada por falta de claves se habilita sumando la clave pública SSH de sus mantenedores con trust add --signer, sin apagar el check.",
+      "input": "En mi config de usuario prendí security.checks.signature y ahora agent-ready plan dice: - blocked: cli acme 1.4.2 (artifacts) [acme/kafka-interno]: security.checks.signature: no key of security.signers covers the source acme. Los de acme firman sus releases con una clave SSH y me pasaron acme-release.pub. ¿Qué hago para que pase? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "trust add acme.{0,40}--signer",
+          "description": "Indica agent-ready trust add acme --signer",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "acme-release\\.pub",
+          "description": "Usa el archivo .pub que le pasaron"
+        },
+        {
+          "type": "regex",
+          "pattern": "security\\.signers",
+          "description": "Explica que la clave queda en security.signers"
+        }
+      ]
     }
   ]
 }
