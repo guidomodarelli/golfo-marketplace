@@ -3441,6 +3441,42 @@
           "description": "Dice que al cambiar de proveedor se retiran los archivos del anterior"
         }
       ]
+    },
+    {
+      "id": "ci-question-never-outside-interactive-runs",
+      "description": "La pregunta del proveedor de CI solo aparece con el usuario presente; el hook de SessionStart, las actualizaciones en segundo plano, review mode y CI nunca preguntan.",
+      "input": "Mi repo usa agent-ready y todavía no tiene ci.provider. Cuando corre el hook de SessionStart al abrir una sesión, o el chequeo en el CI, ¿me va a preguntar qué proveedor de CI uso? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "(no|nunca)[^.]{0,80}pregunt",
+          "description": "Dice que en esos flujos no pregunta",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "ci setup|ci\\.provider|--ci-provider",
+          "description": "Dice cómo elegirlo: ci setup, init --ci-provider o la clave ci.provider"
+        }
+      ]
+    },
+    {
+      "id": "ci-question-detected-provider-first",
+      "description": "En la primera configuración interactiva de un repo con Jenkinsfile, la pregunta del CI ofrece Jenkins primero; elegirlo deja el stage para copiar y no edita el Jenkinsfile.",
+      "input": "Es la primera vez que configuro Agent Ready en un repo que tiene un Jenkinsfile y no tiene ci.provider. ¿Qué me vas a preguntar sobre el CI, y qué pasa si elijo Jenkins? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "jenkins.{0,160}(primer|detectad|default|por defecto)|(primer|detectad|default|por defecto).{0,160}jenkins",
+          "description": "Ofrece Jenkins primero porque lo detecta",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "jenkinsfile[^.]{0,160}(no (se )?(lo )?(edita|modifica|toca|cambia)|nunca|intacto|igual)|(no (se )?(edita|modifica|toca|cambia)|nunca)[^.]{0,160}jenkinsfile",
+          "description": "Aclara que el Jenkinsfile no se edita"
+        }
+      ]
     }
   ]
 }

@@ -16,7 +16,7 @@ description: >-
   descartar un hallazgo de sus revisiones de IA.
 license: MIT
 metadata:
-  version: "1.27.0"
+  version: "1.28.0"
   author: "guponce"
   category: "developer-experience"
   tags: "agent-ready, multi-provider, claude-code, codex, bootstrap, setup, scaffold, context-optimized-v1.20.1"
@@ -118,12 +118,13 @@ explícito fuera del cache conservan prioridad para desarrollo local.
 | `agent-ready update [<fuente>...] [--to <ref>] [--dry-run]` | adopta la última revisión de esas fuentes (o de todas) y de golfo-kit; `--to` elige la revisión de una sola, golfo-kit incluido ([references/profiles-and-lockfile.md](references/profiles-and-lockfile.md), «golfo-kit como fuente»). `--dry-run` muestra además la versión actual y la nueva, el changelog y los cambios `breaking` («Compatibilidad declarada») |
 | `agent-ready config explain\|get\|set\|unset` | la configuración efectiva por capas ([references/configuration.md](references/configuration.md)) |
 | `agent-ready preset [delivered\|none]` | elige un preset con una sola clave o los lista; `delivered` deja una solución entregada estable hasta que alguien decida actualizarla ([references/stable-delivery.md](references/stable-delivery.md)) |
-| `agent-ready init [--profiles a,b \| --stack s] [--updates m] [--yes] [--no-input]` | primera configuración: detecta, pregunta lo que falta si hay terminal y aplica |
+| `agent-ready init [--profiles a,b \| --stack s] [--updates m] [--ci-provider p] [--yes] [--no-input]` | primera configuración: detecta, pregunta lo que falta si hay terminal (también el proveedor de CI) y aplica |
 | `agent-ready profiles list\|add\|remove` | la selección del manifest, validada contra el catálogo; después, `apply` |
 | `agent-ready sources list\|add\|remove` | las fuentes de packs del manifest; `add` además la trae a la caché |
 | `agent-ready doctor [--offline] [--json]` | revisa Git, Bash, Python, la CLI del provider, la configuración, las fuentes y los hooks, y dice cómo arreglar lo que falta |
 | `agent-ready remove [--dry-run] [--yes]` | saca agent-ready-setup del repo y conserva lo que escribió el proyecto |
-| `agent-ready ci setup --provider github\|gitlab\|jenkins\|generic\|none [--no-apply]` | elige el proveedor de CI (`ci.provider`) y aplica: crea el script `.agents/ci/agent-ready-check.sh` y el workflow, el job de GitLab con su `include` o el stage de Jenkins para copiar; cambiarlo retira los archivos del anterior ([references/ci-check.md](references/ci-check.md)) |
+| `agent-ready ci detect [--json]` | el proveedor de CI cuyos archivos tiene el repo y el archivo que lo muestra, o `none`; solo lee |
+| `agent-ready ci setup [--provider github\|gitlab\|jenkins\|generic\|none] [--no-apply] [--no-input]` | elige el proveedor de CI (`ci.provider`) y aplica: crea el script `.agents/ci/agent-ready-check.sh` y el workflow, el job de GitLab con su `include` o el stage de Jenkins para copiar; cambiarlo retira los archivos del anterior ([references/ci-check.md](references/ci-check.md)) |
 | `agent-ready trust list\|add\|remove` | confía en una fuente o aprueba el repo en esta máquina; las herramientas de un pack pasan por la política de seguridad ([references/pack-tools.md](references/pack-tools.md)) |
 | `agent-ready review list\|accept\|dismiss\|reset` | los hallazgos de las revisiones de IA con su id, y las decisiones del equipo sobre ellos ([references/ai-reviews.md](references/ai-reviews.md)) |
 
@@ -141,8 +142,8 @@ alterarla. No escriben en el repo ni instalan herramientas. Por defecto refresca
 del repo para decir si todo está al día; `--offline` no toca la red. Cada subcomando tiene
 `--help` con ejemplos y códigos de salida (`0` bien, `1` falló, `2` uso o configuración inválidos,
 `4` desactualizado, `5` fuente no disponible, `130` cancelado), y `--version`; los datos salen por
-stdout y el progreso y los errores por stderr. Solo `init` y `remove` preguntan, y solo con
-terminal: `init` lo que falta y `remove` la confirmación. Sin terminal, con `CI` definida o con
+stdout y el progreso y los errores por stderr. Solo `init`, `ci setup` y `remove` preguntan, y solo con
+terminal: `init` lo que falta, `ci setup` el proveedor sin `--provider` y `remove` la confirmación. Sin terminal, con `CI` definida o con
 `--no-input` salen con 2 y nombran los flags que faltan (`remove` pide `--yes`); si preguntaron,
 imprimen el comando equivalente. El resto corre igual en un hook o en CI. `plan`, `status` y `apply` necesitan el provider: lo infieren como `resolve-provider.sh`
 (ver Step 3) o lo toman de `--provider claude|codex`. Para CI, en cualquier proveedor, `agent-ready
@@ -192,6 +193,16 @@ Las señales y sus prioridades viven en `assets/profiles.json`; el evaluador, en
 Si detección tiene éxito, confirmar:
 
 > `Detected stack: **<STACK>**. Running agent-ready-setup — managed assets are overwritten with the templates, local edits included; project rules, skills, and instructions are preserved.`
+
+**Proveedor de CI, una sola vez.** Preguntarlo solo cuando un agente corre esta skill con el usuario
+presente y `agent-ready config get ci.provider` no tiene valor, o cuando el usuario lo pide. Nunca en el hook
+de SessionStart, en las actualizaciones en segundo plano, en review mode ni en CI. Correr `agent-ready ci detect`
+y hacer una sola pregunta con estas opciones, en este orden: el proveedor detectado, si hay uno; cada uno de los otros
+proveedores (`github`, `gitlab`, `jenkins`) sin repetir el detectado; «solo el script genérico» (`generic`), y «no configurar» (`none`). El modo no
+se pregunta: queda `ci.mode: fail`. Después del apply, correr `agent-ready ci setup --provider <elegido>`. Si el
+usuario elige no configurar o no contesta, correr `agent-ready ci setup --provider none --no-apply`: no crea nada
+y no se vuelve a preguntar. Con `jenkins`, mostrar el stage que imprime y aclarar que el `Jenkinsfile` no se
+edita. Qué deja cada proveedor: [references/ci-check.md](references/ci-check.md).
 
 Cualquier proyecto, personal o de empresa, puede sumar profiles propios con `sources.packs` en el
 manifest: un pack en Git o una carpeta local. Agregar una fuente solo los hace disponibles: se seleccionan
