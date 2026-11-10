@@ -9,8 +9,9 @@ evaluates, for each one, the ``security`` policy of the layered configuration:
 3. ``deny``, which always wins; then ``rules``, where a deny rule wins over an allow rule; then
    the ``allow`` lists, which restrict only when they are not empty.
 
-An apply registers the MCP servers the policy allows (agent_ready_pack_mcp.py); it does not
-install CLIs or run scripts yet. plan and status report the verdict of every declared tool.
+An apply registers the MCP servers the policy allows (agent_ready_pack_mcp.py) and installs its
+CLIs in the cache of the user (agent_ready_pack_clis.py); it does not run scripts yet. plan and
+status report the verdict of every declared tool.
 """
 
 import fnmatch
@@ -55,9 +56,14 @@ ENVIRONMENT_NAME = re.compile(r"^[A-Z][A-Z0-9_]*$")
 REFERENCE = re.compile(r"^\$\{(?P<name>[A-Z][A-Z0-9_]*)\}$")
 BEARER_REFERENCE = re.compile(r"^Bearer \$\{(?P<name>[A-Z][A-Z0-9_]*)\}$")
 HEADER_NAME = re.compile(r"^[A-Za-z0-9-]+$")
+# Package names as each registry writes them: never a path, URL, Git spec or local directory.
+REGISTRY_PACKAGE_NAMES = {
+    "npm": re.compile(r"^(?:@[a-z0-9][a-z0-9._~-]*/)?[a-z0-9][a-z0-9._~-]*$"),
+    "pip": re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$"),
+}
 AUTHORIZATION_HEADER = "authorization"
 
-APPLIED_TOOL_TYPES = (TOOL_MCP_SERVER,)
+APPLIED_TOOL_TYPES = (TOOL_CLI, TOOL_MCP_SERVER)
 DECISION_ALLOWED = "allowed"
 DECISION_BLOCKED = "blocked"
 SOURCE_TYPE_PATH = "path"
@@ -159,6 +165,10 @@ def validate_cli(cli, what):
         raise DeclarationError(f"{what} package needs a manager: one of {', '.join(PACKAGE_MANAGERS)}")
     if not isinstance(package.get("name"), str) or not package["name"].strip():
         raise DeclarationError(f"{what} package needs the name of the package")
+    registry_name = REGISTRY_PACKAGE_NAMES.get(package["manager"])
+    if registry_name and not registry_name.fullmatch(package["name"]):
+        # A path, URL or Git spec would let the manager run code from somewhere the sha256 never saw.
+        raise DeclarationError(f"{what} package name must be a {package['manager']} registry name, not a path or URL")
     if "sha256" in package and (not isinstance(package["sha256"], str) or not SHA256.fullmatch(package["sha256"])):
         raise DeclarationError(f"{what} package sha256 must be 64 lowercase hex characters")
     if "binary" in package and (not isinstance(package["binary"], str) or not COMMAND_NAME.fullmatch(package["binary"])):
@@ -280,9 +290,10 @@ def declared_tools(catalog, resolved, source_of_profile, is_pack_profile):
         common = {"source": source_name, "profile": profile}
         for cli in entry.get("clis", []):
             package = cli.get("package")
+            # The whole declaration: an apply installs from it.
             tools.append(dict(common, type=TOOL_CLI, name=cli["name"], version=cli["version"],
                               package=package["manager"] if package else None,
-                              sha256=bool(package.get("sha256")) if package else True))
+                              sha256=bool(package.get("sha256")) if package else True, cli=cli))
         for name, server in sorted(entry.get("mcpServers", {}).items()):
             # The whole declaration: an apply registers it as it is, references and all.
             tools.append(dict(common, type=TOOL_MCP_SERVER, name=name, command=server.get("command"),
@@ -418,7 +429,7 @@ def report(tools, catalog, configuration):
         decision, reason = evaluate(checked, policy, source, configuration.project_approved)
         evaluated.append(dict(tool, decision=decision, reason=reason))
     return {
-        # What an apply does with an allowed tool today: CLIs and scripts come in later versions.
+        # What an apply does with an allowed tool today: scripts come in a later version.
         "applies": list(APPLIED_TOOL_TYPES),
         "policy": {key: {"value": policy[key], "origin": configuration.origin(key)} for key in POLICY_KEYS},
         "tools": evaluated,

@@ -5,9 +5,9 @@ política que decide, en cada máquina, si cada herramienta puede ejecutarse. Le
 con herramientas, al explicar por qué una herramienta quedó bloqueada, al confiar en una fuente o al
 cambiar las claves `security.*`.
 
-> **Estado.** Un apply registra los servidores MCP que la política permite (sección 5). Todavía no
-> instala CLIs ni corre scripts: `plan` y `status` muestran su veredicto, y eso llega en las próximas
-> partes de #65.
+> **Estado.** Un apply registra los servidores MCP (sección 5) e instala los CLIs (sección 6) que la
+> política permite. Todavía no corre scripts: `plan` y `status` muestran su veredicto, y eso llega en
+> la próxima parte de #65.
 
 ## Contenido
 
@@ -16,6 +16,7 @@ cambiar las claves `security.*`.
 3. Confiar en una fuente o aprobar un repositorio
 4. Ver el veredicto
 5. Registro de servidores MCP
+6. Instalación de CLIs
 
 ## 1. Declaraciones
 
@@ -47,7 +48,9 @@ un valor fuera del schema frena el apply antes de escribir y nombra el pack y el
   - Lleva `artifacts` o `package`, nunca los dos.
   - `artifacts` tiene un archivo por plataforma (`linux-x64`, `linux-arm64`, `darwin-x64`,
     `darwin-arm64`, `windows-x64`, `windows-arm64`), con una `url` https sin credenciales y su `sha256`.
-  - `package` usa `npm`, `pip`, `brew` o `winget`, con un `sha256` opcional.
+  - `package` usa `npm`, `pip`, `brew` o `winget`, con un `sha256` opcional. Con `npm` y `pip`, `name` es
+    un nombre del registro: nunca una ruta, una URL ni un spec de Git.
+  - `binary` es el nombre del ejecutable, si no es el `name` del CLI.
 - **`mcpServers`**
   - Por nombre en kebab-case: un `command` (el nombre de un ejecutable, sin ruta ni argumentos), con
     `args` y `env`, o una `url` https con `headers`.
@@ -123,7 +126,7 @@ agent-ready trust list [--json]     # si el repo está aprobado y en qué fuente
 `agent-ready plan` lista cada herramienta como `allowed` o `blocked` con su motivo, y la política
 efectiva con la capa de cada valor. `agent-ready status` muestra lo mismo de forma breve. En el JSON
 del plan van en `packTools`, con `policy` (`value` y `origin` de cada clave), `tools` (cada una con
-`decision` y `reason`) y `applies`, los tipos que un apply ya aplica (`mcpServer`). Las rules y
+`decision` y `reason`) y `applies`, los tipos que un apply ya aplica (`cli` y `mcpServer`). Las rules y
 skills de un pack se proyectan siempre, pase lo que pase con sus herramientas.
 
 ## 5. Registro de servidores MCP
@@ -145,3 +148,37 @@ Un apply registra cada servidor MCP permitido para los providers del repo (`prov
 - **Solo un apply.** `plan`, `status`, la detección y las revisiones automáticas
   (`AGENT_READY_SETUP_REVIEW_MODE=1`) nunca cambian los servidores registrados.
 - **Si dos packs declaran el mismo nombre,** se registra el primero y se informa el otro.
+
+## 6. Instalación de CLIs
+
+Un apply instala cada CLI permitido en la caché del usuario (`$XDG_CACHE_HOME/agent-ready-setup/clis`,
+o `~/.cache/agent-ready-setup/clis`), nunca en el repositorio:
+
+| Origen | Qué hace el apply |
+|---|---|
+| `artifacts` | Descarga por https el archivo de la plataforma de la máquina y compara su `sha256` antes de abrirlo. Un `.tar.gz`, `.tgz` o `.zip` se extrae sin links ni rutas que salgan de su directorio; cualquier otro archivo es el ejecutable. |
+| `npm` | `npm pack --ignore-scripts` baja el tarball sin correr sus scripts, se compara su `sha256` y recién después `npm install` lo instala en un prefijo propio. |
+| `pip` | Solo wheels: un paquete fuente correría su build antes de que el `sha256` pudiera rechazarlo. `pip download --no-deps --only-binary=:all:` lo baja, con el `sha256` como hash de la requirement para que pip lo verifique, y se instala en un entorno virtual propio, creado donde queda. |
+| `brew`, `winget` | Nunca se ejecutan, porque instalan para toda la máquina. El apply dice el comando para instalarlo a mano y si el ejecutable ya está en el PATH. |
+
+- **Un `sha256` distinto no instala nada.** El apply informa el error, conserva lo que el repositorio
+  usaba y sigue con el resto. Las dependencias de un paquete npm o pip las resuelve su gestor: el
+  `sha256` cubre el paquete declarado, no sus dependencias.
+- **Una versión por máquina.** Cada versión vive una vez en la caché
+  (`installs/<nombre>/<versión>/<origen>-<id>`, donde `<id>` sale del `sha256` declarado) y la comparten
+  los repositorios que declaran los mismos bytes. Dos packs con el mismo nombre y versión pero otro
+  `sha256` (o otro `binary`) quedan en instalaciones distintas, así uno nunca reemplaza lo que corre el
+  otro. La limpieza nunca sigue un symlink ni un junction dentro de la caché. Cada
+  repositorio anota cuáles usa (`projects/<clave>.json`); una versión que ningún repositorio usa se
+  borra en el próximo apply o `remove` de cualquiera de ellos.
+- **PATH del repositorio.** Los directorios de los ejecutables quedan, uno por línea, en
+  `agent-ready/cli-path` dentro del directorio de Git (`git rev-parse --git-path agent-ready/cli-path`).
+  De ahí los toma el runner de los scripts del pack.
+- **Sin escrituras de más.** Un apply que no cambia nada no reescribe el registro del repositorio ni
+  `agent-ready/cli-path`.
+- **Lock.** `clis` guarda, por nombre, la fuente, el profile, la versión, el origen y el `sha256`.
+- **Se desinstala solo.** Un CLI que deja de estar permitido o cuyo profile se retira deja de usarse
+  en el próximo apply. `agent-ready remove` deja de usar todos.
+- **Solo un apply.** `plan`, `status`, la detección y las revisiones automáticas
+  (`AGENT_READY_SETUP_REVIEW_MODE=1`) nunca descargan ni instalan.
+- **Si dos packs declaran el mismo nombre,** se instala el primero y se informa el otro.

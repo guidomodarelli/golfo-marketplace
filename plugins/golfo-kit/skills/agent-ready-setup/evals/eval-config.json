@@ -3275,6 +3275,29 @@
           "description": "Indica volver a correr el apply"
         }
       ]
+    },
+    {
+      "id": "pack-cli-sha256-mismatch-installs-nothing",
+      "description": "El apply no instala el CLI de un pack porque el sha256 del archivo descargado no es el declarado: no instala nada y la solución es corregir el sha256 en el pack (o la URL), nunca apagar el check.",
+      "input": "Confiamos en el pack acme y agent-ready apply dice: ! CLI not installed: acme 1.4.2: acme-linux-x64.tar.gz has sha256 3f1c..., not the 9a0b... the pack declares; nothing was installed. El release lo subimos ayer de nuevo con un fix. ¿Qué pasó y cómo lo arreglo? ¿Apago security.checks.artifactSha256? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "(sha256|hash|checksum|suma)",
+          "description": "Explica que el sha256 del archivo descargado no coincide con el que declara el pack",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(actualiz|correg|cambi|nuevo sha256|sha256 nuevo|recalcul|volv).{0,200}(pack|agent-ready-pack\\.json|declar)",
+          "description": "Propone actualizar el sha256 declarado en el pack (o publicar una versión nueva) en vez de apagar el check"
+        },
+        {
+          "type": "regex",
+          "pattern": "(no (te )?(lo |la )?recomiendo|no (lo |la )?apag|no (conviene|hace falta)|no desactiv|mantené|dejalo (encendido|prendido)|evit)",
+          "description": "Desaconseja apagar security.checks.artifactSha256"
+        }
+      ]
     }
   ]
 }

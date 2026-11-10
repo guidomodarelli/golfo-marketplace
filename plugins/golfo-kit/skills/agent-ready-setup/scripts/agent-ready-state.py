@@ -49,6 +49,7 @@ from agent_ready_common import (  # noqa: E402
     sha256_of_file,
     sha256_of_text,
     walk_files,
+    write_text_if_changed,
     write_text_atomically,
 )
 from agent_ready_config import (  # noqa: E402
@@ -104,6 +105,7 @@ from agent_ready_detection import (  # noqa: E402
 )
 import agent_ready_compatibility as compatibility  # noqa: E402
 import agent_ready_conflicts as conflicts_review  # noqa: E402
+import agent_ready_pack_clis as pack_clis  # noqa: E402
 import agent_ready_pack_mcp as pack_mcp  # noqa: E402
 import agent_ready_pack_tools as pack_tools  # noqa: E402
 import agent_ready_golfo_kit as golfo_kit  # noqa: E402
@@ -291,21 +293,6 @@ def has_linked_parent(project_root, destination):
             return True
         parent = os.path.dirname(parent)
     return False
-
-
-def write_text_if_changed(path, text):
-    """Write text unless the file already holds it, ignoring its line endings.
-
-    Rewriting a CRLF checkout with LF would mark the file as modified in Git
-    although its content is the same.
-    """
-    try:
-        with open(path, encoding="utf-8") as file_handle:
-            if file_handle.read() == text:
-                return
-    except (OSError, UnicodeDecodeError):
-        pass
-    write_text_atomically(path, text)
 
 
 # ---------------------------------------------------------------------------
@@ -1885,6 +1872,9 @@ def finalize(project_root, skill_dir, plan, updates):
     mcp_report = register_pack_mcp_servers(project_root, plan, previous_lock)
     if mcp_report["lock"]:
         lock["mcpServers"] = mcp_report["lock"]
+    cli_report = install_pack_clis(project_root, plan, previous_lock)
+    if cli_report["lock"]:
+        lock["clis"] = cli_report["lock"]
     write_text_if_changed(os.path.join(project_root, LOCK_RELATIVE_PATH), serialize_json(lock))
 
     manifest = read_manifest(project_root)
@@ -1896,7 +1886,36 @@ def finalize(project_root, skill_dir, plan, updates):
     conflicts_review.record_pending(project_root, [])
 
     return {"removed": removed, "retireConflicts": retire_conflicts, "failed": failed, "conflicts": conflicts,
-            "mcpServers": mcp_report}
+            "mcpServers": mcp_report, "clis": cli_report}
+
+
+def install_pack_clis(project_root, plan, previous_lock):
+    """Install the CLIs of the packs that the policy allows, in the cache of the user; automated reviews install none."""
+    previous = (previous_lock or {}).get("clis", {})
+    if os.environ.get("AGENT_READY_SETUP_REVIEW_MODE") == "1":
+        return {"installed": [], "reused": [], "removed": [], "manual": [], "conflicts": [], "failed": [],
+                "lock": previous, "path": [], "skipped": "automated reviews never install the CLIs of the packs"}
+    return pack_clis.install(project_root, plan.get("packTools"), previous)
+
+
+def print_pack_cli_report(report, stream):
+    """What an apply installed, reused or dropped among the CLIs of the packs."""
+    if not report:
+        return
+    if report.get("skipped"):
+        write_line(f"CLIs of profile packs: unchanged ({report['skipped']}).", stream)
+        return
+    if report["installed"]:
+        write_line(paint(f"CLIs of profile packs installed in {pack_clis.installs_root()}: {', '.join(report['installed'])}",
+                         "ok", stream), stream)
+    if report["reused"]:
+        write_line(f"CLIs of profile packs already in the cache: {', '.join(report['reused'])}", stream)
+    if report["removed"]:
+        write_line(f"CLIs this repository no longer uses: {', '.join(report['removed'])}", stream)
+    for note in report["manual"] + report["conflicts"]:
+        write_line(paint(f"  ! {note}", "warning", stream), stream)
+    for problem in report["failed"]:
+        write_line(paint(f"  ! CLI not installed: {problem}", "error", stream), stream)
 
 
 def register_pack_mcp_servers(project_root, plan, previous_lock):
@@ -1961,6 +1980,7 @@ def print_finalize_report(report):
         for path in report["failed"]:
             write_line(f"  ! {path}")
     print_pack_mcp_report(report.get("mcpServers"), stream)
+    print_pack_cli_report(report.get("clis"), stream)
     if report["failed"]:
         result = "partial: some managed assets could not be applied"
     elif report["conflicts"] or report["retireConflicts"]:
@@ -2088,8 +2108,8 @@ def print_pack_tools(report, stream, brief=False):
     if not report:
         return
     blocked = sum(tool["decision"] == pack_tools.DECISION_BLOCKED for tool in report["tools"])
-    write_line(paint("Pack tools (what the security policy allows; an apply registers the allowed MCP servers, "
-                     "and does not install CLIs or run scripts yet)", "heading", stream), stream)
+    write_line(paint("Pack tools (what the security policy allows; an apply registers the allowed MCP servers "
+                     "and installs the allowed CLIs, and does not run scripts yet)", "heading", stream), stream)
     for tool in report["tools"]:
         label = f"{pack_tools.describe_tool(tool)} [{tool['profile']}]"
         if tool["decision"] == pack_tools.DECISION_ALLOWED:
@@ -2892,8 +2912,10 @@ REMOVAL_SYMBOLS = {REMOVAL_REMOVE: "-", REMOVAL_EDIT: "~", REMOVAL_KEEP: "="}
 REMOVAL_COLORS = {REMOVAL_REMOVE: "retire", REMOVAL_EDIT: "update", REMOVAL_KEEP: "muted"}
 # What each entry is, in the order a removal runs: the lockfile goes last, so an
 # interrupted removal can run again and finish.
-REMOVAL_KINDS = ("pack-mcp", "browser", "git-config", "git-hook", "review-cache", "view", "asset", "instructions", "settings", "state",
+REMOVAL_KINDS = ("pack-mcp", "pack-cli", "browser", "git-config", "git-hook", "review-cache", "view", "asset", "instructions", "settings", "state",
                  "config")
+# Not a project path: the CLIs live in the cache of the user, shared by the repositories of the machine.
+PACK_CLI_REMOVAL_LABEL = "CLIs of profile packs (cache of the user)"
 # Same values as asset-sync-common.sh, which writes them.
 HARD_LINK_VIEWS_MANIFEST = ".claude/.agent-ready-hard-link-views"
 GIT_HOOK_SECTION = "hook.agent-ready-relink"
@@ -3144,6 +3166,15 @@ def pack_mcp_removal_entries(project_root, lock):
             for path in pack_mcp.managed_files(project_root, managed)]
 
 
+def pack_cli_removal_entries(project_root, lock):
+    """The CLIs of profile packs this repository uses, from the lock; the cache keeps what other repositories use."""
+    if not (lock or {}).get("clis"):
+        return []
+    return [removal_entry(PACK_CLI_REMOVAL_LABEL, REMOVAL_EDIT,
+                          "stops using the CLIs of profile packs; the ones no other repository uses are deleted",
+                          "pack-cli")]
+
+
 def browser_removal_entries(project_root):
     """Browser MCP servers that agent-ready registered, and the metadata of this machine."""
     entries = []
@@ -3245,6 +3276,7 @@ def plan_removal(project_root, skill_dir):
     locked_assets = lock["assets"] if lock else {}
     entries = (
         pack_mcp_removal_entries(project_root, lock)
+        + pack_cli_removal_entries(project_root, lock)
         + browser_removal_entries(project_root)
         + local_removal_entries(project_root)
         + view_removal_entries(project_root, locked_assets)
@@ -3255,7 +3287,7 @@ def plan_removal(project_root, skill_dir):
     )
     for entry in entries:
         # A directory linked to ~/.claude or another shared place leads outside the repository.
-        if entry["action"] != REMOVAL_KEEP and entry["kind"] not in ("git-config", "git-hook") \
+        if entry["action"] != REMOVAL_KEEP and entry["kind"] not in ("git-config", "git-hook", "pack-cli") \
                 and has_linked_parent(project_root, entry["path"]):
             entry.update(action=REMOVAL_KEEP, reason=LINKED_PARENT_REASON, local=None)
     entries.sort(key=lambda entry: (REMOVAL_KINDS.index(entry["kind"]), entry["path"]))
@@ -3286,6 +3318,16 @@ def unregister_pack_mcp_servers(project_root, report):
         if names:
             report["edited"].append(path)
     report["failed"] += result["failed"]
+
+
+def uninstall_pack_clis(project_root, report):
+    """This repository stops using the CLIs of the packs; the cache deletes the ones no repository uses."""
+    try:
+        pack_clis.uninstall_all(project_root)
+    except (pack_clis.InstallError, OSError) as problem:
+        report["failed"].append(f"CLIs of profile packs: {problem}")
+        return
+    report["edited"].append(PACK_CLI_REMOVAL_LABEL)
 
 
 def unregister_browser_servers(project_root, skill_dir, report):
@@ -3355,6 +3397,12 @@ def apply_removal(project_root, skill_dir, plan):
                 pack_mcp_done = True
                 # The lock is the only record of which servers are the packs': it stays for a retry.
                 inventory_left = inventory_left or len(report["failed"]) > failures_before
+            continue
+        if entry["kind"] == "pack-cli":
+            failures_before = len(report["failed"])
+            uninstall_pack_clis(project_root, report)
+            # The lock says which CLIs the repository used: it stays for a retry.
+            inventory_left = inventory_left or len(report["failed"]) > failures_before
             continue
         if entry["kind"] == "browser":
             if not browser_done:
