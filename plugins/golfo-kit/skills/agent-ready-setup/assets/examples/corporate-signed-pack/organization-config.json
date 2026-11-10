@@ -1,0 +1,20 @@
+{
+  "security": {
+    "checks": {
+      "signature": true
+    },
+    "trustedSources": [
+      "https://git.acme.example/platform/agent-ready-pack"
+    ],
+    "signers": [
+      {
+        "source": "acme-platform",
+        "key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIReplaceWithTheReleaseKeyOfThePlatformTeam0000 platform-release@acme.example"
+      }
+    ],
+    "rules": [
+      { "match": { "type": "script", "contains": "| sh" }, "action": "deny" }
+    ]
+  },
+  "locked": ["security.checks", "security.signers"]
+}

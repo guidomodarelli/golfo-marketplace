@@ -3,7 +3,8 @@
 Qué puede declarar un profile de un pack además de archivos (CLIs, servidores MCP y scripts), y la
 política que decide, en cada máquina, si cada herramienta puede ejecutarse. Leer al publicar un pack
 con herramientas, al explicar por qué una herramienta quedó bloqueada, al confiar en una fuente o al
-cambiar las claves `security.*`.
+cambiar las claves `security.*`. Cómo publicar un pack así, personal o corporativo firmado, está en
+[publishing-packs-with-tools.md](publishing-packs-with-tools.md).
 
 > **Estado.** Un apply registra los servidores MCP (sección 5), instala los CLIs (sección 6) y corre
 > los scripts (sección 7) que la política permite. Con `security.checks.signature: true` verifica la
@@ -170,6 +171,11 @@ Un apply registra cada servidor MCP permitido para los providers del repo (`prov
 - **Solo un apply.** `plan`, `status`, la detección y las revisiones automáticas
   (`AGENT_READY_SETUP_REVIEW_MODE=1`) nunca cambian los servidores registrados.
 - **Si dos packs declaran el mismo nombre,** se registra el primero y se informa el otro.
+- **El `command` se busca en el PATH del provider.** Claude Code y Codex lanzan el comando tal cual.
+  Un CLI que instala un pack queda en el caché del usuario (sección 6), fuera de ese PATH, así que un
+  servidor no puede lanzarse con él. La entrada no lleva la ruta del caché porque `.mcp.json` y
+  `.codex/config.toml` se versionan en el repo. Para un servidor propio, usar uno remoto (`url`) o un
+  comando instalado en cada máquina.
 
 ## 6. Instalación de CLIs
 
@@ -195,7 +201,9 @@ o `~/.cache/agent-ready-setup/clis`), nunca en el repositorio:
   borra en el próximo apply o `remove` de cualquiera de ellos.
 - **PATH del repositorio.** Los directorios de los ejecutables quedan, uno por línea, en
   `agent-ready/cli-path` dentro del directorio de Git (`git rev-parse --git-path agent-ready/cli-path`).
-  De ahí los toma el runner de los scripts del pack.
+  De ahí los toma el runner de los scripts del pack. Ningún otro proceso los recibe solo: ni el shell
+  del agente ni el de la persona. Una rule que pide correr el CLI dice cómo sumar esos directorios al
+  PATH; `assets/examples/personal-tools-pack/` lo muestra en bash y PowerShell.
 - **Sin escrituras de más.** Un apply que no cambia nada no reescribe el registro del repositorio ni
   `agent-ready/cli-path`.
 - **Lock.** `clis` guarda, por nombre, la fuente, el profile, la versión, el origen y el `sha256`.

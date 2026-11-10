@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "name": "acme-platform",
+  "version": "2.4.0",
+  "profiles": {
+    "platform": {
+      "kind": "capability",
+      "description": "The Acme platform CLI, its documentation MCP server and the login check every service needs.",
+      "assets": "profiles/platform",
+      "clis": [
+        {
+          "name": "acme",
+          "version": "5.1.0",
+          "package": {
+            "manager": "npm",
+            "name": "@acme/cli",
+            "binary": "acme",
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        }
+      ],
+      "mcpServers": {
+        "acme-docs": {
+          "url": "https://mcp.acme.example/docs",
+          "headers": { "Authorization": "Bearer ${ACME_TOKEN}" }
+        }
+      },
+      "scripts": [
+        { "event": "install", "path": "scripts/check-login.sh", "interpreter": "bash", "timeoutSeconds": 60 }
+      ]
+    }
+  }
+}

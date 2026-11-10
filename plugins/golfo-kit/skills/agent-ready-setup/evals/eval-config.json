@@ -3344,6 +3344,34 @@
           "description": "Explica que la clave queda en security.signers"
         }
       ]
+    },
+    {
+      "id": "personal-pack-with-tools-needs-no-signature",
+      "description": "Para publicar un pack personal con su propio CLI no hace falta firmar: la firma está apagada por defecto, quien agrega la fuente con sources add la aprueba, y el CLI necesita sha256 por artefacto; se apoya en la guía o el ejemplo personal.",
+      "input": "Quiero publicar en mi GitHub un profile pack personal que instale mi CLI mytool y escriba una config local después de cada apply. ¿Tengo que firmar los commits o los tags? ¿Qué necesito declarar para el CLI y cómo lo uso desde un proyecto mío? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "(security\\.checks\\.signature|signature)",
+          "description": "Nombra el check de firma",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(no (hace falta|necesit|ten[eé]s que|es necesario)|apagad|por defecto|default)",
+          "description": "Dice que no hace falta firmar porque el check está apagado por defecto"
+        },
+        {
+          "type": "regex",
+          "pattern": "sha256",
+          "description": "Pide el sha256 de cada artefacto del CLI"
+        },
+        {
+          "type": "regex",
+          "pattern": "(sources add|post-apply|personal-tools-pack|publishing-packs-with-tools)",
+          "description": "Explica cómo adoptarlo (sources add, post-apply) o remite al ejemplo o la guía"
+        }
+      ]
     }
   ]
 }

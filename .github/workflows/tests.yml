@@ -55,6 +55,7 @@ jobs:
           plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-pack-tools.bats
           plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-pack-clis.bats
           plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-pack-scripts.bats
+          plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-pack-examples.bats
           skill-eval-runner/tests/run-evals-env-contract.bats
           skill-eval-runner/tests/run-evals-assertions.bats
           skill-eval-runner/tests/install.bats
@@ -88,7 +89,7 @@ jobs:
           - os: windows-latest
             python: "3.13"
             shard: 1/3
-            suites: agent-ready-state.bats agent-ready-config.bats agent-ready-pack-tools.bats
+            suites: agent-ready-state.bats agent-ready-config.bats agent-ready-pack-tools.bats agent-ready-pack-examples.bats
           - os: windows-latest
             python: "3.13"
             shard: 2/3
@@ -99,12 +100,12 @@ jobs:
             suites: agent-ready-packs.bats agent-ready-cli.bats agent-ready-golfo-kit.bats agent-ready-pack-scripts.bats
           - os: macos-latest
             python: "3.13"
-            suites: agent-ready-state.bats agent-ready-detection.bats agent-ready-packs.bats agent-ready-updates.bats agent-ready-config.bats agent-ready-cli.bats agent-ready-reviews.bats agent-ready-golfo-kit.bats agent-ready-conflicts.bats agent-ready-pack-tools.bats agent-ready-pack-clis.bats agent-ready-pack-scripts.bats merge-instructions.bats bootstrap.bats
+            suites: agent-ready-state.bats agent-ready-detection.bats agent-ready-packs.bats agent-ready-updates.bats agent-ready-config.bats agent-ready-cli.bats agent-ready-reviews.bats agent-ready-golfo-kit.bats agent-ready-conflicts.bats agent-ready-pack-tools.bats agent-ready-pack-clis.bats agent-ready-pack-scripts.bats agent-ready-pack-examples.bats merge-instructions.bats bootstrap.bats
           # The python3 that ships with the macOS command line tools. Browser tools
           # need 3.11+ (references/browser-setup.md), so bootstrap.bats stays on 3.13.
           - os: macos-latest
             python: "3.9"
-            suites: agent-ready-state.bats agent-ready-detection.bats agent-ready-packs.bats agent-ready-updates.bats agent-ready-config.bats agent-ready-cli.bats agent-ready-reviews.bats agent-ready-golfo-kit.bats agent-ready-conflicts.bats agent-ready-pack-tools.bats agent-ready-pack-clis.bats agent-ready-pack-scripts.bats
+            suites: agent-ready-state.bats agent-ready-detection.bats agent-ready-packs.bats agent-ready-updates.bats agent-ready-config.bats agent-ready-cli.bats agent-ready-reviews.bats agent-ready-golfo-kit.bats agent-ready-conflicts.bats agent-ready-pack-tools.bats agent-ready-pack-clis.bats agent-ready-pack-scripts.bats agent-ready-pack-examples.bats
     defaults:
       run:
         shell: bash
