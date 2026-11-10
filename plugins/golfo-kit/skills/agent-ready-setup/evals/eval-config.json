@@ -3395,6 +3395,29 @@
           "description": "Advierte que lo de adentro del bloque se pisa en cada apply"
         }
       ]
+    },
+    {
+      "id": "gitignore-own-rules-outside-block",
+      "description": "El .gitignore que gestiona agent-ready-setup tiene un bloque con su estado local (por ejemplo .agents/browser-tools.json); las reglas propias van fuera del bloque, porque lo de adentro se pisa en cada apply.",
+      "input": "Agent Ready me dejó un bloque '# BEGIN AGENT-READY MANAGED: common' en el .gitignore de mi repo. Quiero ignorar también dist/. ¿Lo agrego adentro del bloque o afuera? ¿Qué ignora ese bloque? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "(fuera|afuera|outside|despu[eé]s|antes).{0,80}(bloque|marcador|block|marker)",
+          "description": "Dice que dist/ va fuera del bloque",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "browser-tools\\.json|agent-ready-assets\\.lock|hard-link-views",
+          "description": "Nombra al menos una ruta local que ignora el bloque"
+        },
+        {
+          "type": "regex",
+          "pattern": "(adentro|dentro|inside|entre).{0,200}(pisa|reemplaza|sobrescrib|overwrit|se pierde|se perder)",
+          "description": "Advierte que lo de adentro se pisa en cada apply"
+        }
+      ]
     }
   ]
 }

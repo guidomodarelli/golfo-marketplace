@@ -337,3 +337,19 @@ PY
   ! grep -q 'AGENT-READY MANAGED' "$template"
   grep -qx '## Added while removing' "$template"
 }
+
+@test "the local state of agent-ready-setup is ignored through a managed .gitignore block" {
+  printf 'node_modules/\n' > .gitignore
+  run_cli apply
+  [ "$status" -eq 0 ]
+  head -1 .gitignore | grep -qx 'node_modules/'
+  grep -qx '# BEGIN AGENT-READY MANAGED: common' .gitignore
+  for local_path in .agents/browser-tools.json .agents/.agent-ready-assets.lock/held .claude/.agent-ready-hard-link-views; do
+    git check-ignore --quiet --no-index "$local_path"
+  done
+  [ "$(lock_value 'lock["blocks"][".gitignore"]["common"]["state"]')" = "applied" ]
+
+  run_cli remove --yes
+  [ "$status" -eq 0 ]
+  [ "$(cat .gitignore)" = "node_modules/" ]
+}

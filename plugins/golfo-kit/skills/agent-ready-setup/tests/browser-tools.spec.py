@@ -45,6 +45,9 @@ class BrowserToolsTests(unittest.TestCase):
         self.lockfile = self.project / browser_setup.AGENT_READY_LOCK_PATH
         self.lockfile.parent.mkdir(parents=True)
         self.lockfile.write_text("{}\n")
+        # And the managed .gitignore block that ignores the browser metadata.
+        self.ignored = "# BEGIN AGENT-READY MANAGED: common\n.agents/browser-tools.json\n# END AGENT-READY MANAGED: common\n"
+        (self.project / ".gitignore").write_text(self.ignored)
 
     def tearDown(self):
         self.environment.stop()
@@ -402,32 +405,33 @@ class BrowserToolsTests(unittest.TestCase):
         self.register()
         self.assertEqual(destination.read_bytes(), first_write)
 
-    def test_should_ignore_browser_metadata_once(self):
+    def test_should_not_write_metadata_that_git_does_not_ignore(self):
         (self.project / ".gitignore").write_text("node_modules/")
         self.register()
-        self.register()
-        self.assertEqual((self.project / ".gitignore").read_text(), "node_modules/\n.agents/browser-tools.json\n")
+        self.assertFalse((self.project / browser_setup.BROWSER_METADATA_PATH).exists())
+        self.assertEqual((self.project / ".gitignore").read_text(), "node_modules/")
+        claude, _ = self.project_servers()
+        self.assertIn("agent-browser", claude)
 
-    def test_should_keep_gitignore_when_metadata_is_already_ignored(self):
-        (self.project / ".gitignore").write_text(".agents/\n")
+    def test_should_write_metadata_without_touching_gitignore_when_it_is_ignored(self):
         self.register()
-        self.assertEqual((self.project / ".gitignore").read_text(), ".agents/\n")
+        self.assertTrue((self.project / browser_setup.BROWSER_METADATA_PATH).is_file())
+        self.assertEqual((self.project / ".gitignore").read_text(), self.ignored)
 
     def test_should_unregister_only_managed_servers_and_keep_project_settings(self):
         (self.project / ".mcp.json").write_text(json.dumps({"custom": "ñandú", "mcpServers": {"own": {"command": "own-server"}}}, ensure_ascii=False))
         (self.project / ".codex").mkdir()
         (self.project / ".codex/config.toml").write_text('# custom comment\nmodel = "custom-model"\n[mcp_servers.own]\ncommand = "own-server"\n')
-        (self.project / ".gitignore").write_text("node_modules/")
         self.register()
         changed = browser_setup.unregister_servers(self.project)
         self.assertEqual(set(changed), {("edited", ".mcp.json"), ("edited", ".codex/config.toml"),
-                                        ("removed", ".agents/browser-tools.json"), ("edited", ".gitignore")})
+                                        ("removed", ".agents/browser-tools.json")})
         claude, codex = self.project_servers()
         self.assertEqual(claude, {"own": {"command": "own-server"}})
         self.assertEqual(set(codex), {"own"})
         self.assertIn("ñandú", (self.project / ".mcp.json").read_text())
         self.assertIn("# custom comment", (self.project / ".codex/config.toml").read_text())
-        self.assertEqual((self.project / ".gitignore").read_text(), "node_modules/\n")
+        self.assertEqual((self.project / ".gitignore").read_text(), self.ignored)
         self.assertEqual(browser_setup.unregister_servers(self.project), [])
 
     def test_should_unregister_through_dedicated_entry_point_and_delete_files_it_created(self):
@@ -437,8 +441,8 @@ class BrowserToolsTests(unittest.TestCase):
                                 capture_output=True, text=True, check=False)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(set(result.stdout.splitlines()), {"removed\t.mcp.json", "removed\t.codex/config.toml",
-                                                           "removed\t.agents/browser-tools.json", "removed\t.gitignore"})
-        for created in (".mcp.json", ".codex/config.toml", ".gitignore", ".agents/browser-tools.json"):
+                                                           "removed\t.agents/browser-tools.json"})
+        for created in (".mcp.json", ".codex/config.toml", ".agents/browser-tools.json"):
             self.assertFalse((self.project / created).exists(), created)
         self.assertFalse(self.claude_user.exists())
 

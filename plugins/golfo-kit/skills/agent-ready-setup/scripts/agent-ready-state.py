@@ -3429,11 +3429,7 @@ def browser_removal_entries(project_root):
                                                  "unregisters the browser MCP servers agent-ready added; other servers stay", "browser"))
     if os.path.isfile(os.path.join(project_root, BROWSER_METADATA_RELATIVE_PATH)):
         entries.append(removal_entry(BROWSER_METADATA_RELATIVE_PATH, REMOVAL_REMOVE, "browser tools metadata of this machine", "browser"))
-    gitignore = os.path.join(project_root, ".gitignore")
-    if os.path.isfile(gitignore) and not os.path.islink(gitignore):
-        with open(gitignore, encoding="utf-8", errors="replace") as file_handle:
-            if BROWSER_METADATA_RELATIVE_PATH in file_handle.read().splitlines():
-                entries.append(removal_entry(".gitignore", REMOVAL_EDIT, "drops the line that ignored the browser metadata", "browser"))
+    # The line that ignores it lives in the .gitignore block of the common profile: block_removal_entries.
     return entries
 
 
