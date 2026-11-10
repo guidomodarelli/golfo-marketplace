@@ -3418,6 +3418,29 @@
           "description": "Advierte que lo de adentro se pisa en cada apply"
         }
       ]
+    },
+    {
+      "id": "ci-provider-setup-command",
+      "description": "Para dejar armado el chequeo de CI en GitHub Actions se usa agent-ready ci setup --provider github, que crea el workflow y el script gestionados; cambiar de proveedor retira los archivos del anterior.",
+      "input": "Quiero que el chequeo de Agent Ready corra en GitHub Actions en mi repo. ¿Qué comando corro y qué archivos me deja? Y si después me paso a GitLab, ¿qué pasa con el workflow? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "ci setup --provider github",
+          "description": "Da el comando agent-ready ci setup --provider github",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "agent-ready-check\\.sh|workflows/agent-ready\\.yml",
+          "description": "Nombra el script o el workflow que deja"
+        },
+        {
+          "type": "regex",
+          "pattern": "(retira|elimina|borra|saca|remov|quita).{0,160}(workflow|anterior|github)|(workflow|anterior|github).{0,160}(retira|elimina|borra|saca|remov|quita)",
+          "description": "Dice que al cambiar de proveedor se retiran los archivos del anterior"
+        }
+      ]
     }
   ]
 }

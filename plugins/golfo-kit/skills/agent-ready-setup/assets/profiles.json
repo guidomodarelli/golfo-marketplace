@@ -70,6 +70,34 @@
           { "type": "gradle-dependency", "coordinates": ["androidx.webkit:webkit"] }
         ]
       }
+    },
+    "ci": {
+      "kind": "ci",
+      "description": "Script .agents/ci/agent-ready-check.sh that runs the CI check; every CI provider calls it.",
+      "assets": "assets/ci/common"
+    },
+    "ci-generic": {
+      "kind": "ci",
+      "description": "Only the CI script, for a pipeline of any provider.",
+      "requires": ["ci"]
+    },
+    "ci-github": {
+      "kind": "ci",
+      "description": "GitHub Actions workflow .github/workflows/agent-ready.yml that runs the CI script.",
+      "assets": "assets/ci/github",
+      "requires": ["ci"]
+    },
+    "ci-gitlab": {
+      "kind": "ci",
+      "description": "GitLab job .agents/ci/gitlab-ci.yml, included from a managed block of .gitlab-ci.yml.",
+      "assets": "assets/ci/gitlab",
+      "requires": ["ci"]
+    },
+    "ci-jenkins": {
+      "kind": "ci",
+      "description": "Jenkins stage .agents/ci/jenkins-stage.groovy to copy into the Jenkinsfile, which is never edited.",
+      "assets": "assets/ci/jenkins",
+      "requires": ["ci"]
     }
   },
   "stackDefaults": {

@@ -26,6 +26,7 @@ agent-ready-state.py check compara las fuentes, el lockfile y los assets commite
 |---|---|---|---|---|---|---|
 | `ci.enabled` | boolean | `true` | todas | — | — | Apagado, el chequeo no compara nada, no usa la red y sale con 0. |
 | `ci.mode` | `fail` \| `warn` | `"fail"` | todas | `AGENT_READY_SETUP_CI` | — | fail sale con el código de cada resultado; warn informa lo mismo y sale con 0. |
+| `ci.provider` | `github` \| `gitlab` \| `jenkins` \| `generic` \| `none` | — | project | — | — | Proveedor de CI cuyos archivos gestiona agent-ready-setup: el script .agents/ci/agent-ready-check.sh y, según el proveedor, el workflow de GitHub Actions, el job de GitLab con su include o el stage de Jenkins para copiar. none no crea nada; sin valor, todavía no se eligió. |
 
 ## `conflicts`: Conflictos semánticos
 

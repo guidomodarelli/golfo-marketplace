@@ -16,7 +16,7 @@ description: >-
   descartar un hallazgo de sus revisiones de IA.
 license: MIT
 metadata:
-  version: "1.26.0"
+  version: "1.27.0"
   author: "guponce"
   category: "developer-experience"
   tags: "agent-ready, multi-provider, claude-code, codex, bootstrap, setup, scaffold, context-optimized-v1.20.1"
@@ -123,6 +123,7 @@ explícito fuera del cache conservan prioridad para desarrollo local.
 | `agent-ready sources list\|add\|remove` | las fuentes de packs del manifest; `add` además la trae a la caché |
 | `agent-ready doctor [--offline] [--json]` | revisa Git, Bash, Python, la CLI del provider, la configuración, las fuentes y los hooks, y dice cómo arreglar lo que falta |
 | `agent-ready remove [--dry-run] [--yes]` | saca agent-ready-setup del repo y conserva lo que escribió el proyecto |
+| `agent-ready ci setup --provider github\|gitlab\|jenkins\|generic\|none [--no-apply]` | elige el proveedor de CI (`ci.provider`) y aplica: crea el script `.agents/ci/agent-ready-check.sh` y el workflow, el job de GitLab con su `include` o el stage de Jenkins para copiar; cambiarlo retira los archivos del anterior ([references/ci-check.md](references/ci-check.md)) |
 | `agent-ready trust list\|add\|remove` | confía en una fuente o aprueba el repo en esta máquina; las herramientas de un pack pasan por la política de seguridad ([references/pack-tools.md](references/pack-tools.md)) |
 | `agent-ready review list\|accept\|dismiss\|reset` | los hallazgos de las revisiones de IA con su id, y las decisiones del equipo sobre ellos ([references/ai-reviews.md](references/ai-reviews.md)) |
 
@@ -145,8 +146,9 @@ terminal: `init` lo que falta y `remove` la confirmación. Sin terminal, con `CI
 `--no-input` salen con 2 y nombran los flags que faltan (`remove` pide `--yes`); si preguntaron,
 imprimen el comando equivalente. El resto corre igual en un hook o en CI. `plan`, `status` y `apply` necesitan el provider: lo infieren como `resolve-provider.sh`
 (ver Step 3) o lo toman de `--provider claude|codex`. Para CI, en cualquier proveedor, `agent-ready
-check` compara y sale con códigos documentados, según `ci.mode`. Esta skill no crea workflows de CI;
-para armar un pipeline o explicar un código de salida, leer
+check` compara y sale con códigos documentados, según `ci.mode`. `agent-ready ci setup --provider <proveedor>`
+deja armados los archivos de ese proveedor como assets gestionados; para elegir el proveedor, armar un
+pipeline a mano o explicar un código de salida, leer
 [references/ci-check.md](references/ci-check.md). Saltear los Steps 2 y 4. Para explicar la salida, leer
 [references/profiles-and-lockfile.md](references/profiles-and-lockfile.md).
 
@@ -377,12 +379,13 @@ copiados durante bootstrap. No modifica `~/.codex/config.toml`,
 
 ## Step 4 — Report
 
-Mostrar output del script sin alterarlo. En respuestas documentales, enumerar además del resumen cada asset del template detectado con su path relativo, copiado tal cual de este catálogo (el árbol de `assets/` manda si difiere). Cada uno se proyecta en `.agents/<path>`, con vista en `.claude/<path>` salvo los hooks:
+Mostrar output del script sin alterarlo. En respuestas documentales, enumerar además del resumen cada asset del template detectado con su path relativo, copiado tal cual de este catálogo (el árbol de `assets/` manda si difiere). Cada uno se proyecta en `.agents/<path>`, con vista en `.claude/<path>` salvo los hooks; los bloques y los archivos de CI van al destino que nombra cada uno:
 
 - **Todos los stacks** (`assets/common/`): `rules/browser-before-user-questions.md`, `rules/database.md`, `rules/environment-readiness.md`, `rules/error-handling.md`, `rules/established-libraries.md`, `rules/language-consistency.md`, `rules/lint-gate.md`, `rules/patterns-we-do-not-use.md`, `rules/root-cause-bug-fixes.md`, `rules/speculative-complexity-approval.md`, `rules/testing-scope.md`, `rules/user-actions-first.md`, `rules/verify-changes.md`, `skills/agent-browser/`, `skills/pr-review-workflow/`, `hooks/sync-marketplace.sh`, `hooks/check-harness-consistency.sh` (con `hooks/harness-review.py` y `hooks/review-cache.py`), `settings.json` y los bloques `blocks/.github/pull_request_template.md` y `blocks/.gitignore`.
 - **Android, Go, Java y Node:** `rules/coding-style.md`, `rules/security.md`, `rules/testing.md`, `agents/perf-analyzer.md`, `agents/security-scanner.md` y `commands/review-pr.md`.
 - **Frontend:** `rules/api-configuration.md`, `rules/api-validation-middleware.md`, `rules/cross-engine.md`, `rules/frontend-style.md`, `rules/hexagonal-architecture.md`, `rules/lodash.md`, `rules/no-unnecessary-mocks.md`, `rules/security.md`, `rules/server-first-data-flow.md`, `rules/testing.md`, `rules/upstream-contracts.md`, `rules/user-facing-feedback.md`, `agents/a11y-reviewer.md`, `agents/lint-reviewer.md`, `agents/perf-analyzer.md`, `agents/security-scanner.md`, `agents/test-reviewer.md`, `commands/review-pr.md`, `skills/api-endpoint/`, `skills/component-creation/`, `skills/karpathy-guidelines/`, `skills/logger/`, `skills/react-act-test-fixes/` y `skills/service/`.
 - **Profile `business-flows`:** `rules/business-flows.md` y `skills/business-flow-design/SKILL.md`.
+- **CI, según `ci.provider`** (`assets/ci/`): con cualquier proveedor menos `none`, `.agents/ci/agent-ready-check.sh`; con `github`, además `.github/workflows/agent-ready.yml`; con `gitlab`, `.agents/ci/gitlab-ci.yml` y un bloque en `.gitlab-ci.yml` con su `include`; con `jenkins`, `.agents/ci/jenkins-stage.groovy`. Sin `ci.provider` o con `none`, ninguno.
 - **Profile packs:** los assets de cada profile seleccionado de `sources.packs`, con los paths que publique su pack bajo `rules/`, `skills/`, `agents/` y `commands/`.
 - **Estado del repo:** `.agents/agent-ready.json` (manifest) y `.agents/agent-ready.lock.json` (lockfile). `assets/profiles.json`, `assets/providers.json` y los schemas de `assets/config/` son catálogos internos de la skill, y `assets/examples/` guarda ejemplos para leer; ninguno se proyecta.
 

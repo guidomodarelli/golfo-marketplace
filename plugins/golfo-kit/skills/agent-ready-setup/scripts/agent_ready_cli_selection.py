@@ -72,7 +72,9 @@ def command_profiles_list(arguments):
     catalog = engine().load_effective_catalog(arguments.project_root, content_root(arguments.project_root))
     selected = set(selected_profiles(arguments.project_root))
     rows = []
-    for name, profile in sorted(catalog["profiles"].items()):
+    # The CI profiles are not selectable: agent-ready ci setup picks them through ci.provider.
+    for name in engine().selectable_profile_names(catalog):
+        profile = catalog["profiles"][name]
         source = name.split(NAMESPACE_SEPARATOR, 1)[0] if NAMESPACE_SEPARATOR in name else GOLFO_SOURCE_LABEL
         rows.append({"name": name, "kind": profile.get("kind"), "source": source,
                      "selected": name in selected, "description": profile.get("description", "")})
