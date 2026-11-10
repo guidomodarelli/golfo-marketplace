@@ -3350,8 +3350,11 @@ def apply_removal(project_root, skill_dir, plan):
             continue
         if entry["kind"] == "pack-mcp":
             if not pack_mcp_done:
+                failures_before = len(report["failed"])
                 unregister_pack_mcp_servers(project_root, report)
                 pack_mcp_done = True
+                # The lock is the only record of which servers are the packs': it stays for a retry.
+                inventory_left = inventory_left or len(report["failed"]) > failures_before
             continue
         if entry["kind"] == "browser":
             if not browser_done:

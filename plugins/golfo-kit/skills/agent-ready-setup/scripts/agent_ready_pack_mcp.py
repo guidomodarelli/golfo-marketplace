@@ -31,6 +31,8 @@ CODEX_CONFIG_RELATIVE_PATH = ".codex/config.toml"
 CLAUDE_SERVERS_KEY = "mcpServers"
 CODEX_SERVERS_KEY = "mcp_servers"
 CLAUDE_HTTP_TYPE = "http"
+# The hash of the .mcp.json entry an apply wrote: the stable marker of a managed Claude entry.
+CLAUDE_ENTRY_FIELD = "claudeEntrySha256"
 CODEX_BLOCK_START = "# BEGIN AGENT-READY PACK MCP SERVERS"
 CODEX_BLOCK_END = "# END AGENT-READY PACK MCP SERVERS"
 CODEX_BLOCK_NOTE = "# Managed by agent-ready-setup from the profile packs; change the pack, not these lines."
@@ -80,34 +82,54 @@ def claude_entry(server):
     return entry
 
 
-def read_regular_file(path):
-    """The text of a project configuration, or None when it does not exist; a symlink is never followed."""
-    if os.path.lexists(path) and (is_link(path) or not os.path.isfile(path)):
-        raise RegistrationError(f"{path} is a symlink or not a regular file, so its MCP servers were not changed")
+def read_regular_file(project_root, relative):
+    """The text of a project configuration, or None when it does not exist.
+
+    No symlink or junction is followed, the file's or a parent's: a .codex linked to the user's
+    ~/.codex would otherwise edit the configuration of the user.
+    """
+    current = project_root
+    for part in relative.split("/"):
+        current = os.path.join(current, part)
+        if os.path.lexists(current) and is_link(current):
+            raise RegistrationError(f"{relative} goes through a symlink or a junction, so its MCP servers were not changed")
+    path = os.path.join(project_root, *relative.split("/"))
+    if os.path.lexists(path) and not os.path.isfile(path):
+        raise RegistrationError(f"{relative} is not a regular file, so its MCP servers were not changed")
     if not os.path.exists(path):
         return None
     with open(path, encoding="utf-8") as config_file:
         return config_file.read()
 
 
+def entry_digest(entry):
+    return hashlib.sha256(json.dumps(entry, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+
+
 def sync_claude(project_root, desired, previous):
-    """Write the managed servers into .mcp.json; returns (registered, removed, conflicts)."""
+    """Write the managed servers into .mcp.json; returns (registered, removed, conflicts).
+
+    An entry is managed while it is exactly what the last apply wrote (the hash the lock keeps): one
+    the user changed under the same name is theirs from then on, and is never replaced or deleted.
+    """
     path = os.path.join(project_root, CLAUDE_CONFIG_RELATIVE_PATH)
-    original = read_regular_file(path)
+    original = read_regular_file(project_root, CLAUDE_CONFIG_RELATIVE_PATH)
     try:
         document = json.loads(original) if original and original.strip() else {}
     except ValueError as invalid:
         raise RegistrationError(f"{CLAUDE_CONFIG_RELATIVE_PATH} is not valid JSON, so its MCP servers were not changed") from invalid
-    servers = document.get(CLAUDE_SERVERS_KEY, {})
-    if not isinstance(document, dict) or not isinstance(servers, dict):
+    if not isinstance(document, dict) or not isinstance(document.get(CLAUDE_SERVERS_KEY, {}), dict):
         raise RegistrationError(f"{CLAUDE_CONFIG_RELATIVE_PATH} has no object of {CLAUDE_SERVERS_KEY}, so it was not changed")
+    servers = document.get(CLAUDE_SERVERS_KEY, {})
+    managed = {name for name, entry in previous.items()
+               if name in servers and entry.get(CLAUDE_ENTRY_FIELD) == entry_digest(servers[name])}
     registered, removed, conflicts = [], [], []
-    for name in sorted(previous):
-        if name not in desired and name in servers:
+    for name in sorted(managed):
+        if name not in desired:
             del servers[name]
             removed.append(name)
     for name, item in sorted(desired.items()):
-        if name in servers and name not in previous:
+        if name in servers and name not in managed:
             conflicts.append(f"{name}: {CLAUDE_CONFIG_RELATIVE_PATH} already has a server with that name, which belongs "
                              "to the project; rename one of them")
             continue
@@ -191,8 +213,17 @@ def project_codex_servers(text):
             raise RegistrationError(f"{CODEX_CONFIG_RELATIVE_PATH} is not valid TOML, so its MCP servers were not changed") from invalid
         servers = document.get(CODEX_SERVERS_KEY, {})
         return set(servers) if isinstance(servers, dict) else set()
-    names = set(re.findall(r'^\s*\[\s*mcp_servers\.(?:"([^"]+)"|([A-Za-z0-9_-]+))\s*\]', text, re.M))
-    return {quoted or bare for quoted, bare in names}
+    names = set()
+    for line in text.splitlines():
+        if not re.match(r"^\s*\[*\s*mcp_servers\b|^\s*mcp_servers\s*\.", line):
+            continue
+        simple = re.fullmatch(r'\s*\[\s*mcp_servers\.(?:"([A-Za-z0-9_-]+)"|([A-Za-z0-9_-]+))\s*\]\s*(?:#.*)?', line)
+        if not simple:
+            # Python before 3.11 has no TOML reader: anything but a plain table header is not guessed at.
+            raise RegistrationError(f"{CODEX_CONFIG_RELATIVE_PATH} declares MCP servers in a form this Python cannot "
+                                    "read without tomllib (3.11 or newer), so it was not changed")
+        names.add(simple.group(1) or simple.group(2))
+    return names
 
 
 def codex_block(desired):
@@ -206,7 +237,7 @@ def codex_block(desired):
 def sync_codex(project_root, desired, previous):
     """Rewrite the managed block of .codex/config.toml; returns (registered, removed, conflicts)."""
     path = os.path.join(project_root, CODEX_CONFIG_RELATIVE_PATH)
-    original = read_regular_file(path)
+    original = read_regular_file(project_root, CODEX_CONFIG_RELATIVE_PATH)
     rest, _ = without_block(original or "")
     if rest.strip() and re.search(r"^\s*mcp_servers\s*=", rest, re.M):
         raise RegistrationError(f"{CODEX_CONFIG_RELATIVE_PATH} declares mcp_servers inline, so the pack servers were not added")
@@ -241,15 +272,16 @@ def register(project_root, report, previous, providers):
     """
     desired, duplicated = desired_servers(report)
     result = {"registered": {}, "removed": {}, "conflicts": list(duplicated), "failed": [], "lock": {}}
-    for provider in providers:
-        if provider not in PROVIDER_SYNC:
-            continue
-        before = {name for name, entry in previous.items() if provider in entry.get("providers", [])}
-        if not desired and not before:
+    managed_providers = {provider for entry in previous.values() for provider in entry.get("providers", [])}
+    for provider in sorted((set(providers) | managed_providers) & set(PROVIDER_SYNC)):
+        # A provider the repository no longer selects keeps nothing of the packs.
+        wanted = desired if provider in providers else {}
+        before = {name: entry for name, entry in previous.items() if provider in entry.get("providers", [])}
+        if not wanted and not before:
             # Nothing of the packs to add or remove: the configuration of the provider is not even read.
             continue
         try:
-            registered, removed, conflicts = PROVIDER_SYNC[provider](project_root, desired, before)
+            registered, removed, conflicts = PROVIDER_SYNC[provider](project_root, wanted, before)
         except (RegistrationError, OSError) as problem:
             result["failed"].append(str(problem))
             # Nothing changed for this provider: what the lock had stays recorded.
@@ -260,10 +292,12 @@ def register(project_root, report, previous, providers):
         result["removed"][PROVIDER_FILES[provider]] = removed
         result["conflicts"] += conflicts
         for name in registered:
-            item = desired[name]
+            item = wanted[name]
             entry = result["lock"].setdefault(name, {"source": item["source"], "profile": item["profile"],
                                                      "sha256": declaration_digest(item["server"]), "providers": []})
             entry["providers"].append(provider)
+            if provider == PROVIDER_CLAUDE:
+                entry[CLAUDE_ENTRY_FIELD] = entry_digest(claude_entry(item["server"]))
     for entry in result["lock"].values():
         entry["providers"] = sorted(set(entry["providers"]))
     return result

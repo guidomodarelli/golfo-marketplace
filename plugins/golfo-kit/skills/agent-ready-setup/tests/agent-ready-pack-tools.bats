@@ -423,3 +423,65 @@ PY
   assert_json .mcp.json 'data["mcpServers"] == {"mine": {"command": "mine"}}'
   ! grep -qs 'AGENT-READY PACK MCP SERVERS' .codex/config.toml
 }
+
+@test "a .codex linked outside the project is never edited" {
+  mkdir -p "$test_root/user-codex"
+  printf '[profile]\nname = "mine"\n' > "$test_root/user-codex/config.toml"
+  cp "$test_root/user-codex/config.toml" "$test_root/user-codex-before.toml"
+  case "$(uname -s)" in
+    MINGW* | MSYS*) cmd //c "mklink /J $(cygpath -w "$PWD/.codex") $(cygpath -w "$test_root/user-codex")" > /dev/null ;;
+    *) ln -s "$test_root/user-codex" .codex ;;
+  esac
+  run_cli trust add acme
+  # The apply refuses a linked .codex before writing anything, and the registration of the
+  # pack servers refuses it on its own as well: the configuration of the user stays as it was.
+  run_cli apply
+  [[ "$stderr" == *".codex is a symlink"* || "$stderr" == *".codex/config.toml goes through a symlink or a junction"* ]]
+  cmp -s "$test_root/user-codex/config.toml" "$test_root/user-codex-before.toml"
+  run_cli remove --yes
+  cmp -s "$test_root/user-codex/config.toml" "$test_root/user-codex-before.toml"
+}
+
+@test "a provider that leaves the selection keeps nothing of the packs" {
+  run_cli trust add acme
+  run_cli apply
+  grep -Fq 'AGENT-READY PACK MCP SERVERS' .codex/config.toml
+  run_cli config set providers claude
+  run_cli apply
+  [ "$status" -eq 0 ]
+  ! grep -qs 'AGENT-READY PACK MCP SERVERS' .codex/config.toml
+  assert_json .agents/agent-ready.lock.json 'data["mcpServers"]["acme-docs"]["providers"] == ["claude"]'
+}
+
+@test "a pack server the user changed is theirs from then on" {
+  run_cli trust add acme
+  run_cli apply
+  python3 - <<'PY'
+import json
+document = json.load(open(".mcp.json", encoding="utf-8"))
+document["mcpServers"]["acme-docs"] = {"command": "mine"}
+json.dump(document, open(".mcp.json", "w", encoding="utf-8"))
+PY
+  run_cli apply
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"MCP server kept as the project has it: acme-docs: .mcp.json already has a server with that name"* ]]
+  assert_json .mcp.json 'data["mcpServers"]["acme-docs"] == {"command": "mine"}'
+
+  run_cli trust remove acme
+  run_cli apply
+  assert_json .mcp.json 'data["mcpServers"]["acme-docs"] == {"command": "mine"}'
+}
+
+@test "a provider configuration that cannot be read stops nothing else, and remove keeps the lock to retry" {
+  run_cli trust add acme
+  run_cli apply
+  printf '[]\n' > .mcp.json
+  run_cli apply
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *".mcp.json has no object of mcpServers, so it was not changed"* ]]
+  assert_json .agents/agent-ready.lock.json 'data["mcpServers"]["acme-docs"]["providers"] == ["claude", "codex"]'
+
+  run_cli remove --yes
+  [ -f .agents/agent-ready.lock.json ]
+  ! grep -qs 'AGENT-READY PACK MCP SERVERS' .codex/config.toml
+}
