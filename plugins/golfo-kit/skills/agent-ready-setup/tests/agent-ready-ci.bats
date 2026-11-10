@@ -105,6 +105,8 @@ PY
   [ "$status" -eq 0 ]
   [ ! -e "$workflow" ]
   grep -q 'sh .agents/ci/agent-ready-check.sh' .agents/ci/gitlab-ci.yml
+  # The project declares only a build stage: the job goes to .pre, which every pipeline has.
+  grep -qx '  stage: .pre' .agents/ci/gitlab-ci.yml
   grep -qx '# BEGIN AGENT-READY MANAGED: ci-gitlab' .gitlab-ci.yml
   grep -qx '  - local: .agents/ci/gitlab-ci.yml' .gitlab-ci.yml
   grep -qx '    - make' .gitlab-ci.yml

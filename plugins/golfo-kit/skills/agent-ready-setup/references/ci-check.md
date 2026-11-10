@@ -39,7 +39,7 @@ selección de profiles: se proyectan, se registran en el lock y se retiran como 
 | `ci.provider` | Qué deja armado |
 |---|---|
 | `github` | el script y `.github/workflows/agent-ready.yml`, que lo corre en cada PR, una vez por semana y a mano |
-| `gitlab` | el script, el job `.agents/ci/gitlab-ci.yml` y, en `.gitlab-ci.yml`, solo un bloque gestionado con su `include: local:` |
+| `gitlab` | el script, el job `.agents/ci/gitlab-ci.yml` en el stage `.pre`, que existe en cualquier pipeline sin importar sus `stages`, y, en `.gitlab-ci.yml`, solo un bloque gestionado con su `include: local:` |
 | `jenkins` | el script y `.agents/ci/jenkins-stage.groovy`, el stage para copiar en el `Jenkinsfile`, que nunca se edita; `ci setup` lo imprime por stdout |
 | `generic` | solo el script, para llamarlo desde cualquier pipeline |
 | `none` | nada; queda registrado que se eligió no configurar el CI |
@@ -47,7 +47,9 @@ selección de profiles: se proyectan, se registran en el lock y se retiran como 
 Todos los proveedores llaman al mismo script, `.agents/ci/agent-ready-check.sh`: clona golfo-marketplace fuera del
 repo, corre `agent-ready check` con los argumentos que reciba y sale con su código. Cambiar el proveedor, o pasarlo
 a `none`, retira los archivos y bloques del anterior. Si `.gitlab-ci.yml` ya tiene un `include:` propio, sumar
-`- local: .agents/ci/gitlab-ci.yml` a esa lista y no elegir `gitlab`: dos claves `include:` invalidan el YAML.
+`- local: .agents/ci/gitlab-ci.yml` a esa lista y no elegir `gitlab`: dos claves `include:` invalidan el YAML. GitLab
+no corre un pipeline que solo tiene jobs de `.pre`: en un repo sin otros jobs, elegir `generic` y llamar al script desde
+un job propio.
 
 Ningún archivo generado contiene un secreto. Para packs privados, el CI expone dos variables que el script
 convierte en la configuración de Git del entorno: `AGENT_READY_GIT_TOKEN`, un token de lectura guardado como
