@@ -2867,6 +2867,9 @@ def terminate_process_tree(process):
 
 def run_sync(command, project_root, environment, timeout_seconds):
     """Run the foreground sync in its own process group. Returns (output, exit status)."""
+    # The scripts of the packs this sync starts are this sync's: its timeout stops them, and no other.
+    owner = f"sync-{os.getpid()}"
+    environment = dict(environment, **{pack_scripts.OWNER_VARIABLE: owner})
     try:
         process = subprocess.Popen(
             command, cwd=project_root, env=environment, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -2880,7 +2883,7 @@ def run_sync(command, project_root, environment, timeout_seconds):
     except subprocess.TimeoutExpired:
         terminate_process_tree(process)
         # Each script of a pack runs in a session of its own, outside the group just stopped.
-        pack_scripts.stop_running_scripts(project_root)
+        pack_scripts.stop_running_scripts(project_root, owner)
         output, _ = process.communicate()
         return f"{output}ERROR: the sync did not finish in {timeout_seconds} seconds and was stopped\n", 1
 

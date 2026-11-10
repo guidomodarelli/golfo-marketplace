@@ -32,9 +32,14 @@ CLI_PATH_FILE = "agent-ready/cli-path"
 PRIVATE_FILE_MODE = 0o600
 TERMINATE_GRACE_SECONDS = 5
 SESSION_LOCK_NAME = ".session-start.lock"
-# The process groups of the scripts running now, one per line: whoever stops the sync that started
-# them stops them too (stop_running_scripts), since each one runs in a session of its own.
-RUNNING_FILE_NAME = "running"
+# The process groups of the scripts running now, one per line, in one file per invocation: whoever
+# stops the sync that started them stops them too (stop_running_scripts), since each one runs in a
+# session of its own. A sync names its invocation in OWNER_VARIABLE; anything else uses its own pid.
+RUNNING_FILE_PREFIX = "running-"
+OWNER_VARIABLE = "AGENT_READY_SETUP_SCRIPT_OWNER"
+# Which install scripts ran in this checkout, with the sha256 that ran: a clone of the repository,
+# whose lock says nothing about its own files, runs them again.
+INSTALLED_FILE_NAME = "installed.json"
 # The result of the last session-start run, shown once by the next session (previous_session_report).
 SESSION_REPORT_NAME = "session-start-report.json"
 # What a script learns about the run, besides the environment it inherits.
@@ -86,16 +91,25 @@ def scripts_directory(project_root):
     return os.path.join(directory, *LOG_DIRECTORY.split("/"))
 
 
-def running_groups(project_root):
+def invocation_owner():
+    return os.environ.get(OWNER_VARIABLE) or str(os.getpid())
+
+
+def running_file_path(project_root, owner):
+    safe_owner = "".join(character for character in owner if character.isalnum() or character in "-_")
+    return os.path.join(scripts_directory(project_root), RUNNING_FILE_PREFIX + safe_owner)
+
+
+def running_groups(project_root, owner=None):
     try:
-        with open(os.path.join(scripts_directory(project_root), RUNNING_FILE_NAME), encoding="utf-8") as running_file:
-            return [int(line) for line in running_file if line.strip().isdigit()]
+        with open(running_file_path(project_root, owner or invocation_owner()), encoding="utf-8") as groups_file:
+            return [int(line) for line in groups_file if line.strip().isdigit()]
     except OSError:
         return []
 
 
-def write_running_groups(project_root, groups):
-    path = os.path.join(scripts_directory(project_root), RUNNING_FILE_NAME)
+def write_running_groups(project_root, groups, owner=None):
+    path = running_file_path(project_root, owner or invocation_owner())
     if not groups:
         if os.path.exists(path):
             os.unlink(path)
@@ -105,9 +119,9 @@ def write_running_groups(project_root, groups):
         running_file.write("".join(f"{group}\n" for group in groups))
 
 
-def stop_running_scripts(project_root):
-    """Stop every script a sync of this project left running, as the sync's own timeout does."""
-    for group in running_groups(project_root):
+def stop_running_scripts(project_root, owner):
+    """Stop the scripts that one invocation (a sync stopped by its timeout) left running; others go on."""
+    for group in running_groups(project_root, owner):
         if os.name == "nt":
             subprocess.run(["taskkill", "/T", "/F", "/PID", str(group)], capture_output=True, check=False)
             continue
@@ -115,7 +129,7 @@ def stop_running_scripts(project_root):
             os.killpg(group, signal.SIGKILL)
         except (ProcessLookupError, PermissionError):
             pass
-    write_running_groups(project_root, [])
+    write_running_groups(project_root, [], owner)
 
 
 def log_path(project_root, name, event):
@@ -243,33 +257,52 @@ def lock_key(script):
     return f"{script['event']}:{script['name']}"
 
 
-def lock_entry(script, installed):
-    entry = {"source": script["source"], "profile": script["profile"], "event": script["event"],
-             "path": script["path"], "interpreter": script["interpreter"], "sha256": script["sha256"]}
-    if script["event"] == EVENT_INSTALL:
-        entry["installed"] = installed
-    return entry
+def lock_entry(script):
+    return {"source": script["source"], "profile": script["profile"], "event": script["event"],
+            "path": script["path"], "interpreter": script["interpreter"], "sha256": script["sha256"]}
+
+
+def read_installed(project_root):
+    try:
+        with open(os.path.join(scripts_directory(project_root), INSTALLED_FILE_NAME), encoding="utf-8") as installed_file:
+            installed = json.load(installed_file)
+    except (OSError, ValueError):
+        return {}
+    return installed if isinstance(installed, dict) else {}
+
+
+def write_installed(project_root, installed):
+    path = os.path.join(scripts_directory(project_root), INSTALLED_FILE_NAME)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as installed_file:
+        json.dump(installed, installed_file, indent=2, sort_keys=True)
 
 
 def run_apply_events(project_root, report, previous):
     """Run install (new or changed scripts) and post-apply; returns what ran and the lock entries."""
     result = {"ran": [], "failed": [], "lock": {}}
+    installed = read_installed(project_root)
     for event in APPLY_EVENTS:
         for script in allowed_scripts(report, event):
             if lock_key(script) in result["lock"]:
                 # Another selected profile declares the same script for this event: it ran already.
                 continue
-            before = previous.get(lock_key(script), {})
-            if event == EVENT_INSTALL and before.get("sha256") == script["sha256"] and before.get("installed"):
-                # Already installed with these very bytes: install runs only for a new or changed script.
-                result["lock"][lock_key(script)] = before
+            result["lock"][lock_key(script)] = lock_entry(script)
+            if event == EVENT_INSTALL and installed.get(lock_key(script)) == script["sha256"]:
+                # These very bytes already ran in this checkout: install runs for a new or changed script.
                 continue
             succeeded, message = run_script(project_root, script, event)
             (result["ran"] if succeeded else result["failed"]).append(f"{event} {script['name']}: {message}")
-            result["lock"][lock_key(script)] = lock_entry(script, succeeded)
+            if event == EVENT_INSTALL:
+                if succeeded:
+                    installed[lock_key(script)] = script["sha256"]
+                else:
+                    installed.pop(lock_key(script), None)
+    if any(entry["event"] == EVENT_INSTALL for entry in result["lock"].values()) or installed:
+        write_installed(project_root, {key: digest for key, digest in installed.items() if key in result["lock"]})
     # session-start scripts are recorded so the session hook runs exactly these bytes.
     for script in allowed_scripts(report, EVENT_SESSION_START):
-        result["lock"][lock_key(script)] = lock_entry(script, False)
+        result["lock"][lock_key(script)] = lock_entry(script)
     return result
 
 

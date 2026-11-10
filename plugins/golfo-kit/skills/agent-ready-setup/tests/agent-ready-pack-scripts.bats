@@ -119,16 +119,28 @@ count_lines() {
   [[ "$stderr" == *"Script of a profile pack ran: post-apply acme/scripts/post-apply.sh"* ]]
   [ "$(count_lines ran-install)" = 1 ] && [ "$(count_lines ran-post-apply)" = 1 ]
   [ ! -e ran-session-start ]
-  python3 - <<'PY'
-import json
-scripts = json.load(open(".agents/agent-ready.lock.json", encoding="utf-8"))["scripts"]
-assert scripts["install:acme/scripts/install.sh"]["installed"] is True, scripts
-assert len(scripts["install:acme/scripts/install.sh"]["sha256"]) == 64
+  python3 - "$(git rev-parse --absolute-git-dir)/agent-ready/scripts/installed.json" <<'PY'
+import json, sys
+entry = json.load(open(".agents/agent-ready.lock.json", encoding="utf-8"))["scripts"]["install:acme/scripts/install.sh"]
+assert len(entry["sha256"]) == 64 and "installed" not in entry, entry
+# Whether it ran is of this checkout, never of the committed lock.
+assert json.load(open(sys.argv[1], encoding="utf-8"))["install:acme/scripts/install.sh"] == entry["sha256"]
 PY
 
   run_cli apply
   [ "$status" -eq 0 ]
   [ "$(count_lines ran-install)" = 1 ] && [ "$(count_lines ran-post-apply)" = 2 ]
+}
+
+@test "a fresh checkout with the committed lock runs install for itself" {
+  run_cli trust add acme
+  run_cli apply
+  [ "$(count_lines ran-install)" = 1 ]
+  # A clone has the lock of the repository and nothing of this checkout's Git directory.
+  rm -f "$(git rev-parse --absolute-git-dir)/agent-ready/scripts/installed.json"
+  run_cli apply
+  [ "$status" -eq 0 ]
+  [ "$(count_lines ran-install)" = 2 ]
 }
 
 @test "a changed install script runs again" {
@@ -318,11 +330,19 @@ PY
 
 @test "stopping a sync stops the pack scripts it left running in their own session" {
   case "$(uname -s)" in MINGW* | MSYS*) skip "sessions are POSIX; Windows stops the tree with taskkill" ;; esac
-  pid="$(python3 -c 'import subprocess; print(subprocess.Popen(["sleep", "30"], start_new_session=True).pid)')"
-  mkdir -p "$(git rev-parse --absolute-git-dir)/agent-ready/scripts"
-  printf '%s\n' "$pid" > "$(git rev-parse --absolute-git-dir)/agent-ready/scripts/running"
-  PYTHONPATH="$skill_dir/scripts" python3 -c 'import agent_ready_pack_scripts as scripts; scripts.stop_running_scripts(".")'
+  # Without the pipe of $(...): a child that keeps it open would make the substitution wait for it.
+  launch='import subprocess; print(subprocess.Popen(["sleep", "30"], start_new_session=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).pid)'
+  stopped="$(python3 -c "$launch")"
+  other="$(python3 -c "$launch")"
+  scripts_directory="$(git rev-parse --absolute-git-dir)/agent-ready/scripts"
+  mkdir -p "$scripts_directory"
+  printf '%s\n' "$stopped" > "$scripts_directory/running-sync-1"
+  # Another invocation (a session-start run) owns this one: the timeout of sync-1 leaves it alone.
+  printf '%s\n' "$other" > "$scripts_directory/running-session"
+  PYTHONPATH="$skill_dir/scripts" python3 -c 'import agent_ready_pack_scripts as scripts; scripts.stop_running_scripts(".", "sync-1")'
   sleep 0.5
-  ! kill -0 "$pid" 2> /dev/null
-  [ ! -e "$(git rev-parse --absolute-git-dir)/agent-ready/scripts/running" ]
+  ! kill -0 "$stopped" 2> /dev/null
+  [ ! -e "$scripts_directory/running-sync-1" ]
+  kill -0 "$other"
+  kill "$other"
 }
