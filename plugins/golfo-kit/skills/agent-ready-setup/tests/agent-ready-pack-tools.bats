@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 # Tools a profile pack declares besides files (CLIs, MCP servers and scripts) and the security
 # policy that decides whether each one may run on this machine. An apply registers the allowed
-# MCP servers for Claude Code and Codex; CLIs and scripts are only reported yet. The pack is a Git
+# MCP servers for Claude Code and Codex (agent-ready-pack-clis.bats covers the CLIs); scripts are only reported yet. The pack is a Git
 # repository reached through url.insteadOf, so the manifest keeps its real URL.
 
 bats_require_minimum_version 1.5.0
@@ -153,7 +153,7 @@ PY
 
   run_cli status
   [ "$status" -eq 0 ]
-  [[ "$output" == *"Pack tools (what the security policy allows; an apply registers the allowed MCP servers, and does not install CLIs or run scripts yet)"* ]]
+  [[ "$output" == *"Pack tools (what the security policy allows; an apply registers the allowed MCP servers and installs the allowed CLIs, and does not run scripts yet)"* ]]
   [[ "$output" == *"- blocked: cli acme 1.4.2 (artifacts) [acme/kafka-interno]"* ]]
 }
 
@@ -283,7 +283,7 @@ PY
   }
   [ "$(policy security.checks.trustedSource)" = "True defaults" ]
   [ "$(policy security.deny.scripts)" = "['acme/*'] user" ]
-  [ "$(printf '%s' "$output" | python3 -c 'import json,sys; print(json.load(sys.stdin)["packTools"]["applies"])' | tr -d '\r')" = "['mcpServer']" ]
+  [ "$(printf '%s' "$output" | python3 -c 'import json,sys; print(json.load(sys.stdin)["packTools"]["applies"])' | tr -d '\r')" = "['cli', 'mcpServer']" ]
 }
 
 @test "a declaration outside the schema stops the apply before writing" {
