@@ -9,6 +9,14 @@
 # credential from the environment (Git 2.31+), so the token is never written anywhere.
 set -u
 
+# ci.enabled: false in the manifest turns the check off without reaching the network, as
+# agent-ready check does: the clone below must not be able to fail a check that is off.
+root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+if python3 -c 'import json, sys; sys.exit(0 if (json.load(open(sys.argv[1], encoding="utf-8")).get("ci") or {}).get("enabled") is False else 1)'     "$root/.agents/agent-ready.json" 2>/dev/null; then
+  echo "Agent Ready check skipped: ci.enabled is false in .agents/agent-ready.json"
+  exit 0
+fi
+
 marketplace="${AGENT_READY_MARKETPLACE_URL:-https://github.com/guidomodarelli/golfo-marketplace}"
 checkout="$(mktemp -d)" || exit 1
 trap 'rm -rf "$checkout"' EXIT

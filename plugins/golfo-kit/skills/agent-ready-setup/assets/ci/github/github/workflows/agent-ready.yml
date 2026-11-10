@@ -15,6 +15,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The GITHUB_TOKEN header would replace the token of private packs in every later Git call.
+          persist-credentials: false
       - name: Check that Agent Ready is up to date
         env:
           AGENT_READY_GIT_TOKEN: ${{ secrets.AGENT_READY_GIT_TOKEN }}

@@ -192,3 +192,27 @@ PY
   [[ "$output$stderr" == *"unknown profile 'nope'"* ]]
   [[ "$output$stderr" != *"ci-github"* ]]
 }
+
+@test "check fails on a manifest whose selection names a CI profile, as apply does" {
+  run_cli apply
+  [ "$status" -eq 0 ]
+  write_manifest '{"profiles": ["node", "ci-github"]}'
+  run_cli check --offline
+  [ "$status" -ne 0 ]
+  [[ "$output$stderr" == *"agent-ready ci setup --provider github"* ]]
+}
+
+@test "the CI script skips without the network when the manifest turns the check off" {
+  run_cli ci setup --provider generic
+  [ "$status" -eq 0 ]
+  write_manifest '{"profiles": ["node"], "ci": {"provider": "generic", "enabled": false}}'
+  run env AGENT_READY_MARKETPLACE_URL="$test_root/unreachable" sh "$script"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"skipped"* ]]
+}
+
+@test "the GitHub workflow does not keep the checkout token, which would replace the token of private packs" {
+  run_cli ci setup --provider github
+  [ "$status" -eq 0 ]
+  grep -qx '          persist-credentials: false' "$workflow"
+}

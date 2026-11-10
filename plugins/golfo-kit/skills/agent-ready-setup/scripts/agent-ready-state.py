@@ -2238,10 +2238,14 @@ def compute_status(project_root, skill_dir):
         status["checkout"]["failed"].extend(
             label for label, entry in sorted(managed_blocks.inventory(lock).items()) if entry.get("state") == STATE_FAILED)
 
-    profile_names = configuration.value(PROFILES_KEY) or (lock.get("profileOrder") if lock else None)
+    manifest_profiles = configuration.value(PROFILES_KEY)
+    profile_names = manifest_profiles or (lock.get("profileOrder") if lock else None)
     if profile_names and skill_dir:
         try:
             catalog = load_effective_catalog(project_root, skill_dir)
+            if manifest_profiles:
+                # compute_plan drops the CI profiles of a lock; a manifest that names one is an error.
+                rejecting_ci_profiles(catalog, manifest_profiles)
             plan = compute_plan(project_root, skill_dir, catalog, profile_names)
         except IncompleteEvaluationError as caught_error:
             status["incomplete"] = str(caught_error)

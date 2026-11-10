@@ -45,7 +45,9 @@ selección de profiles: se proyectan, se registran en el lock y se retiran como 
 | `none` | nada; queda registrado que se eligió no configurar el CI |
 
 Todos los proveedores llaman al mismo script, `.agents/ci/agent-ready-check.sh`: clona golfo-marketplace fuera del
-repo, corre `agent-ready check` con los argumentos que reciba y sale con su código. Cambiar el proveedor, o pasarlo
+repo, corre `agent-ready check` con los argumentos que reciba y sale con su código. Con `ci.enabled: false` en el
+manifest sale con 0 antes de clonar, así un chequeo apagado no depende de la red. El workflow de GitHub hace el
+checkout con `persist-credentials: false`, para que el `GITHUB_TOKEN` no reemplace el token de los packs privados. Cambiar el proveedor, o pasarlo
 a `none`, retira los archivos y bloques del anterior. Si `.gitlab-ci.yml` ya tiene un `include:` propio, sumar
 `- local: .agents/ci/gitlab-ci.yml` a esa lista y no elegir `gitlab`: dos claves `include:` invalidan el YAML. GitLab
 no corre un pipeline que solo tiene jobs de `.pre`: en un repo sin otros jobs, elegir `generic` y llamar al script desde
