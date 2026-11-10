@@ -216,3 +216,96 @@ PY
   [ "$status" -eq 0 ]
   grep -qx '          persist-credentials: false' "$workflow"
 }
+
+# Run the CLI in a real terminal (a pseudoterminal) and type the answers; POSIX only.
+run_cli_in_terminal() {
+  local answers="$1"
+  shift
+  run --separate-stderr env PATH="$fake_bin:$PATH" TERM=xterm python3 - "$answers" python3 "$skill_dir/scripts/agent-ready" "$@" <<'PY'
+import os, pty, select, sys
+answers = sys.argv[1].encode().decode("unicode_escape").encode()
+pid, descriptor = pty.fork()
+if pid == 0:
+    os.execvp(sys.argv[2], sys.argv[2:])
+os.write(descriptor, answers)
+output = b""
+while True:
+    ready, _, _ = select.select([descriptor], [], [], 120)
+    if not ready:
+        break
+    try:
+        chunk = os.read(descriptor, 4096)
+    except OSError:
+        break
+    if not chunk:
+        break
+    output += chunk
+_, wait_status = os.waitpid(pid, 0)
+sys.stdout.write(output.decode("utf-8", "replace"))
+sys.exit(os.waitstatus_to_exitcode(wait_status))
+PY
+}
+
+skip_without_pseudoterminal() {
+  if [[ "$OSTYPE" == msys* || "$OSTYPE" == cygwin* ]]; then
+    skip "needs a POSIX pseudoterminal"
+  fi
+}
+
+@test "ci detect names the provider whose files the repository has, ignoring the workflow agent-ready-setup writes" {
+  run_cli ci detect
+  [ "$status" -eq 0 ]
+  [ "$output" = "none" ]
+  mkdir -p .github/workflows
+  printf 'name: Agent Ready\n' > .github/workflows/agent-ready.yml
+  run_cli ci detect
+  [ "$output" = "none" ]
+  printf "pipeline {\n}\n" > Jenkinsfile
+  run_cli ci detect
+  [ "$output" = $'jenkins\tJenkinsfile' ]
+  printf 'name: Build\n' > .github/workflows/build.yml
+  run_cli ci detect --json
+  [ "$(printf '%s' "$output" | python3 -c 'import json, sys; print(json.load(sys.stdin)["evidence"])')" = ".github/workflows/build.yml" ]
+}
+
+@test "init without a terminal never asks for the CI provider: it stays unchosen, and --ci-provider chooses it" {
+  rm .agents/agent-ready.json
+  run_cli init --profiles node --yes
+  [ "$status" -eq 0 ]
+  [ "$(json_value .agents/agent-ready.json 'document.get("ci")')" = "null" ]
+  [ ! -e "$script" ]
+  rm .agents/agent-ready.json
+  run_cli init --profiles node --ci-provider github --yes
+  [ "$status" -eq 0 ]
+  [ "$(json_value .agents/agent-ready.json 'document["ci"]["provider"]')" = '"github"' ]
+  [ -f "$workflow" ]
+}
+
+@test "ci setup with --no-input fails instead of asking" {
+  run_cli ci setup --no-input
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"there is no terminal to ask"* ]]
+}
+
+@test "with a terminal, ci setup asks once with the detected provider as the default and prints the equivalent command" {
+  skip_without_pseudoterminal
+  printf "pipeline {\n}\n" > Jenkinsfile
+  run_cli_in_terminal '\n' ci setup
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Detected CI: jenkins (Jenkinsfile)"* ]]
+  [[ "$output" == *"CI provider (jenkins|github|gitlab|generic|none) [jenkins]"* ]]
+  [[ "$output" == *"Equivalent command: agent-ready ci setup --provider jenkins"* ]]
+  [ "$(json_value .agents/agent-ready.json 'document["ci"]["provider"]')" = '"jenkins"' ]
+  [ -f .agents/ci/jenkins-stage.groovy ]
+}
+
+@test "the full wizard of init asks for the CI provider, and none is remembered so it is not asked again" {
+  skip_without_pseudoterminal
+  rm .agents/agent-ready.json
+  run_cli_in_terminal 'node\n\nnone\ny\n' init
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"CI provider ("* ]]
+  [[ "$output" == *"--ci-provider none"* ]]
+  [ "$(json_value .agents/agent-ready.json 'document["ci"]["provider"]')" = '"none"' ]
+  [ ! -e .agents/ci ]
+}

@@ -29,12 +29,14 @@ from agent_ready_cli_common import (
 from agent_ready_common import ProfileError, StateError, serialize_json, write_text_atomically
 from agent_ready_config import LAYER_PROJECT, PROJECT_CONFIG_RELATIVE_PATH
 from agent_ready_options import (
+    CI_PROVIDER_KEY,
     DETECTION_ENABLED_KEY,
     PROFILES_KEY,
     SOURCES_ENABLED_KEY,
     UPDATES_FROM_LOCK_KEY,
     UPDATES_MODE_KEY,
 )
+from agent_ready_cli_ci import ask_ci_provider, ci_providers, report_ci_next_steps, write_ci_provider
 from agent_ready_cli_trust import change_trusted_sources
 from agent_ready_packs import NAMESPACE_SEPARATOR, SOURCE_TYPE_GIT, parse_profile_sources
 from agent_ready_prompts import ask_confirmation, ask_text, can_prompt, equivalent_command
@@ -349,10 +351,14 @@ def command_init(arguments):
             lambda answer: validate_selection(catalog, profile_names(answer)),
         )
         asked = True
+    ci_provider = arguments.ci_provider
     if full_wizard:
-        current_mode = engine().configuration_of(arguments.project_root).value(UPDATES_MODE_KEY)
-        updates = ask_text(f"Updates ({'|'.join(UPDATE_MODES)})", current_mode,
+        configuration = engine().configuration_of(arguments.project_root)
+        updates = ask_text(f"Updates ({'|'.join(UPDATE_MODES)})", configuration.value(UPDATES_MODE_KEY),
                            lambda answer: None if answer in UPDATE_MODES else f"answer one of {', '.join(UPDATE_MODES)}")
+        # Only once: a repository that already chose its CI provider, none included, is not asked again.
+        if ci_provider is None and not configuration.value(CI_PROVIDER_KEY):
+            ci_provider = ask_ci_provider(arguments.project_root)
         asked = True
     profiles = ",".join(profile_names(arguments.profiles))
     if not arguments.yes:
@@ -362,10 +368,17 @@ def command_init(arguments):
         asked = True
     if asked:
         command = [CLI_NAME, "init", "--profiles", profiles] + (["--updates", updates] if updates else [])
+        command += ["--ci-provider", ci_provider] if ci_provider else []
         command += (["--project", arguments.project] if arguments.project != "." else []) + ["--provider", provider, "--yes"]
         sys.stderr.write(f"Equivalent command: {equivalent_command(command)}\n")
+    if ci_provider:
+        # After the last answer: the apply below creates the files of the provider.
+        write_ci_provider(arguments, ci_provider)
     extra = ["--profiles", profiles] + (["--updates", updates] if updates else [])
-    return apply_selection(arguments, provider, extra)
+    status = apply_selection(arguments, provider, extra)
+    if status == EXIT_OK and ci_provider:
+        report_ci_next_steps(arguments.project_root, ci_provider)
+    return status
 
 
 # ---------------------------------------------------------------------------
@@ -410,5 +423,8 @@ def register(subparsers, new_subparser):
     group.add_argument("--profiles", help="comma separated profiles (asked with a terminal; default: the detected stack)")
     group.add_argument("--stack", help="a stack and its default profiles, e.g. frontend")
     init.add_argument("--updates", choices=UPDATE_MODES, help=f"write {UPDATES_MODE_KEY} into the manifest (default: auto)")
+    init.add_argument("--ci-provider", choices=ci_providers(),
+                      help=f"{CI_PROVIDER_KEY}: the CI files to manage (asked in the full wizard, the detected one first; "
+                           "default: none chosen yet, so nothing is created)")
     init.add_argument("-y", "--yes", action="store_true", help="apply without asking for confirmation")
     init.add_argument("--no-input", action="store_true", help="never ask; fail with exit 2 naming the missing flags")

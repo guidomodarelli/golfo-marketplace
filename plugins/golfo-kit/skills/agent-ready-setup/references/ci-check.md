@@ -35,6 +35,15 @@ con `--offline`. `--format json` imprime un objeto con `status`, `ci` (`enabled`
 aplica. Los archivos son assets de un profile de CI (`ci-<proveedor>`, `kind: ci`) que elige esa clave y nunca la
 selección de profiles: se proyectan, se registran en el lock y se retiran como cualquier asset gestionado.
 `--no-apply` solo escribe la clave, y el próximo `apply` crea los archivos; hasta entonces `check` sale con 4.
+Sin `--provider`, `ci setup` pregunta si hay terminal, con el proveedor detectado primero y como default
+(`none` si no detecta ninguno), e imprime el comando equivalente; sin terminal, o con `--no-input`, sale con 2.
+`agent-ready init` hace la misma pregunta en el wizard completo, una sola vez (`--ci-provider` es el flag
+equivalente). Ningún otro flujo pregunta: ni el hook de SessionStart, ni las actualizaciones en segundo plano, ni
+review mode, ni CI.
+
+`agent-ready ci detect` dice qué proveedor usa el repo, sin escribir: el primero de `.github/workflows/` (con
+algún workflow propio, no `agent-ready.yml`), `.gitlab-ci.yml`, `Jenkinsfile`, `azure-pipelines.yml` y
+`bitbucket-pipelines.yml`; los dos últimos proponen `generic`.
 
 | `ci.provider` | Qué deja armado |
 |---|---|
