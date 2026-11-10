@@ -107,6 +107,7 @@ import agent_ready_compatibility as compatibility  # noqa: E402
 import agent_ready_conflicts as conflicts_review  # noqa: E402
 import agent_ready_pack_clis as pack_clis  # noqa: E402
 import agent_ready_pack_mcp as pack_mcp  # noqa: E402
+import agent_ready_pack_scripts as pack_scripts  # noqa: E402
 import agent_ready_pack_tools as pack_tools  # noqa: E402
 import agent_ready_golfo_kit as golfo_kit  # noqa: E402
 from agent_ready_packs import (  # noqa: E402
@@ -1875,6 +1876,10 @@ def finalize(project_root, skill_dir, plan, updates):
     cli_report = install_pack_clis(project_root, plan, previous_lock)
     if cli_report["lock"]:
         lock["clis"] = cli_report["lock"]
+    # Last: a script finds the files of this apply and the CLIs on its PATH.
+    script_report = run_pack_scripts(project_root, plan, previous_lock)
+    if script_report["lock"]:
+        lock["scripts"] = script_report["lock"]
     write_text_if_changed(os.path.join(project_root, LOCK_RELATIVE_PATH), serialize_json(lock))
 
     manifest = read_manifest(project_root)
@@ -1886,7 +1891,28 @@ def finalize(project_root, skill_dir, plan, updates):
     conflicts_review.record_pending(project_root, [])
 
     return {"removed": removed, "retireConflicts": retire_conflicts, "failed": failed, "conflicts": conflicts,
-            "mcpServers": mcp_report, "clis": cli_report}
+            "mcpServers": mcp_report, "clis": cli_report, "scripts": script_report}
+
+
+def run_pack_scripts(project_root, plan, previous_lock):
+    """Run the install and post-apply scripts of the packs that the policy allows; automated reviews run none."""
+    previous = (previous_lock or {}).get("scripts", {})
+    if os.environ.get("AGENT_READY_SETUP_REVIEW_MODE") == "1":
+        return {"ran": [], "failed": [], "lock": previous, "skipped": "automated reviews never run the scripts of the packs"}
+    return pack_scripts.run_apply_events(project_root, plan.get("packTools"), previous)
+
+
+def print_pack_script_report(report, stream):
+    """What ran among the scripts of the packs, and which ones failed."""
+    if not report:
+        return
+    if report.get("skipped"):
+        write_line(f"Scripts of profile packs: none ran ({report['skipped']}).", stream)
+        return
+    for line in report["ran"]:
+        write_line(paint(f"Script of a profile pack ran: {line}", "ok", stream), stream)
+    for problem in report["failed"]:
+        write_line(paint(f"  ! Script of a profile pack failed: {problem}", "error", stream), stream)
 
 
 def install_pack_clis(project_root, plan, previous_lock):
@@ -1981,8 +2007,11 @@ def print_finalize_report(report):
             write_line(f"  ! {path}")
     print_pack_mcp_report(report.get("mcpServers"), stream)
     print_pack_cli_report(report.get("clis"), stream)
+    print_pack_script_report(report.get("scripts"), stream)
     if report["failed"]:
         result = "partial: some managed assets could not be applied"
+    elif (report.get("scripts") or {}).get("failed"):
+        result = "partial: a script of a profile pack failed"
     elif report["conflicts"] or report["retireConflicts"]:
         preserved = len(report["conflicts"]) + len(report["retireConflicts"])
         result = f"applied with {preserved} preserved conflict(s)"
@@ -2108,8 +2137,8 @@ def print_pack_tools(report, stream, brief=False):
     if not report:
         return
     blocked = sum(tool["decision"] == pack_tools.DECISION_BLOCKED for tool in report["tools"])
-    write_line(paint("Pack tools (what the security policy allows; an apply registers the allowed MCP servers "
-                     "and installs the allowed CLIs, and does not run scripts yet)", "heading", stream), stream)
+    write_line(paint("Pack tools (what the security policy allows; an apply registers the allowed MCP servers, "
+                     "installs the allowed CLIs and runs the allowed scripts)", "heading", stream), stream)
     for tool in report["tools"]:
         label = f"{pack_tools.describe_tool(tool)} [{tool['profile']}]"
         if tool["decision"] == pack_tools.DECISION_ALLOWED:
@@ -2564,6 +2593,28 @@ def status_report(status):
     report["drift"] = status_has_drift(status)
     report["configuration"] = configuration_report(status["configuration"])
     return report
+
+
+def command_pack_scripts(arguments):
+    """Run the session-start scripts of the packs; only the session hook calls it, in the background."""
+    lock = read_lock(arguments.project)
+    locked = (lock or {}).get("scripts", {})
+    if os.environ.get("AGENT_READY_SETUP_REVIEW_MODE") == "1" or not any(
+            entry.get("event") == pack_scripts.EVENT_SESSION_START for entry in locked.values()):
+        return 0
+    configuration = configuration_of(arguments.project, True)
+    catalog = load_effective_catalog(arguments.project, arguments.skill_dir)
+    plan = compute_plan(arguments.project, arguments.skill_dir, catalog, lock.get("profileOrder") or [])
+    report = pack_tools.report(plan["packToolDeclarations"], catalog, configuration)
+    result = pack_scripts.run_session_start(arguments.project, report, locked,
+                                            configuration.value(pack_tools.CHECK_LOCK_DIGEST_KEY))
+    for line in result["ran"]:
+        write_line(f"ran {line}")
+    for line in result["skipped"]:
+        write_line(f"skipped {line}")
+    for problem in result["failed"]:
+        sys.stderr.write(f"Script of a profile pack failed: {problem}\n")
+    return 1 if result["failed"] else 0
 
 
 def command_status(arguments):
@@ -3559,6 +3610,10 @@ def build_parser():
     finalize_parser.add_argument("--plan", required=True, help="plan saved before the projection")
     finalize_parser.add_argument("--updates", choices=UPDATE_MODES, help="manifest update mode")
     finalize_parser.set_defaults(handler=command_finalize)
+
+    scripts_parser = subparsers.add_parser("pack-scripts", help="run the session-start scripts of the packs")
+    add_common(scripts_parser)
+    scripts_parser.set_defaults(handler=command_pack_scripts)
 
     status_parser = subparsers.add_parser("status", help="read-only status")
     add_common(status_parser, needs_skill=False)

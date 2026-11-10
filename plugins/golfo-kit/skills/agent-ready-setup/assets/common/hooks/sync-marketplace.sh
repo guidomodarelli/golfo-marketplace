@@ -619,21 +619,6 @@ if [[ "$review_mode" -eq 1 ]]; then
   exit 0
 fi
 
-# Only an explicit sync runs with automatic updates off.
-if [[ "$updates_enabled" != true && "$defer_to_background" -eq 1 ]]; then
-  echo "[marketplace-sync] Automatic updates are off (updates.enabled: false); nothing was checked or synchronized."
-  exit 0
-fi
-
-if [[ "$defer_to_background" -eq 0 && "$only_check" -eq 1 ]]; then
-  echo "[marketplace-sync] Repository pinned (updates.mode: pinned); checking without writing."
-  if [[ "$refresh_enabled" == true ]]; then
-    python3 "$state_script" fetch-sources --project . --skill-dir "$skill_dir" --refresh || true
-  fi
-  python3 "$state_script" status --project . --skill-dir "$skill_dir" --brief || true
-  exit 0
-fi
-
 # Per-user state for background tasks; nothing machine-specific lands in the project.
 background_cache_directory="${XDG_CACHE_HOME:-$HOME/.cache}/agent-ready-setup"
 
@@ -660,6 +645,29 @@ start_background_task() {
     printf 'WARNING: background task %s could not start; it retries in the next session.\n' "$log_name" >&2
   fi
 }
+
+# The session-start scripts of the packs run on every session start, whatever the update mode,
+# in the background and only as the last apply recorded them (agent_ready_pack_scripts.py).
+if [[ "$defer_to_background" -eq 1 && -f .agents/agent-ready.lock.json ]] &&
+  grep -q '"session-start"' .agents/agent-ready.lock.json; then
+  start_background_task "pack-scripts-$(project_log_key)" \
+    python3 "$state_script" pack-scripts --project . --skill-dir "$skill_dir"
+fi
+
+# Only an explicit sync runs with automatic updates off.
+if [[ "$updates_enabled" != true && "$defer_to_background" -eq 1 ]]; then
+  echo "[marketplace-sync] Automatic updates are off (updates.enabled: false); nothing was checked or synchronized."
+  exit 0
+fi
+
+if [[ "$defer_to_background" -eq 0 && "$only_check" -eq 1 ]]; then
+  echo "[marketplace-sync] Repository pinned (updates.mode: pinned); checking without writing."
+  if [[ "$refresh_enabled" == true ]]; then
+    python3 "$state_script" fetch-sources --project . --skill-dir "$skill_dir" --refresh || true
+  fi
+  python3 "$state_script" status --project . --skill-dir "$skill_dir" --brief || true
+  exit 0
+fi
 
 if [[ "$defer_to_background" -eq 1 ]]; then
   python3 "$state_script" update-report --project . || true

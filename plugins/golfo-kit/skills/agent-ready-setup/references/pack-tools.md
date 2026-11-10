@@ -5,9 +5,9 @@ política que decide, en cada máquina, si cada herramienta puede ejecutarse. Le
 con herramientas, al explicar por qué una herramienta quedó bloqueada, al confiar en una fuente o al
 cambiar las claves `security.*`.
 
-> **Estado.** Un apply registra los servidores MCP (sección 5) e instala los CLIs (sección 6) que la
-> política permite. Todavía no corre scripts: `plan` y `status` muestran su veredicto, y eso llega en
-> la próxima parte de #65.
+> **Estado.** Un apply registra los servidores MCP (sección 5), instala los CLIs (sección 6) y corre
+> los scripts (sección 7) que la política permite. Todavía no verifica firmas: con
+> `security.checks.signature: true` nada se permite.
 
 ## Contenido
 
@@ -17,6 +17,7 @@ cambiar las claves `security.*`.
 4. Ver el veredicto
 5. Registro de servidores MCP
 6. Instalación de CLIs
+7. Scripts
 
 ## 1. Declaraciones
 
@@ -71,7 +72,9 @@ las claves, en [configuration-keys.md](configuration-keys.md). Para cada herrami
 este orden, y la primera que la frena da el motivo:
 
 1. `security.execution.enabled` (default `true`) y, para un script, `security.execution.events`
-   (default `install` y `post-apply`; `session-start` correría en cada inicio de sesión).
+   (default `install` y `post-apply`; `session-start` correría en cada inicio de sesión). En
+   integración continua (`CI` definida), además, `security.execution.ci` (default `false`): un
+   workflow que quiere las herramientas de sus packs lo prende en su propia configuración.
 2. Los `checks`, que se apagan por separado:
    - `trustedSource` (default `true`): la fuente tiene que ser de confianza en esta máquina.
    - `signature` (default `false`): el commit o tag firmado. El motor todavía no verifica firmas, así
@@ -126,7 +129,7 @@ agent-ready trust list [--json]     # si el repo está aprobado y en qué fuente
 `agent-ready plan` lista cada herramienta como `allowed` o `blocked` con su motivo, y la política
 efectiva con la capa de cada valor. `agent-ready status` muestra lo mismo de forma breve. En el JSON
 del plan van en `packTools`, con `policy` (`value` y `origin` de cada clave), `tools` (cada una con
-`decision` y `reason`) y `applies`, los tipos que un apply ya aplica (`cli` y `mcpServer`). Las rules y
+`decision` y `reason`) y `applies`, los tipos que un apply ya aplica (`cli`, `mcpServer` y `script`). Las rules y
 skills de un pack se proyectan siempre, pase lo que pase con sus herramientas.
 
 ## 5. Registro de servidores MCP
@@ -182,3 +185,31 @@ o `~/.cache/agent-ready-setup/clis`), nunca en el repositorio:
 - **Solo un apply.** `plan`, `status`, la detección y las revisiones automáticas
   (`AGENT_READY_SETUP_REVIEW_MODE=1`) nunca descargan ni instalan.
 - **Si dos packs declaran el mismo nombre,** se instala el primero y se informa el otro.
+
+## 7. Scripts
+
+Un script permitido corre con su `interpreter` (el `bash` del PATH, el mismo Python del motor, `node` o
+`pwsh`) desde la raíz del proyecto, con su `timeoutSeconds`:
+
+| Evento | Cuándo corre |
+|---|---|
+| `install` | En un apply, la primera vez y cada vez que cambia su contenido (sha256), o si la vez anterior falló. |
+| `post-apply` | Al final de cada apply, después de proyectar los archivos, registrar los MCP e instalar los CLIs. |
+| `session-start` | En cada inicio de sesión, en segundo plano desde el hook. Solo si `security.execution.events` lo incluye. |
+
+- **Entorno.** El script hereda el entorno de la sesión, con los CLIs de los packs primero en el PATH
+  (`agent-ready/cli-path`, sección 6), y recibe `AGENT_READY_PACK_ROOT`, `AGENT_READY_PROJECT_ROOT` y
+  `AGENT_READY_EVENT`. Corre con los permisos del usuario.
+- **Logs.** La salida de cada script va a un log privado en el directorio de Git
+  (`agent-ready/scripts/<id>-<evento>.log`). El motor nunca imprime variables de entorno; lo que el
+  script imprima es responsabilidad del script.
+- **Timeout.** Un script que se pasa de `timeoutSeconds` se corta con todo lo que lanzó (en Windows,
+  con un job object) y se informa.
+- **Falla.** Un script que sale con un código distinto de 0 o se corta se informa con su log, y el
+  apply termina como `partial`. Un `install` que falló vuelve a correr en el próximo apply.
+- **Lock.** `scripts` guarda, por `<fuente>/<ruta>`, el evento, el intérprete y el sha256 del script, y
+  si el `install` ya corrió bien.
+- **`session-start` y el lock.** Con `security.checks.lockDigest` (default `true`), el hook corre solo
+  el script exacto que registró el último apply: un pack que cambió espera al próximo apply.
+- **Solo un apply o el hook.** `plan`, `status`, la detección y las revisiones automáticas
+  (`AGENT_READY_SETUP_REVIEW_MODE=1`) nunca corren scripts.

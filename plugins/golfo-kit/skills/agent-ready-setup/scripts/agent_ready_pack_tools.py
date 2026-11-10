@@ -9,9 +9,10 @@ evaluates, for each one, the ``security`` policy of the layered configuration:
 3. ``deny``, which always wins; then ``rules``, where a deny rule wins over an allow rule; then
    the ``allow`` lists, which restrict only when they are not empty.
 
-An apply registers the MCP servers the policy allows (agent_ready_pack_mcp.py) and installs its
-CLIs in the cache of the user (agent_ready_pack_clis.py); it does not run scripts yet. plan and
-status report the verdict of every declared tool.
+An apply registers the MCP servers the policy allows (agent_ready_pack_mcp.py), installs its CLIs
+in the cache of the user (agent_ready_pack_clis.py) and runs its scripts (agent_ready_pack_scripts.py).
+plan and status report the verdict of every declared tool, and never run anything. In continuous
+integration (CI set) nothing runs unless security.execution.ci allows it.
 """
 
 import fnmatch
@@ -63,13 +64,16 @@ REGISTRY_PACKAGE_NAMES = {
 }
 AUTHORIZATION_HEADER = "authorization"
 
-APPLIED_TOOL_TYPES = (TOOL_CLI, TOOL_MCP_SERVER)
+APPLIED_TOOL_TYPES = (TOOL_CLI, TOOL_MCP_SERVER, TOOL_SCRIPT)
 DECISION_ALLOWED = "allowed"
 DECISION_BLOCKED = "blocked"
 SOURCE_TYPE_PATH = "path"
 
 EXECUTION_ENABLED_KEY = "security.execution.enabled"
 EXECUTION_EVENTS_KEY = "security.execution.events"
+EXECUTION_CI_KEY = "security.execution.ci"
+CONTINUOUS_INTEGRATION_VARIABLE = "CI"
+CONTINUOUS_INTEGRATION_OFF_VALUES = ("", "0", "false")
 CHECK_TRUSTED_SOURCE_KEY = "security.checks.trustedSource"
 CHECK_SIGNATURE_KEY = "security.checks.signature"
 CHECK_ARTIFACT_SHA256_KEY = "security.checks.artifactSha256"
@@ -82,7 +86,7 @@ DENY_COMMANDS_KEY = "security.deny.commands"
 DENY_SCRIPTS_KEY = "security.deny.scripts"
 RULES_KEY = "security.rules"
 TRUSTED_SOURCES_KEY = "security.trustedSources"
-POLICY_KEYS = (EXECUTION_ENABLED_KEY, EXECUTION_EVENTS_KEY, CHECK_TRUSTED_SOURCE_KEY, CHECK_SIGNATURE_KEY,
+POLICY_KEYS = (EXECUTION_ENABLED_KEY, EXECUTION_EVENTS_KEY, EXECUTION_CI_KEY, CHECK_TRUSTED_SOURCE_KEY, CHECK_SIGNATURE_KEY,
                CHECK_ARTIFACT_SHA256_KEY, CHECK_LOCK_DIGEST_KEY, ALLOW_CLIS_KEY, ALLOW_COMMANDS_KEY,
                ALLOW_SCRIPTS_KEY, ALLOW_MCP_SERVERS_KEY, DENY_COMMANDS_KEY, DENY_SCRIPTS_KEY, RULES_KEY,
                TRUSTED_SOURCES_KEY)
@@ -300,7 +304,8 @@ def declared_tools(catalog, resolved, source_of_profile, is_pack_profile):
                               url=server.get("url"), server=server))
         for script in entry.get("scripts", []):
             tools.append(dict(common, type=TOOL_SCRIPT, name=f"{source_name}/{script['path']}", event=script["event"],
-                              interpreter=script["interpreter"], path=script["path"]))
+                              interpreter=script["interpreter"], path=script["path"],
+                              timeoutSeconds=script["timeoutSeconds"]))
     return tools
 
 
@@ -382,10 +387,17 @@ def allow_reason(tool, policy):
     return None
 
 
+def in_continuous_integration():
+    return os.environ.get(CONTINUOUS_INTEGRATION_VARIABLE, "").lower() not in CONTINUOUS_INTEGRATION_OFF_VALUES
+
+
 def evaluate(tool, policy, source, project_approved, signature_verified=False):
     """(decision, reason) of one declared tool under the effective policy."""
     if not policy[EXECUTION_ENABLED_KEY]:
         return DECISION_BLOCKED, f"{EXECUTION_ENABLED_KEY} is false"
+    if in_continuous_integration() and not policy[EXECUTION_CI_KEY]:
+        return DECISION_BLOCKED, (f"this runs in continuous integration (CI is set) and {EXECUTION_CI_KEY} is false; "
+                                  "a workflow that wants the tools of its packs sets it in its own configuration")
     if tool["type"] == TOOL_SCRIPT and tool["event"] not in policy[EXECUTION_EVENTS_KEY]:
         return DECISION_BLOCKED, f"{EXECUTION_EVENTS_KEY} does not include {tool['event']}"
     if policy[CHECK_TRUSTED_SOURCE_KEY] and not source_is_trusted(source, policy, project_approved):
@@ -427,9 +439,12 @@ def report(tools, catalog, configuration):
             # Only to read the text a rule may match; the report keeps the path inside the pack.
             checked["file"] = os.path.join(source["root"], *tool["path"].split("/"))
         decision, reason = evaluate(checked, policy, source, configuration.project_approved)
-        evaluated.append(dict(tool, decision=decision, reason=reason))
+        entry = dict(tool, decision=decision, reason=reason)
+        if tool["type"] == TOOL_SCRIPT and checked.get("file"):
+            # Where the runner finds the script and the pack it belongs to (agent_ready_pack_scripts.py).
+            entry.update(file=checked["file"], root=source["root"])
+        evaluated.append(entry)
     return {
-        # What an apply does with an allowed tool today: scripts come in a later version.
         "applies": list(APPLIED_TOOL_TYPES),
         "policy": {key: {"value": policy[key], "origin": configuration.origin(key)} for key in POLICY_KEYS},
         "tools": evaluated,

@@ -1,7 +1,8 @@
 #!/usr/bin/env bats
 # Tools a profile pack declares besides files (CLIs, MCP servers and scripts) and the security
 # policy that decides whether each one may run on this machine. An apply registers the allowed
-# MCP servers for Claude Code and Codex (agent-ready-pack-clis.bats covers the CLIs); scripts are only reported yet. The pack is a Git
+# MCP servers for Claude Code and Codex (agent-ready-pack-clis.bats covers the CLIs and
+# agent-ready-pack-scripts.bats the scripts). The pack is a Git
 # repository reached through url.insteadOf, so the manifest keeps its real URL.
 
 bats_require_minimum_version 1.5.0
@@ -30,7 +31,8 @@ setup() {
   git config --global init.defaultBranch main
   git config --global core.autocrlf false
   git config --global protocol.file.allow always
-  unset CODEX_HOME AGENT_READY_SETUP_UPDATES AGENT_READY_SETUP_STACK_DIR AGENT_READY_SETUP_STACK AGENT_READY_SETUP_PROFILES
+  # GitHub Actions sets CI, which keeps the tools of a pack from running (security.execution.ci).
+  unset CI CODEX_HOME AGENT_READY_SETUP_UPDATES AGENT_READY_SETUP_STACK_DIR AGENT_READY_SETUP_STACK AGENT_READY_SETUP_PROFILES
   for provider_cli in claude codex; do
     printf '#!/bin/bash\nexit 0\n' > "$fake_bin/$provider_cli"
     chmod +x "$fake_bin/$provider_cli"
@@ -153,7 +155,7 @@ PY
 
   run_cli status
   [ "$status" -eq 0 ]
-  [[ "$output" == *"Pack tools (what the security policy allows; an apply registers the allowed MCP servers and installs the allowed CLIs, and does not run scripts yet)"* ]]
+  [[ "$output" == *"Pack tools (what the security policy allows; an apply registers the allowed MCP servers, installs the allowed CLIs and runs the allowed scripts)"* ]]
   [[ "$output" == *"- blocked: cli acme 1.4.2 (artifacts) [acme/kafka-interno]"* ]]
 }
 
@@ -283,7 +285,7 @@ PY
   }
   [ "$(policy security.checks.trustedSource)" = "True defaults" ]
   [ "$(policy security.deny.scripts)" = "['acme/*'] user" ]
-  [ "$(printf '%s' "$output" | python3 -c 'import json,sys; print(json.load(sys.stdin)["packTools"]["applies"])' | tr -d '\r')" = "['cli', 'mcpServer']" ]
+  [ "$(printf '%s' "$output" | python3 -c 'import json,sys; print(json.load(sys.stdin)["packTools"]["applies"])' | tr -d '\r')" = "['cli', 'mcpServer', 'script']" ]
 }
 
 @test "a declaration outside the schema stops the apply before writing" {
