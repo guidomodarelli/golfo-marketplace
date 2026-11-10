@@ -1122,6 +1122,10 @@ project_asset_tree() {
       sync_claude_settings "$file"
     else
       case "$relative" in
+        blocks/*)
+          # Managed blocks go inside files shared with the project: finalize writes them.
+          continue
+          ;;
         github/*)
           sync_file "$file" ".github/${relative#github/}"
           continue

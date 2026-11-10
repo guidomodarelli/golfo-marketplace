@@ -193,8 +193,10 @@ estos límites:
 - `tools` solo acepta herramientas que el motor ya conoce (`browser`).
 - Un pack no declara `stackDefaults`, `baseAssets` ni otras fuentes, ni redefine un profile de
   Golfo. Los assets compartidos van en un profile propio, como `acme/base`, que los demás requieren.
-- `assets` publica solo `rules/`, `skills/`, `agents/` y `commands/`. No puede traer hooks, settings,
-  el template de `AGENTS.md` ni archivos `AGENTS.md` o `CLAUDE.md`.
+- `assets` publica solo `rules/`, `skills/`, `agents/`, `commands/` y `blocks/`, los bloques gestionados
+  de archivos compartidos con el proyecto ([managed-agents-block.md](managed-agents-block.md), sección
+  «Bloques en otros archivos»). No puede traer hooks, settings, el template de `AGENTS.md` ni archivos
+  `AGENTS.md` o `CLAUDE.md`.
 - Las rules de un pack entran en la lista del bloque gestionado de `AGENTS.md`, como las de cualquier
   profile. Un pack no cambia el template ni las instrucciones propias del proyecto.
 
@@ -399,7 +401,10 @@ catálogo la declara. Por asset guarda `profile`,
 `retired-preserved`), más `viewPreserved` cuando un archivo del proyecto ocupa su
 vista `.claude/`. `merged` lista `AGENTS.md` (bloque gestionado),
 `.claude/settings.json` y `.codex/hooks.json` con el sha256 del template: se
-fusionan con contenido del proyecto, así que no se comparan con una base. El JSON es
+fusionan con contenido del proyecto, así que no se comparan con una base. `blocks`
+guarda, por archivo y por id, el `profile`, el `source`, el `sha256` y el `state` de cada
+bloque gestionado de un archivo compartido ([managed-agents-block.md](managed-agents-block.md),
+sección «Bloques en otros archivos»). El JSON es
 determinista (sin timestamps ni paths de la máquina): la misma resolución
 produce los mismos bytes.
 

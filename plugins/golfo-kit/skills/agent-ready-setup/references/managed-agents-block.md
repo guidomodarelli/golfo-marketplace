@@ -1,4 +1,7 @@
-# Bloque gestionado de `AGENTS.md`
+# Bloques gestionados
+
+El bloque de `AGENTS.md`, que se arma con un template y las rules, y los bloques con id que un profile
+publica en otros archivos compartidos con el proyecto (sección final, «Bloques en otros archivos»).
 
 
 Cada template de stack (`assets/stacks/<stack>/agents-template.md`) define el bloque
@@ -68,3 +71,33 @@ valor se pasa tal cual al CLI del provider (`claude --model/--effort`, `codex
 
 Los hooks generados no pasan flags de confirmación durante `SessionStart`.
 `CLAUDE.md` nunca se modifica durante este paso.
+
+## Bloques en otros archivos
+
+Un profile, de golfo-kit o de un pack, publica la parte que le toca de un archivo compartido con el
+proyecto como `blocks/<ruta en el repo>` en su árbol de assets. Por ejemplo, el profile `common` publica
+`assets/common/blocks/.github/pull_request_template.md`. `scripts/agent_ready_blocks.py` lo aplica en
+`finalize`, después de la proyección; bootstrap y el hook de sync no copian `blocks/`.
+
+- **Marcadores.** El bloque va entre dos líneas con el id, que es el nombre del profile, y la sintaxis de
+  comentario del archivo:
+  - Markdown (`.md`, `.markdown`): `<!-- BEGIN AGENT-READY MANAGED: common -->` y
+    `<!-- END AGENT-READY MANAGED: common -->`;
+  - `.gitignore`, `.gitattributes`, `.dockerignore`, YAML, TOML y shell: `# BEGIN AGENT-READY MANAGED: common`.
+
+  Otro tipo de archivo, `AGENTS.md`, `CLAUDE.md` y lo que está bajo `.git/`, `.agents/`, `.claude/` o
+  `.codex/` no admiten bloques: el plan falla y nombra el profile.
+- **Contrato.** Es el mismo del bloque de `AGENTS.md`:
+  - lo que está entre los marcadores se pisa en cada apply, y lo de afuera es del proyecto;
+  - un bloque nuevo se agrega al final, separado por una línea en blanco;
+  - un profile que sale de la selección se lleva su bloque, y un archivo que queda vacío se borra.
+- **Varios profiles en un archivo.** Cada profile tiene su bloque, con su id. Un archivo no puede ser a la
+  vez un asset entero de un profile y tener bloques de otro.
+- **Marcadores rotos.** Si un marcador se repite, aparece fuera de orden o queda adentro de otro bloque, el
+  archivo no se toca. Lo mismo pasa si el archivo es un symlink o lo es un directorio de su ruta. El plan
+  lo muestra como `conflict` y el apply como `managed block kept`. El lock conserva la base anterior.
+- **Lock, plan y status.** El lock guarda en `blocks` el sha256 de cada bloque por archivo e id. `plan`
+  muestra cada bloque que cambia con su diff, y `status` reporta como `modified` un bloque editado a mano.
+- **`agent-ready remove`.** Saca cada bloque del lock y deja el resto del archivo; si no queda nada, lo borra.
+- **JSON.** `settings.json`, `hooks.json` y `.mcp.json` no admiten comentarios, así que siguen con merge por
+  claves.

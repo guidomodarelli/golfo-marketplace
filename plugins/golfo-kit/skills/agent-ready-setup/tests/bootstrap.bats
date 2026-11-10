@@ -326,18 +326,30 @@ EOF
   [[ "$stderr" == *'ERROR: --stack requires a value'* ]]
 }
 
+# True when the managed block of the common profile in the PR template holds the template of the skill.
+pr_template_block_matches() {
+  python3 - "$skill_dir/assets/common/blocks/.github/pull_request_template.md" .github/pull_request_template.md <<'PY'
+import sys
+template = open(sys.argv[1], encoding="utf-8").read()
+lines = open(sys.argv[2], encoding="utf-8").read().split("\n")
+start = lines.index("<!-- BEGIN AGENT-READY MANAGED: common -->")
+end = lines.index("<!-- END AGENT-READY MANAGED: common -->")
+sys.exit(0 if "\n".join(lines[start + 1:end]) + "\n" == template else 1)
+PY
+}
+
 @test "bootstrap installs shared GitHub PR template for every stack" {
   for stack in frontend node java go android; do
     run_bootstrap "$stack"
     [ "$status" -eq 0 ]
-    cmp -s .github/pull_request_template.md "$skill_dir/assets/common/github/pull_request_template.md"
+    pr_template_block_matches
     [ ! -e .agents/github ]
     [ ! -e .claude/github ]
     rm .github/pull_request_template.md
   done
 }
 
-@test "bootstrap refreshes existing PR template and preserves other GitHub files" {
+@test "bootstrap adds its block to an existing PR template and preserves other GitHub files" {
   mkdir -p .github
   printf '%s\n' 'Existing template' > .github/pull_request_template.md
   printf '%s\n' 'Project owners' > .github/CODEOWNERS
@@ -346,7 +358,8 @@ EOF
   run_bootstrap frontend
 
   [ "$status" -eq 0 ]
-  cmp -s .github/pull_request_template.md "$skill_dir/assets/common/github/pull_request_template.md"
+  head -1 .github/pull_request_template.md | grep -qx 'Existing template'
+  pr_template_block_matches
   cmp -s .github/CODEOWNERS "$test_root/expected-owners"
 }
 
@@ -366,7 +379,7 @@ EOF
       bash .agents/hooks/sync-marketplace.sh --provider "$provider" --stack frontend
 
     [ "$status" -eq 0 ]
-    cmp -s .github/pull_request_template.md "$skill_dir/assets/common/github/pull_request_template.md"
+    pr_template_block_matches
     for settings_file in .claude/settings.json .codex/hooks.json; do
       jq -e '[.hooks[][] | .hooks[] | select(.type == "command")] | length >= 2 and all(.[]; (.statusMessage | type) == "string" and (.statusMessage | length) > 0)' \
         "$settings_file" >/dev/null
@@ -391,7 +404,7 @@ EOF
   cmp -s .github/pull_request_template.md "$test_root/expected-template"
 }
 
-@test "PR template projection replaces file symlink without changing its target" {
+@test "PR template block leaves a symlinked template and its target alone" {
   skip_without_symlinks
   mkdir .github
   printf '%s\n' 'External template' > "$test_root/external-template"
@@ -404,8 +417,8 @@ EOF
       run_marketplace_sync .agents/hooks/sync-marketplace.sh "$skill_dir"
     fi
     [ "$status" -eq 0 ]
-    [ ! -L .github/pull_request_template.md ]
-    cmp -s .github/pull_request_template.md "$skill_dir/assets/common/github/pull_request_template.md"
+    [ -L .github/pull_request_template.md ]
+    [[ "$output" == *'.github/pull_request_template.md (block common): the file is a symlink'* ]]
     cmp -s "$test_root/external-template" "$test_root/expected-template"
     rm .github/pull_request_template.md
   done
