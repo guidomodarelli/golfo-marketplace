@@ -3130,7 +3130,7 @@ REMOVAL_LOCKS = (
 )
 AMBIGUOUS_MARKERS_REASON = "its managed block markers are not one pair of whole lines; remove the block by hand"
 # Kinds the lockfile inventories: while one of them is left, the lockfile stays for the next run.
-LOCK_INVENTORIED_KINDS = ("asset", "view")
+LOCK_INVENTORIED_KINDS = ("asset", "view", "block")
 INVENTORY_KEPT_REASON = "kept because a managed path could not be removed; run agent-ready remove again"
 
 
@@ -3240,7 +3240,7 @@ def block_removal_entries(project_root, lock):
         local = local_state(path)
         if local == LOCAL_ABSENT:
             continue
-        if local in (LOCAL_SYMLINK, LOCAL_NOT_A_FILE):
+        if local in (LOCAL_SYMLINK, LOCAL_NOT_A_FILE) or managed_blocks.has_linked_directory(project_root, destination):
             entries.append(removal_entry(destination, REMOVAL_KEEP, "not a regular file; remove its managed blocks by hand",
                                          "block"))
             continue

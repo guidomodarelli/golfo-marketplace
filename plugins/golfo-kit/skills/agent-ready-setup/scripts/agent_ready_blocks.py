@@ -17,7 +17,7 @@ import os
 import re
 import stat
 
-from agent_ready_common import ProfileError, sha256_of_text
+from agent_ready_common import ProfileError, is_link, sha256_of_text
 from agent_ready_detection import is_contained_pattern
 
 BLOCK_DIRECTORY = "blocks"
@@ -167,10 +167,11 @@ def read_text(path):
 
 
 def has_linked_directory(project_root, destination):
-    """True when a directory between the repository and the file is a symlink: writing would leave it."""
+    """True when a directory between the repository and the file is a symlink or a Windows junction:
+    writing would leave the repository."""
     parent = os.path.dirname(destination)
     while parent:
-        if os.path.islink(os.path.join(project_root, parent)):
+        if is_link(os.path.join(project_root, parent)):
             return True
         parent = os.path.dirname(parent)
     return False
@@ -178,7 +179,7 @@ def has_linked_directory(project_root, destination):
 
 def local_file(path):
     """(state, text): 'absent', 'symlink', 'not-a-file' or 'file' with its text."""
-    if os.path.islink(path):
+    if is_link(path):
         return "symlink", None
     if not os.path.exists(path):
         return "absent", ""

@@ -241,3 +241,28 @@ PY
   [ "$status" -ne 0 ]
   [[ "$output" == *".github/pull_request_template.md (block common): preserved conflict"* ]]
 }
+
+@test "a junction or symlinked directory on the path keeps the block out of a file outside the repository" {
+  mkdir -p "$test_root/shared"
+  if [[ "$OSTYPE" == msys* || "$OSTYPE" == cygwin* ]]; then
+    cmd //c mklink //J "$(cygpath -w "$project_dir/.github")" "$(cygpath -w "$test_root/shared")" > /dev/null
+  else
+    ln -s "$test_root/shared" .github
+  fi
+  run_cli apply
+  [ ! -e "$test_root/shared/pull_request_template.md" ]
+  [[ "$output$stderr" == *".github/pull_request_template.md (block common): a directory on its path is a symlink"* ]]
+}
+
+@test "remove keeps the lock when a block cannot be taken out, so it can run again" {
+  if [[ "$OSTYPE" == msys* || "$OSTYPE" == cygwin* || "$(id -u)" = 0 ]]; then
+    skip "needs POSIX directory permissions"
+  fi
+  run_cli apply
+  chmod 0555 .github
+  run_cli remove --yes
+  chmod 0755 .github
+  [ "$status" -ne 0 ]
+  [ -f .agents/agent-ready.lock.json ]
+  [ "$(lock_value '".github/pull_request_template.md" in lock["blocks"]')" = "True" ]
+}
