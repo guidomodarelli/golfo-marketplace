@@ -30,7 +30,7 @@ import time
 import urllib.request
 import zipfile
 
-from agent_ready_common import acquire_directory_lock, is_link, sha256_of_text, write_text_atomically
+from agent_ready_common import acquire_directory_lock, is_link, sha256_of_text, write_text_if_changed
 
 ORIGIN_ARTIFACT = "artifact"
 MANAGER_NPM = "npm"
@@ -41,6 +41,7 @@ INSTALL_MARKER = "agent-ready-cli.json"
 CLI_PATH_RELATIVE = "agent-ready/cli-path"
 DOWNLOAD_TIMEOUT_SECONDS = 120
 MAX_DOWNLOAD_BYTES = 512 * 1024 * 1024
+INSTALL_IDENTITY_LENGTH = 16
 DOWNLOAD_CHUNK_BYTES = 1024 * 1024
 PACKAGE_COMMAND_TIMEOUT_SECONDS = 600
 CACHE_LOCK_WAIT_SECONDS = 60
@@ -243,6 +244,9 @@ def publish(staging, key, marker):
     with open(os.path.join(staging, INSTALL_MARKER), "w", encoding="utf-8") as marker_file:
         json.dump(marker, marker_file, indent=2, sort_keys=True)
     destination = install_directory(key)
+    if os.path.normcase(os.path.abspath(staging)) == os.path.normcase(os.path.abspath(destination)):
+        # Built in place (a virtual environment cannot move): the marker written last is the publication.
+        return
     if os.path.lexists(destination):
         shutil.rmtree(destination)
     os.makedirs(os.path.dirname(destination), exist_ok=True)
@@ -324,19 +328,29 @@ def install_pip(cli, staging):
     what = f"pip package {package['name']}=={cli['version']}"
     downloads = os.path.join(staging, "download")
     os.makedirs(downloads)
+    # Wheels only: a source distribution runs its build backend before any hash could reject it. With
+    # a declared sha256, pip itself checks it as a hash-checking requirement before keeping the file.
+    requirement = f"{package['name']}=={cli['version']}"
+    if package.get("sha256"):
+        requirement += f" --hash=sha256:{package['sha256']}"
+    requirements = os.path.join(staging, "requirements.txt")
+    with open(requirements, "w", encoding="utf-8") as requirements_file:
+        requirements_file.write(requirement + "\n")
     command = [sys.executable, "-m", MANAGER_PIP]
-    run_package_manager(command + ["download", "--no-deps", "--disable-pip-version-check", "--dest", downloads,
-                                   f"{package['name']}=={cli['version']}"], what)
+    run_package_manager(command + ["download", "--no-deps", "--only-binary=:all:", "--disable-pip-version-check",
+                                   "--dest", downloads, "-r", requirements], what)
     distribution = only_file(downloads, what)
     if package.get("sha256"):
         verify_sha256(distribution, package["sha256"], what)
-    # A virtual environment of its own: the console scripts find their package without a PYTHONPATH.
+    # A virtual environment of its own, created where it stays: its launchers name its interpreter
+    # by absolute path, so it is never moved after pip installs.
     target = os.path.join(staging, "files")
     run_package_manager([sys.executable, "-m", "venv", target], what)
     scripts = os.path.join(target, "Scripts" if os.name == "nt" else "bin")
     environment_python = os.path.join(scripts, "python.exe" if os.name == "nt" else "python")
-    run_package_manager([environment_python, "-m", MANAGER_PIP, "install", "--disable-pip-version-check",
-                         "--no-warn-script-location", distribution], what)
+    run_package_manager([environment_python, "-m", MANAGER_PIP, "install", "--only-binary=:all:",
+                         "--disable-pip-version-check", "--no-warn-script-location", distribution], what)
+    os.unlink(requirements)
     shutil.rmtree(downloads)
     binary = package.get("binary", cli["name"])
     directory = find_executable(scripts, binary)
@@ -349,6 +363,23 @@ def origin_of(cli, machine_platform):
     return cli["package"]["manager"] if "package" in cli else f"{ORIGIN_ARTIFACT}-{machine_platform or 'unknown'}"
 
 
+def declaration_identity(cli, machine_platform):
+    """Short stable id of what is installed: the sha256 when declared, else the package or url.
+
+    Two packs that declare the same name and version with different bytes get different installs,
+    so one never replaces the files another repository runs.
+    """
+    sha256 = expected_sha256(cli, machine_platform)
+    if sha256:
+        return sha256[:INSTALL_IDENTITY_LENGTH]
+    if "package" in cli:
+        source = f"{cli['package']['manager']}:{cli['package']['name']}"
+    else:
+        artifact = next((item for item in cli["artifacts"] if item["platform"] == machine_platform), {})
+        source = artifact.get("url", "")
+    return sha256_of_text(source)[:INSTALL_IDENTITY_LENGTH]
+
+
 def expected_sha256(cli, machine_platform):
     if "package" in cli:
         return cli["package"].get("sha256")
@@ -358,13 +389,21 @@ def expected_sha256(cli, machine_platform):
 
 def install_one(cli, machine_platform):
     """(key, marker, reused) of one CLI in the cache; raises InstallError and leaves the cache as it was."""
-    key = install_key(cli["name"], cli["version"], origin_of(cli, machine_platform))
+    key = install_key(cli["name"], cli["version"],
+                      f"{origin_of(cli, machine_platform)}-{declaration_identity(cli, machine_platform)}")
     sha256 = expected_sha256(cli, machine_platform)
     marker = installed(key, sha256)
     if marker and (sha256 or "package" in cli):
         return key, marker, True
     os.makedirs(installs_root(), exist_ok=True)
-    staging = tempfile.mkdtemp(prefix=".install-", dir=installs_root())
+    if "package" in cli and cli["package"]["manager"] == MANAGER_PIP:
+        # Built where it stays (see install_pip); the marker, written last, makes it installed.
+        staging = install_directory(key)
+        if os.path.lexists(staging):
+            shutil.rmtree(staging)
+        os.makedirs(staging)
+    else:
+        staging = tempfile.mkdtemp(prefix=".install-", dir=installs_root())
     try:
         if "artifacts" in cli:
             details = install_artifact(cli, key, machine_platform, staging)
@@ -415,7 +454,7 @@ def write_project_record(project_root, keys):
         if os.path.exists(path):
             os.unlink(path)
         return
-    write_text_atomically(path, json.dumps({"project": os.path.realpath(project_root), "clis": sorted(keys)},
+    write_text_if_changed(path, json.dumps({"project": os.path.realpath(project_root), "clis": sorted(keys)},
                                            indent=2, sort_keys=True) + "\n")
 
 
@@ -480,7 +519,7 @@ def write_cli_path(project_root, directories):
         if os.path.exists(path):
             os.unlink(path)
         return
-    write_text_atomically(path, "".join(directory + "\n" for directory in directories))
+    write_text_if_changed(path, "".join(directory + "\n" for directory in directories))
 
 
 def system_package_note(cli):

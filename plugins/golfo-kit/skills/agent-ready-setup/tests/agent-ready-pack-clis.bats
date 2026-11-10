@@ -175,12 +175,91 @@ entry = json.load(open(".agents/agent-ready.lock.json", encoding="utf-8"))["clis
 assert entry["version"] == "1.4.2" and entry["source"] == "acme" and len(entry["sha256"]) == 64, entry
 PY
 
-  # The next apply reuses the cache: it does not even reach the server.
+  # The next apply reuses the cache: it does not even reach the server, nor rewrite what is the same.
   kill "$server_pid" && wait "$server_pid" 2> /dev/null || true
   server_pid=""
+  record="$(ls "$XDG_CACHE_HOME"/agent-ready-setup/clis/projects/*.json)"
+  touch -t 200101010000 "$record" "$(cli_path_file)"
   run_cli apply
   [ "$status" -eq 0 ]
   [[ "$stderr" == *"CLIs of profile packs already in the cache: acme 1.4.2"* ]]
+  python3 -c 'import os, sys; assert all(os.path.getmtime(path) < 1e9 + 1e8 for path in sys.argv[1:]), "rewritten"' \
+    "$record" "$(cli_path_file)"
+}
+
+@test "two declarations of the same name and version with different bytes never replace each other" {
+  build_release_archive other
+  cp "$served/other.tar.gz" "$served/acme-other.tar.gz"
+  PYTHONPATH="$skill_dir/scripts" python3 - "$machine_platform" "$server_url" "$(sha256_of "$served/acme.tar.gz")" \
+    "$(sha256_of "$served/acme-other.tar.gz")" <<'PY'
+import os, sys
+import agent_ready_pack_clis as clis
+machine_platform, url, first_sha, second_sha = sys.argv[1:5]
+def declaration(file_name, sha256, binary):
+    return {"name": "acme", "version": "1.4.2", "artifacts": [
+        {"platform": machine_platform, "url": f"{url}/{file_name}", "sha256": sha256, "binary": binary}]}
+first_key, first_marker, _ = clis.install_one(declaration("acme.tar.gz", first_sha, "acme"), machine_platform)
+second_key, second_marker, _ = clis.install_one(declaration("acme-other.tar.gz", second_sha, "other"), machine_platform)
+assert first_key != second_key, (first_key, second_key)
+assert clis.installed(first_key, first_sha) and clis.installed(second_key, second_sha)
+assert os.path.isfile(os.path.join(clis.install_directory(first_key), *first_marker["pathDirectory"].split("/"), "acme"))
+PY
+}
+
+# A wheel with a console script acme-tool, and a source distribution whose build would leave a mark.
+build_python_distributions() {
+  mkdir -p "$test_root/wheels"
+  python3 - "$test_root/wheels" "$test_root/built-from-source" <<'PY'
+import io, os, sys, tarfile, zipfile
+directory, mark = sys.argv[1:3]
+wheel = os.path.join(directory, "acme_tool-1.0.0-py3-none-any.whl")
+files = {
+    "acme_tool/__init__.py": "def main():\n    print('acme-tool works')\n",
+    "acme_tool-1.0.0.dist-info/METADATA": "Metadata-Version: 2.1\nName: acme-tool\nVersion: 1.0.0\n",
+    "acme_tool-1.0.0.dist-info/WHEEL": "Wheel-Version: 1.0\nGenerator: test\nRoot-Is-Purelib: true\nTag: py3-none-any\n",
+    "acme_tool-1.0.0.dist-info/entry_points.txt": "[console_scripts]\nacme-tool = acme_tool:main\n",
+}
+files["acme_tool-1.0.0.dist-info/RECORD"] = "".join(f"{name},,\n" for name in files) + "acme_tool-1.0.0.dist-info/RECORD,,\n"
+with zipfile.ZipFile(wheel, "w") as bundle:
+    for name, text in files.items():
+        bundle.writestr(name, text)
+setup = f"open({mark!r}, 'w').write('built')\nfrom setuptools import setup\nsetup(name='acme-builder', version='1.0.0')\n"
+with tarfile.open(os.path.join(directory, "acme-builder-1.0.0.tar.gz"), "w:gz") as bundle:
+    for name, text in {"acme-builder-1.0.0/setup.py": setup,
+                       "acme-builder-1.0.0/PKG-INFO": "Metadata-Version: 2.1\nName: acme-builder\nVersion: 1.0.0\n"}.items():
+        data = text.encode("utf-8")
+        member = tarfile.TarInfo(name)
+        member.size = len(data)
+        bundle.addfile(member, io.BytesIO(data))
+PY
+  export PIP_NO_INDEX=1
+  PIP_FIND_LINKS="$(native_path "$test_root/wheels")"
+  export PIP_FIND_LINKS
+}
+
+@test "a pip package installs from a wheel checked by pip, and its launcher runs from the cache" {
+  build_python_distributions
+  wheel_sha="$(sha256_of "$test_root/wheels/acme_tool-1.0.0-py3-none-any.whl")"
+  publish_pack "[{\"name\": \"acme-tool\", \"version\": \"1.0.0\", \"package\": {\"manager\": \"pip\", \"name\": \"acme-tool\", \"sha256\": \"$wheel_sha\"}}]"
+  run_cli trust add acme
+  run_cli apply
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"installed in"*"acme-tool 1.0.0"* ]]
+  directory="$(first_cli_directory)"
+  if [ -f "$directory/acme-tool.exe" ]; then run "$directory/acme-tool.exe"; else run "$directory/acme-tool"; fi
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s' "$output" | tr -d '\r')" = "acme-tool works" ]
+}
+
+@test "a pip package with only a source distribution is never built" {
+  build_python_distributions
+  publish_pack "[{\"name\": \"acme-builder\", \"version\": \"1.0.0\", \"package\": {\"manager\": \"pip\", \"name\": \"acme-builder\", \"sha256\": \"$(printf '2%.0s' $(seq 1 64))\"}}]"
+  run_cli trust add acme
+  run_cli apply
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"CLI not installed: acme-builder 1.0.0: pip package acme-builder==1.0.0"* ]]
+  [ ! -e "$test_root/built-from-source" ]
+  [ "$(installed_versions)" = 0 ]
 }
 
 @test "a file whose sha256 is not the declared one is never installed" {

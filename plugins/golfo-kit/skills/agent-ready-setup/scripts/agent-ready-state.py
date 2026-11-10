@@ -49,6 +49,7 @@ from agent_ready_common import (  # noqa: E402
     sha256_of_file,
     sha256_of_text,
     walk_files,
+    write_text_if_changed,
     write_text_atomically,
 )
 from agent_ready_config import (  # noqa: E402
@@ -292,21 +293,6 @@ def has_linked_parent(project_root, destination):
             return True
         parent = os.path.dirname(parent)
     return False
-
-
-def write_text_if_changed(path, text):
-    """Write text unless the file already holds it, ignoring its line endings.
-
-    Rewriting a CRLF checkout with LF would mark the file as modified in Git
-    although its content is the same.
-    """
-    try:
-        with open(path, encoding="utf-8") as file_handle:
-            if file_handle.read() == text:
-                return
-    except (OSError, UnicodeDecodeError):
-        pass
-    write_text_atomically(path, text)
 
 
 # ---------------------------------------------------------------------------

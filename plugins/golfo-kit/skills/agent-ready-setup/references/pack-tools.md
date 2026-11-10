@@ -157,19 +157,23 @@ o `~/.cache/agent-ready-setup/clis`), nunca en el repositorio:
 |---|---|
 | `artifacts` | Descarga por https el archivo de la plataforma de la máquina y compara su `sha256` antes de abrirlo. Un `.tar.gz`, `.tgz` o `.zip` se extrae sin links ni rutas que salgan de su directorio; cualquier otro archivo es el ejecutable. |
 | `npm` | `npm pack` baja el tarball, se compara su `sha256` y recién después `npm install` lo instala en un prefijo propio. |
-| `pip` | `pip download --no-deps` baja el paquete, se compara su `sha256` y se instala en un entorno virtual propio. |
+| `pip` | Solo wheels: un paquete fuente correría su build antes de que el `sha256` pudiera rechazarlo. `pip download --no-deps --only-binary=:all:` lo baja, con el `sha256` como hash de la requirement para que pip lo verifique, y se instala en un entorno virtual propio, creado donde queda. |
 | `brew`, `winget` | Nunca se ejecutan, porque instalan para toda la máquina. El apply dice el comando para instalarlo a mano y si el ejecutable ya está en el PATH. |
 
 - **Un `sha256` distinto no instala nada.** El apply informa el error, conserva lo que el repositorio
   usaba y sigue con el resto. Las dependencias de un paquete npm o pip las resuelve su gestor: el
   `sha256` cubre el paquete declarado, no sus dependencias.
 - **Una versión por máquina.** Cada versión vive una vez en la caché
-  (`installs/<nombre>/<versión>/<origen>`) y la comparten los repositorios que la declaran. Cada
+  (`installs/<nombre>/<versión>/<origen>-<id>`, donde `<id>` sale del `sha256` declarado) y la comparten
+  los repositorios que declaran los mismos bytes. Dos packs con el mismo nombre y versión pero otro
+  `sha256` quedan en instalaciones distintas, así uno nunca reemplaza lo que corre el otro. Cada
   repositorio anota cuáles usa (`projects/<clave>.json`); una versión que ningún repositorio usa se
   borra en el próximo apply o `remove` de cualquiera de ellos.
 - **PATH del repositorio.** Los directorios de los ejecutables quedan, uno por línea, en
   `agent-ready/cli-path` dentro del directorio de Git (`git rev-parse --git-path agent-ready/cli-path`).
   De ahí los toma el runner de los scripts del pack.
+- **Sin escrituras de más.** Un apply que no cambia nada no reescribe el registro del repositorio ni
+  `agent-ready/cli-path`.
 - **Lock.** `clis` guarda, por nombre, la fuente, el profile, la versión, el origen y el `sha256`.
 - **Se desinstala solo.** Un CLI que deja de estar permitido o cuyo profile se retira deja de usarse
   en el próximo apply. `agent-ready remove` deja de usar todos.

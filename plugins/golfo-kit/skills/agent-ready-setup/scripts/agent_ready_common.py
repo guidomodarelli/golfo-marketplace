@@ -105,6 +105,21 @@ def write_text_atomically(path, text):
         raise
 
 
+def write_text_if_changed(path, text):
+    """Write text unless the file already holds it, ignoring its line endings.
+
+    Rewriting a CRLF checkout with LF would mark the file as modified in Git
+    although its content is the same.
+    """
+    try:
+        with open(path, encoding="utf-8") as file_handle:
+            if file_handle.read() == text:
+                return
+    except (OSError, UnicodeDecodeError):
+        pass
+    write_text_atomically(path, text)
+
+
 def plugin_version(skill_dir):
     """Version of the plugin manifest that ships the skill, if present."""
     plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(skill_dir)))
