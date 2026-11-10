@@ -2195,6 +2195,8 @@ def compute_status(project_root, skill_dir):
         for destination in sorted(lock.get("merged", {})):
             if local_state(os.path.join(project_root, destination)) == LOCAL_ABSENT:
                 status["checkout"]["missing"].append(destination)
+        status["checkout"]["failed"].extend(
+            label for label, entry in sorted(managed_blocks.inventory(lock).items()) if entry.get("state") == STATE_FAILED)
 
     profile_names = configuration.value(PROFILES_KEY) or (lock.get("profileOrder") if lock else None)
     if profile_names and skill_dir:
@@ -3274,12 +3276,12 @@ def block_removal_entries(project_root, lock):
         if remaining == text:
             continue
         if managed_blocks.is_empty(remaining):
-            entries.append(removal_entry(destination, REMOVAL_REMOVE, "only holds managed blocks", "block", local))
+            entry = removal_entry(destination, REMOVAL_REMOVE, "only holds managed blocks", "block", local)
         else:
             entry = removal_entry(destination, REMOVAL_EDIT, "removes its managed blocks; the project's content stays",
                                   "block", local)
-            entry["blocks"] = sorted(blocks)
-            entries.append(entry)
+        entry["blocks"] = sorted(blocks)
+        entries.append(entry)
     return entries
 
 
@@ -3585,6 +3587,30 @@ def unregister_browser_servers(project_root, skill_dir, report):
         report["failed"].append(problem)
 
 
+def remove_blocks_now(project_root, entry, report):
+    """Take the blocks of one file out of what it holds now; False when the file keeps them."""
+    path = os.path.join(project_root, entry["path"])
+    if local_state(path) in (LOCAL_ABSENT, LOCAL_SYMLINK, LOCAL_NOT_A_FILE) or \
+            managed_blocks.has_linked_directory(project_root, entry["path"]):
+        report["kept"].append(f"{entry['path']}: {CHANGED_DURING_REMOVAL_REASON}")
+        return False
+    with open(path, encoding="utf-8", newline="") as file_handle:
+        remaining = file_handle.read()
+    try:
+        for block_id in entry["blocks"]:
+            remaining = managed_blocks.without_block(remaining, entry["path"], block_id)
+    except managed_blocks.MarkerError:
+        report["kept"].append(f"{entry['path']}: {AMBIGUOUS_MARKERS_REASON}")
+        return False
+    if managed_blocks.is_empty(remaining):
+        os.unlink(path)
+        report["removed"].append(entry["path"])
+    else:
+        write_text_atomically(path, remaining)
+        report["edited"].append(entry["path"])
+    return True
+
+
 def apply_removal_entry(project_root, skill_dir, entry, report):
     """Carry out one removal or edit, after checking that the file did not change."""
     path = os.path.join(project_root, entry["path"])
@@ -3610,13 +3636,7 @@ def apply_removal_entry(project_root, skill_dir, entry, report):
                 pass
         report["removed"].append(entry["path"])
         return
-    if entry["kind"] == "block":
-        with open(path, encoding="utf-8", newline="") as file_handle:
-            remaining = file_handle.read()
-        for block_id in entry["blocks"]:
-            remaining = managed_blocks.without_block(remaining, entry["path"], block_id)
-        write_text_atomically(path, remaining)
-    elif entry["kind"] == "instructions":
+    if entry["kind"] == "instructions":
         # Read and close before replacing: Windows refuses to replace an open file.
         with open(path, encoding="utf-8") as file_handle:
             current = file_handle.read()
@@ -3659,6 +3679,14 @@ def apply_removal(project_root, skill_dir, plan):
         if entry["kind"] == "config" and inventory_left:
             # Without the lockfile, the next run would not know which files are still managed.
             report["kept"].append(f"{entry['path']}: {INVENTORY_KEPT_REASON}")
+            continue
+        if entry["kind"] == "block":
+            try:
+                # A file that keeps its blocks keeps the lock, so the next remove finds them.
+                inventory_left = not remove_blocks_now(project_root, entry, report) or inventory_left
+            except OSError as caught_error:
+                report["failed"].append(f"{entry['path']}: {caught_error}")
+                inventory_left = True
             continue
         try:
             apply_removal_entry(project_root, skill_dir, entry, report)

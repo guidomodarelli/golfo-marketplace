@@ -303,3 +303,37 @@ add_two_block_profiles() {
   [ "$(lock_value 'lock["blocks"][".github/pull_request_template.md"]["common"]["state"]')" = "failed" ]
   [ ! -e "$template" ]
 }
+
+@test "check reports a block whose first write failed" {
+  mkdir -p packs/acme/profiles/review/blocks/blocked
+  printf 'echo acme\n' > packs/acme/profiles/review/blocks/blocked/deploy.sh
+  printf '%s\n' '{"schemaVersion": 1, "name": "acme", "profiles": {"review": {"kind": "capability", "description": "Acme.", "assets": "profiles/review"}}}' \
+    > packs/acme/agent-ready-pack.json
+  write_manifest '{"profiles": ["node", "acme/review"], "sources": {"packs": [{"name": "acme", "source": "path:packs/acme"}]}}'
+  printf 'not a directory\n' > blocked
+  run_cli trust add --project .
+  run_cli apply
+  [ "$(lock_value 'lock["blocks"]["blocked/deploy.sh"]["acme/review"]["state"]')" = "failed" ]
+  run_cli check
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"blocked/deploy.sh (block acme/review)"* ]]
+}
+
+@test "remove takes a block out of a file another step of the removal edited first" {
+  run_cli apply
+  # Another edit of the same file between the plan and the block, as the browser teardown does to .gitignore.
+  python3 - "$skill_dir/scripts" "$skill_dir" <<'PY'
+import importlib.util, sys
+sys.path.insert(0, sys.argv[1])
+spec = importlib.util.spec_from_file_location("state", sys.argv[1] + "/agent-ready-state.py")
+state = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(state)
+plan = state.plan_removal(".", sys.argv[2])
+with open(".github/pull_request_template.md", "a", encoding="utf-8") as template:
+    template.write("\n## Added while removing\n")
+report = state.apply_removal(".", sys.argv[2], {"entries": [entry for entry in plan["entries"] if entry["kind"] == "block"]})
+assert report["edited"] == [".github/pull_request_template.md"], report
+PY
+  ! grep -q 'AGENT-READY MANAGED' "$template"
+  grep -qx '## Added while removing' "$template"
+}
