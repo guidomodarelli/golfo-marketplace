@@ -181,3 +181,14 @@ PY
   [[ "$output" == *"rewrites=url.https://oauth2:<token>@git.example.com/acme/.insteadOf"* ]]
   ! grep -rq secret-value .agents
 }
+
+@test "the CI profiles are not offered for the selection: neither profiles list nor the unknown profile error name them" {
+  run_cli profiles list
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"node"* ]]
+  [[ "$output" != *"ci-github"* ]]
+  run_cli apply --profiles node,nope
+  [ "$status" -ne 0 ]
+  [[ "$output$stderr" == *"unknown profile 'nope'"* ]]
+  [[ "$output$stderr" != *"ci-github"* ]]
+}

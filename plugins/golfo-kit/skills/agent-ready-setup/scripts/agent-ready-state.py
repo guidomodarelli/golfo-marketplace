@@ -392,8 +392,13 @@ def raise_unknown_profile(catalog, name, requested_by):
             raise ProfileError(f"profile '{name}'{origin} needs the source '{source_name}', which the manifest does not declare; packs cannot bring sources of their own")
         if source["state"] != SOURCE_AVAILABLE:
             raise IncompleteEvaluationError(f"profile '{name}'{origin} needs the source '{source_name}': {source['reason']}")
-    known = ", ".join(sorted(catalog["profiles"]))
+    known = ", ".join(selectable_profile_names(catalog))
     raise ProfileError(f"unknown profile '{name}'{origin}; available profiles: {known}")
+
+
+def selectable_profile_names(catalog):
+    """Profiles a selection can name: every one but the CI profiles, which ci.provider picks."""
+    return sorted(name for name, profile in catalog["profiles"].items() if profile.get("kind") != CI_PROFILE_KIND)
 
 
 def split_profile_names(raw_profiles):
