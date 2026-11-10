@@ -98,6 +98,9 @@ def write_text_atomically(path, text):
     try:
         with os.fdopen(file_descriptor, "w", encoding="utf-8", newline="\n") as file_handle:
             file_handle.write(text)
+        if os.path.isfile(path):
+            # Replacing a file keeps its mode: an executable script stays executable.
+            os.chmod(temporary_path, os.stat(path).st_mode & 0o7777)
         os.replace(temporary_path, path)
     except BaseException:
         if os.path.exists(temporary_path):

@@ -15,6 +15,7 @@ whose profile leaves the selection is removed; a file left empty goes away. The 
 
 import os
 import re
+import stat
 
 from agent_ready_common import ProfileError, sha256_of_text
 from agent_ready_detection import is_contained_pattern
@@ -29,7 +30,8 @@ SYNTAX_BY_NAME = {".gitignore": HASH_SYNTAX, ".gitattributes": HASH_SYNTAX, ".do
 BEGIN_WORD = "BEGIN"
 END_WORD = "END"
 MARKER_LABEL = "AGENT-READY MANAGED"
-# Files whose content the engine owns some other way: the instruction files and the Git directory.
+# Files whose content the engine owns some other way: the instruction files, at any depth and in
+# any case, and the directories of Git and of the providers.
 RESERVED_DESTINATIONS = ("AGENTS.md", "CLAUDE.md")
 RESERVED_PREFIXES = (".git/", ".agents/", ".claude/", ".codex/")
 
@@ -66,7 +68,9 @@ def validate_destination(destination, profile):
     """Raise ProfileError for a block a profile cannot publish."""
     if not is_contained_pattern(destination) or any(ord(character) < 32 for character in destination):
         raise ProfileError(f"profile '{profile}': the block {destination} does not stay inside the repository")
-    if destination in RESERVED_DESTINATIONS or destination.startswith(RESERVED_PREFIXES):
+    folded = destination.casefold()
+    basename = folded.rsplit("/", 1)[-1]
+    if basename in {name.casefold() for name in RESERVED_DESTINATIONS} or folded.startswith(RESERVED_PREFIXES):
         raise ProfileError(f"profile '{profile}': {destination} is not a file a block can go to")
     if comment_syntax(destination) is None:
         known = ", ".join(sorted(SYNTAX_BY_NAME) + sorted(SYNTAX_BY_SUFFIX))
@@ -124,7 +128,7 @@ def block_text(text, destination, block_id):
     span = parse(text, destination).get(block_id)
     if span is None:
         return None
-    return normalized_content("\n".join(lines[span[0] + 1:span[1]]))
+    return "".join(line + "\n" for line in lines[span[0] + 1:span[1]])
 
 
 def with_block(text, destination, block_id, content):
@@ -187,16 +191,19 @@ def local_file(path):
 # Plan
 # ---------------------------------------------------------------------------
 
-def classify(project_root, desired, locked):
+def classify(project_root, desired, locked, retiring=()):
     """One entry per block: what an apply does to it, and why.
 
     ``desired`` is {(destination, id): {profile, source, content}} and ``locked`` the blocks of the lock,
-    {destination: {id: entry}}.
+    {destination: {id: entry}}. ``retiring`` names the files the same apply deletes first, because the
+    whole-file asset there left the selection: their blocks create the file again.
     """
     entries = []
     destinations = sorted({destination for destination, _ in desired} | set(locked))
     for destination in destinations:
         state, text = local_file(os.path.join(project_root, destination))
+        if destination in retiring:
+            state, text = "absent", ""
         problem = None
         if has_linked_directory(project_root, destination):
             state, text, problem = "linked", None, "a directory on its path is a symlink; the file was not changed"
@@ -256,6 +263,9 @@ def write_atomically(path, text):
     temporary = f"{path}.agent-ready-block.{os.getpid()}"
     with open(temporary, "w", encoding="utf-8", newline="") as file_handle:
         file_handle.write(text)
+    if os.path.isfile(path):
+        # An executable script stays executable.
+        os.chmod(temporary, stat.S_IMODE(os.stat(path).st_mode))
     os.replace(temporary, path)
 
 

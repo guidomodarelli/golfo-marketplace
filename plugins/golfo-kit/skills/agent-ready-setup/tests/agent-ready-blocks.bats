@@ -161,3 +161,83 @@ add_block_pack() {
   [ "$status" -eq 0 ]
   [ ! -e "$template" ]
 }
+
+@test "a whole-file template the lock still records is retired and the file holds only the block" {
+  run_cli apply
+  # The previous format: the template as a whole managed asset, without blocks in the lock.
+  cp "$skill_dir/assets/common/blocks/.github/pull_request_template.md" "$template"
+  python3 - <<'PY'
+import hashlib, json
+path = ".agents/agent-ready.lock.json"
+lock = json.load(open(path, encoding="utf-8"))
+content = open(".github/pull_request_template.md", "rb").read()
+lock.pop("blocks", None)
+lock["assets"][".github/pull_request_template.md"] = {"profile": "common", "source": "assets/common/github/pull_request_template.md",
+                                                       "sha256": hashlib.sha256(content).hexdigest(), "state": "applied"}
+json.dump(lock, open(path, "w", encoding="utf-8"), indent=2)
+PY
+  run_cli apply
+  [ "$status" -eq 0 ]
+  head -1 "$template" | grep -qx '<!-- BEGIN AGENT-READY MANAGED: common -->'
+  [ "$(grep -c '^## ' "$template")" -eq "$(grep -c '^## ' "$skill_dir/assets/common/blocks/.github/pull_request_template.md")" ]
+  [ "$(lock_value '".github/pull_request_template.md" in lock["assets"]')" = "False" ]
+}
+
+@test "a block keeps a file executable and a template ending in a blank line stays current" {
+  mkdir -p packs/acme/profiles/review/blocks
+  printf 'echo acme\n\n' > packs/acme/profiles/review/blocks/deploy.sh
+  printf '%s\n' '{"schemaVersion": 1, "name": "acme", "profiles": {"review": {"kind": "capability", "description": "Acme.", "assets": "profiles/review"}}}' \
+    > packs/acme/agent-ready-pack.json
+  write_manifest '{"profiles": ["node", "acme/review"], "sources": {"packs": [{"name": "acme", "source": "path:packs/acme"}]}}'
+  printf '#!/bin/sh\necho project\n' > deploy.sh
+  chmod 0755 deploy.sh
+  run_cli trust add --project .
+  run_cli apply
+  [ "$status" -eq 0 ]
+  grep -qx '# BEGIN AGENT-READY MANAGED: acme/review' deploy.sh
+  run_cli plan
+  [[ "$output" != *"(block acme/review)"* ]]
+  run_cli check
+  [ "$status" -eq 0 ]
+  if [[ "$OSTYPE" != msys* && "$OSTYPE" != cygwin* ]]; then
+    [ -x deploy.sh ]
+    run_cli remove --yes
+    [ -x deploy.sh ]
+  fi
+}
+
+@test "a pack cannot publish a block to AGENTS.md or CLAUDE.md in any directory or case" {
+  mkdir -p packs/acme/profiles/review/blocks/src
+  printf 'x\n' > packs/acme/profiles/review/blocks/src/Agents.md
+  printf '%s\n' '{"schemaVersion": 1, "name": "acme", "profiles": {"review": {"kind": "capability", "description": "Acme.", "assets": "profiles/review"}}}' \
+    > packs/acme/agent-ready-pack.json
+  write_manifest '{"profiles": ["node", "acme/review"], "sources": {"packs": [{"name": "acme", "source": "path:packs/acme"}]}}'
+  run_cli plan
+  [ "$status" -ne 0 ]
+  [[ "$output$stderr" == *"src/Agents.md is not a file a block can go to"* ]]
+}
+
+@test "--from-lock refuses a block that does not match the lock" {
+  run_cli apply
+  python3 - <<'PY'
+import json
+path = ".agents/agent-ready.lock.json"
+lock = json.load(open(path, encoding="utf-8"))
+lock["blocks"][".github/pull_request_template.md"]["common"]["sha256"] = "0" * 64
+json.dump(lock, open(path, "w", encoding="utf-8"), indent=2)
+PY
+  cp "$template" "$test_root/before"
+  run_cli apply --from-lock
+  [ "$status" -ne 0 ]
+  [[ "$output$stderr" == *"the block common of .github/pull_request_template.md does not match the sha256 of the lock"* ]]
+  cmp -s "$template" "$test_root/before"
+}
+
+@test "status reports a block the first apply could not write" {
+  mkdir -p .github
+  printf '<!-- END AGENT-READY MANAGED: common -->\n' > "$template"
+  run_cli apply
+  run_cli check
+  [ "$status" -ne 0 ]
+  [[ "$output" == *".github/pull_request_template.md (block common): preserved conflict"* ]]
+}

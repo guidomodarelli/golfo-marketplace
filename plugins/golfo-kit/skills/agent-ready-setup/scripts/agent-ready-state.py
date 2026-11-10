@@ -856,7 +856,8 @@ def enforce_sync_policy(project_root, skill_dir, catalog, resolved, digests):
     if lock and not projects_locked_revision and golfo_kit.update_mode(configuration_of(project_root)) == UPDATES_PINNED:
         assets = desired_assets(skill_dir, catalog, resolved)
         golfo_assets = {destination: entry for destination, entry in assets.items() if not is_pack_profile(entry["profile"])}
-        identity = source_identity(skill_dir, golfo_assets, merged_template_entries(skill_dir, catalog, resolved))
+        identity = source_identity(skill_dir, golfo_assets, merged_template_entries(skill_dir, catalog, resolved),
+                                   golfo_blocks(desired_blocks(skill_dir, catalog, resolved, assets)))
         if lock.get("source", {}).get("contentDigest") != identity["contentDigest"]:
             raise IncompleteEvaluationError(
                 "this repository pins golfo-kit and has a release pending, and SessionStart cannot update a pack alone; "
@@ -926,6 +927,19 @@ def lock_differences(plan, lock):
         # A retired asset the project kept (retired-preserved) is no longer published by any source.
         if destination not in desired and locked_entry.get("state") != STATE_RETIRED_PRESERVED and not is_engine_asset(locked_entry):
             differences.append(f"{asset_owner(locked_entry)}: {destination} is in the lock but not in this resolution")
+    locked_blocks = lock.get("blocks") or {}
+    desired_blocks_by_key = {(entry["destination"], entry["id"]): entry for entry in plan.get("blocks", []) if entry["sha256"]}
+    for (destination, block_id), entry in sorted(desired_blocks_by_key.items()):
+        locked_entry = (locked_blocks.get(destination) or {}).get(block_id)
+        if not locked_entry:
+            differences.append(f"{entry['profile']}: the block {block_id} of {destination} is not in the lock")
+        elif locked_desired_sha256(locked_entry) != entry["sha256"]:
+            differences.append(f"{entry['profile']}: the block {block_id} of {destination} does not match the sha256 of the lock")
+    for destination, file_blocks in sorted(locked_blocks.items()):
+        for block_id, locked_entry in sorted(file_blocks.items()):
+            if (destination, block_id) not in desired_blocks_by_key:
+                differences.append(f"{locked_entry.get('profile')}: the block {block_id} of {destination} is in the lock "
+                                   "but not in this resolution")
     for destination, entry in sorted(plan["merged"].items()):
         if golfo_kit.is_engine_owned(entry["template"]):
             continue
@@ -1030,7 +1044,12 @@ def engine_version_of(skill_dir):
     return marker["engineVersion"] if marker else plugin_version(skill_dir)
 
 
-def source_identity(skill_dir, assets, merged_templates):
+def golfo_blocks(blocks):
+    """The managed blocks golfo-kit publishes: packs have their own digest."""
+    return {key: item for key, item in blocks.items() if not is_pack_profile(item["profile"])}
+
+
+def source_identity(skill_dir, assets, merged_templates, blocks):
     """Identity of the resolved source; contentDigest is the immutable part.
 
     Pinned golfo-kit content records the Git origin and revision it came from, so the next apply
@@ -1038,6 +1057,8 @@ def source_identity(skill_dir, assets, merged_templates):
     """
     digest_lines = [f"{destination}\t{entry['sha256']}" for destination, entry in sorted(assets.items())]
     digest_lines += [f"{destination}\t{entry['templateSha256']}" for destination, entry in sorted(merged_templates.items())]
+    digest_lines += [f"{destination}\t{block_id}\t{sha256_of_text(item['content'])}"
+                     for (destination, block_id), item in sorted(blocks.items())]
     digest_lines += [
         f"{relative_path}\t{sha256_of_file(os.path.join(skill_dir, relative_path))}"
         for relative_path in RENDERED_INSTRUCTION_INPUTS
@@ -1336,16 +1357,16 @@ def compute_plan(project_root, skill_dir, catalog, profile_names):
         })
     blocks = desired_blocks(skill_dir, catalog, resolved, assets)
     block_destinations = {destination for destination, _ in blocks}
+    retiring_block_files = set()
     for destination, lock_entry in sorted(locked_assets.items()):
         if destination in assets:
             continue
         local = local_state(os.path.join(project_root, destination))
         action, reason = classify_retired(local, lock_entry)
-        if destination in block_destinations and action == ACTION_RETIRE:
-            # The file now holds blocks: what it has is the project's, and the blocks go inside it.
-            action, reason = ACTION_DROP, "now holds managed blocks; its content stays as the project's"
         if action == ACTION_RETIRE and has_linked_parent(project_root, destination):
             action, reason = ACTION_RETIRE_CONFLICT, LINKED_PARENT_REASON
+        if action == ACTION_RETIRE and destination in block_destinations:
+            retiring_block_files.add(destination)
         entries.append({
             "destination": destination,
             "action": action,
@@ -1361,7 +1382,7 @@ def compute_plan(project_root, skill_dir, catalog, profile_names):
     golfo_assets = {destination: entry for destination, entry in assets.items() if not is_pack_profile(entry["profile"])}
     # Without a lockfile the first apply keeps the previous overwrite contract.
     edited_views, preserved_views = detached_views(project_root, assets, locked_assets) if lock else ([], [])
-    identity = source_identity(skill_dir, golfo_assets, merged)
+    identity = source_identity(skill_dir, golfo_assets, merged, golfo_blocks(blocks))
     return {
         "schemaVersion": SCHEMA_VERSION,
         "profiles": resolved,
@@ -1376,7 +1397,7 @@ def compute_plan(project_root, skill_dir, catalog, profile_names):
         "lockedSource": lock.get("source") if lock else None,
         "hasLock": lock is not None,
         "entries": entries,
-        "blocks": managed_blocks.classify(project_root, blocks, (lock or {}).get("blocks", {})),
+        "blocks": managed_blocks.classify(project_root, blocks, (lock or {}).get("blocks", {}), retiring_block_files),
         "editedViews": edited_views,
         "detachedViews": preserved_views,
         "merged": merged,
@@ -2187,7 +2208,12 @@ def compute_status(project_root, skill_dir):
             # A block someone edited by hand, or whose file lost it: the next apply writes it again.
             status["checkout"]["modified"].extend(
                 f"{entry['destination']} (block {entry['id']})" for entry in plan.get("blocks", [])
-                if entry["baseSha256"] and entry["sha256"] and entry["localSha256"] != entry["baseSha256"])
+                if entry["baseSha256"] and entry["sha256"] and entry["localSha256"] != entry["baseSha256"]
+                and entry["action"] not in (ACTION_CONFLICT, ACTION_RETIRE_CONFLICT))
+            # A block the apply cannot write: broken markers, or the file or a directory on its path is a symlink.
+            status["checkout"]["conflict"].extend(
+                f"{entry['destination']} (block {entry['id']})" for entry in plan.get("blocks", [])
+                if entry["action"] in (ACTION_CONFLICT, ACTION_RETIRE_CONFLICT))
             if lock:
                 published = [entry for entry in plan["entries"] if entry["sha256"]]
                 views = [claude_view_of(entry["destination"], entry["source"]) for entry in published]

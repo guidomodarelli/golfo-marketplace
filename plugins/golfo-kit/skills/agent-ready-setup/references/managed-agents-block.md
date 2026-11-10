@@ -85,19 +85,24 @@ proyecto como `blocks/<ruta en el repo>` en su árbol de assets. Por ejemplo, el
     `<!-- END AGENT-READY MANAGED: common -->`;
   - `.gitignore`, `.gitattributes`, `.dockerignore`, YAML, TOML y shell: `# BEGIN AGENT-READY MANAGED: common`.
 
-  Otro tipo de archivo, `AGENTS.md`, `CLAUDE.md` y lo que está bajo `.git/`, `.agents/`, `.claude/` o
-  `.codex/` no admiten bloques: el plan falla y nombra el profile.
+  Otro tipo de archivo, un `AGENTS.md` o `CLAUDE.md` en cualquier directorio (sin importar mayúsculas) y
+  lo que está bajo `.git/`, `.agents/`, `.claude/` o `.codex/` no admiten bloques: el plan falla y nombra
+  el profile.
 - **Contrato.** Es el mismo del bloque de `AGENTS.md`:
   - lo que está entre los marcadores se pisa en cada apply, y lo de afuera es del proyecto;
   - un bloque nuevo se agrega al final, separado por una línea en blanco;
-  - un profile que sale de la selección se lleva su bloque, y un archivo que queda vacío se borra.
+  - un profile que sale de la selección se lleva su bloque, y un archivo que queda vacío se borra;
+  - reescribir el archivo conserva sus permisos, así que un script ejecutable lo sigue siendo.
 - **Varios profiles en un archivo.** Cada profile tiene su bloque, con su id. Un archivo no puede ser a la
-  vez un asset entero de un profile y tener bloques de otro.
+  vez un asset entero de un profile y tener bloques de otro. Si un asset entero sale de la selección y su
+  ruta pasa a tener bloques, el apply lo retira como a cualquier asset y crea el archivo con los bloques.
 - **Marcadores rotos.** Si un marcador se repite, aparece fuera de orden o queda adentro de otro bloque, el
   archivo no se toca. Lo mismo pasa si el archivo es un symlink o lo es un directorio de su ruta. El plan
   lo muestra como `conflict` y el apply como `managed block kept`. El lock conserva la base anterior.
 - **Lock, plan y status.** El lock guarda en `blocks` el sha256 de cada bloque por archivo e id. `plan`
-  muestra cada bloque que cambia con su diff, y `status` reporta como `modified` un bloque editado a mano.
+  muestra cada bloque que cambia con su diff, y `status` reporta como `modified` un bloque editado a mano
+  y como conflicto uno que el apply no puede escribir, aunque nunca se haya aplicado. `apply --from-lock`
+  también compara los bloques con el lock, y el `contentDigest` de golfo-kit incluye los suyos.
 - **`agent-ready remove`.** Saca cada bloque del lock y deja el resto del archivo; si no queda nada, lo borra.
 - **JSON.** `settings.json`, `hooks.json` y `.mcp.json` no admiten comentarios, así que siguen con merge por
   claves.
