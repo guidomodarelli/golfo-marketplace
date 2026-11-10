@@ -500,6 +500,9 @@ def compose_stack_directory(skill_dir, catalog, resolved, compose_root):
         for relative_path, _ in walk_files(profile_asset_root(skill_dir, catalog, name)):
             if relative_path == AGENTS_TEMPLATE_NAME and name != primary:
                 continue
+            if managed_blocks.destination_of(relative_path) is not None:
+                # Each profile keeps its own block of a shared file (desired_blocks).
+                continue
             if relative_path in owners:
                 raise ProfileError(
                     f"profiles '{owners[relative_path]}' and '{name}' both publish {relative_path}; "
@@ -625,6 +628,9 @@ def desired_blocks(skill_dir, catalog, resolved, assets):
     sources += [(name, profile_asset_root(skill_dir, catalog, name)) for name in resolved]
     blocks = {}
     folded_assets = {destination.casefold() for destination in assets}
+    # On a case-insensitive filesystem PULL_REQUEST_TEMPLATE.md and pull_request_template.md are one
+    # file: every block of it goes under the first spelling, so they are applied together.
+    spelling_by_folded = {}
     for profile_name, root in sources:
         if not root:
             continue
@@ -633,6 +639,7 @@ def desired_blocks(skill_dir, catalog, resolved, assets):
             if destination is None:
                 continue
             managed_blocks.validate_destination(destination, profile_name)
+            destination = spelling_by_folded.setdefault(destination.casefold(), destination)
             if destination.casefold() in folded_assets:
                 raise ProfileError(f"profile '{profile_name}' publishes a block for {destination}, which another "
                                    "profile writes as a whole file; nothing was written")
@@ -1946,6 +1953,7 @@ def finalize(project_root, skill_dir, plan, updates):
     conflicts += [f"{view}: {DETACHED_VIEW_REASON}" for view in plan["detachedViews"]]
     block_report = managed_blocks.apply(project_root, plan.get("blocks", []))
     conflicts += block_report["conflicts"]
+    failed += [f"managed blocks of {problem}" for problem in block_report["failed"]]
 
     lock = {
         "schemaVersion": SCHEMA_VERSION,
@@ -2094,7 +2102,8 @@ def print_block_report(report, stream):
     for path in report["removed"]:
         write_line(f"Removed, only held managed blocks: {path}", stream)
     for conflict in report["conflicts"]:
-        write_line(paint(f"  ! managed block kept: {conflict}", "warning", stream), stream)
+        # WARNING: at the start of the line: the background update reports it in the next session.
+        write_line(paint(f"WARNING: managed block kept: {conflict}", "warning", stream), stream)
 
 
 def print_finalize_report(report):
@@ -2938,16 +2947,18 @@ def lock_for_comparison(project_root):
 def assets_needing_attention(lock):
     """Assets an update could not leave as published: the next session must hear about them."""
     labels = {STATE_CONFLICT: "preserved conflict", STATE_FAILED: "could not be applied", STATE_RETIRED_PRESERVED: "retired but preserved"}
+    inventory = {**lock.get("assets", {}), **managed_blocks.inventory(lock)}
     return [
         f"{labels[entry.get('state')]}: {destination}"
-        for destination, entry in sorted(lock.get("assets", {}).items())
+        for destination, entry in sorted(inventory.items())
         if entry.get("state") in labels
     ]
 
 
 def summarize_lock_changes(before, after):
     """What an update changed, from the two lockfiles."""
-    assets_before, assets_after = before.get("assets", {}), after.get("assets", {})
+    assets_before = {**before.get("assets", {}), **managed_blocks.inventory(before)}
+    assets_after = {**after.get("assets", {}), **managed_blocks.inventory(after)}
     changes = {
         "created": sorted(set(assets_after) - set(assets_before)),
         "updated": sorted(
@@ -2972,10 +2983,16 @@ def summarize_lock_changes(before, after):
 
 def locally_changed_assets(project_root, lock):
     """Managed files that differ from what the lock recorded, or that someone deleted."""
-    return sorted(
+    changed = [
         destination for destination, entry in lock.get("assets", {}).items()
         if entry.get("sha256") and local_state(os.path.join(project_root, destination)) != entry["sha256"]
-    )
+    ]
+    changed += [
+        f"{destination} (block {block_id})"
+        for destination, blocks in (lock.get("blocks") or {}).items() for block_id, entry in blocks.items()
+        if entry.get("sha256") and managed_blocks.local_sha256(project_root, destination, block_id) != entry["sha256"]
+    ]
+    return sorted(changed)
 
 
 def terminate_process_tree(process):
@@ -3041,7 +3058,8 @@ def command_background_update(arguments):
         still_changed = set(locally_changed_assets(arguments.project, after))
         changes["restored"] = sorted(
             destination for destination in changed_before
-            if destination not in still_changed and destination in after.get("assets", {})
+            if destination not in still_changed
+            and destination in {**after.get("assets", {}), **managed_blocks.inventory(after)}
             and destination not in changes["updated"]
         )
         backup_line = next((line.strip() for line in output.splitlines() if line.startswith(BACKUPS_LINE_PREFIX)), None)

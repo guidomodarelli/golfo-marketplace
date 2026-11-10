@@ -44,6 +44,7 @@ ACTION_RETIRE_CONFLICT = "retire-conflict"
 ACTION_DROP = "drop"
 STATE_APPLIED = "applied"
 STATE_CONFLICT = "conflict"
+STATE_FAILED = "failed"
 
 
 class MarkerError(ValueError):
@@ -276,7 +277,7 @@ def apply(project_root, entries):
     Each file is read again first: one that changed since the plan keeps its content, and so do
     its blocks in the lock.
     """
-    result = {"lock": {}, "changed": [], "removed": [], "conflicts": []}
+    result = {"lock": {}, "changed": [], "removed": [], "conflicts": [], "failed": []}
     by_destination = {}
     for entry in entries:
         by_destination.setdefault(entry["destination"], []).append(entry)
@@ -308,13 +309,41 @@ def apply(project_root, entries):
                                                                            state=STATE_APPLIED)
         if not unchanged_since_plan or updated == (text if state == "file" else ""):
             continue
-        if is_empty(updated) and state == "file":
-            os.unlink(path)
-            result["removed"].append(destination)
-        elif not is_empty(updated):
-            write_atomically(path, updated)
-            result["changed"].append(destination)
+        try:
+            if is_empty(updated) and state == "file":
+                os.unlink(path)
+                result["removed"].append(destination)
+            elif not is_empty(updated):
+                write_atomically(path, updated)
+                result["changed"].append(destination)
+        except OSError as write_error:
+            result["failed"].append(f"{destination}: {write_error.strerror or write_error}")
+            # Nothing of this file changed: the lock keeps what it had, marked failed.
+            result["lock"].pop(destination, None)
+            for entry in file_entries:
+                if entry["baseSha256"] or entry["sha256"]:
+                    result["lock"].setdefault(destination, {})[entry["id"]] = {
+                        "profile": entry["profile"], "source": entry["source"], "sha256": entry["baseSha256"],
+                        "desiredSha256": entry["sha256"], "state": STATE_FAILED}
     return result
+
+
+def local_sha256(project_root, destination, block_id):
+    """sha256 of what the file holds inside a block now, or None without a readable block."""
+    state, text = local_file(os.path.join(project_root, destination))
+    if state != "file" or has_linked_directory(project_root, destination):
+        return None
+    try:
+        current = block_text(text, destination, block_id)
+    except MarkerError:
+        return None
+    return sha256_of_text(current) if current is not None else None
+
+
+def inventory(lock):
+    """{"<file> (block <id>)": entry} of every block of a lock, to report it next to the assets."""
+    return {f"{destination} (block {block_id})": entry
+            for destination, blocks in (lock.get("blocks") or {}).items() for block_id, entry in blocks.items()}
 
 
 def remove_all(project_root, locked):

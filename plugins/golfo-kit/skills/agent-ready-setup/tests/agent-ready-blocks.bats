@@ -266,3 +266,40 @@ PY
   [ -f .agents/agent-ready.lock.json ]
   [ "$(lock_value '".github/pull_request_template.md" in lock["blocks"]')" = "True" ]
 }
+
+# A path pack with two profiles that each add a block to the pull request template, one of them
+# spelling the file in capitals.
+add_two_block_profiles() {
+  mkdir -p packs/acme/profiles/review/blocks/.github packs/acme/profiles/deploy/blocks/.github
+  printf '## Acme review\n' > packs/acme/profiles/review/blocks/.github/pull_request_template.md
+  printf '## Acme deploy\n' > "packs/acme/profiles/deploy/blocks/.github/$1"
+  printf '%s\n' '{"schemaVersion": 1, "name": "acme", "profiles": {"review": {"kind": "capability", "description": "Review.", "assets": "profiles/review"}, "deploy": {"kind": "capability", "description": "Deploy.", "assets": "profiles/deploy"}}}' \
+    > packs/acme/agent-ready-pack.json
+  write_manifest '{"profiles": ["node", "acme/review", "acme/deploy"], "sources": {"packs": [{"name": "acme", "source": "path:packs/acme"}]}}'
+  run_cli trust add --project .
+}
+
+@test "two pack profiles add blocks to one file through bootstrap, whatever case they spell it in" {
+  add_two_block_profiles PULL_REQUEST_TEMPLATE.md
+  run_cli apply
+  [ "$status" -eq 0 ]
+  [ "$(ls .github)" = "pull_request_template.md" ]
+  grep -qx '<!-- BEGIN AGENT-READY MANAGED: common -->' "$template"
+  grep -qx '## Acme review' "$template"
+  grep -qx '## Acme deploy' "$template"
+  run_cli plan
+  [[ "$output" != *"(block "* ]]
+}
+
+@test "a block the apply cannot write is a failure the lock and the background report keep" {
+  if [[ "$OSTYPE" == msys* || "$OSTYPE" == cygwin* || "$(id -u)" = 0 ]]; then
+    skip "needs POSIX directory permissions"
+  fi
+  mkdir -p .github
+  chmod 0555 .github
+  run_cli apply
+  chmod 0755 .github
+  [[ "$output$stderr" == *"managed blocks of .github/pull_request_template.md"* ]]
+  [ "$(lock_value 'lock["blocks"][".github/pull_request_template.md"]["common"]["state"]')" = "failed" ]
+  [ ! -e "$template" ]
+}
