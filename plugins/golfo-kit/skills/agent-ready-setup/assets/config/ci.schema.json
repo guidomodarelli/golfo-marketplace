@@ -18,6 +18,12 @@
       "enum": ["fail", "warn"],
       "default": "fail",
       "x-env": "AGENT_READY_SETUP_CI"
+    },
+    "provider": {
+      "description": "Proveedor de CI cuyos archivos gestiona agent-ready-setup: el script .agents/ci/agent-ready-check.sh y, según el proveedor, el workflow de GitHub Actions, el job de GitLab con su include o el stage de Jenkins para copiar. none no crea nada; sin valor, todavía no se eligió.",
+      "type": "string",
+      "enum": ["github", "gitlab", "jenkins", "generic", "none"],
+      "x-layers": ["project"]
     }
   }
 }

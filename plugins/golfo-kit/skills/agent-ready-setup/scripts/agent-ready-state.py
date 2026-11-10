@@ -73,6 +73,8 @@ from agent_ready_config import (  # noqa: E402
 from agent_ready_options import (  # noqa: E402
     CI_ENABLED_KEY,
     CI_MODE_KEY,
+    CI_PROVIDER_KEY,
+    CI_PROVIDER_NONE,
     CI_WARN,
     DETECTION_ENABLED_KEY,
     PROFILES_KEY,
@@ -147,6 +149,9 @@ RENDERED_INSTRUCTION_INPUTS = (CLAUDE_PROXY_RELATIVE_PATH, CENTRALIZATION_RELATI
 SKILL_NAME = "agent-ready-setup"
 PLUGIN_NAME = "golfo-kit"
 BASE_PROFILE_NAME = "common"
+# Profiles of the CI files: ci.provider picks one (ci-<provider>), never the profile selection.
+CI_PROFILE_KIND = "ci"
+CI_PROFILE_PREFIX = "ci-"
 SCHEMA_VERSION = 1
 # The schemaVersion of golfo-kit's catalog this engine reads; a newer one asks for a newer plugin.
 GOLFO_CATALOG_SCHEMA_VERSION = 1
@@ -410,11 +415,12 @@ def profiles_for_stack(catalog, stack):
     return list(defaults[stack])
 
 
-def resolve_profiles(catalog, requested_names):
+def resolve_profiles(catalog, requested_names, ci_profile=None):
     """Expand requires in declaration order and validate conflicts.
 
     Returns the ordered list of profile names. The first stack profile is the
-    primary stack: it provides the AGENTS.md template.
+    primary stack: it provides the AGENTS.md template. ``ci_profile`` is the CI profile
+    that ci.provider picks (ci_profile_of); a selection cannot name one itself.
     """
     profiles = catalog["profiles"]
     resolved = []
@@ -437,7 +443,13 @@ def resolve_profiles(catalog, requested_names):
     if not requested_names:
         raise ProfileError("no profiles selected; pass --profiles or --stack")
     for requested_name in requested_names:
+        if profiles.get(requested_name, {}).get("kind") == CI_PROFILE_KIND:
+            provider = requested_name[len(CI_PROFILE_PREFIX):] if requested_name.startswith(CI_PROFILE_PREFIX) else "generic"
+            raise ProfileError(f"profile '{requested_name}' comes from {CI_PROVIDER_KEY}, not from the selection; "
+                               f"drop it and run: agent-ready ci setup --provider {provider}")
         visit(requested_name, None)
+    if ci_profile:
+        visit(ci_profile, None)
 
     for name in resolved:
         for conflicting_name in profiles[name].get("conflicts", []):
@@ -450,6 +462,28 @@ def resolve_profiles(catalog, requested_names):
         stacks = ", ".join(sorted(key for key, value in profiles.items() if value.get("kind") == STACK_PROFILE_KIND))
         raise ProfileError(f"select at least one stack profile ({stacks}); it provides the AGENTS.md template")
     return resolved
+
+
+def ci_profile_of(catalog, project_root):
+    """The CI profile that ci.provider picks, or None without a provider or with none."""
+    provider = configuration_of(project_root).value(CI_PROVIDER_KEY)
+    if not provider or provider == CI_PROVIDER_NONE:
+        return None
+    name = CI_PROFILE_PREFIX + provider
+    if catalog["profiles"].get(name, {}).get("kind") != CI_PROFILE_KIND:
+        raise ProfileError(f"{CI_PROVIDER_KEY}: {provider} needs the profile '{name}', which this golfo-kit content "
+                           "does not have; update golfo-kit or choose another provider")
+    return name
+
+
+def resolve_project_profiles(catalog, names, project_root):
+    """resolve_profiles of a repository: its selection plus the CI profile of ci.provider.
+
+    ``names`` may come from the lock, whose profileOrder already lists the CI profiles of the
+    last apply: they are dropped and taken again from ci.provider, which can have changed.
+    """
+    selection = [name for name in names if catalog["profiles"].get(name, {}).get("kind") != CI_PROFILE_KIND]
+    return resolve_profiles(catalog, selection, ci_profile_of(catalog, project_root))
 
 
 def primary_stack(catalog, resolved):
@@ -1341,7 +1375,7 @@ def detached_views(project_root, assets, locked_assets):
 
 def compute_plan(project_root, skill_dir, catalog, profile_names):
     """Build the read-only plan for the selected profiles."""
-    resolved = resolve_profiles(catalog, profile_names)
+    resolved = resolve_project_profiles(catalog, profile_names, project_root)
     assets = desired_assets(skill_dir, catalog, resolved)
     validate_pack_destinations(project_root, assets)
     lock = read_lock(project_root)
@@ -1636,7 +1670,8 @@ def added_dependencies(catalog, requested, resolved):
     """Profiles that the selection did not name, with the profiles that require them."""
     added = {}
     for name in resolved:
-        if name not in requested:
+        # The CI profiles come from ci.provider, not from a profile that requires them.
+        if name not in requested and catalog["profiles"][name].get("kind") != CI_PROFILE_KIND:
             added[name] = sorted(other for other in resolved if name in catalog["profiles"][other].get("requires", []))
     return added
 
@@ -2409,15 +2444,23 @@ def stack_from_initial_detection(catalog, detection):
     raise ProfileError(f"could not detect project stack: no signal matched; {selection_hint}")
 
 
+def rejecting_ci_profiles(catalog, names):
+    """A selection, or the error of resolve_profiles when it names a CI profile."""
+    for name in names:
+        if catalog["profiles"].get(name, {}).get("kind") == CI_PROFILE_KIND:
+            resolve_profiles(catalog, [name])
+    return names
+
+
 def resolve_selection(arguments, catalog):
     """Requested profiles and their origin: flags, then the manifest, then initial detection."""
     if getattr(arguments, "profiles", None):
-        return split_profile_names(arguments.profiles), SELECTION_PROFILES_FLAG
+        return rejecting_ci_profiles(catalog, split_profile_names(arguments.profiles)), SELECTION_PROFILES_FLAG
     if getattr(arguments, "stack", None):
         return profiles_for_stack(catalog, arguments.stack), SELECTION_STACK_FLAG
     configuration = configuration_of(arguments.project)
     if configuration.value(PROFILES_KEY):
-        return configuration.value(PROFILES_KEY), SELECTION_MANIFEST
+        return rejecting_ci_profiles(catalog, configuration.value(PROFILES_KEY)), SELECTION_MANIFEST
     if not configuration.value(DETECTION_ENABLED_KEY):
         raise ProfileError(f"detection is off ({DETECTION_ENABLED_KEY}: false): select the profiles with --stack or --profiles")
     detection = detect_profiles(catalog["profiles"], arguments.project)
@@ -2431,7 +2474,7 @@ def command_resolve(arguments):
     read_manifest(arguments.project)
     catalog = load_effective_catalog(arguments.project, arguments.skill_dir, read_source_state(arguments))
     requested, selection = resolve_selection(arguments, catalog)
-    resolved = resolve_profiles(catalog, requested)
+    resolved = resolve_project_profiles(catalog, requested, arguments.project)
     validate_pack_destinations(arguments.project, desired_assets(arguments.skill_dir, catalog, resolved))
     if arguments.source_mode == SOURCE_MODE_SYNC:
         enforce_sync_policy(arguments.project, arguments.skill_dir, catalog, resolved, profile_digests(arguments.skill_dir, catalog, resolved))

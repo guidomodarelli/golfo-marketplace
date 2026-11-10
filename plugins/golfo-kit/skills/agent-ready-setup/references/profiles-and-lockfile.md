@@ -24,7 +24,7 @@ un repositorio. La implementación vive en `scripts/agent-ready-state.py`.
 
 | Campo | Significado |
 |---|---|
-| `kind` | `stack` (aporta el template de `AGENTS.md` y sus rules) o `capability` |
+| `kind` | `stack` (aporta el template de `AGENTS.md` y sus rules), `capability` o `ci` (los archivos de CI de un proveedor, que elige `ci.provider` y nunca la selección; ver [ci-check.md](ci-check.md)) |
 | `assets` | árbol de templates del profile, relativo a la skill; opcional |
 | `requires` | profiles que se agregan antes, en orden |
 | `conflicts` | profiles incompatibles; seleccionarlos juntos es error |

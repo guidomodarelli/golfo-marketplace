@@ -1,0 +1,22 @@
+# Managed by agent-ready-setup (ci.provider: github): an apply rewrites it.
+# Report without failing: agent-ready config set ci.mode warn. Turn it off: ci.enabled false.
+# Private packs: the secret AGENT_READY_GIT_TOKEN (a read token) and the variable
+# AGENT_READY_GIT_URL (the URL prefix of the packs) in the settings of the repository.
+name: Agent Ready
+on:
+  pull_request:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check that Agent Ready is up to date
+        env:
+          AGENT_READY_GIT_TOKEN: ${{ secrets.AGENT_READY_GIT_TOKEN }}
+          AGENT_READY_GIT_URL: ${{ vars.AGENT_READY_GIT_URL }}
+        run: sh .agents/ci/agent-ready-check.sh

@@ -16,7 +16,7 @@ description: >-
   descartar un hallazgo de sus revisiones de IA.
 license: MIT
 metadata:
-  version: "1.26.0"
+  version: "1.27.0"
   author: "guponce"
   category: "developer-experience"
   tags: "agent-ready, multi-provider, claude-code, codex, bootstrap, setup, scaffold, context-optimized-v1.20.1"
@@ -123,6 +123,7 @@ explícito fuera del cache conservan prioridad para desarrollo local.
 | `agent-ready sources list\|add\|remove` | las fuentes de packs del manifest; `add` además la trae a la caché |
 | `agent-ready doctor [--offline] [--json]` | revisa Git, Bash, Python, la CLI del provider, la configuración, las fuentes y los hooks, y dice cómo arreglar lo que falta |
 | `agent-ready remove [--dry-run] [--yes]` | saca agent-ready-setup del repo y conserva lo que escribió el proyecto |
+| `agent-ready ci setup --provider github\|gitlab\|jenkins\|generic\|none [--no-apply]` | elige el proveedor de CI (`ci.provider`) y aplica: crea el script `.agents/ci/agent-ready-check.sh` y el workflow, el job de GitLab con su `include` o el stage de Jenkins para copiar; cambiarlo retira los archivos del anterior ([references/ci-check.md](references/ci-check.md)) |
 | `agent-ready trust list\|add\|remove` | confía en una fuente o aprueba el repo en esta máquina; las herramientas de un pack pasan por la política de seguridad ([references/pack-tools.md](references/pack-tools.md)) |
 | `agent-ready review list\|accept\|dismiss\|reset` | los hallazgos de las revisiones de IA con su id, y las decisiones del equipo sobre ellos ([references/ai-reviews.md](references/ai-reviews.md)) |
 
@@ -145,8 +146,9 @@ terminal: `init` lo que falta y `remove` la confirmación. Sin terminal, con `CI
 `--no-input` salen con 2 y nombran los flags que faltan (`remove` pide `--yes`); si preguntaron,
 imprimen el comando equivalente. El resto corre igual en un hook o en CI. `plan`, `status` y `apply` necesitan el provider: lo infieren como `resolve-provider.sh`
 (ver Step 3) o lo toman de `--provider claude|codex`. Para CI, en cualquier proveedor, `agent-ready
-check` compara y sale con códigos documentados, según `ci.mode`. Esta skill no crea workflows de CI;
-para armar un pipeline o explicar un código de salida, leer
+check` compara y sale con códigos documentados, según `ci.mode`. `agent-ready ci setup --provider <proveedor>`
+deja armados los archivos de ese proveedor como assets gestionados; para elegir el proveedor, armar un
+pipeline a mano o explicar un código de salida, leer
 [references/ci-check.md](references/ci-check.md). Saltear los Steps 2 y 4. Para explicar la salida, leer
 [references/profiles-and-lockfile.md](references/profiles-and-lockfile.md).
 

@@ -43,6 +43,7 @@ from agent_ready_cli_common import (
 from agent_ready_common import StateError, serialize_json
 from agent_ready_config import LAYER_PROJECT, ConfigurationError, format_value, load_schema, parse_text_value
 from agent_ready_options import SOURCES_ENABLED_KEY, UPDATES_PRESET_KEY
+from agent_ready_cli_ci import register as register_ci_commands
 from agent_ready_cli_lifecycle import register as register_lifecycle_commands
 from agent_ready_cli_reviews import register as register_review_commands
 from agent_ready_golfo_kit import GOLFO_KIT_SOURCE_NAME as GOLFO_KIT_SOURCE
@@ -369,6 +370,7 @@ def build_parser():
     register_lifecycle_commands(subparsers, new_subparser)
     register_review_commands(subparsers, new_subparser)
     register_trust_commands(subparsers, new_subparser)
+    register_ci_commands(subparsers, new_subparser)
     return parser
 
 

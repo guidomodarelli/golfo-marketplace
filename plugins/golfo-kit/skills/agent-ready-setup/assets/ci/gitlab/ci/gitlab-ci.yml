@@ -1,0 +1,11 @@
+# Managed by agent-ready-setup (ci.provider: gitlab): an apply rewrites it. .gitlab-ci.yml
+# includes it from a managed block. Private packs: the masked CI/CD variables
+# AGENT_READY_GIT_TOKEN (a read token) and AGENT_READY_GIT_URL (the URL prefix of the packs).
+agent-ready-check:
+  image: python:3.12
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  script:
+    - sh .agents/ci/agent-ready-check.sh
