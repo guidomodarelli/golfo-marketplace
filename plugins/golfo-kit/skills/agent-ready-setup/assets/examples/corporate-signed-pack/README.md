@@ -1,7 +1,7 @@
 # Ejemplo: pack corporativo firmado
 
-El pack de una empresa con su CLI (`acme`, un paquete de npm con `sha256`), un servidor MCP de
-documentación y un script que avisa si falta el login. La empresa exige que cada release esté firmado
+El pack de una empresa con su CLI (`acme`, un paquete de npm con `sha256`), un servidor MCP remoto de
+documentación (el token va por referencia, `${ACME_TOKEN}`) y un script que avisa si falta el login. La empresa exige que cada release esté firmado
 con la clave SSH del equipo de plataforma, y lo hace cumplir con una config de organización. La guía
 completa está en `references/publishing-packs-with-tools.md`; la política, en `references/pack-tools.md`.
 

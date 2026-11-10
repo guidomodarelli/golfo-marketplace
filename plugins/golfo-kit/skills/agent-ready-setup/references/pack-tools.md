@@ -171,6 +171,11 @@ Un apply registra cada servidor MCP permitido para los providers del repo (`prov
 - **Solo un apply.** `plan`, `status`, la detección y las revisiones automáticas
   (`AGENT_READY_SETUP_REVIEW_MODE=1`) nunca cambian los servidores registrados.
 - **Si dos packs declaran el mismo nombre,** se registra el primero y se informa el otro.
+- **El `command` se busca en el PATH del provider.** Claude Code y Codex lanzan el comando tal cual.
+  Un CLI que instala un pack queda en el caché del usuario (sección 6), fuera de ese PATH, así que un
+  servidor no puede lanzarse con él. La entrada no lleva la ruta del caché porque `.mcp.json` y
+  `.codex/config.toml` se versionan en el repo. Para un servidor propio, usar uno remoto (`url`) o un
+  comando instalado en cada máquina.
 
 ## 6. Instalación de CLIs
 

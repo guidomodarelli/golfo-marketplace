@@ -21,9 +21,8 @@
       ],
       "mcpServers": {
         "acme-docs": {
-          "command": "acme",
-          "args": ["docs", "mcp"],
-          "env": { "ACME_TOKEN": "${ACME_TOKEN}" }
+          "url": "https://mcp.acme.example/docs",
+          "headers": { "Authorization": "Bearer ${ACME_TOKEN}" }
         }
       },
       "scripts": [

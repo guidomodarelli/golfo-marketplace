@@ -33,7 +33,9 @@ Todo es opcional: un pack sin herramientas sigue funcionando igual, y cada check
 - **CLIs.** Preferí artefactos de release con `sha256` por plataforma. Un paquete de npm o pip también
   necesita su `sha256`, salvo que la política lo apague. brew y winget nunca se ejecutan.
 - **Servidores MCP.** Los secretos van por referencia (`${ACME_TOKEN}`) y nunca con su valor: el
-  catálogo se publica.
+  catálogo se publica. Un servidor local se lanza con el `command` que encuentre el provider en su PATH.
+  Un CLI que instala el pack vive en el caché del usuario y no está en ese PATH, así que no sirve de
+  `command`. Usá un servidor remoto (`url`) o un comando que cada máquina ya tenga.
 - **Scripts.** Cada script declara su `event` (`install`, `post-apply` o `session-start`), su
   intérprete y un `timeoutSeconds`.
   - Tienen que ser idempotentes: `post-apply` corre en cada apply.
