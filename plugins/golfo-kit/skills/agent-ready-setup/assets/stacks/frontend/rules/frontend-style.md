@@ -102,7 +102,7 @@ Coding conventions for this stack. Always consult the documentation of the proje
 ## Logging
 
 - Use the project's logger; never use `console.*` in application code.
-- Write each log message with operation, stage, outcome, code, and safe context. Opaque, stable identifiers (`userId`, `requestId`, `traceId`, resource ids) are allowed and encouraged for diagnosis; never log PII (emails, phone numbers, names, addresses), raw request or response payloads, tokens, cookies, or secrets (see `Secrets & PII` in `security.md`).
+- Write each log message with operation, stage, outcome, code, and safe context. Opaque, stable identifiers (`userId`, `requestId`, `traceId`, resource ids) are allowed and encouraged for diagnosis; never log PII (emails, phone numbers, names, addresses), raw request or response payloads, tokens, cookies, or secrets (see `Secrets & PII` in `frontend-security.md`).
 
 ## Comments
 

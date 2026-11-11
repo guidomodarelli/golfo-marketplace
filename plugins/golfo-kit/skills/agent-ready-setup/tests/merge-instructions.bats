@@ -381,8 +381,8 @@ EOF
   run_merge node
 
   [ "$status" -eq 0 ]
-  grep -Fq '<rule path=".agents/rules/security.md">' "$test_root/provider-prompt.log"
-  grep -Fq "$(sed -n '1p' "$skill_dir/assets/stacks/node/rules/security.md")" "$test_root/provider-prompt.log"
+  grep -Fq '<rule path=".agents/rules/node-security.md">' "$test_root/provider-prompt.log"
+  grep -Fq "$(sed -n '1p' "$skill_dir/assets/stacks/node/rules/node-security.md")" "$test_root/provider-prompt.log"
   grep -Fq '# Existing project instructions' "$test_root/provider-prompt.log"
   grep -Fq '<!-- BEGIN AGENT-READY MANAGED -->' "$test_root/provider-prompt.log"
   ! grep -Fq '{{AGENT_READY_' "$test_root/provider-prompt.log"
@@ -446,7 +446,7 @@ EOF
   mkdir -p .agents/rules/area
   printf '%s\n' '# Team conventions' 'Deploy only on Tuesdays.' > .agents/rules/team-conventions.md
   printf '%s\n' '# Area rule' > .agents/rules/area/payments.md
-  cp "$skill_dir/assets/stacks/node/rules/security.md" .agents/rules/security.md
+  cp "$skill_dir/assets/stacks/node/rules/node-security.md" .agents/rules/node-security.md
   ln -s /etc/hosts .agents/rules/linked.md
   printf '%s\n' '# Project' > AGENTS.md
   write_review_response $'# Project\n\n'"$managed_placeholder"
@@ -457,7 +457,7 @@ EOF
   grep -Fxq '### Project rules' AGENTS.md
   grep -Fxq -- '- Read and follow `.agents/rules/team-conventions.md`.' AGENTS.md
   grep -Fxq -- '- Read and follow `.agents/rules/area/payments.md`.' AGENTS.md
-  [ "$(grep -c 'rules/security.md' AGENTS.md)" -eq 1 ]
+  [ "$(grep -c 'rules/node-security.md' AGENTS.md)" -eq 1 ]
   ! grep -Fq 'linked.md' AGENTS.md
   grep -Fq '<rule path=".agents/rules/team-conventions.md">' "$test_root/provider-prompt.log"
   grep -Fq 'Deploy only on Tuesdays.' "$test_root/provider-prompt.log"

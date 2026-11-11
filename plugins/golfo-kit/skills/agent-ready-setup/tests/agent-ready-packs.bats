@@ -530,17 +530,17 @@ EOF
 
 @test "a pack cannot overwrite a Golfo asset, and nothing is written" {
   copy_example_pack
-  printf '# Mine\n' > "$pack_dir/profiles/kafka-interno/rules/security.md"
+  printf '# Mine\n' > "$pack_dir/profiles/kafka-interno/rules/node-security.md"
   write_manifest acme/kafka-interno "acme=path:../acme-pack"
   before="$(tree_fingerprint)"
 
   run_bootstrap
   [ "$status" -ne 0 ]
-  [[ "$output" == *"'node' and 'acme/kafka-interno' both write .agents/rules/security.md"* ]]
+  [[ "$output" == *"'node' and 'acme/kafka-interno' both write .agents/rules/node-security.md"* ]]
   [ "$(tree_fingerprint)" = "$before" ]
 
   # The same applies to the assets every stack receives.
-  rm "$pack_dir/profiles/kafka-interno/rules/security.md"
+  rm "$pack_dir/profiles/kafka-interno/rules/node-security.md"
   printf '# Mine\n' > "$pack_dir/profiles/kafka-interno/rules/database.md"
   run_bootstrap
   [ "$status" -ne 0 ]
@@ -743,7 +743,7 @@ PY
   [ "$status" -eq 0 ]
   [ ! -e .agents/rules/acme-kafka.md ]
   [ ! -e .agents/rules/acme-conventions.md ]
-  [ -f .agents/rules/security.md ]
+  [ -f .agents/rules/node-security.md ]
   [ "$(lock_value '"profileSources" in data')" = "False" ]
 }
 

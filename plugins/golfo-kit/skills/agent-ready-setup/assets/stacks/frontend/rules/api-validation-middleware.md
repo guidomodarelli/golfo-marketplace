@@ -1,8 +1,8 @@
 # API Validation Middleware Layout
 
-> **Applicability:** applies only when the project serves its API through Express (a BFF with `express.Router`) or the Pages Router (`getServerSideProps`). In Next.js App Router projects, use route handlers (`app/**/route.ts`) and validate at that boundary instead, following `security.md#input-validation` with the project's own boundary helpers; do not create `api/middlewares/validation/` or the Express factory below.
+> **Applicability:** applies only when the project serves its API through Express (a BFF with `express.Router`) or the Pages Router (`getServerSideProps`). In Next.js App Router projects, use route handlers (`app/**/route.ts`) and validate at that boundary instead, following `frontend-security.md#input-validation` with the project's own boundary helpers; do not create `api/middlewares/validation/` or the Express factory below.
 
-For REST routes under api/, follow security.md#input-validation for validation behavior and schema scope. Use this rule for module placement and imports.
+For REST routes under api/, follow frontend-security.md#input-validation for validation behavior and schema scope. Use this rule for module placement and imports.
 
 - Put route-specific schemas from the project's input validation library (for example, zod) and their validation middleware declarations under api/middlewares/validation/, with one module per resource or related route group.
 - Export named middleware with names that identify the resource and request part, such as usersQueryValidationMiddleware or feedbackValidationMiddleware.

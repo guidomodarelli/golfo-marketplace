@@ -1,5 +1,5 @@
 ---
-name: security-scanner
+name: go-security-scanner
 description: Escanea cambios de Go en busca de vulnerabilidades de seguridad como injection, brechas de autenticación y dependencias vulnerables. Usar al revisar seguridad de código Go.
 ---
 
@@ -10,9 +10,9 @@ Scan the current changes for security vulnerabilities.
 ## Sources
 
 1. **Security MCP or SAST tool (optional)**: if the project configures one, run it against the changed files first and use its findings as the primary source.
-2. **`.agents/rules/security.md`**: the baseline checklist. Use it to review the diff when no tool is available, and to prioritize and explain tool findings when one is.
+2. **`.agents/rules/go-security.md`**: the baseline checklist. Use it to review the diff when no tool is available, and to prioritize and explain tool findings when one is.
 
-Report only issues backed by a tool finding or by a concrete violation of `.agents/rules/security.md` in the changed code. Do not report speculative issues.
+Report only issues backed by a tool finding or by a concrete violation of `.agents/rules/go-security.md` in the changed code. Do not report speculative issues.
 
 ## Checklist
 
@@ -38,4 +38,4 @@ Report only issues backed by a tool finding or by a concrete violation of `.agen
 - No se encontraron problemas.
 ```
 
-If no security tool is configured, state it at the top of the report: "No hay un MCP de escaneo de seguridad ni una herramienta SAST configurados. Los hallazgos se basan únicamente en `.agents/rules/security.md`."
+If no security tool is configured, state it at the top of the report: "No hay un MCP de escaneo de seguridad ni una herramienta SAST configurados. Los hallazgos se basan únicamente en `.agents/rules/go-security.md`."

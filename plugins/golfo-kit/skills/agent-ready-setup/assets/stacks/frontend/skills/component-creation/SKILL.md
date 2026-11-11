@@ -58,7 +58,7 @@ export function <ComponentName>({ }: <ComponentName>Props) {
 }
 ```
 
-While writing, apply `../../rules/frontend-style.md` (sections `Components`, `Design system`, `User-facing copy`, `TypeScript`, and `Comments`) and `../../rules/security.md` (sections `Secrets & PII` and `XSS Prevention`).
+While writing, apply `../../rules/frontend-style.md` (sections `Components`, `Design system`, `User-facing copy`, `TypeScript`, and `Comments`) and `../../rules/frontend-security.md` (sections `Secrets & PII` and `XSS Prevention`).
 
 ---
 
@@ -117,7 +117,7 @@ Test checklist:
 - [ ] No snapshot tests as the primary assertion.
 - [ ] No `jest.*` APIs, and no `vi.mock` / `vi.spyOn` of internal modules, services, hooks, or the shared UI library.
 - [ ] Doubles only for ports the component receives by injection (props or a context provider the test renders); HTTP that cannot be avoided is intercepted with `nock` (or the project's existing HTTP interceptor), never by mocking the HTTP client.
-- [ ] Component libraries and platform packages rendered for real, never mocked (`../../rules/testing.md`, section `Mocking`, and `../../rules/no-unnecessary-mocks.md`).
+- [ ] Component libraries and platform packages rendered for real, never mocked (`../../rules/frontend-testing.md`, section `Mocking`, and `../../rules/no-unnecessary-mocks.md`).
 
 ---
 

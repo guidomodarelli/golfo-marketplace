@@ -7,7 +7,7 @@ description: Revisa cambios de producción de frontend y archivos de test por co
 
 Review frontend production changes and test files. Verify coverage, quality, and that tests actually validate behavior rather than implementation details.
 
-Use `.agents/rules/testing.md` and `.agents/rules/no-unnecessary-mocks.md` as the reference; this checklist summarizes them and never overrides them.
+Use `.agents/rules/frontend-testing.md` and `.agents/rules/no-unnecessary-mocks.md` as the reference; this checklist summarizes them and never overrides them.
 
 ## When to activate
 
@@ -35,7 +35,7 @@ When production files are present without tests, review the missing-coverage cas
 ### Mocking
 - [ ] Tests use Vitest APIs (`vi.*`); any Jest API (`jest.fn`, `jest.mock`, `jest.spyOn`) is flagged
 - [ ] No `vi.mock` / `vi.spyOn` on the project's internal services, components, hooks, or modules
-- [ ] Component libraries and platform packages listed in `.agents/rules/testing.md` › `Mocking` (including the project's HTTP client) are never mocked
+- [ ] Component libraries and platform packages listed in `.agents/rules/frontend-testing.md` › `Mocking` (including the project's HTTP client) are never mocked
 - [ ] Doubles are limited to test implementations of domain ports passed by injection (constructor, factory, prop, or provider)
 - [ ] Outbound HTTP isolated with `nock` record/replay fixtures in the `node` environment; no real HTTP calls
 - [ ] Shared state restored between tests (`afterEach` with `vi.restoreAllMocks()`, `nock.cleanAll()`, `vi.useRealTimers()`)

@@ -1,5 +1,5 @@
 ---
-name: perf-analyzer
+name: java-perf-analyzer
 description: Analiza cambios de Java en busca de problemas de performance como JVM tuning, queries a base de datos y connection pools. Usar al revisar performance de código Java.
 ---
 

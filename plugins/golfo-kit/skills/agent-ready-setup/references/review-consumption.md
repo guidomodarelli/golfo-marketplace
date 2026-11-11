@@ -1,7 +1,7 @@
 # Consumo en reviews automatizadas
 
 Contrato para que un reviewer automatizado (Codex GitHub Review, un job de CI
-con Claude Code o Codex, `review-pr`) use las reglas de agent-ready-setup sin
+con Claude Code o Codex, el `<stack>-review-pr` de cada stack) use las reglas de agent-ready-setup sin
 sincronizarlas. Es distinto del setup interactivo. Leer al configurar un
 reviewer o al explicar qué reglas usó una review.
 

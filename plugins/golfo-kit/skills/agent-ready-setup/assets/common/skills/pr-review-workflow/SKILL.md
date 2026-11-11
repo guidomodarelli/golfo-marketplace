@@ -1,15 +1,15 @@
 ---
 name: pr-review-workflow
-description: Procedimiento común de review de PR para todos los stacks; obtiene el diff, corre el roster de agentes que declara el command `review-pr` del stack y consolida un único reporte. Usar solo desde `review-pr`, que aporta el roster.
+description: Procedimiento común de review de PR para todos los stacks; obtiene el diff, corre el roster de agentes que declara el command `<stack>-review-pr` del stack y consolida un único reporte. Usar solo desde el `<stack>-review-pr` de un stack, que aporta el roster.
 license: MIT
 metadata:
-  version: "1.1.0"
+  version: "1.2.0"
   tags: "review, pull-request, multi-provider"
 ---
 
 # PR Review Workflow
 
-Single source for the PR review procedure. Each stack's `review-pr` command declares only its agent roster and its extra checks, then follows these steps.
+Single source for the PR review procedure. Each stack's `<stack>-review-pr` command (`frontend-review-pr`, `node-review-pr`, ...) declares only its agent roster and its extra checks, then follows these steps. With several stacks, each command reviews with its own roster.
 
 ## 1. Get the diff
 

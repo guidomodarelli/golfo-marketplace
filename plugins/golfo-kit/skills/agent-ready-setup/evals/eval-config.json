@@ -3477,6 +3477,34 @@
           "description": "Aclara que el Jenkinsfile no se edita"
         }
       ]
+    },
+    {
+      "id": "two-stacks-in-one-repository",
+      "description": "Un monorepo con frontend React y un servicio Node selecciona los dos stacks; cada uno trae sus assets con su prefijo y el primero aporta el template de AGENTS.md.",
+      "input": "Tengo un monorepo con una app React y un servicio Node. ¿Puedo usar los stacks frontend y node a la vez con agent-ready-setup? ¿Qué comando corro, cómo se llaman las rules de seguridad de cada uno y cuál aporta el AGENTS.md? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "--profiles[ =]+(frontend,node|node,frontend)",
+          "description": "Da la selección con los dos stacks",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "frontend-security.md",
+          "description": "Nombra la rule de seguridad de frontend con su prefijo"
+        },
+        {
+          "type": "contains",
+          "value": "node-security.md",
+          "description": "Nombra la rule de seguridad de node con su prefijo"
+        },
+        {
+          "type": "regex",
+          "pattern": "(primer|principal|primary).{0,120}AGENTS|AGENTS.{0,120}(primer|principal|primary)",
+          "description": "Dice que el primer stack es el principal y aporta el template de AGENTS.md"
+        }
+      ]
     }
   ]
 }
