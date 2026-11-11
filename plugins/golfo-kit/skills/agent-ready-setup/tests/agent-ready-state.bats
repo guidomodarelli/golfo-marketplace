@@ -225,7 +225,7 @@ lock_value() {
 
   run_bootstrap_with "$source_copy"
   [ "$status" -eq 0 ]
-  [ -f "$test_root/outside-agents/perf-analyzer.md" ]
+  [ -f "$test_root/outside-agents/node-perf-analyzer.md" ]
   [[ "$output" == *".agents/agents/node-perf-analyzer.md: a parent directory is a symlink"* ]]
   [ "$(lock_value 'lock["assets"][".agents/agents/node-perf-analyzer.md"]["state"]')" = "retired-preserved" ]
 }
@@ -532,9 +532,21 @@ EOF
 }
 
 @test "profiles that publish the same destination fail before writing anything" {
-  run_bootstrap_with "$skill_dir" --profiles frontend,node
+  copy_skill
+  mkdir -p "$source_copy/assets/profiles/node-security-copy/rules"
+  printf '%s
+' '# Another node security' > "$source_copy/assets/profiles/node-security-copy/rules/node-security.md"
+  python3 - "$source_copy/assets/profiles.json" <<'EOF2'
+import json, sys
+path = sys.argv[1]
+catalog = json.load(open(path))
+catalog["profiles"]["node-security-copy"] = {"kind": "capability", "description": "Publishes the node security rule again.", "requires": ["node"], "assets": "assets/profiles/node-security-copy"}
+json.dump(catalog, open(path, "w"), indent=2)
+EOF2
+
+  run_bootstrap_with "$source_copy" --profiles node-security-copy
   [ "$status" -ne 0 ]
-  [[ "$output" == *"profiles 'frontend' and 'node' both"* ]]
+  [[ "$output" == *"profiles 'node' and 'node-security-copy' both write .agents/rules/node-security.md"* ]]
   [ ! -e .agents ]
   [ ! -e .claude ]
 }
