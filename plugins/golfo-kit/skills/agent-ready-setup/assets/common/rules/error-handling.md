@@ -24,7 +24,7 @@ A failure must say why it happened in the first log line someone reads, without 
 - Use structured logs with the operation name and the identifiers needed to debug it: opaque, stable identifiers such as `userId`, `requestId`, `traceId`, and resource IDs.
 - Log unexpected failures once, at the boundary that owns the user-facing response.
 - For retries and external provider calls, record each attempt and the final outcome with the same trace context. The layer that owns the retry loop records the attempts; if the project forbids logging in that layer (for example in services), return the attempt metadata to the boundary and log it there.
-- Never log secrets, tokens, cookies, authorization headers, raw request or provider payloads, or PII (emails, phone numbers, names, addresses). Opaque identifiers are not PII for this rule, as long as they are internal identifiers and not a PII value used as a key. The stack's `security.md` may add stricter rules; the stricter rule wins.
+- Never log secrets, tokens, cookies, authorization headers, raw request or provider payloads, or PII (emails, phone numbers, names, addresses). Opaque identifiers are not PII for this rule, as long as they are internal identifiers and not a PII value used as a key. The stack's security rule (`<stack>-security.md`) may add stricter rules; the stricter rule wins.
 
 ## Error codes
 

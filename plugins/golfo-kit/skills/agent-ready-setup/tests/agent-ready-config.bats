@@ -352,7 +352,7 @@ PY
   run_bootstrap --profiles node,browser
   [ "$status" -eq 0 ]
   [[ "$output" == *"Browser installation skipped by tools.enabled: false"* ]]
-  [ -f .agents/rules/security.md ]
+  [ -f .agents/rules/node-security.md ]
 }
 
 @test "security.enabled false on the machine lets every project loosen without an approval" {

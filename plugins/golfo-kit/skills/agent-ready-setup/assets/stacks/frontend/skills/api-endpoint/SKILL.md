@@ -13,9 +13,9 @@ metadata:
 >
 > Keep subrouters focused on routing, validation, and orchestration. Put reusable helpers in `utils/` and reusable/domain constants in `constants/`; do not add them inside `api/<resource>/`, `api/services/`, or `services/`. See `../../rules/frontend-style.md`, section `Module placement`. When the project organizes code in `src/modules/<feature>/{domain,application,infrastructure}` (see `../../rules/hexagonal-architecture.md`), the handler calls an application use case wired in the module's composition root, not a flat service, and shared helpers live under `src/modules/shared/`.
 >
-> For the distinction between middleend request validation and backend/upstream response payloads, follow `../../rules/security.md`, section `Input Validation`.
+> For the distinction between middleend request validation and backend/upstream response payloads, follow `../../rules/frontend-security.md`, section `Input Validation`.
 >
-> For error-origin and public status mapping, follow `../../rules/security.md`, section `Error Handling`: preserve upstream HTTP statuses, map BFF-owned request/domain failures to 4xx, and use 5xx only for BFF-owned internal or no-status integration failures.
+> For error-origin and public status mapping, follow `../../rules/frontend-security.md`, section `Error Handling`: preserve upstream HTTP statuses, map BFF-owned request/domain failures to 4xx, and use 5xx only for BFF-owned internal or no-status integration failures.
 >
 > For payloads sent upstream, follow `../../rules/upstream-contracts.md`: map validated input explicitly and let the service build the upstream request.
 
@@ -102,7 +102,7 @@ export async function getServerSideProps(req) {
 }
 ```
 
-Validate every client-controlled input (body, query params, path params, headers) with an allowlist schema, as required by `../../rules/security.md`, section `Input Validation`.
+Validate every client-controlled input (body, query params, path params, headers) with an allowlist schema, as required by `../../rules/frontend-security.md`, section `Input Validation`.
 
 ### Implement the handler
 
@@ -254,7 +254,7 @@ Rules:
 - For path/query params (always strings), coerce non-string types in the schema (for example, `z.coerce.number()`); for booleans, parse the allowed string values explicitly instead of relying on truthiness.
 - Never inline business logic — delegate to a service.
 - Never disable CSRF protection without a formal security review.
-- Everything else (allowlists, PII in logs, error details, status mapping) follows `../../rules/security.md`.
+- Everything else (allowlists, PII in logs, error details, status mapping) follows `../../rules/frontend-security.md`.
 - Never install a package without the user's confirmation (see "Ask before installing").
 
 ---

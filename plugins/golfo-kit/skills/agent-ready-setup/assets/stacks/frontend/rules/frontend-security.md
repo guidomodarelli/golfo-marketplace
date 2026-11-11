@@ -1,6 +1,6 @@
 # Security Rules — Frontend (SSR + React + TypeScript)
 
-Baseline security rules for SSR React applications. These rules are always active and condition all code generation. The `security-scanner` agent uses this file as its baseline checklist and as supplementary context for the findings of any configured security tool.
+Baseline security rules for SSR React applications. These rules are always active and condition all code generation. The `frontend-security-scanner` agent uses this file as its baseline checklist and as supplementary context for the findings of any configured security tool.
 
 ---
 

@@ -136,7 +136,7 @@ copy_skill() {
 }
 
 release_new_golfo_version() {
-  printf '\nA new sentence.\n' >> "$source_copy/assets/stacks/node/rules/testing.md"
+  printf '\nA new sentence.\n' >> "$source_copy/assets/stacks/node/rules/node-testing.md"
 }
 
 update_report_path() {
@@ -203,11 +203,11 @@ EOF
   # If the hook waited for the provider CLI, this call would never return.
   run_session_start
   [ "$status" -eq 0 ]
-  ! grep -Fq 'A new sentence' .agents/rules/testing.md
+  ! grep -Fq 'A new sentence' .agents/rules/node-testing.md
 
   touch "$release_file"
   wait_for_background_update
-  grep -Fq 'A new sentence' .agents/rules/testing.md
+  grep -Fq 'A new sentence' .agents/rules/node-testing.md
   grep -Fq 'marketplace update' "$cli_calls"
 }
 
@@ -223,7 +223,7 @@ EOF
   run_session_start
   [ "$status" -eq 0 ]
   [[ "$output" == *"The last background update changed the repository: 1 updated"* ]]
-  [[ "$output" == *"updated: .agents/rules/testing.md"* ]]
+  [[ "$output" == *"updated: .agents/rules/node-testing.md"* ]]
   wait_for_background_update
 
   run_session_start
@@ -352,7 +352,7 @@ EOF
   [[ "$output" == *"pins golfo-kit and has a release pending"* ]]
   [[ "$output" != *"bootstrap"* ]]
   [ ! -e .agents/rules/acme-newer.md ]
-  ! grep -Fq 'A new sentence' .agents/rules/testing.md
+  ! grep -Fq 'A new sentence' .agents/rules/node-testing.md
 }
 
 @test "AGENT_READY_SETUP_UPDATES turns auto off on one machine without touching the manifest" {
@@ -393,19 +393,19 @@ EOF
 @test "a local edit the background update overwrote is reported with its backup" {
   run_bootstrap --stack node
   [ "$status" -eq 0 ]
-  printf 'local edit\n' >> .agents/rules/testing.md
-  rm .agents/rules/security.md
+  printf 'local edit\n' >> .agents/rules/node-testing.md
+  rm .agents/rules/node-security.md
 
   run_session_start
   [ "$status" -eq 0 ]
   wait_for_background_update
-  ! grep -Fq 'local edit' .agents/rules/testing.md
+  ! grep -Fq 'local edit' .agents/rules/node-testing.md
 
   run_session_start
   [ "$status" -eq 0 ]
   [[ "$output" == *"The last background update changed the repository: 2 restored"* ]]
-  [[ "$output" == *"restored: .agents/rules/testing.md"* ]]
-  [[ "$output" == *"restored: .agents/rules/security.md"* ]]
+  [[ "$output" == *"restored: .agents/rules/node-testing.md"* ]]
+  [[ "$output" == *"restored: .agents/rules/node-security.md"* ]]
   [[ "$output" == *"Local backups directory:"* ]]
 }
 
@@ -433,8 +433,8 @@ PY
 @test "a conflict the background update preserved is reported in the next session" {
   run_bootstrap --stack node
   [ "$status" -eq 0 ]
-  rm .agents/rules/security.md
-  mkdir .agents/rules/security.md
+  rm .agents/rules/node-security.md
+  mkdir .agents/rules/node-security.md
 
   run_session_start
   [ "$status" -eq 0 ]
@@ -442,7 +442,7 @@ PY
 
   run_session_start
   [ "$status" -eq 0 ]
-  [[ "$output" == *"The last background update reported: preserved conflict: .agents/rules/security.md"* ]]
+  [[ "$output" == *"The last background update reported: preserved conflict: .agents/rules/node-security.md"* ]]
 }
 
 @test "a failed background update is reported, changes nothing and stops retrying for a while" {
@@ -664,12 +664,12 @@ PY
   run_check
   [ "$status" -eq 0 ]
 
-  printf 'local edit\n' >> .agents/rules/security.md
-  rm .agents/rules/coding-style.md
+  printf 'local edit\n' >> .agents/rules/node-security.md
+  rm .agents/rules/node-coding-style.md
   run_check
   [ "$status" -eq 4 ]
-  [[ "$output" == *".agents/rules/security.md: modified"* ]]
-  [[ "$output" == *".agents/rules/coding-style.md: missing"* ]]
+  [[ "$output" == *".agents/rules/node-security.md: modified"* ]]
+  [[ "$output" == *".agents/rules/node-coding-style.md: missing"* ]]
 
   run_bootstrap
   [ "$status" -eq 0 ]

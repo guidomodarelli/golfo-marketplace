@@ -55,7 +55,7 @@ Localizar Promise, evento o timer que dispara `setState` y sincronizar el test c
 
 ## Límites y validación
 
-- No silenciar ni filtrar `console.error`, desactivar entorno `act`, mockear el design system, Tippy/Popper ni librerías de UI/plataforma. No cambiar producción únicamente para facilitar tests. Respetar `../../rules/testing.md` y `../../rules/no-unnecessary-mocks.md`.
+- No silenciar ni filtrar `console.error`, desactivar entorno `act`, mockear el design system, Tippy/Popper ni librerías de UI/plataforma. No cambiar producción únicamente para facilitar tests. Respetar `../../rules/frontend-testing.md` y `../../rules/no-unnecessary-mocks.md`.
 - No agregar detectores temporales a setup global sin permiso explícito. Conservar protecciones existentes documentadas que evitan timers/listeners colgados.
 - Ejecutar spec, suite completa dos veces y lint del proyecto. Para warnings sensibles al timing, repetir suite 1–2 veces bajo carga acotada; registrar PIDs propios y detener únicamente esos procesos en cleanup, nunca usar `pkill` global.
 - Exigir tests verdes, cero `not wrapped in act` y cero `Exceeded timeout` en logs nuevos. Reportar causa, cambio, comandos y resultado; declarar cualquier validación pendiente y su motivo.

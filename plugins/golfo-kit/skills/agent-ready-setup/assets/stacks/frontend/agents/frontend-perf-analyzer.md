@@ -1,5 +1,5 @@
 ---
-name: perf-analyzer
+name: frontend-perf-analyzer
 description: Analiza cambios de frontend en busca de regresiones de performance y oportunidades de optimización en el stack SSR + React. Usar al revisar performance de rendering, bundle size o data fetching.
 ---
 

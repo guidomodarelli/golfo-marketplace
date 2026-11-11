@@ -34,7 +34,7 @@
     {
       "id": "runs-roster-from-calling-command",
       "description": "Corre el roster que declara el command del stack, respetando sus condiciones de activación.",
-      "input": "Usando pr-review-workflow desde el `review-pr` del stack frontend, cuyo roster incluye security-scanner, a11y-reviewer, perf-analyzer, test-reviewer (con reglas de activación) y lint-reviewer (con reglas de activación). ¿Qué agentes corrés y en qué orden? No ejecutes Bash ni escribas archivos; respondé desde la skill.",
+      "input": "Usando pr-review-workflow desde el `frontend-review-pr` del stack frontend, cuyo roster incluye frontend-security-scanner, a11y-reviewer, frontend-perf-analyzer, test-reviewer (con reglas de activación) y lint-reviewer (con reglas de activación). ¿Qué agentes corrés y en qué orden? No ejecutes Bash ni escribas archivos; respondé desde la skill.",
       "assertions": [
         {
           "type": "contains",
@@ -95,7 +95,7 @@
     {
       "id": "blocking-findings-gate-merge",
       "description": "Los hallazgos de seguridad van como bloqueantes y bloquean el merge.",
-      "input": "Usando pr-review-workflow: el security scanner encontró un secreto hardcodeado y el perf-analyzer una sugerencia menor. ¿Cómo queda el reporte y se puede mergear? No ejecutes Bash ni escribas archivos; respondé desde la skill.",
+      "input": "Usando pr-review-workflow: el security scanner encontró un secreto hardcodeado y el frontend-perf-analyzer una sugerencia menor. ¿Cómo queda el reporte y se puede mergear? No ejecutes Bash ni escribas archivos; respondé desde la skill.",
       "assertions": [
         {
           "type": "contains",

@@ -1,5 +1,5 @@
 ---
-name: perf-analyzer
+name: node-perf-analyzer
 description: Analiza cambios de Node.js en busca de problemas de performance como bloqueo del event loop, memory leaks e I/O ineficiente. Usar al revisar performance de código Node.js.
 ---
 

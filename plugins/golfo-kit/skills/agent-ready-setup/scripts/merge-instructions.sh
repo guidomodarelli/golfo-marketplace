@@ -110,7 +110,7 @@ Review rules:
 - Delete headings that become empty after their content is removed.
 - $layout_instruction
 - removed lists every deleted line (quoted) with the reason, for example
-  "<line> — covered by .agents/rules/testing.md".
+  "<line> — covered by .agents/rules/node-testing.md".
 - project_content must be complete Markdown, not a patch, summary, or code
   fence. reason briefly summarizes the review.
 

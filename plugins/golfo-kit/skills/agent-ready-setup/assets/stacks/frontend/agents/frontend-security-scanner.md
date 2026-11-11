@@ -1,5 +1,5 @@
 ---
-name: security-scanner
+name: frontend-security-scanner
 description: Escanea cambios de frontend en busca de vulnerabilidades de seguridad propias del stack SSR + React + TypeScript. Usar al revisar cambios por XSS, secrets, validación de input o llamadas outbound inseguras.
 ---
 
@@ -10,9 +10,9 @@ Scan the current changes for security vulnerabilities specific to the SSR + Reac
 ## Sources
 
 1. **Security MCP or SAST tool (optional)** — if the project configures a security scanning MCP or a SAST tool, run it against the changed files first and use its findings and fix suggestions as the primary source.
-2. **`.agents/rules/security.md`** — the baseline checklist. Use it to review the diff when no tool is available, and to prioritize and explain tool findings when one is.
+2. **`.agents/rules/frontend-security.md`** — the baseline checklist. Use it to review the diff when no tool is available, and to prioritize and explain tool findings when one is.
 
-Report only issues backed by a tool finding or by a concrete violation of `.agents/rules/security.md` in the changed code. Do not report speculative issues.
+Report only issues backed by a tool finding or by a concrete violation of `.agents/rules/frontend-security.md` in the changed code. Do not report speculative issues.
 
 ---
 
@@ -53,4 +53,4 @@ Group findings by severity. Add the suggested fix inline for each issue.
 ```
 
 If no security tool is configured, state it at the top of the report:
-> "No hay un MCP de escaneo de seguridad ni una herramienta SAST configurados. Los hallazgos se basan únicamente en `.agents/rules/security.md`."
+> "No hay un MCP de escaneo de seguridad ni una herramienta SAST configurados. Los hallazgos se basan únicamente en `.agents/rules/frontend-security.md`."

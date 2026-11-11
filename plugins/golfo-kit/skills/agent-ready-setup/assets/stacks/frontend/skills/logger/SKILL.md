@@ -236,11 +236,11 @@ try {
 }
 ```
 
-`mapKnownErrorToHttpResponse` is the project's typed error mapper described in skill `/api-endpoint`; its status mapping follows `../../rules/security.md`, section `Error Handling`.
+`mapKnownErrorToHttpResponse` is the project's typed error mapper described in skill `/api-endpoint`; its status mapping follows `../../rules/frontend-security.md`, section `Error Handling`.
 
 Convention for the `message` string: `[FEATURE-DASH-SEPARATED] - error: description`, where the description is fixed text, never the caught error's message.
 
-What goes in `tags`, per `../../rules/error-handling.md` and `../../rules/security.md`:
+What goes in `tags`, per `../../rules/error-handling.md` and `../../rules/frontend-security.md`:
 
 - Allowed: opaque, stable identifiers (`userId`, `requestId`, `traceId`, resource IDs such as `productId`), the error type name, and its stable code.
 - Never: PII (emails, phone numbers, names, addresses), raw request or response payloads, error messages or stacks, secrets, tokens, cookies, or authorization headers.

@@ -149,7 +149,7 @@ publish_pack_repository() {
   [ "$status" -eq 0 ]
   [ -z "$output" ]
   [[ "$stderr" == *"Resolved agent-ready-setup source:"* ]]
-  [ -f .agents/rules/security.md ]
+  [ -f .agents/rules/node-security.md ]
   [ -f .agents/agent-ready.lock.json ]
   [ "$(grep -c 'BEGIN AGENT-READY MANAGED' AGENTS.md)" -eq 1 ]
   [ "$(json_value "$(cat .agents/agent-ready.json)" 'data["profiles"]')" = "['node']" ]
@@ -189,7 +189,7 @@ publish_pack_repository() {
   [ "$status" -eq 0 ]
   for scenario in up-to-date outdated; do
     if [[ "$scenario" == outdated ]]; then
-      printf 'edited\n' >> .agents/rules/security.md
+      printf 'edited\n' >> .agents/rules/node-security.md
     fi
     run_cli check --offline --json
     cli_status="$status"
@@ -471,7 +471,7 @@ publish_pack_repository() {
   run_cli remove --dry-run
   [ "$status" -eq 0 ]
   [[ "$output" == *"agent-ready remove would change these paths:"* ]]
-  [[ "$output" == *"remove .agents/rules/security.md"* ]]
+  [[ "$output" == *"remove .agents/rules/node-security.md"* ]]
   [[ "$output" == *"remove .agents/agent-ready.lock.json"* ]]
   [[ "$output" == *"AGENTS.md"* ]]
   [ "$(tree_fingerprint)" = "$before" ]
@@ -495,7 +495,7 @@ publish_pack_repository() {
   [ "$status" -eq 0 ]
   [ -e .claude/rules/own-rule.md ]
   printf '\n## Project notes\n\nKeep me.\n' >> AGENTS.md
-  printf 'local edit\n' >> .agents/rules/security.md
+  printf 'local edit\n' >> .agents/rules/node-security.md
   python3 - <<'PY'
 import json
 settings = json.load(open(".claude/settings.json", encoding="utf-8"))
@@ -506,14 +506,14 @@ PY
 
   run_cli remove --yes --json < /dev/null
   [ "$status" -eq 0 ]
-  [[ "$(json_value "$output" 'data["kept"]')" == *".agents/rules/security.md: changed since the last apply"* ]]
+  [[ "$(json_value "$output" 'data["kept"]')" == *".agents/rules/node-security.md: changed since the last apply"* ]]
   [ ! -e .agents/agent-ready.json ]
   [ ! -e .agents/agent-ready.lock.json ]
   [ ! -e .agents/hooks/sync-marketplace.sh ]
   [ -f .agents/rules/own-rule.md ]
   [ ! -e .claude/rules/own-rule.md ]
-  [ ! -e .claude/rules/security.md ]
-  grep -q 'local edit' .agents/rules/security.md
+  [ ! -e .claude/rules/node-security.md ]
+  grep -q 'local edit' .agents/rules/node-security.md
   grep -q 'Keep me.' AGENTS.md
   ! grep -q 'AGENT-READY MANAGED' AGENTS.md
   [ -f CLAUDE.md ]
@@ -625,7 +625,7 @@ PY
   [ "$status" -eq 1 ]
   [[ "$stderr" == *"an apply or a session sync is running"* ]]
   [ -f .agents/agent-ready.lock.json ]
-  [ -f .agents/rules/security.md ]
+  [ -f .agents/rules/node-security.md ]
   rmdir .agents/.agent-ready-assets.lock
 
   run_cli remove --dry-run --json
@@ -654,7 +654,7 @@ PY
   run_cli remove --yes < /dev/null
   [ "$status" -eq 0 ]
   [ ! -e .agents/agent-ready.lock.json ]
-  [ ! -e .agents/rules/security.md ]
+  [ ! -e .agents/rules/node-security.md ]
 }
 
 @test "doctor checks the version of the python3 that the session hooks run" {

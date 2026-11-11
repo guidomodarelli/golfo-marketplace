@@ -128,7 +128,7 @@ lock_value() {
 @test "the plan prints non-ASCII diffs whatever encoding the terminal uses" {
   run_bootstrap_with "$skill_dir" --stack node
   [ "$status" -eq 0 ]
-  printf '%s\n' 'nota local → con acentos' >> .agents/rules/testing.md
+  printf '%s\n' 'nota local → con acentos' >> .agents/rules/node-testing.md
 
   export PYTHONIOENCODING=ascii
   run_bootstrap_with "$skill_dir" --plan
@@ -137,7 +137,7 @@ lock_value() {
 
   run_bootstrap_with "$skill_dir" --status
   [ "$status" -eq 0 ]
-  [[ "$output" == *"modified: .agents/rules/testing.md"* ]]
+  [[ "$output" == *"modified: .agents/rules/node-testing.md"* ]]
 }
 
 @test "a CRLF checkout is not a local edit: nothing conflicts and nothing is rewritten" {
@@ -146,7 +146,7 @@ lock_value() {
   [ "$status" -eq 0 ]
   clone_with_crlf_checkout
   # Git Bash grep drops carriage returns before matching, so count the bytes instead.
-  [ "$(tr -cd '\r' < .agents/rules/testing.md | wc -c)" -gt 0 ]
+  [ "$(tr -cd '\r' < .agents/rules/node-testing.md | wc -c)" -gt 0 ]
 
   run python3 "$source_copy/scripts/agent-ready-state.py" status --project . --skill-dir "$source_copy" --check
   [ "$status" -eq 0 ]
@@ -169,15 +169,15 @@ lock_value() {
   run_bootstrap_with "$source_copy" --stack node
   [ "$status" -eq 0 ]
   clone_with_crlf_checkout
-  printf '%s\r\n' 'team specific line' >> .agents/rules/security.md
-  printf '%s\n' '- Newer guidance.' >> "$source_copy/assets/stacks/node/rules/testing.md"
-  printf '%s\n' '- Newer guidance.' >> "$source_copy/assets/stacks/node/rules/security.md"
+  printf '%s\r\n' 'team specific line' >> .agents/rules/node-security.md
+  printf '%s\n' '- Newer guidance.' >> "$source_copy/assets/stacks/node/rules/node-testing.md"
+  printf '%s\n' '- Newer guidance.' >> "$source_copy/assets/stacks/node/rules/node-security.md"
 
   run_bootstrap_with "$source_copy"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Lockfile: .agents/agent-ready.lock.json (complete)"* ]]
-  cmp -s .agents/rules/testing.md "$source_copy/assets/stacks/node/rules/testing.md"
-  cmp -s .agents/rules/security.md "$source_copy/assets/stacks/node/rules/security.md"
+  cmp -s .agents/rules/node-testing.md "$source_copy/assets/stacks/node/rules/node-testing.md"
+  cmp -s .agents/rules/node-security.md "$source_copy/assets/stacks/node/rules/node-security.md"
 }
 
 @test "a manifest that cannot be read stops the sync before writing" {
@@ -185,8 +185,8 @@ lock_value() {
   [ "$status" -eq 0 ]
   printf '%s\n' '{"name": "project"}' > package.json
   printf '%s\n' '{"profiles": "node", "updates": {"mode": "pinned"}}' > .agents/agent-ready.json
-  printf '%s\n' 'edited locally' >> .agents/rules/security.md
-  rm .agents/rules/testing.md
+  printf '%s\n' 'edited locally' >> .agents/rules/node-security.md
+  rm .agents/rules/node-testing.md
   before="$(tree_fingerprint)"
 
   run env PATH="$fake_bin:$PATH" AGENT_READY_SETUP_SKILL_DIR="$skill_dir" AGENT_READY_SETUP_MARKETPLACE_UPGRADED=1 \
@@ -221,13 +221,13 @@ lock_value() {
   mv .agents/agents "$test_root/outside-agents"
   ln -s "$test_root/outside-agents" .agents/agents 2>/dev/null || true
   [ -L .agents/agents ] || skip "requiere symlinks reales (en Windows: Modo de desarrollador o una shell elevada)"
-  rm "$source_copy/assets/stacks/node/agents/perf-analyzer.md"
+  rm "$source_copy/assets/stacks/node/agents/node-perf-analyzer.md"
 
   run_bootstrap_with "$source_copy"
   [ "$status" -eq 0 ]
-  [ -f "$test_root/outside-agents/perf-analyzer.md" ]
-  [[ "$output" == *".agents/agents/perf-analyzer.md: a parent directory is a symlink"* ]]
-  [ "$(lock_value 'lock["assets"][".agents/agents/perf-analyzer.md"]["state"]')" = "retired-preserved" ]
+  [ -f "$test_root/outside-agents/node-perf-analyzer.md" ]
+  [[ "$output" == *".agents/agents/node-perf-analyzer.md: a parent directory is a symlink"* ]]
+  [ "$(lock_value 'lock["assets"][".agents/agents/node-perf-analyzer.md"]["state"]')" = "retired-preserved" ]
 }
 
 @test "a release that only changes instruction templates counts as an update" {
@@ -271,19 +271,19 @@ lock_value() {
 @test "an edited Claude view of a managed asset is reported and then relinked" {
   run_bootstrap_with "$skill_dir" --stack node
   [ "$status" -eq 0 ]
-  rm .claude/rules/security.md
-  printf '%s\n' 'local policy' > .claude/rules/security.md
+  rm .claude/rules/node-security.md
+  printf '%s\n' 'local policy' > .claude/rules/node-security.md
 
   run_bootstrap_with "$skill_dir" --status
-  [[ "$output" == *"modified: .claude/rules/security.md"* ]]
+  [[ "$output" == *"modified: .claude/rules/node-security.md"* ]]
   run_bootstrap_with "$skill_dir" --plan
-  [[ "$output" == *"update"*".claude/rules/security.md"*"relinking the view overwrites them"* ]]
-  [ "$(cat .claude/rules/security.md)" = "local policy" ]
+  [[ "$output" == *"update"*".claude/rules/node-security.md"*"relinking the view overwrites them"* ]]
+  [ "$(cat .claude/rules/node-security.md)" = "local policy" ]
 
   run_bootstrap_with "$skill_dir"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Lockfile: .agents/agent-ready.lock.json (complete)"* ]]
-  [ -L .claude/rules/security.md ] || [ .claude/rules/security.md -ef .agents/rules/security.md ]
+  [ -L .claude/rules/node-security.md ] || [ .claude/rules/node-security.md -ef .agents/rules/node-security.md ]
 }
 
 @test "a project file where a new asset gets its Claude view is preserved until it is removed" {
@@ -315,13 +315,13 @@ lock_value() {
 @test "a Claude view detached with the applied content is relinked without a conflict" {
   run_bootstrap_with "$skill_dir" --stack node
   [ "$status" -eq 0 ]
-  rm .claude/rules/security.md
-  cp .agents/rules/security.md .claude/rules/security.md
+  rm .claude/rules/node-security.md
+  cp .agents/rules/node-security.md .claude/rules/node-security.md
 
   run_bootstrap_with "$skill_dir"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Lockfile: .agents/agent-ready.lock.json (complete)"* ]]
-  [ -L .claude/rules/security.md ] || [ .claude/rules/security.md -ef .agents/rules/security.md ]
+  [ -L .claude/rules/node-security.md ] || [ .claude/rules/node-security.md -ef .agents/rules/node-security.md ]
 }
 
 @test "status --check notices a profile added to the manifest without assets of its own" {
@@ -350,29 +350,29 @@ lock_value() {
   run python3 "$skill_dir/scripts/agent-ready-state.py" status --project . --skill-dir "$skill_dir" --check
   [ "$status" -eq 0 ]
 
-  rm .claude/rules/security.md
+  rm .claude/rules/frontend-security.md
   run python3 "$skill_dir/scripts/agent-ready-state.py" status --project . --skill-dir "$skill_dir" --check
   [ "$status" -eq 4 ]
-  [[ "$output" == *"missing: .claude/rules/security.md"* ]]
+  [[ "$output" == *"missing: .claude/rules/frontend-security.md"* ]]
 }
 
 
 @test "plan and status are read-only and never call the provider CLI" {
   run_bootstrap_with "$skill_dir" --stack frontend
   [ "$status" -eq 0 ]
-  printf '%s\n' 'local note' >> .agents/rules/testing.md
+  printf '%s\n' 'local note' >> .agents/rules/frontend-testing.md
   rm -f "$cli_calls"
   before="$(tree_fingerprint)"
 
   run_bootstrap_with "$skill_dir" --plan --offline
   [ "$status" -eq 0 ]
   [[ "$output" == *"Agent Ready plan (read-only: nothing was written)"* ]]
-  [[ "$output" == *"update"*".agents/rules/testing.md"*"overwrites local changes since the last apply"* ]]
+  [[ "$output" == *"update"*".agents/rules/frontend-testing.md"*"overwrites local changes since the last apply"* ]]
   [[ "$output" == *"+local note"* ]] || [[ "$output" == *"-local note"* ]]
 
   run_bootstrap_with "$skill_dir" --status --offline
   [ "$status" -eq 0 ]
-  [[ "$output" == *"modified: .agents/rules/testing.md"* ]]
+  [[ "$output" == *"modified: .agents/rules/frontend-testing.md"* ]]
 
   [ "$(tree_fingerprint)" = "$before" ]
   [ ! -e "$cli_calls" ]
@@ -381,18 +381,18 @@ lock_value() {
 @test "a locally modified managed asset is overwritten by the next apply, and plan warns first" {
   run_bootstrap_with "$skill_dir" --stack node
   [ "$status" -eq 0 ]
-  printf '%s\n' 'team specific line' >> .agents/rules/security.md
+  printf '%s\n' 'team specific line' >> .agents/rules/node-security.md
 
   run_bootstrap_with "$skill_dir" --plan
-  [[ "$output" == *".agents/rules/security.md"*"overwrites local changes since the last apply"* ]]
+  [[ "$output" == *".agents/rules/node-security.md"*"overwrites local changes since the last apply"* ]]
   [[ "$output" == *"team specific line"* ]]
-  [ "$(tail -n 1 .agents/rules/security.md)" = "team specific line" ]
+  [ "$(tail -n 1 .agents/rules/node-security.md)" = "team specific line" ]
 
   run_bootstrap_with "$skill_dir"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Lockfile: .agents/agent-ready.lock.json (complete)"* ]]
-  cmp -s .agents/rules/security.md "$skill_dir/assets/stacks/node/rules/security.md"
-  [ "$(lock_value 'lock["assets"][".agents/rules/security.md"]["state"]')" = "applied" ]
+  cmp -s .agents/rules/node-security.md "$skill_dir/assets/stacks/node/rules/node-security.md"
+  [ "$(lock_value 'lock["assets"][".agents/rules/node-security.md"]["state"]')" = "applied" ]
 }
 
 @test "a project file in a Claude view stays preserved after its asset could not be written" {
@@ -462,79 +462,91 @@ lock_value() {
 @test "a write that failed before having an applied base is retried by the next apply" {
   run_bootstrap_with "$skill_dir" --stack node
   [ "$status" -eq 0 ]
-  printf '%s\n' 'stale content' > .agents/rules/security.md
+  printf '%s\n' 'stale content' > .agents/rules/node-security.md
   python3 - <<'EOF'
 import json
 
 path = ".agents/agent-ready.lock.json"
 with open(path, encoding="utf-8") as lock_file:
     lock = json.load(lock_file)
-lock["assets"][".agents/rules/security.md"].update(sha256=None, state="failed")
+lock["assets"][".agents/rules/node-security.md"].update(sha256=None, state="failed")
 with open(path, "w", encoding="utf-8") as lock_file:
     json.dump(lock, lock_file)
 EOF
 
   run_bootstrap_with "$skill_dir"
   [ "$status" -eq 0 ]
-  cmp -s .agents/rules/security.md "$skill_dir/assets/stacks/node/rules/security.md"
-  [ "$(lock_value 'lock["assets"][".agents/rules/security.md"]["state"]')" = "applied" ]
+  cmp -s .agents/rules/node-security.md "$skill_dir/assets/stacks/node/rules/node-security.md"
+  [ "$(lock_value 'lock["assets"][".agents/rules/node-security.md"]["state"]')" = "applied" ]
 }
 
 @test "a new release updates every managed asset, edited ones included" {
   copy_skill
   run_bootstrap_with "$source_copy" --stack java
   [ "$status" -eq 0 ]
-  printf '%s\n' 'edited locally' >> .agents/rules/coding-style.md
-  printf '%s\n' '- New upstream guidance.' >> "$source_copy/assets/stacks/java/rules/testing.md"
-  printf '%s\n' '- New upstream guidance.' >> "$source_copy/assets/stacks/java/rules/coding-style.md"
+  printf '%s\n' 'edited locally' >> .agents/rules/java-coding-style.md
+  printf '%s\n' '- New upstream guidance.' >> "$source_copy/assets/stacks/java/rules/java-testing.md"
+  printf '%s\n' '- New upstream guidance.' >> "$source_copy/assets/stacks/java/rules/java-coding-style.md"
 
   run_bootstrap_with "$source_copy" --status
   [[ "$output" == *"Update available"* ]]
 
   run_bootstrap_with "$source_copy"
   [ "$status" -eq 0 ]
-  cmp -s .agents/rules/testing.md "$source_copy/assets/stacks/java/rules/testing.md"
-  cmp -s .agents/rules/coding-style.md "$source_copy/assets/stacks/java/rules/coding-style.md"
+  cmp -s .agents/rules/java-testing.md "$source_copy/assets/stacks/java/rules/java-testing.md"
+  cmp -s .agents/rules/java-coding-style.md "$source_copy/assets/stacks/java/rules/java-coding-style.md"
 }
 
 @test "assets dropped from the profiles are retired, edited ones included" {
   copy_skill
   run_bootstrap_with "$source_copy" --stack node
   [ "$status" -eq 0 ]
-  [ -f .agents/agents/perf-analyzer.md ]
-  [ -f .agents/skills/perf-analyzer/SKILL.md ]
-  printf '%s\n' 'edited locally' >> .agents/agents/security-scanner.md
-  rm "$source_copy/assets/stacks/node/agents/perf-analyzer.md" "$source_copy/assets/stacks/node/agents/security-scanner.md"
+  [ -f .agents/agents/node-perf-analyzer.md ]
+  [ -f .agents/skills/node-perf-analyzer/SKILL.md ]
+  printf '%s\n' 'edited locally' >> .agents/agents/node-security-scanner.md
+  rm "$source_copy/assets/stacks/node/agents/node-perf-analyzer.md" "$source_copy/assets/stacks/node/agents/node-security-scanner.md"
 
   run_bootstrap_with "$source_copy" --plan
-  [[ "$output" == *".agents/agents/security-scanner.md"*"removes its local changes"* ]]
+  [[ "$output" == *".agents/agents/node-security-scanner.md"*"removes its local changes"* ]]
 
   run_bootstrap_with "$source_copy"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Retired managed assets:"* ]]
-  [ ! -e .agents/agents/perf-analyzer.md ]
-  [ ! -e .agents/skills/perf-analyzer ]
-  [ ! -e .claude/agents/perf-analyzer.md ]
-  [ ! -e .agents/agents/security-scanner.md ]
-  [ ! -e .claude/agents/security-scanner.md ]
-  [ "$(lock_value '".agents/agents/perf-analyzer.md" in lock["assets"]')" = "False" ]
-  [ "$(lock_value '".agents/agents/security-scanner.md" in lock["assets"]')" = "False" ]
+  [ ! -e .agents/agents/node-perf-analyzer.md ]
+  [ ! -e .agents/skills/node-perf-analyzer ]
+  [ ! -e .claude/agents/node-perf-analyzer.md ]
+  [ ! -e .agents/agents/node-security-scanner.md ]
+  [ ! -e .claude/agents/node-security-scanner.md ]
+  [ "$(lock_value '".agents/agents/node-perf-analyzer.md" in lock["assets"]')" = "False" ]
+  [ "$(lock_value '".agents/agents/node-security-scanner.md" in lock["assets"]')" = "False" ]
 }
 
 @test "without a lockfile the first apply adopts existing managed files once" {
   mkdir -p .agents/rules
-  printf '%s\n' 'previous template version' > .agents/rules/testing.md
+  printf '%s\n' 'previous template version' > .agents/rules/go-testing.md
 
   run_bootstrap_with "$skill_dir" --stack go
   [ "$status" -eq 0 ]
-  cmp -s .agents/rules/testing.md "$skill_dir/assets/stacks/go/rules/testing.md"
-  [ "$(lock_value 'lock["assets"][".agents/rules/testing.md"]["state"]')" = "applied" ]
+  cmp -s .agents/rules/go-testing.md "$skill_dir/assets/stacks/go/rules/go-testing.md"
+  [ "$(lock_value 'lock["assets"][".agents/rules/go-testing.md"]["state"]')" = "applied" ]
 }
 
 @test "profiles that publish the same destination fail before writing anything" {
-  run_bootstrap_with "$skill_dir" --profiles frontend,node
+  copy_skill
+  mkdir -p "$source_copy/assets/profiles/node-security-copy/rules"
+  printf '%s
+' '# Another node security' > "$source_copy/assets/profiles/node-security-copy/rules/node-security.md"
+  python3 - "$source_copy/assets/profiles.json" <<'EOF2'
+import json, sys
+path = sys.argv[1]
+catalog = json.load(open(path))
+catalog["profiles"]["node-security-copy"] = {"kind": "capability", "description": "Publishes the node security rule again.", "requires": ["node"], "assets": "assets/profiles/node-security-copy"}
+json.dump(catalog, open(path, "w"), indent=2)
+EOF2
+
+  run_bootstrap_with "$source_copy" --profiles node-security-copy
   [ "$status" -ne 0 ]
-  [[ "$output" == *"profiles 'frontend' and 'node' both"* ]]
+  [[ "$output" == *"profiles 'node' and 'node-security-copy' both write .agents/rules/node-security.md"* ]]
   [ ! -e .agents ]
   [ ! -e .claude ]
 }
@@ -565,7 +577,7 @@ EOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"Profiles: node,node-testing"* ]]
   cmp -s .agents/rules/node-testing-extras.md "$source_copy/assets/profiles/node-testing/rules/node-testing-extras.md"
-  cmp -s .agents/rules/security.md "$source_copy/assets/stacks/node/rules/security.md"
+  cmp -s .agents/rules/node-security.md "$source_copy/assets/stacks/node/rules/node-security.md"
   grep -Fq 'node-testing-extras.md' AGENTS.md
   [ "$(lock_value 'lock["assets"][".agents/rules/node-testing-extras.md"]["profile"]')" = "node-testing" ]
 
@@ -574,11 +586,49 @@ EOF
   [[ "$output" == *"AGENTS.md: managed block is current"* ]]
 }
 
+@test "two stacks compose in one repository: each brings its own assets and the first one is the primary" {
+  run_bootstrap_with "$skill_dir" --profiles frontend,node
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Profiles: frontend,node"* ]]
+  for stack in frontend node; do
+    cmp -s ".agents/rules/$stack-security.md" "$skill_dir/assets/stacks/$stack/rules/$stack-security.md"
+    cmp -s ".agents/rules/$stack-testing.md" "$skill_dir/assets/stacks/$stack/rules/$stack-testing.md"
+    cmp -s ".agents/agents/$stack-perf-analyzer.md" "$skill_dir/assets/stacks/$stack/agents/$stack-perf-analyzer.md"
+    cmp -s ".agents/commands/$stack-review-pr.md" "$skill_dir/assets/stacks/$stack/commands/$stack-review-pr.md"
+    grep -Fq ".agents/rules/$stack-security.md" AGENTS.md
+    [ "$(lock_value "lock['assets']['.agents/rules/$stack-security.md']['profile']")" = "$stack" ]
+  done
+  cmp -s .agents/rules/node-coding-style.md "$skill_dir/assets/stacks/node/rules/node-coding-style.md"
+  cmp -s .agents/rules/frontend-style.md "$skill_dir/assets/stacks/frontend/rules/frontend-style.md"
+  # Only the primary stack brings the AGENTS.md template: frontend's has no project skeleton.
+  ! grep -Fq '<!-- e.g. Node.js' AGENTS.md
+
+  run_bootstrap_with "$skill_dir" --plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"AGENTS.md: managed block is current"* ]]
+}
+
+@test "an apply after the stack assets were renamed retires the files with the old names" {
+  copy_skill
+  mv "$source_copy/assets/stacks/node/rules/node-security.md" "$source_copy/assets/stacks/node/rules/security.md"
+  run_bootstrap_with "$source_copy" --stack node
+  [ "$status" -eq 0 ]
+  [ -f .agents/rules/security.md ]
+
+  run_bootstrap_with "$skill_dir" --stack node
+  [ "$status" -eq 0 ]
+  [ ! -e .agents/rules/security.md ]
+  [ ! -e .claude/rules/security.md ]
+  ! grep -Fq '.agents/rules/security.md' AGENTS.md
+  cmp -s .agents/rules/node-security.md "$skill_dir/assets/stacks/node/rules/node-security.md"
+  [ "$(lock_value "'.agents/rules/security.md' in lock['assets']")" = "False" ]
+}
+
 @test "SessionStart in a pinned repository reports updates without writing" {
   copy_skill
   run_bootstrap_with "$source_copy" --stack node
   [ "$status" -eq 0 ]
-  printf '%s\n' '- Newer guidance.' >> "$source_copy/assets/stacks/node/rules/testing.md"
+  printf '%s\n' '- Newer guidance.' >> "$source_copy/assets/stacks/node/rules/node-testing.md"
   before="$(tree_fingerprint)"
 
   run env PATH="$fake_bin:$PATH" AGENT_READY_SETUP_SKILL_DIR="$source_copy" AGENT_READY_SETUP_MARKETPLACE_UPGRADED=1 \
@@ -595,20 +645,20 @@ EOF
   copy_skill
   run_bootstrap_with "$source_copy" --stack node --updates auto
   [ "$status" -eq 0 ]
-  printf '%s\n' 'edited locally' >> .agents/rules/security.md
-  printf '%s\n' '- Newer guidance.' >> "$source_copy/assets/stacks/node/rules/testing.md"
-  printf '%s\n' '- Newer guidance.' >> "$source_copy/assets/stacks/node/rules/security.md"
+  printf '%s\n' 'edited locally' >> .agents/rules/node-security.md
+  printf '%s\n' '- Newer guidance.' >> "$source_copy/assets/stacks/node/rules/node-testing.md"
+  printf '%s\n' '- Newer guidance.' >> "$source_copy/assets/stacks/node/rules/node-security.md"
   printf '%s\n' '# Newer hook release.' >> "$source_copy/assets/common/hooks/sync-marketplace.sh"
-  rm .claude/rules/testing.md
-  printf '%s\n' 'local view policy' > .claude/rules/testing.md
+  rm .claude/rules/node-testing.md
+  printf '%s\n' 'local view policy' > .claude/rules/node-testing.md
 
   run env PATH="$fake_bin:$PATH" AGENT_READY_SETUP_SKILL_DIR="$source_copy" AGENT_READY_SETUP_MARKETPLACE_UPGRADED=1 \
     bash .agents/hooks/sync-marketplace.sh --provider codex
   [ "$status" -eq 0 ]
   [[ "$output" == *"Sync hook updated; restarting with latest version."* ]]
-  [ -L .claude/rules/testing.md ] || [ .claude/rules/testing.md -ef .agents/rules/testing.md ]
-  cmp -s .agents/rules/testing.md "$source_copy/assets/stacks/node/rules/testing.md"
-  cmp -s .agents/rules/security.md "$source_copy/assets/stacks/node/rules/security.md"
+  [ -L .claude/rules/node-testing.md ] || [ .claude/rules/node-testing.md -ef .agents/rules/node-testing.md ]
+  cmp -s .agents/rules/node-testing.md "$source_copy/assets/stacks/node/rules/node-testing.md"
+  cmp -s .agents/rules/node-security.md "$source_copy/assets/stacks/node/rules/node-security.md"
   [[ "$output" == *"Local backups directory:"* ]]
   backup_directory="$(sed -n 's/^Local backups directory: //p' <<< "$output")"
   grep -rq 'edited locally' "$backup_directory"
@@ -660,7 +710,7 @@ EOF
   copy_skill
   run_bootstrap_with "$source_copy" --stack node --updates auto
   [ "$status" -eq 0 ]
-  printf '%s\n' '- Newer guidance.' >> "$source_copy/assets/stacks/node/rules/testing.md"
+  printf '%s\n' '- Newer guidance.' >> "$source_copy/assets/stacks/node/rules/node-testing.md"
   before="$(tree_fingerprint)"
   rm -f "$cli_calls"
 
@@ -679,10 +729,10 @@ EOF
   run python3 "$skill_dir/scripts/agent-ready-state.py" status --project . --skill-dir "$skill_dir" --check
   [ "$status" -eq 0 ]
 
-  rm .agents/rules/security.md
+  rm .agents/rules/go-security.md
   run python3 "$skill_dir/scripts/agent-ready-state.py" status --project . --skill-dir "$skill_dir" --check
   [ "$status" -eq 4 ]
-  [[ "$output" == *"missing: .agents/rules/security.md"* ]]
+  [[ "$output" == *"missing: .agents/rules/go-security.md"* ]]
 }
 
 @test "the android stack projects its own assets and does not select browser tools" {
@@ -690,11 +740,11 @@ EOF
   [ "$status" -eq 0 ]
   [ "$(lock_value 'lock["primaryStack"]')" = "android" ]
   [ "$(lock_value 'lock["profileOrder"]')" = "['android']" ]
-  for asset in rules/coding-style.md rules/security.md rules/testing.md agents/perf-analyzer.md agents/security-scanner.md commands/review-pr.md; do
+  for asset in rules/android-coding-style.md rules/android-security.md rules/android-testing.md agents/android-perf-analyzer.md agents/android-security-scanner.md commands/android-review-pr.md; do
     cmp -s ".agents/$asset" "$skill_dir/assets/stacks/android/$asset"
     [ -L ".claude/$asset" ] || [ ".claude/$asset" -ef ".agents/$asset" ]
   done
-  grep -Fq -- '- Read and follow `.agents/rules/coding-style.md`.' AGENTS.md
+  grep -Fq -- '- Read and follow `.agents/rules/android-coding-style.md`.' AGENTS.md
   [ ! -e .mcp.json ]
 }
 

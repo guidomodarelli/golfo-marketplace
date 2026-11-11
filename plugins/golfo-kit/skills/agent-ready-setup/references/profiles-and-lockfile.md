@@ -39,8 +39,11 @@ directorio tal cual; con varios, `resolve` los compone en
 la normalización y el bloque gestionado leen ese árbol (variable
 `AGENT_READY_SETUP_STACK_DIR`). Si dos profiles (o un profile y la base)
 publican el mismo destino, la resolución falla **antes de escribir** y nombra
-los dos profiles: hoy las stacks comparten nombres (`rules/security.md`,
-`agents/perf-analyzer.md`), así que no se combinan entre sí.
+los dos profiles. Las stacks no chocan entre sí: cada una nombra sus assets con su
+prefijo (`rules/node-security.md`, `agents/frontend-perf-analyzer.md`,
+`commands/go-review-pr.md`), así que un monorepo selecciona varias
+(`--profiles frontend,node`). La primera stack de la selección es la principal y aporta
+el template de `AGENTS.md`; las demás suman sus rules, agents, commands y skills.
 
 `--stack <s>` sigue funcionando como alias de `stackDefaults[s]` (la stack más
 `browser`, salvo `android`, porque una app nativa no usa esas herramientas: para una
@@ -125,7 +128,7 @@ especialización del otro:
 | `frontend` + `node` | `frontend` | un proyecto React también tiene `package.json` |
 | `frontend` + `android` | `frontend` | el directorio `android/` de React Native o Capacitor es un host generado |
 | `android` + `java` | `android` | una app Android también tiene Gradle |
-| cualquier otra, por ejemplo `node` + `go` | ninguno | nada dice cuál es el principal: se listan las coincidencias y se pide una selección explícita |
+| cualquier otra, por ejemplo `node` + `go` | ninguno | nada dice cuál es el principal: se listan las coincidencias y se pide una selección explícita, que puede nombrar las dos (`--profiles go,node`) |
 
 Si queda un solo stack después de quitar los reemplazados, es el primario. Si quedan
 varios, `detect` sale con 3, y `resolve`, `plan` y un apply sin selección fallan antes de
