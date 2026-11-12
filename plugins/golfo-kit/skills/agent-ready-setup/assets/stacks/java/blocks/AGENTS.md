@@ -3,4 +3,4 @@
 
 The Java stack of agent-ready-setup covers Java with Maven or Gradle. Its rules are listed above with the `java-` prefix (`.agents/rules/java-security.md`, `.agents/rules/java-testing.md`).
 
-To review a pull request, run `/java-review-pr`: it runs the `java-security-scanner` and `java-perf-analyzer` agents.
+To review a pull request, run `/java-review-pr`; its agents and when each one runs are in `.agents/commands/java-review-pr.md`.

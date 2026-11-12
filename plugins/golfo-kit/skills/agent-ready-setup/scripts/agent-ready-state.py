@@ -1450,7 +1450,8 @@ def compute_plan(project_root, skill_dir, catalog, profile_names):
         "lockedSource": lock.get("source") if lock else None,
         "hasLock": lock is not None,
         "entries": entries,
-        "blocks": managed_blocks.classify(project_root, blocks, (lock or {}).get("blocks", {}), retiring_block_files),
+        "blocks": managed_blocks.classify(project_root, *without_waiting_sections(project_root, blocks, (lock or {}).get("blocks", {})),
+                                          retiring_block_files),
         "editedViews": edited_views,
         "detachedViews": preserved_views,
         "merged": merged,
@@ -1933,6 +1934,29 @@ def remove_empty_parents(project_root, path):
         directory = os.path.dirname(directory)
 
 
+def instruction_sections_wait(project_root):
+    """True when AGENTS.md is the project's own file without the managed block yet.
+
+    That file is the project's until the instruction review places the managed block (a legacy file,
+    or one that conflicts with CLAUDE.md): the sections of the stacks join it on the next apply after
+    that, so the apply never writes into instructions it has not adopted.
+    """
+    path = os.path.join(project_root, managed_blocks.INSTRUCTION_SECTIONS_DESTINATION)
+    if is_link(path) or not os.path.isfile(path):
+        return False
+    with open(path, encoding="utf-8", errors="replace") as file_handle:
+        return MANAGED_BLOCK_START not in file_handle.read().splitlines()
+
+
+def without_waiting_sections(project_root, desired, locked):
+    """(desired, locked) of the blocks to classify, without those of AGENTS.md while its sections wait."""
+    if not instruction_sections_wait(project_root):
+        return desired, locked
+    destination = managed_blocks.INSTRUCTION_SECTIONS_DESTINATION
+    return ({key: item for key, item in desired.items() if key[0] != destination},
+            {target: blocks for target, blocks in locked.items() if target != destination})
+
+
 def instruction_sections_now(project_root, entries):
     """The block entries of a plan, with those of AGENTS.md classified again against the file as it is.
 
@@ -1942,6 +1966,8 @@ def instruction_sections_now(project_root, entries):
     """
     destination = managed_blocks.INSTRUCTION_SECTIONS_DESTINATION
     sections = [entry for entry in entries if entry["destination"] == destination]
+    if instruction_sections_wait(project_root):
+        return [entry for entry in entries if entry["destination"] != destination]
     if not sections:
         return entries
     desired = {(destination, entry["id"]): {"profile": entry["profile"], "source": entry["source"],
@@ -2038,6 +2064,10 @@ def finalize(project_root, skill_dir, plan, updates):
         "assets": lock_assets,
         "merged": plan["merged"],
     }
+    waiting_sections = ((previous_lock or {}).get("blocks") or {}).get(managed_blocks.INSTRUCTION_SECTIONS_DESTINATION)
+    if waiting_sections and instruction_sections_wait(project_root):
+        # The sections were left out of this apply: the lock keeps what it knew of them.
+        block_report["lock"][managed_blocks.INSTRUCTION_SECTIONS_DESTINATION] = waiting_sections
     if block_report["lock"]:
         lock["blocks"] = block_report["lock"]
     if plan["profileSources"]:

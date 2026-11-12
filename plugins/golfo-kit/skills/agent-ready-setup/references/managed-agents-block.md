@@ -93,6 +93,9 @@ se agrega al final del archivo. El stack primario solo desempata la detección; 
   apply la restaura sin tocar las demás ni el contenido del proyecto.
 - El apply crea `AGENTS.md` o vuelve a renderizar su bloque antes de `finalize`: las secciones se
   clasifican de nuevo contra el archivo que dejó el propio apply, no contra el del plan.
+- Un `AGENTS.md` del proyecto que todavía no tiene el bloque (legacy, o en conflicto con `CLAUDE.md`)
+  no recibe secciones: siguen siendo instrucciones del proyecto hasta que la revisión ubica el bloque, y
+  las secciones entran en el apply siguiente. Mientras tanto, el lock conserva las que ya conocía.
 - Un stack que sale de la selección se lleva su sección. `agent-ready remove` saca las secciones junto
   con el bloque de rules, y borra `AGENTS.md` si solo queda el esqueleto del template.
 - `merge-instructions.sh`, `apply-managed-block.sh` y la normalización solo tocan el bloque de rules:

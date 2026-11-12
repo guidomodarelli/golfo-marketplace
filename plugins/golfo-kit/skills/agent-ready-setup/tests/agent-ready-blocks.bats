@@ -458,3 +458,25 @@ agents_marker_count() {
   [ "$(agents_marker_count '<!-- BEGIN AGENT-READY MANAGED: node -->')" -eq 1 ]
   grep -Fxq 'Use the staging database for manual tests.' CLAUDE.md
 }
+
+@test "the stack sections wait until a project AGENTS.md has its managed block" {
+  printf '%s
+' '# Canonical instructions' > AGENTS.md
+  write_manifest '{"profiles": ["node"]}'
+  # bootstrap alone leaves a project AGENTS.md without the block for the instruction review.
+  run env PATH="$fake_bin:$PATH" AGENT_READY_SETUP_MARKETPLACE_UPGRADED=1 bash "$skill_dir/scripts/bootstrap.sh"     --skill-dir "$skill_dir" --provider claude
+  [ "$status" -eq 0 ]
+  [ "$(cat AGENTS.md)" = '# Canonical instructions' ]
+  [ "$(lock_value '"AGENTS.md" in lock.get("blocks", {})')" = "False" ]
+
+  # The apply runs that review, which places the block after the sections were left out...
+  run_cli apply
+  [ "$status" -eq 0 ]
+  grep -qx '<!-- BEGIN AGENT-READY MANAGED -->' AGENTS.md
+  ! grep -q 'AGENT-READY MANAGED: node' AGENTS.md
+  # ...and the next apply adds the section to the file it adopted.
+  run_cli apply
+  [ "$status" -eq 0 ]
+  grep -qx '<!-- BEGIN AGENT-READY MANAGED: node -->' AGENTS.md
+  [ "$(head -1 AGENTS.md)" = '# Canonical instructions' ]
+}
