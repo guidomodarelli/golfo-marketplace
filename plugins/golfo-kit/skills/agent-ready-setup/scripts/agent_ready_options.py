@@ -6,6 +6,7 @@ values that the code compares against, so no default is repeated here.
 """
 
 PROFILES_KEY = "profiles"
+EXCLUDED_DEFAULTS_KEY = "excludedDefaults"
 PROVIDERS_KEY = "providers"
 DETECTION_ENABLED_KEY = "detection.enabled"
 SOURCES_ENABLED_KEY = "sources.enabled"

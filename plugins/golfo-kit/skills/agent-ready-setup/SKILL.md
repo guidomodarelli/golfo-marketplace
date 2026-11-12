@@ -16,7 +16,7 @@ description: >-
   descartar un hallazgo de sus revisiones de IA.
 license: MIT
 metadata:
-  version: "1.31.0"
+  version: "1.32.0"
   author: "guponce"
   category: "developer-experience"
   tags: "agent-ready, multi-provider, claude-code, codex, bootstrap, setup, scaffold, context-optimized-v1.20.1"
@@ -165,8 +165,9 @@ selección confirmada abajo; una persona en su terminal puede correr `agent-read
 Con manifest, usar sus profiles: correr `agent-ready apply` sin `--stack` ni `--profiles`, y cambiar
 la selección con `agent-ready profiles add|remove`. Si
 el usuario pide otros, pasar `--profiles a,b` (cada stack suma su sección a `AGENTS.md`,
-sobre un template base único). `--stack <s>` selecciona los defaults de ese stack: incluye
-`browser`, salvo `--stack android`. Sin manifest, inspeccionar el proyecto con la
+sobre un template base único). Cada profile trae sus `defaults` (`react`, `node`, `java` y `go`
+traen `browser`; `android` no), que el repo deja afuera con `excludedDefaults`; `--stack <s>` es
+`--profiles <s>`. El manifest guarda lo elegido y el lock lo resuelto. Sin manifest, inspeccionar el proyecto con la
 detección, que solo lee archivos:
 
 ```bash
@@ -206,7 +207,8 @@ edita. Qué deja cada proveedor: [references/ci-check.md](references/ci-check.md
 
 Cualquier proyecto, personal o de empresa, puede sumar profiles propios con `sources.packs` en el
 manifest: un pack en Git o una carpeta local. Agregar una fuente solo los hace disponibles: se seleccionan
-por nombre con namespace (`acme/kafka-interno`), y un pack agrega capabilities, nunca un stack primario.
+por nombre con namespace (`acme/kafka-interno`), y un pack agrega capabilities y bundles (un profile
+`kind: bundle` que solo agrupa otros por `requires`, como `acme/backend`), nunca un stack primario.
 Leer [references/profiles-and-lockfile.md](references/profiles-and-lockfile.md) (sección «Profile packs»)
 para declarar una fuente, explicar una colisión o un `Evaluation incomplete`;
 `assets/examples/acme-profile-pack/` es un pack mínimo. Para publicar un pack con CLIs, servidores MCP o
@@ -227,7 +229,7 @@ lista de claves. Nunca editar a mano `references/configuration-keys.md`: se gene
 ## Step 3 — Apply
 
 El apply instala browsers para ambos providers solo si un profile seleccionado
-lo pide (`browser`, incluido en cada `--stack`). Leer
+lo pide (`browser`, default de `react`, `node`, `java` y `go`). Leer
 [references/browser-setup.md](references/browser-setup.md) para requisitos,
 registro efectivo MCP, recuperación de fallos y opción offline antes de ejecutarlo.
 Para revisar antes de aplicar, correr primero el mismo comando con `--dry-run`.

@@ -306,7 +306,7 @@ publish_pack_repository() {
   run --separate-stderr env PATH="$fake_bin:$PATH" python3 "$cli" init --stack react --yes < /dev/null
   [ "$status" -eq 0 ]
   [ -z "$output" ]
-  [ "$(json_value "$(cat .agents/agent-ready.json)" 'data["profiles"]')" = "['react', 'browser']" ]
+  [ "$(json_value "$(cat .agents/agent-ready.json)" 'data["profiles"]')" = "['react']" ]
   [ "$(grep -cx '<!-- BEGIN AGENT-READY MANAGED -->' AGENTS.md)" -eq 1 ]
 
   run_cli init --profiles node --yes

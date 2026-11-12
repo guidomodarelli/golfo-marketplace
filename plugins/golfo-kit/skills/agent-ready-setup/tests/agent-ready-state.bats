@@ -90,7 +90,7 @@ lock_value() {
   [[ "$output" == *"Profiles: node,browser"* ]]
   [[ "$output" == *"Lockfile: .agents/agent-ready.lock.json (complete)"* ]]
 
-  [ "$(python3 -c 'import json; m=json.load(open(".agents/agent-ready.json")); print(m["updates"]["mode"], ",".join(m["profiles"]))')" = "pinned node,browser" ]
+  [ "$(python3 -c 'import json; m=json.load(open(".agents/agent-ready.json")); print(m["updates"]["mode"], ",".join(m["profiles"]))')" = "pinned node" ]
   [ "$(lock_value 'lock["source"]["plugin"]')" = "golfo-kit" ]
   [ "$(lock_value 'lock["profileOrder"]')" = "['node', 'browser']" ]
 

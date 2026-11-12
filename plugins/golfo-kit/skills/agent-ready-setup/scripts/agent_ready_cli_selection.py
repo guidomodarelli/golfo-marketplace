@@ -148,7 +148,11 @@ def command_profiles_remove(arguments):
     current = selected_profiles(arguments.project_root)
     missing = [name for name in arguments.names if name not in current]
     if missing:
-        raise UsageError(f"not selected: {', '.join(missing)}; the selection is {', '.join(current) or 'empty'}")
+        # A profile can come without being selected: as a default of another one, left out
+        # through excludedDefaults rather than the selection.
+        raise UsageError(f"not selected: {', '.join(missing)}; the selection is {', '.join(current) or 'empty'}. "
+                         f"To leave out a profile that comes by default: {CLI_NAME} config set excludedDefaults "
+                         f"{','.join(missing)}")
     return change_selection(arguments, lambda selection: [name for name in selection if name not in arguments.names],
                             removing=True)
 

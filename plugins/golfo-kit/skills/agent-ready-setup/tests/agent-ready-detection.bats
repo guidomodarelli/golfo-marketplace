@@ -174,7 +174,7 @@ PY
 
   run_bootstrap --stack go
   [ "$status" -eq 0 ]
-  [ "$(manifest_profiles)" = "go,browser" ]
+  [ "$(manifest_profiles)" = "go" ]
 }
 
 @test "a repository without signals fails before writing and names the available stacks" {
@@ -228,7 +228,7 @@ PY
   [ "$status" -eq 0 ]
   [[ "$output" == *"Detected stack: react (package.json declares react in dependencies)"* ]]
   [[ "$output" == *"Stack: react"* ]]
-  [ "$(manifest_profiles)" = "react,browser" ]
+  [ "$(manifest_profiles)" = "react" ]
 }
 
 @test "the android defaults stay without browser after a detection" {
@@ -244,7 +244,7 @@ PY
   printf '%s\n' '{"dependencies": {"react": "19.0.0"}}' > package.json
   run_bootstrap --stack node
   [ "$status" -eq 0 ]
-  [ "$(manifest_profiles)" = "node,browser" ]
+  [ "$(manifest_profiles)" = "node" ]
 
   # The signals still say React: the persisted selection does not move.
   manifest_before="$(cksum < .agents/agent-ready.json)"
@@ -263,7 +263,7 @@ PY
   run_bootstrap --plan --profiles go
   [ "$status" -eq 0 ]
   [[ "$output" == *"Selected by: --profiles"* ]]
-  [[ "$output" == *"Profiles: go (primary stack: go)"* ]]
+  [[ "$output" == *"Profiles: go, browser (primary stack: go)"* ]]
 }
 
 @test "a detected capability is only a suggestion with evidence, also on the initial apply" {
@@ -577,4 +577,76 @@ PY
     --profiles node-extras --compose-dir "$test_root/compose"
   [ "$status" -eq 0 ]
   [[ "$output" == *$'primary\tnode'* ]]
+}
+
+run_resolve() {
+  run python3 "$skill_dir/scripts/agent-ready-state.py" resolve --project . --skill-dir "${1:-$skill_dir}" \
+    --compose-dir "$test_root/compose"
+}
+
+@test "the manifest keeps what was chosen and each resolution brings the defaults of the profiles" {
+  mkdir -p .agents
+  printf '%s\n' '{"profiles": ["node"]}' > .agents/agent-ready.json
+  run_resolve
+  [ "$status" -eq 0 ]
+  [[ "$output" == *$'profiles\tnode,browser'* ]]
+  [[ "$output" == *$'requested\tnode'* ]]
+
+  # A layer brings the defaults of the layers it requires.
+  printf '%s\n' '{"profiles": ["nextjs"]}' > .agents/agent-ready.json
+  run_resolve
+  [[ "$output" == *$'profiles\treact,nextjs,browser'* ]]
+
+  # android declares no defaults.
+  printf '%s\n' '{"profiles": ["android"]}' > .agents/agent-ready.json
+  run_resolve
+  [[ "$output" == *$'profiles\tandroid'* && "$output" != *$'profiles\tandroid,'* ]]
+}
+
+@test "excludedDefaults leaves a default out, and cannot leave out what the selection needs" {
+  mkdir -p .agents
+  printf '%s\n' '{"profiles": ["node"], "excludedDefaults": ["browser"]}' > .agents/agent-ready.json
+  run_resolve
+  [ "$status" -eq 0 ]
+  [[ "$output" == *$'profiles\tnode'* && "$output" != *$'profiles\tnode,'* ]]
+
+  printf '%s\n' '{"profiles": ["nextjs"], "excludedDefaults": ["react"]}' > .agents/agent-ready.json
+  run_resolve
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"excludedDefaults lists 'react', but the selection needs it (required by nextjs)"* ]]
+}
+
+@test "plan says which profile each added profile came from" {
+  mkdir -p .agents
+  printf '%s\n' '{"profiles": ["nextjs"]}' > .agents/agent-ready.json
+  run python3 "$skill_dir/scripts/agent-ready-state.py" plan --project . --skill-dir "$skill_dir"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Profile added: react (required by nextjs)"* ]]
+  [[ "$output" == *"Profile added: browser (default of react)"* ]]
+}
+
+@test "a bundle resolves the profiles it groups and publishes nothing of its own" {
+  copy_skill_with_catalog 'catalog["profiles"]["web-team"] = {"kind": "bundle", "description": "What the web team selects.", "requires": ["nextjs-app-router", "business-flows"]}'
+  mkdir -p .agents
+  printf '%s\n' '{"profiles": ["web-team"]}' > .agents/agent-ready.json
+  run_resolve "$source_copy"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *$'profiles\treact,nextjs,nextjs-app-router,business-flows,web-team,browser'* ]]
+  [[ "$output" == *$'requested\tweb-team'* ]]
+  [[ "$output" == *$'primary\tnextjs-app-router'* ]]
+}
+
+@test "a bundle that publishes something or groups nothing invalidates the catalog" {
+  for expression in \
+    'catalog["profiles"]["web-team"] = {"kind": "bundle", "requires": ["react"], "assets": "assets/stacks/react"}' \
+    'catalog["profiles"]["web-team"] = {"kind": "bundle", "requires": ["react"], "defaults": ["browser"]}' \
+    'catalog["profiles"]["web-team"] = {"kind": "bundle"}' \
+    'catalog["profiles"]["node"]["defaults"] = "browser"'
+  do
+    rm -rf "$test_root/skill"
+    copy_skill_with_catalog "$expression"
+    run_detect "$source_copy"
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"ERROR: agent-ready profiles:"* ]]
+  done
 }

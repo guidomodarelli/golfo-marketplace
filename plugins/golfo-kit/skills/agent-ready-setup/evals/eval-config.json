@@ -3571,6 +3571,35 @@
           "description": "Aclara que cada capa publica solo sus assets"
         }
       ]
+    },
+    {
+      "id": "profile-defaults-and-bundles",
+      "description": "Los defaults vienen del profile, se dejan afuera con excludedDefaults y un bundle agrupa profiles por requires; el manifest guarda lo elegido y el lock lo resuelto.",
+      "input": "En un repo con agent-ready-setup elegí `node`. ¿Por qué me aparece `browser` si no lo elegí, cómo lo saco sin sacar node, y qué queda guardado en `.agents/agent-ready.json` y en el lock? Además, mi empresa quiere un profile `acme/backend` que traiga node y su capability de Kafka de una: ¿cómo se declara? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "excludedDefaults",
+          "description": "Saca browser con excludedDefaults",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "defaults[^.]{0,120}(node|browser)|(node|browser)[^.]{0,120}defaults",
+          "description": "Explica que browser es un default de node"
+        },
+        {
+          "type": "contains",
+          "value": "bundle",
+          "description": "Propone un profile kind bundle",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "lock[^.]{0,160}(resuel|profileOrder)|(resuel|profileOrder)[^.]{0,160}lock",
+          "description": "Dice que el lock guarda lo resuelto"
+        }
+      ]
     }
   ]
 }

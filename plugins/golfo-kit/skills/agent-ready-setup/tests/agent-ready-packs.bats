@@ -189,8 +189,8 @@ PY
 
   run_bootstrap --plan
   [ "$status" -eq 0 ]
-  [[ "$output" == *"Dependency added: node (required by acme/kafka-interno)"* ]]
-  [[ "$output" == *"Dependency added: acme/base (required by acme/kafka-interno)"* ]]
+  [[ "$output" == *"Profile added: node (required by acme/kafka-interno)"* ]]
+  [[ "$output" == *"Profile added: acme/base (required by acme/kafka-interno)"* ]]
 
   run_bootstrap
   [ "$status" -eq 0 ]
@@ -201,7 +201,7 @@ PY
   [ -e .claude/rules/acme-kafka.md ]
   grep -Fq -- '- Read and follow `.agents/rules/acme-kafka.md`.' AGENTS.md
   [ "$(json_value .agents/agent-ready.json '",".join(data["profiles"])')" = "acme/kafka-interno" ]
-  [ "$(lock_value '",".join(data["profileOrder"])')" = "node,acme/base,acme/kafka-interno" ]
+  [ "$(lock_value '",".join(data["profileOrder"])')" = "node,acme/base,acme/kafka-interno,browser" ]
 }
 
 @test "the lockfile records owner, origin and hash, and no path of this machine" {
@@ -1033,4 +1033,17 @@ PY
   run --separate-stderr python3 "$skill_dir/scripts/agent-ready-state.py" check --project . --skill-dir "$skill_dir" --format json
   [ "$status" -eq 2 ]
   [ "$(printf '%s' "$output" | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])' | tr -d '\r')" = "config-error" ]
+}
+
+@test "a pack bundle is chosen like any profile: the manifest keeps it and the lock what it resolved" {
+  copy_example_pack
+  write_manifest acme/backend "acme=path:../acme-pack"
+
+  run_bootstrap
+  [ "$status" -eq 0 ]
+  [ -f .agents/rules/acme-kafka.md ]
+  [ "$(json_value .agents/agent-ready.json '",".join(data["profiles"])')" = "acme/backend" ]
+  [ "$(lock_value '",".join(data["profileOrder"])')" = "node,acme/base,acme/kafka-interno,acme/backend,browser" ]
+  # A bundle publishes no assets: no file of the lock inventory belongs to it.
+  [ "$(lock_value 'sum(1 for item in data.get("assets", {}).values() if item.get("profile") == "acme/backend")')" = "0" ]
 }

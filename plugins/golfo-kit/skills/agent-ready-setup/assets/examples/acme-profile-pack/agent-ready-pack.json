@@ -17,6 +17,11 @@
           { "type": "package-dependency", "names": ["@acme/kafka"] }
         ]
       }
+    },
+    "backend": {
+      "kind": "bundle",
+      "description": "What every Acme Node backend selects: node (with browser, its default) and the internal Kafka client.",
+      "requires": ["node", "acme/kafka-interno"]
     }
   }
 }

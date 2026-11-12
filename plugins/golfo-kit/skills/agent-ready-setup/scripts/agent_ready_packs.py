@@ -34,8 +34,10 @@ PACK_SCHEMA_VERSION = 1
 PACK_ALLOWED_TOP_LEVEL_KEYS = ("schemaVersion", "name", "profiles", "version", "minEngine", "changes")
 # clis, mcpServers and scripts are declarations: the security policy decides whether they run
 # (agent_ready_pack_tools.py), never the pack.
-PACK_ALLOWED_PROFILE_KEYS = ("kind", "description", "assets", "requires", "conflicts", "tools", "detect") + pack_tools.DECLARATION_KEYS
+PACK_ALLOWED_PROFILE_KEYS = ("kind", "description", "assets", "requires", "conflicts", "defaults", "tools", "detect") + pack_tools.DECLARATION_KEYS
 PACK_PROFILE_KIND = "capability"
+# A pack can also publish bundles: profiles that only group others through requires.
+PACK_BUNDLE_KIND = "bundle"
 # Tools the engine knows how to install; a pack cannot bring its own installer.
 KNOWN_TOOLS = ("browser",)
 # Packs add rules, skills, agents and commands as files, and managed blocks inside files of the
@@ -668,9 +670,10 @@ def validate_pack_profile(source, short_name, entry, golfo_profile_names):
     extra_keys = sorted(set(entry) - set(PACK_ALLOWED_PROFILE_KEYS))
     if extra_keys:
         raise ProfileError(f"pack '{source_name}' profile '{short_name}' has unknown keys: {', '.join(extra_keys)}")
-    if entry.get("kind") != PACK_PROFILE_KIND:
-        raise ProfileError(f"pack '{source_name}' profile '{short_name}' must have kind '{PACK_PROFILE_KIND}'; packs cannot add primary stacks")
-    for field in ("requires", "conflicts"):
+    if entry.get("kind") not in (PACK_PROFILE_KIND, PACK_BUNDLE_KIND):
+        raise ProfileError(f"pack '{source_name}' profile '{short_name}' must have kind '{PACK_PROFILE_KIND}' or "
+                           f"'{PACK_BUNDLE_KIND}'; packs cannot add primary stacks")
+    for field in ("requires", "conflicts", "defaults"):
         if field in entry:
             validate_reference_list(source_name, short_name, field, entry[field])
     tools = entry.get("tools", [])

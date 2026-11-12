@@ -4,6 +4,7 @@
   "profiles": {
     "react": {
       "kind": "stack",
+      "defaults": ["browser"],
       "description": "React and TypeScript web frontends: components, styles, tests and their review agents.",
       "assets": "assets/stacks/react",
       "detect": {
@@ -37,6 +38,7 @@
     },
     "node": {
       "kind": "stack",
+      "defaults": ["browser"],
       "description": "Node.js services and backends.",
       "assets": "assets/stacks/node",
       "detect": {
@@ -47,6 +49,7 @@
     },
     "java": {
       "kind": "stack",
+      "defaults": ["browser"],
       "description": "Java and Kotlin services built with Maven or Gradle.",
       "assets": "assets/stacks/java",
       "detect": {
@@ -57,6 +60,7 @@
     },
     "go": {
       "kind": "stack",
+      "defaults": ["browser"],
       "description": "Go services.",
       "assets": "assets/stacks/go",
       "detect": {
@@ -121,14 +125,5 @@
       "assets": "assets/ci/jenkins",
       "requires": ["ci"]
     }
-  },
-  "stackDefaults": {
-    "react": ["react", "browser"],
-    "nextjs": ["nextjs", "browser"],
-    "nextjs-app-router": ["nextjs-app-router", "browser"],
-    "node": ["node", "browser"],
-    "java": ["java", "browser"],
-    "go": ["go", "browser"],
-    "android": ["android"]
   }
 }
