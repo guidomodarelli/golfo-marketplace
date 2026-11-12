@@ -340,7 +340,19 @@ publish_pack_repository() {
   run_cli profiles remove browser
   [ "$status" -eq 2 ]
   [[ "$stderr" == *"not selected: browser"* ]]
+  [[ "$stderr" == *"agent-ready config set excludedDefaults browser"* ]]
   [ "$(cksum < .agents/agent-ready.json)" = "$before" ]
+
+  # The selection is checked with the excludedDefaults of the repository, as every apply does.
+  run_cli config set excludedDefaults browser
+  [ "$status" -eq 0 ]
+  before="$(cksum < .agents/agent-ready.json)"
+  run_cli profiles add browser
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"excludedDefaults lists 'browser', but the selection needs it"* ]]
+  [ "$(cksum < .agents/agent-ready.json)" = "$before" ]
+  run_cli config unset excludedDefaults
+  [ "$status" -eq 0 ]
 
   run_cli profiles remove business-flows
   [ "$status" -eq 0 ]

@@ -31,6 +31,7 @@ from agent_ready_config import LAYER_PROJECT, PROJECT_CONFIG_RELATIVE_PATH
 from agent_ready_options import (
     CI_PROVIDER_KEY,
     DETECTION_ENABLED_KEY,
+    EXCLUDED_DEFAULTS_KEY,
     PROFILES_KEY,
     SOURCES_ENABLED_KEY,
     UPDATES_FROM_LOCK_KEY,
@@ -49,12 +50,16 @@ def selected_profiles(project_root):
     return engine().configuration_of(project_root).value(PROFILES_KEY) or []
 
 
-def validate_selection(catalog, names):
-    """Why a selection cannot be applied, or None: the engine's own resolution decides."""
+def validate_selection(catalog, names, project_root):
+    """Why a selection cannot be applied, or None: the engine's own resolution decides.
+
+    It resolves with the excludedDefaults of the repository, as every apply does.
+    """
     if not names:
         return "select at least one profile"
+    excluded = engine().configuration_of(project_root).value(EXCLUDED_DEFAULTS_KEY) or []
     try:
-        engine().resolve_profiles(catalog, names)
+        engine().resolve_profiles(catalog, names, excluded_defaults=excluded)
     except ProfileError as profile_error:
         return str(profile_error)
     return None
@@ -128,7 +133,7 @@ def change_selection(arguments, compute, removing=False):
         selection_to_check = [name for name in selection if name in catalog["profiles"]]
     else:
         selection_to_check = selection
-    error = validate_selection(catalog, selection_to_check)
+    error = validate_selection(catalog, selection_to_check, arguments.project_root)
     if error:
         raise UsageError(error)
     path = write_project_selection(arguments.project_root, selection)
@@ -329,7 +334,7 @@ def command_init(arguments):
         except ProfileError as profile_error:
             raise UsageError(str(profile_error)) from profile_error
     if arguments.profiles:
-        error = validate_selection(catalog, profile_names(arguments.profiles))
+        error = validate_selection(catalog, profile_names(arguments.profiles), arguments.project_root)
         if error:
             raise UsageError(f"--profiles: {error}")
 
@@ -352,7 +357,7 @@ def command_init(arguments):
         sys.stderr.write(f"Stacks: {stacks}. Capabilities and packs: {CLI_NAME} profiles list\n")
         arguments.profiles = ask_text(
             "Profiles (comma separated)", ",".join(defaults),
-            lambda answer: validate_selection(catalog, profile_names(answer)),
+            lambda answer: validate_selection(catalog, profile_names(answer), arguments.project_root),
         )
         asked = True
     ci_provider = arguments.ci_provider
