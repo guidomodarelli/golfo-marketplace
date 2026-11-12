@@ -101,17 +101,17 @@ PY
 
   run_detect
   [ "$status" -eq 0 ]
-  [[ "${lines[0]}" == "Stack: frontend" ]]
-  [[ "$output" == *"frontend: package.json declares react in dependencies"* ]]
-  [[ "$output" == *"node: package.json exists (superseded by frontend)"* ]]
+  [[ "${lines[0]}" == "Stack: react" ]]
+  [[ "$output" == *"react: package.json declares react in dependencies"* ]]
+  [[ "$output" == *"node: package.json exists (superseded by react)"* ]]
 }
 
-@test "React declared only as a peer dependency still selects frontend" {
+@test "React declared only as a peer dependency still selects react" {
   printf '%s\n' '{"peerDependencies": {"react": "*"}}' > package.json
 
   run_detect
   [ "$status" -eq 0 ]
-  [[ "${lines[0]}" == "Stack: frontend" ]]
+  [[ "${lines[0]}" == "Stack: react" ]]
   [[ "$output" == *"declares react in peerDependencies"* ]]
 }
 
@@ -187,7 +187,7 @@ PY
   run_bootstrap
   [ "$status" -ne 0 ]
   [[ "$output" == *"Stack: none"* ]]
-  [[ "$output" == *"android, frontend, go, java, node"* ]]
+  [[ "$output" == *"android, go, java, nextjs, nextjs-app-router, node, react"* ]]
   [ "$(tree_fingerprint)" = "$before" ]
 }
 
@@ -211,7 +211,7 @@ PY
     run python3 "$skill_dir/scripts/agent-ready-state.py" "$state_command" --project . --skill-dir "$skill_dir"
     [ "$status" -eq 2 ]
     [[ "$output" == *"go (go.mod exists), node (package.json exists)"* ]]
-    [[ "$output" == *"--stack android|frontend|go|java|node"* ]]
+    [[ "$output" == *"--stack android|go|java|nextjs|nextjs-app-router|node|react"* ]]
   done
 }
 
@@ -226,9 +226,9 @@ PY
 
   run_bootstrap
   [ "$status" -eq 0 ]
-  [[ "$output" == *"Detected stack: frontend (package.json declares react in dependencies)"* ]]
-  [[ "$output" == *"Stack: frontend"* ]]
-  [ "$(manifest_profiles)" = "frontend,browser" ]
+  [[ "$output" == *"Detected stack: react (package.json declares react in dependencies)"* ]]
+  [[ "$output" == *"Stack: react"* ]]
+  [ "$(manifest_profiles)" = "react,browser" ]
 }
 
 @test "the android defaults stay without browser after a detection" {
@@ -258,7 +258,7 @@ PY
   run_bootstrap --plan
   [ "$status" -eq 0 ]
   [[ "$output" == *"Selected by: manifest"* ]]
-  [[ "$output" == *"Signals point to frontend, but the selection from manifest keeps node"* ]]
+  [[ "$output" == *"Signals point to react, but the selection from manifest keeps node"* ]]
 
   run_bootstrap --plan --profiles go
   [ "$status" -eq 0 ]
@@ -383,7 +383,7 @@ for profile in catalog["profiles"].values():
     'catalog["profiles"]["node"]["detect"]["signals"][0]["paths"] = ["*.json"]' \
     'catalog["profiles"]["browser"]["detect"]["supersedes"] = ["node"]' \
     'catalog["profiles"]["node"]["detect"]["supersedes"] = ["unknown-stack"]' \
-    'catalog["profiles"]["java"]["detect"]["supersedes"] = ["frontend"]; catalog["profiles"]["android"]["detect"]["supersedes"] = ["java"]; catalog["profiles"]["frontend"]["detect"]["supersedes"] = ["android"]'
+    'catalog["profiles"]["java"]["detect"]["supersedes"] = ["react"]; catalog["profiles"]["android"]["detect"]["supersedes"] = ["java"]; catalog["profiles"]["react"]["detect"]["supersedes"] = ["android"]'
   do
     rm -rf "$test_root/skill"
     copy_skill_with_catalog "$expression"
@@ -410,7 +410,7 @@ for profile in catalog["profiles"].values():
 
   run_detect
   [ "$status" -eq 0 ]
-  [[ "${lines[0]}" == "Stack: frontend" ]]
+  [[ "${lines[0]}" == "Stack: react" ]]
 }
 
 @test "a symlink that leaves the project is not evidence" {
@@ -464,7 +464,7 @@ EOF
 
   run_detect
   [ "$status" -eq 3 ]
-  run_bootstrap --plan --offline --stack frontend
+  run_bootstrap --plan --offline --stack react
   [ "$status" -eq 0 ]
 
   [ "$(tree_fingerprint)" = "$before" ]
@@ -506,4 +506,75 @@ PY
   [ "$status" -eq 0 ]
   [ "$(cksum < .agents/agent-ready.json)" = "$before" ]
   [[ "$output" != *"Detected stack"* ]]
+}
+
+@test "a Next.js App Router repository detects the most specific layer" {
+  printf '%s\n' '{"dependencies": {"next": "15.0.0", "react": "19.0.0", "react-dom": "19.0.0"}}' > package.json
+  mkdir -p src/app
+  printf '%s\n' 'export default function RootLayout() {}' > src/app/layout.tsx
+
+  run_detect
+  [ "$status" -eq 0 ]
+  [[ "${lines[0]}" == "Stack: nextjs-app-router" ]]
+  [[ "$output" == *"nextjs: package.json declares next in dependencies (superseded by nextjs-app-router)"* ]]
+  [[ "$output" == *"react: package.json declares react in dependencies; package.json declares react-dom in dependencies (superseded by nextjs, nextjs-app-router)"* ]]
+  # react supersedes node, and so do the layers that require it.
+  [[ "$output" == *"node: package.json exists (superseded by nextjs, nextjs-app-router, react)"* ]]
+}
+
+@test "a Next.js repository without the App Router stops at the nextjs layer" {
+  printf '%s\n' '{"dependencies": {"next": "15.0.0", "react": "19.0.0"}}' > package.json
+  mkdir -p pages
+  printf '%s\n' 'export default function Home() {}' > pages/index.tsx
+
+  run_detect
+  [ "$status" -eq 0 ]
+  [[ "${lines[0]}" == "Stack: nextjs" ]]
+}
+
+@test "a detected layer brings the layers it extends through requires, with no asset twice" {
+  printf '%s\n' '{"dependencies": {"next": "15.0.0", "react": "19.0.0"}}' > package.json
+  mkdir -p app
+  printf '%s\n' 'export default function RootLayout() {}' > app/layout.tsx
+
+  run python3 "$skill_dir/scripts/agent-ready-state.py" resolve --project . --skill-dir "$skill_dir" \
+    --compose-dir "$test_root/compose"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *$'profiles\treact,nextjs,nextjs-app-router,browser'* ]]
+  [[ "$output" == *$'primary\tnextjs-app-router'* ]]
+  stack_dir="$(printf '%s\n' "$output" | sed -n 's/^stack_dir\t//p' | tr -d '\r')"
+  # Each layer publishes its own assets; the composed tree has all of them once.
+  [ -f "$stack_dir/rules/react-style.md" ]
+  [ -f "$stack_dir/rules/server-first-data-flow.md" ]
+  [ -f "$stack_dir/rules/nextjs-app-router.md" ]
+  [ -f "$stack_dir/skills/api-endpoint/SKILL.md" ]
+  [ -f "$stack_dir/commands/react-review-pr.md" ]
+}
+
+@test "a layer that its own required layer supersedes is a cycle in the catalog" {
+  before="$(tree_fingerprint)"
+  copy_skill_with_catalog 'catalog["profiles"]["react"]["detect"]["supersedes"] = ["node", "android", "nextjs"]'
+  run_detect "$source_copy"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"stack priorities form a cycle"* ]]
+  [ "$(tree_fingerprint)" = "$before" ]
+}
+
+@test "an app/layout.tsx without the next dependency is not the App Router" {
+  printf '%s\n' '{"dependencies": {"react": "19.0.0"}}' > package.json
+  mkdir -p src/app
+  printf '%s\n' 'export default function Layout() {}' > src/app/layout.tsx
+
+  run_detect
+  [ "$status" -eq 0 ]
+  [[ "${lines[0]}" == "Stack: react" ]]
+  [[ "$output" != *"nextjs-app-router"* ]]
+}
+
+@test "a capability that requires a stack leaves that stack as the primary one" {
+  copy_skill_with_catalog 'catalog["profiles"]["node-extras"] = {"kind": "capability", "description": "Extras.", "requires": ["node"]}'
+  run python3 "$source_copy/scripts/agent-ready-state.py" resolve --project . --skill-dir "$source_copy" \
+    --profiles node-extras --compose-dir "$test_root/compose"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *$'primary\tnode'* ]]
 }

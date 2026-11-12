@@ -83,8 +83,8 @@ Los hooks generados no pasan flags de confirmación durante `SessionStart`.
 
 Cada stack publica su sección en `assets/stacks/<stack>/blocks/AGENTS.md`: un bloque con id (sección
 siguiente) en el `AGENTS.md` de la raíz, con el nombre del stack como id
-(`<!-- BEGIN AGENT-READY MANAGED: node -->`). Con `--profiles frontend,node`, el `AGENTS.md` lleva el
-template base, el bloque de rules y una sección `## Frontend` y otra `## Node.js`; una sección nueva
+(`<!-- BEGIN AGENT-READY MANAGED: node -->`). Con `--profiles react,node`, el `AGENTS.md` lleva el
+template base, el bloque de rules y una sección `## React` y otra `## Node.js`; una sección nueva
 se agrega al final del archivo. El stack primario solo desempata la detección; no aporta el template.
 
 - Solo un profile `stack` agrega una sección, y solo al `AGENTS.md` de la raíz: un profile `capability`,

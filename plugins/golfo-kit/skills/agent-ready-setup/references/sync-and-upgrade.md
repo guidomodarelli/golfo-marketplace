@@ -131,7 +131,7 @@ AGENT_READY_SETUP_SYNC_FOREGROUND=1 bash .agents/hooks/sync-marketplace.sh --pro
 
 Si la fuente instalada no se puede resolver o el stack no se detecta, el hook
 conserva el upgrade global y muestra cómo indicar `AGENT_READY_SETUP_SKILL_DIR`,
-`--stack frontend|node|java|go|android` o `--profiles <a,b>`. Sin flags, el hook usa los
+`--stack react|nextjs|nextjs-app-router|node|java|go|android` o `--profiles <a,b>`. Sin flags, el hook usa los
 profiles del manifest y solo detecta el stack cuando no hay manifest, con el mismo
 evaluador que bootstrap: si la detección es ambigua, lista las coincidencias y omite la
 proyección (ver «Detección» en [profiles-and-lockfile.md](profiles-and-lockfile.md)).

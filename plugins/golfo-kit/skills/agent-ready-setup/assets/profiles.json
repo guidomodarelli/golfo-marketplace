@@ -2,20 +2,42 @@
   "schemaVersion": 1,
   "baseAssets": "assets/common",
   "profiles": {
-    "frontend": {
+    "react": {
       "kind": "stack",
-      "description": "React and Next.js web frontends.",
-      "assets": "assets/stacks/frontend",
+      "description": "React and TypeScript web frontends: components, styles, tests and their review agents.",
+      "assets": "assets/stacks/react",
       "detect": {
         "supersedes": ["node", "android"],
         "signals": [
-          { "type": "package-dependency", "names": ["react", "react-dom", "next"] }
+          { "type": "package-dependency", "names": ["react", "react-dom"] }
+        ]
+      }
+    },
+    "nextjs": {
+      "kind": "stack",
+      "description": "Next.js on top of the react layer: server-side data flow, upstream contracts, endpoints and services.",
+      "assets": "assets/stacks/nextjs",
+      "requires": ["react"],
+      "detect": {
+        "signals": [
+          { "type": "package-dependency", "names": ["next"] }
+        ]
+      }
+    },
+    "nextjs-app-router": {
+      "kind": "stack",
+      "description": "Next.js App Router on top of the nextjs layer: what the app/ routes directory holds and where client components start.",
+      "assets": "assets/stacks/nextjs-app-router",
+      "requires": ["nextjs"],
+      "detect": {
+        "signals": [
+          { "type": "glob", "patterns": ["app/layout.tsx", "app/layout.jsx", "app/layout.ts", "app/layout.js", "src/app/layout.tsx", "src/app/layout.jsx", "src/app/layout.ts", "src/app/layout.js"] }
         ]
       }
     },
     "node": {
       "kind": "stack",
-      "description": "Node.js services without a React frontend.",
+      "description": "Node.js services and backends.",
       "assets": "assets/stacks/node",
       "detect": {
         "signals": [
@@ -101,7 +123,9 @@
     }
   },
   "stackDefaults": {
-    "frontend": ["frontend", "browser"],
+    "react": ["react", "browser"],
+    "nextjs": ["nextjs", "browser"],
+    "nextjs-app-router": ["nextjs-app-router", "browser"],
     "node": ["node", "browser"],
     "java": ["java", "browser"],
     "go": ["go", "browser"],

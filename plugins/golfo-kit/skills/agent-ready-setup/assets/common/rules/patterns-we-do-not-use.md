@@ -4,7 +4,7 @@ Each entry names a pattern to avoid, what to do instead, and why. A ban without 
 
 ## Architecture and dependencies
 
-- **Database access from route handlers.** Route all persistence through the project's data access layer (repository, adapter, or service); in frontend projects, follow `hexagonal-architecture.md`. Why: handlers that query directly spread schema knowledge and cannot be tested or changed in one place. If the project has no such layer, follow the existing pattern instead of inventing one.
+- **Database access from route handlers.** Route all persistence through the project's data access layer (repository, adapter, or service); in Next.js projects, follow `hexagonal-architecture.md`. Why: handlers that query directly spread schema knowledge and cannot be tested or changed in one place. If the project has no such layer, follow the existing pattern instead of inventing one.
 - **New dependencies for what the platform already covers.** Reuse the standard library, the framework, or a declared package first, as `established-libraries.md` defines. Why: every dependency adds upgrades, supply chain risk, and a second way to do the same thing.
 - **Generic abstractions with a single implementation.** Write the concrete code, and duplicate a few lines until a second real case shows what varies. Why: an abstraction guessed from one case encodes the wrong axis of change. Ports and adapters that `hexagonal-architecture.md` requires, and consumer-side interfaces a stack's `<stack>-coding-style.md` asks for, are not speculative.
 - **Configuration options "just in case".** Add an option only with a current caller and a documented default; otherwise follow `speculative-complexity-approval.md`. Why: unused options multiply the states to test and are rarely removed.
@@ -13,9 +13,9 @@ Each entry names a pattern to avoid, what to do instead, and why. A ban without 
 
 ## Errors and responses
 
-- **Fallbacks that hide invalid state.** Fail explicitly and keep the original error as the cause. Why: a silent default turns a bug into wrong data that surfaces far from its origin. Deliberate business fallbacks (see `root-cause-bug-fixes.md`) and adapter-approved defaults (see `frontend-security.md` in frontend projects) stay.
+- **Fallbacks that hide invalid state.** Fail explicitly and keep the original error as the cause. Why: a silent default turns a bug into wrong data that surfaces far from its origin. Deliberate business fallbacks (see `root-cause-bug-fixes.md`) and adapter-approved defaults (see `react-security.md` in React projects) stay.
 - **Catching exceptions without a purpose.** Catch only to recover, add useful context, or translate the error at a system boundary, as `Catch blocks` in `error-handling.md` defines. Why: a catch that does none of these hides failures and loses the stack.
-- **`200` responses that carry an error object.** Use the project's error types and the matching HTTP status (in frontend projects, see `Error Handling` in `frontend-security.md`). Why: clients, caches, retries, and monitoring read the status, not the body. Exception: protocols whose contract defines it, such as GraphQL's `errors` array or batch responses with partial results.
+- **`200` responses that carry an error object.** Use the project's error types and the matching HTTP status (in React projects, see `Error Handling` in `react-security.md`). Why: clients, caches, retries, and monitoring read the status, not the body. Exception: protocols whose contract defines it, such as GraphQL's `errors` array or batch responses with partial results.
 
 ## Data
 

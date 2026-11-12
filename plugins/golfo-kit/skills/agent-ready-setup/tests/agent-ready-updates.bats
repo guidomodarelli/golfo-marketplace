@@ -582,7 +582,7 @@ PY
   [[ "$output" == *"Detection is off"* ]]
   [ "$(tree_fingerprint)" = "$before" ]
 
-  run env PATH="$fake_bin:$PATH" AGENT_READY_SETUP_DETECTION=off bash "$skill_dir/scripts/bootstrap.sh" --skill-dir "$skill_dir" --provider claude --stack frontend
+  run env PATH="$fake_bin:$PATH" AGENT_READY_SETUP_DETECTION=off bash "$skill_dir/scripts/bootstrap.sh" --skill-dir "$skill_dir" --provider claude --stack react
   [ "$status" -eq 0 ]
 }
 

@@ -57,7 +57,7 @@ parse_managed_block_arguments() {
         ;;
       --stack)
         [[ $# -ge 2 && -n "${2:-}" ]] || {
-          echo "ERROR: --stack requires frontend, node, java, go, or android" >&2
+          echo "ERROR: --stack requires react, nextjs, nextjs-app-router, node, java, go, or android" >&2
           exit 1
         }
         STACK="$2"
@@ -85,9 +85,9 @@ parse_managed_block_arguments() {
 
 validate_managed_block_inputs() {
   case "$STACK" in
-    frontend|node|java|go|android) ;;
+    react|nextjs|nextjs-app-router|node|java|go|android) ;;
     *)
-      echo "ERROR: --stack must be frontend, node, java, go, or android" >&2
+      echo "ERROR: --stack must be react, nextjs, nextjs-app-router, node, java, go, or android" >&2
       exit 1
       ;;
   esac

@@ -345,34 +345,34 @@ lock_value() {
 }
 
 @test "status --check notices a Claude view that was deleted" {
-  run_bootstrap_with "$skill_dir" --stack frontend
+  run_bootstrap_with "$skill_dir" --stack react
   [ "$status" -eq 0 ]
   run python3 "$skill_dir/scripts/agent-ready-state.py" status --project . --skill-dir "$skill_dir" --check
   [ "$status" -eq 0 ]
 
-  rm .claude/rules/frontend-security.md
+  rm .claude/rules/react-security.md
   run python3 "$skill_dir/scripts/agent-ready-state.py" status --project . --skill-dir "$skill_dir" --check
   [ "$status" -eq 4 ]
-  [[ "$output" == *"missing: .claude/rules/frontend-security.md"* ]]
+  [[ "$output" == *"missing: .claude/rules/react-security.md"* ]]
 }
 
 
 @test "plan and status are read-only and never call the provider CLI" {
-  run_bootstrap_with "$skill_dir" --stack frontend
+  run_bootstrap_with "$skill_dir" --stack react
   [ "$status" -eq 0 ]
-  printf '%s\n' 'local note' >> .agents/rules/frontend-testing.md
+  printf '%s\n' 'local note' >> .agents/rules/react-testing.md
   rm -f "$cli_calls"
   before="$(tree_fingerprint)"
 
   run_bootstrap_with "$skill_dir" --plan --offline
   [ "$status" -eq 0 ]
   [[ "$output" == *"Agent Ready plan (read-only: nothing was written)"* ]]
-  [[ "$output" == *"update"*".agents/rules/frontend-testing.md"*"overwrites local changes since the last apply"* ]]
+  [[ "$output" == *"update"*".agents/rules/react-testing.md"*"overwrites local changes since the last apply"* ]]
   [[ "$output" == *"+local note"* ]] || [[ "$output" == *"-local note"* ]]
 
   run_bootstrap_with "$skill_dir" --status --offline
   [ "$status" -eq 0 ]
-  [[ "$output" == *"modified: .agents/rules/frontend-testing.md"* ]]
+  [[ "$output" == *"modified: .agents/rules/react-testing.md"* ]]
 
   [ "$(tree_fingerprint)" = "$before" ]
   [ ! -e "$cli_calls" ]
@@ -554,7 +554,7 @@ EOF2
 @test "unknown profiles and profile sets without a stack are rejected with the catalog" {
   run_bootstrap_with "$skill_dir" --profiles cobol
   [ "$status" -ne 0 ]
-  [[ "$output" == *"unknown profile 'cobol'; available profiles: android, browser, business-flows, frontend, go, java, node"* ]]
+  [[ "$output" == *"unknown profile 'cobol'; available profiles: android, browser, business-flows, go, java, nextjs, nextjs-app-router, node, react"* ]]
 
   run_bootstrap_with "$skill_dir" --profiles browser
   [ "$status" -ne 0 ]
@@ -587,10 +587,10 @@ EOF
 }
 
 @test "two stacks compose in one repository: each brings its own assets and the first one is the primary" {
-  run_bootstrap_with "$skill_dir" --profiles frontend,node
+  run_bootstrap_with "$skill_dir" --profiles react,node
   [ "$status" -eq 0 ]
-  [[ "$output" == *"Profiles: frontend,node"* ]]
-  for stack in frontend node; do
+  [[ "$output" == *"Profiles: react,node"* ]]
+  for stack in react node; do
     cmp -s ".agents/rules/$stack-security.md" "$skill_dir/assets/stacks/$stack/rules/$stack-security.md"
     cmp -s ".agents/rules/$stack-testing.md" "$skill_dir/assets/stacks/$stack/rules/$stack-testing.md"
     cmp -s ".agents/agents/$stack-perf-analyzer.md" "$skill_dir/assets/stacks/$stack/agents/$stack-perf-analyzer.md"
@@ -599,11 +599,11 @@ EOF
     [ "$(lock_value "lock['assets']['.agents/rules/$stack-security.md']['profile']")" = "$stack" ]
   done
   cmp -s .agents/rules/node-coding-style.md "$skill_dir/assets/stacks/node/rules/node-coding-style.md"
-  cmp -s .agents/rules/frontend-style.md "$skill_dir/assets/stacks/frontend/rules/frontend-style.md"
+  cmp -s .agents/rules/react-style.md "$skill_dir/assets/stacks/react/rules/react-style.md"
   # One base template, and a section of each stack in the order of its id.
   [ "$(grep -Fxc '# [Project Name]' AGENTS.md)" -eq 1 ]
   [ "$(grep -E '^<!-- BEGIN AGENT-READY MANAGED: [a-z]+ -->$' AGENTS.md | tr '\n' ' ')" = \
-    "<!-- BEGIN AGENT-READY MANAGED: frontend --> <!-- BEGIN AGENT-READY MANAGED: node --> " ]
+    "<!-- BEGIN AGENT-READY MANAGED: react --> <!-- BEGIN AGENT-READY MANAGED: node --> " ]
 
   run_bootstrap_with "$skill_dir" --plan
   [ "$status" -eq 0 ]
@@ -774,7 +774,7 @@ EOF
   [ "$(lock_value 'lock["primaryStack"]')" = "java" ]
 }
 
-@test "SessionStart keeps a React Native project with an android directory on the frontend stack" {
+@test "SessionStart keeps a React Native project with an android directory on the react stack" {
   mkdir -p .agents/hooks
   cp "$skill_dir/assets/common/hooks/sync-marketplace.sh" .agents/hooks/sync-marketplace.sh
   printf '%s\n' '{"dependencies": {"react": "19.0.0"}}' > package.json
@@ -784,7 +784,7 @@ EOF
   run env PATH="$fake_bin:$PATH" AGENT_READY_SETUP_SKILL_DIR="$skill_dir" AGENT_READY_SETUP_MARKETPLACE_UPGRADED=1 \
     bash .agents/hooks/sync-marketplace.sh --provider claude
   [ "$status" -eq 0 ]
-  [ "$(lock_value 'lock["primaryStack"]')" = "frontend" ]
+  [ "$(lock_value 'lock["primaryStack"]')" = "react" ]
 }
 
 @test "the business-flows profile adds its assets to any stack and needs one" {
@@ -792,7 +792,7 @@ EOF
   [ "$status" -ne 0 ]
   [[ "$output" == *"select at least one stack profile"* ]]
 
-  for stack in android frontend; do
+  for stack in android react; do
     stack_project="$test_root/$stack-flows"
     mkdir -p "$stack_project"
     git -C "$stack_project" -c init.defaultBranch=main init -q

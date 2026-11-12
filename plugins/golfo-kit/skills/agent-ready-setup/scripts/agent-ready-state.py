@@ -103,6 +103,7 @@ from agent_ready_detection import (  # noqa: E402
     DetectionSchemaError,
     detect_profiles,
     format_evidence_list,
+    required_layers,
     validate_catalog_detection,
 )
 import agent_ready_compatibility as compatibility  # noqa: E402
@@ -423,8 +424,9 @@ def profiles_for_stack(catalog, stack):
 def resolve_profiles(catalog, requested_names, ci_profile=None):
     """Expand requires in declaration order and validate conflicts.
 
-    Returns the ordered list of profile names. The first stack profile is the
-    primary stack, the one detection settles on; every stack adds its section to AGENTS.md. ``ci_profile`` is the CI profile
+    Returns the ordered list of profile names, each one after the layers it requires. The
+    primary stack is the most specific layer (primary_stack); every stack adds its section to
+    AGENTS.md. ``ci_profile`` is the CI profile
     that ci.provider picks (ci_profile_of); a selection cannot name one itself.
     """
     profiles = catalog["profiles"]
@@ -492,9 +494,18 @@ def resolve_project_profiles(catalog, names, project_root):
 
 
 def primary_stack(catalog, resolved):
-    """Return the first stack profile in resolution order."""
+    """Return the first stack in resolution order that no other resolved profile requires.
+
+    That is the most specific layer, the one detection settles on: with ``nextjs-app-router``
+    selected, ``react`` and ``nextjs`` come first only because it requires them.
+    """
+    profiles = catalog["profiles"]
+    # Only another stack makes a stack less specific: a capability or a pack profile that requires
+    # one does not replace it.
+    required = {layer for name in resolved if profiles[name].get("kind") == STACK_PROFILE_KIND
+                for layer in required_layers(profiles, name)}
     for name in resolved:
-        if catalog["profiles"][name].get("kind") == STACK_PROFILE_KIND:
+        if profiles[name].get("kind") == STACK_PROFILE_KIND and name not in required:
             return name
     raise ProfileError("no stack profile resolved")
 
@@ -3932,7 +3943,7 @@ def build_parser():
 
     def add_selection(subparser):
         group = subparser.add_mutually_exclusive_group()
-        group.add_argument("--profiles", help="comma separated profiles, e.g. frontend,browser")
+        group.add_argument("--profiles", help="comma separated profiles, e.g. nextjs,browser")
         group.add_argument("--stack", help="legacy alias: the stack profile plus its defaults")
         subparser.add_argument("--source-state", help="commits adopted by fetch-sources during this apply")
         subparser.add_argument(

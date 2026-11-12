@@ -8,7 +8,7 @@
 # in the background.
 #
 # Usage:
-#   bash apply-managed-block.sh --stack <frontend|node|java|go|android> --skill-dir <path>
+#   bash apply-managed-block.sh --stack <react|nextjs|nextjs-app-router|node|java|go|android> --skill-dir <path>
 
 set -euo pipefail
 

@@ -1,8 +1,8 @@
 ---
 name: agent-ready-setup
 description: >-
-  Inspecciona proyecto, selecciona profiles componibles (frontend, node, java, go,
-  android, browser, business-flows y packs externos de una empresa, fijados por commit) y prepara
+  Inspecciona proyecto, selecciona profiles componibles (react, Next.js, node, java, go,
+  android, browser, business-flows y packs externos fijados por commit) y prepara
   configuración multi-provider para Claude Code y Codex: genera
   .claude/, .agents/, .codex/, AGENTS.md y proxy CLAUDE.md, fija la versión
   adoptada en un manifest y un lockfile por repo, sobrescribe en cada apply los
@@ -16,7 +16,7 @@ description: >-
   descartar un hallazgo de sus revisiones de IA.
 license: MIT
 metadata:
-  version: "1.30.0"
+  version: "1.31.0"
   author: "guponce"
   category: "developer-experience"
   tags: "agent-ready, multi-provider, claude-code, codex, bootstrap, setup, scaffold, context-optimized-v1.20.1"
@@ -177,7 +177,7 @@ python3 "$SKILL_DIR/scripts/agent-ready-state.py" detect --project . --skill-dir
 |---|---|---|
 | `Stack: <stack>` (exit 0) | las señales determinan un stack primario; cada línea muestra su evidencia y qué stack quedó reemplazado | confirmar con el mensaje de abajo y correr `agent-ready apply` sin `--stack` ni `--profiles`: aplica el mismo resultado |
 | `Stack: ambiguous (<a>, <b>)` (exit 3) | coinciden stacks sin prioridad entre sí | mostrar las coincidencias y su evidencia, y pedir que el usuario elija; el apply no elige solo y falla sin escribir |
-| `Stack: none` (exit 3) | ninguna señal coincide | informar que el stack no pudo determinarse y pedir uno de: `frontend`, `node`, `java`, `go`, `android` |
+| `Stack: none` (exit 3) | ninguna señal coincide | informar que el stack no pudo determinarse y pedir uno de: `react`, `nextjs`, `nextjs-app-router`, `node`, `java`, `go`, `android` |
 
 Las líneas `? <capability>: <evidencia>` son sugerencias: nunca se agregan solas al
 manifest ni instalan herramientas. Mencionarlas, y agregarlas con `--profiles` solo si
@@ -393,8 +393,10 @@ copiados durante bootstrap. No modifica `~/.codex/config.toml`,
 Mostrar output del script sin alterarlo. En respuestas documentales, enumerar además del resumen cada asset del template detectado con su path relativo, copiado tal cual de este catálogo (el árbol de `assets/` manda si difiere). Cada uno se proyecta en `.agents/<path>`, con vista en `.claude/<path>` salvo los hooks; los bloques y los archivos de CI van al destino que nombra cada uno:
 
 - **Todos los stacks** (`assets/common/`): `rules/browser-before-user-questions.md`, `rules/database.md`, `rules/environment-readiness.md`, `rules/error-handling.md`, `rules/established-libraries.md`, `rules/language-consistency.md`, `rules/lint-gate.md`, `rules/patterns-we-do-not-use.md`, `rules/root-cause-bug-fixes.md`, `rules/speculative-complexity-approval.md`, `rules/testing-scope.md`, `rules/user-actions-first.md`, `rules/verify-changes.md`, `skills/agent-browser/`, `skills/pr-review-workflow/`, `hooks/sync-marketplace.sh`, `hooks/check-harness-consistency.sh` (con `hooks/harness-review.py` y `hooks/review-cache.py`), `settings.json`, los bloques `blocks/.github/pull_request_template.md` y `blocks/.gitignore`, y `agents-template.md`, el único template de `AGENTS.md` (esqueleto del proyecto y bloque de rules).
-- **Android, Go, Java y Node:** con el nombre del stack como prefijo (`<stack>` es `android`, `go`, `java` o `node`), `rules/<stack>-coding-style.md`, `rules/<stack>-security.md`, `rules/<stack>-testing.md`, `agents/<stack>-perf-analyzer.md`, `agents/<stack>-security-scanner.md`, `commands/<stack>-review-pr.md` y `blocks/AGENTS.md`, su sección del `AGENTS.md` de la raíz; por ejemplo, `rules/node-security.md`. Cada stack nombra sus assets con su prefijo, así que dos stacks se combinan en un repo (`--profiles frontend,node`).
-- **Frontend:** `rules/api-configuration.md`, `rules/api-validation-middleware.md`, `rules/cross-engine.md`, `rules/frontend-style.md`, `rules/hexagonal-architecture.md`, `rules/lodash.md`, `rules/no-unnecessary-mocks.md`, `rules/frontend-security.md`, `rules/server-first-data-flow.md`, `rules/frontend-testing.md`, `rules/upstream-contracts.md`, `rules/user-facing-feedback.md`, `agents/a11y-reviewer.md`, `agents/lint-reviewer.md`, `agents/frontend-perf-analyzer.md`, `agents/frontend-security-scanner.md`, `agents/test-reviewer.md`, `commands/frontend-review-pr.md`, `blocks/AGENTS.md` (su sección del `AGENTS.md` de la raíz), `skills/api-endpoint/`, `skills/component-creation/`, `skills/karpathy-guidelines/`, `skills/logger/`, `skills/react-act-test-fixes/` y `skills/service/`.
+- **Android, Go, Java y Node:** con el nombre del stack como prefijo (`<stack>` es `android`, `go`, `java` o `node`), `rules/<stack>-coding-style.md`, `rules/<stack>-security.md`, `rules/<stack>-testing.md`, `agents/<stack>-perf-analyzer.md`, `agents/<stack>-security-scanner.md`, `commands/<stack>-review-pr.md` y `blocks/AGENTS.md`, su sección del `AGENTS.md` de la raíz; por ejemplo, `rules/node-security.md`. Cada stack nombra sus assets con su prefijo, así que dos stacks se combinan en un repo (`--profiles react,node`).
+- **React** (capa base de la web): `rules/cross-engine.md`, `rules/lodash.md`, `rules/no-unnecessary-mocks.md`, `rules/react-security.md`, `rules/react-style.md`, `rules/react-testing.md`, `rules/user-facing-feedback.md`, `agents/a11y-reviewer.md`, `agents/lint-reviewer.md`, `agents/react-perf-analyzer.md`, `agents/react-security-scanner.md`, `agents/test-reviewer.md`, `commands/react-review-pr.md`, `blocks/AGENTS.md` (su sección del `AGENTS.md` de la raíz), `skills/component-creation/`, `skills/karpathy-guidelines/` y `skills/react-act-test-fixes/`.
+- **Next.js** (`requires: ["react"]`): `rules/api-configuration.md`, `rules/api-validation-middleware.md`, `rules/hexagonal-architecture.md`, `rules/server-first-data-flow.md`, `rules/upstream-contracts.md`, `blocks/AGENTS.md`, `skills/api-endpoint/`, `skills/logger/` y `skills/service/`.
+- **Next.js App Router** (`requires: ["nextjs"]`): `rules/nextjs-app-router.md` y `blocks/AGENTS.md`.
 - **Profile `business-flows`:** `rules/business-flows.md` y `skills/business-flow-design/SKILL.md`.
 - **CI, según `ci.provider`** (`assets/ci/`): con cualquier proveedor menos `none`, `.agents/ci/agent-ready-check.sh`; con `github`, además `.github/workflows/agent-ready.yml`; con `gitlab`, `.agents/ci/gitlab-ci.yml` y un bloque en `.gitlab-ci.yml` con su `include`; con `jenkins`, `.agents/ci/jenkins-stage.groovy`. Sin `ci.provider` o con `none`, ninguno.
 - **Profile packs:** los assets de cada profile seleccionado de `sources.packs`, con los paths que publique su pack bajo `rules/`, `skills/`, `agents/` y `commands/`.

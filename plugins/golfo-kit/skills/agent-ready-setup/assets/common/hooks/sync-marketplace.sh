@@ -93,7 +93,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     --stack)
       if [[ $# -lt 2 || -z "${2:-}" ]]; then
-        printf 'ERROR: --stack requires frontend, node, java, go, or android\n' >&2
+        printf 'ERROR: --stack requires react, nextjs, nextjs-app-router, node, java, go, or android\n' >&2
         exit 1
       fi
       stack_override="$2"
@@ -513,7 +513,7 @@ refresh_missing_asset_sync_helper() {
 }
 
 case "$stack_override" in
-  ""|frontend|node|java|go|android) ;;
+  ""|react|nextjs|nextjs-app-router|node|java|go|android) ;;
   *)
     printf 'ERROR: unsupported stack: %s\n' "$stack_override" >&2
     exit 1

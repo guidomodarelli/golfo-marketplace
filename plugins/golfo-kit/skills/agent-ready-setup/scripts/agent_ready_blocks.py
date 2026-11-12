@@ -224,7 +224,9 @@ def classify(project_root, desired, locked, retiring=()):
                 problem = f"its markers do not pair up ({marker_error}); nothing in the file was changed"
         file_sha256 = sha256_of_text(text) if state == "file" else state
         wanted = {block_id: item for (target, block_id), item in desired.items() if target == destination}
-        for block_id in sorted(set(wanted) | set(locked.get(destination, {}))):
+        # Desired blocks keep the order of the selection, so a new section of a layer lands after the
+        # section of the layer it extends; the ones only the lock knows follow, sorted.
+        for block_id in list(wanted) + sorted(set(locked.get(destination, {})) - set(wanted)):
             item, lock_entry = wanted.get(block_id), locked.get(destination, {}).get(block_id)
             entry = {"destination": destination, "id": block_id, "fileSha256": file_sha256,
                      "baseSha256": (lock_entry or {}).get("sha256")}

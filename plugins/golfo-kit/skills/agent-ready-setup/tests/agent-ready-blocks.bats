@@ -355,16 +355,16 @@ PY
 }
 
 @test "each selected stack adds its section to AGENTS.md, and a stack that leaves the selection takes it out" {
-  write_manifest '{"profiles": ["frontend", "node"]}'
+  write_manifest '{"profiles": ["react", "node"]}'
   run_cli apply
   [ "$status" -eq 0 ]
   grep -qx '# \[Project Name\]' AGENTS.md
   grep -qx '<!-- BEGIN AGENT-READY MANAGED -->' AGENTS.md
-  grep -qx '<!-- BEGIN AGENT-READY MANAGED: frontend -->' AGENTS.md
-  grep -qx '## Frontend' AGENTS.md
+  grep -qx '<!-- BEGIN AGENT-READY MANAGED: react -->' AGENTS.md
+  grep -qx '## React' AGENTS.md
   grep -qx '<!-- BEGIN AGENT-READY MANAGED: node -->' AGENTS.md
   grep -qx '## Node.js' AGENTS.md
-  [ "$(lock_value 'sorted(lock["blocks"]["AGENTS.md"])')" = "['frontend', 'node']" ]
+  [ "$(lock_value 'sorted(lock["blocks"]["AGENTS.md"])')" = "['node', 'react']" ]
   [ "$(lock_value 'lock["merged"]["AGENTS.md"]["template"]')" = "assets/common/agents-template.md" ]
 
   printf '
@@ -375,8 +375,8 @@ Team Astra owns this service.
   write_manifest '{"profiles": ["node"]}'
   run_cli apply
   [ "$status" -eq 0 ]
-  ! grep -q 'AGENT-READY MANAGED: frontend' AGENTS.md
-  ! grep -qx '## Frontend' AGENTS.md
+  ! grep -q 'AGENT-READY MANAGED: react' AGENTS.md
+  ! grep -qx '## React' AGENTS.md
   grep -qx '<!-- BEGIN AGENT-READY MANAGED: node -->' AGENTS.md
   grep -qx 'Team Astra owns this service.' AGENTS.md
   [ "$(lock_value 'sorted(lock["blocks"]["AGENTS.md"])')" = "['node']" ]
@@ -422,11 +422,11 @@ agents_marker_count() {
 }
 
 @test "applies, the instruction review and the session hook keep one pair of markers per stack section" {
-  write_manifest '{"profiles": ["frontend", "node"]}'
+  write_manifest '{"profiles": ["react", "node"]}'
   run_cli apply
   [ "$status" -eq 0 ]
   # The provider of this suite answers nothing: the review falls back to the verbatim managed block.
-  run env PATH="$fake_bin:$PATH" bash "$skill_dir/scripts/merge-instructions.sh" --provider claude --stack frontend \
+  run env PATH="$fake_bin:$PATH" bash "$skill_dir/scripts/merge-instructions.sh" --provider claude --stack react \
     --skill-dir "$skill_dir"
   [ "$status" -eq 0 ]
   run_cli apply
@@ -438,7 +438,7 @@ agents_marker_count() {
   run_cli apply
   [ "$status" -eq 0 ]
   for marker in '<!-- BEGIN AGENT-READY MANAGED -->' '<!-- END AGENT-READY MANAGED -->' \
-    '<!-- BEGIN AGENT-READY MANAGED: frontend -->' '<!-- END AGENT-READY MANAGED: frontend -->' \
+    '<!-- BEGIN AGENT-READY MANAGED: react -->' '<!-- END AGENT-READY MANAGED: react -->' \
     '<!-- BEGIN AGENT-READY MANAGED: node -->' '<!-- END AGENT-READY MANAGED: node -->'; do
     [ "$(agents_marker_count "$marker")" -eq 1 ]
   done
@@ -536,4 +536,22 @@ PY
   ! grep -q 'AGENT-READY MANAGED: node' AGENTS.md
   grep -qx '<!-- BEGIN AGENT-READY MANAGED: go -->' AGENTS.md
   [ "$(lock_value 'sorted(lock["blocks"]["AGENTS.md"])')" = "['go']" ]
+}
+
+@test "the section of each layer follows the section of the layer it extends" {
+  write_manifest '{"profiles": ["nextjs-app-router"]}'
+  run_cli apply
+  [ "$status" -eq 0 ]
+  [ "$(grep -o 'BEGIN AGENT-READY MANAGED: [a-z-]*' AGENTS.md | tr '\n' ' ')" = \
+    "BEGIN AGENT-READY MANAGED: react BEGIN AGENT-READY MANAGED: nextjs BEGIN AGENT-READY MANAGED: nextjs-app-router " ]
+  [ "$(lock_value 'lock["primaryStack"]')" = "nextjs-app-router" ]
+
+  # Dropping to the nextjs layer takes out only the App Router section and rule.
+  write_manifest '{"profiles": ["nextjs"]}'
+  run_cli apply
+  [ "$status" -eq 0 ]
+  ! grep -q 'AGENT-READY MANAGED: nextjs-app-router' AGENTS.md
+  grep -qx '<!-- BEGIN AGENT-READY MANAGED: nextjs -->' AGENTS.md
+  [ ! -e .agents/rules/nextjs-app-router.md ]
+  [ -f .agents/rules/server-first-data-flow.md ]
 }

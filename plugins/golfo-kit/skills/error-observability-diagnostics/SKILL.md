@@ -46,7 +46,7 @@ No activar solo para cambiar copy UI sin necesidad de diagnóstico operativo, sa
 
 ## Regla canónica de payloads
 
-Leer y aplicar la sección `Input Validation` de `../agent-ready-setup/assets/stacks/frontend/rules/frontend-security.md` y la sección `Validation boundary` de `../agent-ready-setup/assets/stacks/frontend/rules/upstream-contracts.md`, relativas al directorio de esta skill. Esas rules definen el límite global: no revalidar payloads backend/upstream, permitir narrowing estructural mínimo y validar inputs/DTOs públicos del middleend. No duplicar ni contradecir el contrato aquí.
+Leer y aplicar la sección `Input Validation` de `../agent-ready-setup/assets/stacks/react/rules/react-security.md` y la sección `Validation boundary` de `../agent-ready-setup/assets/stacks/nextjs/rules/upstream-contracts.md`, relativas al directorio de esta skill. Esas rules definen el límite global: no revalidar payloads backend/upstream, permitir narrowing estructural mínimo y validar inputs/DTOs públicos del middleend. No duplicar ni contradecir el contrato aquí.
 
 ## Política de cobertura
 

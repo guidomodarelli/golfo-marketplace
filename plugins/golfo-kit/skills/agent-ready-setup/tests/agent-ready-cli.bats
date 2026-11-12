@@ -299,14 +299,14 @@ publish_pack_repository() {
   [[ "$stderr" == *"--profiles: unknown profile 'nope'; available profiles:"* ]]
   [ "$(tree_fingerprint)" = "$before" ]
 
-  run --separate-stderr env PATH="$fake_bin:$PATH" CI=1 python3 "$cli" init --stack frontend < /dev/null
+  run --separate-stderr env PATH="$fake_bin:$PATH" CI=1 python3 "$cli" init --stack react < /dev/null
   [ "$status" -eq 2 ]
   [[ "$stderr" == *"missing --yes"* ]]
 
-  run --separate-stderr env PATH="$fake_bin:$PATH" python3 "$cli" init --stack frontend --yes < /dev/null
+  run --separate-stderr env PATH="$fake_bin:$PATH" python3 "$cli" init --stack react --yes < /dev/null
   [ "$status" -eq 0 ]
   [ -z "$output" ]
-  [ "$(json_value "$(cat .agents/agent-ready.json)" 'data["profiles"]')" = "['frontend', 'browser']" ]
+  [ "$(json_value "$(cat .agents/agent-ready.json)" 'data["profiles"]')" = "['react', 'browser']" ]
   [ "$(grep -cx '<!-- BEGIN AGENT-READY MANAGED -->' AGENTS.md)" -eq 1 ]
 
   run_cli init --profiles node --yes
