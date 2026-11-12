@@ -247,3 +247,27 @@ PY
   [[ "$stderr" == *"profile 'beam/elixir': only a stack profile adds a section to AGENTS.md"* ]]
   [ ! -e AGENTS.md ]
 }
+
+@test "a pack stack with only its section of AGENTS.md and no rules of its own is applied" {
+  rm package.json
+  printf '%s\n' 'defmodule Shop.MixProject do end' > mix.exs
+  add_elixir_pack 'del catalog["profiles"]["elixir"]["defaults"]'
+  rm -rf agent-packs/beam/profiles/elixir/rules
+
+  run_cli apply
+  [ "$status" -eq 0 ]
+  grep -qx '<!-- BEGIN AGENT-READY MANAGED: beam/elixir -->' AGENTS.md
+  [ ! -e .agents/rules/elixir-coding-style.md ]
+}
+
+@test "the first apply fetches a declared Git pack before detecting, so its stack can be the one detected" {
+  rm package.json
+  printf '%s\n' 'defmodule Shop.MixProject do end' > mix.exs
+  publish_example elixir-stack-pack https://git.example.invalid/beam
+  write_manifest '{"sources": {"packs": [{"name": "beam", "source": "git+https://git.example.invalid/beam", "ref": "main"}]}}'
+
+  run_cli apply
+  [ "$status" -eq 0 ]
+  grep -qx '<!-- BEGIN AGENT-READY MANAGED: beam/elixir -->' AGENTS.md
+  [ "$(python3 -c 'import json; print(json.load(open(".agents/agent-ready.json"))["profiles"])' | tr -d '\r')" = "['beam/elixir']" ]
+}
