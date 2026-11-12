@@ -1450,7 +1450,8 @@ def compute_plan(project_root, skill_dir, catalog, profile_names):
         "lockedSource": lock.get("source") if lock else None,
         "hasLock": lock is not None,
         "entries": entries,
-        "blocks": managed_blocks.classify(project_root, *without_waiting_sections(project_root, blocks, (lock or {}).get("blocks", {})),
+        "blocks": managed_blocks.classify(project_root, *without_waiting_sections(project_root, skill_dir, blocks,
+                                                                                    (lock or {}).get("blocks", {})),
                                           retiring_block_files),
         "editedViews": edited_views,
         "detachedViews": preserved_views,
@@ -1934,13 +1935,41 @@ def remove_empty_parents(project_root, path):
         directory = os.path.dirname(directory)
 
 
-def instruction_sections_wait(project_root):
-    """True when AGENTS.md is the project's own file without the managed block yet.
+def root_instructions_conflict(project_root, skill_dir):
+    """True when the root CLAUDE.md holds instructions of its own besides AGENTS.md.
 
-    That file is the project's until the instruction review places the managed block (a legacy file,
-    or one that conflicts with CLAUDE.md): the sections of the stacks join it on the next apply after
-    that, so the apply never writes into instructions it has not adopted.
+    Mirrors normalize_root_instructions in instruction-normalization.sh: a CLAUDE.md that is the
+    proxy, the bare "@AGENTS.md" or the same bytes as AGENTS.md is normalized; any other one is a
+    conflict the agent resolves by hand, and so is a symlink or something that is not a file.
     """
+    claude_path = os.path.join(project_root, "CLAUDE.md")
+    if not os.path.lexists(claude_path):
+        return False
+    agents_path = os.path.join(project_root, managed_blocks.INSTRUCTION_SECTIONS_DESTINATION)
+    if is_link(claude_path) or not os.path.isfile(claude_path) or is_link(agents_path):
+        return True
+    with open(claude_path, "rb") as file_handle:
+        claude = file_handle.read()
+    with open(os.path.join(skill_dir, CLAUDE_PROXY_RELATIVE_PATH), "rb") as file_handle:
+        proxy = file_handle.read()
+    if claude == proxy or claude.strip() == b"@AGENTS.md":
+        return False
+    if os.path.isfile(agents_path):
+        with open(agents_path, "rb") as file_handle:
+            return file_handle.read() != claude
+    return False
+
+
+def instruction_sections_wait(project_root, skill_dir):
+    """True when the apply must leave the sections of AGENTS.md as they are.
+
+    AGENTS.md is the project's own file until the instruction review places the managed block (a
+    legacy file), and the two instruction files are the agent's to merge while CLAUDE.md conflicts
+    with AGENTS.md. In both cases the apply adds, updates and removes no section: they catch up on
+    the next apply after that, so it never writes into instructions it has not adopted.
+    """
+    if root_instructions_conflict(project_root, skill_dir):
+        return True
     path = os.path.join(project_root, managed_blocks.INSTRUCTION_SECTIONS_DESTINATION)
     if is_link(path) or not os.path.isfile(path):
         return False
@@ -1948,16 +1977,16 @@ def instruction_sections_wait(project_root):
         return MANAGED_BLOCK_START not in file_handle.read().splitlines()
 
 
-def without_waiting_sections(project_root, desired, locked):
+def without_waiting_sections(project_root, skill_dir, desired, locked):
     """(desired, locked) of the blocks to classify, without those of AGENTS.md while its sections wait."""
-    if not instruction_sections_wait(project_root):
+    if not instruction_sections_wait(project_root, skill_dir):
         return desired, locked
     destination = managed_blocks.INSTRUCTION_SECTIONS_DESTINATION
     return ({key: item for key, item in desired.items() if key[0] != destination},
             {target: blocks for target, blocks in locked.items() if target != destination})
 
 
-def instruction_sections_now(project_root, entries):
+def instruction_sections_now(project_root, skill_dir, entries):
     """The block entries of a plan, with those of AGENTS.md classified again against the file as it is.
 
     Between the plan and finalize the apply itself writes AGENTS.md: it creates the file from the
@@ -1966,7 +1995,7 @@ def instruction_sections_now(project_root, entries):
     """
     destination = managed_blocks.INSTRUCTION_SECTIONS_DESTINATION
     sections = [entry for entry in entries if entry["destination"] == destination]
-    if instruction_sections_wait(project_root):
+    if instruction_sections_wait(project_root, skill_dir):
         return [entry for entry in entries if entry["destination"] != destination]
     if not sections:
         return entries
@@ -2047,7 +2076,7 @@ def finalize(project_root, skill_dir, plan, updates):
             lock_assets[entry["destination"]]["viewPreserved"] = True
 
     conflicts += [f"{view}: {DETACHED_VIEW_REASON}" for view in plan["detachedViews"]]
-    block_report = managed_blocks.apply(project_root, instruction_sections_now(project_root, plan.get("blocks", [])))
+    block_report = managed_blocks.apply(project_root, instruction_sections_now(project_root, skill_dir, plan.get("blocks", [])))
     conflicts += block_report["conflicts"]
     failed += [f"managed blocks of {problem}" for problem in block_report["failed"]]
 
@@ -2065,7 +2094,7 @@ def finalize(project_root, skill_dir, plan, updates):
         "merged": plan["merged"],
     }
     waiting_sections = ((previous_lock or {}).get("blocks") or {}).get(managed_blocks.INSTRUCTION_SECTIONS_DESTINATION)
-    if waiting_sections and instruction_sections_wait(project_root):
+    if waiting_sections and instruction_sections_wait(project_root, skill_dir):
         # The sections were left out of this apply: the lock keeps what it knew of them.
         block_report["lock"][managed_blocks.INSTRUCTION_SECTIONS_DESTINATION] = waiting_sections
     if block_report["lock"]:
@@ -3726,6 +3755,21 @@ def unregister_browser_servers(project_root, skill_dir, report):
         report["failed"].append(problem)
 
 
+def sections_remain(project_root, sections):
+    """True when AGENTS.md still holds one of these stack sections, or its markers cannot tell."""
+    path = os.path.join(project_root, managed_blocks.INSTRUCTION_SECTIONS_DESTINATION)
+    if not sections or local_state(path) in (LOCAL_ABSENT, LOCAL_NOT_A_FILE):
+        return False
+    if local_state(path) == LOCAL_SYMLINK:
+        return True
+    with open(path, encoding="utf-8", newline="") as file_handle:
+        text = file_handle.read()
+    try:
+        return bool(set(sections) & set(managed_blocks.parse(text, managed_blocks.INSTRUCTION_SECTIONS_DESTINATION)))
+    except managed_blocks.MarkerError:
+        return True
+
+
 def remove_blocks_now(project_root, entry, report):
     """Take the blocks of one file out of what it holds now; False when the file keeps them."""
     path = os.path.join(project_root, entry["path"])
@@ -3790,6 +3834,8 @@ def apply_removal(project_root, skill_dir, plan):
     """Remove agent-ready-setup from the repository following a plan; returns what happened."""
     report = {"removed": [], "edited": [], "kept": [], "failed": []}
     report["kept"] += [f"{entry['path']}: {entry['reason']}" for entry in plan["entries"] if entry["action"] == REMOVAL_KEEP]
+    # Stack sections that stay in AGENTS.md need the lock: it is how the next remove finds them.
+    sections = section_ids(read_lock(project_root))
     browser_done = False
     pack_mcp_done = False
     inventory_left = False
@@ -3815,7 +3861,7 @@ def apply_removal(project_root, skill_dir, plan):
                 unregister_browser_servers(project_root, skill_dir, report)
                 browser_done = True
             continue
-        if entry["kind"] == "config" and inventory_left:
+        if entry["kind"] == "config" and (inventory_left or sections_remain(project_root, sections)):
             # Without the lockfile, the next run would not know which files are still managed.
             report["kept"].append(f"{entry['path']}: {INVENTORY_KEPT_REASON}")
             continue

@@ -480,3 +480,42 @@ agents_marker_count() {
   grep -qx '<!-- BEGIN AGENT-READY MANAGED: node -->' AGENTS.md
   [ "$(head -1 AGENTS.md)" = '# Canonical instructions' ]
 }
+
+@test "while CLAUDE.md conflicts with AGENTS.md, the apply adds, updates and removes no stack section" {
+  run_cli apply
+  [ "$status" -eq 0 ]
+  printf '%s\n' '# Claude notes' '' 'Use the staging database for manual tests.' > CLAUDE.md
+  node_section() {
+    awk '/^<!-- BEGIN AGENT-READY MANAGED: node -->$/,/^<!-- END AGENT-READY MANAGED: node -->$/' AGENTS.md
+  }
+  node_section > "$test_root/node-before"
+  write_manifest '{"profiles": ["node", "go"]}'
+  run_cli apply
+  # The rules block may follow the selection; the sections stay as they were.
+  ! grep -q 'AGENT-READY MANAGED: go' AGENTS.md
+  node_section | cmp -s - "$test_root/node-before"
+  # The lock still knows the section it applied.
+  [ "$(lock_value 'sorted(lock["blocks"]["AGENTS.md"])')" = "['node']" ]
+
+  # Once the agent merged the two files, the next apply catches up.
+  cp "$skill_dir/assets/claude-proxy.md" CLAUDE.md
+  run_cli apply
+  [ "$status" -eq 0 ]
+  grep -qx '<!-- BEGIN AGENT-READY MANAGED: go -->' AGENTS.md
+  grep -qx '<!-- BEGIN AGENT-READY MANAGED: node -->' AGENTS.md
+}
+
+@test "remove keeps the lock while a stack section stays in AGENTS.md, so a second remove takes it out" {
+  run_cli apply
+  # A second start of the node section: the markers no longer pair up.
+  printf '%s\n' '<!-- BEGIN AGENT-READY MANAGED: node -->' >> AGENTS.md
+  run_cli remove --yes
+  [ -f .agents/agent-ready.lock.json ]
+  grep -q 'AGENT-READY MANAGED: node' AGENTS.md
+
+  # Repaired by hand, the next remove still knows the section.
+  sed -i.bak '$d' AGENTS.md && rm -f AGENTS.md.bak
+  run_cli remove --yes
+  [ "$status" -eq 0 ]
+  ! grep -q 'AGENT-READY MANAGED' AGENTS.md 2>/dev/null
+}
