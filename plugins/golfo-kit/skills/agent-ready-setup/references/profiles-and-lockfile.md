@@ -24,9 +24,10 @@ un repositorio. La implementación vive en `scripts/agent-ready-state.py`.
 
 | Campo | Significado |
 |---|---|
-| `kind` | `stack` (aporta sus rules y su sección de `AGENTS.md`), `capability` o `ci` (los archivos de CI de un proveedor, que elige `ci.provider` y nunca la selección; ver [ci-check.md](ci-check.md)) |
+| `kind` | `stack` (aporta sus rules y su sección de `AGENTS.md`), `capability`, `bundle` (solo agrupa otros profiles, ver «Bundles») o `ci` (los archivos de CI de un proveedor, que elige `ci.provider` y nunca la selección; ver [ci-check.md](ci-check.md)) |
 | `assets` | árbol de templates del profile, relativo a la skill; opcional |
-| `requires` | profiles que se agregan antes, en orden |
+| `requires` | profiles que se agregan antes, en orden; siempre vienen |
+| `defaults` | profiles que trae al elegirlo, después de la selección; el repo puede dejarlos afuera con `excludedDefaults` |
 | `conflicts` | profiles incompatibles; seleccionarlos juntos es error |
 | `tools` | herramientas que el apply instala o registra (`browser`) |
 | `detect` | señales estáticas para detectar el profile; opcional (ver «Detección») |
@@ -62,9 +63,32 @@ fallaría). Cada capa suma su sección a `AGENTS.md`.
 `react` no requiere `node`: las rules de `node` son de servicios backend, y una SPA o una
 app Next.js no las necesita. Un repo full stack selecciona las dos (`--profiles nextjs,node`).
 
-`--stack <s>` sigue funcionando como alias de `stackDefaults[s]` (la stack más
-`browser`, salvo `android`, porque una app nativa no usa esas herramientas: para una
-que prueba un `WebView`, usar `--profiles android,browser`). Un profile nuevo que extiende una stack (por ejemplo, testing
+**Defaults.** `react`, `node`, `java` y `go` declaran `"defaults": ["browser"]`; `android` no,
+porque una app nativa no usa esas herramientas (para una que prueba un `WebView`, usar
+`--profiles android,browser`). Una capa hereda los defaults de las que requiere: `nextjs` trae
+`browser` por `react`. A diferencia de `requires`, un default se puede dejar afuera:
+
+```json
+{ "profiles": ["node"], "excludedDefaults": ["browser"] }
+```
+
+`agent-ready config set excludedDefaults browser` lo escribe. Un profile que la selección nombra o
+que otro requiere no se puede excluir, y el plan falla antes de escribir. `--stack <s>` es un alias
+de `--profiles <s>`: los defaults salen del profile, no de una tabla aparte.
+
+**Manifest y lock.** El manifest guarda lo elegido (`["node"]`, o un bundle) y el lock lo resuelto
+(`profileOrder`: `node`, `browser`). Así, un cambio de `defaults` o de un bundle llega a los repos
+ya aplicados en el próximo apply, y `plan` muestra qué trajo cada profile (`Profile added: browser
+(default of node)`).
+
+**Bundles.** Un profile `kind: bundle` no publica assets, herramientas, detección ni defaults
+propios: solo agrupa otros profiles por `requires`, cada uno con sus defaults. Se elige como
+cualquier profile, el manifest guarda el bundle y el lock registra lo que resolvió; como no publica
+nada, no aparece en el inventario de assets. Un bundle no esconde nada: los `conflicts` y los
+destinos repetidos de lo que trae fallan igual que si se eligieran a mano. Los packs pueden publicar
+bundles (`acme/backend` en `assets/examples/acme-profile-pack/`).
+
+Un profile nuevo que extiende una stack (por ejemplo, testing
 específico de una plataforma) declara `requires: ["<stack>"]` y publica solo
 assets con nombres propios; no copia los de la stack. Si es un `stack`, la detección lo
 prefiere a la capa que extiende y su sección de `AGENTS.md` se suma a la de ella.
@@ -129,8 +153,8 @@ formato cuenta aunque no se use.
 
 1. `--profiles` o `--stack`.
 2. `profiles` de `.agents/agent-ready.json`.
-3. Detección inicial, solo sin manifest: el stack primario se expande con `stackDefaults`,
-   y el apply lo guarda en el manifest.
+3. Detección inicial, solo sin manifest: el apply guarda el stack primario en el manifest, y
+   sus `defaults` se resuelven en cada apply.
 
 `detection.enabled: false` apaga la detección y las sugerencias ([configuration.md](configuration.md)).
 Una detección posterior nunca cambia el manifest. `plan` informa la selección (`Selected
@@ -140,7 +164,7 @@ pedirlo con `--stack` o `--profiles`.
 **Stack primario.** Detectar varias señales no aplica varios stacks. Una capa reemplaza a
 las que requiere cuando coinciden juntas, y hereda lo que ellas reemplazan. Una capa solo
 coincide si coinciden también las capas que requiere: un `app/layout.tsx` sin `next` en
-`package.json` es un archivo más, no el App Router. la más
+`package.json` es un archivo más, no el App Router. La más
 específica es el primario y trae las otras por `requires`. `supersedes` declara qué stacks
 reemplaza uno sin requerirlos, y solo se usa donde uno es una especialización del otro:
 
@@ -161,9 +185,8 @@ catálogo, y el resultado no depende del orden de los archivos ni del catálogo.
 
 **Sugerencias.** Una capability con `detect` que coincide y falta en la selección se
 sugiere en `plan`, con el profile, el archivo inspeccionado y la señal. No entra al
-manifest ni instala herramientas, tampoco en una detección inicial, y `stackDefaults` no
-cambia: `--stack android` sigue sin `browser` aunque `plan` lo sugiera por
-`androidx.webkit:webkit`. No se sugiere una capability incompatible con la selección.
+manifest ni instala herramientas, tampoco en una detección inicial, y no cambia los `defaults`:
+`--stack android` sigue sin `browser` aunque `plan` lo sugiera por `androidx.webkit:webkit`. No se sugiere una capability incompatible con la selección.
 
 `detect` no forma parte del digest de un profile en el lockfile, porque no cambia lo que
 se proyecta: ajustar una señal no marca un update pendiente en repos ya aplicados.
@@ -212,13 +235,13 @@ profiles, pero no selecciona ninguno ni proyecta sus assets.
 
 **Pack.** Tiene `agent-ready-pack.json` en la raíz, con `schemaVersion`, `name` y `profiles`. `name`
 debe ser igual al de la fuente en el manifest, porque los profiles se referencian por él. Cada
-profile acepta `kind`, `description`, `assets`, `requires`, `conflicts`, `tools` y `detect`, con el
+profile acepta `kind`, `description`, `assets`, `requires`, `conflicts`, `defaults`, `tools` y `detect`, con el
 significado de la sección 1, más `clis`, `mcpServers` y `scripts` ([pack-tools.md](pack-tools.md)), y
 estos límites:
 
-- `kind` es siempre `capability`. Un profile que necesita un stack lo declara en `requires`.
+- `kind` es `capability` o `bundle`. Un profile que necesita un stack lo declara en `requires`.
 - `tools` solo acepta herramientas que el motor ya conoce (`browser`).
-- Un pack no declara `stackDefaults`, `baseAssets` ni otras fuentes, ni redefine un profile de
+- Un pack no declara `baseAssets` ni otras fuentes, ni redefine un profile de
   Golfo. Los assets compartidos van en un profile propio, como `acme/base`, que los demás requieren.
 - `assets` publica solo `rules/`, `skills/`, `agents/`, `commands/` y `blocks/`, los bloques gestionados
   de archivos compartidos con el proyecto ([managed-agents-block.md](managed-agents-block.md), sección

@@ -736,32 +736,32 @@ config_value() {
 }
 
 @test "a delivered repository does not apply a selection changed by hand, only an explicit one" {
-  write_manifest '{"profiles": ["node"], "updates": {"preset": "delivered"}}'
+  write_manifest '{"profiles": ["android"], "updates": {"preset": "delivered"}}'
   run_cli update golfo-kit --to "$first_revision"
   [ "$status" -eq 0 ]
   python3 - <<'PY'
 import json
 path = ".agents/agent-ready.json"
 manifest = json.load(open(path, encoding="utf-8"))
-manifest["profiles"] = ["node", "browser"]
+manifest["profiles"] = ["android", "business-flows"]
 json.dump(manifest, open(path, "w", encoding="utf-8"), indent=2)
 PY
 
   run_cli apply
   [ "$status" -ne 0 ]
   [[ "$stderr" == *"cannot reproduce the lock"*"selection"* ]]
-  [ "$(lock_value 'data["profileOrder"]')" = "['node']" ]
+  [ "$(lock_value 'data["profileOrder"]')" = "['android']" ]
 
-  run_cli apply --profiles node,browser
+  run_cli apply --profiles android,business-flows
   [ "$status" -eq 0 ]
-  [ "$(lock_value 'data["profileOrder"]')" = "['node', 'browser']" ]
+  [ "$(lock_value 'data["profileOrder"]')" = "['android', 'business-flows']" ]
   [ "$(lock_value 'data["source"]["revision"]')" = "$first_revision" ]
 
   # profiles add|remove change the manifest and name the explicit apply that projects it.
-  run_cli profiles remove browser
+  run_cli profiles remove business-flows
   [ "$status" -eq 0 ]
-  [[ "$stderr" == *"Run agent-ready apply --profiles node to project them"* ]]
-  run_cli apply --profiles node
+  [[ "$stderr" == *"Run agent-ready apply --profiles android to project them"* ]]
+  run_cli apply --profiles android
   [ "$status" -eq 0 ]
-  [ "$(lock_value 'data["profileOrder"]')" = "['node']" ]
+  [ "$(lock_value 'data["profileOrder"]')" = "['android']" ]
 }

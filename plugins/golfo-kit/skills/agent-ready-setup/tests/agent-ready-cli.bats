@@ -306,7 +306,7 @@ publish_pack_repository() {
   run --separate-stderr env PATH="$fake_bin:$PATH" python3 "$cli" init --stack react --yes < /dev/null
   [ "$status" -eq 0 ]
   [ -z "$output" ]
-  [ "$(json_value "$(cat .agents/agent-ready.json)" 'data["profiles"]')" = "['react', 'browser']" ]
+  [ "$(json_value "$(cat .agents/agent-ready.json)" 'data["profiles"]')" = "['react']" ]
   [ "$(grep -cx '<!-- BEGIN AGENT-READY MANAGED -->' AGENTS.md)" -eq 1 ]
 
   run_cli init --profiles node --yes
@@ -340,7 +340,19 @@ publish_pack_repository() {
   run_cli profiles remove browser
   [ "$status" -eq 2 ]
   [[ "$stderr" == *"not selected: browser"* ]]
+  [[ "$stderr" == *"agent-ready config set excludedDefaults browser"* ]]
   [ "$(cksum < .agents/agent-ready.json)" = "$before" ]
+
+  # The selection is checked with the excludedDefaults of the repository, as every apply does.
+  run_cli config set excludedDefaults browser
+  [ "$status" -eq 0 ]
+  before="$(cksum < .agents/agent-ready.json)"
+  run_cli profiles add browser
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"excludedDefaults lists 'browser', but the selection needs it"* ]]
+  [ "$(cksum < .agents/agent-ready.json)" = "$before" ]
+  run_cli config unset excludedDefaults
+  [ "$status" -eq 0 ]
 
   run_cli profiles remove business-flows
   [ "$status" -eq 0 ]
@@ -357,7 +369,7 @@ publish_pack_repository() {
   [ "$status" -eq 0 ]
   run_cli sources list --json
   [ "$status" -eq 0 ]
-  [ "$(json_value "$output" '[(row["name"], row["state"], len(row["profiles"])) for row in data["sources"]]')" = "[('acme', 'available', 2)]" ]
+  [ "$(json_value "$output" '[(row["name"], row["state"], len(row["profiles"])) for row in data["sources"]]')" = "[('acme', 'available', 3)]" ]
 
   run_cli sources add acme path:./agent-packs/acme
   [ "$status" -eq 2 ]

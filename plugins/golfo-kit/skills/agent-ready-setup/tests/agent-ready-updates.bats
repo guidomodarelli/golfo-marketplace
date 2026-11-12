@@ -683,7 +683,7 @@ PY
   run_bootstrap --stack node
   [ "$status" -eq 0 ]
   run env PATH="$fake_bin:$PATH" bash "$skill_dir/scripts/apply-managed-block.sh" --stack node --skill-dir "$skill_dir"
-  write_manifest node
+  write_manifest node '{"excludedDefaults": ["browser"]}'
 
   run_check
   [ "$status" -eq 4 ]

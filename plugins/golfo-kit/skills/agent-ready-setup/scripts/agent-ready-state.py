@@ -77,6 +77,7 @@ from agent_ready_options import (  # noqa: E402
     CI_PROVIDER_NONE,
     CI_WARN,
     DETECTION_ENABLED_KEY,
+    EXCLUDED_DEFAULTS_KEY,
     PROFILES_KEY,
     PROVIDERS_KEY,
     REVIEWS_CACHE_KEY,
@@ -308,6 +309,13 @@ def has_linked_parent(project_root, destination):
 # Profiles
 # ---------------------------------------------------------------------------
 
+# A profile's ``defaults``: the profiles it brings unless excludedDefaults leaves them out.
+DEFAULTS_KEY = "defaults"
+# A bundle publishes nothing and only groups other profiles through ``requires``.
+BUNDLE_PROFILE_KIND = "bundle"
+BUNDLE_FORBIDDEN_KEYS = ("assets", "tools", "detect", DEFAULTS_KEY, "clis", "mcpServers", "scripts")
+
+
 def load_profile_catalog(skill_dir):
     """Load and validate the profile catalog of the skill source.
 
@@ -329,7 +337,30 @@ def load_profile_catalog(skill_dir):
         validate_catalog_detection(profiles)
     except DetectionSchemaError as caught_error:
         raise ProfileError(f"profile catalog {catalog_path}: {caught_error}") from caught_error
+    for name, profile in sorted(profiles.items()):
+        validate_selection_fields(name, profile)
     return catalog
+
+
+def validate_selection_fields(name, profile):
+    """``defaults`` is a list of other profiles, and a bundle only groups profiles through ``requires``.
+
+    A bundle publishes nothing: no assets, tools, detection or defaults of its own, so what it brings
+    is exactly the profiles it requires, each with its own defaults.
+    """
+    defaults = profile.get(DEFAULTS_KEY, [])
+    if not isinstance(defaults, list) or not all(isinstance(item, str) and item for item in defaults):
+        raise ProfileError(f"profile '{name}': '{DEFAULTS_KEY}' must be a list of profile names")
+    if name in defaults:
+        raise ProfileError(f"profile '{name}' cannot list itself in '{DEFAULTS_KEY}'")
+    if profile.get("kind") != BUNDLE_PROFILE_KIND:
+        return
+    published = sorted(key for key in BUNDLE_FORBIDDEN_KEYS if key in profile)
+    if published:
+        raise ProfileError(f"bundle '{name}' only groups profiles through 'requires'; it cannot declare: {', '.join(published)}")
+    requires = profile.get("requires")
+    if not isinstance(requires, list) or not requires:
+        raise ProfileError(f"bundle '{name}' needs 'requires' with the profiles it groups")
 
 
 def configuration_of(project_root, offline=False):
@@ -375,6 +406,8 @@ def load_effective_catalog(project_root, skill_dir, source_state=None):
             source["version"] = pack["version"]
             source["changes"] = pack["changes"]
             source["availableProfiles"] = sorted(pack["profiles"])
+            for profile_name, profile in sorted(pack["profiles"].items()):
+                validate_selection_fields(profile_name, profile)
             catalog["profiles"].update(pack["profiles"])
             catalog["packAssetRoots"].update(pack["assetRoots"])
         catalog["sources"][name] = source
@@ -413,18 +446,21 @@ def split_profile_names(raw_profiles):
 
 
 def profiles_for_stack(catalog, stack):
-    """Legacy --stack alias: the stack profile plus its catalog defaults."""
-    defaults = catalog.get("stackDefaults", {})
-    if stack not in defaults:
-        known = ", ".join(sorted(defaults))
+    """The --stack alias: the selection with only that stack; its ``defaults`` come at resolution."""
+    if catalog["profiles"].get(stack, {}).get("kind") != STACK_PROFILE_KIND:
+        known = ", ".join(sorted(name for name, profile in catalog["profiles"].items()
+                                 if profile.get("kind") == STACK_PROFILE_KIND))
         raise ProfileError(f"unknown stack '{stack}'; expected one of: {known}")
-    return list(defaults[stack])
+    return [stack]
 
 
-def resolve_profiles(catalog, requested_names, ci_profile=None):
-    """Expand requires in declaration order and validate conflicts.
+def resolve_profiles(catalog, requested_names, ci_profile=None, excluded_defaults=()):
+    """Expand requires and defaults in declaration order and validate conflicts.
 
-    Returns the ordered list of profile names, each one after the layers it requires. The
+    Returns the ordered list of profile names, each one after the layers it requires and
+    before the profiles it brings by default. ``defaults`` are the profiles a profile brings
+    unless the repository leaves them out (``excluded_defaults``, from excludedDefaults);
+    ``requires`` always come. The
     primary stack is the most specific layer (primary_stack); every stack adds its section to
     AGENTS.md. ``ci_profile`` is the CI profile
     that ci.provider picks (ci_profile_of); a selection cannot name one itself.
@@ -432,6 +468,8 @@ def resolve_profiles(catalog, requested_names, ci_profile=None):
     profiles = catalog["profiles"]
     resolved = []
     visiting = []
+
+    pending_defaults = []
 
     def visit(name, requested_by):
         if name in resolved:
@@ -446,6 +484,18 @@ def resolve_profiles(catalog, requested_names, ci_profile=None):
             visit(dependency, name)
         visiting.pop()
         resolved.append(name)
+        pending_defaults.extend((default, name) for default in profiles[name].get(DEFAULTS_KEY, []))
+
+    def visit_defaults():
+        # Defaults come after every requested profile, so a requested profile keeps its place.
+        while pending_defaults:
+            default, brought_by = pending_defaults.pop(0)
+            if default in excluded_defaults or default in resolved:
+                continue
+            if profiles.get(default, {}).get("kind") == CI_PROFILE_KIND:
+                raise ProfileError(f"profile '{brought_by}' lists the CI profile '{default}' in '{DEFAULTS_KEY}'; "
+                                   f"CI profiles come from {CI_PROVIDER_KEY}")
+            visit(default, brought_by)
 
     if not requested_names:
         raise ProfileError("no profiles selected; pass --profiles or --stack")
@@ -455,8 +505,16 @@ def resolve_profiles(catalog, requested_names, ci_profile=None):
             raise ProfileError(f"profile '{requested_name}' comes from {CI_PROVIDER_KEY}, not from the selection; "
                                f"drop it and run: agent-ready ci setup --provider {provider}")
         visit(requested_name, None)
+    visit_defaults()
     if ci_profile:
         visit(ci_profile, None)
+
+    for name in excluded_defaults:
+        if name in resolved:
+            requirers = sorted(other for other in resolved if name in profiles[other].get("requires", []))
+            reason = f"required by {', '.join(requirers)}" if requirers else "selected"
+            raise ProfileError(f"{EXCLUDED_DEFAULTS_KEY} lists '{name}', but the selection needs it ({reason}); "
+                               f"only a profile that comes by default can be left out")
 
     for name in resolved:
         for conflicting_name in profiles[name].get("conflicts", []):
@@ -490,7 +548,8 @@ def resolve_project_profiles(catalog, names, project_root):
     last apply: they are dropped and taken again from ci.provider, which can have changed.
     """
     selection = [name for name in names if catalog["profiles"].get(name, {}).get("kind") != CI_PROFILE_KIND]
-    return resolve_profiles(catalog, selection, ci_profile_of(catalog, project_root))
+    excluded = configuration_of(project_root).value(EXCLUDED_DEFAULTS_KEY) or []
+    return resolve_profiles(catalog, selection, ci_profile_of(catalog, project_root), excluded)
 
 
 def primary_stack(catalog, resolved):
@@ -1692,12 +1751,16 @@ def print_plan_detection(plan):
 
 
 def added_dependencies(catalog, requested, resolved):
-    """Profiles that the selection did not name, with the profiles that require them."""
+    """Profiles that the selection did not name: {name: {"requiredBy": [...], "defaultOf": [...]}}."""
     added = {}
+    profiles = catalog["profiles"]
     for name in resolved:
         # The CI profiles come from ci.provider, not from a profile that requires them.
-        if name not in requested and catalog["profiles"][name].get("kind") != CI_PROFILE_KIND:
-            added[name] = sorted(other for other in resolved if name in catalog["profiles"][other].get("requires", []))
+        if name not in requested and profiles[name].get("kind") != CI_PROFILE_KIND:
+            added[name] = {
+                "requiredBy": sorted(other for other in resolved if name in profiles[other].get("requires", [])),
+                "defaultOf": sorted(other for other in resolved if name in profiles[other].get(DEFAULTS_KEY, [])),
+            }
     return added
 
 
@@ -1843,8 +1906,16 @@ def print_plan(project_root, skill_dir, plan, provider, skip_marketplace_upgrade
     write_line(paint("Agent Ready plan (read-only: nothing was written)", "heading", stream))
     write_line(f"Profiles: {', '.join(plan['profiles'])} (primary stack: {plan['primaryStack']})")
     write_line(f"Selected by: {plan['selection']}")
-    for name, requirers in plan["addedDependencies"].items():
-        write_line(f"Dependency added: {name} (required by {', '.join(requirers)})")
+    for name, origin in plan["addedDependencies"].items():
+        reasons = []
+        if origin["requiredBy"]:
+            reasons.append(f"required by {', '.join(origin['requiredBy'])}")
+        if origin["defaultOf"]:
+            reasons.append(f"default of {', '.join(origin['defaultOf'])}")
+        write_line(f"Profile added: {name} ({'; '.join(reasons)})")
+    excluded = configuration.value(EXCLUDED_DEFAULTS_KEY) or []
+    if excluded:
+        write_line(f"Defaults left out: {', '.join(excluded)} ({EXCLUDED_DEFAULTS_KEY})")
     write_line(f"Source:   {describe_source(plan['source'])}")
     write_line(f"Lock:     {describe_source(plan['lockedSource']) if plan['hasLock'] else 'none (first apply creates it)'}")
     write_line("")

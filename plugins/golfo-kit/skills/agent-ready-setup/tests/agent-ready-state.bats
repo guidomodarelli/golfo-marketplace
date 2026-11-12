@@ -90,7 +90,7 @@ lock_value() {
   [[ "$output" == *"Profiles: node,browser"* ]]
   [[ "$output" == *"Lockfile: .agents/agent-ready.lock.json (complete)"* ]]
 
-  [ "$(python3 -c 'import json; m=json.load(open(".agents/agent-ready.json")); print(m["updates"]["mode"], ",".join(m["profiles"]))')" = "pinned node,browser" ]
+  [ "$(python3 -c 'import json; m=json.load(open(".agents/agent-ready.json")); print(m["updates"]["mode"], ",".join(m["profiles"]))')" = "pinned node" ]
   [ "$(lock_value 'lock["source"]["plugin"]')" = "golfo-kit" ]
   [ "$(lock_value 'lock["profileOrder"]')" = "['node', 'browser']" ]
 
@@ -325,9 +325,12 @@ lock_value() {
 }
 
 @test "status --check notices a profile added to the manifest without assets of its own" {
-  run_bootstrap_with "$skill_dir" --profiles node
+  mkdir -p .agents
+  printf '%s\n' '{"profiles": ["node"], "excludedDefaults": ["browser"], "updates": {"mode": "pinned"}}' > .agents/agent-ready.json
+  run_bootstrap_with "$skill_dir"
   [ "$status" -eq 0 ]
-  printf '%s\n' '{"profiles": ["node", "browser"], "updates": {"mode": "pinned"}}' > .agents/agent-ready.json
+  # browser, a default of node without assets, comes back once the repository stops leaving it out.
+  printf '%s\n' '{"profiles": ["node"], "updates": {"mode": "pinned"}}' > .agents/agent-ready.json
 
   run python3 "$skill_dir/scripts/agent-ready-state.py" status --project . --skill-dir "$skill_dir" --check
   [ "$status" -eq 4 ]
@@ -813,7 +816,7 @@ EOF
   mkdir -p "$test_root/home"
   run env HOME="$test_root/home" PATH="$fake_bin:$PATH" AGENT_READY_SETUP_TOOLS=1 \
     AGENT_READY_SETUP_MARKETPLACE_UPGRADED=1 bash "$skill_dir/scripts/bootstrap.sh" \
-    --skill-dir "$skill_dir" --provider claude --profiles node
+    --skill-dir "$skill_dir" --provider claude --profiles android
   [ "$status" -eq 0 ]
   [[ "$output" == *"Browser installation skipped: no selected profile needs browser tools"* ]]
   [ ! -e "$test_root/home/.local/share/agent-ready-setup" ]
