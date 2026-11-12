@@ -93,7 +93,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     --stack)
       if [[ $# -lt 2 || -z "${2:-}" ]]; then
-        printf 'ERROR: --stack requires react, nextjs, nextjs-app-router, node, java, go, or android\n' >&2
+        printf 'ERROR: --stack requires a stack name\n' >&2
         exit 1
       fi
       stack_override="$2"
@@ -512,13 +512,10 @@ refresh_missing_asset_sync_helper() {
   fi
 }
 
-case "$stack_override" in
-  ""|react|nextjs|nextjs-app-router|node|java|go|android) ;;
-  *)
-    printf 'ERROR: unsupported stack: %s\n' "$stack_override" >&2
-    exit 1
-    ;;
-esac
+if [[ -n "$stack_override" && ! "$stack_override" =~ ^[a-z0-9]+(-[a-z0-9]+)*(/[a-z0-9]+(-[a-z0-9]+)*)?$ ]]; then
+  printf 'ERROR: unsupported stack: %s\n' "$stack_override" >&2
+  exit 1
+fi
 
 if ! skill_dir="$(resolve_skill_dir)" && [[ "$defer_to_background" -eq 1 ]] && \
   [[ -z "${AGENT_READY_SETUP_SKILL_DIR:-}" ]] && ! is_marketplace_upgrade_unsupported; then

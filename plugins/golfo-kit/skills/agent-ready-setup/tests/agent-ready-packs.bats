@@ -482,7 +482,7 @@ EOF
 @test "an invalid pack catalog stops the apply before anything is written" {
   before="$(tree_fingerprint)"
   for expression in \
-    'catalog["profiles"]["kafka-interno"]["kind"] = "stack"' \
+    'catalog["profiles"]["kafka-interno"]["kind"] = "ci"' \
     'catalog["profiles"]["node"] = {"kind": "capability"}' \
     'catalog["stackDefaults"] = {"node": ["node"]}' \
     'catalog["baseAssets"] = "profiles/base"' \

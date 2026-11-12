@@ -160,15 +160,20 @@ def superseded_stacks(profiles, name):
     return sorted(superseded)
 
 
-def validate_catalog_detection(profiles):
-    """Validate every ``detect`` block and reject a cycle in the stack priorities."""
+def validate_catalog_detection(profiles, external_stacks=()):
+    """Validate every ``detect`` block and reject a cycle in the stack priorities.
+
+    ``external_stacks`` are the stacks a pack may supersede without publishing them: Golfo's, while
+    the pack is checked on its own. The combined catalog is checked again once every pack is in.
+    """
     stack_names = {name for name, profile in profiles.items() if profile.get("kind") == STACK_PROFILE_KIND}
+    stack_names |= set(external_stacks)
     for name, profile in sorted(profiles.items()):
         if "detect" in profile:
             validate_detect_block(name, profile, stack_names)
 
     def superseded_by(name):
-        return superseded_stacks(profiles, name)
+        return [stack for stack in superseded_stacks(profiles, name) if stack in profiles]
 
     finished = set()
 
@@ -182,7 +187,8 @@ def validate_catalog_detection(profiles):
             visit(superseded, path + [name])
         finished.add(name)
 
-    for name in sorted(stack_names):
+    # External stacks are only names a pack may supersede: their own priorities are checked in their catalog.
+    for name in sorted(stack for stack in stack_names if stack in profiles):
         visit(name, [])
 
 

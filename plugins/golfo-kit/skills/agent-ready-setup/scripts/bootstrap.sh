@@ -11,7 +11,7 @@
 # .agents/agent-ready.lock.json (lockfile).
 #
 # Usage:
-#   bash bootstrap.sh --skill-dir <path> [--profiles <a,b> | --stack <react|nextjs|nextjs-app-router|node|java|go|android>]
+#   bash bootstrap.sh --skill-dir <path> [--profiles <a,b> | --stack <stack>]
 #     [--provider <claude|codex>] [--updates <pinned|auto>] [--update-source <name>]... [--update-to <ref>]
 #     [--plan | --status | --config] [--offline] [--json]
 #
@@ -190,13 +190,11 @@ if [[ -n "$STACK" && -n "$PROFILES" ]]; then
   exit 1
 fi
 
-case "$STACK" in
-  ""|react|nextjs|nextjs-app-router|node|java|go|android) ;;
-  *)
-    echo "ERROR: Unsupported stack '$STACK'. Expected react, nextjs, nextjs-app-router, node, java, go, or android." >&2
-    exit 1
-    ;;
-esac
+# Which stacks exist is the profile catalog's to say (a pack can add its own); here only the name.
+if [[ -n "$STACK" && ! "$STACK" =~ ^[a-z0-9]+(-[a-z0-9]+)*(/[a-z0-9]+(-[a-z0-9]+)*)?$ ]]; then
+  echo "ERROR: Unsupported stack '$STACK'. A stack is a name such as node or acme/cobol." >&2
+  exit 1
+fi
 
 is_valid_skill_dir() {
   local candidate="$1"

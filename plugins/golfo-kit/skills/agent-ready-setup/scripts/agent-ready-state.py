@@ -411,6 +411,12 @@ def load_effective_catalog(project_root, skill_dir, source_state=None):
             catalog["profiles"].update(pack["profiles"])
             catalog["packAssetRoots"].update(pack["assetRoots"])
         catalog["sources"][name] = source
+    if catalog["sources"]:
+        # Stacks of several sources compete in one detection: their priorities cannot form a cycle.
+        try:
+            validate_catalog_detection(catalog["profiles"])
+        except DetectionSchemaError as caught_error:
+            raise ProfileError(f"profile sources: {caught_error}") from caught_error
     return catalog
 
 

@@ -1477,9 +1477,13 @@ EOF
 }
 
 @test "rejects unsupported stack and missing arguments" {
-  run bash "$skill_dir/scripts/bootstrap.sh" --stack rust --skill-dir "$skill_dir" --provider claude
+  run bash "$skill_dir/scripts/bootstrap.sh" --stack 'Not A Stack' --skill-dir "$skill_dir" --provider claude
   [ "$status" -ne 0 ]
   [[ "$output" == *"Unsupported stack"* ]]
+  # A well-formed name that no catalog publishes fails at resolution, naming the stacks there are.
+  run env PATH="$fake_bin:$PATH" bash "$skill_dir/scripts/bootstrap.sh" --stack rust --skill-dir "$skill_dir" --provider claude
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"unknown stack 'rust'"* ]]
 
   run bash "$skill_dir/scripts/bootstrap.sh" --stack react
   [ "$status" -ne 0 ]

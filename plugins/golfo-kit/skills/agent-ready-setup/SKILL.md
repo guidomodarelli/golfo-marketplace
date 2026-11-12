@@ -16,7 +16,7 @@ description: >-
   descartar un hallazgo de sus revisiones de IA.
 license: MIT
 metadata:
-  version: "1.32.0"
+  version: "1.33.0"
   author: "guponce"
   category: "developer-experience"
   tags: "agent-ready, multi-provider, claude-code, codex, bootstrap, setup, scaffold, context-optimized-v1.20.1"
@@ -207,8 +207,10 @@ edita. Qué deja cada proveedor: [references/ci-check.md](references/ci-check.md
 
 Cualquier proyecto, personal o de empresa, puede sumar profiles propios con `sources.packs` en el
 manifest: un pack en Git o una carpeta local. Agregar una fuente solo los hace disponibles: se seleccionan
-por nombre con namespace (`acme/kafka-interno`), y un pack agrega capabilities y bundles (un profile
-`kind: bundle` que solo agrupa otros por `requires`, como `acme/backend`), nunca un stack primario.
+por nombre con namespace (`acme/kafka-interno`). Un pack agrega capabilities, bundles (un profile
+`kind: bundle` que solo agrupa otros por `requires`, como `acme/backend`) y stacks primarios propios para
+tecnologías que golfo-kit no tiene (`beam/elixir` en `assets/examples/elixir-stack-pack/`), con su detección
+y su sección de `AGENTS.md`.
 Leer [references/profiles-and-lockfile.md](references/profiles-and-lockfile.md) (sección «Profile packs»)
 para declarar una fuente, explicar una colisión o un `Evaluation incomplete`;
 `assets/examples/acme-profile-pack/` es un pack mínimo. Para publicar un pack con CLIs, servidores MCP o
