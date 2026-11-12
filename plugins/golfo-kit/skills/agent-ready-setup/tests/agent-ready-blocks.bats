@@ -519,3 +519,21 @@ agents_marker_count() {
   [ "$status" -eq 0 ]
   ! grep -q 'AGENT-READY MANAGED' AGENTS.md 2>/dev/null
 }
+
+@test "a section whose first write was a conflict still retires when its stack leaves the selection" {
+  run_cli apply
+  # The lock of a section that never got an applied base, as a first write that conflicted leaves it.
+  python3 - <<'PY'
+import json
+path = ".agents/agent-ready.lock.json"
+lock = json.load(open(path, encoding="utf-8"))
+lock["blocks"]["AGENTS.md"]["node"].update(sha256=None, state="conflict")
+json.dump(lock, open(path, "w", encoding="utf-8"), indent=2)
+PY
+  write_manifest '{"profiles": ["go"]}'
+  run_cli apply
+  [ "$status" -eq 0 ]
+  ! grep -q 'AGENT-READY MANAGED: node' AGENTS.md
+  grep -qx '<!-- BEGIN AGENT-READY MANAGED: go -->' AGENTS.md
+  [ "$(lock_value 'sorted(lock["blocks"]["AGENTS.md"])')" = "['go']" ]
+}

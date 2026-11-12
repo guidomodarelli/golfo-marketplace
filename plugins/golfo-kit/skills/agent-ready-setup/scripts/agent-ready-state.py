@@ -2002,9 +2002,11 @@ def instruction_sections_now(project_root, skill_dir, entries):
     desired = {(destination, entry["id"]): {"profile": entry["profile"], "source": entry["source"],
                                             "content": entry["content"]}
                for entry in sections if entry.get("content") is not None}
+    # Every section the lock records stays in it: one that only comes from the lock (to retire) may
+    # have no applied base yet, when its first write was a conflict.
     locked = {destination: {entry["id"]: {"profile": entry["profile"], "source": entry["source"],
                                           "sha256": entry["baseSha256"]}
-                            for entry in sections if entry["baseSha256"]}}
+                            for entry in sections if entry["baseSha256"] or entry.get("content") is None}}
     kept = [entry for entry in entries if entry["destination"] != destination]
     return kept + managed_blocks.classify(project_root, desired, locked)
 
