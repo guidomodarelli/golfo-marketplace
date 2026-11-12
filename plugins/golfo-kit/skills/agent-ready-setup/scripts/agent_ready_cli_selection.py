@@ -421,7 +421,7 @@ def register(subparsers, new_subparser):
                          "  agent-ready init\n  agent-ready init --profiles node,browser --yes", command_init, needs_provider=True)
     group = init.add_mutually_exclusive_group()
     group.add_argument("--profiles", help="comma separated profiles (asked with a terminal; default: the detected stack)")
-    group.add_argument("--stack", help="a stack and its default profiles, e.g. frontend")
+    group.add_argument("--stack", help="a stack and its default profiles, e.g. nextjs")
     init.add_argument("--updates", choices=UPDATE_MODES, help=f"write {UPDATES_MODE_KEY} into the manifest (default: auto)")
     init.add_argument("--ci-provider", choices=ci_providers(),
                       help=f"{CI_PROVIDER_KEY}: the CI files to manage (asked in the full wizard, the detected one first; "

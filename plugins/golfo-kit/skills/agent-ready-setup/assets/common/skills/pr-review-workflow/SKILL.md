@@ -9,7 +9,7 @@ metadata:
 
 # PR Review Workflow
 
-Single source for the PR review procedure. Each stack's `<stack>-review-pr` command (`frontend-review-pr`, `node-review-pr`, ...) declares only its agent roster and its extra checks, then follows these steps. With several stacks, each command reviews with its own roster.
+Single source for the PR review procedure. Each stack's `<stack>-review-pr` command (`react-review-pr`, `node-review-pr`, ...) declares only its agent roster and its extra checks, then follows these steps. With several stacks, each command reviews with its own roster.
 
 ## 1. Get the diff
 

@@ -287,7 +287,7 @@ def add_selection(subparser):
     """--profiles and --stack, mutually exclusive."""
     group = subparser.add_mutually_exclusive_group()
     group.add_argument("--profiles", help="comma separated profiles, e.g. node,browser (default: the manifest, then detection)")
-    group.add_argument("--stack", help="a stack and its default profiles, e.g. frontend")
+    group.add_argument("--stack", help="a stack and its default profiles, e.g. nextjs")
 
 
 def build_parser():

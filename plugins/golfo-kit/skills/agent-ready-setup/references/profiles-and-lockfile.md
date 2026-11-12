@@ -40,17 +40,34 @@ la normalización y el bloque gestionado leen ese árbol (variable
 `AGENT_READY_SETUP_STACK_DIR`). Si dos profiles (o un profile y la base)
 publican el mismo destino, la resolución falla **antes de escribir** y nombra
 los dos profiles. Las stacks no chocan entre sí: cada una nombra sus assets con su
-prefijo (`rules/node-security.md`, `agents/frontend-perf-analyzer.md`,
+prefijo (`rules/node-security.md`, `agents/react-perf-analyzer.md`,
 `commands/go-review-pr.md`), así que un monorepo selecciona varias
-(`--profiles frontend,node`). Cada stack suma sus rules, agents, commands y skills, y su
+(`--profiles react,node`). Cada stack suma sus rules, agents, commands y skills, y su
 sección de `AGENTS.md` como bloque con id ([managed-agents-block.md](managed-agents-block.md),
 «Secciones de los stacks»).
+
+**Capas.** Un stack puede extender otro con `requires`: la web va en tres capas,
+`react` ← `nextjs` ← `nextjs-app-router`. Cada capa publica solo sus propios assets, con
+nombres que no repite ninguna otra, y trae por `requires` las capas que extiende:
+seleccionar `nextjs-app-router` resuelve `react`, `nextjs` y `nextjs-app-router`, en ese
+orden, sin assets duplicados (si dos capas publicaran el mismo destino, la composición
+fallaría). Cada capa suma su sección a `AGENTS.md`.
+
+| Capa | Requiere | Qué agrega |
+|---|---|---|
+| `react` | — | rules de estilo, tests y seguridad de React y TypeScript, los agents de review y `/react-review-pr` |
+| `nextjs` | `react` | flujo de datos en el servidor, contratos con upstreams, arquitectura por módulos, endpoints, services y logger |
+| `nextjs-app-router` | `nextjs` | qué guarda el directorio `app/`, dónde empiezan los client components y route handlers |
+
+`react` no requiere `node`: las rules de `node` son de servicios backend, y una SPA o una
+app Next.js no las necesita. Un repo full stack selecciona las dos (`--profiles nextjs,node`).
 
 `--stack <s>` sigue funcionando como alias de `stackDefaults[s]` (la stack más
 `browser`, salvo `android`, porque una app nativa no usa esas herramientas: para una
 que prueba un `WebView`, usar `--profiles android,browser`). Un profile nuevo que extiende una stack (por ejemplo, testing
 específico de una plataforma) declara `requires: ["<stack>"]` y publica solo
-assets con nombres propios; no copia los de la stack.
+assets con nombres propios; no copia los de la stack. Si es un `stack`, la detección lo
+prefiere a la capa que extiende y su sección de `AGENTS.md` se suma a la de ella.
 
 `business-flows` es una capability sin `requires`, porque un mismo modelo de flujos
 sirve para web y para apps nativas: se combina con cualquier stack
@@ -120,20 +137,24 @@ Una detección posterior nunca cambia el manifest. `plan` informa la selección 
 by`), las señales y, si apuntan a otro stack, un aviso. Para cambiar la selección hay que
 pedirlo con `--stack` o `--profiles`.
 
-**Stack primario.** Detectar varias señales no aplica varios stacks. `supersedes` declara
-qué stacks reemplaza uno cuando coinciden juntos, y solo se usa donde uno es una
-especialización del otro:
+**Stack primario.** Detectar varias señales no aplica varios stacks. Una capa reemplaza a
+las que requiere cuando coinciden juntas, y hereda lo que ellas reemplazan: la más
+específica es el primario y trae las otras por `requires`. `supersedes` declara qué stacks
+reemplaza uno sin requerirlos, y solo se usa donde uno es una especialización del otro:
 
 | Coincidencias | Primario | Motivo |
 |---|---|---|
-| `frontend` + `node` | `frontend` | un proyecto React también tiene `package.json` |
-| `frontend` + `android` | `frontend` | el directorio `android/` de React Native o Capacitor es un host generado |
+| `react` + `nextjs` + `nextjs-app-router` | `nextjs-app-router` | la capa más específica: `next` en `package.json` y un `app/layout.*` (o `src/app/layout.*`) |
+| `react` + `nextjs` | `nextjs` | `next` sin App Router |
+| `react` + `node` | `react` | un proyecto React también tiene `package.json`; vale igual para las capas de Next.js |
+| `react` + `android` | `react` | el directorio `android/` de React Native o Capacitor es un host generado |
 | `android` + `java` | `android` | una app Android también tiene Gradle |
 | cualquier otra, por ejemplo `node` + `go` | ninguno | nada dice cuál es el principal: se listan las coincidencias y se pide una selección explícita, que puede nombrar las dos (`--profiles go,node`) |
 
 Si queda un solo stack después de quitar los reemplazados, es el primario. Si quedan
 varios, `detect` sale con 3, y `resolve`, `plan` y un apply sin selección fallan antes de
-escribir; el hook avisa y omite la proyección. Un ciclo en `supersedes` invalida el
+escribir; el hook avisa y omite la proyección. Con una selección, el stack primario es el
+primero que ningún otro profile seleccionado requiere. Un ciclo en `supersedes` invalida el
 catálogo, y el resultado no depende del orden de los archivos ni del catálogo.
 
 **Sugerencias.** Una capability con `detect` que coincide y falta en la selección se

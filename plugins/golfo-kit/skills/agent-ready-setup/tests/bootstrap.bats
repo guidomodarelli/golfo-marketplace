@@ -82,7 +82,7 @@ run_marketplace_sync() {
     AGENT_READY_SETUP_SKILL_DIR="$source_skill_dir" \
     bash "$hook_path" \
     --provider claude \
-    --stack frontend \
+    --stack react \
     "$@"
 }
 
@@ -168,7 +168,7 @@ skip_without_symlinks() {
 printf '%s\n' '[instruction-merge] Review completed'
 EOF
   printf '%s\n' 'import sys' > "$source_dir/scripts/start-browser-install.py"
-  run_bootstrap frontend
+  run_bootstrap react
   [ "$status" -eq 0 ]
   browser_home="$test_root/home"
   tools_root="$browser_home/.local/share/agent-ready-setup/browser-tools"
@@ -186,7 +186,7 @@ EOF
 
   run env HOME="$browser_home" CODEX_HOME="$browser_home/.codex" CLAUDE_CONFIG_DIR="$browser_home" \
     AGENT_READY_SETUP_TOOLS=1 PATH="$test_root/bin:$PATH" AGENT_READY_SETUP_SKILL_DIR="$source_dir" \
-    bash .agents/hooks/sync-marketplace.sh --provider claude --stack frontend
+    bash .agents/hooks/sync-marketplace.sh --provider claude --stack react
 
   [ "$status" -eq 0 ]
   jq -e --arg launcher '${HOME}/.local/share/agent-ready-setup/browser-tools/bin/playwright' \
@@ -215,14 +215,14 @@ import sys
 with open("$invocation_log_path", "w") as invocation_log:
     invocation_log.write(" ".join(sys.argv[1:]))
 EOF
-  run_bootstrap frontend
+  run_bootstrap react
   [ "$status" -eq 0 ]
   browser_home="$test_root/empty-home"
   mkdir -p "$browser_home"
 
   run env HOME="$browser_home" CODEX_HOME="$browser_home/.codex" CLAUDE_CONFIG_DIR="$browser_home" \
     AGENT_READY_SETUP_TOOLS=1 PATH="$test_root/bin:$PATH" AGENT_READY_SETUP_SKILL_DIR="$source_dir" \
-    bash .agents/hooks/sync-marketplace.sh --provider claude --stack frontend
+    bash .agents/hooks/sync-marketplace.sh --provider claude --stack react
 
   [ "$status" -eq 0 ]
   # The installer starts detached; give it time to record its invocation.
@@ -241,7 +241,7 @@ EOF
 }
 
 @test "SessionStart sync skips browser registration when browser setup is disabled" {
-  run_bootstrap frontend
+  run_bootstrap react
   [ "$status" -eq 0 ]
   printf '%s\n' '{"mcpServers": {}}' > .mcp.json
 
@@ -339,7 +339,7 @@ PY
 }
 
 @test "bootstrap installs shared GitHub PR template for every stack" {
-  for stack in frontend node java go android; do
+  for stack in react node java go android; do
     run_bootstrap "$stack"
     [ "$status" -eq 0 ]
     pr_template_block_matches
@@ -355,7 +355,7 @@ PY
   printf '%s\n' 'Project owners' > .github/CODEOWNERS
   cp .github/CODEOWNERS "$test_root/expected-owners"
 
-  run_bootstrap frontend
+  run_bootstrap react
 
   [ "$status" -eq 0 ]
   head -1 .github/pull_request_template.md | grep -qx 'Existing template'
@@ -364,7 +364,7 @@ PY
 }
 
 @test "marketplace sync restores PR template and hook progress for both providers" {
-  run_bootstrap frontend
+  run_bootstrap react
   [ "$status" -eq 0 ]
   for provider in claude codex; do
     rm .github/pull_request_template.md
@@ -376,7 +376,7 @@ PY
     cp "$test_root/hooks.json" .codex/hooks.json
 
     run env PATH="$fake_bin:$PATH" AGENT_READY_SETUP_SKILL_DIR="$skill_dir" \
-      bash .agents/hooks/sync-marketplace.sh --provider "$provider" --stack frontend
+      bash .agents/hooks/sync-marketplace.sh --provider "$provider" --stack react
 
     [ "$status" -eq 0 ]
     pr_template_block_matches
@@ -394,7 +394,7 @@ PY
   cp "$test_root/external-github/pull_request_template.md" "$test_root/expected-template"
   ln -s "$test_root/external-github" .github
 
-  run_bootstrap frontend
+  run_bootstrap react
   [ "$status" -eq 0 ]
   cmp -s .github/pull_request_template.md "$test_root/expected-template"
   [[ "$output" == *'.github'*'symlink'* ]]
@@ -412,7 +412,7 @@ PY
   for operation in bootstrap sync; do
     ln -s "$test_root/external-template" .github/pull_request_template.md
     if [[ "$operation" == bootstrap ]]; then
-      run_bootstrap frontend
+      run_bootstrap react
     else
       run_marketplace_sync .agents/hooks/sync-marketplace.sh "$skill_dir"
     fi
@@ -425,15 +425,15 @@ PY
 }
 
 @test "bootstrap projects Claude, shared, and Codex trees" {
-  run_bootstrap frontend
+  run_bootstrap react
 
   [ "$status" -eq 0 ]
   [ -f AGENTS.md ]
   [ -f CLAUDE.md ]
   cmp -s CLAUDE.md "$skill_dir/assets/claude-proxy.md"
   [ -f .claude/settings.json ]
-  assert_claude_view .claude/rules/frontend-security.md "../../.agents/rules/frontend-security.md"
-  [ -f .agents/rules/frontend-security.md ]
+  assert_claude_view .claude/rules/react-security.md "../../.agents/rules/react-security.md"
+  [ -f .agents/rules/react-security.md ]
   assert_claude_view .claude/rules/lint-gate.md "../../.agents/rules/lint-gate.md"
   cmp -s .agents/rules/lint-gate.md "$skill_dir/assets/common/rules/lint-gate.md"
   assert_claude_view .claude/skills/component-creation/SKILL.md "../../../.agents/skills/component-creation/SKILL.md"
@@ -441,12 +441,12 @@ PY
   [ -f .agents/skills/react-act-test-fixes/SKILL.md ]
   assert_claude_view .claude/skills/react-act-test-fixes/SKILL.md "../../../.agents/skills/react-act-test-fixes/SKILL.md"
   [ -f .agents/skills/react-act-test-fixes/evals/eval-config.json ]
-  assert_claude_view .claude/agents/frontend-security-scanner.md
-  assert_claude_view .claude/commands/frontend-review-pr.md
-  [ -f .agents/agents/frontend-security-scanner.md ]
-  [ -f .agents/commands/frontend-review-pr.md ]
-  [ -f .agents/skills/frontend-security-scanner/SKILL.md ]
-  [ -f .agents/skills/frontend-review-pr/SKILL.md ]
+  assert_claude_view .claude/agents/react-security-scanner.md
+  assert_claude_view .claude/commands/react-review-pr.md
+  [ -f .agents/agents/react-security-scanner.md ]
+  [ -f .agents/commands/react-review-pr.md ]
+  [ -f .agents/skills/react-security-scanner/SKILL.md ]
+  [ -f .agents/skills/react-review-pr/SKILL.md ]
   [ ! -e .claude/mcp.json ]
   [ ! -e .codex/.mcp.json ]
   [ ! -e .claude/hooks ]
@@ -462,12 +462,12 @@ PY
   cmp -s .agents/hooks/check-harness-consistency.sh "$skill_dir/assets/common/hooks/check-harness-consistency.sh"
   [ ! -f .claude/CLAUDE.md ]
   [ ! -d .codex/agents ]
-  for rule_file in api-configuration.md frontend-style.md language-consistency.md lint-gate.md lodash.md no-unnecessary-mocks.md frontend-security.md frontend-testing.md user-facing-feedback.md; do
+  for rule_file in cross-engine.md react-style.md language-consistency.md lint-gate.md lodash.md no-unnecessary-mocks.md react-security.md react-testing.md user-facing-feedback.md; do
     grep -Fq -- "- Read and follow \`.agents/rules/$rule_file\`." AGENTS.md
   done
   grep -Fxq '## Centralización recursiva de instrucciones' AGENTS.md
-  printf '\n# Canonical shared asset\n' >> .agents/rules/frontend-security.md
-  grep -Fq '# Canonical shared asset' .claude/rules/frontend-security.md
+  printf '\n# Canonical shared asset\n' >> .agents/rules/react-security.md
+  grep -Fq '# Canonical shared asset' .claude/rules/react-security.md
   jq -e '.hooks.SessionStart[0].matcher == "startup|clear|resume"' .codex/hooks.json >/dev/null
   jq -e '.permissions.allow | index("Bash(.agents/hooks/sync-marketplace.sh --provider claude)")' .claude/settings.json >/dev/null
   jq -e '.permissions.allow | index("Bash(.agents/hooks/check-harness-consistency.sh)")' .claude/settings.json >/dev/null
@@ -479,13 +479,13 @@ PY
 
 @test "sync removes stale Claude symlink views" {
   skip_without_symlinks
-  run_bootstrap frontend
+  run_bootstrap react
   [ "$status" -eq 0 ]
 
   mkdir -p .claude/rules
   ln -s ../../.agents/rules/removed-rule.md .claude/rules/removed-rule.md
 
-  run_bootstrap frontend
+  run_bootstrap react
 
   [ "$status" -eq 0 ]
   [ ! -e .claude/rules/removed-rule.md ]
@@ -494,13 +494,13 @@ PY
 }
 
 @test "sync preserves custom Claude settings" {
-  run_bootstrap frontend
+  run_bootstrap react
   [ "$status" -eq 0 ]
 
   jq '.customSetting = "preserve-me" | .permissions.allow += ["Bash(custom-project-command)"] | .hooks.PostToolUse[0].hooks += [{"type":"command","command":"bash .agents/hooks/custom-project-hook.sh"}]' .claude/settings.json > "$test_root/settings.json"
   mv "$test_root/settings.json" .claude/settings.json
 
-  run_bootstrap frontend
+  run_bootstrap react
 
   [ "$status" -eq 0 ]
   jq -e '.customSetting == "preserve-me"' .claude/settings.json >/dev/null
@@ -511,13 +511,13 @@ PY
 }
 
 @test "sync preserves custom settings array entries without other custom keys" {
-  run_bootstrap frontend
+  run_bootstrap react
   [ "$status" -eq 0 ]
 
   jq '.permissions.allow += ["Bash(custom-project-command)"] | .hooks.PostToolUse[0].hooks += [{"type":"command","command":"bash .agents/hooks/custom-project-hook.sh"}]' .claude/settings.json > "$test_root/settings.json"
   mv "$test_root/settings.json" .claude/settings.json
 
-  run_bootstrap frontend
+  run_bootstrap react
 
   [ "$status" -eq 0 ]
   jq -e '.permissions.allow | index("Bash(custom-project-command)")' .claude/settings.json >/dev/null
@@ -526,7 +526,7 @@ PY
 }
 
 @test "sync preserves custom settings array entries inserted before managed entries" {
-  run_bootstrap frontend
+  run_bootstrap react
   [ "$status" -eq 0 ]
 
   jq '
@@ -535,7 +535,7 @@ PY
   ' .claude/settings.json > "$test_root/settings.json"
   mv "$test_root/settings.json" .claude/settings.json
 
-  run_bootstrap frontend
+  run_bootstrap react
 
   [ "$status" -eq 0 ]
   jq -e '.permissions.allow[0] == "Bash(custom-before-managed)"' .claude/settings.json >/dev/null
@@ -545,7 +545,7 @@ PY
 }
 
 @test "sync preserves replaced custom settings entries with equal length" {
-  run_bootstrap frontend
+  run_bootstrap react
   [ "$status" -eq 0 ]
 
   jq '
@@ -554,7 +554,7 @@ PY
   ' .claude/settings.json > "$test_root/settings.json"
   mv "$test_root/settings.json" .claude/settings.json
 
-  run_bootstrap frontend
+  run_bootstrap react
 
   [ "$status" -eq 0 ]
   jq -e '.permissions.allow | length == 3' .claude/settings.json >/dev/null
@@ -604,24 +604,24 @@ PY
   run_marketplace_sync "$skill_dir/assets/common/hooks/sync-marketplace.sh" "$dynamic_skill_dir" \
 
   [ "$status" -eq 0 ]
-  rm .claude/rules/frontend-security.md
-  cp .agents/rules/frontend-security.md .claude/rules/frontend-security.md
+  rm .claude/rules/react-security.md
+  cp .agents/rules/react-security.md .claude/rules/react-security.md
 
   run_marketplace_sync ".agents/hooks/sync-marketplace.sh" "$dynamic_skill_dir" \
 
   [ "$status" -eq 0 ]
-  assert_claude_view .claude/rules/frontend-security.md "../../.agents/rules/frontend-security.md"
-  [[ "$output" != *".claude/rules/frontend-security.md differs from canonical shared asset"* ]]
+  assert_claude_view .claude/rules/react-security.md "../../.agents/rules/react-security.md"
+  [[ "$output" != *".claude/rules/react-security.md differs from canonical shared asset"* ]]
 
-  rm .claude/rules/frontend-security.md
-  printf '%s\n' '# Claude-only security override' > .claude/rules/frontend-security.md
+  rm .claude/rules/react-security.md
+  printf '%s\n' '# Claude-only security override' > .claude/rules/react-security.md
 
   run_marketplace_sync ".agents/hooks/sync-marketplace.sh" "$dynamic_skill_dir" \
 
   [ "$status" -eq 0 ]
-  assert_claude_view .claude/rules/frontend-security.md "../../.agents/rules/frontend-security.md"
-  ! grep -Fq '# Claude-only security override' .agents/rules/frontend-security.md
-  [[ "$output" == *".claude/rules/frontend-security.md -> managed view"* ]]
+  assert_claude_view .claude/rules/react-security.md "../../.agents/rules/react-security.md"
+  ! grep -Fq '# Claude-only security override' .agents/rules/react-security.md
+  [[ "$output" == *".claude/rules/react-security.md -> managed view"* ]]
 }
 
 @test "autonomous sync normalizes CLAUDE.md under .claude and is idempotent" {
@@ -670,7 +670,7 @@ EOF
   run env \
     PATH="$test_root/bin:$PATH" \
     AGENT_READY_SETUP_SKILL_DIR="$dynamic_skill_dir" \
-    bash -c 'cd .claude && bash ../.agents/hooks/sync-marketplace.sh --provider claude --stack frontend'
+    bash -c 'cd .claude && bash ../.agents/hooks/sync-marketplace.sh --provider claude --stack react'
 
   [ "$status" -eq 0 ]
   [ -f .claude/AGENTS.md ]
@@ -679,50 +679,52 @@ EOF
 }
 
 @test "identical legacy Claude copies become canonical symlinks" {
-  run_bootstrap frontend
+  run_bootstrap react
   [ "$status" -eq 0 ]
 
-  rm .claude/rules/frontend-security.md
-  cp .agents/rules/frontend-security.md .claude/rules/frontend-security.md
+  rm .claude/rules/react-security.md
+  cp .agents/rules/react-security.md .claude/rules/react-security.md
 
-  run_bootstrap frontend
+  run_bootstrap react
 
   [ "$status" -eq 0 ]
-  assert_claude_view .claude/rules/frontend-security.md
+  assert_claude_view .claude/rules/react-security.md
   [[ "$output" == *"Updated from templates:"* ]]
-  [[ "$output" == *".claude/rules/frontend-security.md -> managed view"* ]]
+  [[ "$output" == *".claude/rules/react-security.md -> managed view"* ]]
 }
 
 @test "edited Claude copies of managed rules are replaced with managed views" {
-  run_bootstrap frontend
+  run_bootstrap react
   [ "$status" -eq 0 ]
 
-  rm .claude/rules/frontend-security.md
-  printf '%s\n' '# Claude-only security override' > .claude/rules/frontend-security.md
+  rm .claude/rules/react-security.md
+  printf '%s\n' '# Claude-only security override' > .claude/rules/react-security.md
 
-  run_bootstrap frontend
+  run_bootstrap react
 
   [ "$status" -eq 0 ]
-  assert_claude_view .claude/rules/frontend-security.md "../../.agents/rules/frontend-security.md"
-  cmp -s .agents/rules/frontend-security.md "$skill_dir/assets/stacks/frontend/rules/frontend-security.md"
-  [[ "$output" == *".claude/rules/frontend-security.md -> managed view"* ]]
+  assert_claude_view .claude/rules/react-security.md "../../.agents/rules/react-security.md"
+  cmp -s .agents/rules/react-security.md "$skill_dir/assets/stacks/react/rules/react-security.md"
+  [[ "$output" == *".claude/rules/react-security.md -> managed view"* ]]
 }
 
 @test "nested skills receive valid Codex adapters with their directory names" {
-  run_bootstrap frontend
+  # nextjs requires react: the skills of both layers are projected.
+  run_bootstrap nextjs
 
   [ "$status" -eq 0 ]
-  for skill_name in api-endpoint component-creation karpathy-guidelines logger service; do
+  for layer_skill in nextjs/api-endpoint react/component-creation react/karpathy-guidelines nextjs/logger nextjs/service; do
+    skill_name="${layer_skill#*/}"
     skill_path=".agents/skills/$skill_name/SKILL.md"
     [ -f "$skill_path" ]
     [ "$(sed -n '1p' "$skill_path")" = '---' ]
     grep -Fxq "name: $skill_name" <(sed -n '2p' "$skill_path")
-    cmp -s "$skill_path" "$skill_dir/assets/stacks/frontend/skills/$skill_name/SKILL.md"
+    cmp -s "$skill_path" "$skill_dir/assets/stacks/${layer_skill%%/*}/skills/$skill_name/SKILL.md"
   done
   for skill_name in logger service; do
     eval_config=".agents/skills/$skill_name/evals/eval-config.json"
     [ -f "$eval_config" ]
-    cmp -s "$eval_config" "$skill_dir/assets/stacks/frontend/skills/$skill_name/evals/eval-config.json"
+    cmp -s "$eval_config" "$skill_dir/assets/stacks/nextjs/skills/$skill_name/evals/eval-config.json"
   done
   [ ! -e .agents/skills/evals/SKILL.md ]
   [ -f .agents/skills/karpathy-guidelines/EXAMPLES.md ]
@@ -732,7 +734,7 @@ EOF
 
 @test "browser rule is discoverable through both providers for every stack" {
   for provider in claude codex; do
-    for stack in frontend go java node android; do
+    for stack in react go java node android; do
       stack_project="$test_root/$provider-$stack-browser"
       mkdir -p "$stack_project"
       git -C "$stack_project" -c init.defaultBranch=main init -q
@@ -752,7 +754,7 @@ EOF
 }
 
 @test "common rules and skill adapters are projected verbatim for every stack" {
-  for stack in frontend go java node android; do
+  for stack in react go java node android; do
     stack_project="$test_root/$stack-adapters"
     mkdir -p "$stack_project"
     git -C "$stack_project" -c init.defaultBranch=main init -q
@@ -808,12 +810,12 @@ EOF
 exit 0
 EOF
 
-  run_bootstrap frontend
+  run_bootstrap react
   [ "$status" -eq 0 ]
   run_marketplace_sync "$source_dir/assets/common/hooks/sync-marketplace.sh" "$source_dir"
   [ "$status" -eq 0 ]
 
-  for workflow in agents/a11y-reviewer agents/lint-reviewer agents/frontend-perf-analyzer agents/frontend-security-scanner agents/test-reviewer commands/frontend-review-pr; do
+  for workflow in agents/a11y-reviewer agents/lint-reviewer agents/react-perf-analyzer agents/react-security-scanner agents/test-reviewer commands/react-review-pr; do
     workflow_name="${workflow#*/}"
     assert_claude_view ".claude/$workflow.md"
     [ -f ".agents/skills/$workflow_name/SKILL.md" ]
@@ -830,7 +832,7 @@ EOF
 #!/bin/bash
 exit 0
 EOF
-  run_bootstrap frontend
+  run_bootstrap react
   [ "$status" -eq 0 ]
   mkdir -p .claude/skills/a11y-reviewer .claude/skills/lint-reviewer
   ln -s ../../../.agents/skills/a11y-reviewer/SKILL.md .claude/skills/a11y-reviewer/SKILL.md
@@ -852,7 +854,7 @@ EOF
 #!/bin/bash
 exit 0
 EOF
-  run_bootstrap frontend
+  run_bootstrap react
   [ "$status" -eq 0 ]
   mkdir -p .agents/rules/area
   printf '%s\n' '# Team conventions' > .agents/rules/team-conventions.md
@@ -871,7 +873,7 @@ EOF
   [ "$status" -eq 0 ]
   [ ! -L .claude/rules/team-conventions.md ]
   assert_claude_view .claude/rules/area/payments.md
-  assert_claude_view .claude/rules/frontend-security.md
+  assert_claude_view .claude/rules/react-security.md
 }
 
 @test "sync hook replaces placeholder adapter descriptions from older projections" {
@@ -881,9 +883,9 @@ EOF
 #!/bin/bash
 exit 0
 EOF
-  run_bootstrap frontend
+  run_bootstrap react
   [ "$status" -eq 0 ]
-  template="$skill_dir/assets/stacks/frontend/skills/karpathy-guidelines/SKILL.md"
+  template="$skill_dir/assets/stacks/react/skills/karpathy-guidelines/SKILL.md"
   {
     printf '%s\n' '---' 'name: karpathy-guidelines' \
       'description: Provider-neutral reusable workflow for karpathy-guidelines.' '---' ''
@@ -897,7 +899,7 @@ EOF
   [[ "$output" == *"↻ .agents/skills/karpathy-guidelines/SKILL.md"* ]]
 }
 
-@test "stacks without frontend assets project common rules, hooks, and settings for every provider" {
+@test "stacks without react assets project common rules, hooks, and settings for every provider" {
   for stack in go java node android; do
     stack_project="$test_root/$stack-project"
     mkdir -p "$stack_project"
@@ -1262,7 +1264,7 @@ EOF
     mkdir -p "$outside_root"
     ln -s "$outside_root" "$provider_root"
 
-    run_bootstrap frontend
+    run_bootstrap react
 
     [ "$status" -ne 0 ]
     [[ "$output" == *"Provider root conflicts (manual resolution required):"* ]]
@@ -1280,7 +1282,7 @@ EOF
   printf '%s\n' 'sentinel' > "$outside_root/sentinel.txt"
   ln -s "$outside_root" .claude/rules
 
-  run_bootstrap frontend
+  run_bootstrap react
 
   [ "$status" -eq 0 ]
   [ -L .claude/rules ]
@@ -1361,7 +1363,7 @@ EOF
 
 
 @test "Codex hooks install at discoverable project path on bootstrap and sync" {
-  for stack in frontend node java go android; do
+  for stack in react node java go android; do
     rm -f .codex/hooks.json
     run_bootstrap "$stack"
     [ "$status" -eq 0 ]
@@ -1412,7 +1414,7 @@ EOF
 *** End Patch'
   payload="$(jq -n --arg command "$patch" '{tool_name:"apply_patch",tool_input:{command:$command}}')"
 
-  for stack in frontend node java go android; do
+  for stack in react node java go android; do
     run_bootstrap "$stack"
     [ "$status" -eq 0 ]
     [ -f .agents/hooks/harness-review.py ]
@@ -1479,7 +1481,7 @@ EOF
   [ "$status" -ne 0 ]
   [[ "$output" == *"Unsupported stack"* ]]
 
-  run bash "$skill_dir/scripts/bootstrap.sh" --stack frontend
+  run bash "$skill_dir/scripts/bootstrap.sh" --stack react
   [ "$status" -ne 0 ]
   [[ "$output" == *"--skill-dir is required"* ]]
 
@@ -1532,7 +1534,7 @@ printf '%s %s\n' "${0##*/}" "$*" > "$MARKETPLACE_INVOCATION_LOG"
 EOF
   chmod +x "$test_root/bin/claude"
 
-  MARKETPLACE_INVOCATION_LOG="$invocation_log" run_bootstrap frontend
+  MARKETPLACE_INVOCATION_LOG="$invocation_log" run_bootstrap react
 
   [ "$status" -eq 0 ]
   grep -Fxq 'claude plugin marketplace update golfo-marketplace' "$invocation_log"
@@ -1692,39 +1694,39 @@ EOF
 }
 
 @test "bootstrap shows diffs and updates changed managed assets without prompting" {
-  run_bootstrap frontend
+  run_bootstrap react
   [ "$status" -eq 0 ]
 
-  printf '%s\n' '# Local change' >> .agents/rules/frontend-security.md
+  printf '%s\n' '# Local change' >> .agents/rules/react-security.md
 
-  run_bootstrap frontend < /dev/null
+  run_bootstrap react < /dev/null
 
   [ "$status" -eq 0 ]
-  cmp -s .agents/rules/frontend-security.md "$skill_dir/assets/stacks/frontend/rules/frontend-security.md"
-  [[ "$output" == *"Diff for .agents/rules/frontend-security.md"* ]]
+  cmp -s .agents/rules/react-security.md "$skill_dir/assets/stacks/react/rules/react-security.md"
+  [[ "$output" == *"Diff for .agents/rules/react-security.md"* ]]
   [[ "$output" != *"Pending confirmation"* ]]
-  [[ "$output" != *"Replace .agents/rules/frontend-security.md with the template?"* ]]
+  [[ "$output" != *"Replace .agents/rules/react-security.md with the template?"* ]]
 }
 
 @test "bootstrap updates managed assets and preserves root instructions" {
-  run_bootstrap frontend
+  run_bootstrap react
   [ "$status" -eq 0 ]
 
-  printf '%s\n' '# Local change' >> .agents/rules/frontend-security.md
+  printf '%s\n' '# Local change' >> .agents/rules/react-security.md
   printf '%s\n' '# Project instructions' > AGENTS.md
   cp "$skill_dir/assets/claude-proxy.md" CLAUDE.md
   root_hash_before="$(shasum AGENTS.md CLAUDE.md | shasum | cut -d ' ' -f 1)"
 
-  run_bootstrap frontend
+  run_bootstrap react
 
   [ "$status" -eq 0 ]
-  cmp -s .agents/rules/frontend-security.md "$skill_dir/assets/stacks/frontend/rules/frontend-security.md"
+  cmp -s .agents/rules/react-security.md "$skill_dir/assets/stacks/react/rules/react-security.md"
   [ "$(shasum AGENTS.md CLAUDE.md | shasum | cut -d ' ' -f 1)" = "$root_hash_before" ]
   [[ "$output" == *"Updated from templates:"* ]]
 }
 
 @test "sync updates managed provider assets" {
-  run_bootstrap frontend
+  run_bootstrap react
   [ "$status" -eq 0 ]
   [ ! -e .claude/hooks ]
 
@@ -1742,7 +1744,7 @@ EOF
     AGENT_READY_SETUP_SKILL_DIR="$source_dir" \
     PATH="$test_root/bin:$PATH" \
     bash "$source_dir/scripts/bootstrap.sh" \
-      --stack frontend \
+      --stack react \
       --skill-dir "$source_dir" \
       --provider claude
   [ "$status" -eq 0 ]
@@ -1754,10 +1756,10 @@ EOF
 }
 
 @test "bootstrap detects managed destination changes before atomic rename" {
-  run_bootstrap frontend
+  run_bootstrap react
   [ "$status" -eq 0 ]
 
-  printf '%s\n' '# Local change' >> .agents/rules/frontend-security.md
+  printf '%s\n' '# Local change' >> .agents/rules/react-security.md
   fake_bin="$test_root/bin"
   mkdir -p "$fake_bin"
   cat > "$fake_bin/cp" <<'EOF'
@@ -1765,7 +1767,7 @@ EOF
 /bin/cp "$@"
 for argument in "$@"; do
   if [[ "$argument" == *agent-ready-sync.* ]]; then
-    printf '%s\n' '# Newer destination change' > .agents/rules/frontend-security.md
+    printf '%s\n' '# Newer destination change' > .agents/rules/react-security.md
     break
   fi
 done
@@ -1773,11 +1775,11 @@ EOF
   chmod +x "$fake_bin/cp"
 
   run env PATH="$fake_bin:$PATH" bash "$skill_dir/scripts/bootstrap.sh" \
-    --stack frontend --skill-dir "$skill_dir" --provider claude
+    --stack react --skill-dir "$skill_dir" --provider claude
 
   [ "$status" -eq 0 ]
-  [ "$(cat .agents/rules/frontend-security.md)" = '# Newer destination change' ]
-  [[ "$output" == *".agents/rules/frontend-security.md changed during synchronization; neither was changed"* ]]
+  [ "$(cat .agents/rules/react-security.md)" = '# Newer destination change' ]
+  [[ "$output" == *".agents/rules/react-security.md changed during synchronization; neither was changed"* ]]
 }
 
 @test "bootstrap rejects removed sync and confirmation flags" {
@@ -2352,7 +2354,7 @@ EOF
 }
 
 @test "sync hook preserves custom Claude array entries with equal length" {
-  run_bootstrap frontend
+  run_bootstrap react
   [ "$status" -eq 0 ]
 
   jq '.permissions.allow[0] = "Bash(custom-command)"' .claude/settings.json > "$test_root/settings.json"
@@ -2369,7 +2371,7 @@ EOF
 
   AGENT_READY_SETUP_SKILL_DIR="$skill_dir" PATH="$test_root/bin:$PATH" \
     run bash "$skill_dir/assets/common/hooks/sync-marketplace.sh" \
-      --provider claude --stack frontend
+      --provider claude --stack react
 
   [ "$status" -eq 0 ]
   jq -e '.permissions.allow | length == 3' .claude/settings.json >/dev/null
@@ -2509,7 +2511,7 @@ EOF
   chmod +x "$fake_bin/mv"
 
   MV_LOG="$mv_log" run env PATH="$fake_bin:$PATH" bash "$skill_dir/scripts/bootstrap.sh" \
-    --stack frontend --skill-dir "$skill_dir" --provider claude
+    --stack react --skill-dir "$skill_dir" --provider claude
 
   [ "$status" -eq 0 ]
   grep -Eq 'agent-ready-sync\.[^ ]+ \.agents/hooks/sync-marketplace\.sh$' "$mv_log"
@@ -2628,7 +2630,7 @@ EOF
   wait "$stale_pid" 2>/dev/null || true
   printf '%s\n' "$stale_pid" > .agents/.agent-ready-assets.lock/owner
 
-  run_bootstrap frontend
+  run_bootstrap react
 
   [ "$status" -eq 0 ]
   [ ! -e .agents/.agent-ready-assets.lock ]
@@ -2672,7 +2674,7 @@ EOF
   [ -f "$skill_dir/scripts/asset-sync-common.sh" ]
   [ -f "$skill_dir/scripts/merge-managed-settings.py" ]
 
-  for stack in frontend node java go android; do
+  for stack in react nextjs nextjs-app-router node java go android; do
     [ ! -e "$skill_dir/assets/stacks/$stack/settings.json" ]
     [ ! -e "$skill_dir/assets/stacks/$stack/hooks/sync-marketplace.sh" ]
     [ ! -e "$skill_dir/assets/stacks/$stack/rules/language-consistency.md" ]
@@ -2802,41 +2804,41 @@ SCRIPT
 @test "Claude views fall back to hard links when symlinks are unavailable" {
   disable_symlinks
 
-  run_bootstrap frontend
+  run_bootstrap react
 
   [ "$status" -eq 0 ]
-  [ ! -L .claude/rules/frontend-security.md ]
-  [ .claude/rules/frontend-security.md -ef .agents/rules/frontend-security.md ]
-  grep -Fxq 'rules/frontend-security.md' .claude/.agent-ready-hard-link-views
+  [ ! -L .claude/rules/react-security.md ]
+  [ .claude/rules/react-security.md -ef .agents/rules/react-security.md ]
+  grep -Fxq 'rules/react-security.md' .claude/.agent-ready-hard-link-views
   [[ "$output" != *"could not create Claude view"* ]]
 }
 
 @test "detached hard-link views are relinked on the next bootstrap" {
   disable_symlinks
-  run_bootstrap frontend
+  run_bootstrap react
   [ "$status" -eq 0 ]
 
   # Git recreates files on checkout or rebase, which detaches existing hard links.
-  cp .agents/rules/frontend-security.md "$test_root/security.md"
-  mv "$test_root/security.md" .agents/rules/frontend-security.md
-  [ ! .claude/rules/frontend-security.md -ef .agents/rules/frontend-security.md ]
+  cp .agents/rules/react-security.md "$test_root/security.md"
+  mv "$test_root/security.md" .agents/rules/react-security.md
+  [ ! .claude/rules/react-security.md -ef .agents/rules/react-security.md ]
 
-  run_bootstrap frontend
+  run_bootstrap react
 
   [ "$status" -eq 0 ]
-  [ .claude/rules/frontend-security.md -ef .agents/rules/frontend-security.md ]
+  [ .claude/rules/react-security.md -ef .agents/rules/react-security.md ]
 }
 
 @test "hard-link views of deleted project rules are pruned" {
   disable_symlinks
   mkdir -p .agents/rules
   printf '%s\n' '# Team conventions' > .agents/rules/team-conventions.md
-  run_bootstrap frontend
+  run_bootstrap react
   [ "$status" -eq 0 ]
   [ .claude/rules/team-conventions.md -ef .agents/rules/team-conventions.md ]
 
   rm .agents/rules/team-conventions.md
-  run_bootstrap frontend
+  run_bootstrap react
 
   [ "$status" -eq 0 ]
   [ ! -e .claude/rules/team-conventions.md ]
@@ -2848,7 +2850,7 @@ SCRIPT
   mkdir -p .claude/rules
   printf '%s\n' '# Personal rule' > .claude/rules/personal.md
 
-  run_bootstrap frontend
+  run_bootstrap react
 
   [ "$status" -eq 0 ]
   grep -Fxq '# Personal rule' .claude/rules/personal.md
@@ -2876,7 +2878,7 @@ commit_agents_and_detach_security_rule() {
   git config user.name "Agent Ready Tests"
   git add .agents
   git commit -qm "agent-ready assets"
-  printf '%s\n' 'Project addition.' >> .agents/rules/frontend-security.md
+  printf '%s\n' 'Project addition.' >> .agents/rules/react-security.md
   git commit -qam "edit security rule"
   # reset --hard recreates the rule, which detaches the hard-link view.
   git reset -q --hard HEAD~1
@@ -2884,7 +2886,7 @@ commit_agents_and_detach_security_rule() {
 
 @test "hard-link views register a config-based git hook that relinks them after git reset" {
   disable_symlinks
-  run_bootstrap frontend
+  run_bootstrap react
   [ "$status" -eq 0 ]
   [ "$(git config --get hook.agent-ready-relink.event)" = "post-index-change" ]
   [ "$(git config --get hook.agent-ready-relink.command)" = "sh .agents/hooks/relink-hard-link-views.sh" ]
@@ -2892,8 +2894,8 @@ commit_agents_and_detach_security_rule() {
 
   commit_agents_and_detach_security_rule
 
-  [ .claude/rules/frontend-security.md -ef .agents/rules/frontend-security.md ]
-  ! grep -Fxq 'Project addition.' .claude/rules/frontend-security.md
+  [ .claude/rules/react-security.md -ef .agents/rules/react-security.md ]
+  ! grep -Fxq 'Project addition.' .claude/rules/react-security.md
 }
 
 @test "config-based relink hook coexists with a project hook manager" {
@@ -2901,21 +2903,21 @@ commit_agents_and_detach_security_rule() {
   git config core.hooksPath .husky
   mkdir -p .husky
 
-  run_bootstrap frontend
+  run_bootstrap react
 
   [ "$status" -eq 0 ]
   [ "$(git config --get core.hooksPath)" = ".husky" ]
   [ -z "$(ls -A .husky)" ]
   [ "$(git config --get hook.agent-ready-relink.event)" = "post-index-change" ]
   commit_agents_and_detach_security_rule
-  [ .claude/rules/frontend-security.md -ef .agents/rules/frontend-security.md ]
+  [ .claude/rules/react-security.md -ef .agents/rules/react-security.md ]
 }
 
 @test "relink hook falls back to a hooks-directory file when git lacks config-based hooks" {
   disable_symlinks
   disable_config_hooks
 
-  run_bootstrap frontend
+  run_bootstrap react
 
   [ "$status" -eq 0 ]
   hook_path="$(git rev-parse --git-path hooks)/post-index-change"
@@ -2929,7 +2931,7 @@ commit_agents_and_detach_security_rule() {
   disable_config_hooks
   git config core.hooksPath .husky
 
-  run_bootstrap frontend
+  run_bootstrap react
 
   [ "$status" -eq 0 ]
   [ ! -e .husky/post-index-change ]
@@ -2939,26 +2941,26 @@ commit_agents_and_detach_security_rule() {
 
 @test "Claude prompt hook relinks views detached without any git hook" {
   disable_symlinks
-  run_bootstrap frontend
+  run_bootstrap react
   [ "$status" -eq 0 ]
   jq -e '.hooks.UserPromptSubmit[0].hooks[0].command == "sh .agents/hooks/relink-hard-link-views.sh"' .claude/settings.json >/dev/null
 
   # `git apply` without --index rewrites files and fires no git hook at all.
-  cp .agents/rules/frontend-security.md "$test_root/security.md"
-  mv "$test_root/security.md" .agents/rules/frontend-security.md
-  [ ! .claude/rules/frontend-security.md -ef .agents/rules/frontend-security.md ]
+  cp .agents/rules/react-security.md "$test_root/security.md"
+  mv "$test_root/security.md" .agents/rules/react-security.md
+  [ ! .claude/rules/react-security.md -ef .agents/rules/react-security.md ]
 
   run sh .agents/hooks/relink-hard-link-views.sh
 
   [ "$status" -eq 0 ]
   [ -z "$output" ]
-  [ .claude/rules/frontend-security.md -ef .agents/rules/frontend-security.md ]
+  [ .claude/rules/react-security.md -ef .agents/rules/react-security.md ]
 }
 
 @test "relink hook is not registered when views are symlinks" {
   skip_without_symlinks
 
-  run_bootstrap frontend
+  run_bootstrap react
 
   [ "$status" -eq 0 ]
   [ -z "$(git config --get hook.agent-ready-relink.event)" ]

@@ -190,7 +190,7 @@ EOF
   printf '%s\n' '# Project' > AGENTS.md
   write_review_response $'# Project\n\n'"$managed_placeholder"
 
-  run_merge frontend
+  run_merge react
 
   [ "$status" -eq 0 ]
   ! grep -Fxq '## Skills' AGENTS.md
@@ -222,7 +222,7 @@ EOF
   write_review_response $'# Project\n\nDeploy with make release.\n\n'"$managed_placeholder" \
     '["Use Jest and React Testing Library for tests. — covered by .agents/rules/testing.md"]'
 
-  run_merge frontend
+  run_merge react
 
   [ "$status" -eq 0 ]
   ! grep -Fq 'Use Jest and React Testing Library for tests.' AGENTS.md
@@ -239,7 +239,7 @@ EOF
   write_review_response $'# Project\n\nMock design system components in every test.\n\n'"$managed_placeholder" '[]' \
     '["Mock design system components in every test. — conflicts with .agents/rules/testing.md: design system components must not be mocked"]'
 
-  run_merge frontend
+  run_merge react
 
   [ "$status" -eq 0 ]
   grep -Fxq 'Mock design system components in every test.' AGENTS.md
@@ -252,7 +252,7 @@ EOF
 #!/bin/bash
 exit 42
 EOF
-  run_merge frontend
+  run_merge react
   [ "$status" -eq 0 ]
   [[ "$output" == *"already reviewed; AI review not required."* ]]
   [[ "$output" == *"Instruction inconsistencies from the last review"* ]]
@@ -457,7 +457,7 @@ printf '%s\n' 'not-json'
 EOF
   chmod +x "$fake_bin/claude"
 
-  run_merge frontend
+  run_merge react
 
   [ "$status" -eq 0 ]
   [[ "$output" == *"invalid structured output"* ]]
@@ -902,7 +902,7 @@ EOF
 }
 
 @test "apply-managed-block creates missing AGENTS from the template" {
-  run_apply_managed_block frontend
+  run_apply_managed_block react
 
   [ "$status" -eq 0 ]
   [ "$(provider_call_count)" -eq 0 ]
@@ -916,7 +916,7 @@ EOF
   mkdir -p \
     "$source_dir/assets/common/hooks" \
     "$source_dir/assets/codex" \
-    "$source_dir/assets/stacks/frontend/hooks" \
+    "$source_dir/assets/stacks/react/hooks" \
     "$source_dir/scripts"
   touch "$source_dir/SKILL.md"
   cp "$skill_dir/assets/common/hooks/sync-marketplace.sh" \
@@ -971,7 +971,7 @@ EOF
   if command -v cygpath >/dev/null 2>&1 && grep -Fq -- "$(cygpath -m "$source_dir")" "$merge_log"; then
     expected_skill_dir="$(cygpath -m "$source_dir")"
   fi
-  grep -Fq -- "--provider claude --stack frontend --skill-dir $expected_skill_dir" "$merge_log"
+  grep -Fq -- "--provider claude --stack react --skill-dir $expected_skill_dir" "$merge_log"
 }
 
 @test "automatic sync hook preserves session when the managed block needs human review" {

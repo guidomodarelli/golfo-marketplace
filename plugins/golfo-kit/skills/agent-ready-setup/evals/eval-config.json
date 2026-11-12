@@ -10,8 +10,8 @@
       "assertions": [
         {
           "type": "contains_any",
-          "values": ["frontend", "Frontend"],
-          "description": "Reporta stack frontend detectado"
+          "values": ["react", "React", "nextjs", "Next.js"],
+          "description": "Reporta el stack web detectado"
         },
         {
           "type": "contains",
@@ -1163,7 +1163,7 @@
       ]
     },
     {
-      "id": "frontend-style-keeps-strict-equality",
+      "id": "react-style-keeps-strict-equality",
       "description": "No impone Object.is: usa === y !== por defecto y reserva Object.is para cuando la semántica de NaN o del cero con signo lo requiere.",
       "input": "Leé la regla frontend de agent-ready-setup sobre estilo. ¿Exige reemplazar `===` y `!==` por `Object.is`? Explicá qué usar por defecto y cuándo tendría sentido `Object.is`. No ejecutes Bash ni escribas archivos.",
       "assertions": [
@@ -1198,7 +1198,7 @@
       ]
     },
     {
-      "id": "frontend-style-prefers-semantic-strings-over-boolean-parameters",
+      "id": "react-style-prefers-semantic-strings-over-boolean-parameters",
       "description": "Reemplaza parámetros booleanos que cambian comportamiento por strings semánticos de estado.",
       "input": "Leé la regla frontend de agent-ready-setup sobre parámetros de funciones. En `api/services/users.ts` existe `listUsers(page: number, activeOnly = false, adminOnly = false)` y se llama como `listUsers(page, true, true)`. Explicá qué problema tiene, proponé la firma y la llamada corregidas, y aclará qué booleanos sí pueden quedarse. No ejecutes Bash ni escribas archivos.",
       "assertions": [
@@ -1235,7 +1235,7 @@
       ]
     },
     {
-      "id": "frontend-style-lets-design-explain-instead-of-secondary-copy",
+      "id": "react-style-lets-design-explain-instead-of-secondary-copy",
       "description": "Quita subtítulos, eslóganes y textos de ayuda innecesarios y resuelve la ambigüedad con diseño, sin eliminar nombres accesibles ni avisos de consecuencias.",
       "input": "Leé la regla frontend de agent-ready-setup sobre copy de interfaz. Una pantalla de configuración de notificaciones tiene el título `Notificaciones`, el subtítulo `Tu centro de control para mantenerte siempre informado`, un párrafo `Usá los interruptores de abajo para activar o desactivar cada canal`, un helper bajo cada interruptor (`Activá esta opción para recibir emails`), un botón de ícono sin texto con `aria-label=\"Eliminar canal\"` y un aviso `Eliminar un canal borra su historial y no se puede deshacer`. Decí qué textos sacás, qué textos mantenés y cómo resolvés con diseño lo que explicaban. No ejecutes Bash ni escribas archivos.",
       "assertions": [
@@ -1262,7 +1262,7 @@
       ]
     },
     {
-      "id": "frontend-style-uses-lodash-es-only-where-it-adds-value",
+      "id": "react-style-uses-lodash-es-only-where-it-adds-value",
       "description": "Exige lodash-es con imports nombrados en los casos que reducen código y prohíbe wrappers de funciones nativas.",
       "input": "Leé la regla frontend de agent-ready-setup sobre lodash. En un componente con lodash-es instalado alguien escribió un debounce manual con `setTimeout`, un deep equal recursivo propio, un loop con `slice` que arma lotes de 50 ids para enviarlos al backend, un `debounce` creado directamente en el cuerpo del componente, `[...new Set(ids)]` para deduplicar, chequeos `typeof name === 'string'` y `Array.isArray(items)`, `_.each(items, render)` y `_.get(user, 'profile.name')`, importando `import _ from 'lodash'`. Explicá qué cambiarías en cada caso y cómo deben quedar los imports. No ejecutes Bash ni escribas archivos.",
       "assertions": [
@@ -1324,7 +1324,7 @@
       ]
     },
     {
-      "id": "frontend-style-installs-lodash-es-when-undeclared",
+      "id": "react-style-installs-lodash-es-when-undeclared",
       "description": "lodash-es es obligatorio en el stack: si no está declarado lo instala con el package manager del lockfile (la única instalación preaprobada) y no silencia el linter.",
       "input": "Leé la regla frontend de agent-ready-setup sobre lodash. En una app con `pnpm-lock.yaml`, `lodash-es` no está en `dependencies` del `package.json`, aunque aparece dentro de `node_modules/` porque lo trae el framework. Necesito `debounce` y `chunk`, y el linter marca la dependencia como no declarada. ¿Qué hacés? No ejecutes Bash ni escribas archivos.",
       "assertions": [
@@ -1357,7 +1357,7 @@
       ]
     },
     {
-      "id": "frontend-style-replaces-existing-utils-with-lodash-es",
+      "id": "react-style-replaces-existing-utils-with-lodash-es",
       "description": "Reemplaza utils propios que duplican lodash-es llamando al método directamente y conservando la semántica.",
       "input": "Leé la regla frontend de agent-ready-setup sobre lodash. El proyecto tiene lodash-es declarado y un `utils/is-record.ts` con `export const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);`, usado en 12 archivos y con su propio test. También hay un `utils/unique.ts` que deduplica con `[...new Set(values)]` y un `utils/is-nullish.ts` con `value == null`. ¿Qué hacés con cada util? No ejecutes Bash ni escribas archivos.",
       "assertions": [
@@ -1694,7 +1694,7 @@
       ]
     },
     {
-      "id": "frontend-style-i18n-tokens-image-provider",
+      "id": "react-style-i18n-tokens-image-provider",
       "description": "Exige i18n.gettext cuando el proyecto ya usa esa librería de i18n, tokens del design system con la solución de estilos del proyecto, el componente de imágenes del proyecto y su logger.",
       "input": "Leé las reglas frontend de agent-ready-setup. En un proyecto que ya traduce su copy con `i18n.gettext`, un componente nuevo tiene el texto del botón hardcodeado, un color #3483fa en el CSS, un <img> con URL absoluta del CDN y un console.error en el catch. Explicá qué reglas incumple y cómo corregir cada punto. No ejecutes Bash ni escribas archivos.",
       "assertions": [
@@ -1733,7 +1733,7 @@
       ]
     },
     {
-      "id": "frontend-security-validates-public-dto",
+      "id": "react-security-validates-public-dto",
       "description": "Valida el DTO público del middleend sin revalidar la respuesta upstream.",
       "input": "Leé la regla de seguridad frontend de agent-ready-setup. Un handler del BFF devuelve al cliente un DTO armado desde la respuesta upstream. Explicá qué se valida y qué no entre input del cliente, respuesta upstream y DTO público, y dónde. No ejecutes Bash ni escribas archivos.",
       "assertions": [
@@ -2157,7 +2157,7 @@
         },
         {
           "type": "contains_any",
-          "values": ["--profiles frontend,business-flows", "--profiles android,business-flows"],
+          "values": ["--profiles react,business-flows", "--profiles nextjs,business-flows", "--profiles nextjs-app-router,business-flows", "--profiles android,business-flows"],
           "description": "Lo combina con el stack de cada repo",
           "critical": true
         },
@@ -2200,7 +2200,7 @@
     {
       "id": "profiles-sharing-destination-fail-explained",
       "description": "Dos stacks que publican el mismo destino no se combinan; explica el error y la alternativa con requires.",
-      "input": "Tengo un monorepo con una app React y un BFF en Node. Quiero correr agent-ready-setup con `--profiles frontend,node` para tener las rules de los dos. ¿Qué pasa y qué alternativas tengo? No ejecutes Bash ni escribas archivos.",
+      "input": "Tengo un monorepo con una app React y un BFF en Node. Quiero correr agent-ready-setup con `--profiles react,node` para tener las rules de los dos. ¿Qué pasa y qué alternativas tengo? No ejecutes Bash ni escribas archivos.",
       "assertions": [
         {
           "type": "contains_any",
@@ -2343,7 +2343,7 @@
     {
       "id": "later-detection-never-moves-the-manifest",
       "description": "La precedencia conserva el manifest aunque las señales del proyecto cambien después.",
-      "input": "Mi repo fijó `.agents/agent-ready.json` con el stack `node`. Hace poco agregamos `react` a `package.json`. ¿El próximo apply de agent-ready-setup pasa solo al stack frontend? ¿Cómo me entero y qué hago si quiero cambiarlo? No ejecutes Bash ni escribas archivos.",
+      "input": "Mi repo fijó `.agents/agent-ready.json` con el stack `node`. Hace poco agregamos `react` a `package.json`. ¿El próximo apply de agent-ready-setup pasa solo al stack react? ¿Cómo me entero y qué hago si quiero cambiarlo? No ejecutes Bash ni escribas archivos.",
       "assertions": [
         {
           "type": "contains_any",
@@ -2358,7 +2358,7 @@
         },
         {
           "type": "contains_any",
-          "values": ["--stack frontend", "--profiles frontend"],
+          "values": ["--stack react", "--profiles react"],
           "description": "El cambio es una selección explícita",
           "critical": true
         }
@@ -2371,8 +2371,8 @@
       "assertions": [
         {
           "type": "contains",
-          "value": "frontend",
-          "description": "Elige frontend",
+          "value": "react",
+          "description": "Elige react",
           "critical": true
         },
         {
@@ -2906,11 +2906,11 @@
     {
       "id": "cli-init-asks-only-with-a-terminal",
       "description": "Un agente sin terminal corre init con sus flags; init pregunta solo cuando hay una persona.",
-      "input": "Sos un agente sin terminal interactiva y tenés que dejar agent ready un repo nuevo que detectaste como frontend, sin manifest todavía. ¿Qué comando corrés para la primera configuración, y qué pasa si lo corrés sin flags? No ejecutes Bash ni escribas archivos.",
+      "input": "Sos un agente sin terminal interactiva y tenés que dejar agent ready un repo nuevo que detectaste como react, sin manifest todavía. ¿Qué comando corrés para la primera configuración, y qué pasa si lo corrés sin flags? No ejecutes Bash ni escribas archivos.",
       "assertions": [
         {
           "type": "regex",
-          "pattern": "init (--stack frontend|--profiles frontend[a-z,-]*)( --updates [a-z]+)? --yes",
+          "pattern": "init (--stack react|--profiles react[a-z,-]*)( --updates [a-z]+)? --yes",
           "description": "Corre init con la selección y --yes",
           "critical": true
         },
@@ -3480,19 +3480,19 @@
     },
     {
       "id": "two-stacks-in-one-repository",
-      "description": "Un monorepo con frontend React y un servicio Node selecciona los dos stacks; cada uno trae sus assets con su prefijo y su sección de AGENTS.md.",
-      "input": "Tengo un monorepo con una app React y un servicio Node. ¿Puedo usar los stacks frontend y node a la vez con agent-ready-setup? ¿Qué comando corro, cómo se llaman las rules de seguridad de cada uno y cómo queda el AGENTS.md? No ejecutes Bash ni escribas archivos.",
+      "description": "Un monorepo con una app React y un servicio Node selecciona los dos stacks; cada uno trae sus assets con su prefijo y su sección de AGENTS.md.",
+      "input": "Tengo un monorepo con una app React y un servicio Node. ¿Puedo usar los stacks react y node a la vez con agent-ready-setup? ¿Qué comando corro, cómo se llaman las rules de seguridad de cada uno y cómo queda el AGENTS.md? No ejecutes Bash ni escribas archivos.",
       "assertions": [
         {
           "type": "regex",
-          "pattern": "--profiles[ =]+(frontend,node|node,frontend)",
+          "pattern": "--profiles[ =]+(react,node|node,react)",
           "description": "Da la selección con los dos stacks",
           "critical": true
         },
         {
           "type": "contains",
-          "value": "frontend-security.md",
-          "description": "Nombra la rule de seguridad de frontend con su prefijo"
+          "value": "react-security.md",
+          "description": "Nombra la rule de seguridad de react con su prefijo"
         },
         {
           "type": "contains",
@@ -3501,7 +3501,7 @@
         },
         {
           "type": "regex",
-          "pattern": "[Ss]ecci[^.]{0,160}(stack|frontend|node)|(stack|frontend|node)[^.]{0,160}[Ss]ecci",
+          "pattern": "[Ss]ecci[^.]{0,160}(stack|react|node)|(stack|react|node)[^.]{0,160}[Ss]ecci",
           "description": "Dice que cada stack suma su sección a AGENTS.md"
         }
       ]
@@ -3509,7 +3509,7 @@
     {
       "id": "agents-md-stack-sections",
       "description": "El AGENTS.md sale de un template base único más una sección por stack como bloque con id; sacar un stack se lleva su sección y la revisión de IA no la toca.",
-      "input": "En un repo con agent-ready-setup y los stacks frontend y node, ¿de dónde sale cada parte del AGENTS.md? Si saco frontend de la selección y vuelvo a aplicar, ¿qué pasa con lo de frontend en el AGENTS.md? ¿La revisión de IA de AGENTS.md puede borrar esas secciones? No ejecutes Bash ni escribas archivos.",
+      "input": "En un repo con agent-ready-setup y los stacks react y node, ¿de dónde sale cada parte del AGENTS.md? Si saco react de la selección y vuelvo a aplicar, ¿qué pasa con lo de react en el AGENTS.md? ¿La revisión de IA de AGENTS.md puede borrar esas secciones? No ejecutes Bash ni escribas archivos.",
       "assertions": [
         {
           "type": "contains",
@@ -3520,7 +3520,7 @@
         {
           "type": "contains_any",
           "values": [
-            "AGENT-READY MANAGED: frontend",
+            "AGENT-READY MANAGED: react",
             "AGENT-READY MANAGED: node",
             "blocks/AGENTS.md"
           ],
@@ -3529,12 +3529,46 @@
         {
           "type": "regex",
           "pattern": "se lleva su secci|secci[^.]{0,80}(desaparece|se elimina|se retira|se borra|se saca)|(desaparece|se elimina|se retira|se borra|se saca)[^.]{0,80}secci",
-          "description": "Dice que sacar frontend retira su sección"
+          "description": "Dice que sacar react retira su sección"
         },
         {
           "type": "regex",
           "pattern": "placeholder|AGENT-READY MANAGED SECTION|solo lectura|read-only|[Rr]echaz",
           "description": "Explica que la revisión ve la sección como contenido gestionado y no puede borrarla"
+        }
+      ]
+    },
+    {
+      "id": "nextjs-app-router-layers",
+      "description": "Un repo Next.js App Router detecta la capa más específica y trae por requires las capas que extiende, sin assets duplicados.",
+      "input": "Tengo una app Next.js con App Router (`next` y `react` en package.json, y `src/app/layout.tsx`). ¿Qué stack detecta agent-ready-setup, qué otras capas trae y cómo, y en qué capa queda la rule de server-first-data-flow? ¿Se repite algún asset entre capas? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "nextjs-app-router",
+          "description": "Detecta la capa nextjs-app-router",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "requires",
+          "description": "Explica que las otras capas llegan por requires",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "react[^.]{0,120}nextjs|nextjs[^.]{0,120}react",
+          "description": "Nombra las capas react y nextjs que extiende"
+        },
+        {
+          "type": "regex",
+          "pattern": "server-first-data-flow[^.]{0,160}nextjs|nextjs[^.]{0,160}server-first-data-flow",
+          "description": "Ubica server-first-data-flow en la capa nextjs"
+        },
+        {
+          "type": "contains_any",
+          "values": ["sin assets duplicados", "no se repite", "ningún asset se repite", "no repite", "sin duplicados", "nombres propios", "no hay duplicados"],
+          "description": "Aclara que cada capa publica solo sus assets"
         }
       ]
     }

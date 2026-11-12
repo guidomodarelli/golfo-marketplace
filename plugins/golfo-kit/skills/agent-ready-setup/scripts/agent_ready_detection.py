@@ -131,6 +131,35 @@ def validate_detect_block(profile_name, profile, stack_names):
             raise DetectionSchemaError(f"profile '{profile_name}' cannot supersede '{name}': it must name another stack of the catalog")
 
 
+def required_layers(profiles, name):
+    """The profiles that ``name`` requires, transitively: the layers it extends."""
+    layers = []
+    pending = list(profiles.get(name, {}).get("requires", []))
+    while pending:
+        current = pending.pop(0)
+        if current in layers or current == name:
+            continue
+        layers.append(current)
+        pending.extend(profiles.get(current, {}).get("requires", []))
+    return layers
+
+
+def superseded_stacks(profiles, name):
+    """The stacks that ``name`` wins over in detection.
+
+    Its own ``supersedes``, the stack layers it requires (a layer is more specific than the one it
+    extends) and whatever those layers supersede: ``nextjs`` requires ``react``, so a repo where
+    both match is a ``nextjs`` repo, and ``react`` superseding ``node`` holds for ``nextjs`` too.
+    """
+    superseded = set(profiles[name].get("detect", {}).get(DETECT_SUPERSEDES_KEY, []))
+    for layer in required_layers(profiles, name):
+        if profiles.get(layer, {}).get("kind") == STACK_PROFILE_KIND:
+            superseded.add(layer)
+            superseded.update(profiles[layer].get("detect", {}).get(DETECT_SUPERSEDES_KEY, []))
+    superseded.discard(name)
+    return sorted(superseded)
+
+
 def validate_catalog_detection(profiles):
     """Validate every ``detect`` block and reject a cycle in the stack priorities."""
     stack_names = {name for name, profile in profiles.items() if profile.get("kind") == STACK_PROFILE_KIND}
@@ -139,7 +168,7 @@ def validate_catalog_detection(profiles):
             validate_detect_block(name, profile, stack_names)
 
     def superseded_by(name):
-        return sorted(profiles[name].get("detect", {}).get(DETECT_SUPERSEDES_KEY, []))
+        return superseded_stacks(profiles, name)
 
     finished = set()
 
@@ -458,9 +487,11 @@ def evaluate_detect_block(detect, inspector):
 def detect_profiles(profiles, project_root):
     """Evaluate a validated catalog against a project.
 
-    A stack that another matched stack supersedes drops out. One stack left is the
-    primary stack; several are ambiguous and need an explicit selection, because
-    picking one would depend on an arbitrary order. Capabilities are only reported.
+    A stack that another matched stack supersedes drops out, and so does a layer that a
+    matched stack requires: the most specific layer wins and brings the others through
+    ``requires``. One stack left is the primary stack; several are ambiguous and need an
+    explicit selection, because picking one would depend on an arbitrary order.
+    Capabilities are only reported.
     """
     inspector = ProjectInspector(project_root)
     stacks = {}
@@ -476,7 +507,7 @@ def detect_profiles(profiles, project_root):
     for name in stacks:
         winners = sorted(
             other for other in stacks
-            if other != name and name in profiles[other]["detect"].get(DETECT_SUPERSEDES_KEY, [])
+            if other != name and name in superseded_stacks(profiles, other)
         )
         if winners:
             superseded_by[name] = winners
