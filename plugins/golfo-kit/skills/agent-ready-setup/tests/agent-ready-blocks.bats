@@ -134,7 +134,7 @@ add_block_pack() {
   write_manifest '{"profiles": ["node", "acme/review"], "sources": {"packs": [{"name": "acme", "source": "path:packs/acme"}]}}'
   run_cli plan
   [ "$status" -ne 0 ]
-  [[ "$output$stderr" == *"AGENTS.md is not a file a block can go to"* ]]
+  [[ "$output$stderr" == *"profile 'acme/review': only a stack profile adds a section to AGENTS.md"* ]]
 
   rm packs/acme/profiles/review/blocks/AGENTS.md
   printf 'x\n' > packs/acme/profiles/review/blocks/notes.json
@@ -352,4 +352,109 @@ PY
   run_cli remove --yes
   [ "$status" -eq 0 ]
   [ "$(cat .gitignore)" = "node_modules/" ]
+}
+
+@test "each selected stack adds its section to AGENTS.md, and a stack that leaves the selection takes it out" {
+  write_manifest '{"profiles": ["frontend", "node"]}'
+  run_cli apply
+  [ "$status" -eq 0 ]
+  grep -qx '# \[Project Name\]' AGENTS.md
+  grep -qx '<!-- BEGIN AGENT-READY MANAGED -->' AGENTS.md
+  grep -qx '<!-- BEGIN AGENT-READY MANAGED: frontend -->' AGENTS.md
+  grep -qx '## Frontend' AGENTS.md
+  grep -qx '<!-- BEGIN AGENT-READY MANAGED: node -->' AGENTS.md
+  grep -qx '## Node.js' AGENTS.md
+  [ "$(lock_value 'sorted(lock["blocks"]["AGENTS.md"])')" = "['frontend', 'node']" ]
+  [ "$(lock_value 'lock["merged"]["AGENTS.md"]["template"]')" = "assets/common/agents-template.md" ]
+
+  printf '
+## Ownership
+
+Team Astra owns this service.
+' >> AGENTS.md
+  write_manifest '{"profiles": ["node"]}'
+  run_cli apply
+  [ "$status" -eq 0 ]
+  ! grep -q 'AGENT-READY MANAGED: frontend' AGENTS.md
+  ! grep -qx '## Frontend' AGENTS.md
+  grep -qx '<!-- BEGIN AGENT-READY MANAGED: node -->' AGENTS.md
+  grep -qx 'Team Astra owns this service.' AGENTS.md
+  [ "$(lock_value 'sorted(lock["blocks"]["AGENTS.md"])')" = "['node']" ]
+}
+
+@test "a local edit inside the section of a stack is reported, and the next apply restores the section" {
+  run_cli apply
+  sed -i.bak 's/^## Node.js$/## Edited Node.js/' AGENTS.md && rm -f AGENTS.md.bak
+  run_cli plan
+  [[ "$output" == *"~ update          AGENTS.md (block node)  overwrites local changes inside the block"* ]]
+  run_cli apply
+  [ "$status" -eq 0 ]
+  grep -qx '## Node.js' AGENTS.md
+  ! grep -q 'Edited Node.js' AGENTS.md
+}
+
+@test "remove takes the stack sections out with the managed block, and AGENTS.md goes when only the template is left" {
+  run_cli apply
+  run_cli remove --yes
+  [ "$status" -eq 0 ]
+  [ ! -e AGENTS.md ]
+
+  git init -q "$test_root/other" && cd "$test_root/other"
+  printf '{}
+' > package.json
+  write_manifest '{"profiles": ["node"]}'
+  run_cli apply
+  printf '
+## Ownership
+
+Team Astra owns this service.
+' >> AGENTS.md
+  run_cli remove --yes
+  [ "$status" -eq 0 ]
+  ! grep -q 'AGENT-READY MANAGED' AGENTS.md
+  ! grep -qx '## Node.js' AGENTS.md
+  grep -qx 'Team Astra owns this service.' AGENTS.md
+}
+
+# Number of lines of AGENTS.md that are exactly the given marker.
+agents_marker_count() {
+  grep -Fxc -- "$1" AGENTS.md || true
+}
+
+@test "applies, the instruction review and the session hook keep one pair of markers per stack section" {
+  write_manifest '{"profiles": ["frontend", "node"]}'
+  run_cli apply
+  [ "$status" -eq 0 ]
+  # The provider of this suite answers nothing: the review falls back to the verbatim managed block.
+  run env PATH="$fake_bin:$PATH" bash "$skill_dir/scripts/merge-instructions.sh" --provider claude --stack frontend \
+    --skill-dir "$skill_dir"
+  [ "$status" -eq 0 ]
+  run_cli apply
+  [ "$status" -eq 0 ]
+  # The session hook projects the assets again and applies the managed block, in the foreground.
+  run env PATH="$fake_bin:$PATH" AGENT_READY_SETUP_SKILL_DIR="$skill_dir" AGENT_READY_SETUP_MARKETPLACE_UPGRADED=1 \
+    AGENT_READY_SETUP_SYNC_FOREGROUND=1 bash .agents/hooks/sync-marketplace.sh --provider claude
+  [ "$status" -eq 0 ]
+  run_cli apply
+  [ "$status" -eq 0 ]
+  for marker in '<!-- BEGIN AGENT-READY MANAGED -->' '<!-- END AGENT-READY MANAGED -->' \
+    '<!-- BEGIN AGENT-READY MANAGED: frontend -->' '<!-- END AGENT-READY MANAGED: frontend -->' \
+    '<!-- BEGIN AGENT-READY MANAGED: node -->' '<!-- END AGENT-READY MANAGED: node -->'; do
+    [ "$(agents_marker_count "$marker")" -eq 1 ]
+  done
+  [ "$(grep -Fxc '## Node.js' AGENTS.md)" -eq 1 ]
+  run_cli check
+  [[ "$output" != *"AGENTS.md (block"* ]]
+}
+
+@test "the normalization of a root CLAUDE.md with its own instructions leaves the stack sections alone" {
+  run_cli apply
+  [ "$status" -eq 0 ]
+  cp AGENTS.md "$test_root/agents-before"
+  printf '%s\n' '# Claude notes' '' 'Use the staging database for manual tests.' > CLAUDE.md
+  run_cli apply
+  # The two instruction files differ: the engine reports it and changes neither of them.
+  cmp -s AGENTS.md "$test_root/agents-before"
+  [ "$(agents_marker_count '<!-- BEGIN AGENT-READY MANAGED: node -->')" -eq 1 ]
+  grep -Fxq 'Use the staging database for manual tests.' CLAUDE.md
 }

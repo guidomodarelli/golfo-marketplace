@@ -72,13 +72,18 @@ else
   layout_instruction="The placeholder line $MANAGED_BLOCK_PLACEHOLDER marks where the managed
 block lives. Keep it exactly once and unchanged."
 fi
+layout_instruction+="
+- Each line that starts with $SECTION_PLACEHOLDER_PREFIX marks where a
+  managed stack section lives. Keep every one of them exactly once and unchanged."
 
 # The documents go through stdin and both CLIs append them to the instructions: one
 # argument is capped at 128 KiB on Linux, and Git Bash cannot spawn a process whose
 # arguments reach several megabytes on Windows.
 REVIEW_DOCUMENTS_FILE="$TEMPORARY_DIRECTORY/review-documents.md"
 {
-  printf '<managed_block>\n%s\n</managed_block>\n\n' "$(<"$MANAGED_BLOCK_FILE")"
+  # The stack sections are managed too: the review may delete project lines they already state.
+  printf '<managed_block>\n%s\n%s\n</managed_block>\n\n' "$(<"$MANAGED_BLOCK_FILE")" \
+    "$(jq -r '[.[] | join("\n")] | join("\n\n")' "$SECTIONS_FILE")"
   printf '<rules>\n%s</rules>\n\n' "$rules_content"
   printf '<project_content>\n%s\n</project_content>\n' "$(<"$PROJECT_CONTENT_FILE")"
 } > "$REVIEW_DOCUMENTS_FILE"
@@ -169,13 +174,16 @@ extract_result() {
 # else, then substitutes the verbatim managed block for the placeholder.
 assemble_reviewed_content() {
   python3 - "$PROJECT_CONTENT_FILE" "$TEMPORARY_DIRECTORY/reviewed-project.md" "$MANAGED_BLOCK_FILE" "$MERGED_FILE" \
-    "$MANAGED_BLOCK_PLACEHOLDER" "$MANAGED_BLOCK_START" "$MANAGED_BLOCK_END" <<'PY'
+    "$SECTIONS_FILE" "$SECTION_MARKER_PATTERN" "$MANAGED_BLOCK_PLACEHOLDER" "$MANAGED_BLOCK_START" \
+    "$MANAGED_BLOCK_END" <<'PY'
 import collections
+import json
 import re
 import sys
 
-(original_path, reviewed_path, block_path, merged_path, placeholder,
+(original_path, reviewed_path, block_path, merged_path, sections_path, section_pattern, placeholder,
  *managed_markers) = sys.argv[1:]
+section_marker = re.compile(section_pattern)
 
 
 def read_lines(path):
@@ -186,6 +194,8 @@ def read_lines(path):
 original = read_lines(original_path)
 reviewed = read_lines(reviewed_path)
 block = read_lines(block_path)
+with open(sections_path, encoding="utf-8") as sections_file:
+    sections = json.load(sections_file)
 
 if reviewed and reviewed[0].startswith("```") and reviewed[-1].strip() == "```":
     print("reviewed content is fenced instead of Markdown", file=sys.stderr)
@@ -193,13 +203,21 @@ if reviewed and reviewed[0].startswith("```") and reviewed[-1].strip() == "```":
 if sum(1 for line in reviewed if line.strip() == placeholder) != 1:
     print("reviewed content must keep the managed block placeholder exactly once", file=sys.stderr)
     sys.exit(1)
-if any(line.strip() in managed_markers for line in reviewed):
+if any(line.strip() in managed_markers or section_marker.fullmatch(line.strip()) for line in reviewed):
     print("reviewed content contains managed markers outside the managed block", file=sys.stderr)
     sys.exit(1)
+if any(section_marker.fullmatch(line.strip()) for line in original):
+    print("the markers of a stack section do not pair up; fix them by hand", file=sys.stderr)
+    sys.exit(1)
+for section_placeholder in sections:
+    if sum(1 for line in reviewed if line.strip() == section_placeholder) != 1:
+        print(f"reviewed content must keep the stack section placeholder {section_placeholder} exactly once",
+              file=sys.stderr)
+        sys.exit(1)
 
 available = collections.Counter(line.rstrip() for line in original if line.strip())
 for line in reviewed:
-    if not line.strip() or line.strip() == placeholder:
+    if not line.strip() or line.strip() == placeholder or line.strip() in sections:
         continue
     if available[line.rstrip()] == 0:
         print(f"reviewed content adds or rewrites a line: {line[:120]}", file=sys.stderr)
@@ -210,6 +228,8 @@ merged = []
 for line in reviewed:
     if line.strip() == placeholder:
         merged.extend(block)
+    elif line.strip() in sections:
+        merged.extend(sections[line.strip()])
     else:
         merged.append(line.rstrip())
 text = re.sub(r"\n{3,}", "\n\n", "\n".join(merged)).strip("\n") + "\n"

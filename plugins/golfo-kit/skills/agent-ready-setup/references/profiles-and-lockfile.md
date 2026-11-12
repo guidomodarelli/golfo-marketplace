@@ -24,16 +24,16 @@ un repositorio. La implementación vive en `scripts/agent-ready-state.py`.
 
 | Campo | Significado |
 |---|---|
-| `kind` | `stack` (aporta el template de `AGENTS.md` y sus rules), `capability` o `ci` (los archivos de CI de un proveedor, que elige `ci.provider` y nunca la selección; ver [ci-check.md](ci-check.md)) |
+| `kind` | `stack` (aporta sus rules y su sección de `AGENTS.md`), `capability` o `ci` (los archivos de CI de un proveedor, que elige `ci.provider` y nunca la selección; ver [ci-check.md](ci-check.md)) |
 | `assets` | árbol de templates del profile, relativo a la skill; opcional |
 | `requires` | profiles que se agregan antes, en orden |
 | `conflicts` | profiles incompatibles; seleccionarlos juntos es error |
 | `tools` | herramientas que el apply instala o registra (`browser`) |
 | `detect` | señales estáticas para detectar el profile; opcional (ver «Detección») |
 
-`assets/common/` es la base: siempre se proyecta. La selección necesita al
-menos un profile `stack`; el primero es el **stack primario**, del que sale el
-template de `AGENTS.md`. Con un solo profile con assets se proyecta su
+`assets/common/` es la base: siempre se proyecta y tiene el único template de
+`AGENTS.md`. La selección necesita al menos un profile `stack`; el primero es el
+**stack primario**, el que desempata la detección. Con un solo profile con assets se proyecta su
 directorio tal cual; con varios, `resolve` los compone en
 `${XDG_CACHE_HOME:-~/.cache}/agent-ready-setup/compose/` y la proyección,
 la normalización y el bloque gestionado leen ese árbol (variable
@@ -42,8 +42,9 @@ publican el mismo destino, la resolución falla **antes de escribir** y nombra
 los dos profiles. Las stacks no chocan entre sí: cada una nombra sus assets con su
 prefijo (`rules/node-security.md`, `agents/frontend-perf-analyzer.md`,
 `commands/go-review-pr.md`), así que un monorepo selecciona varias
-(`--profiles frontend,node`). La primera stack de la selección es la principal y aporta
-el template de `AGENTS.md`; las demás suman sus rules, agents, commands y skills.
+(`--profiles frontend,node`). Cada stack suma sus rules, agents, commands y skills, y su
+sección de `AGENTS.md` como bloque con id ([managed-agents-block.md](managed-agents-block.md),
+«Secciones de los stacks»).
 
 `--stack <s>` sigue funcionando como alias de `stackDefaults[s]` (la stack más
 `browser`, salvo `android`, porque una app nativa no usa esas herramientas: para una
@@ -198,8 +199,8 @@ estos límites:
   Golfo. Los assets compartidos van en un profile propio, como `acme/base`, que los demás requieren.
 - `assets` publica solo `rules/`, `skills/`, `agents/`, `commands/` y `blocks/`, los bloques gestionados
   de archivos compartidos con el proyecto ([managed-agents-block.md](managed-agents-block.md), sección
-  «Bloques en otros archivos»). No puede traer hooks, settings, el template de `AGENTS.md` ni archivos
-  `AGENTS.md` o `CLAUDE.md`.
+  «Bloques en otros archivos»). No puede traer hooks, settings, el template de `AGENTS.md`, una sección
+  de `AGENTS.md` ni archivos `AGENTS.md` o `CLAUDE.md`.
 - Las rules de un pack entran en la lista del bloque gestionado de `AGENTS.md`, como las de cualquier
   profile. Un pack no cambia el template ni las instrucciones propias del proyecto.
 

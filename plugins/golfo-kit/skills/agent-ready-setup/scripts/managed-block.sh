@@ -27,7 +27,7 @@ MERGE_LOCK_DIRECTORY=".agents/.agent-ready-instructions.lock"
 REVIEW_CACHE_SCRIPT="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)/assets/common/hooks/review-cache.py"
 readonly INSTRUCTIONS_CHECK="instructions"
 # Bump when the review prompt or its schema changes: it is part of every cache key.
-readonly INSTRUCTIONS_CHECK_VERSION=1
+readonly INSTRUCTIONS_CHECK_VERSION=2
 # An AGENTS.md created from the template needs no review, whatever the provider.
 readonly TEMPLATE_REVIEWER="template"
 # Where fcntl is missing (Windows), AGENTS.md writers coordinate through this file in the git dir.
@@ -106,14 +106,15 @@ validate_managed_block_inputs() {
   fi
 
   STACK_TEMPLATE_DIRECTORY="$(resolve_stack_template_directory "$SKILL_DIR" "$STACK")" || exit 1
-  TEMPLATE_FILE="$STACK_TEMPLATE_DIRECTORY/agents-template.md"
+  # One base template for every stack: each stack adds its own section to AGENTS.md as a block.
+  TEMPLATE_FILE="$SKILL_DIR/assets/common/agents-template.md"
   RULES_DIRECTORY="$STACK_TEMPLATE_DIRECTORY/rules"
   COMMON_RULES_DIRECTORY="$SKILL_DIR/assets/common/rules"
   readonly PROJECT_RULES_DIRECTORY=".agents/rules"
   TEMPLATE_RENDERER="$SKILL_DIR/scripts/render-instruction-template.sh"
   CENTRALIZATION_TEMPLATE="$SKILL_DIR/assets/instruction-centralization.md"
   if [[ ! -f "$TEMPLATE_FILE" ]]; then
-    echo "ERROR: stack instruction template is missing: $TEMPLATE_FILE" >&2
+    echo "ERROR: base instruction template is missing: $TEMPLATE_FILE" >&2
     exit 1
   fi
   if [[ ! -d "$RULES_DIRECTORY" ]]; then
@@ -154,12 +155,18 @@ prepare_managed_block_files() {
   MANAGED_BLOCK_FILE="$TEMPORARY_DIRECTORY/managed-block.md"
   PROJECT_CONTENT_FILE="$TEMPORARY_DIRECTORY/project-content.md"
   DETERMINISTIC_FILE="$TEMPORARY_DIRECTORY/deterministic.md"
+  # The stack sections of AGENTS.md, keyed by the placeholder line that stands for each in the project content.
+  SECTIONS_FILE="$TEMPORARY_DIRECTORY/sections.json"
   MERGED_FILE="$TEMPORARY_DIRECTORY/merged.md"
   SCHEMA_FILE="$TEMPORARY_DIRECTORY/result-schema.json"
   RESULT_FILE="$TEMPORARY_DIRECTORY/provider-result.json"
   readonly MANAGED_BLOCK_START='<!-- BEGIN AGENT-READY MANAGED -->'
   readonly MANAGED_BLOCK_END='<!-- END AGENT-READY MANAGED -->'
   readonly MANAGED_BLOCK_PLACEHOLDER='<!-- AGENT-READY MANAGED BLOCK -->'
+  # A stack section is "<!-- BEGIN AGENT-READY MANAGED: <id> -->" ... "<!-- END AGENT-READY MANAGED: <id> -->"
+  # (agent_ready_blocks.py); in the project content each becomes "<!-- AGENT-READY MANAGED SECTION: <id> -->".
+  readonly SECTION_MARKER_PATTERN='<!-- (BEGIN|END) AGENT-READY MANAGED: (.+?) -->'
+  readonly SECTION_PLACEHOLDER_PREFIX='<!-- AGENT-READY MANAGED SECTION: '
 }
 
 sha256_file() {
@@ -348,15 +355,58 @@ create_agents_from_template_if_missing() {
 
 # Splits AGENTS.md into project content (managed block replaced by a
 # placeholder line) and a deterministic result with the rendered block copied
-# verbatim. Exit 0: managed markers found; 3: legacy file without markers;
-# 4: malformed markers.
+# verbatim. The sections of the stacks are the engine's too: the project content
+# carries one placeholder line per section, and SECTIONS_FILE their verbatim lines,
+# so the provider review never takes them for project lines it may delete.
+# Exit 0: managed markers found; 3: legacy file without markers; 4: malformed markers.
 split_agents_file() {
   python3 - "$AGENTS_FILE" "$MANAGED_BLOCK_FILE" "$PROJECT_CONTENT_FILE" "$DETERMINISTIC_FILE" \
-    "$MANAGED_BLOCK_START" "$MANAGED_BLOCK_END" "$MANAGED_BLOCK_PLACEHOLDER" <<'PY'
+    "$MANAGED_BLOCK_START" "$MANAGED_BLOCK_END" "$MANAGED_BLOCK_PLACEHOLDER" \
+    "$SECTIONS_FILE" "$SECTION_MARKER_PATTERN" "$SECTION_PLACEHOLDER_PREFIX" <<'PY'
+import json
+import re
 import sys
 
 (agents_path, block_path, project_path, deterministic_path,
- block_start, block_end, placeholder) = sys.argv[1:]
+ block_start, block_end, placeholder, sections_path, section_pattern, section_prefix) = sys.argv[1:]
+section_marker = re.compile(section_pattern)
+
+
+def without_sections(content_lines):
+    """The lines with each stack section replaced by its placeholder, and the sections.
+
+    Markers that do not pair up leave every line in place: the review then sees them, and
+    the check that rejects managed markers in its result keeps the file as it was.
+    """
+    result, sections, open_section = [], {}, None
+    for line in content_lines:
+        match = section_marker.fullmatch(line)
+        if open_section is None:
+            if match and match.group(1) == "BEGIN":
+                open_section = (match.group(2), [line])
+            elif match:
+                return content_lines, {}
+            else:
+                result.append(line)
+            continue
+        open_section[1].append(line)
+        if match:
+            if match.group(1) != "END" or match.group(2) != open_section[0]:
+                return content_lines, {}
+            key = section_prefix + open_section[0] + " -->"
+            if key in sections:
+                return content_lines, {}
+            sections[key] = open_section[1]
+            result.append(key)
+            open_section = None
+    if open_section is not None:
+        return content_lines, {}
+    return result, sections
+
+
+def write_sections(sections):
+    with open(sections_path, "w", encoding="utf-8", newline="\n") as sections_file:
+        json.dump(sections, sections_file)
 
 with open(agents_path, encoding="utf-8") as agents_file:
     lines = agents_file.read().splitlines()
@@ -374,7 +424,9 @@ def write(path, content_lines):
 
 
 if not start_indexes and not end_indexes:
-    write(project_path, lines)
+    project_lines, sections = without_sections(lines)
+    write_sections(sections)
+    write(project_path, project_lines)
     legacy_lines = list(lines)
     while legacy_lines and not legacy_lines[-1].strip():
         legacy_lines.pop()
@@ -386,7 +438,9 @@ if len(start_indexes) != 1 or len(end_indexes) != 1 or start_indexes[0] > end_in
 
 before = lines[:start_indexes[0]]
 after = lines[end_indexes[0] + 1:]
-write(project_path, before + [placeholder] + after)
+project_lines, sections = without_sections(before + [placeholder] + after)
+write_sections(sections)
+write(project_path, project_lines)
 write(deterministic_path, before + block + after)
 PY
 }

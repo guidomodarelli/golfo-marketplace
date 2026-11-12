@@ -424,7 +424,7 @@ def resolve_profiles(catalog, requested_names, ci_profile=None):
     """Expand requires in declaration order and validate conflicts.
 
     Returns the ordered list of profile names. The first stack profile is the
-    primary stack: it provides the AGENTS.md template. ``ci_profile`` is the CI profile
+    primary stack, the one detection settles on; every stack adds its section to AGENTS.md. ``ci_profile`` is the CI profile
     that ci.provider picks (ci_profile_of); a selection cannot name one itself.
     """
     profiles = catalog["profiles"]
@@ -465,7 +465,7 @@ def resolve_profiles(catalog, requested_names, ci_profile=None):
 
     if not any(profiles[name].get("kind") == STACK_PROFILE_KIND for name in resolved):
         stacks = ", ".join(sorted(key for key, value in profiles.items() if value.get("kind") == STACK_PROFILE_KIND))
-        raise ProfileError(f"select at least one stack profile ({stacks}); it provides the AGENTS.md template")
+        raise ProfileError(f"select at least one stack profile ({stacks}); it provides the rules and the section of AGENTS.md")
     return resolved
 
 
@@ -537,8 +537,6 @@ def compose_stack_directory(skill_dir, catalog, resolved, compose_root):
     owners = {}
     for name in asset_profiles:
         for relative_path, _ in walk_files(profile_asset_root(skill_dir, catalog, name)):
-            if relative_path == AGENTS_TEMPLATE_NAME and name != primary:
-                continue
             if managed_blocks.destination_of(relative_path) is not None:
                 # Each profile keeps its own block of a shared file (desired_blocks).
                 continue
@@ -678,6 +676,11 @@ def desired_blocks(skill_dir, catalog, resolved, assets):
             if destination is None:
                 continue
             managed_blocks.validate_destination(destination, profile_name)
+            if destination == managed_blocks.INSTRUCTION_SECTIONS_DESTINATION and (
+                    profile_name == BASE_PROFILE_NAME
+                    or catalog["profiles"].get(profile_name, {}).get("kind") != STACK_PROFILE_KIND):
+                raise ProfileError(f"profile '{profile_name}': only a stack profile adds a section to "
+                                   f"{destination}; nothing was written")
             destination = spelling_by_folded.setdefault(destination.casefold(), destination)
             if destination.casefold() in folded_assets:
                 raise ProfileError(f"profile '{profile_name}' publishes a block for {destination}, which another "
@@ -1141,10 +1144,14 @@ def golfo_kit_origin(skill_dir):
         return None
 
 
+def agents_template_path(skill_dir, catalog):
+    """The one AGENTS.md template: the base assets hold it, and each stack adds its section as a block."""
+    return os.path.join(skill_dir, catalog.get("baseAssets", "assets/common"), AGENTS_TEMPLATE_NAME)
+
+
 def merged_template_entries(skill_dir, catalog, resolved):
     """Files merged with project content instead of copied verbatim."""
-    primary = primary_stack(catalog, resolved)
-    agents_template = os.path.join(profile_asset_root(skill_dir, catalog, primary), AGENTS_TEMPLATE_NAME)
+    agents_template = agents_template_path(skill_dir, catalog)
     settings_template = os.path.join(skill_dir, catalog.get("baseAssets", "assets/common"), CLAUDE_SETTINGS_TEMPLATE_NAME)
     codex_template = os.path.join(skill_dir, CODEX_HOOKS_TEMPLATE_RELATIVE_PATH)
     entries = {}
@@ -1471,7 +1478,7 @@ def merged_file_changes(project_root, skill_dir, plan):
     agents_path = os.path.join(project_root, "AGENTS.md")
     renderer = [
         bash_executable(), os.path.join(skill_dir, RENDERER_RELATIVE_PATH),
-        "--template", os.path.join(stack_root, AGENTS_TEMPLATE_NAME),
+        "--template", agents_template_path(skill_dir, catalog),
         "--rules-dir", os.path.join(stack_root, "rules"),
         "--common-rules-dir", os.path.join(skill_dir, catalog.get("baseAssets", "assets/common"), "rules"),
         "--centralization", os.path.join(skill_dir, CENTRALIZATION_RELATIVE_PATH),
@@ -1481,7 +1488,7 @@ def merged_file_changes(project_root, skill_dir, plan):
         renderer += ["--project-rules-dir", ".agents/rules"]
     rendered_block = run_quiet(renderer, cwd=project_root)
     if not os.path.isfile(agents_path):
-        changes.append(("AGENTS.md", ACTION_CREATE, "created from the stack template"))
+        changes.append(("AGENTS.md", ACTION_CREATE, "created from the base template"))
     else:
         with open(agents_path, encoding="utf-8") as file_handle:
             current_block = extract_managed_block(file_handle.read())
@@ -1724,10 +1731,12 @@ def semantic_conflicts(arguments, plan):
 
 
 def project_owned_instructions(text):
-    """What the project wrote in AGENTS.md: the managed block is the engine's, and an update replaces it."""
+    """What the project wrote in AGENTS.md: the managed block and the stack sections are the engine's,
+    and an update replaces them."""
+    destination = managed_blocks.INSTRUCTION_SECTIONS_DESTINATION
     try:
-        remaining = without_managed_block(text)
-    except ValueError:
+        remaining = without_instruction_blocks(text, sorted(managed_blocks.parse(text, destination)))
+    except (ValueError, managed_blocks.MarkerError):
         # Markers that are not one pair: nothing can tell the block apart, so all of it is reviewed.
         return text
     return text if remaining is None else remaining
@@ -1924,6 +1933,27 @@ def remove_empty_parents(project_root, path):
         directory = os.path.dirname(directory)
 
 
+def instruction_sections_now(project_root, entries):
+    """The block entries of a plan, with those of AGENTS.md classified again against the file as it is.
+
+    Between the plan and finalize the apply itself writes AGENTS.md: it creates the file from the
+    template or renders the managed block again. Without this, the sections of the stacks would see
+    a file that changed during synchronization and stay out of it.
+    """
+    destination = managed_blocks.INSTRUCTION_SECTIONS_DESTINATION
+    sections = [entry for entry in entries if entry["destination"] == destination]
+    if not sections:
+        return entries
+    desired = {(destination, entry["id"]): {"profile": entry["profile"], "source": entry["source"],
+                                            "content": entry["content"]}
+               for entry in sections if entry.get("content") is not None}
+    locked = {destination: {entry["id"]: {"profile": entry["profile"], "source": entry["source"],
+                                          "sha256": entry["baseSha256"]}
+                            for entry in sections if entry["baseSha256"]}}
+    kept = [entry for entry in entries if entry["destination"] != destination]
+    return kept + managed_blocks.classify(project_root, desired, locked)
+
+
 def finalize(project_root, skill_dir, plan, updates):
     """Retire assets, then write the lockfile and the manifest."""
     lock_assets = {}
@@ -1991,7 +2021,7 @@ def finalize(project_root, skill_dir, plan, updates):
             lock_assets[entry["destination"]]["viewPreserved"] = True
 
     conflicts += [f"{view}: {DETACHED_VIEW_REASON}" for view in plan["detachedViews"]]
-    block_report = managed_blocks.apply(project_root, plan.get("blocks", []))
+    block_report = managed_blocks.apply(project_root, instruction_sections_now(project_root, plan.get("blocks", [])))
     conflicts += block_report["conflicts"]
     failed += [f"managed blocks of {problem}" for problem in block_report["failed"]]
 
@@ -3308,6 +3338,9 @@ def block_removal_entries(project_root, lock):
     """Each file with managed blocks loses them; a file that only held blocks goes."""
     entries = []
     for destination, blocks in sorted(((lock or {}).get("blocks") or {}).items()):
+        if destination == managed_blocks.INSTRUCTION_SECTIONS_DESTINATION:
+            # The stack sections go with the managed block (instruction_removal_entries).
+            continue
         path = os.path.join(project_root, destination)
         local = local_state(path)
         if local == LOCAL_ABSENT:
@@ -3337,26 +3370,54 @@ def block_removal_entries(project_root, lock):
     return entries
 
 
+def section_ids(lock):
+    """Ids of the stack sections the lock records in AGENTS.md."""
+    return sorted((((lock or {}).get("blocks") or {}).get(managed_blocks.INSTRUCTION_SECTIONS_DESTINATION) or {}))
+
+
+def without_instruction_blocks(text, sections):
+    """AGENTS.md without the stack sections and the managed block, or None when it holds none of them.
+
+    Raises ValueError when the markers of either kind do not pair up.
+    """
+    destination = managed_blocks.INSTRUCTION_SECTIONS_DESTINATION
+    try:
+        stripped = text
+        for block_id in sections:
+            stripped = managed_blocks.without_block(stripped, destination, block_id)
+    except managed_blocks.MarkerError as marker_error:
+        raise ValueError(AMBIGUOUS_MARKERS_REASON) from marker_error
+    remaining = without_managed_block(stripped)
+    if remaining is None and stripped != text:
+        return stripped.rstrip("\n") + "\n" if stripped.strip() else ""
+    return remaining
+
+
 def instruction_removal_entries(project_root, skill_dir, lock):
-    """The managed block of AGENTS.md goes; the file goes too when nothing of the project is left."""
+    """The managed block of AGENTS.md and the sections of the stacks go; the file goes too when nothing of
+    the project is left."""
     path = os.path.join(project_root, "AGENTS.md")
     local = local_state(path)
     if local in (LOCAL_ABSENT, LOCAL_NOT_A_FILE):
         return []
     if local == LOCAL_SYMLINK:
         return [removal_entry("AGENTS.md", REMOVAL_KEEP, "a symlink; remove its managed block by hand", "instructions")]
-    with open(path, encoding="utf-8") as file_handle:
+    with open(path, encoding="utf-8", newline="") as file_handle:
         try:
-            remaining = without_managed_block(file_handle.read())
+            remaining = without_instruction_blocks(file_handle.read(), section_ids(lock))
         except ValueError:
             return [removal_entry("AGENTS.md", REMOVAL_KEEP, AMBIGUOUS_MARKERS_REASON, "instructions")]
     if remaining is None:
         return []
     skeleton = template_skeleton(skill_dir, lock)
     if remaining.strip() and (skeleton is None or normalized_lines(remaining) != normalized_lines(skeleton)):
-        return [removal_entry("AGENTS.md", REMOVAL_EDIT, "removes the managed block; the project's content stays",
-                              "instructions", local)]
-    entries = [removal_entry("AGENTS.md", REMOVAL_REMOVE, "only holds the managed block and the template", "instructions", local)]
+        entry = removal_entry("AGENTS.md", REMOVAL_EDIT,
+                              "removes the managed block and the stack sections; the project's content stays",
+                              "instructions", local)
+        entry["blocks"] = section_ids(lock)
+        return [entry]
+    entries = [removal_entry("AGENTS.md", REMOVAL_REMOVE,
+                             "only holds the managed block, the stack sections and the template", "instructions", local)]
     proxy = os.path.join(project_root, "CLAUDE.md")
     proxy_local = local_state(proxy)
     if proxy_local == sha256_of_file(os.path.join(skill_dir, CLAUDE_PROXY_RELATIVE_PATH)):
@@ -3686,9 +3747,9 @@ def apply_removal_entry(project_root, skill_dir, entry, report):
         return
     if entry["kind"] == "instructions":
         # Read and close before replacing: Windows refuses to replace an open file.
-        with open(path, encoding="utf-8") as file_handle:
+        with open(path, encoding="utf-8", newline="") as file_handle:
             current = file_handle.read()
-        write_text_atomically(path, without_managed_block(current))
+        write_text_atomically(path, without_instruction_blocks(current, entry.get("blocks", [])))
     else:
         template_path = dict(settings_templates(skill_dir))[entry["path"]]
         write_text_atomically(path, serialize_settings(settings_without_managed_entries(project_root, entry["path"], template_path)[1]))

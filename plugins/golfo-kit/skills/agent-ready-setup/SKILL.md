@@ -16,7 +16,7 @@ description: >-
   descartar un hallazgo de sus revisiones de IA.
 license: MIT
 metadata:
-  version: "1.29.0"
+  version: "1.30.0"
   author: "guponce"
   category: "developer-experience"
   tags: "agent-ready, multi-provider, claude-code, codex, bootstrap, setup, scaffold, context-optimized-v1.20.1"
@@ -164,8 +164,8 @@ Sin manifest, un agente corre `agent-ready init --profiles <a,b> --yes` (o `--st
 selección confirmada abajo; una persona en su terminal puede correr `agent-ready init` y responder.
 Con manifest, usar sus profiles: correr `agent-ready apply` sin `--stack` ni `--profiles`, y cambiar
 la selección con `agent-ready profiles add|remove`. Si
-el usuario pide otros, pasar `--profiles a,b` (el primero de tipo stack aporta el
-template de `AGENTS.md`). `--stack <s>` selecciona los defaults de ese stack: incluye
+el usuario pide otros, pasar `--profiles a,b` (cada stack suma su sección a `AGENTS.md`,
+sobre un template base único). `--stack <s>` selecciona los defaults de ese stack: incluye
 `browser`, salvo `--stack android`. Sin manifest, inspeccionar el proyecto con la
 detección, que solo lee archivos:
 

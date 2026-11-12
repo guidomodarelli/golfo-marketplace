@@ -3480,8 +3480,8 @@
     },
     {
       "id": "two-stacks-in-one-repository",
-      "description": "Un monorepo con frontend React y un servicio Node selecciona los dos stacks; cada uno trae sus assets con su prefijo y el primero aporta el template de AGENTS.md.",
-      "input": "Tengo un monorepo con una app React y un servicio Node. ¿Puedo usar los stacks frontend y node a la vez con agent-ready-setup? ¿Qué comando corro, cómo se llaman las rules de seguridad de cada uno y cuál aporta el AGENTS.md? No ejecutes Bash ni escribas archivos.",
+      "description": "Un monorepo con frontend React y un servicio Node selecciona los dos stacks; cada uno trae sus assets con su prefijo y su sección de AGENTS.md.",
+      "input": "Tengo un monorepo con una app React y un servicio Node. ¿Puedo usar los stacks frontend y node a la vez con agent-ready-setup? ¿Qué comando corro, cómo se llaman las rules de seguridad de cada uno y cómo queda el AGENTS.md? No ejecutes Bash ni escribas archivos.",
       "assertions": [
         {
           "type": "regex",
@@ -3501,8 +3501,40 @@
         },
         {
           "type": "regex",
-          "pattern": "(primer|principal|primary).{0,120}AGENTS|AGENTS.{0,120}(primer|principal|primary)",
-          "description": "Dice que el primer stack es el principal y aporta el template de AGENTS.md"
+          "pattern": "[Ss]ecci[^.]{0,160}(stack|frontend|node)|(stack|frontend|node)[^.]{0,160}[Ss]ecci",
+          "description": "Dice que cada stack suma su sección a AGENTS.md"
+        }
+      ]
+    },
+    {
+      "id": "agents-md-stack-sections",
+      "description": "El AGENTS.md sale de un template base único más una sección por stack como bloque con id; sacar un stack se lleva su sección y la revisión de IA no la toca.",
+      "input": "En un repo con agent-ready-setup y los stacks frontend y node, ¿de dónde sale cada parte del AGENTS.md? Si saco frontend de la selección y vuelvo a aplicar, ¿qué pasa con lo de frontend en el AGENTS.md? ¿La revisión de IA de AGENTS.md puede borrar esas secciones? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "assets/common/agents-template.md",
+          "description": "Ubica el template base único en assets/common",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "AGENT-READY MANAGED: frontend",
+            "AGENT-READY MANAGED: node",
+            "blocks/AGENTS.md"
+          ],
+          "description": "Explica que cada stack aporta su sección como bloque con id"
+        },
+        {
+          "type": "regex",
+          "pattern": "se lleva su secci|secci[^.]{0,80}(desaparece|se elimina|se retira|se borra|se saca)|(desaparece|se elimina|se retira|se borra|se saca)[^.]{0,80}secci",
+          "description": "Dice que sacar frontend retira su sección"
+        },
+        {
+          "type": "regex",
+          "pattern": "placeholder|AGENT-READY MANAGED SECTION|solo lectura|read-only|[Rr]echaz",
+          "description": "Explica que la revisión ve la sección como contenido gestionado y no puede borrarla"
         }
       ]
     }

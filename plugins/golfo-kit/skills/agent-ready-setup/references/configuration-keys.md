@@ -15,7 +15,7 @@ Qué profiles y providers usa el repositorio. No es una funcionalidad que se apa
 
 | Clave | Tipo | Default | Capas | Variable | Seguridad | Descripción |
 |---|---|---|---|---|---|---|
-| `profiles` | lista de string | — | project | — | — | Profiles elegidos, en orden; el primero de tipo stack aporta el template de AGENTS.md. Sin valor, la detección inicial elige y el apply lo guarda. |
+| `profiles` | lista de string | — | project | — | — | Profiles elegidos, en orden; cada stack suma su sección a AGENTS.md y el primero desempata la detección. Sin valor, la detección inicial elige y el apply lo guarda. |
 | `providers` | lista de string (`claude`, `codex`) | `["claude", "codex"]` | project | — | — | Providers para los que el repositorio declara su configuración; el lockfile los registra. |
 
 ## `ci`: Chequeo de CI
