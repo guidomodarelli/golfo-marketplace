@@ -113,7 +113,7 @@ copy_skill() {
   resolve_config
   [ "$(config_value 'sorted(set(data["origins"].values()))')" = "['defaults']" ]
 
-  run_bootstrap --profiles node
+  run_bootstrap --profiles android
   [ "$status" -eq 0 ]
   run python3 - "$skill_dir/scripts" <<'PY'
 import json, sys
@@ -317,9 +317,9 @@ PY
 }
 
 @test "updates.enabled false: SessionStart checks and syncs nothing, an explicit sync still runs" {
-  run_bootstrap --profiles node
+  run_bootstrap --profiles android
   [ "$status" -eq 0 ]
-  write_project '{"profiles": ["node"], "updates": {"enabled": false}}'
+  write_project '{"profiles": ["android"], "updates": {"enabled": false}}'
   rm -f "$cli_calls"
   before="$(tree_fingerprint)"
 
