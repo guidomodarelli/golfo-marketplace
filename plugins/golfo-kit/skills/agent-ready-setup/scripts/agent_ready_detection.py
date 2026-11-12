@@ -487,8 +487,8 @@ def evaluate_detect_block(detect, inspector):
 def detect_profiles(profiles, project_root):
     """Evaluate a validated catalog against a project.
 
-    A stack that another matched stack supersedes drops out, and so does a layer that a
-    matched stack requires: the most specific layer wins and brings the others through
+    A layer matches only when the stack layers it requires match too. A stack that another
+    matched stack supersedes drops out, and so does a layer that a matched stack requires: the most specific layer wins and brings the others through
     ``requires``. One stack left is the primary stack; several are ambiguous and need an
     explicit selection, because picking one would depend on an arbitrary order.
     Capabilities are only reported.
@@ -503,6 +503,15 @@ def detect_profiles(profiles, project_root):
         evidence = evaluate_detect_block(detect, inspector)
         if evidence:
             (stacks if profile.get("kind") == STACK_PROFILE_KIND else capabilities)[name] = evidence
+    # A layer matches only when the stack layers it extends match too: an app/layout.tsx without
+    # the next dependency is an ordinary source file, not the App Router.
+    unsupported = True
+    while unsupported:
+        unsupported = [name for name in stacks
+                       if any(profiles.get(layer, {}).get("kind") == STACK_PROFILE_KIND and layer not in stacks
+                              for layer in profiles[name].get("requires", []))]
+        for name in unsupported:
+            del stacks[name]
     superseded_by = {}
     for name in stacks:
         winners = sorted(

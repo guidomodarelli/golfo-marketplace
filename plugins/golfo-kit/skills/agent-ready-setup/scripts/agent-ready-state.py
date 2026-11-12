@@ -500,7 +500,10 @@ def primary_stack(catalog, resolved):
     selected, ``react`` and ``nextjs`` come first only because it requires them.
     """
     profiles = catalog["profiles"]
-    required = {layer for name in resolved for layer in required_layers(profiles, name)}
+    # Only another stack makes a stack less specific: a capability or a pack profile that requires
+    # one does not replace it.
+    required = {layer for name in resolved if profiles[name].get("kind") == STACK_PROFILE_KIND
+                for layer in required_layers(profiles, name)}
     for name in resolved:
         if profiles[name].get("kind") == STACK_PROFILE_KIND and name not in required:
             return name

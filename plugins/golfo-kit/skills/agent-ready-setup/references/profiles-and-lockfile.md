@@ -138,7 +138,9 @@ by`), las señales y, si apuntan a otro stack, un aviso. Para cambiar la selecci
 pedirlo con `--stack` o `--profiles`.
 
 **Stack primario.** Detectar varias señales no aplica varios stacks. Una capa reemplaza a
-las que requiere cuando coinciden juntas, y hereda lo que ellas reemplazan: la más
+las que requiere cuando coinciden juntas, y hereda lo que ellas reemplazan. Una capa solo
+coincide si coinciden también las capas que requiere: un `app/layout.tsx` sin `next` en
+`package.json` es un archivo más, no el App Router. la más
 específica es el primario y trae las otras por `requires`. `supersedes` declara qué stacks
 reemplaza uno sin requerirlos, y solo se usa donde uno es una especialización del otro:
 

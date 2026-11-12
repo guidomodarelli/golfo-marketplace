@@ -559,3 +559,22 @@ PY
   [[ "$output" == *"stack priorities form a cycle"* ]]
   [ "$(tree_fingerprint)" = "$before" ]
 }
+
+@test "an app/layout.tsx without the next dependency is not the App Router" {
+  printf '%s\n' '{"dependencies": {"react": "19.0.0"}}' > package.json
+  mkdir -p src/app
+  printf '%s\n' 'export default function Layout() {}' > src/app/layout.tsx
+
+  run_detect
+  [ "$status" -eq 0 ]
+  [[ "${lines[0]}" == "Stack: react" ]]
+  [[ "$output" != *"nextjs-app-router"* ]]
+}
+
+@test "a capability that requires a stack leaves that stack as the primary one" {
+  copy_skill_with_catalog 'catalog["profiles"]["node-extras"] = {"kind": "capability", "description": "Extras.", "requires": ["node"]}'
+  run python3 "$source_copy/scripts/agent-ready-state.py" resolve --project . --skill-dir "$source_copy" \
+    --profiles node-extras --compose-dir "$test_root/compose"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *$'primary\tnode'* ]]
+}
