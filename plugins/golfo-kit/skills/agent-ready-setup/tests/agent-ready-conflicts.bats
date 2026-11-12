@@ -148,6 +148,8 @@ first_conflict_id() {
   # Of AGENTS.md only what the project wrote: the managed block is the engine's.
   grep -Fq '# [Project Name]' "$FAKE_INPUT"
   ! grep -Fq 'BEGIN AGENT-READY MANAGED' "$FAKE_INPUT"
+  # Nor the section of the stack, which the next apply also replaces.
+  ! grep -Fq 'run `/node-review-pr`' "$FAKE_INPUT"
   # Only reports: nothing in the repository changed.
   ! grep -Fq 'Verify every change.' .agents/rules/verify-changes.md
 }

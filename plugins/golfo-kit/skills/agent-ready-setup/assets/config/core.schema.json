@@ -8,7 +8,7 @@
   "additionalProperties": false,
   "properties": {
     "profiles": {
-      "description": "Profiles elegidos, en orden; el primero de tipo stack aporta el template de AGENTS.md. Sin valor, la detección inicial elige y el apply lo guarda.",
+      "description": "Profiles elegidos, en orden; cada stack suma su sección a AGENTS.md y el primero desempata la detección. Sin valor, la detección inicial elige y el apply lo guarda.",
       "type": "array",
       "items": { "type": "string", "minLength": 1 },
       "minItems": 1,

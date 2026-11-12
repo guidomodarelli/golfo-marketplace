@@ -37,8 +37,8 @@ validate_instruction_templates() {
     echo "ERROR: No template found for stack '$stack' at $SRC" >&2
     return 1
   fi
-  if [[ ! -f "$SRC/agents-template.md" ]]; then
-    echo "ERROR: Stack template is missing agents-template.md: $SRC/agents-template.md" >&2
+  if [[ ! -f "$COMMON_SRC/agents-template.md" ]]; then
+    echo "ERROR: Base template is missing agents-template.md: $COMMON_SRC/agents-template.md" >&2
     return 1
   fi
   if [[ ! -d "$SRC/rules" ]]; then
@@ -252,7 +252,7 @@ is_plain_claude_proxy() {
 create_root_agents_from_template() {
   local temporary_agents_file
   local -a renderer_arguments=(
-    --template "$SRC/agents-template.md"
+    --template "$COMMON_SRC/agents-template.md"
     --rules-dir "$SRC/rules"
     --project-rules-dir "$SHARED_DIR/rules"
     --centralization "$CENTRALIZATION_TEMPLATE"

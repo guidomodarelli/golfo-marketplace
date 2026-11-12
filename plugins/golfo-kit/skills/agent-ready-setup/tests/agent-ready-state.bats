@@ -600,8 +600,10 @@ EOF
   done
   cmp -s .agents/rules/node-coding-style.md "$skill_dir/assets/stacks/node/rules/node-coding-style.md"
   cmp -s .agents/rules/frontend-style.md "$skill_dir/assets/stacks/frontend/rules/frontend-style.md"
-  # Only the primary stack brings the AGENTS.md template: frontend's has no project skeleton.
-  ! grep -Fq '<!-- e.g. Node.js' AGENTS.md
+  # One base template, and a section of each stack in the order of its id.
+  [ "$(grep -Fxc '# [Project Name]' AGENTS.md)" -eq 1 ]
+  [ "$(grep -E '^<!-- BEGIN AGENT-READY MANAGED: [a-z]+ -->$' AGENTS.md | tr '\n' ' ')" = \
+    "<!-- BEGIN AGENT-READY MANAGED: frontend --> <!-- BEGIN AGENT-READY MANAGED: node --> " ]
 
   run_bootstrap_with "$skill_dir" --plan
   [ "$status" -eq 0 ]

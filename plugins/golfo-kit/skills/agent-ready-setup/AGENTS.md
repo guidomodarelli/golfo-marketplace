@@ -7,7 +7,7 @@ Al agregar o modificar una rule, skill, agent, command, template de instruccione
 1. Antes de cerrar el cambio, verificar que no contradiga ni duplique las instrucciones que se cargan junto con ella:
    - rules comunes de `assets/common/rules/`;
    - rules, skills, agents y commands de `assets/stacks/<stack>/`;
-   - bloque gestionado de `AGENTS.md` (`assets/stacks/<stack>/CLAUDE.md` y `assets/instruction-centralization.md`);
+   - `AGENTS.md` gestionado: el template base `assets/common/agents-template.md`, `assets/instruction-centralization.md` y la sección de cada stack (`assets/stacks/<stack>/blocks/AGENTS.md`);
    - proxy `assets/claude-proxy.md`;
    - `SKILL.md`.
 2. Revisar el mismo cambio en todos los stacks (`frontend`, `node`, `java`, `go`, `android`) cuando aplique. Si una rule aplica igual a todos los stacks, publicarla una sola vez en `assets/common/rules/` en lugar de copiarla en cada stack.

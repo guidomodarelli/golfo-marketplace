@@ -7,7 +7,8 @@ lives in that file between two marker lines that carry its id, the name of the p
     # BEGIN AGENT-READY MANAGED: golfo             (.gitignore, .gitattributes, YAML, TOML, shell)
 
 Each apply replaces what is between the markers and leaves the rest of the file to the project.
-Several profiles keep blocks of their own in the same file. Markers that repeat, come out of order
+Several profiles keep blocks of their own in the same file. The root ``AGENTS.md`` takes the section
+of each selected stack this way, beside the managed block the engine renders there. Markers that repeat, come out of order
 or nest stop every change to that file. The lockfile keeps the sha256 of each block, and a block
 whose profile leaves the selection is removed; a file left empty goes away. The contract is in
 ``references/managed-agents-block.md``.
@@ -34,6 +35,9 @@ MARKER_LABEL = "AGENT-READY MANAGED"
 # any case, and the directories of Git and of the providers.
 RESERVED_DESTINATIONS = ("AGENTS.md", "CLAUDE.md")
 RESERVED_PREFIXES = (".git/", ".agents/", ".claude/", ".codex/")
+# The one instruction file that takes blocks: each stack adds its section to the root AGENTS.md,
+# next to the managed block the engine renders there (managed-block.sh keeps both apart).
+INSTRUCTION_SECTIONS_DESTINATION = "AGENTS.md"
 
 ACTION_CREATE = "create"
 ACTION_UPDATE = "update"
@@ -71,6 +75,8 @@ def validate_destination(destination, profile):
         raise ProfileError(f"profile '{profile}': the block {destination} does not stay inside the repository")
     folded = destination.casefold()
     basename = folded.rsplit("/", 1)[-1]
+    if destination == INSTRUCTION_SECTIONS_DESTINATION:
+        return
     if basename in {name.casefold() for name in RESERVED_DESTINATIONS} or folded.startswith(RESERVED_PREFIXES):
         raise ProfileError(f"profile '{profile}': {destination} is not a file a block can go to")
     if comment_syntax(destination) is None:

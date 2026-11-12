@@ -1,11 +1,13 @@
 # Bloques gestionados
 
-El bloque de `AGENTS.md`, que se arma con un template y las rules, y los bloques con id que un profile
-publica en otros archivos compartidos con el proyecto (sección final, «Bloques en otros archivos»).
+El bloque de `AGENTS.md`, que se arma con un template y las rules, la sección de cada stack (sección
+«Secciones de los stacks») y los bloques con id que un profile publica en otros archivos compartidos con
+el proyecto (sección final, «Bloques en otros archivos»).
 
 
-Cada template de stack (`assets/stacks/<stack>/agents-template.md`) define el bloque
-entre `<!-- BEGIN AGENT-READY MANAGED -->` y `<!-- END AGENT-READY MANAGED -->`.
+Un único template base (`assets/common/agents-template.md`), igual para todos los stacks, define el
+esqueleto del proyecto y el bloque entre `<!-- BEGIN AGENT-READY MANAGED -->` y
+`<!-- END AGENT-READY MANAGED -->`.
 `scripts/render-instruction-template.sh` lo materializa:
 
 - `{{AGENT_READY_RULE_REFERENCES}}`: una referencia portable
@@ -53,6 +55,11 @@ después de aplicar el bloque literal con `scripts/apply-managed-block.sh` (un
    el contenido del proyecto.
 6. Si los marcadores están duplicados o desordenados, no modifica el archivo y
    termina con código `2` para revisión humana.
+7. Las secciones de los stacks tampoco son del proyecto: en el contenido que revisa
+   la IA, cada una es una línea `<!-- AGENT-READY MANAGED SECTION: <id> -->`, y su
+   texto viaja como parte del bloque, de solo lectura. La revisión se rechaza si pierde
+   o repite esa línea, si escribe un marcador de sección o si los marcadores de una
+   sección no aparean (así no puede borrarlos como si fueran líneas redundantes).
 
 La revisión completada se guarda, con sus inconsistencias, en la caché de revisiones
 de IA, cuya clave incluye `AGENTS.md`, las rules del template y propias, el provider y
@@ -72,6 +79,32 @@ valor se pasa tal cual al CLI del provider (`claude --model/--effort`, `codex
 Los hooks generados no pasan flags de confirmación durante `SessionStart`.
 `CLAUDE.md` nunca se modifica durante este paso.
 
+## Secciones de los stacks
+
+Cada stack publica su sección en `assets/stacks/<stack>/blocks/AGENTS.md`: un bloque con id (sección
+siguiente) en el `AGENTS.md` de la raíz, con el nombre del stack como id
+(`<!-- BEGIN AGENT-READY MANAGED: node -->`). Con `--profiles frontend,node`, el `AGENTS.md` lleva el
+template base, el bloque de rules y una sección `## Frontend` y otra `## Node.js`; una sección nueva
+se agrega al final del archivo. El stack primario solo desempata la detección; no aporta el template.
+
+- Solo un profile `stack` agrega una sección, y solo al `AGENTS.md` de la raíz: un profile `capability`,
+  un pack o un `AGENTS.md` de otro directorio hacen fallar el plan.
+- Cada sección tiene su drift en el lock: `plan` muestra la edición local de una sola sección, y el
+  apply la restaura sin tocar las demás ni el contenido del proyecto.
+- El apply crea `AGENTS.md` o vuelve a renderizar su bloque antes de `finalize`: las secciones se
+  clasifican de nuevo contra el archivo que dejó el propio apply, no contra el del plan.
+- Un `AGENTS.md` del proyecto que todavía no tiene el bloque (legacy) no recibe secciones: sigue
+  siendo del proyecto hasta que la revisión ubica el bloque. Mientras el `CLAUDE.md` de la raíz tenga
+  instrucciones propias distintas de `AGENTS.md`, el apply tampoco agrega, actualiza ni saca secciones:
+  el agente une los dos archivos primero. En los dos casos las secciones se ponen al día en el apply
+  siguiente, y mientras tanto el lock conserva las que ya conocía.
+- Un stack que sale de la selección se lleva su sección. `agent-ready remove` saca las secciones junto
+  con el bloque de rules, y borra `AGENTS.md` si solo queda el esqueleto del template. Si alguna sección
+  queda en el archivo (marcadores rotos, un symlink o un cambio durante la remoción), el lock se
+  conserva para que el próximo `remove` la encuentre.
+- `merge-instructions.sh`, `apply-managed-block.sh` y la normalización solo tocan el bloque de rules:
+  las secciones quedan literales (paso 7 de la revisión).
+
 ## Bloques en otros archivos
 
 Un profile, de golfo-kit o de un pack, publica la parte que le toca de un archivo compartido con el
@@ -88,9 +121,9 @@ manifest de vistas por hard link (`.claude/.agent-ready-hard-link-views`). `scri
     `<!-- END AGENT-READY MANAGED: common -->`;
   - `.gitignore`, `.gitattributes`, `.dockerignore`, YAML, TOML y shell: `# BEGIN AGENT-READY MANAGED: common`.
 
-  Otro tipo de archivo, un `AGENTS.md` o `CLAUDE.md` en cualquier directorio (sin importar mayúsculas) y
+  Otro tipo de archivo, un `CLAUDE.md` o un `AGENTS.md` fuera de la raíz (sin importar mayúsculas) y
   lo que está bajo `.git/`, `.agents/`, `.claude/` o `.codex/` no admiten bloques: el plan falla y nombra
-  el profile.
+  el profile. El `AGENTS.md` de la raíz solo admite la sección de un stack («Secciones de los stacks»).
 - **Contrato.** Es el mismo del bloque de `AGENTS.md`:
   - lo que está entre los marcadores se pisa en cada apply, y lo de afuera es del proyecto;
   - un bloque nuevo se agrega al final, separado por una línea en blanco;

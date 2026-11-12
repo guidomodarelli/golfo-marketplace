@@ -55,7 +55,7 @@ render_managed_block() {
   local source_dir="${2:-$skill_dir}"
 
   bash "$source_dir/scripts/render-instruction-template.sh" \
-    --template "$source_dir/assets/stacks/$stack/agents-template.md" \
+    --template "$source_dir/assets/common/agents-template.md" \
     --rules-dir "$source_dir/assets/stacks/$stack/rules" \
     --common-rules-dir "$source_dir/assets/common/rules" \
     --centralization "$source_dir/assets/instruction-centralization.md" \
@@ -319,6 +319,114 @@ EOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"fenced instead of Markdown"* ]]
   grep -Fxq '# Keep this file' AGENTS.md
+}
+
+# AGENTS.md with the managed block, the section of the node stack and project content after it.
+write_agents_with_section() {
+  {
+    printf '%s\n\n' '# Project'
+    render_managed_block node
+    printf '\n%s\n%s\n%s\n%s\n' '<!-- BEGIN AGENT-READY MANAGED: node -->' '## Node.js' \
+      'Review a pull request with /node-review-pr.' '<!-- END AGENT-READY MANAGED: node -->'
+    printf '\n%s\n\n%s\n%s\n' '## Ownership' 'Team Astra owns this service.' 'Review a pull request with /node-review-pr.'
+  } > AGENTS.md
+}
+
+# Number of lines of AGENTS.md that are exactly the given marker.
+marker_count() {
+  grep -Fxc -- "$1" AGENTS.md || true
+}
+
+@test "the review never sees a stack section as project content, and the section stays verbatim" {
+  write_agents_with_section
+  section_placeholder='<!-- AGENT-READY MANAGED SECTION: node -->'
+  write_review_response $'# Project\n\n'"$managed_placeholder"$'\n\n'"$section_placeholder"$'\n\n## Ownership\n\nTeam Astra owns this service.' \
+    '["Review a pull request with /node-review-pr. — covered by the node section"]'
+
+  run_merge node
+
+  [ "$status" -eq 0 ]
+  # The section goes to the provider as managed content; the project content carries its placeholder.
+  awk '/^<managed_block>$/,/^<\/managed_block>$/' "$test_root/provider-prompt.log" | grep -Fxq '## Node.js'
+  awk '/^<project_content>$/,/^<\/project_content>$/' "$test_root/provider-prompt.log" | grep -Fxq "$section_placeholder"
+  ! awk '/^<project_content>$/,/^<\/project_content>$/' "$test_root/provider-prompt.log" | grep -Fxq '## Node.js'
+  [ "$(marker_count '<!-- BEGIN AGENT-READY MANAGED: node -->')" -eq 1 ]
+  [ "$(marker_count '<!-- END AGENT-READY MANAGED: node -->')" -eq 1 ]
+  grep -Fxq '## Node.js' AGENTS.md
+  [ "$(grep -Fxc 'Review a pull request with /node-review-pr.' AGENTS.md)" -eq 1 ]
+  grep -Fxq 'Team Astra owns this service.' AGENTS.md
+  ! grep -Fq "$section_placeholder" AGENTS.md
+  bash "$skill_dir/scripts/render-instruction-template.sh" --validate AGENTS.md \
+    --rules-dir "$skill_dir/assets/stacks/node/rules" \
+    --common-rules-dir "$skill_dir/assets/common/rules"
+}
+
+@test "a review that drops, repeats or rewrites a stack section is rejected and the file keeps it" {
+  write_agents_with_section
+  cp AGENTS.md "$test_root/before"
+  section_placeholder='<!-- AGENT-READY MANAGED SECTION: node -->'
+
+  # Dropped.
+  write_review_response $'# Project\n\n'"$managed_placeholder"$'\n\n## Ownership\n\nTeam Astra owns this service.'
+  run_merge node
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"must keep the stack section placeholder $section_placeholder exactly once"* ]]
+  cmp -s AGENTS.md "$test_root/before"
+
+  # Repeated: a second copy of the section would duplicate its markers.
+  write_review_response $'# Project\n\n'"$managed_placeholder"$'\n\n'"$section_placeholder"$'\n\n## Ownership\n\n'"$section_placeholder"
+  run_merge node
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"must keep the stack section placeholder $section_placeholder exactly once"* ]]
+  cmp -s AGENTS.md "$test_root/before"
+
+  # Markers written by the review itself, with or without the placeholder.
+  for written_marker in '<!-- END AGENT-READY MANAGED: node -->' '<!-- BEGIN AGENT-READY MANAGED: other -->'; do
+    write_review_response $'# Project\n\n'"$managed_placeholder"$'\n\n'"$section_placeholder"$'\n'"$written_marker"
+    run_merge node
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"contains managed markers outside the managed block"* ]]
+    cmp -s AGENTS.md "$test_root/before"
+  done
+
+  # The content of the section never comes from the review: rewriting it is a line the input did not have.
+  write_review_response $'# Project\n\n'"$managed_placeholder"$'\n\n'"$section_placeholder"$'\n## Node.js, reworded'
+  run_merge node
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"reviewed content adds or rewrites a line"* ]]
+  cmp -s AGENTS.md "$test_root/before"
+}
+
+@test "markers of a stack section that do not pair up keep the review from deleting them" {
+  write_agents_with_section
+  # A second start of the node section, as a bad hand edit leaves it.
+  printf '%s\n' '<!-- BEGIN AGENT-READY MANAGED: node -->' >> AGENTS.md
+  cp AGENTS.md "$test_root/before"
+  # The review deletes every marker line it sees: only deletions, so the line check alone would accept it.
+  write_review_response $'# Project\n\n'"$managed_placeholder"$'\n\n## Node.js\nReview a pull request with /node-review-pr.\n\n## Ownership\n\nTeam Astra owns this service.'
+
+  run_merge node
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"the markers of a stack section do not pair up"* ]]
+  cmp -s AGENTS.md "$test_root/before"
+}
+
+@test "apply-managed-block keeps each stack section once and verbatim, run after run" {
+  write_agents_with_section
+  awk '/^<!-- BEGIN AGENT-READY MANAGED: node -->$/,/^<!-- END AGENT-READY MANAGED: node -->$/' AGENTS.md \
+    > "$test_root/section-before"
+
+  for run_number in 1 2; do
+    run_apply_managed_block node
+    [ "$status" -eq 0 ]
+    [ "$(provider_call_count)" -eq 0 ]
+    [ "$(marker_count '<!-- BEGIN AGENT-READY MANAGED -->')" -eq 1 ]
+    [ "$(marker_count '<!-- BEGIN AGENT-READY MANAGED: node -->')" -eq 1 ]
+    [ "$(marker_count '<!-- END AGENT-READY MANAGED: node -->')" -eq 1 ]
+    awk '/^<!-- BEGIN AGENT-READY MANAGED: node -->$/,/^<!-- END AGENT-READY MANAGED: node -->$/' AGENTS.md \
+      | cmp -s - "$test_root/section-before"
+  done
 }
 
 @test "provider failure applies the managed block and retries the review next sync" {
