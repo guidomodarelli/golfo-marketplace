@@ -290,7 +290,10 @@ PY
   [ "$status" -eq 0 ]
   [[ "$output" != *"Suggestions"* ]]
 
-  run_bootstrap --plan --profiles node
+  # node brings browser by default: only a repository that leaves it out gets the suggestion.
+  mkdir -p .agents
+  printf '%s\n' '{"profiles": ["node"], "excludedDefaults": ["browser"]}' > .agents/agent-ready.json
+  run_bootstrap --plan
   [ "$status" -eq 0 ]
   [[ "$output" == *"? browser: package.json declares @playwright/test in devDependencies"* ]]
 }

@@ -369,7 +369,7 @@ publish_pack_repository() {
   [ "$status" -eq 0 ]
   run_cli sources list --json
   [ "$status" -eq 0 ]
-  [ "$(json_value "$output" '[(row["name"], row["state"], len(row["profiles"])) for row in data["sources"]]')" = "[('acme', 'available', 2)]" ]
+  [ "$(json_value "$output" '[(row["name"], row["state"], len(row["profiles"])) for row in data["sources"]]')" = "[('acme', 'available', 3)]" ]
 
   run_cli sources add acme path:./agent-packs/acme
   [ "$status" -eq 2 ]
