@@ -151,7 +151,7 @@ publish_pack_repository() {
   [[ "$stderr" == *"Resolved agent-ready-setup source:"* ]]
   [ -f .agents/rules/node-security.md ]
   [ -f .agents/agent-ready.lock.json ]
-  [ "$(grep -c 'BEGIN AGENT-READY MANAGED' AGENTS.md)" -eq 1 ]
+  [ "$(grep -cx '<!-- BEGIN AGENT-READY MANAGED -->' AGENTS.md)" -eq 1 ]
   [ "$(json_value "$(cat .agents/agent-ready.json)" 'data["profiles"]')" = "['node']" ]
 }
 
@@ -306,7 +306,7 @@ publish_pack_repository() {
   [ "$status" -eq 0 ]
   [ -z "$output" ]
   [ "$(json_value "$(cat .agents/agent-ready.json)" 'data["profiles"]')" = "['frontend', 'browser']" ]
-  [ "$(grep -c 'BEGIN AGENT-READY MANAGED' AGENTS.md)" -eq 1 ]
+  [ "$(grep -cx '<!-- BEGIN AGENT-READY MANAGED -->' AGENTS.md)" -eq 1 ]
 
   run_cli init --profiles node --yes
   [ "$status" -eq 2 ]
