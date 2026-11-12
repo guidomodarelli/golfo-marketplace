@@ -57,8 +57,9 @@ run_cli() {
   run --separate-stderr env PATH="$fake_bin:$PATH" python3 "$cli" "$@"
 }
 
+# The document goes through stdin: a plan with its blocks outgrows the 32 KiB command line of Windows.
 json_value() {
-  python3 -c 'import json,sys; data=json.loads(sys.argv[1]); print(eval(sys.argv[2], {"data": data}))' "$1" "$2" | tr -d '\r'
+  printf '%s' "$1" | python3 -c 'import json,sys; data=json.load(sys.stdin); print(eval(sys.argv[1], {"data": data}))' "$2" | tr -d '\r'
 }
 
 tree_fingerprint() {
