@@ -239,16 +239,33 @@ profile acepta `kind`, `description`, `assets`, `requires`, `conflicts`, `defaul
 significado de la sección 1, más `clis`, `mcpServers` y `scripts` ([pack-tools.md](pack-tools.md)), y
 estos límites:
 
-- `kind` es `capability` o `bundle`. Un profile que necesita un stack lo declara en `requires`.
+- `kind` es `capability`, `bundle` o `stack`. Un profile que necesita un stack lo declara en `requires`;
+  un pack publica un `stack` propio para una tecnología que golfo-kit no tiene (ver «Stacks de un pack»).
 - `tools` solo acepta herramientas que el motor ya conoce (`browser`).
 - Un pack no declara `baseAssets` ni otras fuentes, ni redefine un profile de
   Golfo. Los assets compartidos van en un profile propio, como `acme/base`, que los demás requieren.
 - `assets` publica solo `rules/`, `skills/`, `agents/`, `commands/` y `blocks/`, los bloques gestionados
   de archivos compartidos con el proyecto ([managed-agents-block.md](managed-agents-block.md), sección
-  «Bloques en otros archivos»). No puede traer hooks, settings, el template de `AGENTS.md`, una sección
-  de `AGENTS.md` ni archivos `AGENTS.md` o `CLAUDE.md`.
+  «Bloques en otros archivos»). No puede traer hooks, settings, el template de `AGENTS.md` ni archivos
+  `AGENTS.md` o `CLAUDE.md`; solo un profile `stack` publica su sección de `AGENTS.md` (`blocks/AGENTS.md`).
 - Las rules de un pack entran en la lista del bloque gestionado de `AGENTS.md`, como las de cualquier
   profile. Un pack no cambia el template ni las instrucciones propias del proyecto.
+
+**Stacks de un pack.** Un profile `kind: stack` de un pack es un stack primario como los de golfo-kit,
+para una tecnología que golfo-kit no tiene (un lenguaje, un DSL propio). `assets/examples/elixir-stack-pack/`
+publica `beam/elixir`:
+
+- Se detecta por sus señales (`detect`) en cuanto el manifest declara la fuente: sin `profiles`, la
+  detección inicial lo elige como a cualquier stack. También se elige con `--profiles beam/elixir` o
+  `--stack beam/elixir`.
+- Declara sus `defaults` y su sección de `AGENTS.md`, y se combina con las capabilities de golfo-kit.
+  Puede requerir un stack de golfo-kit (una capa, como en «Capas») o no requerir ninguno.
+- **Precedencia entre fuentes:** ninguna fuente gana por ser de golfo-kit o de un pack. Si un stack de un
+  pack y otro (de golfo-kit u otra fuente) coinciden en la detección, se pide una selección explícita,
+  salvo que uno declare `supersedes` sobre el otro. Un stack de un pack solo puede reemplazar a uno de
+  golfo-kit o de su mismo pack; golfo-kit no conoce los de los packs, y dos packs no se reemplazan entre
+  sí: sus stacks que coinciden piden una selección explícita.
+- Dos stacks que publican el mismo destino fallan antes de escribir, como cualquier par de profiles.
 
 **Compatibilidad declarada.** El catálogo de un pack, y el de golfo-kit (`assets/profiles.json`),
 pueden declarar tres campos opcionales:

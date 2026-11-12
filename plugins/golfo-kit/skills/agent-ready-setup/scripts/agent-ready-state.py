@@ -411,6 +411,12 @@ def load_effective_catalog(project_root, skill_dir, source_state=None):
             catalog["profiles"].update(pack["profiles"])
             catalog["packAssetRoots"].update(pack["assetRoots"])
         catalog["sources"][name] = source
+    if catalog["sources"]:
+        # Stacks of several sources compete in one detection: their priorities cannot form a cycle.
+        try:
+            validate_catalog_detection(catalog["profiles"])
+        except DetectionSchemaError as caught_error:
+            raise ProfileError(f"profile sources: {caught_error}") from caught_error
     return catalog
 
 
@@ -601,7 +607,9 @@ def compose_stack_directory(skill_dir, catalog, resolved, compose_root):
     """
     asset_profiles = [name for name in resolved if profile_asset_root(skill_dir, catalog, name)]
     primary = primary_stack(catalog, resolved)
-    if asset_profiles == [primary]:
+    # The instruction scripts read rules/ of the tree: a stack without rules of its own (a pack stack
+    # that only publishes its section) is composed, which gives the tree an empty rules/.
+    if asset_profiles == [primary] and os.path.isdir(os.path.join(profile_asset_root(skill_dir, catalog, primary), "rules")):
         return profile_asset_root(skill_dir, catalog, primary)
 
     owners = {}

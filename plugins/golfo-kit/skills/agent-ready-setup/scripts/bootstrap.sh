@@ -11,7 +11,7 @@
 # .agents/agent-ready.lock.json (lockfile).
 #
 # Usage:
-#   bash bootstrap.sh --skill-dir <path> [--profiles <a,b> | --stack <react|nextjs|nextjs-app-router|node|java|go|android>]
+#   bash bootstrap.sh --skill-dir <path> [--profiles <a,b> | --stack <stack>]
 #     [--provider <claude|codex>] [--updates <pinned|auto>] [--update-source <name>]... [--update-to <ref>]
 #     [--plan | --status | --config] [--offline] [--json]
 #
@@ -190,13 +190,11 @@ if [[ -n "$STACK" && -n "$PROFILES" ]]; then
   exit 1
 fi
 
-case "$STACK" in
-  ""|react|nextjs|nextjs-app-router|node|java|go|android) ;;
-  *)
-    echo "ERROR: Unsupported stack '$STACK'. Expected react, nextjs, nextjs-app-router, node, java, go, or android." >&2
-    exit 1
-    ;;
-esac
+# Which stacks exist is the profile catalog's to say (a pack can add its own); here only the name.
+if [[ -n "$STACK" && ! "$STACK" =~ ^[a-z0-9]+(-[a-z0-9]+)*(/[a-z0-9]+(-[a-z0-9]+)*)?$ ]]; then
+  echo "ERROR: Unsupported stack '$STACK'. A stack is a name such as node or acme/cobol." >&2
+  exit 1
+fi
 
 is_valid_skill_dir() {
   local candidate="$1"
@@ -584,6 +582,7 @@ fi
 [[ "$RUN_MODE" != apply ]] || cat -- "$configuration_messages" >&2
 rm -f -- "$configuration_messages"
 CONFIGURED_PROFILES=""
+CONFIGURED_PACK_SOURCES=""
 TOOLS_ENABLED=true
 FROM_LOCK_CONFIGURED=false
 while IFS=$'\t' read -r configuration_key configuration_value; do
@@ -594,6 +593,7 @@ while IFS=$'\t' read -r configuration_key configuration_value; do
     updates.refresh) [[ "$configuration_value" == false && ${#UPDATE_SOURCES[@]} -eq 0 ]] && OFFLINE=1 ;;
     tools.enabled) TOOLS_ENABLED="$configuration_value" ;;
     profiles) CONFIGURED_PROFILES="$configuration_value" ;;
+    sources.packs) CONFIGURED_PACK_SOURCES="$configuration_value" ;;
     updates.fromLock) FROM_LOCK_CONFIGURED="$configuration_value" ;;
   esac
 done <<< "$CONFIGURATION"
@@ -607,8 +607,11 @@ fi
 OFFLINE_ARGUMENTS=()
 [[ "$OFFLINE" -eq 1 ]] && OFFLINE_ARGUMENTS=(--offline)
 
-# A repository without a selection that detection cannot settle stops before the upgrade.
-if [[ "$RUN_MODE" != status && -z "$STACK" && -z "$PROFILES" && -z "$CONFIGURED_PROFILES" ]]; then
+# A repository without a selection that detection cannot settle stops before the upgrade. With
+# profile sources declared, a pack not fetched yet may bring the stack: the resolution after
+# fetch-sources detects with it, and still stops before writing.
+if [[ "$RUN_MODE" != status && -z "$STACK" && -z "$PROFILES" && -z "$CONFIGURED_PROFILES" &&
+      -z "$CONFIGURED_PACK_SOURCES" ]]; then
   if ! detection_report="$(python3 "$SKILL_DIR/scripts/agent-ready-state.py" detect --project . --skill-dir "$SKILL_DIR")"; then
     printf '%s\n' "$detection_report" >&2
     echo "ERROR: could not detect project stack; pass --profiles or --stack" >&2

@@ -3600,6 +3600,34 @@
           "description": "Dice que el lock guarda lo resuelto"
         }
       ]
+    },
+    {
+      "id": "pack-publishes-primary-stack",
+      "description": "Un pack publica un stack primario propio con detección y sección de AGENTS.md; empatar con un stack de golfo-kit pide selección explícita.",
+      "input": "Mi empresa programa en Elixir y agent-ready-setup no tiene ese stack. ¿Puedo publicar uno propio en un pack, cómo se detecta y cómo aporta su parte de AGENTS.md? ¿Qué pasa si el repo además tiene un package.json? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "kind[^.]{0,40}stack",
+          "description": "Usa un profile kind stack en el pack",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "blocks/AGENTS.md",
+          "description": "La sección de AGENTS.md va en blocks/AGENTS.md"
+        },
+        {
+          "type": "contains_any",
+          "values": ["selección explícita", "seleccion explicita", "ambiguous", "ambigu", "--profiles"],
+          "description": "Con package.json pide una selección explícita"
+        },
+        {
+          "type": "contains_any",
+          "values": ["supersedes", "elixir-stack-pack"],
+          "description": "Menciona supersedes o el pack de ejemplo"
+        }
+      ]
     }
   ]
 }

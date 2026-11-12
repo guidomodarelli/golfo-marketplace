@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "name": "beam",
+  "version": "1.0.0",
+  "profiles": {
+    "elixir": {
+      "kind": "stack",
+      "description": "Elixir services built with Mix: style, tests and its section of AGENTS.md.",
+      "assets": "profiles/elixir",
+      "defaults": ["business-flows"],
+      "detect": {
+        "signals": [
+          { "type": "file", "paths": ["mix.exs"] }
+        ]
+      }
+    }
+  }
+}

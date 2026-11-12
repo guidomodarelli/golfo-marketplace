@@ -87,8 +87,9 @@ siguiente) en el `AGENTS.md` de la raíz, con el nombre del stack como id
 template base, el bloque de rules y una sección `## React` y otra `## Node.js`; una sección nueva
 se agrega al final del archivo. El stack primario solo desempata la detección; no aporta el template.
 
-- Solo un profile `stack` agrega una sección, y solo al `AGENTS.md` de la raíz: un profile `capability`,
-  un pack o un `AGENTS.md` de otro directorio hacen fallar el plan.
+- Solo un profile `stack` agrega una sección, y solo al `AGENTS.md` de la raíz: un profile `capability`
+  o `bundle`, o un `AGENTS.md` de otro directorio, hacen fallar el plan. El stack de un pack también
+  agrega la suya, con su nombre con namespace como id (`<!-- BEGIN AGENT-READY MANAGED: beam/elixir -->`).
 - Cada sección tiene su drift en el lock: `plan` muestra la edición local de una sola sección, y el
   apply la restaura sin tocar las demás ni el contenido del proyecto.
 - El apply crea `AGENTS.md` o vuelve a renderizar su bloque antes de `finalize`: las secciones se

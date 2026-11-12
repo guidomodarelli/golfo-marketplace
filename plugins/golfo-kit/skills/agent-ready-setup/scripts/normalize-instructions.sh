@@ -6,7 +6,7 @@
 # after projecting managed assets.
 #
 # Usage:
-#   bash normalize-instructions.sh --stack <react|nextjs|nextjs-app-router|node|java|go|android>
+#   bash normalize-instructions.sh --stack <stack>   (a stack of the profile catalog, e.g. node or acme/cobol)
 
 set -euo pipefail
 
@@ -21,7 +21,7 @@ STACK=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --stack)
-      [[ $# -ge 2 && -n "${2:-}" ]] || { echo "ERROR: --stack requires react, nextjs, nextjs-app-router, node, java, go, or android" >&2; exit 1; }
+      [[ $# -ge 2 && -n "${2:-}" ]] || { echo "ERROR: --stack requires a stack name" >&2; exit 1; }
       STACK="$2"
       shift 2
       ;;
@@ -32,13 +32,10 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-case "$STACK" in
-  react|nextjs|nextjs-app-router|node|java|go|android) ;;
-  *)
-    echo "ERROR: --stack requires react, nextjs, nextjs-app-router, node, java, go, or android" >&2
-    exit 1
-    ;;
-esac
+if [[ ! "$STACK" =~ ^[a-z0-9]+(-[a-z0-9]+)*(/[a-z0-9]+(-[a-z0-9]+)*)?$ ]]; then
+  echo "ERROR: --stack requires a stack name such as node or acme/cobol" >&2
+  exit 1
+fi
 
 if ! command -v git >/dev/null 2>&1 || [[ "$(git rev-parse --is-inside-work-tree 2>/dev/null)" != true ]]; then
   echo "ERROR: instruction normalization must run inside a Git worktree" >&2

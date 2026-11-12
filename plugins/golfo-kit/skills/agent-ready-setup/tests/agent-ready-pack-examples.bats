@@ -162,3 +162,112 @@ PY
   run_cli apply
   [ -f .agents/rules/acme-platform.md ]
 }
+
+# A copy of the elixir example as a path source; the Python expression edits its catalog as `catalog`.
+add_elixir_pack() {
+  mkdir -p agent-packs .agents
+  cp -R "$examples/elixir-stack-pack" agent-packs/beam
+  if [[ -n "${1:-}" ]]; then
+    python3 - agent-packs/beam/agent-ready-pack.json "$1" <<'PY'
+import json, sys
+path, expression = sys.argv[1:]
+catalog = json.load(open(path, encoding="utf-8"))
+exec(expression, {"catalog": catalog})
+json.dump(catalog, open(path, "w", encoding="utf-8"))
+PY
+  fi
+  write_manifest '{"sources": {"packs": [{"name": "beam", "source": "path:./agent-packs/beam"}]}}'
+}
+
+@test "the stack example pack: detection picks its stack, and the apply brings its rules and its section" {
+  rm package.json
+  printf '%s\n' 'defmodule Shop.MixProject do end' > mix.exs
+  add_elixir_pack
+
+  run python3 "$skill_dir/scripts/agent-ready-state.py" detect --project . --skill-dir "$skill_dir"
+  [ "$status" -eq 0 ]
+  [[ "${lines[0]}" == "Stack: beam/elixir" ]]
+
+  run_cli apply
+  [ "$status" -eq 0 ]
+  [ -f .agents/rules/elixir-coding-style.md ]
+  [ -f .agents/rules/elixir-testing.md ]
+  # business-flows comes by the defaults of the pack stack.
+  [ -f .agents/rules/business-flows.md ]
+  grep -qx '<!-- BEGIN AGENT-READY MANAGED: beam/elixir -->' AGENTS.md
+  grep -qx '## Elixir' AGENTS.md
+  python3 - <<'PY'
+import json
+manifest = json.load(open(".agents/agent-ready.json", encoding="utf-8"))
+lock = json.load(open(".agents/agent-ready.lock.json", encoding="utf-8"))
+assert manifest["profiles"] == ["beam/elixir"], manifest["profiles"]
+assert lock["primaryStack"] == "beam/elixir", lock["primaryStack"]
+assert lock["profileOrder"] == ["beam/elixir", "business-flows"], lock["profileOrder"]
+PY
+}
+
+@test "a pack stack and a Golfo stack that match together need an explicit selection" {
+  printf '%s\n' 'defmodule Shop.MixProject do end' > mix.exs
+  add_elixir_pack
+
+  run python3 "$skill_dir/scripts/agent-ready-state.py" detect --project . --skill-dir "$skill_dir"
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"beam/elixir"* && "$output" == *"node"* ]]
+  run_cli apply
+  [ "$status" -ne 0 ]
+  [ ! -e AGENTS.md ]
+
+  run_cli apply --profiles beam/elixir,node
+  [ "$status" -eq 0 ]
+  grep -qx '<!-- BEGIN AGENT-READY MANAGED: beam/elixir -->' AGENTS.md
+  grep -qx '<!-- BEGIN AGENT-READY MANAGED: node -->' AGENTS.md
+}
+
+@test "a pack stack can supersede a Golfo stack, never a stack of another source" {
+  printf '%s\n' 'defmodule Shop.MixProject do end' > mix.exs
+  add_elixir_pack 'catalog["profiles"]["elixir"]["detect"]["supersedes"] = ["node"]'
+  run python3 "$skill_dir/scripts/agent-ready-state.py" detect --project . --skill-dir "$skill_dir"
+  [ "$status" -eq 0 ]
+  [[ "${lines[0]}" == "Stack: beam/elixir" ]]
+  [[ "$output" == *"node: package.json exists (superseded by beam/elixir)"* ]]
+
+  rm -rf agent-packs
+  add_elixir_pack 'catalog["profiles"]["elixir"]["detect"]["supersedes"] = ["other/cobol"]'
+  run python3 "$skill_dir/scripts/agent-ready-state.py" detect --project . --skill-dir "$skill_dir"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"cannot supersede 'other/cobol'"* ]]
+}
+
+@test "only a stack of a pack adds a section to AGENTS.md" {
+  printf '%s\n' 'defmodule Shop.MixProject do end' > mix.exs
+  add_elixir_pack 'catalog["profiles"]["elixir"]["kind"] = "capability"; del catalog["profiles"]["elixir"]["detect"]'
+  write_manifest '{"profiles": ["node", "beam/elixir"], "sources": {"packs": [{"name": "beam", "source": "path:./agent-packs/beam"}]}}'
+  run_cli apply
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"profile 'beam/elixir': only a stack profile adds a section to AGENTS.md"* ]]
+  [ ! -e AGENTS.md ]
+}
+
+@test "a pack stack with only its section of AGENTS.md and no rules of its own is applied" {
+  rm package.json
+  printf '%s\n' 'defmodule Shop.MixProject do end' > mix.exs
+  add_elixir_pack 'del catalog["profiles"]["elixir"]["defaults"]'
+  rm -rf agent-packs/beam/profiles/elixir/rules
+
+  run_cli apply
+  [ "$status" -eq 0 ]
+  grep -qx '<!-- BEGIN AGENT-READY MANAGED: beam/elixir -->' AGENTS.md
+  [ ! -e .agents/rules/elixir-coding-style.md ]
+}
+
+@test "the first apply fetches a declared Git pack before detecting, so its stack can be the one detected" {
+  rm package.json
+  printf '%s\n' 'defmodule Shop.MixProject do end' > mix.exs
+  publish_example elixir-stack-pack https://git.example.invalid/beam
+  write_manifest '{"sources": {"packs": [{"name": "beam", "source": "git+https://git.example.invalid/beam", "ref": "main"}]}}'
+
+  run_cli apply
+  [ "$status" -eq 0 ]
+  grep -qx '<!-- BEGIN AGENT-READY MANAGED: beam/elixir -->' AGENTS.md
+  [ "$(python3 -c 'import json; print(json.load(open(".agents/agent-ready.json"))["profiles"])' | tr -d '\r')" = "['beam/elixir']" ]
+}

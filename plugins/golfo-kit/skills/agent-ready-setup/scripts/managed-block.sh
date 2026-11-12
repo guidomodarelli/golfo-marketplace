@@ -57,7 +57,7 @@ parse_managed_block_arguments() {
         ;;
       --stack)
         [[ $# -ge 2 && -n "${2:-}" ]] || {
-          echo "ERROR: --stack requires react, nextjs, nextjs-app-router, node, java, go, or android" >&2
+          echo "ERROR: --stack requires a stack name" >&2
           exit 1
         }
         STACK="$2"
@@ -84,13 +84,11 @@ parse_managed_block_arguments() {
 }
 
 validate_managed_block_inputs() {
-  case "$STACK" in
-    react|nextjs|nextjs-app-router|node|java|go|android) ;;
-    *)
-      echo "ERROR: --stack must be react, nextjs, nextjs-app-router, node, java, go, or android" >&2
-      exit 1
-      ;;
-  esac
+  # The profile catalog says which stacks exist, a pack's (<source>/<profile>) among them; here only the name.
+  if [[ ! "$STACK" =~ ^[a-z0-9]+(-[a-z0-9]+)*(/[a-z0-9]+(-[a-z0-9]+)*)?$ ]]; then
+    echo "ERROR: --stack must be a stack name such as node or acme/cobol" >&2
+    exit 1
+  fi
 
   case "$NON_INTERACTIVE" in
     0|1) ;;
