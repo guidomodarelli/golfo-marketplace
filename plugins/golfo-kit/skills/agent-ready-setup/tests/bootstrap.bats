@@ -147,7 +147,7 @@ skip_without_symlinks() {
   [ "$(cat AGENTS.md)" = '# Project instructions' ]
   cmp -s CLAUDE.md "$skill_dir/assets/claude-proxy.md"
   [ "$(cat docs/AGENTS.md)" = '# Docs instructions' ]
-  cmp -s docs/CLAUDE.md "$skill_dir/assets/claude-proxy.md"
+  [ "$(cat docs/CLAUDE.md)" = '@AGENTS.md' ]
   [[ "$output" == *"Instruction normalization completed"* ]]
   [ ! -e .agents ]
   [ ! -e .claude ]
@@ -643,7 +643,7 @@ EOF
   [ "$status" -eq 0 ]
   [ -f .claude/AGENTS.md ]
   grep -Fxq '## Team SDD Kit' .claude/AGENTS.md
-  cmp -s .claude/CLAUDE.md "$dynamic_skill_dir/assets/claude-proxy.md"
+  [ "$(cat .claude/CLAUDE.md)" = '@AGENTS.md' ]
 
   claude_hash_before="$(shasum .claude/CLAUDE.md | cut -d ' ' -f 1)"
   agents_hash_before="$(shasum .claude/AGENTS.md | cut -d ' ' -f 1)"
@@ -675,7 +675,7 @@ EOF
   [ "$status" -eq 0 ]
   [ -f .claude/AGENTS.md ]
   grep -Fxq '# Nested hook instructions' .claude/AGENTS.md
-  cmp -s .claude/CLAUDE.md "$dynamic_skill_dir/assets/claude-proxy.md"
+  [ "$(cat .claude/CLAUDE.md)" = '@AGENTS.md' ]
 }
 
 @test "identical legacy Claude copies become canonical symlinks" {
@@ -1020,13 +1020,13 @@ EOF
   [ "$status" -eq 0 ]
   grep -Fq '# Service instructions' service/AGENTS.md
   grep -Fq 'Run service checks before merging.' service/AGENTS.md
-  cmp -s service/CLAUDE.md "$skill_dir/assets/claude-proxy.md"
-  cmp -s packages/api/CLAUDE.md "$skill_dir/assets/claude-proxy.md"
+  [ "$(cat service/CLAUDE.md)" = '@AGENTS.md' ]
+  [ "$(cat packages/api/CLAUDE.md)" = '@AGENTS.md' ]
   grep -Fq '# API instructions' packages/api/AGENTS.md
   grep -Fq 'Keep API changes backwards compatible.' packages/api/AGENTS.md
 }
 
-@test "nested legacy CLAUDE proxy upgrades to root template" {
+@test "a nested CLAUDE.md that only imports its AGENTS.md is the nested proxy and stays as it is" {
   mkdir -p service
   printf '%s\n' '@AGENTS.md' > service/CLAUDE.md
   printf '%s\n' '# Canonical service instructions' > service/AGENTS.md
@@ -1034,11 +1034,11 @@ EOF
   run_bootstrap node
 
   [ "$status" -eq 0 ]
-  cmp -s service/CLAUDE.md "$skill_dir/assets/claude-proxy.md"
+  [ "$(cat service/CLAUDE.md)" = '@AGENTS.md' ]
   grep -Fq '# Canonical service instructions' service/AGENTS.md
 }
 
-@test "nested exact CLAUDE proxy creates an empty canonical sibling" {
+@test "a nested copy of the root proxy becomes the import alone and gets an empty canonical sibling" {
   mkdir -p service
   cp "$skill_dir/assets/claude-proxy.md" service/CLAUDE.md
 
@@ -1047,7 +1047,7 @@ EOF
   [ "$status" -eq 0 ]
   [ -f service/AGENTS.md ]
   [ ! -s service/AGENTS.md ]
-  cmp -s service/CLAUDE.md "$skill_dir/assets/claude-proxy.md"
+  [ "$(cat service/CLAUDE.md)" = '@AGENTS.md' ]
 }
 
 @test "provider configuration CLAUDE.md gets a sibling AGENTS.md and exact proxy" {
@@ -1064,7 +1064,7 @@ EOF
   [ -f .claude/AGENTS.md ]
   grep -Fxq '## Team SDD Kit' .claude/AGENTS.md
   grep -Fxq 'This project uses Team SDD Kit.' .claude/AGENTS.md
-  cmp -s .claude/CLAUDE.md "$skill_dir/assets/claude-proxy.md"
+  [ "$(cat .claude/CLAUDE.md)" = '@AGENTS.md' ]
   [[ "$output" == *".claude/CLAUDE.md -> .claude/AGENTS.md"* ]]
 }
 
@@ -1081,7 +1081,7 @@ EOF
   [ "$status" -eq 0 ]
   [ -f .claude/AGENTS.md ]
   grep -Fxq '# Claude instructions' .claude/AGENTS.md
-  cmp -s .claude/CLAUDE.md "$skill_dir/assets/claude-proxy.md"
+  [ "$(cat .claude/CLAUDE.md)" = '@AGENTS.md' ]
 }
 
 @test "case-variant instruction filenames normalize recursively" {
@@ -1109,7 +1109,7 @@ EOF
   grep -Fq '# API instructions' services/api/v1/AGENTS.md
   grep -Fq 'Run API checks before merging.' services/api/v1/AGENTS.md
   cmp -s CLAUDE.md "$skill_dir/assets/claude-proxy.md"
-  cmp -s services/api/v1/CLAUDE.md "$skill_dir/assets/claude-proxy.md"
+  [ "$(cat services/api/v1/CLAUDE.md)" = '@AGENTS.md' ]
   [[ "$output" == *"Renamed instruction files:"* ]]
   [[ "$output" == *"Claude.md -> ./CLAUDE.md"* ]]
   [[ "$output" == *"services/api/v1/claude.MD -> services/api/v1/CLAUDE.md"* ]]
@@ -1209,7 +1209,7 @@ EOF
 
   [ "$status" -eq 0 ]
   [ -f node_modules/tracked-package/AGENTS.md ]
-  cmp -s node_modules/tracked-package/CLAUDE.md "$skill_dir/assets/claude-proxy.md"
+  [ "$(cat node_modules/tracked-package/CLAUDE.md)" = '@AGENTS.md' ]
   [ "$(cat node_modules/tracked-package/AGENTS.md)" = '# Tracked instructions' ]
 }
 

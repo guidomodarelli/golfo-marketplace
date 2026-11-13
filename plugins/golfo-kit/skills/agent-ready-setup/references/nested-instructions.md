@@ -9,8 +9,9 @@ y el repo decide a qué carpeta va.
 1. Cómo cargan los providers los anidados
 2. Destinos anidados
 3. Escritura, proxy y retiro
-4. Lock, plan, status y remove
-5. Fuera de alcance
+4. Índice para Codex
+5. Lock, plan, status y remove
+6. Fuera de alcance
 
 ## 1. Cómo cargan los providers los anidados
 
@@ -46,8 +47,8 @@ Verificado en la documentación oficial y probado con Claude Code 2.1.319 y code
   equivalen a un `AGENTS.md` anidado, pero solo en Claude Code.
 
 **Qué sale de ahí:** el `AGENTS.md` anidado con su `CLAUDE.md` proxy es el único formato que llega a los dos
-providers y a la review de Codex en GitHub. Para que Codex lo lea de forma determinista, el bloque raíz
-tiene que indicarle cuándo leerlo (parte 61b de la issue).
+providers y a la review de Codex en GitHub. Para que Codex lo lea de forma determinista, el `AGENTS.md`
+raíz le indica cuándo leerlo (sección 4).
 
 ## 2. Destinos anidados
 
@@ -105,8 +106,13 @@ frena nada: `plan` lo avisa.
   - Si el archivo no existe, se crea con el bloque.
   - Si existe, el bloque se agrega al final o se actualiza donde está, y el resto es del proyecto.
   - Varios destinos pueden ir a la misma carpeta, cada uno con su id.
-- **Proxy:** al escribir un `AGENTS.md` anidado, el apply deja al lado un `CLAUDE.md` con el proxy de
-  `assets/claude-proxy.md`, si no hay ninguno. Sin él, Claude Code no lo carga (sección 1).
+- **Proxy:** al escribir un `AGENTS.md` anidado, el apply deja al lado un `CLAUDE.md` con `@AGENTS.md` solo,
+  si no hay ninguno. Sin él, Claude Code no lo carga (sección 1).
+  - No repite la regla de centralización de `assets/claude-proxy.md`: ya la dan el `CLAUDE.md` raíz y el
+    bloque gestionado del `AGENTS.md` raíz, y repetirla sumaría unos 450 bytes cada vez que Claude Code
+    entra a una carpeta.
+  - La normalización deja igual cualquier `CLAUDE.md` anidado, sea un destino o no: reduce una copia de
+    `assets/claude-proxy.md` a `@AGENTS.md`.
 - **`CLAUDE.md` propio:** si la carpeta tiene un `CLAUDE.md` con instrucciones propias distintas de su
   `AGENTS.md`, el bloque espera, como las secciones de la raíz:
   - El lock conserva lo que sabía del bloque.
@@ -119,7 +125,35 @@ frena nada: `plan` lo avisa.
   el apply lo saca del archivo anterior. Si a ese `AGENTS.md` no le queda contenido, se borra junto con su
   `CLAUDE.md`, siempre que sea el proxy o un `@AGENTS.md` solo.
 
-## 4. Lock, plan, status y remove
+## 4. Índice para Codex
+
+Codex no carga un `AGENTS.md` por debajo de la carpeta donde arranca (sección 1). Por eso, con `codex`
+entre los `providers` del repo, el `AGENTS.md` raíz lleva una sección propia,
+`<!-- BEGIN AGENT-READY MANAGED: agent-ready:nested-index -->`:
+
+```markdown
+## Nested instructions
+
+Before you read or change files under one of these folders, read and follow its own `AGENTS.md`:
+
+- `src/app/AGENTS.md`
+```
+
+- **Qué lista:** cada `AGENTS.md` anidado al que el apply escribe un bloque. Deja afuera los que esperan
+  por un `CLAUDE.md` propio y los que están detrás de un symlink.
+- **Cuándo se escribe:** es una sección más del `AGENTS.md` raíz, como la de cada stack
+  ([managed-agents-block.md](managed-agents-block.md), «Secciones de los stacks»). Tiene el mismo lock, la
+  misma espera mientras la raíz no adoptó el bloque y la misma revisión de IA, que la trata como de solo
+  lectura.
+  - Se actualiza cuando cambian los destinos.
+  - Se retira cuando no queda ninguno, cuando `codex` sale de los providers o con
+    `nested.codexIndex: false`.
+- **Costo:** `agent-ready plan` imprime
+  `Nested AGENTS.md index for Codex: N file(s) listed in AGENTS.md, ~B bytes of its limit`, y `--json` deja
+  los archivos y los bytes en `nestedIndex`. Esos bytes cuentan dentro del total de `AGENTS.md` del
+  presupuesto de contexto, contra el tope de 32 KiB de Codex.
+
+## 5. Lock, plan, status y remove
 
 - **Lock:** guarda los bloques anidados en `blocks`, por archivo e id, como cualquier bloque.
 - **`plan`:** muestra una línea por destino, con su carpeta y de dónde salió:
@@ -134,8 +168,8 @@ frena nada: `plan` lo avisa.
 - **`contentDigest` de golfo-kit:** cuenta cada destino por su id y su contenido, no por la carpeta del repo.
 - **`agent-ready remove`:** saca cada bloque, y borra el `AGENTS.md` que queda vacío junto con su proxy.
 
-## 5. Fuera de alcance
+## 6. Fuera de alcance
 
 - La revisión de redundancias con IA (`merge-instructions.sh`) solo trabaja sobre el `AGENTS.md` raíz.
 - Las contradicciones entre el `AGENTS.md` raíz y los anidados son la parte 72e de #72.
-- El índice del bloque raíz para Codex, su costo en bytes y el proxy anidado mínimo son la parte 61b de #61.
+- El primer destino de golfo-kit (App Router en `nextjs-app-router`) es la parte 61c de #61.

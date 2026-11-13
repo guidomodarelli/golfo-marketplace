@@ -4040,6 +4040,40 @@
           "description": "Dice que el bloque de la carpeta anterior se retira"
         }
       ]
+    },
+    {
+      "id": "nested-agents-codex-index",
+      "description": "Un equipo que usa Codex pregunta cómo llega un AGENTS.md anidado a Codex, cuánto contexto cuesta y qué deja agent-ready en el CLAUDE.md de esa carpeta.",
+      "input": "Con agent-ready tenemos un AGENTS.md gestionado en src/app/. Usamos Codex arrancando desde la raíz del repo y Claude Code. ¿Cómo se entera Codex de ese AGENTS.md, dónde veo cuánto le suma al AGENTS.md raíz y qué tiene el CLAUDE.md de src/app/? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": [
+            "Nested instructions",
+            "nested-index",
+            "índice"
+          ],
+          "description": "Explica que el AGENTS.md raíz lleva un índice de los anidados para Codex",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "agent-ready plan",
+          "description": "Dice que agent-ready plan informa el costo del índice",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "bytes",
+          "description": "Menciona el costo en bytes"
+        },
+        {
+          "type": "contains",
+          "value": "@AGENTS.md",
+          "description": "Dice que el CLAUDE.md anidado solo importa su AGENTS.md",
+          "critical": true
+        }
+      ]
     }
   ]
 }

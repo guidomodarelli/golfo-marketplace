@@ -110,6 +110,9 @@ se agrega al final del archivo. El stack primario solo desempata la detección; 
   conserva para que el próximo `remove` la encuentre.
 - `merge-instructions.sh`, `apply-managed-block.sh` y la normalización solo tocan el bloque de rules:
   las secciones quedan literales (paso 7 de la revisión).
+- El motor suma una sección más, `agent-ready:nested-index`, que lista los `AGENTS.md` anidados para Codex.
+  No viene de un stack y sigue el mismo contrato ([nested-instructions.md](nested-instructions.md),
+  «Índice para Codex»).
 
 ## Bloques en otros archivos
 
