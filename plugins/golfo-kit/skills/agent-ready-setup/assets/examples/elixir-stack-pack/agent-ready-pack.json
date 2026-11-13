@@ -7,6 +7,7 @@
       "kind": "stack",
       "description": "Elixir services built with Mix: style, tests and its section of AGENTS.md.",
       "assets": "profiles/elixir",
+      "requires": ["software-development"],
       "defaults": ["business-flows"],
       "detect": {
         "signals": [

@@ -3628,6 +3628,34 @@
           "description": "Menciona supersedes o el pack de ejemplo"
         }
       ]
+    },
+    {
+      "id": "repository-without-a-stack",
+      "description": "Un repo sin código elige solo capabilities: recibe el núcleo y el template neutro de AGENTS.md, sin las rules de software-development ni el template de PR.",
+      "input": "Tengo un repo de un estudio jurídico donde solo redactamos actas en Markdown, sin código. ¿Puedo usar agent-ready-setup sin elegir un stack? ¿Qué recibe el repo y qué no, comparado con un repo de Node? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "software-development",
+          "description": "Nombra la capability software-development",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["núcleo", "nucleo", "assets/common"],
+          "description": "Dice que recibe el núcleo"
+        },
+        {
+          "type": "contains_any",
+          "values": ["pull_request_template", "template de PR", "plantilla de PR"],
+          "description": "Aclara que el template de PR es de software-development"
+        },
+        {
+          "type": "contains_any",
+          "values": ["Purpose", "propósito", "Propósito", "neutro"],
+          "description": "Menciona el template neutro de AGENTS.md"
+        }
+      ]
     }
   ]
 }

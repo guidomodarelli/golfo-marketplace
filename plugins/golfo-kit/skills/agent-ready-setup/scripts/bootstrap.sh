@@ -1195,7 +1195,7 @@ else
 fi
 
 # Print report
-printf '\nStack: %s\n' "$STACK"
+printf '\nStack: %s\n' "${STACK:-none}"
 printf 'Profiles: %s\n' "$RESOLVED_PROFILES"
 printf 'Providers: Claude Code + Codex-compatible shared tree\n'
 # Stable line the agent reads to run follow-up scripts from the resolved source.

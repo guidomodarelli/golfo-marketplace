@@ -1,15 +1,15 @@
 # [Project Name]
 
-<!-- Describe what this project does, who uses it and which business area it belongs to. -->
+<!-- Describe what this repository is for, who uses it and which area it belongs to. -->
 
-## Stack
-<!-- Languages, frameworks and tooling, e.g. TypeScript · Next.js · Node.js · Docker. Each stack agent-ready-setup applies adds its own section below. -->
+## Purpose
+<!-- What the work in this repository produces, e.g. infraction reports, documentation or research notes. -->
 
-## Commands
-<!-- Add your project's main commands here -->
+## Structure
+<!-- Describe the folders and what goes in each one -->
 
-## Architecture
-<!-- Describe folder structure and main conventions -->
+## Conventions
+<!-- Formats, naming and the rules every document or file here follows -->
 
 <!-- BEGIN AGENT-READY MANAGED -->
 <!-- Managed by agent-ready-setup: content inside this block is replaced on every sync. Add project instructions outside it. -->

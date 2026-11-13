@@ -522,7 +522,7 @@ EOF
 
 @test "common rules are template rules for every stack and never project rules" {
   mkdir -p .agents/rules
-  cp "$skill_dir/assets/common/rules/lint-gate.md" .agents/rules/lint-gate.md
+  cp "$skill_dir/assets/common/rules/verify-changes.md" .agents/rules/verify-changes.md
   printf '%s\n' '# Project' > AGENTS.md
   write_review_response $'# Project\n\n'"$managed_placeholder"
 
@@ -530,8 +530,8 @@ EOF
 
   [ "$status" -eq 0 ]
   grep -Fxq -- '- Read and follow `.agents/rules/language-consistency.md`.' AGENTS.md
-  grep -Fxq -- '- Read and follow `.agents/rules/lint-gate.md`.' AGENTS.md
-  [ "$(grep -c 'rules/lint-gate.md' AGENTS.md)" -eq 1 ]
+  grep -Fxq -- '- Read and follow `.agents/rules/verify-changes.md`.' AGENTS.md
+  [ "$(grep -c 'rules/verify-changes.md' AGENTS.md)" -eq 1 ]
   ! grep -Fxq '### Project rules' AGENTS.md
   grep -Fq '<rule path=".agents/rules/language-consistency.md">' "$test_root/provider-prompt.log"
 }
@@ -539,14 +539,14 @@ EOF
 @test "a rule defined in both common and stack rules is rejected" {
   duplicate_skill_dir="$test_root/duplicate-skill"
   cp -R "$skill_dir" "$duplicate_skill_dir"
-  cp "$duplicate_skill_dir/assets/common/rules/lint-gate.md" "$duplicate_skill_dir/assets/stacks/node/rules/lint-gate.md"
+  cp "$duplicate_skill_dir/assets/common/rules/verify-changes.md" "$duplicate_skill_dir/assets/stacks/node/rules/verify-changes.md"
 
   run bash "$duplicate_skill_dir/scripts/render-instruction-template.sh" --list-rules \
     --rules-dir "$duplicate_skill_dir/assets/stacks/node/rules" \
     --common-rules-dir "$duplicate_skill_dir/assets/common/rules"
 
   [ "$status" -ne 0 ]
-  [[ "$output" == *"rule is defined in both common and stack rules: lint-gate.md"* ]]
+  [[ "$output" == *"rule is defined in both common and stack rules: verify-changes.md"* ]]
 }
 
 @test "project rules are listed in the managed block and reviewed with template rules" {

@@ -32,9 +32,13 @@ un repositorio. La implementación vive en `scripts/agent-ready-state.py`.
 | `tools` | herramientas que el apply instala o registra (`browser`) |
 | `detect` | señales estáticas para detectar el profile; opcional (ver «Detección») |
 
-`assets/common/` es la base: siempre se proyecta y tiene el único template de
-`AGENTS.md`. La selección necesita al menos un profile `stack`; el primero es el
-**stack primario**, el que desempata la detección. Con un solo profile con assets se proyecta su
+`assets/common/` es el núcleo: siempre se proyecta, en cualquier repo, y tiene el template neutro de
+`AGENTS.md`. Lo de desarrollo (rules de código, el template de PR, `pr-review-workflow` y el esqueleto
+de software de `AGENTS.md`) es la capability `software-development`, que cada stack requiere. Un stack
+es opcional: un repo sin código (actas, documentación, investigación) elige solo capabilities
+(`--profiles business-flows`) y recibe el núcleo con el template neutro. Con stacks, el más específico
+es el **stack primario**, el que desempata la detección; sin stack no hay primario y el lock lo
+registra como `null`. Con un solo profile con assets se proyecta su
 directorio tal cual; con varios, `resolve` los compone en
 `${XDG_CACHE_HOME:-~/.cache}/agent-ready-setup/compose/` y la proyección,
 la normalización y el bloque gestionado leen ese árbol (variable

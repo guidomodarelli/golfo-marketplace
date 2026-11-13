@@ -74,8 +74,8 @@ add_block_pack() {
 @test "the pull request template is a managed block: a section of the project outside it survives every apply" {
   run_cli apply
   [ "$status" -eq 0 ]
-  head -1 "$template" | grep -qx '<!-- BEGIN AGENT-READY MANAGED: common -->'
-  grep -qx '<!-- END AGENT-READY MANAGED: common -->' "$template"
+  head -1 "$template" | grep -qx '<!-- BEGIN AGENT-READY MANAGED: software-development -->'
+  grep -qx '<!-- END AGENT-READY MANAGED: software-development -->' "$template"
   [ "$(lock_value 'lock["blocks"][".github/pull_request_template.md"]["common"]["state"]')" = "applied" ]
   [ "$(lock_value '".github/pull_request_template.md" in lock["assets"]')" = "False" ]
 
@@ -103,7 +103,7 @@ add_block_pack() {
   run_cli trust add --project .
   run_cli apply
   [ "$status" -eq 0 ]
-  grep -qx '<!-- BEGIN AGENT-READY MANAGED: common -->' "$template"
+  grep -qx '<!-- BEGIN AGENT-READY MANAGED: software-development -->' "$template"
   grep -qx '<!-- BEGIN AGENT-READY MANAGED: acme/review -->' "$template"
   grep -q '^- \[ \] Contract tests pass$' "$template"
 
@@ -112,12 +112,12 @@ add_block_pack() {
   [ "$status" -eq 0 ]
   ! grep -q 'acme/review' "$template"
   ! grep -q 'Contract tests pass' "$template"
-  grep -qx '<!-- BEGIN AGENT-READY MANAGED: common -->' "$template"
+  grep -qx '<!-- BEGIN AGENT-READY MANAGED: software-development -->' "$template"
 }
 
 @test "markers that repeat or come out of order stop every change to that file" {
   run_cli apply
-  printf '<!-- BEGIN AGENT-READY MANAGED: common -->\nstray\n' >> "$template"
+  printf '<!-- BEGIN AGENT-READY MANAGED: software-development -->\nstray\n' >> "$template"
   cp "$template" "$test_root/before"
   run_cli plan
   [[ "$output" == *"! conflict        .github/pull_request_template.md (block common)  its markers do not pair up"* ]]
@@ -165,7 +165,7 @@ add_block_pack() {
 @test "a whole-file template the lock still records is retired and the file holds only the block" {
   run_cli apply
   # The previous format: the template as a whole managed asset, without blocks in the lock.
-  cp "$skill_dir/assets/common/blocks/.github/pull_request_template.md" "$template"
+  cp "$skill_dir/assets/profiles/software-development/blocks/.github/pull_request_template.md" "$template"
   python3 - <<'PY'
 import hashlib, json
 path = ".agents/agent-ready.lock.json"
@@ -178,8 +178,8 @@ json.dump(lock, open(path, "w", encoding="utf-8"), indent=2)
 PY
   run_cli apply
   [ "$status" -eq 0 ]
-  head -1 "$template" | grep -qx '<!-- BEGIN AGENT-READY MANAGED: common -->'
-  [ "$(grep -c '^## ' "$template")" -eq "$(grep -c '^## ' "$skill_dir/assets/common/blocks/.github/pull_request_template.md")" ]
+  head -1 "$template" | grep -qx '<!-- BEGIN AGENT-READY MANAGED: software-development -->'
+  [ "$(grep -c '^## ' "$template")" -eq "$(grep -c '^## ' "$skill_dir/assets/profiles/software-development/blocks/.github/pull_request_template.md")" ]
   [ "$(lock_value '".github/pull_request_template.md" in lock["assets"]')" = "False" ]
 }
 
@@ -235,7 +235,7 @@ PY
 
 @test "status reports a block the first apply could not write" {
   mkdir -p .github
-  printf '<!-- END AGENT-READY MANAGED: common -->\n' > "$template"
+  printf '<!-- END AGENT-READY MANAGED: software-development -->\n' > "$template"
   run_cli apply
   run_cli check
   [ "$status" -ne 0 ]
@@ -284,7 +284,7 @@ add_two_block_profiles() {
   run_cli apply
   [ "$status" -eq 0 ]
   [ "$(ls .github)" = "pull_request_template.md" ]
-  grep -qx '<!-- BEGIN AGENT-READY MANAGED: common -->' "$template"
+  grep -qx '<!-- BEGIN AGENT-READY MANAGED: software-development -->' "$template"
   grep -qx '## Acme review' "$template"
   grep -qx '## Acme deploy' "$template"
   run_cli plan
@@ -365,7 +365,7 @@ PY
   grep -qx '<!-- BEGIN AGENT-READY MANAGED: node -->' AGENTS.md
   grep -qx '## Node.js' AGENTS.md
   [ "$(lock_value 'sorted(lock["blocks"]["AGENTS.md"])')" = "['node', 'react']" ]
-  [ "$(lock_value 'lock["merged"]["AGENTS.md"]["template"]')" = "assets/common/agents-template.md" ]
+  [ "$(lock_value 'lock["merged"]["AGENTS.md"]["template"]')" = "assets/profiles/software-development/agents-template.md" ]
 
   printf '
 ## Ownership
@@ -554,4 +554,29 @@ PY
   grep -qx '<!-- BEGIN AGENT-READY MANAGED: nextjs -->' AGENTS.md
   [ ! -e .agents/rules/nextjs-app-router.md ]
   [ -f .agents/rules/server-first-data-flow.md ]
+}
+
+@test "a selection without a stack gets the core with the neutral AGENTS.md and none of software-development" {
+  write_manifest '{"profiles": ["business-flows"]}'
+  run_cli apply
+  [ "$status" -eq 0 ]
+  grep -qx '## Purpose' AGENTS.md
+  ! grep -qx '## Stack' AGENTS.md
+  ! grep -q 'AGENT-READY MANAGED: ' AGENTS.md
+  [ -f .agents/rules/verify-changes.md ]
+  [ -f .agents/rules/business-flows.md ]
+  [ ! -e .agents/rules/lint-gate.md ]
+  [ ! -e .agents/skills/pr-review-workflow ]
+  [ ! -e .github/pull_request_template.md ]
+  grep -qx '# BEGIN AGENT-READY MANAGED: common' .gitignore
+  [ "$(lock_value 'lock["primaryStack"]')" = "None" ]
+  [ "$(lock_value 'lock["merged"]["AGENTS.md"]["template"]')" = "assets/common/agents-template.md" ]
+
+  # A stack brings software-development, which it requires: its rules, PR template and skeleton.
+  write_manifest '{"profiles": ["node"]}'
+  run_cli apply
+  [ "$status" -eq 0 ]
+  [ -f .agents/rules/lint-gate.md ]
+  grep -qx '<!-- BEGIN AGENT-READY MANAGED: software-development -->' .github/pull_request_template.md
+  [ "$(lock_value 'lock["profileOrder"][:2]')" = "['software-development', 'node']" ]
 }

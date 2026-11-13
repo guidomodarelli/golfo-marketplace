@@ -5,14 +5,18 @@ El bloque de `AGENTS.md`, que se arma con un template y las rules, la sección d
 el proyecto (sección final, «Bloques en otros archivos»).
 
 
-Un único template base (`assets/common/agents-template.md`), igual para todos los stacks, define el
-esqueleto del proyecto y el bloque entre `<!-- BEGIN AGENT-READY MANAGED -->` y
-`<!-- END AGENT-READY MANAGED -->`.
+El template de `AGENTS.md` define el esqueleto del proyecto y el bloque entre `<!-- BEGIN AGENT-READY MANAGED -->` y
+`<!-- END AGENT-READY MANAGED -->`. Hay dos: el de software
+(`assets/profiles/software-development/agents-template.md`, con `Stack`, `Commands` y `Architecture`),
+que trae cualquier stack porque todos requieren `software-development`, y el neutro de la base
+(`assets/common/agents-template.md`, con propósito, estructura y convenciones) para un repo sin esa
+capability, como uno de documentos. El esqueleto solo se usa al crear `AGENTS.md`.
 `scripts/render-instruction-template.sh` lo materializa:
 
 - `{{AGENT_READY_RULE_REFERENCES}}`: una referencia portable
   `- Read and follow \`.agents/rules/<relative-path>\`.` por cada rule del
-  template (comunes de `assets/common/rules/` y del stack, en orden alfabético)
+  template (del núcleo en `assets/common/rules/`, de `software-development` y del stack, en orden
+  alfabético)
   y, bajo `### Project rules`, por cada rule propia del proyecto.
 
 Una rule propia es cualquier archivo `.md` regular bajo `.agents/rules/` (incluidos
@@ -109,8 +113,9 @@ se agrega al final del archivo. El stack primario solo desempata la detección; 
 ## Bloques en otros archivos
 
 Un profile, de golfo-kit o de un pack, publica la parte que le toca de un archivo compartido con el
-proyecto como `blocks/<ruta en el repo>` en su árbol de assets. Por ejemplo, el profile `common` publica
-`assets/common/blocks/.github/pull_request_template.md` y `assets/common/blocks/.gitignore`, que ignora
+proyecto como `blocks/<ruta en el repo>` en su árbol de assets. Por ejemplo, `software-development`
+publica `assets/profiles/software-development/blocks/.github/pull_request_template.md`, y el profile
+`common` publica `assets/common/blocks/.gitignore`, que ignora
 el estado local de agent-ready-setup: el lock de una sincronización en curso
 (`.agents/.agent-ready-assets.lock/`), la metadata del navegador (`.agents/browser-tools.json`) y el
 manifest de vistas por hard link (`.claude/.agent-ready-hard-link-views`). `scripts/agent_ready_blocks.py` lo aplica en

@@ -529,9 +529,8 @@ def resolve_profiles(catalog, requested_names, ci_profile=None, excluded_default
                     f"profiles '{name}' and '{conflicting_name}' are declared incompatible; select only one"
                 )
 
-    if not any(profiles[name].get("kind") == STACK_PROFILE_KIND for name in resolved):
-        stacks = ", ".join(sorted(key for key, value in profiles.items() if value.get("kind") == STACK_PROFILE_KIND))
-        raise ProfileError(f"select at least one stack profile ({stacks}); it provides the rules and the section of AGENTS.md")
+    # A stack is optional: a repository without code (documents, research) selects capabilities only,
+    # and gets the base assets with the neutral AGENTS.md template.
     return resolved
 
 
@@ -572,7 +571,8 @@ def primary_stack(catalog, resolved):
     for name in resolved:
         if profiles[name].get("kind") == STACK_PROFILE_KIND and name not in required:
             return name
-    raise ProfileError("no stack profile resolved")
+    # A selection without a stack has no primary one.
+    return None
 
 
 def profile_asset_root(skill_dir, catalog, name):
@@ -609,7 +609,7 @@ def compose_stack_directory(skill_dir, catalog, resolved, compose_root):
     primary = primary_stack(catalog, resolved)
     # The instruction scripts read rules/ of the tree: a stack without rules of its own (a pack stack
     # that only publishes its section) is composed, which gives the tree an empty rules/.
-    if asset_profiles == [primary] and os.path.isdir(os.path.join(profile_asset_root(skill_dir, catalog, primary), "rules")):
+    if primary and asset_profiles == [primary] and os.path.isdir(os.path.join(profile_asset_root(skill_dir, catalog, primary), "rules")):
         return profile_asset_root(skill_dir, catalog, primary)
 
     owners = {}
@@ -1222,14 +1222,23 @@ def golfo_kit_origin(skill_dir):
         return None
 
 
-def agents_template_path(skill_dir, catalog):
-    """The one AGENTS.md template: the base assets hold it, and each stack adds its section as a block."""
+def agents_template_path(skill_dir, catalog, resolved=()):
+    """The AGENTS.md template of a selection; each stack adds its section as a block.
+
+    A profile of the selection can publish its own skeleton (software-development has Stack, Commands
+    and Architecture); otherwise the base assets hold the neutral one (Purpose, Structure, Conventions).
+    Two profiles that publish it collide when the tree is composed.
+    """
+    for name in resolved:
+        asset_root = profile_asset_root(skill_dir, catalog, name) if name in catalog["profiles"] else None
+        if asset_root and os.path.isfile(os.path.join(asset_root, AGENTS_TEMPLATE_NAME)):
+            return os.path.join(asset_root, AGENTS_TEMPLATE_NAME)
     return os.path.join(skill_dir, catalog.get("baseAssets", "assets/common"), AGENTS_TEMPLATE_NAME)
 
 
 def merged_template_entries(skill_dir, catalog, resolved):
     """Files merged with project content instead of copied verbatim."""
-    agents_template = agents_template_path(skill_dir, catalog)
+    agents_template = agents_template_path(skill_dir, catalog, resolved)
     settings_template = os.path.join(skill_dir, catalog.get("baseAssets", "assets/common"), CLAUDE_SETTINGS_TEMPLATE_NAME)
     codex_template = os.path.join(skill_dir, CODEX_HOOKS_TEMPLATE_RELATIVE_PATH)
     entries = {}
@@ -1550,15 +1559,25 @@ def extract_managed_block(text):
 
 def merged_file_changes(project_root, skill_dir, plan):
     """Describe whether each merged file would change, without writing it."""
-    changes = []
     catalog = load_profile_catalog(skill_dir)
-    # Bootstrap exports the composed tree, the one the managed block is rendered from.
-    stack_root = os.environ.get("AGENT_READY_SETUP_STACK_DIR") or profile_asset_root(skill_dir, catalog, plan["primaryStack"])
+    # Bootstrap exports the composed tree, the one the managed block is rendered from; without it the
+    # tree is composed in a temporary directory, so a plan still writes nothing of its own.
+    stack_root = os.environ.get("AGENT_READY_SETUP_STACK_DIR")
+    if stack_root:
+        return merged_file_changes_from(project_root, skill_dir, plan, catalog, stack_root)
+    with tempfile.TemporaryDirectory(prefix="agent-ready-plan-compose.") as compose_root:
+        stack_root = compose_stack_directory(skill_dir, catalog, plan["profiles"], compose_root)
+        return merged_file_changes_from(project_root, skill_dir, plan, catalog, stack_root)
+
+
+def merged_file_changes_from(project_root, skill_dir, plan, catalog, stack_root):
+    """merged_file_changes with the stack tree the managed block is rendered from."""
+    changes = []
 
     agents_path = os.path.join(project_root, "AGENTS.md")
     renderer = [
         bash_executable(), os.path.join(skill_dir, RENDERER_RELATIVE_PATH),
-        "--template", agents_template_path(skill_dir, catalog),
+        "--template", agents_template_path(skill_dir, catalog, plan["profiles"]),
         "--rules-dir", os.path.join(stack_root, "rules"),
         "--common-rules-dir", os.path.join(skill_dir, catalog.get("baseAssets", "assets/common"), "rules"),
         "--centralization", os.path.join(skill_dir, CENTRALIZATION_RELATIVE_PATH),
@@ -1912,7 +1931,7 @@ def print_plan(project_root, skill_dir, plan, provider, skip_marketplace_upgrade
     """Human readable plan on stdout."""
     stream = sys.stdout
     write_line(paint("Agent Ready plan (read-only: nothing was written)", "heading", stream))
-    write_line(f"Profiles: {', '.join(plan['profiles'])} (primary stack: {plan['primaryStack']})")
+    write_line(f"Profiles: {', '.join(plan['profiles'])} (primary stack: {plan['primaryStack'] or 'none'})")
     write_line(f"Selected by: {plan['selection']}")
     for name, origin in plan["addedDependencies"].items():
         reasons = []
@@ -2676,7 +2695,7 @@ def command_resolve(arguments):
     write_line(f"profiles\t{','.join(resolved)}")
     write_line(f"requested\t{','.join(requested)}")
     write_line(f"selection\t{selection}")
-    write_line(f"primary\t{primary_stack(catalog, resolved)}")
+    write_line(f"primary\t{primary_stack(catalog, resolved) or ''}")
     write_line(f"stack_dir\t{stack_dir}")
     write_line(f"tools\t{','.join(resolved_tools(catalog, resolved))}")
     return 0

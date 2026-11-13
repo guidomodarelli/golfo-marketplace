@@ -554,14 +554,15 @@ EOF2
   [ ! -e .claude ]
 }
 
-@test "unknown profiles and profile sets without a stack are rejected with the catalog" {
+@test "unknown profiles are rejected with the catalog, and a selection without a stack applies" {
   run_bootstrap_with "$skill_dir" --profiles cobol
   [ "$status" -ne 0 ]
-  [[ "$output" == *"unknown profile 'cobol'; available profiles: android, browser, business-flows, go, java, nextjs, nextjs-app-router, node, react"* ]]
+  [[ "$output" == *"unknown profile 'cobol'; available profiles: android, browser, business-flows, go, java, nextjs, nextjs-app-router, node, react, software-development"* ]]
 
   run_bootstrap_with "$skill_dir" --profiles browser
-  [ "$status" -ne 0 ]
-  [[ "$output" == *"select at least one stack profile"* ]]
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Stack: none"* ]]
+  [ "$(lock_value 'lock["primaryStack"]')" = "None" ]
 }
 
 @test "composable profiles add their assets on top of a stack without duplicating it" {
@@ -790,10 +791,10 @@ EOF
   [ "$(lock_value 'lock["primaryStack"]')" = "react" ]
 }
 
-@test "the business-flows profile adds its assets to any stack and needs one" {
+@test "the business-flows profile adds its assets to any stack, and applies without one" {
   run_bootstrap_with "$skill_dir" --profiles business-flows
-  [ "$status" -ne 0 ]
-  [[ "$output" == *"select at least one stack profile"* ]]
+  [ "$status" -eq 0 ]
+  [ -f .agents/rules/business-flows.md ]
 
   for stack in android react; do
     stack_project="$test_root/$stack-flows"

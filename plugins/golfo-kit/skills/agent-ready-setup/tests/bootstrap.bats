@@ -328,12 +328,12 @@ EOF
 
 # True when the managed block of the common profile in the PR template holds the template of the skill.
 pr_template_block_matches() {
-  python3 - "$skill_dir/assets/common/blocks/.github/pull_request_template.md" .github/pull_request_template.md <<'PY'
+  python3 - "$skill_dir/assets/profiles/software-development/blocks/.github/pull_request_template.md" .github/pull_request_template.md <<'PY'
 import sys
 template = open(sys.argv[1], encoding="utf-8").read()
 lines = open(sys.argv[2], encoding="utf-8").read().split("\n")
-start = lines.index("<!-- BEGIN AGENT-READY MANAGED: common -->")
-end = lines.index("<!-- END AGENT-READY MANAGED: common -->")
+start = lines.index("<!-- BEGIN AGENT-READY MANAGED: software-development -->")
+end = lines.index("<!-- END AGENT-READY MANAGED: software-development -->")
 sys.exit(0 if "\n".join(lines[start + 1:end]) + "\n" == template else 1)
 PY
 }
@@ -435,7 +435,7 @@ PY
   assert_claude_view .claude/rules/react-security.md "../../.agents/rules/react-security.md"
   [ -f .agents/rules/react-security.md ]
   assert_claude_view .claude/rules/lint-gate.md "../../.agents/rules/lint-gate.md"
-  cmp -s .agents/rules/lint-gate.md "$skill_dir/assets/common/rules/lint-gate.md"
+  cmp -s .agents/rules/lint-gate.md "$skill_dir/assets/profiles/software-development/rules/lint-gate.md"
   assert_claude_view .claude/skills/component-creation/SKILL.md "../../../.agents/skills/component-creation/SKILL.md"
   [ -f .agents/skills/component-creation/SKILL.md ]
   [ -f .agents/skills/react-act-test-fixes/SKILL.md ]
@@ -913,9 +913,11 @@ EOF
     grep -Fq -- "- Read and follow \`.agents/rules/${stack}-coding-style.md\`." AGENTS.md
     grep -Fq -- "- Read and follow \`.agents/rules/${stack}-security.md\`." AGENTS.md
     grep -Fq -- "- Read and follow \`.agents/rules/${stack}-testing.md\`." AGENTS.md
-    for common_rule in established-libraries.md language-consistency.md lint-gate.md patterns-we-do-not-use.md speculative-complexity-approval.md user-actions-first.md verify-changes.md; do
+    for common_rule in common/rules/language-consistency.md common/rules/speculative-complexity-approval.md       common/rules/user-actions-first.md common/rules/verify-changes.md       profiles/software-development/rules/established-libraries.md profiles/software-development/rules/lint-gate.md       profiles/software-development/rules/patterns-we-do-not-use.md; do
+      common_source="$skill_dir/assets/$common_rule"
+      common_rule="${common_rule##*/}"
       grep -Fq -- "- Read and follow \`.agents/rules/$common_rule\`." AGENTS.md
-      cmp -s ".agents/rules/$common_rule" "$skill_dir/assets/common/rules/$common_rule"
+      cmp -s ".agents/rules/$common_rule" "$common_source"
       assert_claude_view ".claude/rules/$common_rule"
     done
     ! grep -Fxq '### Project rules' AGENTS.md
@@ -2672,8 +2674,8 @@ EOF
 @test "common marketplace assets have no stack duplicates" {
   [ -f "$skill_dir/assets/common/settings.json" ]
   [ -f "$skill_dir/assets/common/hooks/sync-marketplace.sh" ]
-  for common_rule in established-libraries.md language-consistency.md lint-gate.md patterns-we-do-not-use.md speculative-complexity-approval.md user-actions-first.md verify-changes.md; do
-    [ -f "$skill_dir/assets/common/rules/$common_rule" ]
+  for common_rule in common/rules/language-consistency.md common/rules/speculative-complexity-approval.md     common/rules/user-actions-first.md common/rules/verify-changes.md     profiles/software-development/rules/established-libraries.md profiles/software-development/rules/lint-gate.md     profiles/software-development/rules/patterns-we-do-not-use.md; do
+    [ -f "$skill_dir/assets/$common_rule" ]
   done
   [ -f "$skill_dir/scripts/asset-sync-common.sh" ]
   [ -f "$skill_dir/scripts/merge-managed-settings.py" ]

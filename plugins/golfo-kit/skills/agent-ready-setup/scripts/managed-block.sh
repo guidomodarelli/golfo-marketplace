@@ -56,8 +56,9 @@ parse_managed_block_arguments() {
         shift 2
         ;;
       --stack)
-        [[ $# -ge 2 && -n "${2:-}" ]] || {
-          echo "ERROR: --stack requires a stack name" >&2
+        # An empty value is a selection without a stack.
+        [[ $# -ge 2 ]] || {
+          echo "ERROR: --stack requires a stack name (empty for a selection without a stack)" >&2
           exit 1
         }
         STACK="$2"
@@ -85,7 +86,7 @@ parse_managed_block_arguments() {
 
 validate_managed_block_inputs() {
   # The profile catalog says which stacks exist, a pack's (<source>/<profile>) among them; here only the name.
-  if [[ ! "$STACK" =~ ^[a-z0-9]+(-[a-z0-9]+)*(/[a-z0-9]+(-[a-z0-9]+)*)?$ ]]; then
+  if [[ -n "$STACK" && ! "$STACK" =~ ^[a-z0-9]+(-[a-z0-9]+)*(/[a-z0-9]+(-[a-z0-9]+)*)?$ ]]; then
     echo "ERROR: --stack must be a stack name such as node or acme/cobol" >&2
     exit 1
   fi
@@ -104,8 +105,10 @@ validate_managed_block_inputs() {
   fi
 
   STACK_TEMPLATE_DIRECTORY="$(resolve_stack_template_directory "$SKILL_DIR" "$STACK")" || exit 1
-  # One base template for every stack: each stack adds its own section to AGENTS.md as a block.
-  TEMPLATE_FILE="$SKILL_DIR/assets/common/agents-template.md"
+  # The skeleton a profile of the selection publishes (software-development), or the neutral one of the
+  # base; each stack adds its own section to AGENTS.md as a block.
+  TEMPLATE_FILE="$STACK_TEMPLATE_DIRECTORY/agents-template.md"
+  [[ -f "$TEMPLATE_FILE" ]] || TEMPLATE_FILE="$SKILL_DIR/assets/common/agents-template.md"
   RULES_DIRECTORY="$STACK_TEMPLATE_DIRECTORY/rules"
   COMMON_RULES_DIRECTORY="$SKILL_DIR/assets/common/rules"
   readonly PROJECT_RULES_DIRECTORY=".agents/rules"
