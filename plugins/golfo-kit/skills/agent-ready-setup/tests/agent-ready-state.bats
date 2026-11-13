@@ -822,11 +822,13 @@ EOF
 
 # The context budget of the plan, as JSON: one field of plan --format json.
 context_field() {
-  python3 "$skill_dir/scripts/agent-ready-state.py" plan --project "$project_dir" --skill-dir "$skill_dir" --format json \
+  local key="$1"
+  shift
+  python3 "$skill_dir/scripts/agent-ready-state.py" plan --project "$project_dir" --skill-dir "$skill_dir" --format json "$@" \
     | python3 -c 'import json, sys; context = json.load(sys.stdin)["context"]
 for key in sys.argv[1].split("."):
     context = context[key]
-print(context)' "$1" | tr -d '\r'
+print(context)' "$key" | tr -d '\r'
 }
 
 # Sets a key of the conflicts module in the manifest.
@@ -851,6 +853,18 @@ PY
   printf '# Always\n\nLoaded in every session.\n' > .agents/rules/always.md
   [ "$(context_field rulesLoadedAtStart.bytes)" = "$((rules_before + $(wc -c < .agents/rules/always.md)))" ]
   [ "$(context_field agentsMd.exceeded)" = "False" ]
+  # AGENT_READY_SETUP_TOOLS=0: the browser servers are not registered, so they are not counted.
+  [ "$(context_field mcpServers)" = "0" ]
+}
+
+@test "the rules of a profile the selection drops do not count as the project's own" {
+  run_bootstrap_with "$skill_dir" --stack react
+  [ "$status" -eq 0 ]
+  [ -f .agents/rules/react-style.md ]
+
+  # Switching to node retires the react rules: they are not the project's and the budget leaves them out.
+  [[ "$(context_field rulesLoadedAtStart.largest --profiles node)" != *"'project'"* ]]
+  [ "$(context_field rulesLoadedAtStart.bytes --profiles node)" -lt "$(context_field rulesLoadedAtStart.bytes)" ]
 }
 
 @test "the plan warns past each context threshold and names the profiles that add most" {

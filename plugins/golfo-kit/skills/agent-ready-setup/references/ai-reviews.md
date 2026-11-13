@@ -212,9 +212,10 @@ Context at the start of a session: AGENTS.md ~3590 bytes; 20 rules without paths
   combinados en `project_doc_max_bytes` (32 KiB por default).
 - **Rules sin `paths:`**: Claude carga al inicio de cada sesión toda rule de `.agents/rules/` que no
   declara `paths:` en su frontmatter, gestionada o propia del proyecto. Las que tienen `paths:` se
-  cargan solo al tocar esos archivos y no cuentan.
-- **Servidores MCP**: los que registran los packs más los del browser; cada uno suma la definición
-  de sus herramientas.
+  cargan solo al tocar esos archivos y no cuentan, y tampoco las de un profile que la selección deja,
+  porque el apply las retira.
+- **Servidores MCP**: los que el apply registra: los del browser si `tools.enabled` está prendido, y
+  los de los packs que la política permite. Cada uno suma la definición de sus herramientas.
 
 Al pasar un umbral, `plan` avisa y nombra los profiles que más suman, para mover contenido a rules
 con `paths:` o a skills, que se cargan solo cuando hacen falta. El aviso no frena el apply. Con

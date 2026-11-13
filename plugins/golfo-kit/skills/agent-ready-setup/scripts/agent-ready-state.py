@@ -1639,6 +1639,34 @@ def extract_managed_block(text):
     return text[start:end + len(MANAGED_BLOCK_END)]
 
 
+def render_instructions(skill_dir, catalog, stack_root, project_rules_root, managed_block_only):
+    """AGENTS.md as render-instruction-template.sh writes it, or only its managed block; None on failure.
+
+    The new file takes the skeleton of the composed tree when a profile publishes one, as the
+    instruction normalization does.
+    """
+    renderer = [
+        bash_executable(), os.path.join(skill_dir, RENDERER_RELATIVE_PATH),
+        "--template", agents_template_path(skill_dir, catalog),
+        "--rules-dir", os.path.join(stack_root, "rules"),
+        "--common-rules-dir", os.path.join(skill_dir, catalog.get("baseAssets", "assets/common"), "rules"),
+        "--centralization", os.path.join(skill_dir, CENTRALIZATION_RELATIVE_PATH),
+    ]
+    if managed_block_only:
+        renderer.append("--managed-block")
+    else:
+        skeleton = os.path.join(stack_root, AGENTS_SKELETON_NAME)
+        if os.path.isfile(skeleton):
+            renderer += ["--skeleton", skeleton]
+    if project_rules_root:
+        renderer += ["--project-rules-dir", project_rules_root]
+    try:
+        completed = subprocess.run(renderer, capture_output=True, encoding="utf-8", errors="replace", check=False)
+    except OSError:
+        return None
+    return completed.stdout if completed.returncode == 0 else None
+
+
 def merged_file_changes(project_root, skill_dir, plan, source_state=None):
     """Describe whether each merged file would change, without writing it."""
     # The effective catalog: composing the tree needs the asset roots of the pack profiles too.
@@ -1658,17 +1686,10 @@ def merged_file_changes_from(project_root, skill_dir, plan, catalog, stack_root)
     changes = []
 
     agents_path = os.path.join(project_root, "AGENTS.md")
-    renderer = [
-        bash_executable(), os.path.join(skill_dir, RENDERER_RELATIVE_PATH),
-        "--template", agents_template_path(skill_dir, catalog),
-        "--rules-dir", os.path.join(stack_root, "rules"),
-        "--common-rules-dir", os.path.join(skill_dir, catalog.get("baseAssets", "assets/common"), "rules"),
-        "--centralization", os.path.join(skill_dir, CENTRALIZATION_RELATIVE_PATH),
-        "--managed-block",
-    ]
-    if os.path.isdir(os.path.join(project_root, ".agents/rules")):
-        renderer += ["--project-rules-dir", ".agents/rules"]
-    rendered_block = run_quiet(renderer, cwd=project_root)
+    project_rules_root = os.path.join(project_root, ".agents", "rules")
+    rendered_block = render_instructions(skill_dir, catalog, stack_root,
+                                         project_rules_root if os.path.isdir(project_rules_root) else None,
+                                         managed_block_only=True)
     if not os.path.isfile(agents_path):
         changes.append(("AGENTS.md", ACTION_CREATE, "created from the base template"))
     else:
@@ -3074,14 +3095,11 @@ def configuration_report(configuration):
     }
 
 
-# The rule reference the managed block of AGENTS.md lists for each rule (render-instruction-template.sh).
-RULE_REFERENCE_LINE = "- Read and follow `.agents/rules/{path}`.\n"
 # How many profiles the context warning names as the ones that add the most.
 CONTEXT_LARGEST_PROFILES = 3
 # The MCP servers the browser tool registers (scripts/setup-browser-tools.py).
 BROWSER_MCP_SERVERS = ("chrome-devtools", "playwright")
-# The heading render-instruction-template.sh writes above the project's own rules.
-PROJECT_RULES_HEADING = "\n### Project rules\n\n"
+RULES_DESTINATION_PREFIX = ".agents/rules/"
 
 
 def loaded_at_start(text):
@@ -3097,78 +3115,42 @@ def loaded_at_start(text):
     return True
 
 
+def text_bytes(text):
+    """Size of a text in UTF-8, the encoding every instruction file is written in."""
+    return len(text.encode("utf-8"))
+
+
 def context_budget(project_root, skill_dir, catalog, plan, configuration):
     """What the selection adds to the context of every session, in bytes, and the profiles that add most.
 
-    AGENTS.md is estimated as it would be after the apply: the project's own content (or the template's
-    skeleton for a new file), the managed block with one reference per rule and the sections of the
-    stacks. Claude also loads every rule without paths: at the start. Each MCP server adds the
-    definitions of its tools, so they are counted too.
+    AGENTS.md is the file the apply would write: the managed block rendered by
+    render-instruction-template.sh, as for the plan diff, and the stack sections the plan places with
+    the same block functions as the apply. Claude also loads every rule without paths: at the start,
+    managed or the project's own; a rule the apply retires does not count. MCP servers are the ones the
+    apply registers: the browser's when its tools are enabled, and the pack servers the policy allows.
     """
-    by_profile = {}
-    rules = []
-    rule_files = 0
-    for destination, asset in desired_assets(skill_dir, catalog, plan["profiles"]).items():
-        if not (destination.startswith(".agents/rules/") and destination.endswith(".md")):
+    managed_destinations = {entry["destination"] for entry in plan["entries"]}
+    rules_by_profile, rule_files = {}, 0
+    for entry in plan["entries"]:
+        destination = entry["destination"]
+        if not entry["sha256"] or not destination.startswith(RULES_DESTINATION_PREFIX) or not destination.endswith(".md"):
             continue
-        with open(asset["sourcePath"], encoding="utf-8", errors="replace") as rule_file:
-            text = rule_file.read()
-        rules.append(destination[len(".agents/rules/"):])
-        if loaded_at_start(text):
+        with open(entry["sourcePath"], encoding="utf-8", errors="replace") as rule_file:
+            rule_text = rule_file.read()
+        if loaded_at_start(rule_text):
             rule_files += 1
-            by_profile[asset["profile"]] = by_profile.get(asset["profile"], 0) + len(text.encode("utf-8"))
-    project_rules = os.path.join(project_root, ".agents", "rules")
-    managed_rules = set(rules)
-    project_rules_found = []
-    for relative_path, absolute_path in (walk_files(project_rules) if os.path.isdir(project_rules) else []):
-        if relative_path.endswith(".md") and relative_path not in managed_rules and not is_link(absolute_path):
-            with open(absolute_path, encoding="utf-8", errors="replace") as rule_file:
-                text = rule_file.read()
-            project_rules_found.append(relative_path)
-            if loaded_at_start(text):
-                rule_files += 1
-                by_profile["project"] = by_profile.get("project", 0) + len(text.encode("utf-8"))
-    rules_bytes = sum(by_profile.values())
+            rules_by_profile[entry["profile"]] = rules_by_profile.get(entry["profile"], 0) + text_bytes(rule_text)
+    project_rules = project_owned_rules(project_root, managed_destinations)
+    for rule_text in project_rules.values():
+        if loaded_at_start(rule_text):
+            rule_files += 1
+            rules_by_profile["project"] = rules_by_profile.get("project", 0) + text_bytes(rule_text)
 
-    with open(agents_template_path(skill_dir, catalog), encoding="utf-8") as template_file:
-        template = template_file.read()
-    agents_path = os.path.join(project_root, "AGENTS.md")
-    if os.path.isfile(agents_path) and not is_link(agents_path):
-        with open(agents_path, encoding="utf-8", errors="replace") as agents_file:
-            current = agents_file.read()
-        own = project_owned_instructions(current)
-    else:
-        own = template.split(MANAGED_BLOCK_START, 1)[0]
-        for name in plan["profiles"]:
-            asset_root = profile_asset_root(skill_dir, catalog, name)
-            skeleton = os.path.join(asset_root, AGENTS_SKELETON_NAME) if asset_root else None
-            if skeleton and os.path.isfile(skeleton):
-                with open(skeleton, encoding="utf-8") as skeleton_file:
-                    own = skeleton_file.read()
-                break
-    block = template[template.find(MANAGED_BLOCK_START):] if MANAGED_BLOCK_START in template else ""
-    with open(os.path.join(skill_dir, CENTRALIZATION_RELATIVE_PATH), encoding="utf-8") as centralization_file:
-        centralization = centralization_file.read()
-    references = "".join(RULE_REFERENCE_LINE.format(path=path) for path in sorted(rules))
-    if project_rules_found:
-        references += PROJECT_RULES_HEADING + "".join(
-            RULE_REFERENCE_LINE.format(path=path) for path in sorted(project_rules_found))
-    block = block.replace("{{AGENT_READY_RULE_REFERENCES}}", references).replace("{{AGENT_READY_CENTRALIZATION}}", centralization)
-    agents_bytes = len(own.encode("utf-8")) + len(block.encode("utf-8"))
-    sections_by_profile = {}
-    for name in plan["profiles"]:
-        asset_root = profile_asset_root(skill_dir, catalog, name)
-        section = os.path.join(asset_root, "blocks", "AGENTS.md") if asset_root else None
-        if section and os.path.isfile(section):
-            markers = "".join(managed_blocks.marker_line(managed_blocks.INSTRUCTION_SECTIONS_DESTINATION, word, name) + "\n"
-                              for word in (managed_blocks.BEGIN_WORD, managed_blocks.END_WORD))
-            size = os.path.getsize(section) + len(markers.encode("utf-8"))
-            agents_bytes += size
-            sections_by_profile[name] = size
-
-    servers = {tool["name"] for tool in plan.get("packToolDeclarations", []) if tool["type"] == pack_tools.TOOL_MCP_SERVER}
-    browser_servers = len(BROWSER_MCP_SERVERS) if any(
-        "browser" in catalog["profiles"][name].get("tools", []) for name in plan["profiles"]) else 0
+    agents_text, sections_by_profile = projected_agents_md(project_root, skill_dir, catalog, plan, project_rules)
+    browser_servers = len(BROWSER_MCP_SERVERS) if (
+        BROWSER_TOOL_NAME in plan["tools"] and configuration.value(TOOLS_ENABLED_KEY)) else 0
+    pack_servers, _ = pack_mcp.desired_servers(plan.get("packTools"))
+    agents_bytes, rules_bytes = text_bytes(agents_text), sum(rules_by_profile.values())
     agents_limit = configuration.value(CONTEXT_BUDGET_BYTES_KEY)
     rules_limit = configuration.value(CONTEXT_BUDGET_RULES_BYTES_KEY)
     return {
@@ -3176,9 +3158,66 @@ def context_budget(project_root, skill_dir, catalog, plan, configuration):
                      "largest": largest_profiles(sections_by_profile)},
         "rulesLoadedAtStart": {"bytes": rules_bytes, "files": rule_files, "limitBytes": rules_limit,
                                "exceeded": rules_limit is not None and rules_bytes > rules_limit,
-                               "largest": largest_profiles(by_profile)},
-        "mcpServers": len(servers) + browser_servers,
+                               "largest": largest_profiles(rules_by_profile)},
+        "mcpServers": browser_servers + len(pack_servers),
     }
+
+
+def project_owned_rules(project_root, managed_destinations):
+    """{relative path: text} of the rules in .agents/rules that no profile manages, now or before."""
+    rules_root = os.path.join(project_root, ".agents", "rules")
+    rules = {}
+    for relative_path, absolute_path in (walk_files(rules_root) if os.path.isdir(rules_root) else []):
+        if (not relative_path.endswith(".md") or is_link(absolute_path)
+                or RULES_DESTINATION_PREFIX + relative_path in managed_destinations):
+            continue
+        with open(absolute_path, encoding="utf-8", errors="replace") as rule_file:
+            rules[relative_path] = rule_file.read()
+    return rules
+
+
+def projected_agents_md(project_root, skill_dir, catalog, plan, project_rules):
+    """(text, {profile: bytes of its section}) of AGENTS.md after the apply, without writing it."""
+    with tempfile.TemporaryDirectory(prefix="agent-ready-context.") as work_root:
+        # Only the project's own rules: the ones the apply retires are gone when it renders the block.
+        rules_copy = os.path.join(work_root, "project-rules")
+        for relative_path, rule_text in project_rules.items():
+            destination = os.path.join(rules_copy, relative_path)
+            os.makedirs(os.path.dirname(destination), exist_ok=True)
+            with open(destination, "w", encoding="utf-8", newline="") as rule_file:
+                rule_file.write(rule_text)
+        stack_root = os.environ.get("AGENT_READY_SETUP_STACK_DIR") or compose_stack_directory(
+            skill_dir, catalog, plan["profiles"], os.path.join(work_root, "stack"))
+        agents_path = os.path.join(project_root, "AGENTS.md")
+        current = None
+        if os.path.isfile(agents_path) and not is_link(agents_path):
+            with open(agents_path, encoding="utf-8", errors="replace") as agents_file:
+                current = agents_file.read()
+        project_rules_root = rules_copy if project_rules else None
+        if current is not None and extract_managed_block(current) is not None:
+            rendered = render_instructions(skill_dir, catalog, stack_root, project_rules_root, managed_block_only=True)
+            text = current.replace(extract_managed_block(current), extract_managed_block(rendered or "") or "", 1)
+        elif current is not None:
+            # Without a block yet, the instruction review adds it after the project's content.
+            rendered = render_instructions(skill_dir, catalog, stack_root, project_rules_root, managed_block_only=True)
+            text = current.rstrip("\n") + "\n\n" + (rendered or "")
+        else:
+            text = render_instructions(skill_dir, catalog, stack_root, project_rules_root, managed_block_only=False) or ""
+    destination = managed_blocks.INSTRUCTION_SECTIONS_DESTINATION
+    sections_by_profile = {}
+    for block in plan.get("blocks", []):
+        if block["destination"] != destination or block.get("action") == ACTION_CONFLICT:
+            continue
+        try:
+            if block.get("content") is None:
+                text = managed_blocks.without_block(text, destination, block["id"])
+                continue
+            before = text_bytes(text)
+            text = managed_blocks.with_block(text, destination, block["id"], block["content"])
+            sections_by_profile[block["profile"]] = sections_by_profile.get(block["profile"], 0) + text_bytes(text) - before
+        except managed_blocks.MarkerError:
+            continue
+    return text, sections_by_profile
 
 
 def largest_profiles(bytes_by_profile):
