@@ -264,17 +264,25 @@ PROVIDER_SYNC = {PROVIDER_CLAUDE: sync_claude, PROVIDER_CODEX: sync_codex}
 PROVIDER_FILES = {PROVIDER_CLAUDE: CLAUDE_CONFIG_RELATIVE_PATH, PROVIDER_CODEX: CODEX_CONFIG_RELATIVE_PATH}
 
 
-def register(project_root, report, previous, providers):
+def register(project_root, report, previous, providers, user_duplicates=None):
     """Register the allowed servers and drop the managed ones that are no longer allowed or selected.
 
-    ``previous`` is the mcpServers of the lock. Returns what changed and the entries the new lock records.
+    ``previous`` is the mcpServers of the lock. ``user_duplicates`` is {provider: {name: user name}}
+    of the servers the user already has for every project: they are not registered in that provider.
+    Returns what changed and the entries the new lock records.
     """
     desired, duplicated = desired_servers(report)
-    result = {"registered": {}, "removed": {}, "conflicts": list(duplicated), "failed": [], "lock": {}}
+    user_duplicates = user_duplicates or {}
+    result = {"registered": {}, "removed": {}, "conflicts": list(duplicated), "failed": [], "lock": {},
+              "userDuplicates": {}}
     managed_providers = {provider for entry in previous.values() for provider in entry.get("providers", [])}
     for provider in sorted((set(providers) | managed_providers) & set(PROVIDER_SYNC)):
         # A provider the repository no longer selects keeps nothing of the packs.
         wanted = desired if provider in providers else {}
+        skipped = user_duplicates.get(provider, {})
+        if skipped:
+            wanted = {name: item for name, item in wanted.items() if name not in skipped}
+            result["userDuplicates"][PROVIDER_FILES[provider]] = dict(skipped)
         before = {name: entry for name, entry in previous.items() if provider in entry.get("providers", [])}
         if not wanted and not before:
             # Nothing of the packs to add or remove: the configuration of the provider is not even read.

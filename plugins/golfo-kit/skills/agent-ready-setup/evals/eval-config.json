@@ -3751,6 +3751,35 @@
           "description": "Propone mover contenido a rules con paths: o a skills"
         }
       ]
+    },
+    {
+      "id": "machine-shadowing-and-user-servers",
+      "description": "Una skill del usuario con el mismo nombre que una del profile, y un MCP del pack que el usuario ya tiene: plan lo informa y el apply no duplica el servidor.",
+      "input": "Tengo en ~/.claude/skills una skill component-creation propia y el profile react de agent-ready-setup trae otra con el mismo nombre. Además ya tengo registrado a nivel usuario el mismo servidor MCP que declara mi pack. ¿Cuál usa cada agente y qué hace agent-ready con el servidor repetido? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "agent-ready plan",
+          "description": "Usa agent-ready plan para ver los choques",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "la del usuario",
+            "del usuario gana",
+            "gana la del usuario",
+            "usa la del usuario",
+            "user's"
+          ],
+          "description": "Dice que en Claude Code gana la skill del usuario"
+        },
+        {
+          "type": "contains",
+          "value": "conflicts.userServers.register",
+          "description": "Nombra la clave para registrar igual la copia del proyecto"
+        }
+      ]
     }
   ]
 }

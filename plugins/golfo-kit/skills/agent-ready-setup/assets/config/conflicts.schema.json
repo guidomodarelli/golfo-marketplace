@@ -18,6 +18,35 @@
       "default": false,
       "x-security": { "strictness": [false, true] }
     },
+    "shadowing": {
+      "description": "Skills, subagentes y comandos de la selección con el mismo nombre que uno del usuario (~/.claude, ~/.agents/skills) o de un plugin instalado. plan informa cuál usa cada provider; nunca lee ni escribe más que esos nombres.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "description": "plan informa las sombras con lo instalado en la máquina. Apagado, no se buscan.",
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "userServers": {
+      "description": "Servidores MCP de los packs que el usuario ya tiene para todos los proyectos (~/.claude.json, config.toml de Codex), idénticos: el mismo endpoint, argumentos y configuración. Solo se lee la configuración del usuario.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "description": "plan informa los servidores que el usuario ya tiene y el apply no registra la copia del proyecto en ese provider. Apagado, no se compara.",
+          "type": "boolean",
+          "default": true
+        },
+        "register": {
+          "description": "Registra igual la copia del proyecto aunque el usuario ya tenga el mismo servidor; plan lo sigue informando.",
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
     "contextBudget": {
       "description": "Cuánto contexto suma la selección al iniciar una sesión: el AGENTS.md que lee Codex, las rules sin paths: que Claude carga siempre y los servidores MCP. plan lo informa y avisa al pasar un umbral.",
       "type": "object",

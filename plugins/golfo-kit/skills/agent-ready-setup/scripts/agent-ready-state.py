@@ -81,6 +81,9 @@ from agent_ready_options import (  # noqa: E402
     CONTEXT_BUDGET_BYTES_KEY,
     CONTEXT_BUDGET_ENABLED_KEY,
     CONTEXT_BUDGET_RULES_BYTES_KEY,
+    SHADOWING_ENABLED_KEY,
+    USER_SERVERS_ENABLED_KEY,
+    USER_SERVERS_REGISTER_KEY,
     EXCLUDED_DEFAULTS_KEY,
     PROFILES_KEY,
     PROVIDERS_KEY,
@@ -115,6 +118,7 @@ from agent_ready_detection import (  # noqa: E402
 import agent_ready_compatibility as compatibility  # noqa: E402
 import agent_ready_conflicts as conflicts_review  # noqa: E402
 import agent_ready_pack_clis as pack_clis  # noqa: E402
+import agent_ready_machine as machine  # noqa: E402
 import agent_ready_pack_mcp as pack_mcp  # noqa: E402
 import agent_ready_pack_scripts as pack_scripts  # noqa: E402
 import agent_ready_pack_signatures as pack_signatures  # noqa: E402
@@ -2055,6 +2059,7 @@ def print_plan(project_root, skill_dir, plan, provider, skip_marketplace_upgrade
         write_line(f"Overridden: {override['replaces']} by {override['profile']} (only its own asset is projected)")
     if plan.get("context"):
         print_context_budget(plan["context"])
+    print_machine_report(plan.get("machine"))
     write_line(f"Source:   {describe_source(plan['source'])}")
     write_line(f"Lock:     {describe_source(plan['lockedSource']) if plan['hasLock'] else 'none (first apply creates it)'}")
     write_line("")
@@ -2406,8 +2411,52 @@ def register_pack_mcp_servers(project_root, plan, previous_lock):
     if os.environ.get("AGENT_READY_SETUP_REVIEW_MODE") == "1":
         return {"registered": {}, "removed": {}, "conflicts": [], "failed": [], "lock": previous,
                 "skipped": "automated reviews never change the MCP servers the providers start"}
-    providers = configuration_of(project_root).value(PROVIDERS_KEY)
-    return pack_mcp.register(project_root, plan.get("packTools"), previous, providers)
+    configuration = configuration_of(project_root)
+    providers = configuration.value(PROVIDERS_KEY)
+    return pack_mcp.register(project_root, plan.get("packTools"), previous, providers,
+                             user_duplicates_to_skip(plan, configuration, providers))
+
+
+def user_duplicates_to_skip(plan, configuration, providers):
+    """{provider: {name: user name}} of the pack servers the apply leaves to the user's configuration."""
+    if not configuration.value(USER_SERVERS_ENABLED_KEY) or configuration.value(USER_SERVERS_REGISTER_KEY):
+        return {}
+    desired, _ = pack_mcp.desired_servers(plan.get("packTools"))
+    return machine.duplicated_servers(desired, providers)
+
+
+def machine_report(project_root, plan, configuration):
+    """What the selection collides with on this machine: skills, subagents and commands of the same
+    name, and pack MCP servers the user already has. Read-only."""
+    report = {}
+    if configuration.value(SHADOWING_ENABLED_KEY):
+        report["shadowed"] = machine.shadowed_assets(project_root, plan["entries"])
+    if configuration.value(USER_SERVERS_ENABLED_KEY):
+        desired, _ = pack_mcp.desired_servers(plan.get("packTools"))
+        providers = configuration.value(PROVIDERS_KEY)
+        files = machine.user_server_paths()
+        registered = configuration.value(USER_SERVERS_REGISTER_KEY)
+        report["userServers"] = [
+            {"name": name, "profile": desired[name]["profile"], "provider": provider, "userName": user_name,
+             "userFile": files[provider], "registered": bool(registered)}
+            for provider, names in sorted(machine.duplicated_servers(desired, providers).items())
+            for name, user_name in sorted(names.items())
+        ]
+    return report
+
+
+def print_machine_report(report):
+    """The collisions with the machine, one line each."""
+    if not report:
+        return
+    for finding in report.get("shadowed", []):
+        write_line(paint(f"  ~ {finding['kind']} {finding['name']} ({finding['profile']}) has the same name as "
+                         f"{finding['machine']}: {finding['winner']}", "warning", sys.stdout))
+    for server in report.get("userServers", []):
+        action = ("registered anyway" if server["registered"]
+                  else f"not registered for {server['provider']} ({USER_SERVERS_REGISTER_KEY}: true registers it)")
+        write_line(paint(f"  ~ MCP server {server['name']} ({server['profile']}) is the user's {server['userName']} "
+                         f"in {server['userFile']}: {action}", "warning", sys.stdout))
 
 
 def print_pack_mcp_report(report, stream):
@@ -2425,6 +2474,9 @@ def print_pack_mcp_report(report, stream):
             write_line(f"Unregistered from {path}: {', '.join(names)}", stream)
     for conflict in report["conflicts"]:
         write_line(paint(f"  ! MCP server kept as the project has it: {conflict}", "warning", stream), stream)
+    for path, names in sorted(report.get("userDuplicates", {}).items()):
+        for name, user_name in sorted(names.items()):
+            write_line(f"Not registered in {path}: {name}, the user already has it as {user_name}", stream)
     for problem in report["failed"]:
         write_line(paint(f"  ! {problem}", "error", stream), stream)
 
@@ -3067,6 +3119,7 @@ def command_plan(arguments):
             plan["suggestions"] = capability_suggestions(catalog, plan["detection"], plan["profiles"])
         if configuration.value(CONTEXT_BUDGET_ENABLED_KEY):
             plan["context"] = context_budget(arguments.project, arguments.skill_dir, catalog, plan, configuration)
+        plan["machine"] = machine_report(arguments.project, plan, configuration)
         if arguments.format == "json":
             write_line(serialize_json(plan_report(arguments.project, arguments.skill_dir, plan, configuration)).rstrip("\n"))
             return 0

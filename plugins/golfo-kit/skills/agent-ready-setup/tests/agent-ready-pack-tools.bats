@@ -388,6 +388,61 @@ PY
   python3 -c 'import sys, tomllib; tomllib.load(open(".codex/config.toml", "rb"))' 2>/dev/null || python3 -c 'import sys; sys.exit(0 if sys.version_info < (3, 11) else 1)'
 }
 
+@test "a pack server the user already has is not registered again for that provider, and plan says so" {
+  unset CLAUDE_CONFIG_DIR
+  printf '{"mcpServers": {"my-docs": {"command": "acme", "args": ["mcp"], "env": {"ACME_TOKEN": "${ACME_TOKEN}"}}}}
+' > "$HOME/.claude.json"
+  run_cli trust add acme
+  run_cli plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"MCP server acme-docs (acme/kafka-interno) is the user's my-docs in ~/.claude.json: not registered for claude"* ]]
+
+  run_cli apply
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"Not registered in .mcp.json: acme-docs, the user already has it as my-docs"* ]]
+  ! grep -qs acme-docs .mcp.json
+  # Codex has no copy of its own, so the project registers it there.
+  grep -Fxq '[mcp_servers.acme-docs]' .codex/config.toml
+
+  run_cli config set conflicts.userServers.register true
+  run_cli apply
+  [ "$status" -eq 0 ]
+  assert_json .mcp.json '"acme-docs" in data["mcpServers"]'
+}
+
+@test "plan names the skills and subagents that something on the machine shadows, and who wins" {
+  unset CLAUDE_CONFIG_DIR
+  mkdir -p "$HOME/.claude/skills/component-creation" "$HOME/.claude/agents" "$HOME/.agents/skills/component-creation"
+  printf -- '---
+name: component-creation
+---
+' > "$HOME/.claude/skills/component-creation/SKILL.md"
+  cp "$HOME/.claude/skills/component-creation/SKILL.md" "$HOME/.agents/skills/component-creation/SKILL.md"
+  printf -- '---
+name: test-reviewer
+---
+' > "$HOME/.claude/agents/test-reviewer.md"
+  # A command and a skill share Claude Code's slash-command names.
+  mkdir -p "$HOME/.claude/skills/react-review-pr"
+  printf -- '---
+name: react-review-pr
+---
+' > "$HOME/.claude/skills/react-review-pr/SKILL.md"
+  run python3 "$skill_dir/scripts/agent-ready-state.py" plan --project "$PWD" --skill-dir "$skill_dir" --profiles react
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"skill component-creation (react) has the same name as ~/.claude/skills/component-creation: Claude Code uses the user's"* ]]
+  [[ "$output" == *"skill component-creation (react) has the same name as ~/.agents/skills/component-creation: Codex lists both"* ]]
+  [[ "$output" == *"agent test-reviewer (react) has the same name as ~/.claude/agents/test-reviewer.md: Claude Code uses the project's"* ]]
+  [[ "$output" == *"command react-review-pr (react) has the same name as ~/.claude/skills/react-review-pr: Claude Code uses the user's"* ]]
+
+  mkdir -p .agents
+  printf '{"conflicts": {"shadowing": {"enabled": false}}}
+' > .agents/agent-ready.json
+  run python3 "$skill_dir/scripts/agent-ready-state.py" plan --project "$PWD" --skill-dir "$skill_dir" --profiles react
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"has the same name as"* ]]
+}
+
 @test "losing the trust or retiring the profile unregisters the pack server" {
   run_cli trust add acme
   run_cli apply
