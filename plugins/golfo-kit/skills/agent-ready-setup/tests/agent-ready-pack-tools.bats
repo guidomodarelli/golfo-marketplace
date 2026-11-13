@@ -422,11 +422,18 @@ name: component-creation
 name: test-reviewer
 ---
 ' > "$HOME/.claude/agents/test-reviewer.md"
+  # A command and a skill share Claude Code's slash-command names.
+  mkdir -p "$HOME/.claude/skills/react-review-pr"
+  printf -- '---
+name: react-review-pr
+---
+' > "$HOME/.claude/skills/react-review-pr/SKILL.md"
   run python3 "$skill_dir/scripts/agent-ready-state.py" plan --project "$PWD" --skill-dir "$skill_dir" --profiles react
   [ "$status" -eq 0 ]
   [[ "$output" == *"skill component-creation (react) has the same name as ~/.claude/skills/component-creation: Claude Code uses the user's"* ]]
   [[ "$output" == *"skill component-creation (react) has the same name as ~/.agents/skills/component-creation: Codex lists both"* ]]
   [[ "$output" == *"agent test-reviewer (react) has the same name as ~/.claude/agents/test-reviewer.md: Claude Code uses the project's"* ]]
+  [[ "$output" == *"command react-review-pr (react) has the same name as ~/.claude/skills/react-review-pr: Claude Code uses the user's"* ]]
 
   mkdir -p .agents
   printf '{"conflicts": {"shadowing": {"enabled": false}}}

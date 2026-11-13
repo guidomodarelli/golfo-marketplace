@@ -41,6 +41,9 @@ CLAUDE_PROJECT_WINS = "Claude Code uses the project's"
 CLAUDE_BOTH_NAMESPACED = "Claude Code loads both (the plugin's as {plugin}:{name})"
 CLAUDE_PROJECT_OVER_PLUGIN = "Claude Code uses the project's over the plugin's"
 CODEX_BOTH_LISTED = "Codex lists both, with no documented order"
+# Claude Code merged commands into skills: a skill and a command share one slash-command name space,
+# so either collides with a personal skill or command of the same name. Subagents are separate.
+CLAUDE_SHARED_NAMESPACE = {KIND_SKILL: (KIND_SKILL, KIND_COMMAND), KIND_COMMAND: (KIND_SKILL, KIND_COMMAND)}
 # An npm package in the arguments of a server: its identity, whatever version it pins.
 PACKAGE_ARGUMENT = re.compile(r"^(?P<name>(@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*)(@[^/\s]+)?$")
 PACKAGE_RUNNERS = ("npx", "pnpm", "bunx", "uvx", "pipx", "dlx", "exec", "-y", "--yes")
@@ -159,16 +162,17 @@ def shadowed_assets(project_root, entries):
         if kind == KIND_SKILL and name in adapters:
             continue
         profile = profiles[destination]
-        if name in user_claude[kind]:
-            findings.append({"kind": kind, "name": name, "profile": profile, "provider": PROVIDER_CLAUDE,
-                             "machine": home_display(user_claude[kind][name]),
-                             "winner": CLAUDE_PROJECT_WINS if kind == KIND_AGENT else CLAUDE_USER_WINS})
-        for plugin, plugin_names in plugins:
-            if name in plugin_names[kind]:
+        for machine_kind in CLAUDE_SHARED_NAMESPACE.get(kind, (kind,)):
+            if name in user_claude[machine_kind]:
                 findings.append({"kind": kind, "name": name, "profile": profile, "provider": PROVIDER_CLAUDE,
-                                 "machine": home_display(plugin_names[kind][name]),
-                                 "winner": CLAUDE_PROJECT_OVER_PLUGIN if kind == KIND_AGENT
-                                 else CLAUDE_BOTH_NAMESPACED.format(plugin=plugin, name=name)})
+                                 "machine": home_display(user_claude[machine_kind][name]),
+                                 "winner": CLAUDE_PROJECT_WINS if kind == KIND_AGENT else CLAUDE_USER_WINS})
+            for plugin, plugin_names in plugins:
+                if name in plugin_names[machine_kind]:
+                    findings.append({"kind": kind, "name": name, "profile": profile, "provider": PROVIDER_CLAUDE,
+                                     "machine": home_display(plugin_names[machine_kind][name]),
+                                     "winner": CLAUDE_PROJECT_OVER_PLUGIN if kind == KIND_AGENT
+                                     else CLAUDE_BOTH_NAMESPACED.format(plugin=plugin, name=name)})
         if name in user_codex_skills:
             findings.append({"kind": kind, "name": name, "profile": profile, "provider": PROVIDER_CODEX,
                              "machine": home_display(user_codex_skills[name]), "winner": CODEX_BOTH_LISTED})
@@ -176,8 +180,9 @@ def shadowed_assets(project_root, entries):
 
 
 def server_identity(server):
-    """What makes two MCP servers the same, whatever their name: the URL, the package they run, or
-    the command and its arguments."""
+    """What makes two MCP servers the same, whatever their name: the URL, the package they run with
+    the arguments that configure it (only the pinned version is ignored), or the command and its
+    arguments."""
     if not isinstance(server, dict):
         return None
     if server.get("url"):
@@ -186,12 +191,12 @@ def server_identity(server):
     if not command:
         return None
     arguments = [str(argument) for argument in server.get("args") or []]
-    for argument in arguments:
+    for position, argument in enumerate(arguments):
         if argument in PACKAGE_RUNNERS or argument.startswith("-"):
             continue
         match = PACKAGE_ARGUMENT.match(argument)
         if match and os.path.basename(str(command)).split(".")[0] in PACKAGE_RUNNERS:
-            return "package:" + match.group("name")
+            return "package:" + " ".join([match.group("name")] + arguments[position + 1:])
         break
     return "command:" + " ".join([os.path.basename(str(command))] + arguments)
 
@@ -211,7 +216,9 @@ def user_servers():
         except (OSError, ValueError):
             codex = None
         if isinstance(codex, dict) and isinstance(codex.get("mcp_servers"), dict):
-            servers[PROVIDER_CODEX] = {name: entry for name, entry in codex["mcp_servers"].items() if isinstance(entry, dict)}
+            # A server the user turned off (enabled = false) does not stand in for the project's.
+            servers[PROVIDER_CODEX] = {name: entry for name, entry in codex["mcp_servers"].items()
+                                       if isinstance(entry, dict) and entry.get("enabled", True) is not False}
     return servers
 
 
