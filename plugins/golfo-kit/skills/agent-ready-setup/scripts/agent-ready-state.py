@@ -2295,6 +2295,9 @@ def instructions_conflict(project_root, skill_dir, folder=""):
         proxy = file_handle.read()
     if claude == proxy or claude.strip() == b"@AGENTS.md":
         return False
+    if folder and managed_blocks.has_linked_directory(project_root, nested.destination_in(folder)):
+        # Beyond a symlink nothing is written: the block reports the link as its conflict.
+        return False
     if folder and nested.is_ignored(project_root, f"{folder}/{nested.PROXY_FILE}"):
         # The normalization never turns it into the proxy, whatever its AGENTS.md holds.
         return True
@@ -4563,8 +4566,11 @@ def block_removal_entries(project_root, skill_dir, lock):
         proxy_path = os.path.join(project_root, *proxy.split("/"))
         if entry["action"] == REMOVAL_REMOVE and nested.is_nested_destination(destination) and \
                 nested.is_proxy(proxy_path, claude_proxy_text(skill_dir)):
-            entries.append(removal_entry(proxy, REMOVAL_REMOVE, f"proxy of {destination}", "instructions",
-                                         local_state(proxy_path)))
+            proxy_entry = removal_entry(proxy, REMOVAL_REMOVE, f"proxy of {destination}", "instructions",
+                                        local_state(proxy_path))
+            # It goes only if its AGENTS.md really goes: one edited meanwhile keeps its blocks out but stays.
+            proxy_entry["proxyOf"] = destination
+            entries.append(proxy_entry)
     return entries
 
 
@@ -5011,6 +5017,9 @@ def apply_removal(project_root, skill_dir, plan):
             except OSError as caught_error:
                 report["failed"].append(f"{entry['path']}: {caught_error}")
                 inventory_left = True
+            continue
+        if entry.get("proxyOf") and entry["proxyOf"] not in report["removed"]:
+            report["kept"].append(f"{entry['path']}: {entry['proxyOf']} stays, and so does its proxy")
             continue
         try:
             apply_removal_entry(project_root, skill_dir, entry, report)

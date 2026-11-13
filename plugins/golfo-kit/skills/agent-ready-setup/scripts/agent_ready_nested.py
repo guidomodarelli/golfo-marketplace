@@ -165,7 +165,9 @@ def configured_folder_problem(project_root, folder):
     problem = folder_problem(folder)
     if problem is None and not is_folder(project_root, folder):
         problem = "does not exist in the repository"
-    if problem is None and is_ignored(project_root, destination_in(folder)):
+    # Git cannot tell whether a path beyond a symlink is ignored; classify reports the link itself.
+    if problem is None and not managed_blocks.has_linked_directory(project_root, destination_in(folder)) \
+            and is_ignored(project_root, destination_in(folder)):
         problem = "is ignored by Git"
     return problem
 
