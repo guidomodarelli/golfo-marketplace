@@ -40,6 +40,8 @@ PERMISSION_DENY = "deny"
 DISABLE_ALL_HOOKS_KEY = "disableAllHooks"
 # Shell operators between the invocations of a compound hook command.
 COMMAND_SEPARATORS = re.compile(r"\s*(?:&&|\|\||;|\|)\s*")
+# Commands that run another one with arguments they read at run time, so its targets are unknown.
+ARGUMENT_WRAPPERS = {"xargs", "parallel", "find"}
 # Words of a formatter command that name the runner or the formatter, never a file to format.
 COMMAND_WORDS = {"npx", "pnpm", "pnpx", "yarn", "bunx", "bun", "exec", "dlx", "run", "uvx", "pipx", "python", "python3",
                  "prettier", "biome", "format", "check", "lint", "eslint", "dprint", "fmt", "black", "ruff",
@@ -219,6 +221,9 @@ def formatter_targets(command):
     try:
         tokens = shlex.split(command)
     except ValueError:
+        return None
+    if any(os.path.basename(token) in ARGUMENT_WRAPPERS for token in tokens):
+        # xargs, parallel or find -exec hand the formatter files read at run time: any file can be a target.
         return None
     targets = set()
     for token in tokens:
