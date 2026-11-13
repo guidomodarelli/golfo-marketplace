@@ -195,9 +195,14 @@ run-evals plugins/<plugin-name>/skills/<skill-name> --repeat 3
 # Optional provider override (default: auto-detect Codex or Claude)
 run-evals plugins/<plugin-name>/skills/<skill-name> --provider codex
 
+# Run an eval-config.json kept outside the skill (for example a held-out set); not valid with --all
+run-evals plugins/<plugin-name>/skills/<skill-name> --config /path/to/held-out/eval-config.json
+
 # Optional persistent provider override
 export GOLFO_MARKETPLACE_EVAL_PROVIDER=codex
 ```
+
+The agent under evaluation reads a copy of the skill without its `evals/` directory (sibling skills and the plugin folders two levels up stay reachable through symlinks), so it cannot see the assertions it is graded against. Unknown assertion types make the config invalid instead of passing unchecked.
 
 ## Bumping a plugin version
 
