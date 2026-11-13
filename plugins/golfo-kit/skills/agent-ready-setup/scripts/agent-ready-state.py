@@ -2279,8 +2279,8 @@ def instructions_conflict(project_root, skill_dir, folder=""):
     instruction-normalization.sh: a CLAUDE.md that is the proxy, the bare "@AGENTS.md" or the same bytes
     as AGENTS.md is normalized, and one without an AGENTS.md is moved there; any other one is a conflict
     the agent resolves by hand, and so is a symlink or something that is not a file. The normalization
-    skips the files Git ignores, so in a nested folder an ignored CLAUDE.md of its own without an
-    AGENTS.md stays as it is and is a conflict too: an AGENTS.md beside it would never reach Claude Code.
+    skips the files Git ignores, so in a nested folder an ignored CLAUDE.md that is not the proxy stays as
+    it is and is a conflict too, with or without an AGENTS.md: the block would never reach Claude Code.
     """
     claude_path = os.path.join(project_root, *folder.split("/"), "CLAUDE.md") if folder else \
         os.path.join(project_root, "CLAUDE.md")
@@ -2295,10 +2295,13 @@ def instructions_conflict(project_root, skill_dir, folder=""):
         proxy = file_handle.read()
     if claude == proxy or claude.strip() == b"@AGENTS.md":
         return False
+    if folder and nested.is_ignored(project_root, f"{folder}/{nested.PROXY_FILE}"):
+        # The normalization never turns it into the proxy, whatever its AGENTS.md holds.
+        return True
     if os.path.isfile(agents_path):
         with open(agents_path, "rb") as file_handle:
             return file_handle.read() != claude
-    return bool(folder) and nested.is_ignored(project_root, f"{folder}/{nested.PROXY_FILE}")
+    return False
 
 
 def instructions_wait(project_root, skill_dir, destination):

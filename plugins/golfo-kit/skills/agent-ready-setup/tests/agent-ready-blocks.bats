@@ -775,4 +775,12 @@ write_nested_manifest() {
   [ "$status" -eq 0 ]
   [ ! -e src/app/AGENTS.md ]
   grep -qx 'Local notes.' src/app/CLAUDE.md
+
+  # The same bytes in AGENTS.md do not help: the ignored CLAUDE.md never becomes the proxy.
+  cp src/app/CLAUDE.md src/app/AGENTS.md
+  run_cli plan
+  [[ "$output" == *"waits in src/app: its CLAUDE.md has instructions of its own"* ]]
+  run_cli apply
+  [ "$status" -eq 0 ]
+  ! grep -q 'AGENT-READY MANAGED' src/app/AGENTS.md
 }

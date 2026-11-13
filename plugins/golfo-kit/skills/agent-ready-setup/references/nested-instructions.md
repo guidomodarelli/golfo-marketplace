@@ -111,8 +111,9 @@ frena nada: `plan` lo avisa.
   `AGENTS.md`, el bloque espera, como las secciones de la raíz:
   - El lock conserva lo que sabía del bloque.
   - Primero se unen los dos archivos.
-  - Un `CLAUDE.md` sin `AGENTS.md` al lado lo mueve la normalización antes de que se escriban los bloques,
-    salvo que Git lo ignore: la normalización no toca archivos ignorados, así que ese caso también espera.
+  - Un `CLAUDE.md` sin `AGENTS.md` al lado lo mueve la normalización antes de que se escriban los bloques.
+  - Un `CLAUDE.md` que Git ignora y no es el proxy también espera, tenga o no `AGENTS.md` al lado: la
+    normalización no toca archivos ignorados, así que nunca lo cambia por el proxy.
   - `plan` agrega a la línea del destino en qué carpeta espera.
 - **Retiro:** un destino que cambia de carpeta, se apaga o sale de la selección deja su bloque en el lock, y
   el apply lo saca del archivo anterior. Si a ese `AGENTS.md` no le queda contenido, se borra junto con su
