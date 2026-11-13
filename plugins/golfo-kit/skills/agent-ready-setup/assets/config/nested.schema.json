@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AGENTS.md anidados",
+  "description": "Bloques que los profiles publican en el AGENTS.md de una carpeta del repositorio (por ejemplo, app/ de Next.js App Router), cada uno con su CLAUDE.md proxy. El contenido fuera del bloque es del proyecto.",
+  "x-module": "nested",
+  "x-mount": "nested",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "enabled": {
+      "description": "Encendido, cada destino anidado de la selección escribe su bloque en la carpeta que configura nested.targets o, si no, en la primera carpeta candidata que existe. Apagado, ninguno escribe y el apply siguiente retira los bloques que había.",
+      "type": "boolean",
+      "default": true
+    },
+    "targets": {
+      "description": "Carpetas o estado de cada destino anidado, por su id <profile>/<nombre> (agent-ready plan los lista). Un destino que no figura acá usa la detección.",
+      "type": "array",
+      "default": [],
+      "x-layers": ["project"],
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id"],
+        "properties": {
+          "id": {
+            "description": "Id del destino: <profile>/<nombre>, como nextjs-app-router/app-router o acme/backend/handlers.",
+            "type": "string",
+            "pattern": "[a-z0-9]+(?:-[a-z0-9]+)*(?:/[a-z0-9]+(?:-[a-z0-9]+)*){1,2}"
+          },
+          "paths": {
+            "description": "Carpetas, relativas a la raíz, que reciben el bloque en su AGENTS.md; ganan sobre la detección. Cada una tiene que existir, no estar ignorada por Git ni bajo .git/, .agents/, .claude/ o .codex/. Una lista vacía no escribe en ninguna.",
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "uniqueItems": true
+          },
+          "enabled": {
+            "description": "false apaga solo este destino: no escribe y el apply siguiente retira sus bloques.",
+            "type": "boolean"
+          }
+        }
+      }
+    }
+  }
+}

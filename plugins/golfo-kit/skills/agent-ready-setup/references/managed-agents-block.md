@@ -129,8 +129,10 @@ manifest de vistas por hard link (`.claude/.agent-ready-hard-link-views`). `scri
   - `.gitignore`, `.gitattributes`, `.dockerignore`, YAML, TOML y shell: `# BEGIN AGENT-READY MANAGED: common`.
 
   Otro tipo de archivo, un `CLAUDE.md` o un `AGENTS.md` fuera de la raíz (sin importar mayúsculas) y
-  lo que está bajo `.git/`, `.agents/`, `.claude/` o `.codex/` no admiten bloques: el plan falla y nombra
-  el profile. El `AGENTS.md` de la raíz solo admite la sección de un stack («Secciones de los stacks»).
+  lo que está bajo `.git/`, `.agents/`, `.claude/` o `.codex/` no admiten bloques de `blocks/`: el plan falla y
+  nombra el profile. El `AGENTS.md` de la raíz solo admite la sección de un stack («Secciones de los stacks»),
+  y el de una carpeta, el bloque de un destino anidado, que el profile publica en `nested/` y el repo ubica
+  ([nested-instructions.md](nested-instructions.md)).
 - **Contrato.** Es el mismo del bloque de `AGENTS.md`:
   - lo que está entre los marcadores se pisa en cada apply, y lo de afuera es del proyecto;
   - un bloque nuevo se agrega al final, separado por una línea en blanco;

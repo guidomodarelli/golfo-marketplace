@@ -16,7 +16,7 @@ description: >-
   descartar un hallazgo de sus revisiones de IA.
 license: MIT
 metadata:
-  version: "1.47.0"
+  version: "1.48.0"
   author: "guponce"
   category: "developer-experience"
   tags: "agent-ready, multi-provider, claude-code, codex, bootstrap, setup, scaffold, context-optimized-v1.20.1"
@@ -52,6 +52,10 @@ operación. El bootstrap distribuye assets según responsabilidad:
   estado local de agent-ready-setup: el lock de una sincronización en curso, la metadata
   del navegador (`.agents/browser-tools.json`) y el manifest de vistas por hard link. Las
   reglas propias del proyecto van fuera del bloque.
+- `<carpeta>/AGENTS.md` y su `CLAUDE.md` proxy: el bloque de un destino anidado que publica un profile
+  (`nested` en el catálogo), en la carpeta que fija `nested.targets` o, si no, en la primera candidata que
+  existe. Contrato, rechazos y cómo carga cada provider los anidados:
+  [references/nested-instructions.md](references/nested-instructions.md).
 
 `AGENTS.md` es la fuente canónica. Debe incluir una sección de referencias de
 rules que indique a todos los providers leer y seguir cada archivo bajo

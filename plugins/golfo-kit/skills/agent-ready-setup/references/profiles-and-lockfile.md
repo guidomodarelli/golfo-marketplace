@@ -33,6 +33,7 @@ un repositorio. La implementación vive en `scripts/agent-ready-state.py`.
 | `complements` | skills o herramientas de otros profiles con las que este va junto, como `<profile>:skills/<nombre>`, `<profile>:mcpServers/<nombre>` o `<profile>:clis/<nombre>`: declara que no compiten, y el aviso de herramientas que compiten por la misma capacidad (`provides`) no sale |
 | `tools` | herramientas que el apply instala o registra (`browser`) |
 | `detect` | señales estáticas para detectar el profile; opcional (ver «Detección») |
+| `nested` | destinos anidados: un bloque en el `AGENTS.md` de una carpeta del repo, como `{"app-router": {"candidates": ["app", "src/app"]}}` con el bloque en `nested/app-router.md`; el manifest elige o apaga la carpeta con `nested.targets` ([nested-instructions.md](nested-instructions.md)) |
 
 `assets/common/` es el núcleo: siempre se proyecta, en cualquier repo, y tiene el template neutro de
 `AGENTS.md`. Lo de desarrollo (rules de código, el template de PR, `pr-review-workflow` y el esqueleto
@@ -243,8 +244,8 @@ profiles, pero no selecciona ninguno ni proyecta sus assets.
 
 **Pack.** Tiene `agent-ready-pack.json` en la raíz, con `schemaVersion`, `name` y `profiles`. `name`
 debe ser igual al de la fuente en el manifest, porque los profiles se referencian por él. Cada
-profile acepta `kind`, `description`, `assets`, `requires`, `conflicts`, `defaults`, `tools` y `detect`, con el
-significado de la sección 1, más `clis`, `mcpServers` y `scripts` ([pack-tools.md](pack-tools.md)), y
+profile acepta `kind`, `description`, `assets`, `requires`, `conflicts`, `defaults`, `tools`, `detect` y `nested`,
+con el significado de la sección 1, más `clis`, `mcpServers` y `scripts` ([pack-tools.md](pack-tools.md)), y
 estos límites:
 
 - `kind` es `capability`, `bundle` o `stack`. Un profile que necesita un stack lo declara en `requires`;
@@ -252,10 +253,12 @@ estos límites:
 - `tools` solo acepta herramientas que el motor ya conoce (`browser`).
 - Un pack no declara `baseAssets` ni otras fuentes, ni redefine un profile de
   Golfo. Los assets compartidos van en un profile propio, como `acme/base`, que los demás requieren.
-- `assets` publica solo `rules/`, `skills/`, `agents/`, `commands/` y `blocks/`, los bloques gestionados
+- `assets` publica solo `rules/`, `skills/`, `agents/`, `commands/`, `blocks/`, los bloques gestionados
   de archivos compartidos con el proyecto ([managed-agents-block.md](managed-agents-block.md), sección
-  «Bloques en otros archivos»). No puede traer hooks, settings, el template de `AGENTS.md` ni archivos
-  `AGENTS.md` o `CLAUDE.md`; solo un profile `stack` publica su sección de `AGENTS.md` (`blocks/AGENTS.md`).
+  «Bloques en otros archivos»), y `nested/`, el bloque de cada destino anidado que declara
+  ([nested-instructions.md](nested-instructions.md)). No puede traer hooks, settings, el template de
+  `AGENTS.md` ni archivos `AGENTS.md` o `CLAUDE.md`; solo un profile `stack` publica su sección de `AGENTS.md`
+  (`blocks/AGENTS.md`).
 - Las rules de un pack entran en la lista del bloque gestionado de `AGENTS.md`, como las de cualquier
   profile. Un pack no cambia el template ni las instrucciones propias del proyecto.
 
@@ -483,7 +486,8 @@ vista `.claude/`. `merged` lista `AGENTS.md` (bloque gestionado),
 fusionan con contenido del proyecto, así que no se comparan con una base. `blocks`
 guarda, por archivo y por id, el `profile`, el `source`, el `sha256` y el `state` de cada
 bloque gestionado de un archivo compartido ([managed-agents-block.md](managed-agents-block.md),
-sección «Bloques en otros archivos»). El JSON es
+sección «Bloques en otros archivos»), también de cada `AGENTS.md` anidado
+([nested-instructions.md](nested-instructions.md)). El JSON es
 determinista (sin timestamps ni paths de la máquina): la misma resolución
 produce los mismos bytes.
 

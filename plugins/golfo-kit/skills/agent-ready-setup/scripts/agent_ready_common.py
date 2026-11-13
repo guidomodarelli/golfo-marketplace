@@ -3,11 +3,14 @@
 import hashlib
 import json
 import os
+import re
 import shutil
 import tempfile
 import time
 
 LOCK_MAX_AGE_SECONDS = 3600
+# The names of packs, of their profiles and of nested targets.
+KEBAB_CASE_NAME = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
 
 class ProfileError(Exception):

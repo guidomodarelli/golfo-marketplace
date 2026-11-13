@@ -64,6 +64,21 @@ Señales estáticas del proyecto que eligen el stack primario de un repositorio 
 |---|---|---|---|---|---|---|
 | `detection.enabled` | boolean | `true` | todas | `AGENT_READY_SETUP_DETECTION` | — | Apagada, plan no muestra señales ni sugerencias y un repositorio sin selección pide --stack o --profiles. |
 
+## `nested`: AGENTS.md anidados
+
+Bloques que los profiles publican en el AGENTS.md de una carpeta del repositorio (por ejemplo, app/ de Next.js App Router), cada uno con su CLAUDE.md proxy. El contenido fuera del bloque es del proyecto.
+
+| Clave | Tipo | Default | Capas | Variable | Seguridad | Descripción |
+|---|---|---|---|---|---|---|
+| `nested.enabled` | boolean | `true` | todas | — | — | Encendido, cada destino anidado de la selección escribe su bloque en la carpeta que configura nested.targets o, si no, en la primera carpeta candidata que existe. Apagado, ninguno escribe y el apply siguiente retira los bloques que había. |
+| `nested.targets` | lista de objetos | `[]` | project | — | — | Carpetas o estado de cada destino anidado, por su id <profile>/<nombre> (agent-ready plan los lista). Un destino que no figura acá usa la detección. |
+
+Campos de cada elemento de `nested.targets`:
+
+- `id` (string, obligatorio): Id del destino: <profile>/<nombre>, como nextjs-app-router/app-router o acme/backend/handlers.
+- `paths` (lista de string, opcional): Carpetas, relativas a la raíz, que reciben el bloque en su AGENTS.md; ganan sobre la detección. Cada una tiene que existir, no estar ignorada por Git ni bajo .git/, .agents/, .claude/ o .codex/. Una lista vacía no escribe en ninguna.
+- `enabled` (boolean, opcional): false apaga solo este destino: no escribe y el apply siguiente retira sus bloques.
+
 ## `reviews`: Revisiones de IA
 
 Caché de las revisiones de IA: la de AGENTS.md contra sus rules y la de consistencia entre rules y skills al editarlas.

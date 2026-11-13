@@ -4003,6 +4003,43 @@
           "description": "Menciona el código de salida 6"
         }
       ]
+    },
+    {
+      "id": "nested-agents-target-folder",
+      "description": "Un repo con un monorepo pide que el bloque anidado de App Router de un pack vaya a otra carpeta y que Claude Code lo cargue.",
+      "input": "Uso agent-ready con un pack que publica un bloque para el AGENTS.md de App Router. En mi monorepo la carpeta es apps/web/src/app y la detección no la encuentra. ¿Cómo le digo a qué carpeta va, qué pasa con el AGENTS.md que ya dejó en otra carpeta y qué necesita Claude Code para cargarlo? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "nested.targets",
+          "description": "Configura la carpeta con nested.targets en el manifest",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "apps/web/src/app",
+          "description": "Usa la carpeta del monorepo como path",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "CLAUDE.md",
+          "description": "Explica que el AGENTS.md anidado lleva su CLAUDE.md proxy para Claude Code",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "retira",
+            "retirado",
+            "se borra",
+            "lo saca",
+            "saca el bloque",
+            "quita el bloque"
+          ],
+          "description": "Dice que el bloque de la carpeta anterior se retira"
+        }
+      ]
     }
   ]
 }
