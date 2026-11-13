@@ -864,6 +864,8 @@ if [[ -f "${BASH_SOURCE[0]}" ]] && ! cmp -s "${BASH_SOURCE[0]}" "$sync_hook_sour
   current_hook_needs_restart=1
 fi
 
+# The hook restarted below loads the resolution of the source from its own directory: it goes first.
+sync_file "$skill_dir/assets/common/hooks/$SKILL_SOURCE_LIBRARY_FILE_NAME" "$SHARED_DIR/hooks/$SKILL_SOURCE_LIBRARY_FILE_NAME"
 sync_file "$sync_hook_source" "$sync_hook_destination"
 
 if [[ "$sync_hook_destination_was_different" -eq 1 || "$current_hook_needs_restart" -eq 1 ]] && \

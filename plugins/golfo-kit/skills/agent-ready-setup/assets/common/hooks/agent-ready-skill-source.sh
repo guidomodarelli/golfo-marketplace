@@ -11,6 +11,8 @@ readonly SKILL_NAME="agent-ready-setup"
 # Codex resolves its user home from CODEX_HOME; config, snapshot and cache follow it.
 readonly CODEX_HOME_DIRECTORY="${CODEX_HOME:-$HOME/.codex}"
 readonly ASSET_SYNC_HELPER_PATH="scripts/asset-sync-common.sh"
+# This library's own file name, which the sync projects before restarting a newer hook.
+readonly SKILL_SOURCE_LIBRARY_FILE_NAME="agent-ready-skill-source.sh"
 
 is_valid_skill_dir() {
   local candidate="$1"
