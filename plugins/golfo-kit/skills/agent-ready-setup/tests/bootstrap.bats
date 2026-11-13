@@ -1676,7 +1676,6 @@ EOF
     HOME="$test_root/empty-home" MARKETPLACE_INVOCATION_LOG="$invocation_log" PATH="$fake_bin:$PATH" \
     bash "$hook" --provider claude
   [ "$status" -eq 0 ]
-  [[ "$output" == *"could not detect project stack"* ]]
 }
 
 @test "sync hook rejects removed phase flags" {

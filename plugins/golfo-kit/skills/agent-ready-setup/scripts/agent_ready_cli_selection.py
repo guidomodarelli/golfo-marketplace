@@ -45,6 +45,12 @@ from agent_ready_prompts import ask_confirmation, ask_text, can_prompt, equivale
 GOLFO_SOURCE_LABEL = "golfo-kit"
 
 
+# What a repository without stack signals is for: code (pick a stack) or other work (documents, research).
+PURPOSE_CODE = "code"
+PURPOSE_OTHER = "other"
+REPOSITORY_PURPOSES = (PURPOSE_CODE, PURPOSE_OTHER)
+
+
 def selected_profiles(project_root):
     """Profiles the manifest selects, or an empty list when it selects none."""
     return engine().configuration_of(project_root).value(PROFILES_KEY) or []
@@ -55,8 +61,7 @@ def validate_selection(catalog, names, project_root):
 
     It resolves with the excludedDefaults of the repository, as every apply does.
     """
-    if not names:
-        return "select at least one profile"
+    # An empty selection (none) is the core only.
     excluded = engine().configuration_of(project_root).value(EXCLUDED_DEFAULTS_KEY) or []
     try:
         engine().resolve_profiles(catalog, names, excluded_defaults=excluded)
@@ -350,6 +355,15 @@ def command_init(arguments):
     defaults, suggestions = detected_defaults(catalog, arguments.project_root)
     updates = arguments.updates
     full_wizard = not arguments.profiles and not arguments.updates
+    if not arguments.profiles and not defaults:
+        # No stack signal: what the repository is for decides the default before the profiles.
+        purpose = ask_text(f"What is this repository for? ({'|'.join(REPOSITORY_PURPOSES)})", PURPOSE_CODE,
+                           lambda answer: None if answer in REPOSITORY_PURPOSES
+                           else f"answer one of {', '.join(REPOSITORY_PURPOSES)}")
+        if purpose == PURPOSE_OTHER:
+            sys.stderr.write("Without code the core applies; add capabilities or a pack profile, or none.\n")
+            defaults = [engine().EMPTY_SELECTION_TOKEN]
+        asked = True
     if not arguments.profiles:
         if suggestions:
             sys.stderr.write(f"Detected capabilities you may add: {', '.join(suggestions)}\n")
@@ -369,7 +383,7 @@ def command_init(arguments):
         if ci_provider is None and not configuration.value(CI_PROVIDER_KEY):
             ci_provider = ask_ci_provider(arguments.project_root)
         asked = True
-    profiles = ",".join(profile_names(arguments.profiles))
+    profiles = ",".join(profile_names(arguments.profiles)) or engine().EMPTY_SELECTION_TOKEN
     if not arguments.yes:
         if not ask_confirmation(f"Apply {profiles} now? Managed assets are overwritten with the templates", True):
             sys.stderr.write("Nothing was changed.\n")
