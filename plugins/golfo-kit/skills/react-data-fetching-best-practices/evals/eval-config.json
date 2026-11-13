@@ -165,7 +165,7 @@
         },
         {
           "type": "regex",
-          "pattern": "(UserProfile|fetch|load|carg|perfil|profile)[^\\n]*(failed|fall)",
+          "pattern": "(UserProfile|fetch|load|carg|perfil|profile).*(failed|fall)",
           "description": "El mensaje de error nombra la operación que falló"
         }
       ]
