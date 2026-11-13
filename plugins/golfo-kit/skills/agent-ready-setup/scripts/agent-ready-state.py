@@ -22,6 +22,7 @@ network; plan and status read what the cache already has.
 
 import argparse
 import difflib
+import importlib.util
 import json
 import os
 import shutil
@@ -3097,8 +3098,8 @@ def configuration_report(configuration):
 
 # How many profiles the context warning names as the ones that add the most.
 CONTEXT_LARGEST_PROFILES = 3
-# The MCP servers the browser tool registers (scripts/setup-browser-tools.py).
-BROWSER_MCP_SERVERS = ("chrome-devtools", "playwright")
+# The entry point that registers the browser MCP servers; its SERVER_ALIASES is their roster.
+BROWSER_SETUP_RELATIVE_PATH = "scripts/setup-browser-tools.py"
 RULES_DESTINATION_PREFIX = ".agents/rules/"
 
 
@@ -3153,7 +3154,7 @@ def context_budget(project_root, skill_dir, catalog, plan, configuration):
             rules_by_profile["project"] = rules_by_profile.get("project", 0) + text_bytes(rule_text)
 
     agents_text, sections_by_profile = projected_agents_md(project_root, skill_dir, catalog, plan, project_rules)
-    browser_servers = len(BROWSER_MCP_SERVERS) if (
+    browser_servers = len(browser_mcp_servers(skill_dir)) if (
         BROWSER_TOOL_NAME in plan["tools"] and configuration.value(TOOLS_ENABLED_KEY)) else 0
     pack_servers, _ = pack_mcp.desired_servers(plan.get("packTools"))
     agents_bytes, rules_bytes = text_bytes(agents_text), sum(rules_by_profile.values())
@@ -3167,6 +3168,22 @@ def context_budget(project_root, skill_dir, catalog, plan, configuration):
                                "largest": largest_profiles(rules_by_profile)},
         "mcpServers": browser_servers + len(pack_servers),
     }
+
+
+def browser_mcp_servers(skill_dir):
+    """The MCP servers the browser setup registers, read from its own roster.
+
+    The setup needs Python 3.11 and exits before registering anything on an older one, so there the
+    roster is empty, as the registration would be.
+    """
+    specification = importlib.util.spec_from_file_location(
+        "agent_ready_browser_setup", os.path.join(skill_dir, BROWSER_SETUP_RELATIVE_PATH))
+    module = importlib.util.module_from_spec(specification)
+    try:
+        specification.loader.exec_module(module)
+    except SystemExit:
+        return ()
+    return tuple(module.SERVER_ALIASES)
 
 
 def project_owned_rules(project_root, managed_destinations):
