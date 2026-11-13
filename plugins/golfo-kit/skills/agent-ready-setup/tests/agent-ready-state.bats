@@ -980,3 +980,25 @@ plan_text() {
   [[ "$output" != *"! permission"* ]]
   [[ "$output" == *"is registered in"* ]]
 }
+
+@test "plan shows what each provider sees, the hooks only one runs and a CI job that already checks" {
+  printf '{"name": "app"}\n' > package.json
+  mkdir -p .claude .github/workflows .agents
+  printf '%s\n' '{"hooks": {"PostToolUse": [{"matcher": "Edit", "hooks": [{"type": "command", "command": "npm run lint"}]}]}}' > .claude/settings.json
+  printf 'name: own\njobs:\n  check:\n    runs-on: ubuntu-latest\n    steps:\n      - run: sh .agents/ci/agent-ready-check.sh\n' > .github/workflows/own.yml
+  printf '{"ci": {"provider": "github"}}\n' > .agents/agent-ready.json
+  run env -u CLAUDE_CONFIG_DIR HOME="$test_root/home" python3 "$skill_dir/scripts/agent-ready-state.py" plan --project "$project_dir" --skill-dir "$skill_dir" --profiles node
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Providers: Claude Code sees "*" rules ("*" only for their paths)"*"; Codex sees "*" rules in AGENTS.md and "*" skills"* ]]
+  [[ "$output" == *"~ claude runs the PostToolUse hook \`npm run lint\` (.claude/settings.json) and codex does not"* ]]
+  [[ "$output" == *"~ .github/workflows/own.yml already runs the Agent Ready check; the managed .github/workflows/agent-ready.yml runs it again"* ]]
+  # The golfo-kit hooks of each provider match, except the ones declared for one provider.
+  [[ "$output" != *"runs the SessionStart hook"* ]]
+  [[ "$output" != *"UserPromptSubmit"* ]]
+
+  printf '{"ci": {"provider": "github"}, "conflicts": {"providerParity": {"enabled": false}, "ciJobs": {"enabled": false}}}\n' > .agents/agent-ready.json
+  run env -u CLAUDE_CONFIG_DIR HOME="$test_root/home" python3 "$skill_dir/scripts/agent-ready-state.py" plan --project "$project_dir" --skill-dir "$skill_dir" --profiles node
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"Providers: Claude Code sees"* ]]
+  [[ "$output" != *"already runs the Agent Ready check"* ]]
+}

@@ -18,6 +18,42 @@
       "default": false,
       "x-security": { "strictness": [false, true] }
     },
+    "providerParity": {
+      "description": "Qué ve cada provider de la selección (rules, skills, subagentes, comandos) y los hooks que corren en uno y no en el otro, salvo los declarados propios de un provider.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "description": "plan muestra qué ve cada provider y avisa de los hooks que llegan a uno solo. Apagado, no se compara.",
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "environment": {
+      "description": "Variables de entorno que piden las herramientas de los packs: la misma pedida por dos fuentes, o una que el proyecto ya lista en su .env.example.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "description": "plan informa las variables que chocan, con los profiles que las piden. Apagado, no se compara.",
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "ciJobs": {
+      "description": "Un CI propio del repo que ya corre el chequeo de Agent Ready que agrega el CI gestionado.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "description": "plan informa el archivo de CI que ya corre el chequeo, para no correrlo dos veces. Apagado, no se compara.",
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
     "hooks": {
       "description": "Hooks de golfo-kit, del proyecto, locales y del usuario que chocan: el mismo hook registrado en dos capas, que corre dos veces, o dos formateadores en el mismo evento con matchers que se pisan.",
       "type": "object",

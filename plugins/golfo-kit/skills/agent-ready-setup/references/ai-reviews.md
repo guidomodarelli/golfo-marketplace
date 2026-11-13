@@ -19,6 +19,7 @@ descartar un hallazgo.
 9. Choques con la máquina
 10. Rules contra la realidad del repo
 11. Hooks, permisos y settings
+12. Paridad entre providers, variables de entorno y CI
 
 ## 1. Qué se revisa
 
@@ -324,3 +325,31 @@ Que un hook de un profile bloquee una acción que pide otro profile lo cubre la 
 |---|---|---|
 | `conflicts.hooks.enabled` | `true` | `false` no compara los hooks |
 | `conflicts.permissions.enabled` | `true` | `false` no compara los permisos |
+
+## 12. Paridad entre providers, variables de entorno y CI
+
+Tres chequeos más de `agent-ready plan`, sin IA y sin escribir nada.
+
+- **Paridad entre providers** (con los dos en `providers`): `plan` dice qué ve cada uno. Claude Code
+  lee las rules como `.claude/rules` y carga las que tienen `paths:` solo al tocar esos archivos;
+  Codex lista todas en `AGENTS.md`. Los subagentes y los comandos le llegan a Codex como skills del
+  mismo nombre. Avisa de un hook que corre en un provider y no en el otro: los de golfo-kit (salvo
+  los declarados propios de uno, como el relink de las vistas de `.claude`) y los del proyecto en
+  `.claude/settings.json` contra `.codex/hooks.json`.
+- **Variables de entorno:** una variable que piden los servidores MCP de dos fuentes distintas, o
+  que el proyecto ya lista en `.env.example` (o `.env.sample`, `.env.template`, `.env.dist`), se
+  informa con los profiles que la piden, para confirmar que significa lo mismo.
+- **Jobs de CI duplicados:** con el CI gestionado (`ci.provider`), un workflow propio del repo que
+  ya corre el chequeo de Agent Ready se informa, para no correrlo dos veces.
+
+```text
+Providers: Claude Code sees 20 rules (0 only for their paths), 5 skills, 5 subagents and 1 commands; Codex sees 20 rules in AGENTS.md and 11 skills
+  ~ claude runs the PostToolUse hook `npm run lint` (.claude/settings.json) and codex does not
+  ~ .github/workflows/own.yml already runs the Agent Ready check; the managed .github/workflows/agent-ready.yml runs it again
+```
+
+| Clave | Default | Efecto |
+|---|---|---|
+| `conflicts.providerParity.enabled` | `true` | `false` no compara los providers |
+| `conflicts.environment.enabled` | `true` | `false` no compara las variables de entorno |
+| `conflicts.ciJobs.enabled` | `true` | `false` no busca jobs de CI duplicados |
