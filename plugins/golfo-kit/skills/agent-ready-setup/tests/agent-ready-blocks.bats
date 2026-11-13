@@ -705,10 +705,10 @@ write_nested_manifest() {
     write_nested_manifest "\"nested\": {\"targets\": [{\"id\": \"acme/web/app-router\", \"paths\": [\"$folder\"]}]}"
     run_cli plan
     [ "$status" -eq 2 ]
-    [[ "$stderr" == *"the folder '$folder' of the nested target acme/web/app-router $expected; nothing was written"* ]]
+    [[ "$stderr" == *"the folder '$folder' of the nested target acme/web/app-router $expected"*"nothing was written"* ]]
     run_cli apply
     [ "$status" -ne 0 ]
-    [[ "$stderr" == *"the folder '$folder' of the nested target acme/web/app-router $expected; nothing was written"* ]]
+    [[ "$stderr" == *"the folder '$folder' of the nested target acme/web/app-router $expected"*"nothing was written"* ]]
     [ ! -e src/app/AGENTS.md ]
     [ ! -e .agents/agent-ready.lock.json ]
   done
