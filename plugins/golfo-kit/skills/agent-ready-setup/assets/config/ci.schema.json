@@ -15,15 +15,53 @@
     "mode": {
       "description": "fail sale con el código de cada resultado; warn informa lo mismo y sale con 0.",
       "type": "string",
-      "enum": ["fail", "warn"],
+      "enum": [
+        "fail",
+        "warn"
+      ],
       "default": "fail",
       "x-env": "AGENT_READY_SETUP_CI"
     },
     "provider": {
       "description": "Proveedor de CI cuyos archivos gestiona agent-ready-setup: el script .agents/ci/agent-ready-check.sh y, según el proveedor, el workflow de GitHub Actions, el job de GitLab con su include o el stage de Jenkins para copiar. none no crea nada; sin valor, todavía no se eligió.",
       "type": "string",
-      "enum": ["github", "gitlab", "jenkins", "generic", "none"],
-      "x-layers": ["project"]
+      "enum": [
+        "github",
+        "gitlab",
+        "jenkins",
+        "generic",
+        "none"
+      ],
+      "x-layers": [
+        "project"
+      ]
+    },
+    "conflicts": {
+      "description": "Los conflictos de los perfiles en agent-ready check. off los ignora, warn los lista sin cambiar el código de salida y fail sale con 6.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "structural": {
+          "description": "Los chequeos sin IA: sombras con la máquina, rules contra la configuración del repo, permisos, hooks y formateadores, paridad entre providers, variables de entorno, jobs de CI duplicados y herramientas que compiten. Baratos y deterministas.",
+          "type": "string",
+          "enum": [
+            "off",
+            "warn",
+            "fail"
+          ],
+          "default": "fail"
+        },
+        "semantic": {
+          "description": "Las revisiones de IA (contradicciones entre rules y skills que compiten). Necesitan la CLI de un provider con credenciales en el CI; sin ella, un par sin revisar cuenta como no chequeado. Responden de la caché versionada cuando el par no cambió.",
+          "type": "string",
+          "enum": [
+            "off",
+            "warn",
+            "fail"
+          ],
+          "default": "off"
+        }
+      }
     }
   }
 }

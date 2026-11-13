@@ -28,6 +28,8 @@ agent-ready-state.py check compara las fuentes, el lockfile y los assets commite
 | `ci.enabled` | boolean | `true` | todas | — | — | Apagado, el chequeo no compara nada, no usa la red y sale con 0. |
 | `ci.mode` | `fail` \| `warn` | `"fail"` | todas | `AGENT_READY_SETUP_CI` | — | fail sale con el código de cada resultado; warn informa lo mismo y sale con 0. |
 | `ci.provider` | `github` \| `gitlab` \| `jenkins` \| `generic` \| `none` | — | project | — | — | Proveedor de CI cuyos archivos gestiona agent-ready-setup: el script .agents/ci/agent-ready-check.sh y, según el proveedor, el workflow de GitHub Actions, el job de GitLab con su include o el stage de Jenkins para copiar. none no crea nada; sin valor, todavía no se eligió. |
+| `ci.conflicts.structural` | `off` \| `warn` \| `fail` | `"fail"` | todas | — | — | Los chequeos sin IA: sombras con la máquina, rules contra la configuración del repo, permisos, hooks y formateadores, paridad entre providers, variables de entorno, jobs de CI duplicados y herramientas que compiten. Baratos y deterministas. |
+| `ci.conflicts.semantic` | `off` \| `warn` \| `fail` | `"off"` | todas | — | — | Las revisiones de IA (contradicciones entre rules y skills que compiten). Necesitan la CLI de un provider con credenciales en el CI; sin ella, un par sin revisar cuenta como no chequeado. Responden de la caché versionada cuando el par no cambió. |
 
 ## `conflicts`: Conflictos semánticos
 

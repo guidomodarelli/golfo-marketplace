@@ -62,6 +62,8 @@ UPDATE_TO=""
 FROM_LOCK=0
 OFFLINE=0
 JSON_OUTPUT=0
+# --conflicts: a plan that prints only the conflicts between the profiles (agent-ready conflicts).
+CONFLICTS_ONLY=0
 # apply (default), plan, status or config.
 RUN_MODE="apply"
 SKILL_DIR=""
@@ -121,8 +123,14 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --plan|--status|--config)
-      [[ "$RUN_MODE" == apply ]] || { echo "ERROR: --plan, --status and --config are mutually exclusive" >&2; exit 1; }
+      [[ "$RUN_MODE" == apply ]] || { echo "ERROR: --plan, --status, --config and --conflicts are mutually exclusive" >&2; exit 1; }
       RUN_MODE="${1#--}"
+      shift
+      ;;
+    --conflicts)
+      [[ "$RUN_MODE" == apply ]] || { echo "ERROR: --plan, --status, --config and --conflicts are mutually exclusive" >&2; exit 1; }
+      RUN_MODE=plan
+      CONFLICTS_ONLY=1
       shift
       ;;
     --offline)
@@ -563,6 +571,10 @@ OFFLINE_ARGUMENTS=()
 [[ "$OFFLINE" -eq 1 ]] && OFFLINE_ARGUMENTS=(--offline)
 FORMAT_ARGUMENTS=()
 [[ "$JSON_OUTPUT" -eq 1 ]] && FORMAT_ARGUMENTS=(--format json)
+if [[ "$CONFLICTS_ONLY" -eq 1 ]]; then
+  FORMAT_ARGUMENTS=(--format conflicts)
+  [[ "$JSON_OUTPUT" -eq 1 ]] && FORMAT_ARGUMENTS=(--format conflicts-json)
+fi
 if [[ "$RUN_MODE" == config ]]; then
   python3 "$SKILL_DIR/scripts/agent-ready-state.py" config --project . ${OFFLINE_ARGUMENTS[@]+"${OFFLINE_ARGUMENTS[@]}"} \
     ${FORMAT_ARGUMENTS[@]+"${FORMAT_ARGUMENTS[@]}"} >&3

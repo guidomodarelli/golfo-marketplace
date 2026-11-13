@@ -21,6 +21,7 @@ descartar un hallazgo.
 11. Hooks, permisos y settings
 12. Paridad entre providers, variables de entorno y CI
 13. Skills que compiten
+14. Todos los conflictos juntos
 
 ## 1. Qué se revisa
 
@@ -381,3 +382,25 @@ solo de las que compiten, con el pedido en común y en qué difieren:
 | Clave | Default | Efecto |
 |---|---|---|
 | `conflicts.competingSkills.enabled` | `true` | `false` no revisa las skills; `reviews.enabled: false` también la apaga |
+
+## 14. Todos los conflictos juntos
+
+`agent-ready conflicts` corre los chequeos de las secciones 7 a 13 sobre la selección y muestra solo
+los conflictos, sin escribir nada:
+
+```text
+Structural conflicts:
+  ! .agents/rules/react-testing.md (react) assumes test runner vitest, but the repository uses jest (package.json)
+AI review findings:
+  ! [a1b2c3] .agents/rules/acme-team.md <-> .agents/rules/verify-changes.md: … 
+```
+
+- **Estructurales:** sin IA, los de las secciones 9 a 12 y las herramientas que compiten. Lo que solo
+  informa (el presupuesto de contexto, qué ve cada provider, los servidores que quedan para el usuario,
+  un dato que el catálogo no conoce) no cuenta como conflicto.
+- **De IA:** las contradicciones entre rules (sección 7) y las skills que compiten (sección 13), de
+  la caché o con el provider. `--offline` responde solo de la caché y dice cuántos pares quedaron sin
+  revisar.
+- **Código de salida:** `0` sin conflictos, `6` con alguno. `--json` deja el detalle de cada chequeo.
+
+En CI, `agent-ready check` corre los mismos chequeos con `ci.conflicts` (`ci-check.md`).
