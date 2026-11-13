@@ -140,10 +140,10 @@ Resolver root y base branch en modo repositorio:
 
 ```bash
 REPO_ROOT=$(git rev-parse --show-toplevel)
-BASE_BRANCH=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')
+BASE_BRANCH=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null)
 ```
 
-Si remote HEAD falta, elegir primera branch existente: `develop`, `main`, `master`. Preguntar solo si ninguna existe.
+Conservar ref remoto (`origin/main`): puede no existir branch local. Si remote HEAD falta, elegir primer ref existente según `git rev-parse --verify --quiet`: `origin/develop`, `origin/main`, `origin/master` y después `develop`, `main`, `master`. Preguntar solo si ninguno existe.
 
 Resolver `repository_id` con `scripts/jira-ticket.py repo-id`: recorre `<REPO_ID_SOURCES>` en orden (por defecto `name` de `package.json` sin scope npm y después basename de root) y quita `<REPO_PREFIXES>` del basename.
 
