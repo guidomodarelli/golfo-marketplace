@@ -45,9 +45,15 @@ from agent_ready_prompts import ask_confirmation, ask_text, can_prompt, equivale
 GOLFO_SOURCE_LABEL = "golfo-kit"
 
 
+# What a repository without stack signals is for: code (pick a stack) or other work (documents, research).
+PURPOSE_CODE = "code"
+PURPOSE_OTHER = "other"
+REPOSITORY_PURPOSES = (PURPOSE_CODE, PURPOSE_OTHER)
+
+
 def selected_profiles(project_root):
-    """Profiles the manifest selects, or an empty list when it selects none."""
-    return engine().configuration_of(project_root).value(PROFILES_KEY) or []
+    """Profiles the manifest selects: [] is the core-only selection, None means it has no selection yet."""
+    return engine().configuration_of(project_root).value(PROFILES_KEY)
 
 
 def validate_selection(catalog, names, project_root):
@@ -55,8 +61,7 @@ def validate_selection(catalog, names, project_root):
 
     It resolves with the excludedDefaults of the repository, as every apply does.
     """
-    if not names:
-        return "select at least one profile"
+    # An empty selection (none) is the core only.
     excluded = engine().configuration_of(project_root).value(EXCLUDED_DEFAULTS_KEY) or []
     try:
         engine().resolve_profiles(catalog, names, excluded_defaults=excluded)
@@ -77,7 +82,7 @@ def profile_names(text):
 def command_profiles_list(arguments):
     """Every profile the repository can select, with its kind, source and whether it is selected."""
     catalog = engine().load_effective_catalog(arguments.project_root, content_root(arguments.project_root))
-    selected = set(selected_profiles(arguments.project_root))
+    selected = set(selected_profiles(arguments.project_root) or [])
     rows = []
     # The CI profiles are not selectable: agent-ready ci setup picks them through ci.provider.
     for name in engine().selectable_profile_names(catalog):
@@ -115,13 +120,14 @@ def apply_command_for(project_root, selection):
     state = engine()
     reproduces_lock = (state.configuration_of(project_root).value(UPDATES_FROM_LOCK_KEY)
                        and os.path.isfile(os.path.join(project_root, state.LOCK_RELATIVE_PATH)))
-    return command + (f" --profiles {','.join(selection)}" if reproduces_lock else "")
+    # An empty selection (the core only) is "none" on the command line.
+    return command + (f" --profiles {','.join(selection) or state.EMPTY_SELECTION_TOKEN}" if reproduces_lock else "")
 
 
 def change_selection(arguments, compute, removing=False):
     """Validate the new selection against the catalog and write it; the projection is apply's job."""
     current = selected_profiles(arguments.project_root)
-    if not current:
+    if current is None:
         raise UsageError(f"this repository has no selection yet; start it with {CLI_NAME} init")
     if removing:
         catalog = catalog_for_removal(arguments.project_root)
@@ -150,7 +156,7 @@ def command_profiles_add(arguments):
 
 def command_profiles_remove(arguments):
     """Remove profiles from the selection of the manifest."""
-    current = selected_profiles(arguments.project_root)
+    current = selected_profiles(arguments.project_root) or []
     missing = [name for name in arguments.names if name not in current]
     if missing:
         # A profile can come without being selected: as a default of another one, left out
@@ -271,7 +277,7 @@ def pack_problem(project_root, name):
 def command_sources_remove(arguments):
     """Remove a profile source from the manifest, unless selected profiles still come from it."""
     prefix = f"{arguments.name}{NAMESPACE_SEPARATOR}"
-    selection = selected_profiles(arguments.project_root)
+    selection = selected_profiles(arguments.project_root) or []
     try:
         catalog = engine().load_effective_catalog(arguments.project_root, content_root(arguments.project_root))
     except (ProfileError, StateError):
@@ -316,14 +322,15 @@ def detected_defaults(catalog, project_root):
         stack = engine().stack_from_initial_detection(catalog, detection)
     except ProfileError:
         return [], []
-    defaults = engine().profiles_for_stack(catalog, stack)
+    # No stack signal: no default profile, and init asks what the repository is for.
+    defaults = engine().profiles_for_stack(catalog, stack) if stack else []
     suggestions = [item["profile"] for item in engine().capability_suggestions(catalog, detection, defaults)]
     return defaults, suggestions
 
 
 def command_init(arguments):
     """First setup of a repository: choose the profiles, write the manifest and apply."""
-    if selected_profiles(arguments.project_root):
+    if selected_profiles(arguments.project_root) is not None:
         raise UsageError(f"this repository is already set up; change it with {CLI_NAME} profiles add|remove "
                          f"and {CLI_NAME} apply")
     provider = resolve_provider(arguments.provider)
@@ -350,6 +357,15 @@ def command_init(arguments):
     defaults, suggestions = detected_defaults(catalog, arguments.project_root)
     updates = arguments.updates
     full_wizard = not arguments.profiles and not arguments.updates
+    if not arguments.profiles and not defaults:
+        # No stack signal: what the repository is for decides the default before the profiles.
+        purpose = ask_text(f"What is this repository for? ({'|'.join(REPOSITORY_PURPOSES)})", PURPOSE_CODE,
+                           lambda answer: None if answer in REPOSITORY_PURPOSES
+                           else f"answer one of {', '.join(REPOSITORY_PURPOSES)}")
+        if purpose == PURPOSE_OTHER:
+            sys.stderr.write("Without code the core applies; add capabilities or a pack profile, or none.\n")
+            defaults = [engine().EMPTY_SELECTION_TOKEN]
+        asked = True
     if not arguments.profiles:
         if suggestions:
             sys.stderr.write(f"Detected capabilities you may add: {', '.join(suggestions)}\n")
@@ -369,7 +385,7 @@ def command_init(arguments):
         if ci_provider is None and not configuration.value(CI_PROVIDER_KEY):
             ci_provider = ask_ci_provider(arguments.project_root)
         asked = True
-    profiles = ",".join(profile_names(arguments.profiles))
+    profiles = ",".join(profile_names(arguments.profiles)) or engine().EMPTY_SELECTION_TOKEN
     if not arguments.yes:
         if not ask_confirmation(f"Apply {profiles} now? Managed assets are overwritten with the templates", True):
             sys.stderr.write("Nothing was changed.\n")

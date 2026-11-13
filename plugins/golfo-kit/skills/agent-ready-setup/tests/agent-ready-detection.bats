@@ -177,18 +177,27 @@ PY
   [ "$(manifest_profiles)" = "go" ]
 }
 
-@test "a repository without signals fails before writing and names the available stacks" {
-  before="$(tree_fingerprint)"
-
+@test "a repository without signals gets the core only, and detect says so without failing" {
   run_detect
-  [ "$status" -eq 3 ]
+  [ "$status" -eq 0 ]
   [[ "${lines[0]}" == "Stack: none" ]]
+  [[ "$output" == *"android, go, java, nextjs, nextjs-app-router, node, react"* ]]
 
   run_bootstrap
-  [ "$status" -ne 0 ]
+  [ "$status" -eq 0 ]
   [[ "$output" == *"Stack: none"* ]]
-  [[ "$output" == *"android, go, java, nextjs, nextjs-app-router, node, react"* ]]
-  [ "$(tree_fingerprint)" = "$before" ]
+  # The empty selection is pinned: a later signal never changes the manifest.
+  [ "$(json_value .agents/agent-ready.json 'data["profiles"]')" = "[]" ]
+  grep -qx '## Purpose' AGENTS.md
+  [ -f .agents/rules/verify-changes.md ]
+  [ ! -e .agents/rules/lint-gate.md ]
+
+  printf '{}
+' > package.json
+  run_bootstrap --plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Profiles: none (the core only: no stack and no capability)"* ]]
+  [[ "$output" == *"Selected by: manifest"* ]]
 }
 
 @test "SessionStart reports an ambiguous repository and skips the projection" {
@@ -423,7 +432,7 @@ for profile in catalog["profiles"].values():
   [ -L package.json ] || skip "requiere symlinks reales (en Windows: Modo de desarrollador o una shell elevada)"
 
   run_detect
-  [ "$status" -eq 3 ]
+  [ "$status" -eq 0 ]
   [[ "${lines[0]}" == "Stack: none" ]]
 }
 
@@ -434,7 +443,7 @@ for profile in catalog["profiles"].values():
   [ -L linked ] || skip "requiere symlinks reales (en Windows: Modo de desarrollador o una shell elevada)"
 
   run_detect
-  [ "$status" -eq 3 ]
+  [ "$status" -eq 0 ]
   [[ "${lines[0]}" == "Stack: none" ]]
 }
 
@@ -652,4 +661,43 @@ run_resolve() {
     [ "$status" -eq 2 ]
     [[ "$output" == *"ERROR: agent-ready profiles:"* ]]
   done
+}
+
+@test "a pinned empty selection survives ambiguous signals, takes new profiles and is checked for drift" {
+  run_bootstrap --profiles none
+  [ "$status" -eq 0 ]
+  [ "$(json_value .agents/agent-ready.json 'data["profiles"]')" = "[]" ]
+
+  # Two stacks match now: the pinned empty selection still decides, without a detection error.
+  printf '{}\n' > package.json
+  printf 'module example\n' > go.mod
+  run_bootstrap --plan --offline
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Profiles: none (the core only: no stack and no capability)"* ]]
+
+  # The core-only repository gets the same drift checks as any other.
+  run env PATH="$fake_bin:$PATH" python3 "$skill_dir/scripts/agent-ready" check --offline
+  [ "$status" -eq 0 ]
+  sed -i.bak 's/^## Rules$/## Edited rules/' AGENTS.md && rm -f AGENTS.md.bak
+  run env PATH="$fake_bin:$PATH" python3 "$skill_dir/scripts/agent-ready" check --offline
+  [ "$status" -eq 4 ]
+  [[ "$output" == *"AGENTS.md: managed block changes"* ]]
+
+  # profiles add adopts a first profile into the empty selection.
+  run env PATH="$fake_bin:$PATH" python3 "$skill_dir/scripts/agent-ready" profiles add business-flows
+  [ "$status" -eq 0 ]
+  [ "$(json_value .agents/agent-ready.json 'data["profiles"]')" = "['business-flows']" ]
+}
+
+@test "with updates.fromLock, removing the last profile recommends applying the empty selection as none" {
+  mkdir -p .agents
+  printf '%s\n' '{"profiles": ["business-flows"], "updates": {"fromLock": true}}' > .agents/agent-ready.json
+  run_bootstrap
+  [ "$status" -eq 0 ]
+  run env PATH="$fake_bin:$PATH" python3 "$skill_dir/scripts/agent-ready" profiles remove business-flows
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"agent-ready apply --profiles none"* ]]
+  run_bootstrap --profiles none
+  [ "$status" -eq 0 ]
+  [ ! -e .agents/rules/business-flows.md ]
 }

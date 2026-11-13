@@ -3656,6 +3656,29 @@
           "description": "Menciona el template neutro de AGENTS.md"
         }
       ]
+    },
+    {
+      "id": "detection-without-stack-signals",
+      "description": "Un repo sin señales de stack no es un error: el apply deja solo el núcleo y guarda profiles vacío; con una persona, init pregunta para qué es el repo.",
+      "input": "Corrí la detección de agent-ready-setup en un repo que solo tiene Markdown de actas y dio `Stack: none`. ¿Es un error? ¿Qué hago para dejarlo agent ready sin elegir un stack, y qué queda guardado en `.agents/agent-ready.json`? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["--profiles none", "\"profiles\": []", "profiles: []", "lista vacía"],
+          "description": "Usa la selección vacía",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["núcleo", "nucleo", "assets/common"],
+          "description": "Dice que se aplica el núcleo"
+        },
+        {
+          "type": "regex",
+          "pattern": "[Nn]o es (un )?error|exit 0|sale con 0",
+          "description": "Aclara que Stack: none no es un error"
+        }
+      ]
     }
   ]
 }

@@ -1490,10 +1490,7 @@ EOF
   run bash "$skill_dir/scripts/bootstrap.sh" --stack react
   [ "$status" -ne 0 ]
   [[ "$output" == *"--skill-dir is required"* ]]
-
-  run bash "$skill_dir/scripts/bootstrap.sh" --skill-dir "$skill_dir" --provider claude
-  [ "$status" -ne 0 ]
-  [[ "$output" == *"pass --profiles or --stack"* ]]
+  # Without a selection or a stack signal there is no error: the core applies (agent-ready-detection.bats).
 }
 
 @test "bootstrap infers Codex from installed skill path without provider override" {
@@ -1676,7 +1673,6 @@ EOF
     HOME="$test_root/empty-home" MARKETPLACE_INVOCATION_LOG="$invocation_log" PATH="$fake_bin:$PATH" \
     bash "$hook" --provider claude
   [ "$status" -eq 0 ]
-  [[ "$output" == *"could not detect project stack"* ]]
 }
 
 @test "sync hook rejects removed phase flags" {

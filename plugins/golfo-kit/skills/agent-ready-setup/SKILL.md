@@ -16,7 +16,7 @@ description: >-
   descartar un hallazgo de sus revisiones de IA.
 license: MIT
 metadata:
-  version: "1.34.0"
+  version: "1.35.0"
   author: "guponce"
   category: "developer-experience"
   tags: "agent-ready, multi-provider, claude-code, codex, bootstrap, setup, scaffold, context-optimized-v1.20.1"
@@ -163,7 +163,9 @@ Una detección posterior informa señales y sugerencias en `--plan`, pero nunca 
 la selección guardada.
 
 Sin manifest, un agente corre `agent-ready init --profiles <a,b> --yes` (o `--stack <s>`) con la
-selección confirmada abajo; una persona en su terminal puede correr `agent-ready init` y responder.
+selección confirmada abajo; una persona en su terminal puede correr `agent-ready init` y responder (en un
+repo sin señales de stack, `init` pregunta primero si es de código u otra cosa). `--profiles none` es la
+selección vacía: solo el núcleo.
 Con manifest, usar sus profiles: correr `agent-ready apply` sin `--stack` ni `--profiles`, y cambiar
 la selección con `agent-ready profiles add|remove`. Si
 el usuario pide otros, pasar `--profiles a,b` (cada stack suma su sección a `AGENTS.md`,
@@ -180,7 +182,7 @@ python3 "$SKILL_DIR/scripts/agent-ready-state.py" detect --project . --skill-dir
 |---|---|---|
 | `Stack: <stack>` (exit 0) | las señales determinan un stack primario; cada línea muestra su evidencia y qué stack quedó reemplazado | confirmar con el mensaje de abajo y correr `agent-ready apply` sin `--stack` ni `--profiles`: aplica el mismo resultado |
 | `Stack: ambiguous (<a>, <b>)` (exit 3) | coinciden stacks sin prioridad entre sí | mostrar las coincidencias y su evidencia, y pedir que el usuario elija; el apply no elige solo y falla sin escribir |
-| `Stack: none` (exit 3) | ninguna señal coincide | informar que el stack no pudo determinarse y pedir uno de: `react`, `nextjs`, `nextjs-app-router`, `node`, `java`, `go`, `android` |
+| `Stack: none` (exit 0) | ninguna señal de stack coincide | no es un error: preguntar para qué es el repo. Con código, pedir un stack (`react`, `nextjs`, `nextjs-app-router`, `node`, `java`, `go`, `android`); sin código (documentos, investigación), ofrecer capabilities o un pack, o `--profiles none`, que deja solo el núcleo. Un apply sin selección aplica el núcleo y guarda `"profiles": []` |
 
 Las líneas `? <capability>: <evidencia>` son sugerencias: nunca se agregan solas al
 manifest ni instalan herramientas. Mencionarlas, y agregarlas con `--profiles` solo si

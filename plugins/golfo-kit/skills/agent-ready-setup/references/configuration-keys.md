@@ -15,7 +15,7 @@ Qué profiles y providers usa el repositorio. No es una funcionalidad que se apa
 
 | Clave | Tipo | Default | Capas | Variable | Seguridad | Descripción |
 |---|---|---|---|---|---|---|
-| `profiles` | lista de string | — | project | — | — | Profiles elegidos, en orden, sin los que traen por defaults ni por requires: esos los resuelve cada apply y los registra el lock. Cada stack suma su sección a AGENTS.md y el más específico es el primario. Sin valor, la detección inicial elige y el apply lo guarda. |
+| `profiles` | lista de string | — | project | — | — | Profiles elegidos, en orden, sin los que traen por defaults ni por requires: esos los resuelve cada apply y los registra el lock. Cada stack suma su sección a AGENTS.md y el más específico es el primario. Una lista vacía (--profiles none) es solo el núcleo, para un repo sin código. Sin valor, la detección inicial elige y el apply lo guarda: sin señales de stack, la lista vacía. |
 | `excludedDefaults` | lista de string | — | project | — | — | Profiles que no se traen por defaults (por ejemplo browser, que traen react, node, java y go). Un profile que la selección requiere o nombra no se puede excluir. |
 | `providers` | lista de string (`claude`, `codex`) | `["claude", "codex"]` | project | — | — | Providers para los que el repositorio declara su configuración; el lockfile los registra. |
 

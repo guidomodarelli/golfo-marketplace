@@ -158,7 +158,9 @@ formato cuenta aunque no se use.
 1. `--profiles` o `--stack`.
 2. `profiles` de `.agents/agent-ready.json`.
 3. Detección inicial, solo sin manifest: el apply guarda el stack primario en el manifest, y
-   sus `defaults` se resuelven en cada apply.
+   sus `defaults` se resuelven en cada apply. Sin ninguna señal de stack no es un error: el apply
+   deja solo el núcleo y guarda `"profiles": []` (lo mismo que `--profiles none`), y `detect` sale
+   con 0. Una lista vacía en el manifest también es una selección: una señal posterior no la cambia.
 
 `detection.enabled: false` apaga la detección y las sugerencias ([configuration.md](configuration.md)).
 Una detección posterior nunca cambia el manifest. `plan` informa la selección (`Selected

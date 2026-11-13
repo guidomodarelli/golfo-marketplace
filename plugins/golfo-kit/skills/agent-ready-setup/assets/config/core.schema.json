@@ -8,10 +8,9 @@
   "additionalProperties": false,
   "properties": {
     "profiles": {
-      "description": "Profiles elegidos, en orden, sin los que traen por defaults ni por requires: esos los resuelve cada apply y los registra el lock. Cada stack suma su sección a AGENTS.md y el más específico es el primario. Sin valor, la detección inicial elige y el apply lo guarda.",
+      "description": "Profiles elegidos, en orden, sin los que traen por defaults ni por requires: esos los resuelve cada apply y los registra el lock. Cada stack suma su sección a AGENTS.md y el más específico es el primario. Una lista vacía (--profiles none) es solo el núcleo, para un repo sin código. Sin valor, la detección inicial elige y el apply lo guarda: sin señales de stack, la lista vacía.",
       "type": "array",
       "items": { "type": "string", "minLength": 1 },
-      "minItems": 1,
       "uniqueItems": true,
       "x-layers": ["project"]
     },

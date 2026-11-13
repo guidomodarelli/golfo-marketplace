@@ -100,6 +100,7 @@ from agent_ready_options import (  # noqa: E402
 from agent_ready_detection import (  # noqa: E402
     STACK_PROFILE_KIND,
     STATUS_AMBIGUOUS,
+    STATUS_NONE,
     STATUS_RESOLVED,
     DetectionSchemaError,
     detect_profiles,
@@ -443,8 +444,14 @@ def selectable_profile_names(catalog):
     return sorted(name for name, profile in catalog["profiles"].items() if profile.get("kind") != CI_PROFILE_KIND)
 
 
+# The selection with no profile at all: the core only, for a repository without code.
+EMPTY_SELECTION_TOKEN = "none"
+
+
 def split_profile_names(raw_profiles):
-    """Split a comma separated profile list, keeping order and dropping blanks."""
+    """Split a comma separated profile list, keeping order and dropping blanks; "none" is no profile."""
+    if (raw_profiles or "").strip() == EMPTY_SELECTION_TOKEN:
+        return []
     names = []
     for name in (raw_profiles or "").split(","):
         name = name.strip()
@@ -505,8 +512,7 @@ def resolve_profiles(catalog, requested_names, ci_profile=None, excluded_default
                                    f"CI profiles come from {CI_PROVIDER_KEY}")
             visit(default, brought_by)
 
-    if not requested_names:
-        raise ProfileError("no profiles selected; pass --profiles or --stack")
+    # An empty selection is valid: the core only, for a repository without code.
     for requested_name in requested_names:
         if profiles.get(requested_name, {}).get("kind") == CI_PROFILE_KIND:
             provider = requested_name[len(CI_PROFILE_PREFIX):] if requested_name.startswith(CI_PROFILE_PREFIX) else "generic"
@@ -1762,7 +1768,7 @@ def print_plan_detection(plan):
     if detection["primaryStack"] and detection["primaryStack"] != plan["primaryStack"]:
         write_line(paint(
             f"  ! Signals point to {detection['primaryStack']}, but the selection from {plan['selection']} keeps "
-            f"{plan['primaryStack']}; change it explicitly with --stack or --profiles.",
+            f"{plan['primaryStack'] or 'no stack'}; change it explicitly with --stack or --profiles.",
             "warning", stream,
         ))
     write_line("")
@@ -1929,7 +1935,10 @@ def print_plan(project_root, skill_dir, plan, provider, skip_marketplace_upgrade
     """Human readable plan on stdout."""
     stream = sys.stdout
     write_line(paint("Agent Ready plan (read-only: nothing was written)", "heading", stream))
-    write_line(f"Profiles: {', '.join(plan['profiles'])} (primary stack: {plan['primaryStack'] or 'none'})")
+    if plan["profiles"]:
+        write_line(f"Profiles: {', '.join(plan['profiles'])} (primary stack: {plan['primaryStack'] or 'none'})")
+    else:
+        write_line("Profiles: none (the core only: no stack and no capability)")
     write_line(f"Selected by: {plan['selection']}")
     for name, origin in plan["addedDependencies"].items():
         reasons = []
@@ -2437,8 +2446,9 @@ def compute_status(project_root, skill_dir):
             label for label, entry in sorted(managed_blocks.inventory(lock).items()) if entry.get("state") == STATE_FAILED)
 
     manifest_profiles = configuration.value(PROFILES_KEY)
-    profile_names = manifest_profiles or (lock.get("profileOrder") if lock else None)
-    if profile_names and skill_dir:
+    # An empty selection is a selection too: the core-only repository gets the same drift checks.
+    profile_names = manifest_profiles if manifest_profiles is not None else (lock.get("profileOrder") if lock else None)
+    if profile_names is not None and skill_dir:
         try:
             catalog = load_effective_catalog(project_root, skill_dir)
             if manifest_profiles:
@@ -2558,7 +2568,9 @@ def print_status(status, brief):
     stream = sys.stdout
     configuration = status["configuration"]
     profiles = configuration.value(PROFILES_KEY)
-    if not profiles:
+    if profiles == []:
+        write_line(f"Agent Ready profiles: none, the core only (updates: {configuration.value(UPDATES_MODE_KEY)})")
+    elif not profiles:
         hint = "" if brief else " Run /agent-ready-setup to pin this repository."
         write_line(paint(f"Agent Ready: no profiles selected in {MANIFEST_RELATIVE_PATH}.{hint}", "warning", stream))
     else:
@@ -2641,9 +2653,15 @@ def stack_names_of(catalog):
 
 
 def stack_from_initial_detection(catalog, detection):
-    """The stack a repository without a selection starts with, or why there is none."""
+    """The stack a repository without a selection starts with, None without any stack signal.
+
+    Without signals the repository gets the core only (no stack is optional); several stacks
+    that match without a priority still need an explicit selection.
+    """
     if detection["status"] == STATUS_RESOLVED:
         return detection["primaryStack"]
+    if detection["status"] == STATUS_NONE:
+        return None
     selection_hint = f"select one with --stack {'|'.join(stack_names_of(catalog))} or --profiles <a,b>"
     if detection["status"] == STATUS_AMBIGUOUS:
         matches = ", ".join(f"{name} ({format_evidence_list(detection['stacks'][name])})" for name in detection["candidates"])
@@ -2666,12 +2684,14 @@ def resolve_selection(arguments, catalog):
     if getattr(arguments, "stack", None):
         return profiles_for_stack(catalog, arguments.stack), SELECTION_STACK_FLAG
     configuration = configuration_of(arguments.project)
-    if configuration.value(PROFILES_KEY):
+    # An empty list in the manifest is a selection too: the core only, which detection never changes.
+    if configuration.value(PROFILES_KEY) is not None:
         return rejecting_ci_profiles(catalog, configuration.value(PROFILES_KEY)), SELECTION_MANIFEST
     if not configuration.value(DETECTION_ENABLED_KEY):
         raise ProfileError(f"detection is off ({DETECTION_ENABLED_KEY}: false): select the profiles with --stack or --profiles")
     detection = detect_profiles(catalog["profiles"], arguments.project)
-    return profiles_for_stack(catalog, stack_from_initial_detection(catalog, detection)), SELECTION_DETECTION
+    stack = stack_from_initial_detection(catalog, detection)
+    return (profiles_for_stack(catalog, stack) if stack else []), SELECTION_DETECTION
 
 
 def command_resolve(arguments):
@@ -2689,7 +2709,10 @@ def command_resolve(arguments):
     if selection == SELECTION_DETECTION:
         detection = detect_profiles(catalog["profiles"], arguments.project)
         primary = detection["primaryStack"]
-        write_line(f"Detected stack: {primary} ({format_evidence_list(detection['stacks'][primary])})", sys.stderr)
+        if primary:
+            write_line(f"Detected stack: {primary} ({format_evidence_list(detection['stacks'][primary])})", sys.stderr)
+        else:
+            write_line("No stack signal: the core only (select a stack or capabilities with --profiles)", sys.stderr)
     write_line(f"profiles\t{','.join(resolved)}")
     write_line(f"requested\t{','.join(requested)}")
     write_line(f"selection\t{selection}")
@@ -2768,6 +2791,8 @@ def command_config(arguments):
         for key in sorted(configuration.schema.leaves):
             write_line(f"{key}\t{format_value(configuration.value(key))}")
         write_line(f"auto_sources\t{','.join(automatic_sources(configuration))}")
+        # profiles prints [] and an unset value alike: Bash tells a pinned empty selection from none here.
+        write_line(f"profiles_selected\t{'true' if configuration.value(PROFILES_KEY) is not None else 'false'}")
         return 0
     print_configuration_text(configuration)
     return 0
@@ -2872,6 +2897,11 @@ def command_detect(arguments):
         for name, evidence in sorted(detection["capabilities"].items()):
             write_line(f"  ? {name}: {format_evidence_list(evidence)}")
     if detection["status"] == STATUS_RESOLVED:
+        return 0
+    if detection["status"] == STATUS_NONE:
+        # Not an error: a repository without code gets the core only.
+        write_line(f"No stack signal: an apply without a selection gives the core only. To pick a stack or capabilities, "
+                   f"pass --profiles ({', '.join(stack_names_of(catalog))}, or capabilities from agent-ready profiles list).")
         return 0
     write_line(f"No primary stack: select one explicitly with --stack or --profiles ({', '.join(stack_names_of(catalog))}).")
     return DETECTION_UNRESOLVED_STATUS

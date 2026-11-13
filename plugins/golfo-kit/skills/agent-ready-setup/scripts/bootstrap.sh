@@ -583,6 +583,7 @@ fi
 rm -f -- "$configuration_messages"
 CONFIGURED_PROFILES=""
 CONFIGURED_PACK_SOURCES=""
+PROFILES_SELECTED=false
 TOOLS_ENABLED=true
 FROM_LOCK_CONFIGURED=false
 while IFS=$'\t' read -r configuration_key configuration_value; do
@@ -594,6 +595,8 @@ while IFS=$'\t' read -r configuration_key configuration_value; do
     tools.enabled) TOOLS_ENABLED="$configuration_value" ;;
     profiles) CONFIGURED_PROFILES="$configuration_value" ;;
     sources.packs) CONFIGURED_PACK_SOURCES="$configuration_value" ;;
+    # A pinned empty selection ([]: the core only) is a selection; profiles alone prints it as empty.
+    profiles_selected) PROFILES_SELECTED="$configuration_value" ;;
     updates.fromLock) FROM_LOCK_CONFIGURED="$configuration_value" ;;
   esac
 done <<< "$CONFIGURATION"
@@ -610,7 +613,7 @@ OFFLINE_ARGUMENTS=()
 # A repository without a selection that detection cannot settle stops before the upgrade. With
 # profile sources declared, a pack not fetched yet may bring the stack: the resolution after
 # fetch-sources detects with it, and still stops before writing.
-if [[ "$RUN_MODE" != status && -z "$STACK" && -z "$PROFILES" && -z "$CONFIGURED_PROFILES" &&
+if [[ "$RUN_MODE" != status && -z "$STACK" && -z "$PROFILES" && "$PROFILES_SELECTED" != true &&
       -z "$CONFIGURED_PACK_SOURCES" ]]; then
   if ! detection_report="$(python3 "$SKILL_DIR/scripts/agent-ready-state.py" detect --project . --skill-dir "$SKILL_DIR")"; then
     printf '%s\n' "$detection_report" >&2
