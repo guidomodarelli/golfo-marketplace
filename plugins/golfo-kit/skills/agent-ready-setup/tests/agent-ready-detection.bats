@@ -687,3 +687,16 @@ run_resolve() {
   [ "$status" -eq 0 ]
   [ "$(json_value .agents/agent-ready.json 'data["profiles"]')" = "['business-flows']" ]
 }
+
+@test "with updates.fromLock, removing the last profile recommends applying the empty selection as none" {
+  mkdir -p .agents
+  printf '%s\n' '{"profiles": ["business-flows"], "updates": {"fromLock": true}}' > .agents/agent-ready.json
+  run_bootstrap
+  [ "$status" -eq 0 ]
+  run --separate-stderr env PATH="$fake_bin:$PATH" python3 "$skill_dir/scripts/agent-ready" profiles remove business-flows
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"agent-ready apply --profiles none"* ]]
+  run_bootstrap --profiles none
+  [ "$status" -eq 0 ]
+  [ ! -e .agents/rules/business-flows.md ]
+}

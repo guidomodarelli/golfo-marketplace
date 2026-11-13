@@ -120,7 +120,8 @@ def apply_command_for(project_root, selection):
     state = engine()
     reproduces_lock = (state.configuration_of(project_root).value(UPDATES_FROM_LOCK_KEY)
                        and os.path.isfile(os.path.join(project_root, state.LOCK_RELATIVE_PATH)))
-    return command + (f" --profiles {','.join(selection)}" if reproduces_lock else "")
+    # An empty selection (the core only) is "none" on the command line.
+    return command + (f" --profiles {','.join(selection) or state.EMPTY_SELECTION_TOKEN}" if reproduces_lock else "")
 
 
 def change_selection(arguments, compute, removing=False):

@@ -116,10 +116,11 @@ def apply_arguments(project_root):
     state = engine()
     configuration = state.configuration_of(project_root)
     selection = configuration.value(PROFILES_KEY)
-    if selection and configuration.value(UPDATES_FROM_LOCK_KEY) and os.path.isfile(
+    if selection is not None and configuration.value(UPDATES_FROM_LOCK_KEY) and os.path.isfile(
             os.path.join(project_root, state.LOCK_RELATIVE_PATH)):
         # The lock holds the CI profile of the previous provider: an apply from it could not change it.
-        return ["--profiles", ",".join(selection)]
+        # An empty selection (the core only) goes as "none", the value --profiles has for it.
+        return ["--profiles", ",".join(selection) or state.EMPTY_SELECTION_TOKEN]
     return []
 
 
