@@ -84,14 +84,14 @@ add_block_pack() {
   [ "$status" -eq 0 ]
   grep -q '^## Deploy notes$' "$template"
   run_cli plan
-  [[ "$output" != *"(block common)"* ]]
+  [[ "$output" != *"(block software-development)"* ]]
 
   # Inside the block the template wins; the project's section stays.
   sed -i.bak 's/^## /## Edited /' "$template" && rm -f "$template.bak"
   run_cli plan
-  [[ "$output" == *"~ update          .github/pull_request_template.md (block common)  overwrites local changes inside the block"* ]]
+  [[ "$output" == *"~ update          .github/pull_request_template.md (block software-development)  overwrites local changes inside the block"* ]]
   run_cli status
-  [[ "$output" == *".github/pull_request_template.md (block common)"* ]]
+  [[ "$output" == *".github/pull_request_template.md (block software-development)"* ]]
   run_cli apply
   ! grep -q '^## Edited Descr' "$template"
   grep -q '^## Edited Deploy notes$' "$template"
@@ -120,10 +120,10 @@ add_block_pack() {
   printf '<!-- BEGIN AGENT-READY MANAGED: software-development -->\nstray\n' >> "$template"
   cp "$template" "$test_root/before"
   run_cli plan
-  [[ "$output" == *"! conflict        .github/pull_request_template.md (block common)  its markers do not pair up"* ]]
+  [[ "$output" == *"! conflict        .github/pull_request_template.md (block software-development)  its markers do not pair up"* ]]
   run_cli apply
   cmp -s "$template" "$test_root/before"
-  [[ "$output$stderr" == *"managed block kept: .github/pull_request_template.md (block common): its markers do not pair up"* ]]
+  [[ "$output$stderr" == *"managed block kept: .github/pull_request_template.md (block software-development): its markers do not pair up"* ]]
 }
 
 @test "a block of a pack can only go to a file with a known comment syntax, never to the instructions" {
@@ -229,7 +229,7 @@ PY
   cp "$template" "$test_root/before"
   run_cli apply --from-lock
   [ "$status" -ne 0 ]
-  [[ "$output$stderr" == *"the block common of .github/pull_request_template.md does not match the sha256 of the lock"* ]]
+  [[ "$output$stderr" == *"the block software-development of .github/pull_request_template.md does not match the sha256 of the lock"* ]]
   cmp -s "$template" "$test_root/before"
 }
 
@@ -239,7 +239,7 @@ PY
   run_cli apply
   run_cli check
   [ "$status" -ne 0 ]
-  [[ "$output" == *".github/pull_request_template.md (block common): preserved conflict"* ]]
+  [[ "$output" == *".github/pull_request_template.md (block software-development): preserved conflict"* ]]
 }
 
 @test "a junction or symlinked directory on the path keeps the block out of a file outside the repository" {
@@ -251,7 +251,7 @@ PY
   fi
   run_cli apply
   [ ! -e "$test_root/shared/pull_request_template.md" ]
-  [[ "$output$stderr" == *".github/pull_request_template.md (block common): a directory on its path is a symlink"* ]]
+  [[ "$output$stderr" == *".github/pull_request_template.md (block software-development): a directory on its path is a symlink"* ]]
 }
 
 @test "remove keeps the lock when a block cannot be taken out, so it can run again" {

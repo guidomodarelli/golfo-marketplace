@@ -418,7 +418,7 @@ PY
     fi
     [ "$status" -eq 0 ]
     [ -L .github/pull_request_template.md ]
-    [[ "$output" == *'.github/pull_request_template.md (block common): the file is a symlink'* ]]
+    [[ "$output" == *'.github/pull_request_template.md (block software-development): the file is a symlink'* ]]
     cmp -s "$test_root/external-template" "$test_root/expected-template"
     rm .github/pull_request_template.md
   done
@@ -2405,6 +2405,7 @@ EOF
     "$source_dir/assets/stacks/go/agents" \
     "$source_dir/assets/stacks/go/commands" \
     "$source_dir/assets/stacks/go/skills/deploy-helper" \
+    "$source_dir/assets/profiles/software-development" \
     "$source_dir/scripts" \
     .agents/rules
   touch "$source_dir/SKILL.md"
@@ -2416,6 +2417,7 @@ EOF
   cp "$skill_dir/scripts/agent-ready-state.py" "$source_dir/scripts/agent-ready-state.py"
   cp "$skill_dir/scripts/"agent_ready_*.py "$source_dir/scripts/"
   cp "$skill_dir/assets/profiles.json" "$source_dir/assets/profiles.json"
+  mkdir -p "$source_dir/assets/profiles/software-development"
   cp -R "$skill_dir/assets/config" "$source_dir/assets/config"
   cp "$skill_dir/scripts/render-instruction-template.sh" "$source_dir/scripts/render-instruction-template.sh"
   cp "$skill_dir/scripts/merge-managed-settings.py" "$source_dir/scripts/merge-managed-settings.py"
@@ -2541,6 +2543,7 @@ EOF
   cp "$skill_dir/scripts/agent-ready-state.py" "$source_dir/scripts/agent-ready-state.py"
   cp "$skill_dir/scripts/"agent_ready_*.py "$source_dir/scripts/"
   cp "$skill_dir/assets/profiles.json" "$source_dir/assets/profiles.json"
+  mkdir -p "$source_dir/assets/profiles/software-development"
   cp -R "$skill_dir/assets/config" "$source_dir/assets/config"
   cp "$skill_dir/scripts/merge-managed-settings.py" "$source_dir/scripts/merge-managed-settings.py"
   printf '%s\n' '{"settings":"updated"}' > "$source_dir/assets/common/settings.json"
