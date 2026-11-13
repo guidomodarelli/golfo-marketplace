@@ -37,6 +37,13 @@ CLAUDE_USER_SETTINGS = "settings.json"
 CODEX_USER_HOOKS = "hooks.json"
 PERMISSION_ALLOW = "allow"
 PERMISSION_DENY = "deny"
+DISABLE_ALL_HOOKS_KEY = "disableAllHooks"
+# Shell operators between the invocations of a compound hook command.
+COMMAND_SEPARATORS = re.compile(r"\s*(?:&&|\|\||;|\|)\s*")
+# Words of a formatter command that name the runner or the formatter, never a file to format.
+COMMAND_WORDS = {"npx", "pnpm", "pnpx", "yarn", "bunx", "bun", "exec", "dlx", "run", "uvx", "pipx", "python", "python3",
+                 "prettier", "biome", "format", "check", "lint", "eslint", "dprint", "fmt", "black", "ruff",
+                 "gofmt", "goimports", "rustfmt", "cargo"}
 # A matcher that is empty, missing or a catch-all applies to every tool.
 MATCH_EVERYTHING = ("", "*", ".*")
 # The tools a hook matcher names, to test two matchers against the same tool.
@@ -106,13 +113,14 @@ def layers(project_root, skill_dir):
     """[{provider, layer, file, data}] of every configuration this report compares."""
     claude_template = read_json(skill_path(skill_dir, CLAUDE_TEMPLATE_RELATIVE_PATH))
     codex_template = read_json(skill_path(skill_dir, CODEX_TEMPLATE_RELATIVE_PATH))
+    claude_project = read_json(os.path.join(project_root, CLAUDE_PROJECT_SETTINGS))
     claude_user = os.path.join(machine.claude_home(), CLAUDE_USER_SETTINGS)
     codex_user = os.path.join(machine.codex_home(), CODEX_USER_HOOKS)
     found = [
         {"provider": PROVIDER_CLAUDE, "layer": LAYER_GOLFO, "file": f"{CLAUDE_PROJECT_SETTINGS} ({LAYER_GOLFO})",
          "data": claude_template},
         {"provider": PROVIDER_CLAUDE, "layer": LAYER_PROJECT, "file": CLAUDE_PROJECT_SETTINGS,
-         "data": without_template(read_json(os.path.join(project_root, CLAUDE_PROJECT_SETTINGS)), claude_template)},
+         "data": without_template(claude_project, claude_template), "raw": claude_project},
         {"provider": PROVIDER_CLAUDE, "layer": LAYER_LOCAL, "file": CLAUDE_LOCAL_SETTINGS,
          "data": read_json(os.path.join(project_root, CLAUDE_LOCAL_SETTINGS))},
         {"provider": PROVIDER_CLAUDE, "layer": LAYER_USER, "file": machine.home_display(claude_user),
@@ -213,8 +221,10 @@ def formatter_targets(command):
     except ValueError:
         return None
     targets = set()
-    for token in tokens[1:]:
-        if token.startswith("-") or "/" not in token and "." not in os.path.basename(token):
+    for token in tokens:
+        # Flags, the runner and the formatter with its subcommand are not targets; any other
+        # positional word is one, a bare directory such as src included.
+        if token.startswith("-") or token.lower() in COMMAND_WORDS or os.path.basename(token).split(".")[0] in COMMAND_WORDS:
             continue
         if token in (".", "./") or any(marker in token for marker in ("$", "*", "?", "{")):
             return None
@@ -239,10 +249,12 @@ def competing_formatters(found, skill_dir):
     hooks = []
     for layer in found:
         for event, matcher, command in hook_entries(layer["data"]):
-            name = formatter_of(command, formatters)
-            if name:
-                hooks.append({"provider": layer["provider"], "event": event, "matcher": matcher,
-                              "formatter": name, "command": command, "file": layer["file"]})
+            # Each invocation of a compound command keeps its own flags: --write of one is not of another.
+            for invocation in COMMAND_SEPARATORS.split(command):
+                name = formatter_of(invocation.strip(), formatters)
+                if name:
+                    hooks.append({"provider": layer["provider"], "event": event, "matcher": matcher,
+                                  "formatter": name, "command": invocation.strip(), "file": layer["file"]})
     findings, seen = [], set()
     for position, first in enumerate(hooks):
         for second in hooks[position + 1:]:
@@ -259,6 +271,18 @@ def competing_formatters(found, skill_dir):
     return findings
 
 
+def claude_hooks_disabled(found):
+    """The effective disableAllHooks of Claude Code: local over project over user."""
+    disabled = False
+    for layer_name in (LAYER_USER, LAYER_PROJECT, LAYER_LOCAL):
+        for layer in found:
+            if layer["provider"] == PROVIDER_CLAUDE and layer["layer"] == layer_name:
+                value = layer.get("raw", layer["data"]).get(DISABLE_ALL_HOOKS_KEY)
+                if isinstance(value, bool):
+                    disabled = value
+    return disabled
+
+
 def report(project_root, skill_dir, hooks_enabled, permissions_enabled):
     """{permissions, duplicatedHooks, formatters} of the enabled checks."""
     found = layers(project_root, skill_dir)
@@ -266,6 +290,9 @@ def report(project_root, skill_dir, hooks_enabled, permissions_enabled):
     if permissions_enabled:
         result["permissions"] = permission_conflicts(found)
     if hooks_enabled:
-        result["duplicatedHooks"] = duplicated_hooks(found)
-        result["formatters"] = competing_formatters(found, skill_dir)
+        # Hooks that disableAllHooks turns off never run: they collide with nothing.
+        running = found if not claude_hooks_disabled(found) else [
+            layer for layer in found if layer["provider"] != PROVIDER_CLAUDE]
+        result["duplicatedHooks"] = duplicated_hooks(running)
+        result["formatters"] = competing_formatters(running, skill_dir)
     return result
