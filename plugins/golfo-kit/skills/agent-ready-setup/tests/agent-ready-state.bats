@@ -889,3 +889,23 @@ PY
   [ "$status" -eq 0 ]
   [[ "$output" != *"Context at the start of a session"* ]]
 }
+
+@test "the budget starts from a CLAUDE.md the apply moves, and keeps each section's whole size" {
+  python3 -c 'open("CLAUDE.md", "w").write("# Own instructions\n" + "x" * 40000 + "\n")'
+  [ "$(context_field agentsMd.exceeded --profiles node)" = "True" ]
+  rm CLAUDE.md
+
+  run_bootstrap_with "$skill_dir" --stack node
+  [ "$status" -eq 0 ]
+  # The node section is already in AGENTS.md: the plan still attributes all of it to node.
+  [[ "$(context_field agentsMd.largest)" == *"'profile': 'node'"* ]]
+  [[ "$(context_field agentsMd.largest)" != *"'bytes': 0"* ]]
+}
+
+@test "a rule the apply keeps for a conflict is measured as the local file" {
+  run_bootstrap_with "$skill_dir" --stack node
+  [ "$status" -eq 0 ]
+  template_total="$(context_field rulesLoadedAtStart.bytes --profiles react)"
+  python3 -c 'open(".agents/rules/react-style.md", "w").write("# Local\n" + "y" * 50000 + "\n")'
+  [ "$(context_field rulesLoadedAtStart.bytes --profiles react)" -gt "$((template_total + 30000))" ]
+}

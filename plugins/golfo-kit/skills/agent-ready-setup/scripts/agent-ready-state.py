@@ -3135,7 +3135,10 @@ def context_budget(project_root, skill_dir, catalog, plan, configuration):
         destination = entry["destination"]
         if not entry["sha256"] or not destination.startswith(RULES_DESTINATION_PREFIX) or not destination.endswith(".md"):
             continue
-        with open(entry["sourcePath"], encoding="utf-8", errors="replace") as rule_file:
+        # A conflict keeps the local file: that file is the one Claude loads, not the template.
+        local_path = os.path.join(project_root, destination)
+        kept_local = entry["action"] == ACTION_CONFLICT and os.path.isfile(local_path) and not is_link(local_path)
+        with open(local_path if kept_local else entry["sourcePath"], encoding="utf-8", errors="replace") as rule_file:
             rule_text = rule_file.read()
         if loaded_at_start(rule_text):
             rule_files += 1
@@ -3188,11 +3191,7 @@ def projected_agents_md(project_root, skill_dir, catalog, plan, project_rules):
                 rule_file.write(rule_text)
         stack_root = os.environ.get("AGENT_READY_SETUP_STACK_DIR") or compose_stack_directory(
             skill_dir, catalog, plan["profiles"], os.path.join(work_root, "stack"))
-        agents_path = os.path.join(project_root, "AGENTS.md")
-        current = None
-        if os.path.isfile(agents_path) and not is_link(agents_path):
-            with open(agents_path, encoding="utf-8", errors="replace") as agents_file:
-                current = agents_file.read()
+        current = current_instructions(project_root, skill_dir)
         project_rules_root = rules_copy if project_rules else None
         if current is not None and extract_managed_block(current) is not None:
             rendered = render_instructions(skill_dir, catalog, stack_root, project_rules_root, managed_block_only=True)
@@ -3212,12 +3211,35 @@ def projected_agents_md(project_root, skill_dir, catalog, plan, project_rules):
             if block.get("content") is None:
                 text = managed_blocks.without_block(text, destination, block["id"])
                 continue
-            before = text_bytes(text)
             text = managed_blocks.with_block(text, destination, block["id"], block["content"])
-            sections_by_profile[block["profile"]] = sections_by_profile.get(block["profile"], 0) + text_bytes(text) - before
+            # The whole section, markers included, whatever the file held before.
+            size = text_bytes(managed_blocks.with_block("", destination, block["id"], block["content"]))
+            sections_by_profile[block["profile"]] = sections_by_profile.get(block["profile"], 0) + size
         except managed_blocks.MarkerError:
             continue
     return text, sections_by_profile
+
+
+def current_instructions(project_root, skill_dir):
+    """The instructions the apply starts AGENTS.md from, or None for a new one.
+
+    Like instruction-normalization.sh: AGENTS.md when it exists, else a root CLAUDE.md that is not the
+    proxy, which the apply moves to AGENTS.md. Symlinks are never followed.
+    """
+    agents_path = os.path.join(project_root, "AGENTS.md")
+    claude_path = os.path.join(project_root, "CLAUDE.md")
+    proxy_path = os.path.join(skill_dir, CLAUDE_PROXY_RELATIVE_PATH)
+    if os.path.lexists(agents_path):
+        source = agents_path if os.path.isfile(agents_path) and not is_link(agents_path) else None
+    elif os.path.isfile(claude_path) and not is_link(claude_path) and (
+            not os.path.isfile(proxy_path) or sha256_of_file(claude_path) != sha256_of_file(proxy_path)):
+        source = claude_path
+    else:
+        source = None
+    if source is None:
+        return None
+    with open(source, encoding="utf-8", errors="replace") as instructions_file:
+        return instructions_file.read()
 
 
 def largest_profiles(bytes_by_profile):
