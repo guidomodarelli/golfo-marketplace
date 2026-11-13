@@ -53,6 +53,8 @@ explicit_selection=0
 marketplace_already_upgraded="${AGENT_READY_SETUP_MARKETPLACE_UPGRADED:-0}"
 force_marketplace_upgrade="${AGENT_READY_SETUP_FORCE_UPGRADE:-0}"
 foreground_sync="${AGENT_READY_SETUP_SYNC_FOREGROUND:-0}"
+# --edit-check: the edit hook asks only for the structural conflicts, offline and without writing.
+edit_check=0
 sync_lock_inherited="${AGENT_READY_SETUP_SYNC_LOCK_HELD:-0}"
 backup_directory="${AGENT_READY_SETUP_BACKUP_DIRECTORY:-}"
 created_assets=()
@@ -89,6 +91,10 @@ while [[ $# -gt 0 ]]; do
         exit 1
       fi
       provider="$1"
+      shift
+      ;;
+    --edit-check)
+      edit_check=1
       shift
       ;;
     --stack)
@@ -148,6 +154,8 @@ if [[ "$force_marketplace_upgrade" != 0 && "$force_marketplace_upgrade" != 1 ]];
   exit 1
 fi
 
+# An edit check reads like an automated review: from the checkout, with no network and no sync.
+[[ "$edit_check" -eq 0 ]] || review_mode=1
 if [[ "$review_mode" != 0 && "$review_mode" != 1 ]]; then
   printf 'ERROR: AGENT_READY_SETUP_REVIEW_MODE must be 0 or 1\n' >&2
   exit 1
@@ -254,7 +262,9 @@ record_marketplace_upgrade() {
 }
 
 # Automated reviews need neither network nor a provider CLI: rules come from the checkout.
-if [[ "$review_mode" -eq 1 ]]; then
+if [[ "$edit_check" -eq 1 ]]; then
+  : # The edit hook prints only the conflicts.
+elif [[ "$review_mode" -eq 1 ]]; then
   echo "[marketplace-sync] Review mode: the marketplace upgrade is skipped."
 elif [[ "$defer_to_background" -eq 1 ]]; then
   : # The detached sync upgrades the marketplace.
@@ -542,7 +552,7 @@ if ! refresh_missing_asset_sync_helper; then
   exit 0
 fi
 
-describe_skill_source "$skill_dir"
+[[ "$edit_check" -eq 1 ]] || describe_skill_source "$skill_dir"
 
 # shellcheck disable=SC2034
 ASSET_SYNC_SKILL_DIR="$skill_dir"
@@ -608,6 +618,11 @@ if [[ "$update_mode" == pinned && -z "$auto_sources" && "$explicit_selection" -e
   only_check=1
 fi
 
+if [[ "$edit_check" -eq 1 ]]; then
+  python3 "$state_script" status --project . --skill-dir "$skill_dir" --conflicts-only edit || true
+  exit 0
+fi
+
 # Automated reviews read the rules committed in the checkout; synchronizing
 # would change the very context under review.
 if [[ "$review_mode" -eq 1 ]]; then
@@ -650,6 +665,12 @@ if [[ "$defer_to_background" -eq 1 && -f .agents/agent-ready.lock.json ]] &&
   python3 "$state_script" pack-scripts --project . --skill-dir "$skill_dir" --previous-report || true
   start_background_task "pack-scripts-$(project_log_key)" \
     python3 "$state_script" pack-scripts --project . --skill-dir "$skill_dir"
+fi
+
+# The conflicts known now (conflicts.sessionStart.enabled), whatever the update mode; the status of
+# a pinned repository below lists them already.
+if [[ "$defer_to_background" -eq 1 && ( "$only_check" -eq 0 || "$updates_enabled" != true ) ]]; then
+  python3 "$state_script" status --project . --skill-dir "$skill_dir" --conflicts-only session-start || true
 fi
 
 # Only an explicit sync runs with automatic updates off.

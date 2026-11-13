@@ -411,6 +411,49 @@ PY
   [[ "$output" != *"One rule verifies every change and the other forbids it."* ]]
 }
 
+@test "the session start and an edit of one of their inputs list the structural conflicts, each one can be turned off" {
+  write_manifest '{"profiles": ["node"]}'
+  printf '{"devDependencies": {"jest": "29"}}
+' > package.json
+  agent_ready apply
+  [ "$status" -eq 0 ]
+  mkdir -p .agents/rules
+  printf -- '---
+assumes:
+  testRunner: vitest
+---
+# Ours
+' > .agents/rules/ours.md
+  # The session start leaves an update running detached, which this test does not check.
+  printf 'import sys
+sys.exit(0)
+' > "$engine_copy/scripts/run-detached.py"
+  conflict='[conflicts] ! .agents/rules/ours.md (project) assumes test runner vitest, but the repository uses jest (package.json)'
+
+  run env PATH="$fake_bin:$PATH" AGENT_READY_SETUP_SKILL_DIR="$engine_copy"     bash .agents/hooks/sync-marketplace.sh --provider claude
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"$conflict"* ]]
+  run env PATH="$fake_bin:$PATH" AGENT_READY_SETUP_SKILL_DIR="$engine_copy"     bash .agents/hooks/check-harness-consistency.sh <<< '{"tool_name":"Edit","tool_input":{"file_path":"package.json"}}'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"$conflict"* ]]
+  # An edit of a file that no check reads looks at nothing.
+  run env PATH="$fake_bin:$PATH" AGENT_READY_SETUP_SKILL_DIR="$engine_copy"     bash .agents/hooks/check-harness-consistency.sh <<< '{"tool_name":"Edit","tool_input":{"file_path":"src/index.js"}}'
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"[conflicts]"* ]]
+
+  agent_ready config set conflicts.onEdit.enabled false
+  agent_ready config set conflicts.sessionStart.enabled false
+  run env PATH="$fake_bin:$PATH" AGENT_READY_SETUP_SKILL_DIR="$engine_copy"     bash .agents/hooks/check-harness-consistency.sh <<< '{"tool_name":"Edit","tool_input":{"file_path":"package.json"}}'
+  [[ "$output" != *"[conflicts]"* ]]
+  run env PATH="$fake_bin:$PATH" AGENT_READY_SETUP_SKILL_DIR="$engine_copy"     bash .agents/hooks/sync-marketplace.sh --provider claude
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"[conflicts]"* ]]
+  # agent-ready status lists them whatever those keys say.
+  agent_ready status
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Conflicts between the profiles: 1 structural"* ]]
+}
+
 @test "a pack rule is reviewed against the rules of the other profiles, and a contradiction names both profiles" {
   mkdir -p agent-packs/acme/profiles/team/rules
   printf '%s\n' '{"schemaVersion": 1, "name": "acme", "version": "1.0.0", "profiles": {"team": {"kind": "capability", "description": "Team rules.", "assets": "profiles/team"}}}' > agent-packs/acme/agent-ready-pack.json

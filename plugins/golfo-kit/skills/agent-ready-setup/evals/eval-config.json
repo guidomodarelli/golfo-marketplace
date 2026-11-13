@@ -3946,6 +3946,34 @@
           "description": "Distingue lo semántico (IA) de lo estructural"
         }
       ]
+    },
+    {
+      "id": "conflicts-at-session-start-and-on-edit",
+      "description": "El usuario no quiere que agent-ready le muestre los conflictos estructurales cada vez que edita un archivo, pero sí al iniciar la sesión.",
+      "input": "Agent-ready me lista los conflictos entre perfiles cada vez que edito el package.json y es mucho ruido. Quiero que solo me los muestre al iniciar la sesión. ¿Qué clave cambio? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "conflicts.onEdit.enabled",
+          "description": "Nombra la clave conflicts.onEdit.enabled",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "false"
+          ],
+          "description": "La apaga con false",
+          "critical": true
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "conflicts.sessionStart.enabled false"
+          ],
+          "description": "No apaga el aviso al iniciar sesión"
+        }
+      ]
     }
   ]
 }
