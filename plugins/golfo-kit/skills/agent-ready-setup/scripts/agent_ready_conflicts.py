@@ -31,6 +31,10 @@ CLAUDE_FILE = "CLAUDE.md"
 CLAUDE_PROXY_TEMPLATE_RELATIVE_PATH = "assets/claude-proxy.md"
 DIRECTION_UPDATE = "update"
 DIRECTION_PROJECT = "project"
+# Two managed rules of different profiles, one of them from a pack.
+DIRECTION_PROFILES = "profiles"
+# Directions whose findings come with the apply: they can stop it and wait for a decision.
+APPLY_DIRECTIONS = (DIRECTION_UPDATE, DIRECTION_PROFILES)
 # The check of harness-review.py, under which the conflicts are cached and decided.
 CONFLICT_CHECK = "harness-consistency"
 HARNESS_REVIEW_RELATIVE_PATH = "assets/common/hooks/harness-review.py"
@@ -127,7 +131,7 @@ def current_hashes(cache_module, project_root, names, project_owned):
     return hashes
 
 
-def conflict_pairs(project_root, entries, locked_assets, read_text, project_owned, engine_dir):
+def conflict_pairs(project_root, entries, locked_assets, read_text, project_owned, engine_dir, is_pack_profile=None):
     """Pairs to review, the text of each document and the direction of each pair.
 
     ``entries`` are the plan entries; a managed rule the apply creates or changes is reviewed
@@ -163,6 +167,15 @@ def conflict_pairs(project_root, entries, locked_assets, read_text, project_owne
     for own_rule in own:
         for managed_rule in applied:
             directions.setdefault(tuple(sorted((own_rule, managed_rule))), DIRECTION_PROJECT)
+    # Rules of different profiles: a pack rule against every rule of another profile. golfo-kit's
+    # own profiles are reviewed together when they are written, so only a pack adds pairs.
+    if is_pack_profile:
+        reviewed = changing + applied
+        for position, first in enumerate(reviewed):
+            for second in reviewed[position + 1:]:
+                first_profile, second_profile = desired[first]["profile"], desired[second]["profile"]
+                if first_profile != second_profile and (is_pack_profile(first_profile) or is_pack_profile(second_profile)):
+                    directions.setdefault(tuple(sorted((first, second))), DIRECTION_PROFILES)
     return directions, texts
 
 
@@ -209,7 +222,7 @@ def review_conflicts(project_root, engine_dir, cache_module, provider, direction
             if entry.get("source") != cache_module.SOURCE_SHARED:
                 local_hits[unit] = entry
     report["fromCache"] = len(known)
-    unchecked_update = sum(directions[pair] == DIRECTION_UPDATE for pair, _, _ in pending)
+    unchecked_update = sum(directions[pair] in APPLY_DIRECTIONS for pair, _, _ in pending)
     if pending and not use_provider:
         report["unchecked"], report["reason"] = len(pending), "this run uses no network"
         report["uncheckedUpdate"] = unchecked_update
@@ -255,7 +268,7 @@ def review_conflicts(project_root, engine_dir, cache_module, provider, direction
             annotated.append(dict(finding, direction=directions[pair], check=harness.CHECK, reviewedFiles=reviewed_files))
     report["findings"] = cache_module.visible(annotated)
     report["quiet"] = len(annotated) - len(report["findings"])
-    report["pending"] = [finding for finding in annotated if finding["direction"] == DIRECTION_UPDATE]
+    report["pending"] = [finding for finding in annotated if finding["direction"] in APPLY_DIRECTIONS]
     return report
 
 
@@ -331,7 +344,7 @@ def pending_findings(cache_module, project_root, recorded):
 
 def blocking_problem(report):
     """Why ``conflicts.block`` stops this apply, or None: an update conflict, or an update it could not check."""
-    update = [finding for finding in report["findings"] if finding["direction"] == DIRECTION_UPDATE]
+    update = [finding for finding in report["findings"] if finding["direction"] in APPLY_DIRECTIONS]
     if update:
         listed = "; ".join(f"[{finding['id']}] {' <-> '.join(finding.get('files', []))}: {finding.get('text', '')}"
                            for finding in update)

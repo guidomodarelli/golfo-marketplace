@@ -18,6 +18,18 @@
       "default": false,
       "x-security": { "strictness": [false, true] }
     },
+    "competingTools": {
+      "description": "CLIs y servidores MCP de profiles distintos que declaran la misma capacidad en provides, sin complements entre ellos: el agente elige uno al azar según el turno.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "description": "plan informa las herramientas que compiten, con la capacidad en común. Apagado, no se compara.",
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
     "providerParity": {
       "description": "Qué ve cada provider de la selección (rules, skills, subagentes, comandos) y los hooks que corren en uno y no en el otro, salvo los declarados propios de un provider.",
       "type": "object",

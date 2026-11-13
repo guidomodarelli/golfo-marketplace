@@ -452,6 +452,33 @@ name: react-review-pr
   [[ "$output" == *"~ variable ACME_TOKEN (acme/kafka-interno) is already listed in .env.example"* ]]
 }
 
+@test "two tools of different profiles with a capability in common compete, unless one complements the other" {
+  python3 - "$pack_repository/agent-ready-pack.json" <<'PY2'
+import json, sys
+path = sys.argv[1]
+catalog = json.load(open(path, encoding="utf-8"))
+catalog["profiles"]["kafka-interno"]["mcpServers"]["acme-docs"]["provides"] = ["docs-search"]
+catalog["profiles"]["base"]["mcpServers"] = {"base-docs": {"url": "https://mcp.example.invalid/docs", "provides": ["docs-search"]}}
+json.dump(catalog, open(path, "w", encoding="utf-8"), indent=2)
+PY2
+  git -C "$pack_repository" commit -qam "two docs servers"
+  run_cli plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"MCP server base-docs (acme/base) and MCP server acme-docs (acme/kafka-interno) both provide docs-search"* ]]
+
+  python3 - "$pack_repository/agent-ready-pack.json" <<'PY2'
+import json, sys
+path = sys.argv[1]
+catalog = json.load(open(path, encoding="utf-8"))
+catalog["profiles"]["kafka-interno"]["complements"] = ["acme/base:mcpServers/base-docs"]
+json.dump(catalog, open(path, "w", encoding="utf-8"), indent=2)
+PY2
+  git -C "$pack_repository" commit -qam "they go together"
+  run_cli plan
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"both provide docs-search"* ]]
+}
+
 @test "losing the trust or retiring the profile unregisters the pack server" {
   run_cli trust add acme
   run_cli apply

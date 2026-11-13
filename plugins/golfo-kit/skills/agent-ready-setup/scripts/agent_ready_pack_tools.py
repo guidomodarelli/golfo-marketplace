@@ -296,6 +296,51 @@ def validate_declarations(entry, pack_root, is_contained):
         validate_script(script, f"script {index + 1}", pack_root, is_contained)
 
 
+# How complements names a tool of another profile: "<profile>:<kind>/<name>".
+TOOL_REFERENCE_KINDS = {TOOL_CLI: "clis", TOOL_MCP_SERVER: "mcpServers"}
+COMPLEMENTS_KEY = "complements"
+
+
+def competing_tools(tools, catalog):
+    """Pairs of CLIs or MCP servers of different profiles that declare a capability in common.
+
+    Two tools that give the same capability split the agent: it picks one or the other depending
+    on the turn, with different credentials or data. A pair is not reported when either profile
+    lists the other tool in ``complements`` ("<profile>:mcpServers/<name>" or "<profile>:clis/<name>"):
+    they go together on purpose. Tools without ``provides`` are not classified.
+    """
+    candidates = [tool for tool in tools if tool["type"] in TOOL_REFERENCE_KINDS
+                  and (tool.get("server") or tool.get("cli") or {}).get(PROVIDES_KEY)]
+    findings, seen = [], set()
+    for position, first in enumerate(candidates):
+        for second in candidates[position + 1:]:
+            if first["profile"] == second["profile"] or (first["type"], first["name"]) == (second["type"], second["name"]):
+                continue
+            shared = sorted(set(provided(first)) & set(provided(second)))
+            if not shared or complemented(first, second, catalog) or complemented(second, first, catalog):
+                continue
+            key = frozenset(((first["profile"], first["type"], first["name"]), (second["profile"], second["type"], second["name"])))
+            if key not in seen:
+                seen.add(key)
+                findings.append({"capabilities": shared, "tools": [summary(first), summary(second)]})
+    return findings
+
+
+def provided(tool):
+    """The capabilities a CLI or MCP server declares."""
+    return (tool.get("server") or tool.get("cli") or {}).get(PROVIDES_KEY, [])
+
+
+def complemented(tool, other, catalog):
+    """True when the profile of ``tool`` lists ``other`` in complements."""
+    reference = f"{other['profile']}:{TOOL_REFERENCE_KINDS[other['type']]}/{other['name']}"
+    return reference in catalog["profiles"].get(tool["profile"], {}).get(COMPLEMENTS_KEY, [])
+
+
+def summary(tool):
+    return {"type": tool["type"], "name": tool["name"], "profile": tool["profile"]}
+
+
 def without_provides(declaration):
     """A declaration without what it provides: two declarations of one tool compare on what installs it."""
     return {key: value for key, value in declaration.items() if key != PROVIDES_KEY}

@@ -400,3 +400,24 @@ PY
   [ "$status" -eq 0 ]
   [[ "$output" != *"One rule verifies every change and the other forbids it."* ]]
 }
+
+@test "a pack rule is reviewed against the rules of the other profiles, and a contradiction names both profiles" {
+  mkdir -p agent-packs/acme/profiles/team/rules
+  printf '%s\n' '{"schemaVersion": 1, "name": "acme", "version": "1.0.0", "profiles": {"team": {"kind": "capability", "description": "Team rules.", "assets": "profiles/team"}}}' > agent-packs/acme/agent-ready-pack.json
+  printf '# Acme team\nNever verify changes.\n' > agent-packs/acme/profiles/team/rules/acme-team.md
+  write_manifest '{"profiles": ["node", "acme/team"], "sources": {"packs": [{"name": "acme", "source": "path:./agent-packs/acme"}]}}'
+  export FAKE_CONFLICT_SECOND="acme-team.md"
+
+  agent_ready plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *".agents/rules/acme-team.md <-> .agents/rules/verify-changes.md: One rule verifies every change and the other forbids it. (two profiles)"* ]]
+  # Only pairs with the pack rule: golfo-kit's own rules are not reviewed against each other.
+  ! grep -Eq '^[0-9]+\. \.agents/rules/lint-gate\.md <-> \.agents/rules/verify-changes\.md$' "$FAKE_INPUT"
+
+  # A conflict between profiles comes with the apply, so conflicts.block stops it.
+  write_manifest '{"profiles": ["node", "acme/team"], "sources": {"packs": [{"name": "acme", "source": "path:./agent-packs/acme"}]}, "conflicts": {"block": true}}'
+  agent_ready apply
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"conflicts.block"* ]]
+  [ ! -e .agents/rules/acme-team.md ]
+}

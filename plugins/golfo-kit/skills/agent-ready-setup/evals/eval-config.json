@@ -3864,6 +3864,30 @@
           "description": "Explica el job de CI duplicado"
         }
       ]
+    },
+    {
+      "id": "pack-rule-contradicts-golfo-and-tools-compete",
+      "description": "Una rule de un pack que contradice la de golfo y dos servidores MCP con la misma capacidad: plan lo informa y complements u overrides lo resuelven.",
+      "input": "Mi pack acme trae una rule de testing que pide Jest y golfo-kit trae otra que pide Vitest. Además el pack declara dos servidores MCP de documentación en profiles distintos, los dos con provides docs-search. ¿agent-ready me avisa? ¿Cómo me quedo con una sola rule y cómo digo que los dos servidores van juntos a propósito? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "agent-ready plan",
+          "description": "Usa agent-ready plan",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "overrides",
+          "description": "Propone overrides para quedarse con una rule"
+        },
+        {
+          "type": "contains",
+          "value": "complements",
+          "description": "Propone complements para los servidores que van juntos",
+          "critical": true
+        }
+      ]
     }
   ]
 }
