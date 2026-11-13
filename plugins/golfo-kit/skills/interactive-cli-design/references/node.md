@@ -39,6 +39,71 @@ function parseFlags(argv) {
 const features = flags.features?.flatMap((value) => value.split(',')).filter((value) => value && value !== NONE_VALUE);
 ```
 
+## Ayuda
+
+Con `parseArgs` la ayuda se escribe a mano. Este helper arma cada sección en dos columnas, con comandos y flags en colores distintos, y la apila si la terminal es angosta. `styleText` con `stream` omite los escapes cuando stdout no es una terminal o hay `NO_COLOR`; necesita Node 22.13 o posterior. Mide con `.length`: alcanza para nombres ASCII y descripciones en español, no para emojis ni texto de doble ancho.
+
+```js
+import { styleText } from 'node:util';
+
+// El carácter del proyecto: reemplazar estos valores, solo muestran la forma.
+const HELP_STYLES = { title: 'bold', command: 'cyan', flag: 'yellow', value: 'dim' };
+const HELP_INDENT = 2;
+const HELP_GAP = 2;
+const MIN_DESCRIPTION_COLUMNS = 24;
+const DEFAULT_TERMINAL_COLUMNS = 80;
+
+const paint = (role, text) => styleText(HELP_STYLES[role], text, { stream: process.stdout });
+const terminalColumns = () => process.stdout.columns || Number(process.env.COLUMNS) || DEFAULT_TERMINAL_COLUMNS;
+
+function wrapWords(text, width) {
+  const lines = [];
+  let line = '';
+  for (const word of text.split(' ')) {
+    if (line && line.length + 1 + word.length > width) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = line ? `${line} ${word}` : word;
+    }
+  }
+  return [...lines, line];
+}
+
+/** Una sección de dos columnas. term: [[rol | null, texto], ...]; el rol pinta cada parte del nombre. */
+function renderHelpSection(title, rows, columns = terminalColumns()) {
+  const terms = rows.map(({ term, description }) => ({
+    plain: term.map(([, text]) => text).join(''),
+    painted: term.map(([role, text]) => (role ? paint(role, text) : text)).join(''),
+    description,
+  }));
+  const nameWidth = Math.max(...terms.map(({ plain }) => plain.length));
+  const descriptionColumn = HELP_INDENT + nameWidth + HELP_GAP;
+  const descriptionWidth = columns - 1 - descriptionColumn;
+  const indent = ' '.repeat(HELP_INDENT);
+  const lines = [paint('title', title)];
+  for (const { plain, painted, description } of terms) {
+    if (descriptionWidth < MIN_DESCRIPTION_COLUMNS) {
+      lines.push(indent + painted, ...wrapWords(description, columns - 1 - 2 * HELP_INDENT).map((line) => indent + indent + line));
+      continue;
+    }
+    const [first, ...rest] = wrapWords(description, descriptionWidth);
+    lines.push(`${indent}${painted}${' '.repeat(descriptionColumn - HELP_INDENT - plain.length)}${first}`);
+    lines.push(...rest.map((line) => ' '.repeat(descriptionColumn) + line));
+  }
+  return lines.join('\n');
+}
+
+renderHelpSection('Opciones', [
+  { term: [['flag', '-n, --name'], [null, ' '], ['value', '<valor>']], description: 'Nombre del proyecto. Obligatorio sin terminal.' },
+  { term: [['flag', '-h, --help']], description: 'Muestra esta ayuda.' },
+]);
+```
+
+La línea de uso y los ejemplos se pintan con el mismo `paint`: `${paint('command', 'tool init')} ${paint('flag', '--name')} ${paint('value', '<valor>')}`.
+
+Con `commander` 13 o posterior, `configureHelp` acepta `styleCommandText`, `styleSubcommandText`, `styleOptionText`, `styleArgumentText` y `styleTitle`, y ya arma las dos columnas: pintar ahí con los mismos roles.
+
 ## Se puede preguntar
 
 ```js

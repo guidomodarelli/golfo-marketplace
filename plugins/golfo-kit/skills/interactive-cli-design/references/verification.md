@@ -13,7 +13,7 @@ Correr el CLI real, no una versión escrita para el chequeo. La herramienta de s
 
 | # | Caso | Dónde | Pasa si |
 |---|---|---|---|
-| a | `--help`, `-h`, `--version` | Sin y con terminal | Exit 0, salida en stdout, sin preguntas. La ayuda lista todas las flags |
+| a | `--help`, `-h`, `--version` | Sin y con terminal | Exit 0, salida en stdout, sin preguntas. La ayuda lista todas las flags en dos columnas alineadas. Con terminal, comandos y flags en colores distintos; a pipe, a 40 columnas o con `NO_COLOR=1`, sin escapes, las mismas columnas y ninguna descripción cortada |
 | b | Sin argumentos | Con terminal | Aparecen los prompts. Con teclas reales, el resultado es idéntico al de la llamada con flags, y el comando impreso lo reproduce |
 | c | Sin argumentos | Sin terminal | No se cuelga, exit 2, stderr nombra los flags faltantes, nada escrito |
 | d | Todo por flags | Con terminal | Cero prompts, exit 0 |
@@ -36,6 +36,8 @@ Correr el CLI real, no una versión escrita para el chequeo. La herramienta de s
 
 ```bash
 tool --help; echo "exit=$?"
+tool --help | LC_ALL=C grep -c "$(printf '\033')"   # tiene que dar 0: a un pipe, la ayuda va sin color
+COLUMNS=40 tool --help                              # las descripciones se parten o se apilan, no se cortan
 tool </dev/null >out.txt 2>err.txt; echo "exit=$?"; cat err.txt
 tool --nope </dev/null; echo "exit=$?"
 tool --name demo --runtime go </dev/null | LC_ALL=C grep -c "$(printf '\033')"   # tiene que dar 0

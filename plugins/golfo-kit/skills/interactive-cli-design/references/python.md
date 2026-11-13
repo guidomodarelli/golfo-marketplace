@@ -35,6 +35,8 @@ def main(
 - Un parámetro obligatorio se declara `Optional` con default `None`. Si no, Typer falla antes de poder preguntar.
 - `len(sys.argv) == 1` distingue la invocación sin argumentos, que abre el wizard completo.
 
+**Ayuda con `argparse`.** Ya arma las dos columnas, parte la descripción dentro de la suya y la apila debajo cuando el nombre es más ancho que `max_help_position` (24 por default; subirlo con `formatter_class=functools.partial(argparse.HelpFormatter, max_help_position=HELP_NAME_COLUMNS)`). Desde Python 3.14 también la pinta (`color=True` es el default) y respeta `NO_COLOR`, `FORCE_COLOR` y la salida a un pipe: flags largos en cian, cortos y subcomandos en verde, `metavar` en amarillo. Para que los subcomandos tengan un color propio, o en 3.13 y anteriores, que no pintan, escribir la ayuda con un helper propio (como el de [node.md](node.md#ayuda)): los métodos de `HelpFormatter` son privados y pintarlos ahí se rompe entre versiones. Con Typer, verificar en una pseudoconsola que su ayuda con `rich` cumpla el formato del `SKILL.md`.
+
 Con `argparse`: `parser.error(mensaje)` sale con 2 y `action="version"` imprime la versión en stdout. Crear el parser con `allow_abbrev=False`: por default acepta `--tok` por `--token`. Sus mensajes de error están en inglés; si el CLI habla otro idioma, sobrescribir `error()` y traducir los más comunes (`unrecognized arguments`, `expected one argument`, `not allowed with argument`).
 
 ## Se puede preguntar

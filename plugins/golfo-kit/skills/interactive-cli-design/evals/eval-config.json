@@ -467,6 +467,43 @@
           "description": "No afirma que no cambió nada"
         }
       ]
+    },
+    {
+      "id": "help-two-columns-colored",
+      "description": "La ayuda pone todo lo que tiene descripción en dos columnas, pinta comandos y flags con colores distintos y sale sin color a un pipe.",
+      "input": "Tengo un script bash deploy.sh con subcomandos (plan, apply) y flags (--env, --region, --dry-run). Hoy --help imprime una sola línea de uso en texto plano. Mejorá el --help.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "help_row|%-[0-9*]+s|column -t|dos columnas|two columns|alinead|align",
+          "description": "Arma las filas en dos columnas alineadas"
+        },
+        {
+          "type": "regex",
+          "pattern": "(subcomando|comando|command).{0,80}(color|cian|cyan|36m)|(color|cian|cyan|36m).{0,80}(subcomando|comando|command)",
+          "description": "Pinta los comandos"
+        },
+        {
+          "type": "regex",
+          "pattern": "(flag|opci[oó]n|option).{0,80}(otro color|color distinto|different color|amarill|yellow|33m)|(amarill|yellow|33m).{0,80}(flag|opci[oó]n|option)",
+          "description": "Pinta las flags con otro color"
+        },
+        {
+          "type": "regex",
+          "pattern": "NO_COLOR",
+          "description": "Respeta NO_COLOR"
+        },
+        {
+          "type": "regex",
+          "pattern": "-t 1|isatty|IsOutputRedirected|stdout.{0,40}(terminal|tty)",
+          "description": "No pinta si stdout no es una terminal"
+        },
+        {
+          "type": "regex",
+          "pattern": "fold|COLUMNS|tput cols|apil|stack|ancho de la terminal|terminal width",
+          "description": "Se adapta al ancho sin cortar descripciones"
+        }
+      ]
     }
   ]
 }

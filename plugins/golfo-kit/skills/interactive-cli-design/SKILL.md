@@ -80,7 +80,13 @@ Evaluar en orden. Gana la primera fila que aplica.
 - **Sin abreviaturas de flags.** Varios parsers aceptan `--tok` por `--token` (`argparse` por default; desactivarlo con `allow_abbrev=False`). Una abreviatura que hoy es única deja de serlo al sumar un flag, y un secreto pasado como `--tok=x` se escapa del filtro que lo saca del comando guardado.
 - Usar los nombres de la lista estándar de [clig.dev](https://clig.dev/#arguments-and-flags) antes de inventar uno.
 
-**Ayuda.** Va a stdout y tiene, en este orden: qué hace en una línea, uno o dos ejemplos, las flags con su default y valores válidos, qué pasa sin flags y los códigos de salida. Cada subcomando tiene la suya.
+**Ayuda.** Va a stdout y tiene, en este orden: qué hace en una línea, uno o dos ejemplos, las flags con su default y valores válidos, qué pasa sin flags y los códigos de salida. Cada subcomando tiene la suya. Siempre con este formato, aunque el parser traiga otro:
+
+- **Todo lo que tiene descripción va en una tabla de dos columnas**: subcomandos, flags, argumentos, variables de entorno y códigos de salida. A la izquierda el nombre (`-n, --name <valor>`), a la derecha la descripción con su default y valores válidos. La izquierda se alinea a la más ancha de su sección. La descripción larga se parte dentro de su columna; si la terminal es tan angosta que no entra, se apila (el nombre en una línea y la descripción sangrada debajo), nunca se trunca.
+- **Comandos y flags con colores distintos**, en la tabla, en la línea de uso y en los ejemplos: el programa y sus subcomandos en un color, las flags en otro, los `<valores>` atenuados y los títulos de sección en negrita. Los colores salen de las constantes del proyecto (de `vivid-visual-output` si está disponible).
+- **Sin color, el mismo formato.** Si stdout no es una terminal, hay `NO_COLOR` o `TERM=dumb`, la ayuda sale sin secuencias de escape y con las mismas dos columnas: `tool --help | less` y `tool --help > ayuda.txt` se leen igual.
+
+Cada referencia de stack dice cómo lograrlo con su parser.
 
 ## Paridad
 
