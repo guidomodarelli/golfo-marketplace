@@ -693,9 +693,9 @@ run_resolve() {
   printf '%s\n' '{"profiles": ["business-flows"], "updates": {"fromLock": true}}' > .agents/agent-ready.json
   run_bootstrap
   [ "$status" -eq 0 ]
-  run --separate-stderr env PATH="$fake_bin:$PATH" python3 "$skill_dir/scripts/agent-ready" profiles remove business-flows
+  run env PATH="$fake_bin:$PATH" python3 "$skill_dir/scripts/agent-ready" profiles remove business-flows
   [ "$status" -eq 0 ]
-  [[ "$stderr" == *"agent-ready apply --profiles none"* ]]
+  [[ "$output" == *"agent-ready apply --profiles none"* ]]
   run_bootstrap --profiles none
   [ "$status" -eq 0 ]
   [ ! -e .agents/rules/business-flows.md ]
