@@ -11,8 +11,9 @@ folders come from the manifest (nested.targets), or else from the first candidat
 without either, nothing is written and plan says so. In each folder the block goes into AGENTS.md
 between the markers of its id, like any managed block (agent_ready_blocks.py), and the apply leaves a
 CLAUDE.md proxy next to the AGENTS.md it writes, because Claude Code only loads a nested AGENTS.md
-through it. The contract, and how each provider loads nested instructions, are in
-references/nested-instructions.md.
+through it. Codex does not load a nested AGENTS.md below the folder it starts in, so the root AGENTS.md
+gets an index of them, a section of its own (index_content). The contract, and how each provider loads
+nested instructions, are in references/nested-instructions.md.
 """
 
 import os
@@ -31,6 +32,14 @@ CONTENT_SUFFIX = ".md"
 INSTRUCTIONS_FILE = "AGENTS.md"
 PROXY_FILE = "CLAUDE.md"
 BARE_PROXY = "@AGENTS.md"
+# A nested CLAUDE.md only imports its AGENTS.md: the root proxy carries the centralization rule.
+NESTED_PROXY_TEXT = BARE_PROXY + "\n"
+# The index of the nested AGENTS.md files, a section of the root AGENTS.md. Its id cannot be the name
+# of a profile, which is kebab-case.
+INDEX_BLOCK_ID = "agent-ready:nested-index"
+INDEX_SOURCE = "agent-ready:nested-index"
+INDEX_HEADING = "## Nested instructions"
+INDEX_LEAD = "Before you read or change files under one of these folders, read and follow its own `AGENTS.md`:"
 TARGET_SEPARATOR = "/"
 # Folders whose files Git and agent-ready-setup own: a nested target never goes there.
 RESERVED_FOLDERS = (".git", ".agents", ".claude", ".codex")
@@ -213,6 +222,12 @@ def resolve(project_root, targets, enabled, configured, manifest_path):
     return folders, report
 
 
+def index_content(destinations):
+    """The section of the root AGENTS.md that sends Codex to each nested AGENTS.md before it works there."""
+    lines = [INDEX_HEADING, "", INDEX_LEAD, ""] + [f"- `{destination}`" for destination in sorted(destinations)]
+    return "\n".join(lines) + "\n"
+
+
 def describe(entry):
     """One line of plan for a nested target."""
     identifier = entry["id"]
@@ -247,8 +262,9 @@ def is_proxy(path, proxy_text):
 def place_proxies(project_root, written, deleted, proxy_text):
     """A CLAUDE.md proxy next to each nested AGENTS.md the apply wrote, and none next to one it deleted.
 
-    Returns (created, removed, failed). A CLAUDE.md that is not a proxy stays: the normalization of
-    the instructions reports it.
+    The proxy it writes only imports its AGENTS.md; ``proxy_text`` is the root proxy, which also counts
+    as a proxy when one goes. Returns (created, removed, failed). A CLAUDE.md that is not a proxy stays:
+    the normalization of the instructions reports it.
     """
     created, removed, failed = [], [], []
     for destination in written:
@@ -259,7 +275,7 @@ def place_proxies(project_root, written, deleted, proxy_text):
         if os.path.lexists(path):
             continue
         try:
-            managed_blocks.write_atomically(path, proxy_text)
+            managed_blocks.write_atomically(path, NESTED_PROXY_TEXT)
             created.append(proxy)
         except OSError as write_error:
             failed.append(f"{proxy}: {write_error.strerror or write_error}")

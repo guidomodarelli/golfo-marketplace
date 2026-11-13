@@ -248,6 +248,14 @@ write_claude_proxy() {
   cp -- "$ROOT_CLAUDE_TEMPLATE" "$claude_file"
 }
 
+# A nested CLAUDE.md only imports its AGENTS.md: the root proxy and the managed block of the
+# root AGENTS.md already carry the centralization rule for every folder.
+write_nested_claude_proxy() {
+  local claude_file="$1"
+
+  printf '%s\n' "$CLAUDE_PROXY" > "$claude_file"
+}
+
 is_plain_claude_proxy() {
   local claude_file="$1"
 
@@ -383,7 +391,7 @@ normalize_nested_instruction_pair() {
   fi
 
   if [[ -e "$claude_file" ]]; then
-    if is_normalized_claude_proxy "$claude_file"; then
+    if is_plain_claude_proxy "$claude_file"; then
       if [[ -e "$agents_file" ]]; then
         record_skipped "$claude_file"
         record_skipped "$agents_file"
@@ -395,12 +403,13 @@ normalize_nested_instruction_pair() {
       return
     fi
 
-    if is_plain_claude_proxy "$claude_file"; then
+    # The root proxy repeats, in every folder, the rule the root already gives: it becomes the import alone.
+    if is_normalized_claude_proxy "$claude_file"; then
       if [[ -e "$agents_file" ]]; then
-        write_claude_proxy "$claude_file"
-        MIGRATED+=("$claude_file -> root instruction proxy")
+        write_nested_claude_proxy "$claude_file"
+        MIGRATED+=("$claude_file -> nested instruction proxy")
       elif validate_destination_parent "$agents_file" && : > "$agents_file"; then
-        write_claude_proxy "$claude_file"
+        write_nested_claude_proxy "$claude_file"
         MIGRATED+=("$claude_file -> $agents_file (empty canonical sibling)")
       else
         CONFLICTS+=("$claude_file is an orphaned proxy; $agents_file could not be created")
@@ -410,10 +419,10 @@ normalize_nested_instruction_pair() {
 
     if [[ ! -e "$agents_file" ]]; then
       cp -- "$claude_file" "$agents_file"
-      write_claude_proxy "$claude_file"
+      write_nested_claude_proxy "$claude_file"
       MIGRATED+=("$claude_file -> $agents_file")
     elif cmp -s "$claude_file" "$agents_file"; then
-      write_claude_proxy "$claude_file"
+      write_nested_claude_proxy "$claude_file"
       MIGRATED+=("$claude_file -> $agents_file")
     else
       CONFLICTS+=("$claude_file and $agents_file differ; neither was overwritten")
@@ -422,7 +431,7 @@ normalize_nested_instruction_pair() {
   fi
 
   if [[ -e "$agents_file" ]]; then
-    write_claude_proxy "$claude_file"
+    write_nested_claude_proxy "$claude_file"
     MIGRATED+=("$agents_file -> $claude_file proxy")
   fi
 }

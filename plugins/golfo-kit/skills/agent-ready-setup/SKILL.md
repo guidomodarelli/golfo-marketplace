@@ -16,7 +16,7 @@ description: >-
   descartar un hallazgo de sus revisiones de IA.
 license: MIT
 metadata:
-  version: "1.48.0"
+  version: "1.49.0"
   author: "guponce"
   category: "developer-experience"
   tags: "agent-ready, multi-provider, claude-code, codex, bootstrap, setup, scaffold, context-optimized-v1.20.1"
@@ -52,18 +52,20 @@ operación. El bootstrap distribuye assets según responsabilidad:
   estado local de agent-ready-setup: el lock de una sincronización en curso, la metadata
   del navegador (`.agents/browser-tools.json`) y el manifest de vistas por hard link. Las
   reglas propias del proyecto van fuera del bloque.
-- `<carpeta>/AGENTS.md` y su `CLAUDE.md` proxy: el bloque de un destino anidado que publica un profile
-  (`nested` en el catálogo), en la carpeta que fija `nested.targets` o, si no, en la primera candidata que
-  existe. Contrato, rechazos y cómo carga cada provider los anidados:
-  [references/nested-instructions.md](references/nested-instructions.md).
+- `<carpeta>/AGENTS.md` y su `CLAUDE.md` proxy (`@AGENTS.md` solo): el bloque de un destino anidado que
+  publica un profile (`nested` en el catálogo), en la carpeta que fija `nested.targets` o, si no, en la
+  primera candidata que existe. Con Codex entre los providers, el `AGENTS.md` raíz suma la sección
+  `agent-ready:nested-index`, que lista esos archivos para Codex. Contrato, rechazos y cómo carga cada
+  provider los anidados: [references/nested-instructions.md](references/nested-instructions.md).
 
 `AGENTS.md` es la fuente canónica. Debe incluir una sección de referencias de
 rules que indique a todos los providers leer y seguir cada archivo bajo
 `.agents/rules/`. La sección se prepara desde template y la IA la integra con
 instrucciones existentes; Codex no interpreta referencias `@path/to/folder`.
-Cada `CLAUDE.md`, tanto raíz como en cualquier subdirectorio, se genera
-copiando exactamente `assets/claude-proxy.md` del skill: contiene `@AGENTS.md`
-más la regla breve de centralización. Nunca se mantienen variantes de proxy ni
+El `CLAUDE.md` raíz se genera copiando exactamente `assets/claude-proxy.md` del
+skill: contiene `@AGENTS.md` más la regla breve de centralización, que vale para
+todos los directorios. El `CLAUDE.md` de un subdirectorio solo contiene
+`@AGENTS.md`, sin repetir la regla. Nunca se mantienen otras variantes de proxy ni
 clones de instrucciones en `CLAUDE.md`; las instrucciones específicas viven en
 el `AGENTS.md` hermano.
 
@@ -299,9 +301,9 @@ desde `.claude/` u otro subdirectorio. Después de proyectar assets, el hook eje
 `scripts/normalize-instructions.sh`, que comparte con `bootstrap.sh` la lógica de
 `scripts/instruction-normalization.sh`, sin repetir upgrade ni proyección.
 Después aplica la normalización existente a cada `CLAUDE.md`, reemplazándolo
-por una copia byte-a-byte de `assets/claude-proxy.md`; ese template usa el
-`AGENTS.md` hermano mediante la referencia relativa `@AGENTS.md` y nunca usa un
-`AGENTS.md` de otro nivel. Durante la búsqueda recursiva de instrucciones
+por su proxy: una copia byte-a-byte de `assets/claude-proxy.md` en la raíz y
+`@AGENTS.md` solo en un subdirectorio. Los dos usan el `AGENTS.md` hermano mediante
+la referencia relativa `@AGENTS.md` y nunca un `AGENTS.md` de otro nivel. Durante la búsqueda recursiva de instrucciones
 usa el inventario Git: omite paths ignorados no trackeados, pero conserva archivos
 trackeados bajo directorios ignorados como `node_modules/`; esta regla no impide
 crear los destinos explícitos `.claude/`, `.agents/` y `.codex/`. Los hooks de
@@ -328,15 +330,16 @@ raíz:
    automáticamente esta diferencia al usuario.
 
 En `CLAUDE.md` anidados (incluido `.claude/CLAUDE.md`) aplica la misma
-normalización por directorio, siempre con el `AGENTS.md` hermano:
+normalización por directorio, siempre con el `AGENTS.md` hermano. El proxy
+anidado es `@AGENTS.md` solo:
 
-- Si existe solo `AGENTS.md`, crea `CLAUDE.md` como copia exacta de
-  `assets/claude-proxy.md`.
+- Si existe solo `AGENTS.md`, crea `CLAUDE.md` con `@AGENTS.md`.
 - Si existe solo `CLAUDE.md`, crea `AGENTS.md` hermano con su contenido
   (omitiendo únicamente una primera línea exactamente `@AGENTS.md`) y reemplaza
-  `CLAUDE.md` por la copia exacta del asset.
-- Si `CLAUDE.md` ya es el proxy exacto, no lo modifica; si además falta
-  `AGENTS.md`, crea el hermano canónico vacío.
+  `CLAUDE.md` por `@AGENTS.md`.
+- Si `CLAUDE.md` ya es `@AGENTS.md`, no lo modifica; si además falta
+  `AGENTS.md`, crea el hermano canónico vacío. Una copia de
+  `assets/claude-proxy.md` se reduce a `@AGENTS.md`.
 - Si ambos tienen instrucciones distintas, no sobrescribe ninguno y reporta la
   diferencia para que el agente la resuelva según «Resolución de diferencias por
   el agente».
@@ -391,8 +394,9 @@ terminado:
    comandos existentes para determinar intención y precedencia.
 3. Fusionar en `AGENTS.md` toda instrucción compatible o complementaria, conservar
    una sola versión de duplicados y mantener `AGENTS.md` como fuente canónica.
-4. Escribir versión fusionada en `AGENTS.md` y reemplazar `CLAUDE.md` por copia
-   byte-a-byte de `assets/claude-proxy.md`.
+4. Escribir versión fusionada en `AGENTS.md` y reemplazar `CLAUDE.md` por su
+   proxy: copia byte-a-byte de `assets/claude-proxy.md` en la raíz y `@AGENTS.md`
+   solo en un subdirectorio.
 5. Escalar únicamente contradicciones reales que el agente no pueda resolver con
    evidencia del proyecto. Reportar paths y fragmentos afectados, sin sobrescribir.
 
@@ -431,7 +435,7 @@ Cada paso numerado lleva una sola etiqueta: nunca mezclar `[AUTO]` y `[MANUAL]` 
 ```
 Next steps:
   1. [MANUAL] Completar `AGENTS.md` solo si todavía faltan descripción, comandos, arquitectura u ownership del proyecto.
-  2. [AUTO] Validar que cada `CLAUDE.md`, raíz o anidado —incluido `.claude/CLAUDE.md`— sea byte-a-byte igual a `assets/claude-proxy.md` (incluye `@AGENTS.md` y la regla de centralización), y que cada uno tenga un `AGENTS.md` hermano. Si no hay archivos anidados, reportar `N/A`.
+  2. [AUTO] Validar que el `CLAUDE.md` raíz sea byte-a-byte igual a `assets/claude-proxy.md` (incluye `@AGENTS.md` y la regla de centralización), que cada `CLAUDE.md` anidado —incluido `.claude/CLAUDE.md`— contenga solo `@AGENTS.md`, y que cada uno tenga un `AGENTS.md` hermano. Si no hay archivos anidados, reportar `N/A`.
   3. [AUTO] Validar que `AGENTS.md` raíz tenga exactamente un bloque sin id (`<!-- BEGIN AGENT-READY MANAGED -->` ... `<!-- END AGENT-READY MANAGED -->`) y, salvo que siga esperando su bloque, un par de marcadores con id por stack seleccionado (`<!-- BEGIN AGENT-READY MANAGED: <stack> -->`). Si existe `.agents/rules/`, validar que ese bloque tenga una referencia portable con instrucción explícita de lectura/seguimiento para cada archivo real; rechazar `@./rules/...`, `@.agents/rules/...` y `@path/to/folder`. Si no existe el directorio o no contiene rules, reportar `N/A`, no una tarea pendiente.
   4. [AUTO] Si existen archivos bajo `.agents/rules/`, `.agents/skills/` o `.agents/agents/`, detectar comentarios scaffold (`<!-- Add ... -->`, `<!-- Describe ... -->`) y marcadores sin renderizar (`{{...}}`) con una sola búsqueda, sin leer cada archivo: `grep -rnE '<!-- (Add|Describe) |\{\{[^}]+\}\}' .agents/rules .agents/skills .agents/agents`. Reportar cada `path:línea` que coincida; solo cuentan los archivos existentes bajo esos directorios. No tratar ejemplos como `<domain>` o `<component-name>` dentro de documentación como placeholders pendientes. Si no existen esos archivos, reportar `N/A`.
   5. [AUTO] Validar JSON, paths y referencias de MCP/hooks bajo `.codex/`. Si `.codex/` no existe, reportar `N/A`.

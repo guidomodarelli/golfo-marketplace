@@ -616,7 +616,7 @@ write_nested_manifest() {
   [ "$status" -eq 0 ]
   head -1 src/app/AGENTS.md | grep -qx '<!-- BEGIN AGENT-READY MANAGED: acme/web/app-router -->'
   grep -qx -- '- Each route exports a default component.' src/app/AGENTS.md
-  cmp -s src/app/CLAUDE.md "$skill_dir/assets/claude-proxy.md"
+  [ "$(cat src/app/CLAUDE.md)" = '@AGENTS.md' ]
   [ "$(lock_value 'lock["blocks"]["src/app/AGENTS.md"]["acme/web/app-router"]["state"]')" = "applied" ]
 
   printf '\n## Team notes\n\nKeep server actions in actions.ts.\n' >> src/app/AGENTS.md
@@ -783,4 +783,41 @@ write_nested_manifest() {
   run_cli apply
   [ "$status" -eq 0 ]
   ! grep -q 'AGENT-READY MANAGED' src/app/AGENTS.md
+}
+
+@test "the root AGENTS.md lists the nested AGENTS.md files for Codex, and the index follows the targets and the providers" {
+  mkdir -p src/app apps/web/app && touch src/app/page.tsx apps/web/app/page.tsx
+  add_nested_pack
+  run_cli trust add --project .
+  run_cli plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Nested AGENTS.md index for Codex: 1 file(s) listed in AGENTS.md, ~"*" bytes of its limit"* ]]
+  run_cli plan --json
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s' "$output" | python3 -c 'import json, sys; index = json.load(sys.stdin)["nestedIndex"]; print(index["destinations"], index["bytes"] > 0)')" = "['src/app/AGENTS.md'] True" ]
+  run_cli apply
+  [ "$status" -eq 0 ]
+  grep -qx '<!-- BEGIN AGENT-READY MANAGED: agent-ready:nested-index -->' AGENTS.md
+  grep -qxF -- '- `src/app/AGENTS.md`' AGENTS.md
+  [ "$(lock_value 'lock["blocks"]["AGENTS.md"]["agent-ready:nested-index"]["state"]')" = "applied" ]
+
+  # Moving the target moves its line.
+  write_nested_manifest '"nested": {"targets": [{"id": "acme/web/app-router", "paths": ["apps/web/app"]}]}'
+  run_cli apply
+  [ "$status" -eq 0 ]
+  grep -qxF -- '- `apps/web/app/AGENTS.md`' AGENTS.md
+  ! grep -qF -- '- `src/app/AGENTS.md`' AGENTS.md
+
+  # Without Codex among the providers, or with nested.codexIndex off, there is no index.
+  write_nested_manifest '"providers": ["claude"]'
+  run_cli apply
+  [ "$status" -eq 0 ]
+  ! grep -q 'agent-ready:nested-index' AGENTS.md
+  [ -f src/app/AGENTS.md ]
+  write_nested_manifest '"nested": {"codexIndex": false}'
+  run_cli plan
+  [[ "$output" != *"Nested AGENTS.md index for Codex"* ]]
+  run_cli apply
+  [ "$status" -eq 0 ]
+  ! grep -q 'agent-ready:nested-index' AGENTS.md
 }
