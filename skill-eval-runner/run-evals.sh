@@ -42,6 +42,9 @@ EVAL_CONFIG="${EVAL_CONFIG:-}"
 # Assertion types the grader implements. An unknown type (for example a typo) is rejected when the
 # config is validated: grading it would only print a warning and let the case pass unchecked.
 SUPPORTED_ASSERTION_TYPES_JSON='["contains","contains_any","not_contains_any","regex"]'
+# Entries never copied into the isolated skill view: VCS data, installed dependencies and
+# previous eval results are heavy and are not skill content.
+VIEW_EXCLUDED_ENTRY_NAMES=(".git" "node_modules" ".eval-results")
 GOLFO_MARKETPLACE_EVAL_MODEL="${GOLFO_MARKETPLACE_EVAL_MODEL:-}"
 GOLFO_MARKETPLACE_EVAL_REASONING_EFFORT="${GOLFO_MARKETPLACE_EVAL_REASONING_EFFORT:-}"
 # Machine-readable JSONL is the default so CI, tests, and real eval runs are
@@ -322,14 +325,35 @@ preflight_eval_provider() {
     return 0
 }
 
+# Copies every entry of a directory except `skipped_name` and VIEW_EXCLUDED_ENTRY_NAMES.
+copy_view_entries() {
+    local source_dir="$1"
+    local target_dir="$2"
+    local skipped_name="$3"
+    local entry entry_name excluded_name
+    for entry in "$source_dir"/* "$source_dir"/.[!.]*; do
+        [ -e "$entry" ] || [ -L "$entry" ] || continue
+        entry_name=$(basename "$entry")
+        [ "$entry_name" = "$skipped_name" ] && continue
+        for excluded_name in "${VIEW_EXCLUDED_ENTRY_NAMES[@]}"; do
+            [ "$entry_name" = "$excluded_name" ] && continue 2
+        done
+        cp -R "$entry" "$target_dir/"
+    done
+}
+
 # Builds a read-only view of the skill for the agent under evaluation: a copy of the skill
-# directory without its top-level evals/ (assertions must stay hidden from the agent), with the
-# skill's siblings and its parent's siblings symlinked so relative references such as
-# ../other-skill/... or ../../references/... keep resolving. Prints the view path.
+# directory without its top-level evals/ (assertions must stay hidden from the agent), plus
+# copies of the skill's siblings and its parent's siblings so relative references such as
+# ../other-skill/... or ../../references/... keep resolving. Everything is copied, never
+# symlinked: a link would resolve `..` inside the original tree and expose the skill's evals/
+# again (for example $view/../sibling-skill/../<skill>/evals). An explicit eval config that
+# lives inside the copied tree is removed from the view too. Prints the view path.
 create_isolated_skill_view() {
     local source_path="$1"
     local view_root="$2"
-    local skill_dir_name parent_path parent_name grandparent_path view_path entry
+    local config_file="${3:-}"
+    local skill_dir_name parent_path parent_name grandparent_path view_path copy_root
     skill_dir_name=$(basename "$source_path")
     parent_path=$(dirname "$source_path")
     parent_name=$(basename "$parent_path")
@@ -337,23 +361,18 @@ create_isolated_skill_view() {
     view_path="$view_root/$parent_name/$skill_dir_name"
     mkdir -p "$view_path"
 
-    for entry in "$source_path"/* "$source_path"/.[!.]*; do
-        [ -e "$entry" ] || [ -L "$entry" ] || continue
-        [ "$(basename "$entry")" = "evals" ] && continue
-        cp -R "$entry" "$view_path/"
-    done
-    for entry in "$parent_path"/* "$parent_path"/.[!.]*; do
-        [ -e "$entry" ] || [ -L "$entry" ] || continue
-        [ "$(basename "$entry")" = "$skill_dir_name" ] && continue
-        ln -s "$entry" "$view_root/$parent_name/$(basename "$entry")"
-    done
+    copy_view_entries "$source_path" "$view_path" "evals"
+    copy_view_entries "$parent_path" "$view_root/$parent_name" "$skill_dir_name"
+    copy_root="$parent_path"
     if [ "$grandparent_path" != "/" ]; then
-        for entry in "$grandparent_path"/* "$grandparent_path"/.[!.]*; do
-            [ -e "$entry" ] || [ -L "$entry" ] || continue
-            [ "$(basename "$entry")" = "$parent_name" ] && continue
-            ln -s "$entry" "$view_root/$(basename "$entry")"
-        done
+        copy_view_entries "$grandparent_path" "$view_root" "$parent_name"
+        copy_root="$grandparent_path"
+    else
+        view_root="$view_root/$parent_name"
     fi
+    case "$config_file" in
+        "$copy_root"/*) rm -f "$view_root/${config_file#"$copy_root"/}" ;;
+    esac
     echo "$view_path"
 }
 
@@ -903,7 +922,7 @@ run_skill_evals() {
     skill_cwd=$(mktemp -d)
     baseline_cwd=$(mktemp -d)
     skill_view_root=$(mktemp -d)
-    skill_view_path=$(create_isolated_skill_view "$canonical_skill_path" "$skill_view_root")
+    skill_view_path=$(create_isolated_skill_view "$canonical_skill_path" "$skill_view_root" "$config_file")
     mkdir -p "$skill_cwd/.claude/skills"
     ln -s "$skill_view_path" "$skill_cwd/.claude/skills/$skill_name"
     mkdir -p "$skill_cwd/.codex/skills"

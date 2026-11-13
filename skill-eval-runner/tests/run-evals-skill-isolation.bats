@@ -34,6 +34,10 @@ case "$prompt" in
       [ -f "$view/references/local.md" ] && echo "own_reference=yes" || echo "own_reference=no"
       [ -f "$view/../../shared/shared.md" ] && echo "parent_reference=yes" || echo "parent_reference=no"
       [ -f "$view/../sibling-skill/SKILL.md" ] && echo "sibling_skill=yes" || echo "sibling_skill=no"
+      skill_dir_name=$(basename "$view")
+      [ -e "$view/../sibling-skill/../$skill_dir_name/evals" ] && echo "sibling_traversal=visible" || echo "sibling_traversal=hidden"
+      [ -e "$view/../../shared/../skills/$skill_dir_name/evals" ] && echo "parent_traversal=visible" || echo "parent_traversal=hidden"
+      [ -e "$view/../held-out-eval-config.json" ] && echo "adjacent_config=visible" || echo "adjacent_config=hidden"
     } >> "$VIEW_LOG"
     response_text='ok'
     ;;
@@ -90,6 +94,29 @@ run_with_view_log_env() {
     grep -q '^own_reference=yes$' "${VIEW_LOG}"
     grep -q '^parent_reference=yes$' "${VIEW_LOG}"
     grep -q '^sibling_skill=yes$' "${VIEW_LOG}"
+}
+
+@test "sibling and parent folders do not lead back to the original evals directory" {
+    nest_skill_in_plugin_layout
+
+    run_with_view_log_env "${SKILL_DIR}"
+
+    [ "$status" -eq 0 ]
+    grep -q '^sibling_traversal=hidden$' "${VIEW_LOG}"
+    grep -q '^parent_traversal=hidden$' "${VIEW_LOG}"
+}
+
+@test "a held-out config stored next to the skill is not copied into the view" {
+    nest_skill_in_plugin_layout
+    local held_out="${SKILL_DIR}/../held-out-eval-config.json"
+    jq '.test_cases[0].id = "adjacent-held-out-case"' "${SKILL_DIR}/evals/eval-config.json" > "${held_out}"
+
+    run_with_view_log_env --config "${held_out}" "${SKILL_DIR}"
+
+    [ "$status" -eq 0 ]
+    printf '%s\n' "$output" | jq -e 'select(.event == "case" and .id == "adjacent-held-out-case")' > /dev/null
+    grep -q '^adjacent_config=hidden$' "${VIEW_LOG}"
+    [ -f "${held_out}" ]
 }
 
 @test "the isolated view is removed after the run" {
