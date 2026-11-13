@@ -65,7 +65,7 @@ fallaría). Cada capa suma su sección a `AGENTS.md`.
 |---|---|---|
 | `react` | — | rules de estilo, tests y seguridad de React y TypeScript, los agents de review y `/react-review-pr` |
 | `nextjs` | `react` | flujo de datos en el servidor, contratos con upstreams, arquitectura por módulos, endpoints, services y logger |
-| `nextjs-app-router` | `nextjs` | qué guarda el directorio `app/`, dónde empiezan los client components y route handlers |
+| `nextjs-app-router` | `nextjs` | dónde empiezan los client components y, en el `AGENTS.md` de `app/` o `src/app/` (destino anidado `nextjs-app-router/app-router`), qué guarda el directorio de rutas y cómo validan los route handlers |
 
 `react` no requiere `node`: las rules de `node` son de servicios backend, y una SPA o una
 app Next.js no las necesita. Un repo full stack selecciona las dos (`--profiles nextjs,node`).

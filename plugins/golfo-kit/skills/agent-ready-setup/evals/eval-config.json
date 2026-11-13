@@ -4074,6 +4074,44 @@
           "critical": true
         }
       ]
+    },
+    {
+      "id": "nextjs-app-router-nested-agents",
+      "description": "Un repo Next.js con src/app pregunta qué escribe agent-ready en la carpeta de rutas sin configurar nada.",
+      "input": "Tengo un repo Next.js con App Router en src/app (src/app/layout.tsx y next en dependencies). Si corro agent-ready apply sin configurar nada, ¿qué escribe dentro de src/app, qué dice ese archivo y qué tiene su CLAUDE.md? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "src/app/AGENTS.md",
+          "description": "Dice que escribe src/app/AGENTS.md",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "nextjs-app-router/app-router",
+            "app-router"
+          ],
+          "description": "Nombra el destino anidado de App Router",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "route handler",
+            "route.ts",
+            "archivos de ruta",
+            "page.tsx"
+          ],
+          "description": "Resume qué dice: los archivos de ruta y los route handlers"
+        },
+        {
+          "type": "contains",
+          "value": "@AGENTS.md",
+          "description": "Dice que el CLAUDE.md de src/app solo importa su AGENTS.md",
+          "critical": true
+        }
+      ]
     }
   ]
 }

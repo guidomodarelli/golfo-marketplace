@@ -16,7 +16,7 @@ description: >-
   descartar un hallazgo de sus revisiones de IA.
 license: MIT
 metadata:
-  version: "1.49.0"
+  version: "1.50.0"
   author: "guponce"
   category: "developer-experience"
   tags: "agent-ready, multi-provider, claude-code, codex, bootstrap, setup, scaffold, context-optimized-v1.20.1"
@@ -417,7 +417,7 @@ Mostrar output del script sin alterarlo. En respuestas documentales, enumerar ad
 - **Android, Go, Java y Node:** con el nombre del stack como prefijo (`<stack>` es `android`, `go`, `java` o `node`), `rules/<stack>-coding-style.md`, `rules/<stack>-security.md`, `rules/<stack>-testing.md`, `agents/<stack>-perf-analyzer.md`, `agents/<stack>-security-scanner.md`, `commands/<stack>-review-pr.md` y `blocks/AGENTS.md`, su sección del `AGENTS.md` de la raíz; por ejemplo, `rules/node-security.md`. Cada stack nombra sus assets con su prefijo, así que dos stacks se combinan en un repo (`--profiles react,node`).
 - **React** (capa base de la web): `rules/cross-engine.md`, `rules/lodash.md`, `rules/no-unnecessary-mocks.md`, `rules/react-security.md`, `rules/react-style.md`, `rules/react-testing.md`, `rules/user-facing-feedback.md`, `agents/a11y-reviewer.md`, `agents/lint-reviewer.md`, `agents/react-perf-analyzer.md`, `agents/react-security-scanner.md`, `agents/test-reviewer.md`, `commands/react-review-pr.md`, `blocks/AGENTS.md` (su sección del `AGENTS.md` de la raíz), `skills/component-creation/`, `skills/karpathy-guidelines/` y `skills/react-act-test-fixes/`.
 - **Next.js** (`requires: ["react"]`): `rules/api-configuration.md`, `rules/api-validation-middleware.md`, `rules/hexagonal-architecture.md`, `rules/server-first-data-flow.md`, `rules/upstream-contracts.md`, `blocks/AGENTS.md`, `skills/api-endpoint/`, `skills/logger/` y `skills/service/`.
-- **Next.js App Router** (`requires: ["nextjs"]`): `rules/nextjs-app-router.md` y `blocks/AGENTS.md`.
+- **Next.js App Router** (`requires: ["nextjs"]`): `rules/nextjs-app-router.md`, `blocks/AGENTS.md` y `nested/app-router.md`, el bloque del `AGENTS.md` de `app/` o `src/app/`.
 - **Profile `business-flows`:** `rules/business-flows.md` y `skills/business-flow-design/SKILL.md`.
 - **CI, según `ci.provider`** (`assets/ci/`): con cualquier proveedor menos `none`, `.agents/ci/agent-ready-check.sh`; con `github`, además `.github/workflows/agent-ready.yml`; con `gitlab`, `.agents/ci/gitlab-ci.yml` y un bloque en `.gitlab-ci.yml` con su `include`; con `jenkins`, `.agents/ci/jenkins-stage.groovy`. Sin `ci.provider` o con `none`, ninguno.
 - **Profile packs:** los assets de cada profile seleccionado de `sources.packs`, con los paths que publique su pack bajo `rules/`, `skills/`, `agents/` y `commands/`.

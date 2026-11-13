@@ -28,9 +28,12 @@
     },
     "nextjs-app-router": {
       "kind": "stack",
-      "description": "Next.js App Router on top of the nextjs layer: what the app/ routes directory holds and where client components start.",
+      "description": "Next.js App Router on top of the nextjs layer: where client components start, and the AGENTS.md of the app/ routes directory with what it holds.",
       "assets": "assets/stacks/nextjs-app-router",
       "requires": ["nextjs"],
+      "nested": {
+        "app-router": { "candidates": ["app", "src/app"] }
+      },
       "detect": {
         "signals": [
           { "type": "glob", "patterns": ["app/layout.tsx", "app/layout.jsx", "app/layout.ts", "app/layout.js", "src/app/layout.tsx", "src/app/layout.jsx", "src/app/layout.ts", "src/app/layout.js"] }
