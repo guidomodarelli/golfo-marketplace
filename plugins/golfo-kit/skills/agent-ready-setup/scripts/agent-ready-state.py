@@ -83,6 +83,8 @@ from agent_ready_options import (  # noqa: E402
     CONTEXT_BUDGET_RULES_BYTES_KEY,
     SHADOWING_ENABLED_KEY,
     REPO_REALITY_ENABLED_KEY,
+    HOOK_CONFLICTS_ENABLED_KEY,
+    PERMISSION_CONFLICTS_ENABLED_KEY,
     USER_SERVERS_ENABLED_KEY,
     USER_SERVERS_REGISTER_KEY,
     EXCLUDED_DEFAULTS_KEY,
@@ -121,6 +123,7 @@ import agent_ready_conflicts as conflicts_review  # noqa: E402
 import agent_ready_pack_clis as pack_clis  # noqa: E402
 import agent_ready_machine as machine  # noqa: E402
 import agent_ready_repo_facts as repo_facts  # noqa: E402
+import agent_ready_settings_conflicts as settings_conflicts  # noqa: E402
 import agent_ready_pack_mcp as pack_mcp  # noqa: E402
 import agent_ready_pack_scripts as pack_scripts  # noqa: E402
 import agent_ready_pack_signatures as pack_signatures  # noqa: E402
@@ -2063,6 +2066,7 @@ def print_plan(project_root, skill_dir, plan, provider, skip_marketplace_upgrade
         print_context_budget(plan["context"])
     print_machine_report(plan.get("machine"))
     print_repo_reality(plan.get("repoReality", []))
+    print_settings_conflicts(plan.get("settingsConflicts", {}))
     write_line(f"Source:   {describe_source(plan['source'])}")
     write_line(f"Lock:     {describe_source(plan['lockedSource']) if plan['hasLock'] else 'none (first apply creates it)'}")
     write_line("")
@@ -3125,6 +3129,9 @@ def command_plan(arguments):
         plan["machine"] = machine_report(arguments.project, plan, configuration)
         if configuration.value(REPO_REALITY_ENABLED_KEY):
             plan["repoReality"] = repo_reality_report(arguments.project, arguments.skill_dir, plan)
+        plan["settingsConflicts"] = settings_conflicts.report(
+            arguments.project, arguments.skill_dir, configuration.value(HOOK_CONFLICTS_ENABLED_KEY),
+            configuration.value(PERMISSION_CONFLICTS_ENABLED_KEY))
         if arguments.format == "json":
             write_line(serialize_json(plan_report(arguments.project, arguments.skill_dir, plan, configuration)).rstrip("\n"))
             return 0
@@ -3272,6 +3279,21 @@ def print_repo_reality(findings):
             continue
         write_line(paint(f"  ! {finding['rule']} ({finding['profile']}) assumes {finding['description']} {finding['assumes']}, "
                          f"but the repository uses {', '.join(finding['repository'])} ({', '.join(finding['evidence'])})",
+                         "warning", sys.stdout))
+
+
+def print_settings_conflicts(report):
+    """One line per permission, hook or formatter that collides across the layers."""
+    for conflict in report.get("permissions", []):
+        write_line(paint(f"  ! permission {conflict['pattern']}: allowed in {', '.join(conflict['allow'])} and denied in "
+                         f"{', '.join(conflict['deny'])}; Claude Code applies the deny", "warning", sys.stdout))
+    for hook in report.get("duplicatedHooks", []):
+        write_line(paint(f"  ~ {hook['provider']} hook {hook['event']} `{hook['command']}` is registered in "
+                         f"{' and '.join(hook['files'])}: it runs once per registration", "warning", sys.stdout))
+    for clash in report.get("formatters", []):
+        first, second = clash["hooks"]
+        write_line(paint(f"  ! {clash['provider']} {clash['event']} runs two formatters on the same files: "
+                         f"{first['formatter']} ({first['file']}) and {second['formatter']} ({second['file']})",
                          "warning", sys.stdout))
 
 

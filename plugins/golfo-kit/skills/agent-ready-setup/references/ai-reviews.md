@@ -18,6 +18,7 @@ descartar un hallazgo.
 8. Presupuesto de contexto
 9. Choques con la máquina
 10. Rules contra la realidad del repo
+11. Hooks, permisos y settings
 
 ## 1. Qué se revisa
 
@@ -294,3 +295,30 @@ semántica. Para reemplazar la rule de golfo-kit por la del proyecto, `overrides
 | Clave | Default | Efecto |
 |---|---|---|
 | `conflicts.repoReality.enabled` | `true` | `false` no compara las rules con el repo |
+
+## 11. Hooks, permisos y settings
+
+`agent-ready plan` compara las capas que lee cada provider: lo que mergea golfo-kit
+(`.claude/settings.json (golfo-kit)`, `.codex/hooks.json (golfo-kit)`), el resto de esos archivos
+del proyecto, `.claude/settings.local.json` y la configuración del usuario (`~/.claude/settings.json`,
+`$CODEX_HOME/hooks.json`). Solo lee; nunca escribe la configuración del usuario.
+
+- **Permisos:** un patrón que una capa permite (`allow`) y otra prohíbe (`deny`) se informa con las
+  dos capas. Claude Code aplica el `deny`.
+- **Hooks repetidos:** el mismo comando en el mismo evento en dos capas corre una vez por cada
+  registro.
+- **Formateadores que compiten:** dos formateadores distintos (`assets/formatters.json`: Prettier,
+  Biome, `eslint --fix`, dprint, Black, `ruff format`, gofmt, rustfmt) en el mismo evento, con matchers
+  que se pisan, reescriben el mismo archivo.
+
+```text
+  ! permission Bash(npm run *): allowed in .claude/settings.json and denied in ~/.claude/settings.json; Claude Code applies the deny
+  ! claude PostToolUse runs two formatters on the same files: prettier (.claude/settings.json) and biome (.claude/settings.local.json)
+```
+
+Que un hook de un profile bloquee una acción que pide otro profile lo cubre la revisión semántica.
+
+| Clave | Default | Efecto |
+|---|---|---|
+| `conflicts.hooks.enabled` | `true` | `false` no compara los hooks |
+| `conflicts.permissions.enabled` | `true` | `false` no compara los permisos |

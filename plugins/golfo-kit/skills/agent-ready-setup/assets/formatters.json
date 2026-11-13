@@ -1,0 +1,10 @@
+{
+  "prettier": "(^|[\\s/])prettier(\\s|$)",
+  "biome": "(^|[\\s/])biome\\s+(format|check|lint)\\b.*--(write|apply)",
+  "eslint --fix": "(^|[\\s/])eslint(\\s.*)?\\s--fix\\b",
+  "dprint": "(^|[\\s/])dprint\\s+fmt\\b",
+  "black": "(^|[\\s/])black(\\s|$)",
+  "ruff format": "(^|[\\s/])ruff\\s+format\\b",
+  "gofmt": "(^|[\\s/])(gofmt|goimports)(\\s|$)",
+  "rustfmt": "(^|[\\s/])(rustfmt|cargo\\s+fmt)(\\s|$)"
+}

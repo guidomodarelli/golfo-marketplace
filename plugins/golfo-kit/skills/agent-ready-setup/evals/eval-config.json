@@ -3804,6 +3804,35 @@
           "description": "Usa el dato packageManager para pnpm"
         }
       ]
+    },
+    {
+      "id": "hooks-and-permissions-collide",
+      "description": "Dos formateadores en PostToolUse y un permiso allow del proyecto contra un deny del usuario: plan lo informa con las dos capas.",
+      "input": "En .claude/settings.json tengo un hook PostToolUse que corre Prettier y en settings.local.json otro que corre Biome, y además el proyecto permite Bash(npm run *) pero en mi ~/.claude/settings.json lo tengo en deny. ¿agent-ready me avisa de estos choques y cómo apago ese chequeo si no me interesa? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "agent-ready plan",
+          "description": "Usa agent-ready plan para ver los choques",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "deny",
+            "prohíbe"
+          ],
+          "description": "Dice que Claude Code aplica el deny"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "conflicts.hooks.enabled",
+            "conflicts.permissions.enabled"
+          ],
+          "description": "Nombra la clave para apagar el chequeo"
+        }
+      ]
     }
   ]
 }
