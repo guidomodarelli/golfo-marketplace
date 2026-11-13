@@ -93,7 +93,8 @@ class KeyReader:
     def read_key(self) -> str:
         previous = termios.tcgetattr(self.file_descriptor)
         try:
-            tty.setcbreak(self.file_descriptor)
+            # TCSANOW: el default (TCSAFLUSH) descarta lo tecleado mientras el menú se redibujaba.
+            tty.setcbreak(self.file_descriptor, termios.TCSANOW)
             key, rest = split_first_key(self.pending)
             while not key:
                 # Un Esc solo no trae más bytes: esperar un instante y seguir, en vez de bloquear.
@@ -126,6 +127,7 @@ El dibujo: ocultar el cursor, escribir la pregunta (con el filtro tipeado a la d
 - **Dígitos Unicode.** `"²".isdigit()` da `True` e `int("²")` lanza `ValueError`. Para saltar a una opción, aceptar solo `text.isascii() and text.isdigit()`.
 - **Esc solo.** Sin el timeout de `select`, el menú se queda esperando el resto de una secuencia que nunca llega.
 - **Varias teclas en una lectura.** Comparar el bloque entero contra `"\x1b[B"` o `"\n"` falla cuando llegan juntas: Abajo y Enter dan `"\x1b[B\n"`, y un texto pegado con Enter mete el salto de línea en el filtro. Separar una tecla por vez, como `split_first_key`.
+- **Teclas escritas durante el redibujo.** `tty.setcbreak` usa `TCSAFLUSH` por default y descarta lo que quedó en la cola de la terminal entre una lectura y la siguiente: quien teclea rápido pierde letras o el Enter. Pasarle `termios.TCSANOW`.
 - **Secuencias que el menú no usa** (flecha derecha, teclas de función) vuelven enteras, como `"\x1b[C"`: ignorarlas en lugar de sumarlas al filtro.
 - **Fin de la entrada.** `os.read` devuelve vacío y `readline()` devuelve `""`: tratarlo como cancelación, no como Enter.
 - **Letras como atajos.** Con filtro, `j` y `k` son texto. Si el proyecto ya usaba esos atajos, avisarlo en el cambio.

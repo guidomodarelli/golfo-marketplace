@@ -32,7 +32,7 @@ while [ $# -gt 0 ]; do
     -h | --help) print_help; exit 0 ;;
     -V | --version) printf '%s\n' "$VERSION"; exit 0 ;;
     --no-input) no_input=1 ;;
-    --name) [ $# -ge 2 ] || usage_error '--name necesita un valor'; name=$2; shift ;;
+    -n | --name) [ $# -ge 2 ] || usage_error "$1 necesita un valor"; name=$2; shift ;;
     --name=*) name=${1#*=} ;;
     --) shift; break ;;
     -*) usage_error "no reconozco $1. Corré $TOOL_NAME --help." ;;

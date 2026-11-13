@@ -16,7 +16,7 @@ const FLAG_OPTIONS = {
   version: { type: 'boolean', short: 'V' },
   'no-input': { type: 'boolean' },
   force: { type: 'boolean', short: 'f' },
-  name: { type: 'string' },
+  name: { type: 'string', short: 'n' },
   runtime: { type: 'string' },
   features: { type: 'string', multiple: true },
 };
