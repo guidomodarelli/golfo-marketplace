@@ -1089,11 +1089,12 @@ catalog["profiles"]["kafka-interno"]["mcpServers"] = {"docs": {"url": "https://m
   [[ "$output" == *"profiles 'acme/base' and 'acme/kafka-interno' declare the MCP server 'docs' differently"* ]]
   [ "$(tree_fingerprint)" = "$before" ]
 
-  # Alike, provides aside: registered once.
+  # Alike, provides aside: no conflict. Each declaration keeps its own policy verdict, and the
+  # registration keeps the first allowed one.
   edit_pack_catalog 'catalog["profiles"]["kafka-interno"]["mcpServers"] = {"docs": {"url": "https://mcp.acme.example/docs"}}'
   run_state plan --format json
   [ "$status" -eq 0 ]
-  [ "$(printf '%s' "$output" | python3 -c 'import json, sys; tools = json.load(sys.stdin)["packTools"]["tools"]; print(sum(1 for tool in tools if tool["name"] == "docs"))' | tr -d '\r')" = "1" ]
+  [ "$(printf '%s' "$output" | python3 -c 'import json, sys; tools = json.load(sys.stdin)["packTools"]["tools"]; print(sorted(tool["profile"] for tool in tools if tool["name"] == "docs"))' | tr -d '\r')" = "['acme/base', 'acme/kafka-interno']" ]
 }
 
 @test "provides and complements are validated: capabilities in kebab-case and <profile>:<path> references" {

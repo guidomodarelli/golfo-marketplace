@@ -56,8 +56,7 @@ def desired_servers(report):
         if tool.get("type") != "mcpServer" or tool.get("decision") != "allowed":
             continue
         if tool["name"] in desired:
-            duplicated.append(f"{tool['name']}: declared by {desired[tool['name']]['profile']} and {tool['profile']}; "
-                              "only the first one is registered")
+            # The plan already failed on two different declarations: this one is alike, registered once.
             continue
         desired[tool["name"]] = {"source": tool["source"], "profile": tool["profile"], "server": tool["server"]}
     return desired, duplicated

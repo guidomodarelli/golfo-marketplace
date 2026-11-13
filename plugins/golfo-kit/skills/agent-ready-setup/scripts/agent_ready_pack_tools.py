@@ -302,11 +302,12 @@ def without_provides(declaration):
 
 
 def declared_tools(catalog, resolved, source_of_profile, is_pack_profile):
-    """Every tool the selected pack profiles declare, in a stable order, each CLI and server once.
+    """Every tool the selected pack profiles declare, in a stable order.
 
-    Two profiles that declare the same CLI or MCP server alike share it: it is installed or registered
-    once. The same name declared differently (another version, command, URL or arguments) is a
-    conflict, raised as DeclarationError before anything is written.
+    The same name declared differently by two profiles (another version, command, URL or arguments)
+    is a conflict, raised as DeclarationError before anything is written. Declared alike, both stay:
+    the policy judges each one on its source, and the installer and the registration keep the first
+    allowed one, so a blocked declaration never hides an allowed one.
     """
     tools = []
     seen = {}
@@ -320,8 +321,8 @@ def declared_tools(catalog, resolved, source_of_profile, is_pack_profile):
                 raise DeclarationError(f"profiles '{first_profile}' and '{tool['profile']}' declare the {kind} "
                                        f"'{tool['name']}' differently; nothing was written. Keep one declaration, "
                                        f"or declare it alike in both")
-            return
-        seen[key] = (tool["profile"], declaration)
+        else:
+            seen[key] = (tool["profile"], declaration)
         tools.append(tool)
 
     for profile in resolved:
