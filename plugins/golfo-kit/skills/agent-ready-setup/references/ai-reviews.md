@@ -404,3 +404,30 @@ AI review findings:
 - **Código de salida:** `0` sin conflictos, `6` con alguno. `--json` deja el detalle de cada chequeo.
 
 En CI, `agent-ready check` corre los mismos chequeos con `ci.conflicts` (`ci-check.md`).
+
+### Al iniciar sesión y al editar
+
+Los conflictos estructurales también aparecen sin pedirlos, en dos momentos. Cada uno se apaga por
+separado:
+
+- **Al iniciar sesión:** el hook de `SessionStart` (`sync-marketplace.sh`) los lista con el prefijo
+  `[conflicts]`, cualquiera sea `updates.mode`. Los hallazgos de IA salen de la caché, en la línea
+  `AI reviews:` de `status`.
+- **Al editar:** el hook de `PostToolUse` (`check-harness-consistency.sh`) le pasa los archivos
+  editados a `.agents/hooks/check-conflicts.sh`, que los recalcula si alguno es una de sus entradas:
+  `AGENTS.md`, `CLAUDE.md`, lo que hay bajo `.agents/`, `.claude/` y `.codex/`, `.mcp.json`,
+  los archivos de CI y de ejemplo de `.env` que lee la paridad (sección 12) y los que leen los `assumes` (`package.json`, `.editorconfig`,
+  Prettier y los de `assets/repo-facts.json`, como lockfiles o `jest.config.js`). Corre sin red y sin
+  la CLI del provider. La revisión de IA de rules y skills sigue igual que antes (sección 1).
+
+```text
+[conflicts] ! .agents/rules/ours.md (project) assumes test runner vitest, but the repository uses jest (package.json)
+[conflicts] Each one with its fix: agent-ready conflicts
+```
+
+`agent-ready status` los lista siempre, bajo `Conflicts between the profiles:`.
+
+| Clave | Default | Efecto |
+|---|---|---|
+| `conflicts.sessionStart.enabled` | `true` | `false` no los calcula al iniciar sesión |
+| `conflicts.onEdit.enabled` | `true` | `false` no los recalcula al editar |

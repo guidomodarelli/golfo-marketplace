@@ -143,6 +143,30 @@
         }
       }
     },
+    "sessionStart": {
+      "description": "Los conflictos estructurales que muestra el hook de inicio de sesión con status --brief. Los hallazgos de las revisiones de IA salen de la caché, como siempre.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "description": "Al iniciar una sesión se listan los conflictos estructurales conocidos. Apagado, no se calculan; agent-ready status y agent-ready conflicts los siguen mostrando.",
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "onEdit": {
+      "description": "Los conflictos estructurales que el hook de PostToolUse recalcula al editar una de sus entradas: AGENTS.md, rules, skills, settings, hooks, MCP, workflows de CI y los archivos del repo que leen los assumes.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "description": "Cada edición de una entrada lista los conflictos estructurales. Apagado, el hook solo corre la revisión de IA de rules y skills.",
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
     "contextBudget": {
       "description": "Cuánto contexto suma la selección al iniciar una sesión: el AGENTS.md que lee Codex, las rules sin paths: que Claude carga siempre y los servidores MCP. plan lo informa y avisa al pasar un umbral.",
       "type": "object",

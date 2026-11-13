@@ -388,6 +388,7 @@ with open(".agents/agent-ready.json", "w", encoding="utf-8") as manifest_file:
 PY
   mkdir -p .agents/hooks
   cp "$skill_dir/assets/common/hooks/sync-marketplace.sh" .agents/hooks/sync-marketplace.sh
+  cp "$skill_dir/assets/common/hooks/agent-ready-skill-source.sh" .agents/hooks/
   before="$(tree_fingerprint)"
 
   run_sync_hook AGENT_READY_SETUP_REVIEW_MODE=1

@@ -27,6 +27,9 @@ RULES_DIRECTORY = "rules"
 SKILLS_DIRECTORY = "skills"
 SKILL_FILE_NAME = "SKILL.md"
 LOG_PREFIX = "[harness-check]"
+# The structural conflicts after an edit: the engine decides which changed paths are their inputs.
+CONFLICTS_CHECK_FILE_NAME = "check-conflicts.sh"
+CONFLICTS_CHECK_TIMEOUT_SECONDS = 120
 # The provider runs through the Bash of the hook: it finds the CLIs the session finds, including
 # shims without an extension that native Windows process creation cannot start. Its arguments
 # travel in a NUL-separated file: on Windows, a native process that starts the MSYS bash.exe
@@ -292,6 +295,26 @@ def review_root(bash, cache_module, cache, project_root, root, changed, provider
         print(f"{LOG_PREFIX} No contradictions found.{quiet_note}")
 
 
+def report_structural_conflicts(bash, provider, project_root, changed):
+    """The structural conflicts after an edit, through check-conflicts.sh beside this hook, which
+    resolves the engine, reads offline and prints nothing when no changed path is an input."""
+    command = [bash, os.path.join(os.path.dirname(os.path.abspath(__file__)), CONFLICTS_CHECK_FILE_NAME),
+               "--provider", provider]
+    for path in sorted(changed):
+        command += ["--changed", path]
+    try:
+        completed = subprocess.run(command, cwd=project_root, capture_output=True, encoding="utf-8",
+                                   errors="replace", timeout=CONFLICTS_CHECK_TIMEOUT_SECONDS)
+    except (OSError, subprocess.TimeoutExpired) as caught_error:
+        print(f"{LOG_PREFIX} WARNING: the structural conflicts could not be checked: {caught_error}", file=sys.stderr)
+        return
+    if completed.stdout:
+        print(completed.stdout, end="")
+    if completed.returncode != 0:
+        print(f"{LOG_PREFIX} WARNING: the structural conflicts could not be checked: "
+              f"{completed.stderr.strip() or f'exit {completed.returncode}'}", file=sys.stderr)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     parser.add_argument("--bash", required=True, help="the Bash that runs the hook")
@@ -307,12 +330,7 @@ def main():
     except ValueError:
         return 0
     paths = payload_paths(payload)
-    roots = harness_roots(paths)
-    if not roots:
-        return 0
-    provider = provider_of(payload)
-    if not provider_available(arguments.bash, provider):
-        print(f"{LOG_PREFIX} {provider} CLI is not available; consistency check skipped.", file=sys.stderr)
+    if not paths:
         return 0
     try:
         project_root = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, encoding="utf-8",
@@ -320,6 +338,15 @@ def main():
     except (OSError, subprocess.CalledProcessError):
         return 0
     changed = {relative for relative in (project_relative(project_root, path) for path in paths) if relative}
+    provider = provider_of(payload)
+    # The structural checks are cheap and need no provider CLI: they run on every edit of an input.
+    report_structural_conflicts(arguments.bash, provider, project_root, changed)
+    roots = harness_roots(paths)
+    if not roots:
+        return 0
+    if not provider_available(arguments.bash, provider):
+        print(f"{LOG_PREFIX} {provider} CLI is not available; consistency check skipped.", file=sys.stderr)
+        return 0
     cache_module = load_review_cache()
     cache = cache_module.ReviewCache(project_root)
     if not cache.settings().get("enabled", True):
