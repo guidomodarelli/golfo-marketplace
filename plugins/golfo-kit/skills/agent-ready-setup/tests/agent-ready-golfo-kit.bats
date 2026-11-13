@@ -750,11 +750,11 @@ PY
   run_cli apply
   [ "$status" -ne 0 ]
   [[ "$stderr" == *"cannot reproduce the lock"*"selection"* ]]
-  [ "$(lock_value 'data["profileOrder"]')" = "['android']" ]
+  [ "$(lock_value 'data["profileOrder"]')" = "['software-development', 'android']" ]
 
   run_cli apply --profiles android,business-flows
   [ "$status" -eq 0 ]
-  [ "$(lock_value 'data["profileOrder"]')" = "['android', 'business-flows']" ]
+  [ "$(lock_value 'data["profileOrder"]')" = "['software-development', 'android', 'business-flows']" ]
   [ "$(lock_value 'data["source"]["revision"]')" = "$first_revision" ]
 
   # profiles add|remove change the manifest and name the explicit apply that projects it.
@@ -763,5 +763,5 @@ PY
   [[ "$stderr" == *"Run agent-ready apply --profiles android to project them"* ]]
   run_cli apply --profiles android
   [ "$status" -eq 0 ]
-  [ "$(lock_value 'data["profileOrder"]')" = "['android']" ]
+  [ "$(lock_value 'data["profileOrder"]')" = "['software-development', 'android']" ]
 }

@@ -263,7 +263,7 @@ PY
   run_bootstrap --plan --profiles go
   [ "$status" -eq 0 ]
   [[ "$output" == *"Selected by: --profiles"* ]]
-  [[ "$output" == *"Profiles: go, browser (primary stack: go)"* ]]
+  [[ "$output" == *"Profiles: software-development, go, browser (primary stack: go)"* ]]
 }
 
 @test "a detected capability is only a suggestion with evidence, also on the initial apply" {
@@ -279,7 +279,7 @@ PY
   run_bootstrap
   [ "$status" -eq 0 ]
   [ "$(manifest_profiles)" = "android" ]
-  [ "$(json_value .agents/agent-ready.lock.json '",".join(data["profileOrder"])')" = "android" ]
+  [ "$(json_value .agents/agent-ready.lock.json '",".join(data["profileOrder"])')" = "software-development,android" ]
   [ "$(json_value .agents/agent-ready.lock.json 'sorted(data["profiles"])')" = "['android', 'common']" ]
 }
 
@@ -543,7 +543,7 @@ PY
   run python3 "$skill_dir/scripts/agent-ready-state.py" resolve --project . --skill-dir "$skill_dir" \
     --compose-dir "$test_root/compose"
   [ "$status" -eq 0 ]
-  [[ "$output" == *$'profiles\treact,nextjs,nextjs-app-router,browser'* ]]
+  [[ "$output" == *$'profiles\tsoftware-development,react,nextjs,nextjs-app-router,browser'* ]]
   [[ "$output" == *$'primary\tnextjs-app-router'* ]]
   stack_dir="$(printf '%s\n' "$output" | sed -n 's/^stack_dir\t//p' | tr -d '\r')"
   # Each layer publishes its own assets; the composed tree has all of them once.
@@ -592,18 +592,18 @@ run_resolve() {
   printf '%s\n' '{"profiles": ["node"]}' > .agents/agent-ready.json
   run_resolve
   [ "$status" -eq 0 ]
-  [[ "$output" == *$'profiles\tnode,browser'* ]]
+  [[ "$output" == *$'profiles\tsoftware-development,node,browser'* ]]
   [[ "$output" == *$'requested\tnode'* ]]
 
   # A layer brings the defaults of the layers it requires.
   printf '%s\n' '{"profiles": ["nextjs"]}' > .agents/agent-ready.json
   run_resolve
-  [[ "$output" == *$'profiles\treact,nextjs,browser'* ]]
+  [[ "$output" == *$'profiles\tsoftware-development,react,nextjs,browser'* ]]
 
   # android declares no defaults.
   printf '%s\n' '{"profiles": ["android"]}' > .agents/agent-ready.json
   run_resolve
-  [[ "$output" == *$'profiles\tandroid'* && "$output" != *$'profiles\tandroid,'* ]]
+  [[ "$output" == *$'profiles\tsoftware-development,android'* && "$output" != *$'profiles\tsoftware-development,android,'* ]]
 }
 
 @test "excludedDefaults leaves a default out, and cannot leave out what the selection needs" {
@@ -611,7 +611,7 @@ run_resolve() {
   printf '%s\n' '{"profiles": ["node"], "excludedDefaults": ["browser"]}' > .agents/agent-ready.json
   run_resolve
   [ "$status" -eq 0 ]
-  [[ "$output" == *$'profiles\tnode'* && "$output" != *$'profiles\tnode,'* ]]
+  [[ "$output" == *$'profiles\tsoftware-development,node'* && "$output" != *$'profiles\tsoftware-development,node,'* ]]
 
   printf '%s\n' '{"profiles": ["nextjs"], "excludedDefaults": ["react"]}' > .agents/agent-ready.json
   run_resolve
@@ -634,7 +634,7 @@ run_resolve() {
   printf '%s\n' '{"profiles": ["web-team"]}' > .agents/agent-ready.json
   run_resolve "$source_copy"
   [ "$status" -eq 0 ]
-  [[ "$output" == *$'profiles\treact,nextjs,nextjs-app-router,business-flows,web-team,browser'* ]]
+  [[ "$output" == *$'profiles\tsoftware-development,react,nextjs,nextjs-app-router,business-flows,web-team,browser'* ]]
   [[ "$output" == *$'requested\tweb-team'* ]]
   [[ "$output" == *$'primary\tnextjs-app-router'* ]]
 }

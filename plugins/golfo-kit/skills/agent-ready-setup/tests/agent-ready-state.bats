@@ -87,12 +87,12 @@ lock_value() {
 @test "first apply writes a pinned manifest and a lockfile that inventories every managed file" {
   run_bootstrap_with "$skill_dir" --stack node
   [ "$status" -eq 0 ]
-  [[ "$output" == *"Profiles: node,browser"* ]]
+  [[ "$output" == *"Profiles: software-development,node,browser"* ]]
   [[ "$output" == *"Lockfile: .agents/agent-ready.lock.json (complete)"* ]]
 
   [ "$(python3 -c 'import json; m=json.load(open(".agents/agent-ready.json")); print(m["updates"]["mode"], ",".join(m["profiles"]))')" = "pinned node" ]
   [ "$(lock_value 'lock["source"]["plugin"]')" = "golfo-kit" ]
-  [ "$(lock_value 'lock["profileOrder"]')" = "['node', 'browser']" ]
+  [ "$(lock_value 'lock["profileOrder"]')" = "['software-development', 'node', 'browser']" ]
 
   # Every regular file the projection wrote under .agents (except state files) is owned by the lock.
   find .agents -type f ! -name 'agent-ready.json' ! -name 'agent-ready.lock.json' | LC_ALL=C sort > "$test_root/projected"
@@ -579,7 +579,7 @@ EOF
 
   run_bootstrap_with "$source_copy" --profiles node-testing
   [ "$status" -eq 0 ]
-  [[ "$output" == *"Profiles: node,node-testing"* ]]
+  [[ "$output" == *"Profiles: software-development,node,node-testing"* ]]
   cmp -s .agents/rules/node-testing-extras.md "$source_copy/assets/profiles/node-testing/rules/node-testing-extras.md"
   cmp -s .agents/rules/node-security.md "$source_copy/assets/stacks/node/rules/node-security.md"
   grep -Fq 'node-testing-extras.md' AGENTS.md
@@ -593,7 +593,7 @@ EOF
 @test "two stacks compose in one repository: each brings its own assets and the first one is the primary" {
   run_bootstrap_with "$skill_dir" --profiles react,node
   [ "$status" -eq 0 ]
-  [[ "$output" == *"Profiles: react,node"* ]]
+  [[ "$output" == *"Profiles: software-development,react,node"* ]]
   for stack in react node; do
     cmp -s ".agents/rules/$stack-security.md" "$skill_dir/assets/stacks/$stack/rules/$stack-security.md"
     cmp -s ".agents/rules/$stack-testing.md" "$skill_dir/assets/stacks/$stack/rules/$stack-testing.md"
@@ -745,7 +745,7 @@ EOF
   run_bootstrap_with "$skill_dir" --stack android
   [ "$status" -eq 0 ]
   [ "$(lock_value 'lock["primaryStack"]')" = "android" ]
-  [ "$(lock_value 'lock["profileOrder"]')" = "['android']" ]
+  [ "$(lock_value 'lock["profileOrder"]')" = "['software-development', 'android']" ]
   for asset in rules/android-coding-style.md rules/android-security.md rules/android-testing.md agents/android-perf-analyzer.md agents/android-security-scanner.md commands/android-review-pr.md; do
     cmp -s ".agents/$asset" "$skill_dir/assets/stacks/android/$asset"
     [ -L ".claude/$asset" ] || [ ".claude/$asset" -ef ".agents/$asset" ]

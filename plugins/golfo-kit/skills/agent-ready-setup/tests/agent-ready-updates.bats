@@ -687,7 +687,7 @@ PY
 
   run_check
   [ "$status" -eq 4 ]
-  [[ "$output" == *"the lock has the profiles node, browser; the selection resolves to node"* ]]
+  [[ "$output" == *"the lock has the profiles software-development, node, browser; the selection resolves to software-development, node"* ]]
 }
 
 @test "the check fails when a CLAUDE.md proxy is missing, in the root or beside an AGENTS.md" {

@@ -3489,17 +3489,29 @@ def normalized_lines(text):
     return [line.rstrip() for line in text.replace("\r\n", "\n").strip().split("\n")]
 
 
-def template_skeleton(skill_dir, lock):
-    """What the AGENTS.md template puts outside the managed block, or None when it is unknown."""
+def template_skeletons(skill_dir, lock):
+    """What a new AGENTS.md held outside the managed block: the template's skeleton, and the skeleton
+    a profile of the locked selection publishes in its place (software-development). Empty when unknown."""
+    skeletons = []
     template = ((lock or {}).get("merged") or {}).get("AGENTS.md", {}).get("template")
     path = os.path.join(skill_dir, template) if template else None
-    if not path or not os.path.isfile(path):
-        return None
-    with open(path, encoding="utf-8") as file_handle:
-        try:
-            return without_managed_block(file_handle.read())
-        except ValueError:
-            return None
+    if path and os.path.isfile(path):
+        with open(path, encoding="utf-8") as file_handle:
+            try:
+                skeletons.append(without_managed_block(file_handle.read()))
+            except ValueError:
+                pass
+    try:
+        catalog = load_profile_catalog(skill_dir)
+    except ProfileError:
+        return skeletons
+    for name in (lock or {}).get("profileOrder") or []:
+        relative_root = catalog["profiles"].get(name, {}).get("assets")
+        skeleton_path = os.path.join(skill_dir, relative_root, AGENTS_SKELETON_NAME) if relative_root else None
+        if skeleton_path and os.path.isfile(skeleton_path):
+            with open(skeleton_path, encoding="utf-8") as file_handle:
+                skeletons.append(file_handle.read())
+    return skeletons
 
 
 def block_removal_entries(project_root, lock):
@@ -3577,8 +3589,8 @@ def instruction_removal_entries(project_root, skill_dir, lock):
             return [removal_entry("AGENTS.md", REMOVAL_KEEP, AMBIGUOUS_MARKERS_REASON, "instructions")]
     if remaining is None:
         return []
-    skeleton = template_skeleton(skill_dir, lock)
-    if remaining.strip() and (skeleton is None or normalized_lines(remaining) != normalized_lines(skeleton)):
+    skeletons = [normalized_lines(skeleton) for skeleton in template_skeletons(skill_dir, lock)]
+    if remaining.strip() and normalized_lines(remaining) not in skeletons:
         entry = removal_entry("AGENTS.md", REMOVAL_EDIT,
                               "removes the managed block and the stack sections; the project's content stays",
                               "instructions", local)
