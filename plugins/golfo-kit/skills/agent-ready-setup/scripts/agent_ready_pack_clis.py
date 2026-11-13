@@ -437,8 +437,7 @@ def desired_clis(report):
         if tool.get("type") != "cli" or tool.get("decision") != "allowed":
             continue
         if tool["name"] in desired:
-            duplicated.append(f"{tool['name']}: declared by {desired[tool['name']]['profile']} and {tool['profile']}; "
-                              "only the first one is installed")
+            # The plan already failed on two different declarations: this one is alike, installed once.
             continue
         desired[tool["name"]] = tool
     return desired, duplicated

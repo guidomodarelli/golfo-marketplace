@@ -1047,3 +1047,66 @@ PY
   # A bundle publishes no assets: no file of the lock inventory belongs to it.
   [ "$(lock_value 'sum(1 for item in data.get("assets", {}).values() if item.get("profile") == "acme/backend")')" = "0" ]
 }
+
+@test "a pack profile overrides a rule of another selected profile: only its own rule is projected" {
+  copy_example_pack
+  edit_pack_catalog 'catalog["profiles"]["kafka-interno"]["overrides"] = ["software-development:rules/testing-scope.md"]'
+  write_manifest acme/kafka-interno "acme=path:../acme-pack"
+
+  run_bootstrap --plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Overridden: software-development:rules/testing-scope.md by acme/kafka-interno"* ]]
+
+  run_bootstrap
+  [ "$status" -eq 0 ]
+  [ ! -e .agents/rules/testing-scope.md ]
+  ! grep -q 'rules/testing-scope.md' AGENTS.md
+  [ -f .agents/rules/acme-kafka.md ]
+  [ -f .agents/rules/lint-gate.md ]
+}
+
+@test "an override of something the selection does not have, or of the core, fails before writing" {
+  copy_example_pack
+  write_manifest acme/kafka-interno "acme=path:../acme-pack"
+  before="$(tree_fingerprint)"
+  for reference in 'react:rules/react-testing.md' 'software-development:rules/nope.md' 'common:rules/verify-changes.md' 'not-a-reference'; do
+    edit_pack_catalog "catalog['profiles']['kafka-interno']['overrides'] = ['$reference']"
+    run_bootstrap
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"overrides"* ]]
+    [ "$(tree_fingerprint)" = "$before" ]
+  done
+}
+
+@test "the same MCP server declared differently by two profiles fails before writing; declared alike, it is one" {
+  copy_example_pack
+  edit_pack_catalog 'catalog["profiles"]["base"]["mcpServers"] = {"docs": {"url": "https://mcp.acme.example/docs", "provides": ["documentation"]}}
+catalog["profiles"]["kafka-interno"]["mcpServers"] = {"docs": {"url": "https://mcp.other.example/docs"}}'
+  write_manifest acme/kafka-interno "acme=path:../acme-pack"
+  before="$(tree_fingerprint)"
+  run_bootstrap --plan
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"profiles 'acme/base' and 'acme/kafka-interno' declare the MCP server 'docs' differently"* ]]
+  [ "$(tree_fingerprint)" = "$before" ]
+
+  # Alike, provides aside: no conflict. Each declaration keeps its own policy verdict, and the
+  # registration keeps the first allowed one.
+  edit_pack_catalog 'catalog["profiles"]["kafka-interno"]["mcpServers"] = {"docs": {"url": "https://mcp.acme.example/docs"}}'
+  run_state plan --format json
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s' "$output" | python3 -c 'import json, sys; tools = json.load(sys.stdin)["packTools"]["tools"]; print(sorted(tool["profile"] for tool in tools if tool["name"] == "docs"))' | tr -d '\r')" = "['acme/base', 'acme/kafka-interno']" ]
+}
+
+@test "provides and complements are validated: capabilities in kebab-case and <profile>:<path> references" {
+  copy_example_pack
+  write_manifest acme/kafka-interno "acme=path:../acme-pack"
+  for expression in \
+    'catalog["profiles"]["base"]["mcpServers"] = {"docs": {"url": "https://mcp.acme.example/docs", "provides": ["Not Kebab"]}}' \
+    'catalog["profiles"]["kafka-interno"]["complements"] = ["skills-without-profile"]'
+  do
+    copy_example_pack
+    edit_pack_catalog "$expression"
+    run_bootstrap --plan
+    [ "$status" -ne 0 ]
+  done
+}

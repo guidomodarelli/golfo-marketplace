@@ -37,11 +37,14 @@ PACKAGE_MANAGERS = ("npm", "pip", "brew", "winget")
 MAX_SCRIPT_TIMEOUT_SECONDS = 3600
 ARTIFACT_URL_SCHEME = "https"
 
-CLI_KEYS = ("name", "version", "artifacts", "package")
+CLI_KEYS = ("name", "version", "artifacts", "package", "provides")
 ARTIFACT_KEYS = ("platform", "url", "sha256", "binary")
 PACKAGE_KEYS = ("manager", "name", "binary", "sha256")
-MCP_COMMAND_KEYS = ("command", "args", "env")
-MCP_URL_KEYS = ("url", "headers")
+MCP_COMMAND_KEYS = ("command", "args", "env", "provides")
+MCP_URL_KEYS = ("url", "headers", "provides")
+# What a CLI or a server is for ("browser-automation"): the review of competing tools (#72c) reads it.
+PROVIDES_KEY = "provides"
+CAPABILITY_NAME = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
 SCRIPT_KEYS = ("event", "path", "interpreter", "timeoutSeconds")
 
 TOOL_NAME = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
@@ -142,11 +145,20 @@ def validate_artifact(artifact, what):
         raise DeclarationError(f"{what}: binary is the name of the executable inside the artifact")
 
 
+def validate_provides(entry, what):
+    """``provides`` is an optional list of kebab-case capabilities."""
+    provides = entry.get(PROVIDES_KEY, [])
+    require_list(provides, f"{what} {PROVIDES_KEY}")
+    if any(not isinstance(item, str) or not CAPABILITY_NAME.fullmatch(item) for item in provides):
+        raise DeclarationError(f"{what} {PROVIDES_KEY} lists capabilities in kebab-case, such as browser-automation")
+
+
 def validate_cli(cli, what):
     require_object(cli, what)
     require_keys(cli, CLI_KEYS, what)
     validate_name(cli.get("name"), what)
     what = f"cli '{cli['name']}'"
+    validate_provides(cli, what)
     if not isinstance(cli.get("version"), str) or not EXACT_VERSION.fullmatch(cli["version"]):
         raise DeclarationError(f"{what} needs an exact version, such as 1.4.2; ranges and tags are not reproducible")
     if ("artifacts" in cli) == ("package" in cli):
@@ -213,6 +225,7 @@ def validate_mcp_server(name, server, what):
     validate_name(name, what)
     what = f"mcpServer '{name}'"
     require_object(server, what)
+    validate_provides(server, what)
     if ("command" in server) == ("url" in server):
         raise DeclarationError(f"{what} declares either a command or a url")
     if "command" in server:
@@ -283,9 +296,35 @@ def validate_declarations(entry, pack_root, is_contained):
         validate_script(script, f"script {index + 1}", pack_root, is_contained)
 
 
+def without_provides(declaration):
+    """A declaration without what it provides: two declarations of one tool compare on what installs it."""
+    return {key: value for key, value in declaration.items() if key != PROVIDES_KEY}
+
+
 def declared_tools(catalog, resolved, source_of_profile, is_pack_profile):
-    """Every tool the selected pack profiles declare, in a stable order."""
+    """Every tool the selected pack profiles declare, in a stable order.
+
+    The same name declared differently by two profiles (another version, command, URL or arguments)
+    is a conflict, raised as DeclarationError before anything is written. Declared alike, both stay:
+    the policy judges each one on its source, and the installer and the registration keep the first
+    allowed one, so a blocked declaration never hides an allowed one.
+    """
     tools = []
+    seen = {}
+
+    def keep(tool, declaration):
+        key = (tool["type"], tool["name"])
+        if key in seen:
+            first_profile, first_declaration = seen[key]
+            if without_provides(first_declaration) != without_provides(declaration):
+                kind = "CLI" if tool["type"] == TOOL_CLI else "MCP server"
+                raise DeclarationError(f"profiles '{first_profile}' and '{tool['profile']}' declare the {kind} "
+                                       f"'{tool['name']}' differently; nothing was written. Keep one declaration, "
+                                       f"or declare it alike in both")
+        else:
+            seen[key] = (tool["profile"], declaration)
+        tools.append(tool)
+
     for profile in resolved:
         if not is_pack_profile(profile):
             continue
@@ -295,13 +334,13 @@ def declared_tools(catalog, resolved, source_of_profile, is_pack_profile):
         for cli in entry.get("clis", []):
             package = cli.get("package")
             # The whole declaration: an apply installs from it.
-            tools.append(dict(common, type=TOOL_CLI, name=cli["name"], version=cli["version"],
-                              package=package["manager"] if package else None,
-                              sha256=bool(package.get("sha256")) if package else True, cli=cli))
+            keep(dict(common, type=TOOL_CLI, name=cli["name"], version=cli["version"],
+                      package=package["manager"] if package else None,
+                      sha256=bool(package.get("sha256")) if package else True, cli=cli), cli)
         for name, server in sorted(entry.get("mcpServers", {}).items()):
             # The whole declaration: an apply registers it as it is, references and all.
-            tools.append(dict(common, type=TOOL_MCP_SERVER, name=name, command=server.get("command"),
-                              url=server.get("url"), server=server))
+            keep(dict(common, type=TOOL_MCP_SERVER, name=name, command=server.get("command"),
+                      url=server.get("url"), server=server), server)
         for script in entry.get("scripts", []):
             tools.append(dict(common, type=TOOL_SCRIPT, name=f"{source_name}/{script['path']}", event=script["event"],
                               interpreter=script["interpreter"], path=script["path"],

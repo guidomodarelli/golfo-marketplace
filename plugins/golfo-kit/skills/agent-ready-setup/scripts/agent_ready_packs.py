@@ -34,7 +34,8 @@ PACK_SCHEMA_VERSION = 1
 PACK_ALLOWED_TOP_LEVEL_KEYS = ("schemaVersion", "name", "profiles", "version", "minEngine", "changes")
 # clis, mcpServers and scripts are declarations: the security policy decides whether they run
 # (agent_ready_pack_tools.py), never the pack.
-PACK_ALLOWED_PROFILE_KEYS = ("kind", "description", "assets", "requires", "conflicts", "defaults", "tools", "detect") + pack_tools.DECLARATION_KEYS
+PACK_ALLOWED_PROFILE_KEYS = ("kind", "description", "assets", "requires", "conflicts", "defaults", "overrides",
+                             "complements", "tools", "detect") + pack_tools.DECLARATION_KEYS
 PACK_PROFILE_KIND = "capability"
 # A pack can also publish bundles: profiles that only group others through requires.
 PACK_BUNDLE_KIND = "bundle"

@@ -60,6 +60,12 @@ un valor fuera del schema frena el apply antes de escribir y nombra el pack y el
     lock ni a la config de los providers. En `env`, cada variable pasa con su propio nombre
     (`"ACME_TOKEN": "${ACME_TOKEN}"`). En `headers`, el valor es `${VAR}`, y solo `Authorization`
     acepta `Bearer ${VAR}`. Así los dos providers leen la variable de su entorno.
+- **`provides`** (opcional, en un CLI o un servidor): las capacidades que da, en kebab-case
+  (`["browser-automation"]`). Sirve para avisar de dos herramientas que compiten por lo mismo; no
+  cambia lo que se instala ni lo que se registra.
+- **El mismo CLI o servidor en dos profiles.** Declarado igual (sin contar `provides`), se instala o
+  registra una vez. Con el mismo nombre y otra versión, paquete, comando, URL o argumentos, es un
+  conflicto: el plan y el apply fallan antes de escribir y nombran los dos profiles.
 - **`scripts`**
   - `event` es `install`, `post-apply` o `session-start`.
   - `path` es un archivo dentro del pack, sin symlinks.
