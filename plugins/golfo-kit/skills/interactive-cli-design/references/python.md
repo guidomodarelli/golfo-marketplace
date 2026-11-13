@@ -35,7 +35,9 @@ def main(
 - Un parámetro obligatorio se declara `Optional` con default `None`. Si no, Typer falla antes de poder preguntar.
 - `len(sys.argv) == 1` distingue la invocación sin argumentos, que abre el wizard completo.
 
-Con `argparse`: `parser.error(mensaje)` sale con 2 y `action="version"` imprime la versión en stdout.
+**Ayuda con `argparse`.** Ya arma las dos columnas, parte la descripción dentro de la suya y la apila debajo cuando el nombre es más ancho que `max_help_position` (24 por default). Por default ocupa todo el ancho de la terminal: limitarlo a 80 con `width`, en el mismo `formatter_class=functools.partial(argparse.HelpFormatter, max_help_position=HELP_NAME_COLUMNS, width=min(shutil.get_terminal_size().columns, MAXIMUM_HELP_COLUMNS))`. Desde Python 3.14 también la pinta (`color=True` es el default) y respeta `NO_COLOR`, `FORCE_COLOR` y la salida a un pipe: flags largos en cian, cortos y subcomandos en verde, `metavar` en amarillo. Para que los subcomandos tengan un color propio, o en 3.13 y anteriores, que no pintan, escribir la ayuda con un helper propio (como el de [node.md](node.md#ayuda)): los métodos de `HelpFormatter` son privados y pintarlos ahí se rompe entre versiones. Con Typer, verificar en una pseudoconsola que su ayuda con `rich` cumpla el formato del `SKILL.md`.
+
+Con `argparse`: `parser.error(mensaje)` sale con 2 y `action="version"` imprime la versión en stdout. Crear el parser con `allow_abbrev=False`: por default acepta `--tok` por `--token`. Sus mensajes de error están en inglés; si el CLI habla otro idioma, sobrescribir `error()` y traducir los más comunes (`unrecognized arguments`, `expected one argument`, `not allowed with argument`).
 
 ## Se puede preguntar
 
@@ -134,6 +136,17 @@ def quote_for_shell(value: str) -> str:
     escaped = re.sub(r'(\\*)"', r'\1\1\\"', value)
     escaped = re.sub(r"(\\+)$", r"\1\1", escaped)
     return f'"{escaped}"'
+
+TERMINAL_ICON = "\uf120"  # nf-fa-terminal
+TERMINAL_ICON_FALLBACK = "$"
+COMMAND_INDENT = "  "
+
+def print_equivalent_command(tool_name: str, command_arguments: list[str]) -> None:
+    """Al final de una corrida con preguntas: el ícono va en el título y el comando solo, para copiarlo."""
+    uses_nerd_font = sys.stderr.isatty() and os.environ.get("NERD_FONT") != "0"
+    icon = TERMINAL_ICON if uses_nerd_font else TERMINAL_ICON_FALLBACK
+    command = " ".join([tool_name, *map(quote_for_shell, command_arguments)])
+    print(f"\n{icon} Para repetirlo sin preguntas:\n{COMMAND_INDENT}{command}", file=sys.stderr)
 ```
 
 En Windows no hay una forma de citar que sirva igual en `cmd.exe` y en PowerShell cuando el valor trae `%`, `$`, acento grave o comillas dobles: `cmd.exe` expande `%VAR%` aun entre comillas, y PowerShell, `$var`. Si el valor trae alguno, avisar junto al comando que puede necesitar ajuste según el shell. Una ruta que termina en barra llega a PowerShell con una barra de más, que Windows tolera.
@@ -148,4 +161,5 @@ En Windows no hay una forma de citar que sirva igual en `cmd.exe` y en PowerShel
   ```
 
 - **`input()`** escribe su texto en stdout. Sin questionary, imprimir la pregunta en stderr y llamar a `input()` sin argumentos.
+- **Sin questionary y con listas largas**, un menú propio con filtro: [native-prompts.md](native-prompts.md).
 - **Comando de arranque.** En Windows, `.venv\Scripts\python.exe` no anda con barras normales desde `cmd`. Documentarlo con barras invertidas o con `uv run`.

@@ -547,12 +547,12 @@
       "assertions": [
         {
           "type": "regex",
-          "pattern": "\\binit\\b|add-unit|discover[^\\n]{0,60}--write",
+          "pattern": "\\binit\\b|add-unit|discover.{0,60}--write",
           "description": "Crea el registro (init, add-unit o discover --write) en vez de saltear la cobertura"
         },
         {
           "type": "regex",
-          "pattern": "add-unit|discover[^\\n]{0,60}--write",
+          "pattern": "add-unit|discover.{0,60}--write",
           "description": "Crea la unidad que cubre el código tocado"
         },
         {
@@ -584,12 +584,12 @@
         },
         {
           "type": "regex",
-          "pattern": "(sin|no hay|falta|no est|no tengo|ausencia de)[^\\n]{0,40}node|node[^\\n]{0,80}(no (est|existe|disponible|instalad|encontr)|not found|falta|ausente)",
+          "pattern": "(sin|no hay|falta|no est|no tengo|ausencia de).{0,40}node|node.{0,80}(no (est|existe|disponible|instalad|encontr)|not found|falta|ausente)",
           "description": "Da el motivo concreto: no hay node"
         },
         {
           "type": "regex",
-          "pattern": "instal[^\\n]{0,80}node|node[^\\n]{0,40}(≥|>=|20)|(pendiente|falta|faltan)[^\\n]{0,80}regist|regist[^\\n]{0,80}(después|luego|cuando|pendiente)",
+          "pattern": "instal.{0,80}node|node.{0,40}(≥|>=|20)|(pendiente|falta|faltan).{0,80}regist|regist.{0,80}(después|luego|cuando|pendiente)",
           "description": "Dice qué falta para registrar"
         },
         {

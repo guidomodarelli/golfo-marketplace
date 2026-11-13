@@ -45,9 +45,11 @@ Trampas de cada plataforma:
 ## 2. Anatomía de una corrida
 
 ```text
-╭────────────────────────────╮
-│ release-status · 4 pasos   │   banner: una o dos líneas, sin logos gigantes
-╰────────────────────────────╯
+╭──────────────────────────────────────╮
+│ release-status                v2.3.0 │   tarjeta de encabezado: nombre y versión
+│ ──────────────────────────────────── │   divisor dentro de la celda, sin tocar los bordes
+│ Publica los servicios del monorepo.  │   descripción breve, una o dos líneas
+╰──────────────────────────────────────╯
 [1/4] Leer manifiestos
   ✓ hecho · 00:02
 [2/4] Compilar
@@ -62,7 +64,8 @@ api-gateway     3.14.2   ✓ hecho
 ╰────────────────────────────╯
 ```
 
-- El producto de la herramienta (tabla, lista, JSON) va a stdout. Banner, pasos, spinner, resumen y errores van a stderr.
+- **Toda corrida de un CLI o script abre con la tarjeta de encabezado:** un recuadro con el nombre de la herramienta a la izquierda, la versión arriba a la derecha, una línea divisoria y una descripción breve de qué hace. El divisor va dentro de la celda, con un espacio a cada lado, sin tocar los bordes: es una sola tarjeta, no una tabla de dos filas. Los kits la dibujan con `renderBox`, `Write-Box` o `render_box` pasándoles la versión. Si el nombre y la versión no entran en una fila, la versión baja a la siguiente, alineada a la derecha. Sin logos gigantes ni arte ASCII. No se muestra con `--version`, con una salida para máquinas (`--json`) ni con `--quiet`; con `--help`, la tarjeta reemplaza la línea de «qué hace».
+- El producto de la herramienta (tabla, lista, JSON) va a stdout. Tarjeta, pasos, spinner, resumen y errores van a stderr.
 - El resumen dice qué pasó y qué hacer ahora. El código de salida dice lo mismo que el resumen.
 - Los errores son una línea clara con color y símbolo, no un stack crudo. El detalle técnico va a un log o detrás de un flag.
 
@@ -84,9 +87,39 @@ Glifos y colores pueden cambiar por proyecto, siempre que los cinco sigan distin
 - **Listas:** la jerarquía va con sangría, no solo con color. Viñetas de una celda.
 - **Columnas alineadas:** usar glifos de una celda. Un emoji ocupa dos en casi todas las terminales, pero no en todas.
 
+### Emojis
+
+Sumar un emoji a una opción de menú, una fila de tabla o un resultado solo cuando el emoji correcto es obvio y ayuda a encontrar el valor de un vistazo. No por decorar.
+
+| Sí | No |
+|---|---|
+| Valores concretos con un emoji que cualquiera asocia: sistemas (🍎 macOS, 🐧 Linux, 🪟 Windows), entornos (🧪 test, 🚀 producción), tipos de archivo (📄 documento, 🖼️ imagen), dispositivos (📱 Android) | Conceptos abstractos (modo, estrategia, nivel), donde cada lector elegiría otro emoji |
+| Un grupo donde **todas** las opciones tienen su emoji claro | Un grupo donde solo algunas lo tienen: o todas o ninguna |
+| Junto a la palabra: `🚀 producción` | En lugar de la palabra, o en los estados, que ya tienen su glifo de una celda |
+
+- Fijarlos en constantes por valor (`producción → 🚀`), así el mismo valor lleva el mismo emoji en el menú, en la tabla y en el resumen.
+- Medir el ancho con los helpers de los kits de Node o PowerShell, que cuentan dos celdas por emoji; el kit de bash cuenta caracteres. Preferir emojis sin el selector U+FE0F (`🖼️` lo lleva), que algunas terminales dibujan con otro ancho.
+- Nunca en una salida para máquinas (`--json`, datos por pipe que otro programa parsea). Con una regla de proyecto «solo ASCII», no van.
+
+### Íconos de Nerd Fonts
+
+Para roles fijos de la interfaz, no para valores: el comando para repetir la corrida, un archivo, una carpeta, una rama. Cada ícono es una constante con su nombre de Nerd Fonts y su respaldo:
+
+| Rol | Ícono | Nombre | Respaldo |
+|---|---|---|---|
+| Comando para repetir | `\u{F120}` | `nf-fa-terminal` | `$` |
+| Archivo | `\u{F15B}` | `nf-fa-file` | `-` |
+| Carpeta | `\u{F07B}` | `nf-fa-folder` | `/` |
+| Rama de git | `\u{E725}` | `nf-dev-git_branch` | `*` |
+
+- Una terminal sin Nerd Font muestra un cuadrado vacío, y no hay forma confiable de detectarlo. Usar el ícono solo con TTY, y documentar `NERD_FONT=0` para pasar al respaldo. Sin TTY va siempre el respaldo.
+- El ícono va en la línea del título, nunca pegado a algo que se copia: un comando copiado con el ícono adelante no corre.
+- Mide una celda: dejar un espacio después.
+
 ## 4. Ancho
 
-- Con TTY, leer el ancho real en cada dibujo, porque puede cambiar durante la corrida. Sin TTY no hay ancho: no truncar ni partir nada.
+- **Tablas y recuadros miden como máximo 80 columnas**, o el ancho de la terminal si es menor. También la tarjeta de encabezado, el resumen y la tabla del `--help`. Sin TTY, el tope es 80. Los kits lo aplican con `layoutWidth`, `Get-LayoutWidth` o `layout_width` (`MAXIMUM_LAYOUT_COLUMNS`).
+- Con TTY, leer el ancho real en cada dibujo, porque puede cambiar durante la corrida. Fuera de tablas y recuadros, sin TTY no hay ancho: no truncar ni partir las demás líneas.
 - Si la tabla no entra, pasar a formato apilado: una línea por campo debajo del nombre. Nunca truncar un dato.
 - Lo mismo vale para toda línea propia: pasos, errores, banner y el contenido del resumen, también dentro de un recuadro. Partirlas con el mismo ajuste, porque una sola línea larga rompe el recuadro a 40 columnas.
 - Lo decorativo sí se recorta: etiqueta del spinner, reglas y bordes. La línea del spinner tiene que medir menos que el ancho, o la terminal la parte y `\r` ya no la borra.
@@ -123,6 +156,7 @@ const HIDE_CURSOR = `${ESCAPE}?25l`;
 const SHOW_CURSOR = `${ESCAPE}?25h`;
 const CLEAR_LINE = `\r${ESCAPE}2K`;
 const COLUMN_GAP = 2;
+const MAXIMUM_LAYOUT_COLUMNS = 80; // tablas y recuadros: nunca más anchos que esto
 
 // El carácter del proyecto vive acá. Reemplazar estos valores: solo muestran la forma.
 const THEME = {
@@ -166,6 +200,10 @@ function createOutput(stream) {
     canAnimate: depth > 1 && Boolean(stream.isTTY),
     get width() {
       return stream.isTTY ? stream.columns : Infinity;
+    },
+    /** Ancho de tablas y recuadros: el de la terminal, hasta MAXIMUM_LAYOUT_COLUMNS. Sin TTY, ese tope. */
+    get layoutWidth() {
+      return Math.min(stream.isTTY ? stream.columns : MAXIMUM_LAYOUT_COLUMNS, MAXIMUM_LAYOUT_COLUMNS);
     },
   };
 }
@@ -263,7 +301,7 @@ function renderTable(output, columns, rows) {
     Math.max(visibleWidth(title), ...rows.map((row) => visibleWidth(read(row)))),
   );
   const tableWidth = columnWidths.reduce((total, width) => total + width, 0) + COLUMN_GAP * (columns.length - 1);
-  if (tableWidth > output.width) return renderStackedRows(output, columns, rows);
+  if (tableWidth > output.layoutWidth) return renderStackedRows(output, columns, rows);
 
   const gap = ' '.repeat(COLUMN_GAP);
   const header = columns
@@ -284,10 +322,10 @@ function renderStackedRows(output, columns, rows) {
   const [titleColumn, ...detailColumns] = columns;
   return rows
     .flatMap((row) => [
-      ...wrapText(titleColumn.read(row), output.width).map((line) => paintBold(output, line)),
+      ...wrapText(titleColumn.read(row), output.layoutWidth).map((line) => paintBold(output, line)),
       ...detailColumns.flatMap(({ title, read, colorOf }) => {
         const cell = `  ${title}: ${read(row)}`;
-        return wrapText(cell, output.width).map((line) => (colorOf ? paint(output, colorOf(row), line) : line));
+        return wrapText(cell, output.layoutWidth).map((line) => (colorOf ? paint(output, colorOf(row), line) : line));
       }),
       '',
     ])
@@ -295,16 +333,29 @@ function renderStackedRows(output, columns, rows) {
     .trimEnd();
 }
 
-function renderBox(output, title, lines) {
-  const maximumInnerWidth = Math.max(output.width - 4, 1);
-  const innerWidth = Math.min(Math.max(...[title, ...lines].map(visibleWidth)), maximumInnerWidth);
+/** Recuadro. Con `version` es la tarjeta de encabezado: la versión arriba a la derecha y un divisor bajo el título. */
+function renderBox(output, title, lines, { version } = {}) {
+  const versionLabel = version ? `v${version}` : '';
+  const titleRowWidth = visibleWidth(title) + (versionLabel ? COLUMN_GAP + visibleWidth(versionLabel) : 0);
+  const maximumInnerWidth = Math.max(output.layoutWidth - 4, 1);
+  const innerWidth = Math.min(Math.max(titleRowWidth, ...lines.map(visibleWidth)), maximumInnerWidth);
   const border = (text) => paint(output, 'accent', text);
-  const toRow = (text, painter = (line) => line) =>
-    `${border('│')} ${painter(padVisible(text, innerWidth))} ${border('│')}`;
+  const toRow = (content) => `${border('│')} ${content} ${border('│')}`;
+  const paintTitle = (text) => paintGradient(output, text);
+  const versionText = (width) => paint(output, 'muted', padVisible(versionLabel, width, { alignRight: true }));
+  const titleRows =
+    versionLabel && titleRowWidth <= innerWidth
+      ? [toRow(`${paintTitle(title)}${versionText(innerWidth - visibleWidth(title))}`)]
+      : [
+          ...wrapText(title, innerWidth).map((line) => toRow(paintTitle(padVisible(line, innerWidth)))),
+          ...(versionLabel ? [toRow(versionText(innerWidth))] : []),
+        ];
   return [
     border(`╭${'─'.repeat(innerWidth + 2)}╮`),
-    ...wrapText(title, innerWidth).map((line) => toRow(line, (text) => paintGradient(output, text))),
-    ...lines.flatMap((line) => wrapText(line, innerWidth)).map((line) => toRow(line)),
+    ...titleRows,
+    // El divisor queda dentro de la celda, sin tocar los bordes: es una sola tarjeta, no una tabla de dos filas.
+    ...(versionLabel ? [toRow(paint(output, 'muted', '─'.repeat(innerWidth)))] : []),
+    ...lines.flatMap((line) => wrapText(line, innerWidth)).map((line) => toRow(padVisible(line, innerWidth))),
     border(`╰${'─'.repeat(innerWidth + 2)}╯`),
   ].join('\n');
 }
@@ -377,6 +428,7 @@ $script:CanPaintData = (-not [Console]::IsOutputRedirected) -and (
 $script:Escape = [string][char]27
 $script:ClearLine = "`r$($script:Escape)[2K"
 $script:ColumnGap = '  '
+$script:MaximumLayoutColumns = 80 # tablas y recuadros: nunca mas anchos que esto
 $script:WideCharacter = '^([\u1100-\u115F\u2E80-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE6F\uFF00-\uFF60\uFFE0-\uFFE6]|[\uD83C-\uD83E][\uDC00-\uDFFF])'
 
 # El caracter del proyecto vive aca. Reemplazar estos valores: solo muestran la forma.
@@ -439,6 +491,13 @@ function Get-OutputWidth {
 
   if ($Output.IsRedirected) { return [int]::MaxValue }
   try { return [Console]::WindowWidth } catch { return 80 }
+}
+
+# Ancho de tablas y recuadros: el de la terminal, hasta MaximumLayoutColumns. Sin terminal, ese tope.
+function Get-LayoutWidth {
+  param([Parameter(Mandatory)][hashtable]$Output)
+
+  return [Math]::Min((Get-OutputWidth -Output $Output), $script:MaximumLayoutColumns)
 }
 
 function Write-Ui {
@@ -551,7 +610,7 @@ function Get-RenderedTable {
     $columnWidths += $widest
   }
   $tableWidth = ($columnWidths | Measure-Object -Sum).Sum + $script:ColumnGap.Length * ($Columns.Count - 1)
-  $outputWidth = Get-OutputWidth -Output $Output
+  $outputWidth = Get-LayoutWidth -Output $Output
 
   $lines = New-Object System.Collections.Generic.List[string]
   if ($tableWidth -gt $outputWidth) {
@@ -583,17 +642,40 @@ function Get-RenderedTable {
   return , $lines.ToArray()
 }
 
+# Con -Version es la tarjeta de encabezado: la versión arriba a la derecha y un divisor bajo el título.
 function Write-Box {
-  param([Parameter(Mandatory)][hashtable]$Output, [Parameter(Mandatory)][string]$Title, [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$Lines)
+  param(
+    [Parameter(Mandatory)][hashtable]$Output,
+    [Parameter(Mandatory)][string]$Title,
+    [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$Lines,
+    [string]$Version
+  )
 
-  $widest = (Get-VisibleWidth $Title)
+  $versionLabel = ''
+  if ($Version) { $versionLabel = "v$Version" }
+  $titleRowWidth = Get-VisibleWidth $Title
+  if ($versionLabel) { $titleRowWidth += $script:ColumnGap.Length + (Get-VisibleWidth $versionLabel) }
+  $widest = $titleRowWidth
   foreach ($line in $Lines) { $widest = [Math]::Max($widest, (Get-VisibleWidth $line)) }
-  $innerWidth = [Math]::Min($widest, [Math]::Max((Get-OutputWidth -Output $Output) - 4, 1))
+  $innerWidth = [Math]::Min($widest, [Math]::Max((Get-LayoutWidth -Output $Output) - 4, 1))
   $horizontal = ([string][char]0x2500) * ($innerWidth + 2)
   $side = Format-Paint -Output $Output -ColorName accent -Text ([string][char]0x2502)
   Write-Ui (Format-Paint -Output $Output -ColorName accent -Text "$([char]0x256D)$horizontal$([char]0x256E)")
-  foreach ($line in (Split-TextToWidth -Text $Title -Width $innerWidth)) {
-    Write-Ui "$side $(Format-Paint -Output $Output -ColorName accent -Bold -Text (Format-Pad -Text $line -Width $innerWidth)) $side"
+  if ($versionLabel -and $titleRowWidth -le $innerWidth) {
+    $titleText = Format-Paint -Output $Output -ColorName accent -Bold -Text $Title
+    $versionText = Format-Paint -Output $Output -ColorName muted -Text (Format-Pad -Text $versionLabel -Width ($innerWidth - (Get-VisibleWidth $Title)) -AlignRight)
+    Write-Ui "$side $titleText$versionText $side"
+  } else {
+    foreach ($line in (Split-TextToWidth -Text $Title -Width $innerWidth)) {
+      Write-Ui "$side $(Format-Paint -Output $Output -ColorName accent -Bold -Text (Format-Pad -Text $line -Width $innerWidth)) $side"
+    }
+    if ($versionLabel) {
+      Write-Ui "$side $(Format-Paint -Output $Output -ColorName muted -Text (Format-Pad -Text $versionLabel -Width $innerWidth -AlignRight)) $side"
+    }
+  }
+  if ($versionLabel) {
+    # El divisor queda dentro de la celda, sin tocar los bordes: es una sola tarjeta, no dos filas.
+    Write-Ui "$side $(Format-Paint -Output $Output -ColorName muted -Text (([string][char]0x2500) * $innerWidth)) $side"
   }
   foreach ($sourceLine in $Lines) {
     foreach ($line in (Split-TextToWidth -Text $sourceLine -Width $innerWidth)) {
@@ -688,6 +770,7 @@ esac
 ESC=$(printf '\033')
 # El carácter del proyecto vive acá y en color_code. Reemplazar estos valores: solo muestran la forma.
 SPINNER_FRAMES='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+MAXIMUM_LAYOUT_COLUMNS=80 # tablas y recuadros: nunca más anchos que esto
 SPINNER_FRAME_COUNT=10
 SPINNER_INTERVAL_SECONDS=0.09
 HEARTBEAT_SECONDS=20
@@ -722,6 +805,16 @@ terminal_width() { # 1 si el stream es una TTY, 0 si no; devuelve 0 cuando no ha
     '' | *[!0-9]*) echo 80 ;;
     *) echo "$terminal_columns" ;;
   esac
+}
+
+# Ancho para render_table y render_box: el de la terminal, hasta MAXIMUM_LAYOUT_COLUMNS. Sin TTY, ese tope.
+layout_width() { # 1 si el stream es una TTY, 0 si no
+  available_columns=$(terminal_width "$1")
+  if [ "$available_columns" -eq 0 ] || [ "$available_columns" -gt "$MAXIMUM_LAYOUT_COLUMNS" ]; then
+    echo "$MAXIMUM_LAYOUT_COLUMNS"
+  else
+    echo "$available_columns"
+  fi
 }
 
 color_code() { # rol, profundidad
@@ -788,7 +881,8 @@ AWK_TEXT_HELPERS='
 '
 
 # Lee filas separadas por | desde stdin; la primera son los títulos. La columna $3 trae un estado.
-render_table() { # profundidad, ancho (0 = sin límite), número de la columna de estado
+# Pasar como ancho "$(layout_width "$DATA_IS_TTY")", que ya aplica el tope de MAXIMUM_LAYOUT_COLUMNS.
+render_table() { # profundidad, ancho (de layout_width), número de la columna de estado
   awk -F'|' -v depth="$1" -v width="$2" -v status_column="$3" -v esc="$ESC" \
     -v done_code="$(color_code done "$1")" -v skipped_code="$(color_code skipped "$1")" \
     -v changed_code="$(color_code changed "$1")" -v warning_code="$(color_code warning "$1")" \
@@ -862,9 +956,10 @@ render_table() { # profundidad, ancho (0 = sin límite), número de la columna d
     }'
 }
 
-# Lee las líneas del recuadro desde stdin; la primera es el título.
-render_box() { # profundidad, ancho (0 = sin límite)
-  awk -v depth="$1" -v width="$2" -v esc="$ESC" -v accent_code="$(color_code accent "$1")" "$AWK_TEXT_HELPERS"'
+# Lee las líneas del recuadro desde stdin; la primera es el título. Con versión es la tarjeta de
+# encabezado: la versión arriba a la derecha y un divisor bajo el título.
+render_box() { # profundidad, ancho (de layout_width), versión (opcional)
+  awk -v depth="$1" -v width="$2" -v version="${3:-}" -v esc="$ESC" -v accent_code="$(color_code accent "$1")" "$AWK_TEXT_HELPERS"'
     function accent(text) { return depth <= 1 ? text : esc "[" accent_code "m" text esc "[0m" }
     function repeat_text(text, count, result) {
       result = ""
@@ -885,18 +980,39 @@ render_box() { # profundidad, ancho (0 = sin límite)
       }
       wrapped[++wrapped_count] = current
     }
+    function print_row(text) {
+      print accent("│") " " sprintf("%s%" (inner - text_length(text)) "s", text, "") " " accent("│")
+    }
+    function print_wrapped(row) {
+      for (row = 1; row <= wrapped_count; row++) print_row(wrapped[row])
+      wrapped_count = 0
+    }
     {
       source[NR] = $0
-      if (text_length($0) > widest) widest = text_length($0)
+      row_width = text_length($0)
+      if (NR == 1 && version != "") row_width += 2 + text_length("v" version)
+      if (row_width > widest) widest = row_width
     }
     END {
       inner = widest
       if (width > 0 && inner > width - 4) inner = width - 4
-      for (row = 1; row <= NR; row++) append_wrapped(source[row])
       print accent("╭" repeat_text("─", inner + 2) "╮")
-      for (row = 1; row <= wrapped_count; row++) {
-        print accent("│") " " sprintf("%s%" (inner - text_length(wrapped[row])) "s", wrapped[row], "") " " accent("│")
+      first_body_row = 1
+      if (version != "") {
+        label = "v" version
+        if (text_length(source[1]) + 2 + text_length(label) <= inner) {
+          print_row(source[1] sprintf("%" (inner - text_length(source[1])) "s", label))
+        } else {
+          append_wrapped(source[1])
+          print_wrapped()
+          print_row(sprintf("%" inner "s", label))
+        }
+        # El divisor queda dentro de la celda, sin tocar los bordes: es una sola tarjeta, no dos filas.
+        print_row(repeat_text("─", inner))
+        first_body_row = 2
       }
+      for (row = first_body_row; row <= NR; row++) append_wrapped(source[row])
+      print_wrapped()
       print accent("╰" repeat_text("─", inner + 2) "╯")
     }'
 }
@@ -1012,6 +1128,9 @@ Qué falla: escapes en un pipe y en `--json`, cursor oculto para siempre, tabla 
 Después: el kit de Node más este cuerpo.
 
 ```js
+const TOOL_NAME = 'release-status';
+const TOOL_VERSION = '2.3.0';
+const TOOL_DESCRIPTION = 'Publica los servicios del monorepo y verifica cada despliegue.';
 const steps = ['Leer manifiestos', 'Compilar', 'Publicar', 'Verificar'];
 const rows = [
   { service: 'api-gateway', version: '3.14.2', status: 'done', duration: '12s' },
@@ -1046,7 +1165,7 @@ async function main() {
     process.stdout.write(`${JSON.stringify(rows)}\n`);
     return;
   }
-  uiOutput.stream.write(`${renderBox(uiOutput, `release-status · ${steps.length} pasos`, [])}\n`);
+  uiOutput.stream.write(`${renderBox(uiOutput, TOOL_NAME, [TOOL_DESCRIPTION], { version: TOOL_VERSION })}\n`);
   for (const [stepIndex, step] of steps.entries()) await runStep(step, stepIndex);
   uiOutput.stream.write('\n');
   dataOutput.stream.write(`${renderTable(dataOutput, columns, rows)}\n`);
@@ -1063,7 +1182,7 @@ main().catch((error) => {
 });
 ```
 
-Qué cambió: stdout solo lleva la tabla o el JSON; los pasos y el resumen van a stderr. El tiempo total es el del trabajo real, a 40 columnas la tabla se apila sin perder datos, y cada estado dice su nombre.
+Qué cambió: abre con la tarjeta de encabezado. stdout solo lleva la tabla o el JSON; la tarjeta, los pasos y el resumen van a stderr. El tiempo total es el del trabajo real, a 40 columnas la tabla se apila sin perder datos, y cada estado dice su nombre.
 
 ## 11. Verificar
 
@@ -1077,7 +1196,7 @@ NO_COLOR=1 tool 2>&1 | LC_ALL=C grep -c "$(printf '\033')"   # tiene que dar 0
 tool --json | node -e "JSON.parse(require('fs').readFileSync(0, 'utf8'))"   # JSON válido
 ```
 
-**En una terminal real, a 80 y a 40 columnas, en color y con `NO_COLOR=1`.** Ninguna fila partida, todos los datos a la vista y el tema correcto.
+**En una terminal real, a 120, 80 y 40 columnas, en color y con `NO_COLOR=1`.** Ninguna fila partida, todos los datos a la vista y el tema correcto. A 120 columnas, tablas, recuadros y la tarjeta de encabezado no pasan de 80.
 
 **Ctrl+C durante el spinner.** Cursor visible, línea limpia y estado de salida distinto de 0.
 

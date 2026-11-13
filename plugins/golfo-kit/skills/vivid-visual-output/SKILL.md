@@ -3,7 +3,7 @@ name: vivid-visual-output
 description: "Usar siempre al escribir o cambiar código cuya salida mira una persona, aunque el pedido solo hable de la lógica: pantallas, páginas y reportes HTML, rediseños de UI, componentes de React, Vue u otro framework (una tarjeta, una tabla, un formulario), scripts y CLI con salida en terminal (Node, PowerShell, bash, zsh...), instaladores, wizards, menús, reportes y tareas largas. Hace que se vea muy lindo y con vida (color, tablas, listas, animación), con un piso de calidad y sin imponer estética. En todo componente o pantalla, cargarla junto con ui-ux-flow-patterns: esa decide qué muestra cada estado; esta, cómo se ve. Cubre degradación de color (NO_COLOR, CI, pipes), ancho, spinner, cursor, design tokens, temas, mobile, contraste AA y prefers-reduced-motion. Solo aplica cuando la tarea escribe código: no para responder preguntas ni explicar, y no en backend, migraciones, librerías o tests, ni al sumar una salida que consume otro programa (JSON para jq, datos por pipe, logs estructurados), aunque sea en un CLI."
 license: MIT
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
   author: "Guido Modarelli"
   category: "developer-experience"
   tags: "terminal, cli, ansi, color, spinner, table, ui, design-tokens, dark-mode, reduced-motion"
