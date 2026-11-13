@@ -444,8 +444,10 @@ agent-ready conflicts --pack . --offline  # sin llamar a la IA: solo lo estructu
 El chequeo copia el pack a un repo consumidor temporal y evalúa cada profile que publica, por separado,
 con la base de golfo-kit y los profiles que declara en `requires`, como lo vería un repo que lo
 selecciona. Corre los mismos chequeos que `agent-ready conflicts`, salvo los de la máquina del autor (las
-sombras con lo instalado y los servidores MCP del usuario), que no son los del consumidor. El repo
-temporal está vacío, así que tampoco hay nada que contradiga un `assumes`.
+sombras con lo instalado, los servidores MCP y los settings y hooks del usuario), que no son los del
+consumidor. El repo temporal está vacío, así que tampoco hay nada que contradiga un `assumes`. La copia
+conserva los symlinks, así que un pack que publica uno falla igual que en un consumidor. `--provider`
+elige la CLI de la revisión de IA.
 
 ```text
 Pack acme: 3 profile(s) checked against the golfo-kit base and their requires

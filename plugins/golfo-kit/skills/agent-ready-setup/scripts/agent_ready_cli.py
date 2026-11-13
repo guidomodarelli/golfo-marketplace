@@ -69,7 +69,7 @@ def command_conflicts(arguments):
     if arguments.pack:
         # A pack author checks the pack itself, with this engine and no consumer repository.
         command = [sys.executable, STATE_SCRIPT, "pack-conflicts", "--pack", os.path.abspath(arguments.pack),
-                   "--skill-dir", SKILL_ROOT]
+                   "--skill-dir", SKILL_ROOT, "--provider", resolve_provider(arguments.provider)]
         command += ["--offline"] if arguments.offline else []
         command += ["--format", "json"] if arguments.json else []
         return subprocess.call(command)

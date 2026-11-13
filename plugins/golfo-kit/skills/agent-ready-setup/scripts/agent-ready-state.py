@@ -3377,15 +3377,18 @@ def print_repo_reality(findings):
         write_line(paint(line, "warning", sys.stdout) if line.lstrip().startswith(("!", "~")) else line)
 
 
-def parity_report(project_root, skill_dir, plan, configuration):
-    """What each provider sees and the variables and CI jobs that collide. Read-only."""
+def parity_report(project_root, skill_dir, plan, configuration, with_user=True):
+    """What each provider sees and the variables and CI jobs that collide. Read-only.
+
+    ``with_user`` False leaves the user's own hooks out of the comparison.
+    """
     report = {}
     providers = configuration.value(PROVIDERS_KEY)
     if configuration.value(PROVIDER_PARITY_ENABLED_KEY) and {parity.PROVIDER_CLAUDE, parity.PROVIDER_CODEX} <= set(providers):
         rules, _ = projected_rules(project_root, plan)
         scoped = sum(1 for rule in rules if not loaded_at_start(rule["text"]))
         report["views"] = parity.provider_views(len(rules), scoped, plan["entries"])
-        report["hookDifferences"] = parity.hook_differences(project_root, skill_dir)
+        report["hookDifferences"] = parity.hook_differences(project_root, skill_dir, with_user)
     if configuration.value(ENVIRONMENT_CONFLICTS_ENABLED_KEY):
         report["environment"] = parity.environment_variables(plan.get("packToolDeclarations", []), project_root)
     if configuration.value(CI_JOB_CONFLICTS_ENABLED_KEY):
@@ -3795,23 +3798,26 @@ def evaluate_check(project_root, skill_dir, offline):
     return {"status": status, "ci": ci, "problems": problems, "unavailable": unavailable, "conflicts": conflicts}
 
 
-def structural_conflicts(project_root, skill_dir, plan, catalog, configuration, with_context=True):
+def structural_conflicts(project_root, skill_dir, plan, catalog, configuration, with_context=True, with_machine=True):
     """The checks of the profiles that need no AI, on a plan: what plan, conflicts and check report.
 
     ``with_context`` adds the context budget, which only informs: status leaves it out.
+    ``with_machine`` False leaves out what comes from this machine (shadowing, the user's servers and
+    settings): a pack check runs on its author's machine, not on a consumer's.
     """
     report = {}
     if with_context and configuration.value(CONTEXT_BUDGET_ENABLED_KEY):
         report["context"] = context_budget(project_root, skill_dir, catalog, plan, configuration)
-    report["machine"] = machine_report(project_root, plan, configuration)
+    if with_machine:
+        report["machine"] = machine_report(project_root, plan, configuration)
     if configuration.value(REPO_REALITY_ENABLED_KEY):
         report["repoReality"] = repo_reality_report(project_root, skill_dir, plan)
-    report["parity"] = parity_report(project_root, skill_dir, plan, configuration)
+    report["parity"] = parity_report(project_root, skill_dir, plan, configuration, with_user=with_machine)
     if configuration.value(COMPETING_TOOLS_ENABLED_KEY):
         report["competingTools"] = pack_tools.competing_tools(plan.get("packToolDeclarations", []), catalog)
     report["settingsConflicts"] = settings_conflicts.report(
         project_root, skill_dir, configuration.value(HOOK_CONFLICTS_ENABLED_KEY),
-        configuration.value(PERMISSION_CONFLICTS_ENABLED_KEY))
+        configuration.value(PERMISSION_CONFLICTS_ENABLED_KEY), with_user=with_machine)
     return report
 
 
@@ -3901,7 +3907,7 @@ PACK_CHECK_DIRECTORY = "agent-packs"
 def pack_profile_conflicts(run, profile):
     """The conflicts of one pack profile with the base and its requires: (structural, semantic, unchecked).
 
-    The author's machine is not the consumer's: shadowing and the user's MCP servers stay out.
+    The author's machine is not the consumer's: shadowing, the user's MCP servers and settings stay out.
     """
     catalog = load_effective_catalog(run.project, run.skill_dir)
     plan = compute_plan(run.project, run.skill_dir, catalog, [profile])
@@ -3909,8 +3915,8 @@ def pack_profile_conflicts(run, profile):
     tools_report = pack_tools_report(plan, catalog, configuration)
     if tools_report:
         plan["packTools"] = tools_report
-    report = structural_conflicts(run.project, run.skill_dir, plan, catalog, configuration, with_context=False)
-    report.pop("machine", None)
+    report = structural_conflicts(run.project, run.skill_dir, plan, catalog, configuration, with_context=False,
+                                  with_machine=False)
     report["semanticConflicts"] = semantic_conflicts(run, plan)
     report["competingSkills"] = competing_skills_report(run, plan, catalog, configuration)
     semantic, unchecked = semantic_conflict_lines(report)
@@ -3931,11 +3937,12 @@ def command_pack_conflicts(arguments):
     with tempfile.TemporaryDirectory(prefix="agent-ready-pack-check.") as scratch:
         project = os.path.join(scratch, "project")
         shutil.copytree(pack_root, os.path.join(project, PACK_CHECK_DIRECTORY, pack_name),
-                        ignore=shutil.ignore_patterns(".git"))
+                        ignore=shutil.ignore_patterns(".git"), symlinks=True)
         if run_quiet(["git", "init", "-q", project]) is None:
             raise StateError(f"git init failed in {project}: the pack check needs Git")
         run = types.SimpleNamespace(project=project, skill_dir=arguments.skill_dir, offline=arguments.offline,
-                                    profiles=None, stack=None, format="text", provider=session_provider())
+                                    profiles=None, stack=None, format="text",
+                                    provider=arguments.provider or session_provider())
         for profile in profiles:
             write_text_atomically(os.path.join(project, *MANIFEST_RELATIVE_PATH.split("/")), serialize_json({
                 "profiles": [profile],
@@ -5029,6 +5036,8 @@ def build_parser():
     add_common(pack_conflicts_parser)
     pack_conflicts_parser.add_argument("--pack", required=True, help="root of the profile pack (its agent-ready-pack.json)")
     pack_conflicts_parser.add_argument("--offline", action="store_true", help="the AI reviews answer from the cache only")
+    pack_conflicts_parser.add_argument("--provider", choices=SUPPORTED_PROVIDERS,
+                                       help="CLI of the AI reviews (default: the session's, as resolve-provider.sh infers it)")
     pack_conflicts_parser.add_argument("--format", choices=("text", "json"), default="text", help="json is for scripts")
     pack_conflicts_parser.set_defaults(handler=command_pack_conflicts)
 

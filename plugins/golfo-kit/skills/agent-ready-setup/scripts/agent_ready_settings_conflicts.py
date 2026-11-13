@@ -111,8 +111,12 @@ def without_template(data, template):
             "permissions": {kind: sorted(rules[kind] - template_rules[kind]) for kind in rules}}
 
 
-def layers(project_root, skill_dir):
-    """[{provider, layer, file, data}] of every configuration this report compares."""
+def layers(project_root, skill_dir, with_user=True):
+    """[{provider, layer, file, data}] of every configuration this report compares.
+
+    ``with_user`` False leaves the user's own settings out: a pack check runs on its author's machine,
+    which is not the consumer's.
+    """
     claude_template = read_json(skill_path(skill_dir, CLAUDE_TEMPLATE_RELATIVE_PATH))
     codex_template = read_json(skill_path(skill_dir, CODEX_TEMPLATE_RELATIVE_PATH))
     claude_project = read_json(os.path.join(project_root, CLAUDE_PROJECT_SETTINGS))
@@ -134,7 +138,7 @@ def layers(project_root, skill_dir):
         {"provider": PROVIDER_CODEX, "layer": LAYER_USER, "file": machine.home_display(codex_user),
          "data": read_json(codex_user)},
     ]
-    return [layer for layer in found if layer["data"]]
+    return [layer for layer in found if layer["data"] and (with_user or layer["layer"] != LAYER_USER)]
 
 
 def permission_conflicts(found):
@@ -288,9 +292,9 @@ def claude_hooks_disabled(found):
     return disabled
 
 
-def report(project_root, skill_dir, hooks_enabled, permissions_enabled):
+def report(project_root, skill_dir, hooks_enabled, permissions_enabled, with_user=True):
     """{permissions, duplicatedHooks, formatters} of the enabled checks."""
-    found = layers(project_root, skill_dir)
+    found = layers(project_root, skill_dir, with_user)
     result = {}
     if permissions_enabled:
         result["permissions"] = permission_conflicts(found)
