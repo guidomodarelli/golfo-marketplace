@@ -443,6 +443,15 @@ name: react-review-pr
   [[ "$output" != *"has the same name as"* ]]
 }
 
+@test "plan reports a variable a pack server asks that the project already lists in .env.example" {
+  printf 'ACME_TOKEN=
+' > .env.example
+  run_cli trust add acme
+  run_cli plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"~ variable ACME_TOKEN (acme/kafka-interno) is already listed in .env.example"* ]]
+}
+
 @test "losing the trust or retiring the profile unregisters the pack server" {
   run_cli trust add acme
   run_cli apply

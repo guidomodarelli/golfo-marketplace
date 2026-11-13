@@ -3833,6 +3833,37 @@
           "description": "Nombra la clave para apagar el chequeo"
         }
       ]
+    },
+    {
+      "id": "provider-parity-env-and-ci",
+      "description": "Un hook propio solo en Claude, una variable del pack que ya está en .env.example y un workflow que ya corre el chequeo: plan lo informa.",
+      "input": "Uso Claude Code y Codex en el mismo repo. Tengo un hook PostToolUse propio solo en .claude/settings.json, mi pack pide ACME_TOKEN que ya está en .env.example para otra cosa, y mi workflow de GitHub ya corre el chequeo de agent-ready aunque configuré ci.provider github. ¿agent-ready me avisa de todo eso? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "agent-ready plan",
+          "description": "Usa agent-ready plan",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            ".codex/hooks.json",
+            "Codex no",
+            "no corre en Codex"
+          ],
+          "description": "Dice que el hook no llega a Codex"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "conflicts.ciJobs.enabled",
+            "dos veces",
+            "duplicad"
+          ],
+          "description": "Explica el job de CI duplicado"
+        }
+      ]
     }
   ]
 }

@@ -85,6 +85,9 @@ from agent_ready_options import (  # noqa: E402
     REPO_REALITY_ENABLED_KEY,
     HOOK_CONFLICTS_ENABLED_KEY,
     PERMISSION_CONFLICTS_ENABLED_KEY,
+    PROVIDER_PARITY_ENABLED_KEY,
+    ENVIRONMENT_CONFLICTS_ENABLED_KEY,
+    CI_JOB_CONFLICTS_ENABLED_KEY,
     USER_SERVERS_ENABLED_KEY,
     USER_SERVERS_REGISTER_KEY,
     EXCLUDED_DEFAULTS_KEY,
@@ -125,6 +128,7 @@ import agent_ready_machine as machine  # noqa: E402
 import agent_ready_repo_facts as repo_facts  # noqa: E402
 import agent_ready_settings_conflicts as settings_conflicts  # noqa: E402
 import agent_ready_pack_mcp as pack_mcp  # noqa: E402
+import agent_ready_parity as parity  # noqa: E402
 import agent_ready_pack_scripts as pack_scripts  # noqa: E402
 import agent_ready_pack_signatures as pack_signatures  # noqa: E402
 import agent_ready_blocks as managed_blocks  # noqa: E402
@@ -2067,6 +2071,7 @@ def print_plan(project_root, skill_dir, plan, provider, skip_marketplace_upgrade
     print_machine_report(plan.get("machine"))
     print_repo_reality(plan.get("repoReality", []))
     print_settings_conflicts(plan.get("settingsConflicts", {}))
+    print_parity_report(plan.get("parity", {}))
     write_line(f"Source:   {describe_source(plan['source'])}")
     write_line(f"Lock:     {describe_source(plan['lockedSource']) if plan['hasLock'] else 'none (first apply creates it)'}")
     write_line("")
@@ -3129,6 +3134,7 @@ def command_plan(arguments):
         plan["machine"] = machine_report(arguments.project, plan, configuration)
         if configuration.value(REPO_REALITY_ENABLED_KEY):
             plan["repoReality"] = repo_reality_report(arguments.project, arguments.skill_dir, plan)
+        plan["parity"] = parity_report(arguments.project, arguments.skill_dir, plan, configuration)
         plan["settingsConflicts"] = settings_conflicts.report(
             arguments.project, arguments.skill_dir, configuration.value(HOOK_CONFLICTS_ENABLED_KEY),
             configuration.value(PERMISSION_CONFLICTS_ENABLED_KEY))
@@ -3280,6 +3286,47 @@ def print_repo_reality(findings):
         write_line(paint(f"  ! {finding['rule']} ({finding['profile']}) assumes {finding['description']} {finding['assumes']}, "
                          f"but the repository uses {', '.join(finding['repository'])} ({', '.join(finding['evidence'])})",
                          "warning", sys.stdout))
+
+
+def parity_report(project_root, skill_dir, plan, configuration):
+    """What each provider sees and the variables and CI jobs that collide. Read-only."""
+    report = {}
+    providers = configuration.value(PROVIDERS_KEY)
+    if configuration.value(PROVIDER_PARITY_ENABLED_KEY) and {parity.PROVIDER_CLAUDE, parity.PROVIDER_CODEX} <= set(providers):
+        rules, _ = projected_rules(project_root, plan)
+        scoped = sum(1 for rule in rules if not loaded_at_start(rule["text"]))
+        report["views"] = parity.provider_views(len(rules), scoped, plan["entries"])
+        report["hookDifferences"] = parity.hook_differences(project_root, skill_dir)
+    if configuration.value(ENVIRONMENT_CONFLICTS_ENABLED_KEY):
+        report["environment"] = parity.environment_variables(plan.get("packToolDeclarations", []), project_root)
+    if configuration.value(CI_JOB_CONFLICTS_ENABLED_KEY):
+        block_destinations = {block["destination"] for block in plan.get("blocks", []) if block.get("content")}
+        report["ciJobs"] = parity.duplicated_ci_jobs(project_root, plan["entries"], block_destinations)
+    return report
+
+
+def print_parity_report(report):
+    """What each provider sees, and one line per hook, variable or CI job that collides."""
+    views = report.get("views")
+    if views:
+        claude, codex = views[parity.PROVIDER_CLAUDE], views[parity.PROVIDER_CODEX]
+        write_line(f"Providers: Claude Code sees {claude['rules']} rules ({claude['rulesForPathsOnly']} only for their "
+                   f"paths), {claude['skills']} skills, {claude['subagents']} subagents and {claude['commands']} commands; "
+                   f"Codex sees {codex['rules']} rules in AGENTS.md and {codex['skills']} skills")
+    for difference in report.get("hookDifferences", []):
+        write_line(paint(f"  ~ {difference['provider']} runs the {difference['event']} hook `{difference['command']}` "
+                         f"({difference['file']}) and {difference['missing']} does not", "warning", sys.stdout))
+    for variable in report.get("environment", []):
+        profiles = ", ".join(variable["profiles"])
+        if variable.get("sources"):
+            write_line(paint(f"  ~ variable {variable['name']} is asked by the sources {', '.join(variable['sources'])} "
+                             f"({profiles}): check they mean the same", "warning", sys.stdout))
+        else:
+            write_line(paint(f"  ~ variable {variable['name']} ({profiles}) is already listed in {variable['file']}: "
+                             "check the project uses it for the same", "warning", sys.stdout))
+    for job in report.get("ciJobs", []):
+        write_line(paint(f"  ~ {job['file']} already runs the Agent Ready check; the managed {', '.join(job['managed'])} "
+                         "runs it again", "warning", sys.stdout))
 
 
 def print_settings_conflicts(report):
