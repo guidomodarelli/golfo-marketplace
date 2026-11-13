@@ -479,6 +479,38 @@ PY2
   [[ "$output" != *"both provide docs-search"* ]]
 }
 
+@test "agent-ready conflicts --pack checks each profile of the pack against the golfo-kit base and its requires" {
+  python3 - "$pack_repository/agent-ready-pack.json" <<'PY2'
+import json, sys
+path = sys.argv[1]
+catalog = json.load(open(path, encoding="utf-8"))
+catalog["profiles"]["kafka-interno"]["mcpServers"]["acme-docs"]["provides"] = ["docs-search"]
+catalog["profiles"]["base"]["mcpServers"] = {"base-docs": {"url": "https://mcp.example.invalid/docs", "provides": ["docs-search"]}}
+json.dump(catalog, open(path, "w", encoding="utf-8"), indent=2)
+PY2
+  # From the pack's own checkout, with no consumer repository around it.
+  cd "$pack_repository"
+  run_cli conflicts --pack . --offline
+  [ "$status" -eq 6 ]
+  [[ "$output" == *"acme/base: no conflicts"* ]]
+  [[ "$output" == *"MCP server base-docs (acme/base) and MCP server acme-docs (acme/kafka-interno) both provide docs-search"* ]]
+  run_cli conflicts --pack . --offline --json
+  [ "$status" -eq 6 ]
+  [ "$(printf '%s' "$output" | python3 -c 'import json, sys; print(json.load(sys.stdin)["found"])' | tr -d '')" = "True" ]
+
+  # A profile that does not resolve is an error of the pack, not a conflict.
+  python3 - "$pack_repository/agent-ready-pack.json" <<'PY2'
+import json, sys
+path = sys.argv[1]
+catalog = json.load(open(path, encoding="utf-8"))
+catalog["profiles"]["base"]["requires"] = ["missing-profile"]
+json.dump(catalog, open(path, "w", encoding="utf-8"), indent=2)
+PY2
+  run_cli conflicts --pack . --offline
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"acme/base: does not resolve: unknown profile 'missing-profile'"* ]]
+}
+
 @test "losing the trust or retiring the profile unregisters the pack server" {
   run_cli trust add acme
   run_cli apply
