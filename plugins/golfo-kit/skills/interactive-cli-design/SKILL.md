@@ -82,7 +82,7 @@ Evaluar en orden. Gana la primera fila que aplica.
 
 **Ayuda.** Va a stdout y tiene, en este orden: qué hace en una línea, uno o dos ejemplos, las flags con su default y valores válidos, qué pasa sin flags y los códigos de salida. Cada subcomando tiene la suya. Siempre con este formato, aunque el parser traiga otro:
 
-- **Todo lo que tiene descripción va en una tabla de dos columnas**: subcomandos, flags, argumentos, variables de entorno y códigos de salida. A la izquierda el nombre (`-n, --name <valor>`), a la derecha la descripción con su default y valores válidos. La izquierda se alinea a la más ancha de su sección. La descripción larga se parte dentro de su columna; si la terminal es tan angosta que no entra, se apila (el nombre en una línea y la descripción sangrada debajo), nunca se trunca.
+- **Todo lo que tiene descripción va en una tabla de dos columnas**: subcomandos, flags, argumentos, variables de entorno y códigos de salida. A la izquierda el nombre (`-n, --name <valor>`), a la derecha la descripción con su default y valores válidos. La izquierda se alinea a la más ancha de su sección. La tabla mide como máximo 80 columnas, o el ancho de la terminal si es menor. La descripción larga se parte dentro de su columna; si la terminal es tan angosta que no entra, se apila (el nombre en una línea y la descripción sangrada debajo), nunca se trunca.
 - **Comandos y flags con colores distintos**, en la tabla, en la línea de uso y en los ejemplos: el programa y sus subcomandos en un color, las flags en otro, los `<valores>` atenuados y los títulos de sección en negrita. Los colores salen de las constantes del proyecto (de `vivid-visual-output` si está disponible).
 - **Sin color, el mismo formato.** Si stdout no es una terminal, hay `NO_COLOR` o `TERM=dumb`, la ayuda sale sin secuencias de escape y con las mismas dos columnas: `tool --help | less` y `tool --help > ayuda.txt` se leen igual.
 
@@ -101,7 +101,7 @@ run(valores)            → actúa
 - **Cada pregunta tiene su flag, y cada flag de dato su pregunta.** El prompt nunca es la única entrada.
 - **Una sola validación.** La misma función valida el flag, el prompt y el archivo de configuración, con los valores válidos en constantes.
 - **Preguntar todo antes de actuar.** Sin efectos hasta la última respuesta. Así Ctrl+C no deja nada a medias. Escribir archivos a un temporal y renombrar. Decidir también, antes del primer efecto, lo que puede hacer fallar un paso posterior: si el tercer paso no se va a poder hacer con lo elegido, preguntarlo o fallar antes de crear el primero.
-- **Imprimir el comando equivalente** en stderr cuando se preguntó algo. Tiene que reproducir el resultado sin una sola pregunta, con `none` si un multiselect quedó vacío y con las comillas de la plataforma: simples en POSIX, que dejan el valor literal, y dobles en Windows, donde `cmd.exe` no entiende las simples. Las referencias de Node y Python traen el helper y sus límites. Un secreto se muestra como `--token-file <ruta>`, nunca su valor, en ninguna de sus formas (`--token x`, `--token=x`, `-tx`, la variable de entorno) ni en el comando que se guarda en un archivo. Si no entra en el ancho de la terminal, partirlo entre argumentos con ` \` (POSIX), nunca a mitad de un valor.
+- **Imprimir el comando equivalente** en stderr al final de la corrida, cuando se preguntó algo, para repetirla sin entrar al modo interactivo. Va en dos líneas: un título con el ícono de terminal de Nerd Fonts (`nf-fa-terminal`, U+F120, con su respaldo `$`, según `vivid-visual-output` → «Íconos de Nerd Fonts») y debajo el comando solo, sangrado, para copiarlo sin el ícono. Tiene que reproducir el resultado sin una sola pregunta, con `none` si un multiselect quedó vacío y con las comillas de la plataforma: simples en POSIX, que dejan el valor literal, y dobles en Windows, donde `cmd.exe` no entiende las simples. Las referencias de Node y Python traen el helper y sus límites. Un secreto se muestra como `--token-file <ruta>`, nunca su valor, en ninguna de sus formas (`--token x`, `--token=x`, `-tx`, la variable de entorno) ni en el comando que se guarda en un archivo. Si no entra en el ancho de la terminal, partirlo entre argumentos con ` \` (POSIX), nunca a mitad de un valor.
 
 ## Widget según el dato
 
@@ -117,12 +117,14 @@ run(valores)            → actúa
 | Secreto | Input enmascarado | `--x-file <ruta>` o stdin | Nunca por argv: queda en `ps` y en el historial. Por variable de entorno también se filtra |
 | Acción peligrosa | Confirm con default «no». Si es grave, escribir el nombre | `--force` o `--confirm=<nombre>` | Sin terminal y sin el flag: exit 2, nunca seguir |
 
+- **Emojis en las opciones, solo si son obvios.** Cuando cada opción del grupo tiene un emoji que cualquiera asociaría (🐧 Linux, 🚀 producción), va antes de la palabra, el mismo en el menú, en la tabla y en el resumen. Si no es obvio para todas, ninguna lleva: regla en `vivid-visual-output` (`references/terminal.md`, «Emojis»).
 - **Cada respuesta queda a la vista.** Al elegir, borrar el menú y dejar una línea `✔ pregunta › respuesta`, con la respuesta sin las marcas de la etiqueta («último usado», «por defecto»). Así se lee qué se eligió sin que el menú ocupe la pantalla.
 - **Sin librería de prompts** (o cuando la del proyecto no filtra ni dibuja en stderr): menú propio con flechas, filtro y respaldo numerado en [references/native-prompts.md](references/native-prompts.md).
 - **Un secreto se pide recién cuando hace falta**, no al arrancar: un comando que no lo usa no lo pide. Se lee de la terminal (no de stdin, que puede ser un pipe), con el eco apagado **antes** de mostrar la pregunta, para que un valor pegado enseguida tampoco se vea. Si se cachea, va al llavero del sistema y con margen de vencimiento: [references/native-prompts.md](references/native-prompts.md#secretos).
 
 ## Contrato de salida
 
+- **Tarjeta de encabezado.** Toda corrida abre con un recuadro con el nombre, la versión arriba a la derecha, un divisor dentro de la celda y una descripción breve; el `--help` también, en lugar de su línea de «qué hace». No va con `--version`, `--json` ni `--quiet`. Cómo dibujarla: `vivid-visual-output` (`references/terminal.md`, «Anatomía de una corrida»).
 - **stdout lleva datos. stderr, todo lo demás:** prompts, progreso, avisos y errores. Varias librerías dibujan en stdout por default, y ahí `tool | jq` se rompe. Cada referencia dice si hay que cambiarlo y cómo.
 - **Códigos de salida**, documentados en la ayuda: `0` bien, `1` falló, `2` uso incorrecto (también datos faltantes sin terminal), `130` cancelado. Una falla propia del dominio puede tener su código si un script necesita distinguirla.
 - **Cancelar.** Ctrl+C sale con 130, deja el cursor visible y dice que no se cambió nada. Cada librería avisa distinto, y un aviso sin chequear sigue el wizard con basura: revisar cada prompt. Desde el segundo Ctrl+C, ignorarlo: si no, corta el aviso o muestra un traceback mientras se cierra. Un wrapper de shell que delega en otro programa no se corta con el primero: lo deja manejar al hijo y solo espera su exit code.
@@ -130,7 +132,7 @@ run(valores)            → actúa
 - **Esperas largas.** Si un servicio tarda en responder porque está levantando (escalado a cero, 503 transitorio), reintentar con intervalo y tope, decir en el paso qué se espera y hasta cuándo, y que Ctrl+C siga cortando. Un chequeo que no respondió no es un «ok»: se informa aparte y no sale con 0.
 - **Errores.** Una línea con qué falló y qué hacer: el flag, los valores válidos y `Corré tool --help`. El stack trace, solo detrás de `--debug`.
 
-Cómo se ve todo esto (paleta, spinner, tablas, ancho, `NO_COLOR`) es de la skill `vivid-visual-output`: cargarla si está disponible. Si no, respetar al menos `NO_COLOR` y no mandar secuencias de escape a un pipe.
+Cómo se ve todo esto (paleta, spinner, tablas, tarjeta, emojis, ancho, `NO_COLOR`) es de la skill `vivid-visual-output`: cargarla si está disponible. Si no, respetar al menos `NO_COLOR` y no mandar secuencias de escape a un pipe.
 
 ## Stacks
 

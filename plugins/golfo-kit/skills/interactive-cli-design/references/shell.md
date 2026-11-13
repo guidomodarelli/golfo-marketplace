@@ -60,11 +60,14 @@ else
 fi
 HELP_NAME_COLUMNS=24          # ancho de la columna izquierda, sangría incluida
 HELP_MIN_DESCRIPTION_COLUMNS=24
-HELP_DEFAULT_COLUMNS=80
+HELP_MAXIMUM_COLUMNS=80        # la tabla nunca es más ancha, aunque la terminal sí lo sea
 
 # help_row <color> <nombre> <valor o ''> <descripción>: una fila de dos columnas.
 help_row() {
-  local plain="$2${3:+ $3}" columns="${COLUMNS:-$(tput cols 2>/dev/null || echo "$HELP_DEFAULT_COLUMNS")}"
+  # $(tput cols) devuelve siempre 80 dentro de $(...): leer el ancho de /dev/tty.
+  local plain="$2${3:+ $3}" columns="${COLUMNS:-$(stty size 2>/dev/null </dev/tty | cut -d' ' -f2)}"
+  case "$columns" in '' | *[!0-9]*) columns=$HELP_MAXIMUM_COLUMNS ;; esac
+  [ "$columns" -gt "$HELP_MAXIMUM_COLUMNS" ] && columns=$HELP_MAXIMUM_COLUMNS
   local width=$(( columns - 1 - HELP_NAME_COLUMNS )) indent first=1 line
   printf '  %s%s%s' "$1" "$2" "$HELP_RESET"
   [ -n "$3" ] && printf ' %s%s%s' "$HELP_VALUE" "$3" "$HELP_RESET"

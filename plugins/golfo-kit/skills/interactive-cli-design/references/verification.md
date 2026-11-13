@@ -38,6 +38,7 @@ Correr el CLI real, no una versión escrita para el chequeo. La herramienta de s
 tool --help; echo "exit=$?"
 tool --help | LC_ALL=C grep -c "$(printf '\033')"   # tiene que dar 0: a un pipe, la ayuda va sin color
 COLUMNS=40 tool --help                              # las descripciones se parten o se apilan, no se cortan
+COLUMNS=120 tool --help | awk 'length > 80' | wc -l  # tiene que dar 0: la tabla no pasa de 80 columnas
 tool </dev/null >out.txt 2>err.txt; echo "exit=$?"; cat err.txt
 tool --nope </dev/null; echo "exit=$?"
 tool --name demo --runtime go </dev/null | LC_ALL=C grep -c "$(printf '\033')"   # tiene que dar 0

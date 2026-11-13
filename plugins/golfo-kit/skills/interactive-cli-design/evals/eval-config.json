@@ -502,6 +502,43 @@
           "type": "regex",
           "pattern": "fold|COLUMNS|tput cols|apil|stack|ancho de la terminal|terminal width",
           "description": "Se adapta al ancho sin cortar descripciones"
+        },
+        {
+          "type": "regex",
+          "pattern": "\\b80\\b",
+          "description": "La tabla de ayuda no pasa de 80 columnas"
+        }
+      ]
+    },
+    {
+      "id": "equivalent-command-nerd-font-icon",
+      "description": "Al final de una corrida interactiva imprime el comando para repetirla sin preguntas, con el ícono de terminal de Nerd Fonts en el título y un respaldo sin la fuente.",
+      "input": "Mi CLI en Python `scaffold` pregunta nombre, runtime y features cuando faltan flags. Cuando termina, quiero que muestre cómo repetir lo mismo sin preguntas, con un ícono de Nerd Fonts. Implementalo.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "f120|nf-fa-terminal|nf-oct-terminal|nf-dev-terminal|e795|f489",
+          "description": "Usa un ícono de terminal de Nerd Fonts"
+        },
+        {
+          "type": "regex",
+          "pattern": "NERD_FONT|isatty|fallback|respaldo",
+          "description": "Tiene respaldo cuando no hay Nerd Font o TTY"
+        },
+        {
+          "type": "regex",
+          "pattern": "shlex|quote",
+          "description": "Cita los valores del comando"
+        },
+        {
+          "type": "regex",
+          "pattern": "stderr",
+          "description": "Lo imprime en stderr"
+        },
+        {
+          "type": "regex",
+          "pattern": "(sin preguntas|sin entrar|repetir|non.interactive|without prompts|--name)",
+          "description": "El comando reproduce la corrida sin preguntar"
         }
       ]
     }

@@ -51,10 +51,11 @@ const HELP_STYLES = { title: 'bold', command: 'cyan', flag: 'yellow', value: 'di
 const HELP_INDENT = 2;
 const HELP_GAP = 2;
 const MIN_DESCRIPTION_COLUMNS = 24;
-const DEFAULT_TERMINAL_COLUMNS = 80;
+const MAXIMUM_HELP_COLUMNS = 80; // la tabla nunca es más ancha, aunque la terminal sí lo sea
 
 const paint = (role, text) => styleText(HELP_STYLES[role], text, { stream: process.stdout });
-const terminalColumns = () => process.stdout.columns || Number(process.env.COLUMNS) || DEFAULT_TERMINAL_COLUMNS;
+const terminalColumns = () =>
+  Math.min(process.stdout.columns || Number(process.env.COLUMNS) || MAXIMUM_HELP_COLUMNS, MAXIMUM_HELP_COLUMNS);
 
 function wrapWords(text, width) {
   const lines = [];
@@ -185,6 +186,18 @@ function quoteForShell(value) {
   // En Windows una barra solo se duplica antes de una comilla o al final del argumento.
   const escaped = value.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\+)$/, '$1$1');
   return `"${escaped}"`;
+}
+
+const TERMINAL_ICON = '\u{F120}'; // nf-fa-terminal
+const TERMINAL_ICON_FALLBACK = '$';
+const COMMAND_INDENT = '  ';
+
+/** Al final de una corrida con preguntas: el ícono va en el título y el comando solo, para copiarlo. */
+function printEquivalentCommand(toolName, commandArguments) {
+  const usesNerdFont = Boolean(process.stderr.isTTY) && process.env.NERD_FONT !== '0';
+  const icon = usesNerdFont ? TERMINAL_ICON : TERMINAL_ICON_FALLBACK;
+  const command = [toolName, ...commandArguments.map(quoteForShell)].join(' ');
+  process.stderr.write(`\n${icon} Para repetirlo sin preguntas:\n${COMMAND_INDENT}${command}\n`);
 }
 ```
 
