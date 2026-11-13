@@ -280,7 +280,7 @@ PY
   [ "$status" -eq 0 ]
   [ "$(manifest_profiles)" = "android" ]
   [ "$(json_value .agents/agent-ready.lock.json '",".join(data["profileOrder"])')" = "software-development,android" ]
-  [ "$(json_value .agents/agent-ready.lock.json 'sorted(data["profiles"])')" = "['android', 'common']" ]
+  [ "$(json_value .agents/agent-ready.lock.json 'sorted(data["profiles"])')" = "['android', 'common', 'software-development']" ]
 }
 
 @test "a capability already selected is not suggested again" {

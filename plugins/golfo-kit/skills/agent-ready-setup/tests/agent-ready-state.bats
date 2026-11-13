@@ -98,7 +98,7 @@ lock_value() {
   find .agents -type f ! -name 'agent-ready.json' ! -name 'agent-ready.lock.json' | LC_ALL=C sort > "$test_root/projected"
   lock_value '"\n".join(sorted(path for path in lock["assets"] if path.startswith(".agents/")))' > "$test_root/locked"
   diff -u "$test_root/projected" "$test_root/locked"
-  [ "$(lock_value 'lock["blocks"][".github/pull_request_template.md"]["common"]["state"]')" = "applied" ]
+  [ "$(lock_value 'lock["blocks"][".github/pull_request_template.md"]["software-development"]["state"]')" = "applied" ]
 }
 
 @test "reapplying the same resolution changes nothing, including the lockfile bytes" {
