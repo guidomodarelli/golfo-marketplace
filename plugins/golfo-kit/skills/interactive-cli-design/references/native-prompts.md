@@ -225,7 +225,7 @@ La salida: un **broker** en el wrapper que el programa consulta por FIFO solo cu
 
 - El wrapper crea un directorio privado con `mktemp -d`, le da `chmod 700` y adentro dos FIFOs con `mkfifo -m 600` (pedidos y respuestas). En el `trap ... EXIT` las borra junto con el broker y sus hijos: `pkill -TERM -P <pid>` antes de `kill <pid>`, para que un prompt en curso restaure la terminal.
 - Lanza el broker en segundo plano y exporta **solo las rutas** de las FIFOs y el PID del broker, nunca el secreto.
-- Protocolo de una línea por mensaje. Pedido: `get` o `refresh`. Respuesta: `interactive` (opcional: avisa que va a usar la terminal, para que el programa detenga su spinner) y después `token <origen> <valor>` o `error`.
+- Protocolo de una línea por mensaje. Pedido: `get` o `refresh`. Respuesta: `interactive` (opcional: avisa que va a usar la terminal) y después `token <origen> <valor>` o `error`. Después de `interactive`, el broker **espera** que el programa conteste `ready` por la FIFO de pedidos, una vez que detuvo su spinner y limpió la línea: si pregunta antes, el `CLEAR_LINE` del spinner borra la pregunta.
 - El broker no hace nada hasta el primer pedido. Entonces busca sin molestar (llavero con margen de vencimiento, herramienta oficial de login) y recién después usa la terminal (login interactivo, prompt sin eco).
 - `refresh`: el servicio rechazó el valor cacheado. El broker lo borra del llavero y consigue uno nuevo, una sola vez. Solo se renueva un valor que vino del llavero o del login; uno pasado a mano se respeta y su rechazo es un error.
 - **Qué comandos necesitan el secreto lo decide solo el programa.** El wrapper no mira los argumentos.
@@ -269,6 +269,7 @@ run_secret_broker() {
 		fi
 		if [[ -z "$secret" ]]; then
 			printf 'interactive\n' >&4
+			{ IFS= read -r request <"$requests"; } 2>/dev/null || true   # «ready»: el spinner ya no dibuja
 			if secret="$(interactive_secret)"; then source="interactive"; store_secret "$secret"; else secret=""; fi
 		fi
 		if [[ -n "$secret" ]]; then printf 'token %s %s\n' "$source" "$secret" >&4; else printf 'error\n' >&4; fi
@@ -314,8 +315,7 @@ class SecretBroker:
             return True
         return True
 
-    def request(self, kind, on_interactive=lambda: None):
-        """`kind` es "get" o "refresh". Devuelve (secreto, origen)."""
+    def _send(self, line):
         while True:
             try:
                 descriptor = os.open(self.requests_path, os.O_WRONLY | os.O_NONBLOCK)
@@ -325,9 +325,13 @@ class SecretBroker:
                     raise SecretBrokerError("SecretBroker:request: el broker no está disponible.") from None
                 self.sleep(POLL_INTERVAL_SECONDS)
         try:
-            os.write(descriptor, f"{kind}\n".encode())
+            os.write(descriptor, f"{line}\n".encode())
         finally:
             os.close(descriptor)
+
+    def request(self, kind, on_interactive=lambda: None):
+        """`kind` es "get" o "refresh". Devuelve (secreto, origen)."""
+        self._send(kind)
         descriptor = os.open(self.responses_path, os.O_RDONLY | os.O_NONBLOCK)
         buffer = b""
         try:
@@ -339,7 +343,8 @@ class SecretBroker:
                     line, buffer = buffer.split(b"\n", 1)
                     response_kind, _, rest = line.decode().partition(" ")
                     if response_kind == "interactive":
-                        on_interactive()          # detener el spinner: el broker usa la terminal
+                        on_interactive()          # detener el spinner y limpiar su línea
+                        self._send("ready")       # recién ahora el broker pregunta
                     elif response_kind == "token":
                         source, _, secret = rest.partition(" ")
                         return secret, source

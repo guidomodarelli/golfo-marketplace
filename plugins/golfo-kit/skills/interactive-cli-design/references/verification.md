@@ -54,10 +54,7 @@ Si el CLI resuelve secretos en un wrapper, chequea permisos, crea recursos por A
 | ff | Menú con etiquetas de color: escribir `m` y después algo que no coincide con nada | Con terminal | Con `m` solo quedan las opciones con «m» en el texto visible. Sin coincidencias se ve «nada coincide…» y Enter no elige. Al cambiar el filtro, el resaltado va a la primera. La pista «escribí para filtrar» está al lado de la pregunta |
 | gg | `--dry-run` cuando el valor inicial lo decide el servidor | Sin terminal | Una rama por cada valor inicial posible, sin efectos |
 | hh | Registro con un `\|` y un salto de línea en un dato, y después `--history` | Sin terminal | La fila del índice queda alineada y `--history` la muestra con el `\|` original |
-| ii | Tabla con una columna larga (un camino de 6 tramos) a 60 columnas, y la misma a 22 | Con terminal | A 60, la celda larga se parte en dos líneas y la tabla se mantiene. A 22, formato apilado. Ningún dato truncado |
 | jj | Menú nativo: tipear una tecla mientras se redibuja, o pegar texto | Con terminal | No se pierde ninguna tecla |
-| kk | `truncateVisible` y `renderBox` con texto ya pintado, a 12 y 40 columnas | Con terminal | No se corta ningún escape, el color se cierra y el ancho visible es el pedido |
-| ll | Título con degradé que contiene `🇧🇷` y un emoji ZWJ | Con terminal | La bandera y el emoji se ven enteros |
 | mm | 500, 429, 400 y 2xx inesperado en un GET; 500 en un POST; 503 de API que levanta en un POST | Sin terminal | Se reintentan solo el 500 y el 429 del GET y el 503 del POST, con esperas 1, 2 y 4 (verificadas con `sleep` inyectado). El error dice cuántos intentos |
 | nn | Token con un `\n` al final (por ejemplo, pegado) | Ambos | El error no muestra el token |
 | oo | `-ssx` cuando existen `-s` y un corto de dos letras | Sin terminal | No se definen cortos de varias letras; si existieran, el test documenta que `-ssx` es `-s sx` |
@@ -69,13 +66,10 @@ Si el CLI resuelve secretos en un wrapper, chequea permisos, crea recursos por A
 | uu | Lo pedido no se puede (recurso nuevo sin tipo disponible) | Ambos | Con terminal pregunta con default «no»; sin terminal corta antes del primer efecto y nombra el flag de la alternativa |
 | vv | Archivo de respuestas editado a mano con un valor inválido, en formato viejo y con una clave ajena | Con terminal | Descarta el inválido con aviso, lee el formato viejo, guarda en el nuevo y conserva la clave ajena |
 | ww | Dato generado por default con semilla fija | Sin terminal | Pasa la validación, no es degenerado y es el mismo en cada corrida del test |
-| xx | `tool > archivo` con stderr en una terminal de 40 columnas | Con terminal | La interfaz se dibuja a 40 |
-| yy | Recuadro con una URL más ancha que la terminal | Con terminal | La URL va entera en su renglón |
-| zz | `NO_COLOR=1` con opciones con emoji | Ambos | Solo la palabra, sin emoji |
 | aaa | En el menú: Supr, Inicio, un pegado con `\t`; confirm con «x» y con Enter | Con terminal | El filtro no cambia con las teclas especiales; «x» repite la pregunta; Enter toma el default |
 | bbb | `CI=False` y `CI=FALSE` con terminal | Con terminal | Pregunta: no cuenta como CI |
 
-Los casos `kk`, `ll`, `ii`, `xx`, `yy` y `zz` son de la salida visual: se corren con los kits de `vivid-visual-output` (`references/terminal.md`, «Verificar»).
+Los casos de la salida visual (cortes con color, banderas y ZWJ, tablas con una columna larga, ancho medido en stderr, URLs en un recuadro y emojis sin color) no se repiten acá: están en `vivid-visual-output` (`references/terminal.md`, «Verificar», tabla «Casos que los kits tienen que pasar»).
 
 ## Sin terminal
 

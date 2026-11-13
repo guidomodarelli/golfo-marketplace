@@ -162,13 +162,13 @@ El resumen final se pierde al limpiar la terminal, y con él el ID, el usuario y
 - **Permisos `600` y directorio `700`** si el registro trae datos sensibles generados.
 - **Escritura atómica y lock entre procesos** mientras se elige el nombre libre, se escribe el archivo y se suma la fila al índice. Sin lock, dos corridas que terminan a la vez leen el mismo índice y una pisa la fila de la otra, aunque cada escritura sea atómica. `fcntl.flock` vale entre procesos y entre hilos (cada uno abre su descriptor). `fcntl` no existe en Windows: ahí, `msvcrt.locking`, o documentar que no se soporta.
 - **El índice se reescribe sin romper lo que el usuario agregó:** solo se toca la tabla. El título, las notas y las filas que no se pueden parsear quedan en su lugar.
-- **Celdas escapadas:** `\` → `\\`, `|` → `\|` y los saltos de línea pasan a espacio; al releer se revierte. Si no, un nickname o un error con `|` rompe la fila y `--history` deja de leerla. Las columnas se alinean al ancho visible, con emojis y banderas de 2 celdas (`display_width` del kit de Python de `vivid-visual-output`).
+- **Celdas escapadas:** `\` → `\\`, `|` → `\|` y los saltos de línea (`\n`, `\r\n` y `\r` sueltos) pasan a espacio; al releer se revierte. Un `\r` que queda adentro parte la fila en `splitlines()` y el alta desaparece de `--history`. Si no, un nickname o un error con `|` rompe la fila y `--history` deja de leerla. Las columnas se alinean al ancho visible, con emojis y banderas de 2 celdas (`display_width` del kit de Python de `vivid-visual-output`).
 - **Contenido de cada registro:** el resultado (`✔ creado · <estado>` o `▲ incompleto: <qué cortó>` con el último estado conocido); los datos del resumen, con los que se copian (mail, contraseña) en bloques de código; el camino recorrido; «Para seguir con el mismo recurso» (el comando que retoma con lo ya creado, si quedó incompleta) y «Para crear otro igual» (el comando equivalente, sin el secreto).
 - **Las altas incompletas también se guardan**, con los datos **reales** que llegaron a existir (el ID del usuario creado), no con los pedidos.
 - **Guardar es una comodidad:** si falla, avisar con la ruta y seguir. El alta ya terminó y el exit no cambia por eso.
 
 ```python
-import fcntl, os, tempfile
+import fcntl, os, re, tempfile
 from contextlib import contextmanager
 
 RECORD_FILE_MODE = 0o600
@@ -177,6 +177,7 @@ INDEX_FILE_NAME = "index.md"
 LOCK_FILE_NAME = ".lock"
 INDEX_TITLE = "# Altas"
 INDEX_HEADER = ["Fecha", "Entorno", "ID", "Resultado", "Archivo"]
+LINE_BREAK_PATTERN = re.compile(r"\r\n|\r|\n")
 
 @contextmanager
 def directory_lock(directory):
@@ -207,7 +208,7 @@ def free_name(directory, base_name):
     return candidate
 
 def escape_table_cell(value) -> str:
-    return str(value).replace("\\", "\\\\").replace("|", "\\|").replace("\n", " ")
+    return LINE_BREAK_PATTERN.sub(" ", str(value).replace("\\", "\\\\").replace("|", "\\|"))
 
 def split_table_row(line):
     """Celdas de una fila `| a | b |`, con los escapes revertidos, o None si la línea no es una fila."""

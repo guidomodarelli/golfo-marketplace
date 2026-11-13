@@ -420,7 +420,10 @@ function renderBox(output, title, lines, { version } = {}) {
     versionLabel && titleRowWidth <= innerWidth
       ? [toRow(`${paintTitle(title)}${versionText(innerWidth - visibleWidth(title))}`)]
       : [
-          ...wrapText(title, innerWidth).map((line) => toRow(paintTitle(padVisible(line, innerWidth)))),
+          // El título no es un dato que se copia: una palabra más ancha que el recuadro se recorta.
+          ...wrapText(title, innerWidth).map((line) =>
+            toRow(paintTitle(padVisible(truncateVisible(line, innerWidth), innerWidth))),
+          ),
           ...(versionLabel ? [toRow(versionText(innerWidth))] : []),
         ];
   return [
@@ -777,6 +780,8 @@ function Write-Box {
     Write-Ui "$side $titleText$versionText $side"
   } else {
     foreach ($line in (Split-TextToWidth -Text $Title -Width $innerWidth)) {
+      # El titulo no es un dato que se copia: una palabra mas ancha que el recuadro se recorta.
+      if ((Get-VisibleWidth $line) -gt $innerWidth) { $line = "$(Get-FittingPrefix -Text $line -Width ([Math]::Max($innerWidth - 1, 1)))$([char]0x2026)" }
       Write-Ui "$side $(Format-Paint -Output $Output -ColorName accent -Bold -Text (Format-Pad -Text $line -Width $innerWidth)) $side"
     }
     if ($versionLabel) {
@@ -1095,6 +1100,15 @@ render_box() { # profundidad, ancho (de layout_width), versión (opcional)
       for (row = 1; row <= wrapped_count; row++) print_row(wrapped[row])
       wrapped_count = 0
     }
+    # El título no es un dato que se copia: una palabra más ancha que el recuadro se recorta.
+    function print_title_wrapped(row, line) {
+      for (row = 1; row <= wrapped_count; row++) {
+        line = wrapped[row]
+        if (text_length(line) > inner) line = text_prefix(line, inner - 1) "…"
+        print_row(line)
+      }
+      wrapped_count = 0
+    }
     {
       source[NR] = $0
       row_width = text_length($0)
@@ -1112,11 +1126,15 @@ render_box() { # profundidad, ancho (de layout_width), versión (opcional)
           print_row(source[1] sprintf("%" (inner - text_length(source[1])) "s", label))
         } else {
           append_wrapped(source[1])
-          print_wrapped()
+          print_title_wrapped()
           print_row(sprintf("%" inner "s", label))
         }
         # El divisor queda dentro de la celda, sin tocar los bordes: es una sola tarjeta, no dos filas.
         print_row(repeat_text("─", inner))
+        first_body_row = 2
+      } else if (NR >= 1) {
+        append_wrapped(source[1])
+        print_title_wrapped()
         first_body_row = 2
       }
       for (row = first_body_row; row <= NR; row++) append_wrapped(source[row])
