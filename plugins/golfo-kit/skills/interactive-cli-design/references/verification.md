@@ -13,7 +13,7 @@ Correr el CLI real, no una versión escrita para el chequeo. La herramienta de s
 
 | # | Caso | Dónde | Pasa si |
 |---|---|---|---|
-| a | `--help`, `-h`, `--version` | Sin y con terminal | Exit 0, salida en stdout, sin preguntas. La ayuda lista todas las flags |
+| a | `--help`, `-h`, `--version` | Sin y con terminal | Exit 0, salida en stdout, sin preguntas. La ayuda lista todas las flags en dos columnas alineadas. Con terminal, comandos y flags en colores distintos; a pipe, a 40 columnas o con `NO_COLOR=1`, sin escapes, las mismas columnas y ninguna descripción cortada |
 | b | Sin argumentos | Con terminal | Aparecen los prompts. Con teclas reales, el resultado es idéntico al de la llamada con flags, y el comando impreso lo reproduce |
 | c | Sin argumentos | Sin terminal | No se cuelga, exit 2, stderr nombra los flags faltantes, nada escrito |
 | d | Todo por flags | Con terminal | Cero prompts, exit 0 |
@@ -25,11 +25,20 @@ Correr el CLI real, no una versión escrita para el chequeo. La herramienta de s
 | j | `--no-input` y `CI=1` con datos faltantes | Con terminal | Como c |
 | k | Acción peligrosa sin el flag | Sin terminal | Falla y no cambia nada |
 | l | Multiselect vacío, si vale | Con terminal | El comando impreso lo reproduce sin preguntar |
+| m | Flag abreviado (`--tok`) | Sin terminal | Exit 2, como un flag desconocido |
+| n | Secreto pasado como `--x v`, `--x=v`, `-xv` y por variable | Ambos | El valor no aparece en la salida, en el comando equivalente ni en lo que se guarda |
+| o | Lista con filtro: escribir parte de una opción y Enter | Con terminal | Elige esa opción. Sin color, el menú es numerado |
+| p | Segunda corrida, si recuerda respuestas | Con terminal | La anterior aparece primero y Enter la elige. Con el archivo ilegible, avisa y pregunta igual |
+| q | Ctrl+C dos veces seguidas | Con terminal | Un solo aviso, exit 130, sin traceback |
+| r | Ctrl+C o falla después del primer efecto | Con terminal | Lista lo que quedó hecho y el comando para seguir |
 
 ## Sin terminal
 
 ```bash
 tool --help; echo "exit=$?"
+tool --help | LC_ALL=C grep -c "$(printf '\033')"   # tiene que dar 0: a un pipe, la ayuda va sin color
+COLUMNS=40 tool --help                              # las descripciones se parten o se apilan, no se cortan
+COLUMNS=120 tool --help | awk 'length > 80' | wc -l  # tiene que dar 0: la tabla no pasa de 80 columnas
 tool </dev/null >out.txt 2>err.txt; echo "exit=$?"; cat err.txt
 tool --nope </dev/null; echo "exit=$?"
 tool --name demo --runtime go </dev/null | LC_ALL=C grep -c "$(printf '\033')"   # tiene que dar 0

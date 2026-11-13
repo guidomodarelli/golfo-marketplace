@@ -16,7 +16,7 @@ const FLAG_OPTIONS = {
   version: { type: 'boolean', short: 'V' },
   'no-input': { type: 'boolean' },
   force: { type: 'boolean', short: 'f' },
-  name: { type: 'string' },
+  name: { type: 'string', short: 'n' },
   runtime: { type: 'string' },
   features: { type: 'string', multiple: true },
 };
@@ -38,6 +38,72 @@ function parseFlags(argv) {
 ```js
 const features = flags.features?.flatMap((value) => value.split(',')).filter((value) => value && value !== NONE_VALUE);
 ```
+
+## Ayuda
+
+Con `parseArgs` la ayuda se escribe a mano. Este helper arma cada sección en dos columnas, con comandos y flags en colores distintos, y la apila si la terminal es angosta. `styleText` con `stream` omite los escapes cuando stdout no es una terminal o hay `NO_COLOR`; necesita Node 22.13 o posterior. Mide con `.length`: alcanza para nombres ASCII y descripciones en español, no para emojis ni texto de doble ancho.
+
+```js
+import { styleText } from 'node:util';
+
+// El carácter del proyecto: reemplazar estos valores, solo muestran la forma.
+const HELP_STYLES = { title: 'bold', command: 'cyan', flag: 'yellow', value: 'dim' };
+const HELP_INDENT = 2;
+const HELP_GAP = 2;
+const MIN_DESCRIPTION_COLUMNS = 24;
+const MAXIMUM_HELP_COLUMNS = 80; // la tabla nunca es más ancha, aunque la terminal sí lo sea
+
+const paint = (role, text) => styleText(HELP_STYLES[role], text, { stream: process.stdout });
+const terminalColumns = () =>
+  Math.min(process.stdout.columns || Number(process.env.COLUMNS) || MAXIMUM_HELP_COLUMNS, MAXIMUM_HELP_COLUMNS);
+
+function wrapWords(text, width) {
+  const lines = [];
+  let line = '';
+  for (const word of text.split(' ')) {
+    if (line && line.length + 1 + word.length > width) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = line ? `${line} ${word}` : word;
+    }
+  }
+  return [...lines, line];
+}
+
+/** Una sección de dos columnas. term: [[rol | null, texto], ...]; el rol pinta cada parte del nombre. */
+function renderHelpSection(title, rows, columns = terminalColumns()) {
+  const terms = rows.map(({ term, description }) => ({
+    plain: term.map(([, text]) => text).join(''),
+    painted: term.map(([role, text]) => (role ? paint(role, text) : text)).join(''),
+    description,
+  }));
+  const nameWidth = Math.max(...terms.map(({ plain }) => plain.length));
+  const descriptionColumn = HELP_INDENT + nameWidth + HELP_GAP;
+  const descriptionWidth = columns - 1 - descriptionColumn;
+  const indent = ' '.repeat(HELP_INDENT);
+  const lines = [paint('title', title)];
+  for (const { plain, painted, description } of terms) {
+    if (descriptionWidth < MIN_DESCRIPTION_COLUMNS) {
+      lines.push(indent + painted, ...wrapWords(description, columns - 1 - 2 * HELP_INDENT).map((line) => indent + indent + line));
+      continue;
+    }
+    const [first, ...rest] = wrapWords(description, descriptionWidth);
+    lines.push(`${indent}${painted}${' '.repeat(descriptionColumn - HELP_INDENT - plain.length)}${first}`);
+    lines.push(...rest.map((line) => ' '.repeat(descriptionColumn) + line));
+  }
+  return lines.join('\n');
+}
+
+renderHelpSection('Opciones', [
+  { term: [['flag', '-n, --name'], [null, ' '], ['value', '<valor>']], description: 'Nombre del proyecto. Obligatorio sin terminal.' },
+  { term: [['flag', '-h, --help']], description: 'Muestra esta ayuda.' },
+]);
+```
+
+La línea de uso y los ejemplos se pintan con el mismo `paint`: `${paint('command', 'tool init')} ${paint('flag', '--name')} ${paint('value', '<valor>')}`.
+
+Con `commander` 13 o posterior, `configureHelp` acepta `styleCommandText`, `styleSubcommandText`, `styleOptionText`, `styleArgumentText` y `styleTitle`, y ya arma las dos columnas: pintar ahí con los mismos roles.
 
 ## Se puede preguntar
 
@@ -120,6 +186,18 @@ function quoteForShell(value) {
   // En Windows una barra solo se duplica antes de una comilla o al final del argumento.
   const escaped = value.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\+)$/, '$1$1');
   return `"${escaped}"`;
+}
+
+const TERMINAL_ICON = '\u{F120}'; // nf-fa-terminal
+const TERMINAL_ICON_FALLBACK = '$';
+const COMMAND_INDENT = '  ';
+
+/** Al final de una corrida con preguntas: el ícono va en el título y el comando solo, para copiarlo. */
+function printEquivalentCommand(toolName, commandArguments) {
+  const usesNerdFont = Boolean(process.stderr.isTTY) && process.env.NERD_FONT !== '0';
+  const icon = usesNerdFont ? TERMINAL_ICON : TERMINAL_ICON_FALLBACK;
+  const command = [toolName, ...commandArguments.map(quoteForShell)].join(' ');
+  process.stderr.write(`\n${icon} Para repetirlo sin preguntas:\n${COMMAND_INDENT}${command}\n`);
 }
 ```
 

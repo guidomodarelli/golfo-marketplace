@@ -858,17 +858,17 @@
         },
         {
           "type": "regex",
-          "pattern": "reviewTimeoutRetries[^.\\n]{0,40}(1|uno)",
+          "pattern": "reviewTimeoutRetries[^.]{0,40}(1|uno)",
           "description": "Registra el reintento en `reviewTimeoutRetries`"
         },
         {
           "type": "regex",
-          "pattern": "reviewRequestedAt[^.\\n]{0,80}(ahora|now|reinici|actualiz|nuev)|(reinici|arranc|resete)[a-z]*[^.\\n]{0,40}(reloj|timer|contador de tiempo)",
+          "pattern": "reviewRequestedAt[^.]{0,80}(ahora|now|reinici|actualiz|nuev)|(reinici|arranc|resete)[a-z]*[^.]{0,40}(reloj|timer|contador de tiempo)",
           "description": "Reinicia el reloj de la ronda"
         },
         {
           "type": "regex",
-          "pattern": "(no (sum|increment|toc|cambi|consum|avanz)[a-z]*[^.\\n]{0,60}(reviewRounds|tope|ronda))|reviewRounds[^.\\n]{0,60}(queda|sigue|se mantiene|mantengo|dejo|sin cambi)[^.\\n]{0,20}(en )?1",
+          "pattern": "(no (sum|increment|toc|cambi|consum|avanz)[a-z]*[^.]{0,60}(reviewRounds|tope|ronda))|reviewRounds[^.]{0,60}(queda|sigue|se mantiene|mantengo|dejo|sin cambi)[^.]{0,20}(en )?1",
           "description": "No consume el tope de rondas"
         },
         {
@@ -893,12 +893,12 @@
       "assertions": [
         {
           "type": "regex",
-          "pattern": "(no|todav[ií]a no|a[uú]n no)[^.\\n]{0,40}(venc|expir)|20 (min|minutos)[^.\\n]{0,80}45|menos de 45|faltan[^.\\n]{0,20}25",
+          "pattern": "(no|todav[ií]a no|a[uú]n no)[^.]{0,40}(venc|expir)|20 (min|minutos)[^.]{0,80}45|menos de 45|faltan[^.]{0,20}25",
           "description": "Reconoce que la ronda todavía no venció"
         },
         {
           "type": "regex",
-          "pattern": "(no|sin|nunca) (repost|re-?poste|vuelvo a postear|poste|pido|public|dispar)[a-záéíóú]*[^.\\n]{0,60}(@codex review|review)",
+          "pattern": "(no|sin|nunca) (repost|re-?poste|vuelvo a postear|poste|pido|public|dispar)[a-záéíóú]*[^.]{0,60}(@codex review|review)",
           "description": "No repostea `@codex review`"
         },
         {
@@ -915,7 +915,7 @@
       "assertions": [
         {
           "type": "regex",
-          "pattern": "no public[óo][^.\\n]{0,40}review|PushNotification",
+          "pattern": "no public[óo][^.]{0,40}review|PushNotification",
           "description": "Avisa que Codex no publicó la review"
         },
         {
@@ -925,7 +925,7 @@
         },
         {
           "type": "regex",
-          "pattern": "reviewTimedOut[^.\\n]{0,20}true",
+          "pattern": "reviewTimedOut[^.]{0,20}true",
           "description": "Marca `reviewTimedOut: true` para que relanzar dé otro reintento"
         },
         {
@@ -956,12 +956,12 @@
       "assertions": [
         {
           "type": "regex",
-          "pattern": "reviewTimedOut[^.\\n]{0,40}false",
+          "pattern": "reviewTimedOut[^.]{0,40}false",
           "description": "Vuelve `reviewTimedOut` a `false`"
         },
         {
           "type": "regex",
-          "pattern": "reviewTimeoutRetries[^.\\n]{0,40}0",
+          "pattern": "reviewTimeoutRetries[^.]{0,40}0",
           "description": "Vuelve `reviewTimeoutRetries` a 0"
         },
         {
@@ -976,7 +976,7 @@
         },
         {
           "type": "regex",
-          "pattern": "(no (sum|increment|toc|cambi|consum)[a-z]*[^.\\n]{0,60}(reviewRounds|tope|ronda))|reviewRounds[^.\\n]{0,60}(queda|sigue|se mantiene|mantengo|dejo)[^.\\n]{0,20}(en )?1",
+          "pattern": "(no (sum|increment|toc|cambi|consum)[a-z]*[^.]{0,60}(reviewRounds|tope|ronda))|reviewRounds[^.]{0,60}(queda|sigue|se mantiene|mantengo|dejo)[^.]{0,20}(en )?1",
           "description": "No suma a `reviewRounds`"
         }
       ]
@@ -998,7 +998,7 @@
         },
         {
           "type": "regex",
-          "pattern": "reviewTimeoutRetries[^.\\n]{0,40}(1|uno)",
+          "pattern": "reviewTimeoutRetries[^.]{0,40}(1|uno)",
           "description": "Registra el reintento"
         },
         {

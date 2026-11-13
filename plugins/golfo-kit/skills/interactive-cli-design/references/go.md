@@ -28,6 +28,7 @@ root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
 - Cobra no fija el exit code: se decide en `main`. Con `SetFlagErrorFunc`, los errores de flags se marcan como de uso. Los errores de `Args` no pasan por ahí: `cobra.NoArgs` solo sale con 1, por eso se envuelve.
 - `Version` agrega `--version` y le asigna `-v` si está libre. Para usar `-V`, declarar antes un flag propio llamado `version`.
 - `SilenceUsage` evita volcar toda la ayuda ante cada error.
+- **Ayuda.** La plantilla de cobra ya alinea comandos en dos columnas con `rpad`, pero no pinta, y las flags llegan como un bloque ya formateado (`FlagUsages`). Para cumplir el formato del `SKILL.md`, registrar funciones con `cobra.AddTemplateFunc` que pinten comandos y flags, armar las filas de flags con `command.LocalFlags().VisitAll`, y pasar la plantilla con `SetUsageTemplate`. Partir las descripciones a 80 columnas como máximo, o al ancho de la terminal si es menor. Pintar solo si `term.IsTerminal(int(os.Stdout.Fd()))` (de `golang.org/x/term`), sin `NO_COLOR` y con `TERM` distinto de `dumb`. Esto no se probó en una pseudoconsola: verificarlo con los casos de [verification.md](verification.md).
 
 ```go
 func main() {

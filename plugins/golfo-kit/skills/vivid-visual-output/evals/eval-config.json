@@ -165,6 +165,28 @@
         { "type": "regex", "pattern": "name=.viewport", "description": "Funciona en mobile" },
         { "type": "regex", "pattern": "@media|minmax|clamp[(]", "description": "Se adapta al ancho" }
       ]
+    },
+    {
+      "id": "cli-header-card",
+      "description": "Un script nuevo abre con la tarjeta de encabezado: nombre, versión arriba a la derecha, divisor dentro de la celda y descripción, sin pasar de 80 columnas.",
+      "input": "Escribí el script bash `backup-db`, versión 1.4.0, que hace un dump de PostgreSQL, lo comprime y lo sube a un bucket. Tiene que mostrar los pasos, un spinner mientras espera y un resumen al final. Devolvé el archivo completo.",
+      "assertions": [
+        { "type": "regex", "pattern": "v?1[.]4[.]0", "description": "Muestra la versión en el encabezado" },
+        { "type": "regex", "pattern": "╭|┌|render_box|\\+-{3,}", "description": "Dibuja el encabezado como recuadro" },
+        { "type": "regex", "pattern": "│ ─|─{3,}.{0,4}│|divisor|divider", "description": "Separa nombre y descripción con un divisor" },
+        { "type": "regex", "pattern": "\\b80\\b", "description": "Limita el recuadro a 80 columnas" },
+        { "type": "regex", "pattern": ">&2", "description": "La tarjeta y los pasos van a stderr" }
+      ]
+    },
+    {
+      "id": "emojis-only-when-obvious",
+      "description": "Suma emojis solo a las opciones cuyo emoji es obvio, y nunca a un grupo a medias.",
+      "input": "Mi CLI en Node tiene dos menús: uno para elegir el sistema operativo destino (macOS, Linux, Windows) y otro para elegir la estrategia de merge (rebase, squash, merge commit). Los resultados se muestran en una tabla. ¿Les agrego emojis? Implementalo.",
+      "assertions": [
+        { "type": "regex", "pattern": "🐧|🍎|🪟", "description": "Pone emojis a los sistemas operativos" },
+        { "type": "regex", "pattern": "(estrategia|rebase|squash|merge).{0,160}(sin emoji|ningún emoji|no (lleva|llevan|agrego|agregar|sumo|sumar|conviene|tiene|tienen))|(sin emoji|ningún emoji).{0,160}(estrategia|rebase|squash|merge)", "description": "Deja sin emoji el grupo abstracto" },
+        { "type": "regex", "pattern": "(emoji|🐧).{0,120}(dos celdas|2 celdas|two cells|double.width|ancho|visibleWidth|width)|(dos celdas|2 celdas|two cells).{0,80}emoji", "description": "Mide el emoji como dos celdas al alinear" }
+      ]
     }
   ]
 }
