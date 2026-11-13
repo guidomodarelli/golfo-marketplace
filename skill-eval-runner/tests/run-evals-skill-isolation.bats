@@ -38,6 +38,7 @@ case "$prompt" in
       [ -e "$view/../sibling-skill/../$skill_dir_name/evals" ] && echo "sibling_traversal=visible" || echo "sibling_traversal=hidden"
       [ -e "$view/../../shared/../skills/$skill_dir_name/evals" ] && echo "parent_traversal=visible" || echo "parent_traversal=hidden"
       [ -e "$view/../held-out-eval-config.json" ] && echo "adjacent_config=visible" || echo "adjacent_config=hidden"
+      [ -e "$view/../unrelated-tree" ] && echo "unrelated_tree=visible" || echo "unrelated_tree=hidden"
     } >> "$VIEW_LOG"
     response_text='ok'
     ;;
@@ -52,7 +53,7 @@ CLAUDE_STUB
 # a sibling skill, like a real plugin layout.
 nest_skill_in_plugin_layout() {
     local plugin_root="${TEST_ROOT}/plugin"
-    mkdir -p "${plugin_root}/skills" "${plugin_root}/shared" "${plugin_root}/skills/sibling-skill"
+    mkdir -p "${plugin_root}/skills" "${plugin_root}/shared" "${plugin_root}/skills/sibling-skill" "${plugin_root}/.claude-plugin"
     mv "${SKILL_DIR}" "${plugin_root}/skills/${SKILL_NAME}"
     SKILL_DIR="${plugin_root}/skills/${SKILL_NAME}"
     mkdir -p "${SKILL_DIR}/references"
@@ -117,6 +118,18 @@ run_with_view_log_env() {
     printf '%s\n' "$output" | jq -e 'select(.event == "case" and .id == "adjacent-held-out-case")' > /dev/null
     grep -q '^adjacent_config=hidden$' "${VIEW_LOG}"
     [ -f "${held_out}" ]
+}
+
+@test "a skill outside any plugin or repository copies only itself" {
+    mkdir -p "${TEST_ROOT}/unrelated-tree"
+    echo "unrelated content" > "${TEST_ROOT}/unrelated-tree/file.txt"
+
+    run_with_view_log_env "${SKILL_DIR}"
+
+    [ "$status" -eq 0 ]
+    grep -q '^skill_md=yes$' "${VIEW_LOG}"
+    grep -q '^evals=hidden$' "${VIEW_LOG}"
+    grep -q '^unrelated_tree=hidden$' "${VIEW_LOG}"
 }
 
 @test "the isolated view is removed after the run" {

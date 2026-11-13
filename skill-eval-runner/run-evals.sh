@@ -45,6 +45,9 @@ SUPPORTED_ASSERTION_TYPES_JSON='["contains","contains_any","not_contains_any","r
 # Entries never copied into the isolated skill view: VCS data, installed dependencies and
 # previous eval results are heavy and are not skill content.
 VIEW_EXCLUDED_ENTRY_NAMES=(".git" "node_modules" ".eval-results")
+# Markers of the plugin or repository root that bounds the isolated skill view: the skill's
+# siblings and its parent's siblings are copied only when they sit inside that root.
+VIEW_BOUNDARY_MARKERS=(".claude-plugin" ".codex-plugin" ".git")
 GOLFO_MARKETPLACE_EVAL_MODEL="${GOLFO_MARKETPLACE_EVAL_MODEL:-}"
 GOLFO_MARKETPLACE_EVAL_REASONING_EFFORT="${GOLFO_MARKETPLACE_EVAL_REASONING_EFFORT:-}"
 # Machine-readable JSONL is the default so CI, tests, and real eval runs are
@@ -325,11 +328,13 @@ preflight_eval_provider() {
     return 0
 }
 
-# Copies every entry of a directory except `skipped_name` and VIEW_EXCLUDED_ENTRY_NAMES.
+# Copies every entry of a directory except `skipped_name`, VIEW_EXCLUDED_ENTRY_NAMES and any
+# entry that contains `view_root` (copying it would copy the view into itself).
 copy_view_entries() {
     local source_dir="$1"
     local target_dir="$2"
     local skipped_name="$3"
+    local view_root="$4"
     local entry entry_name excluded_name
     for entry in "$source_dir"/* "$source_dir"/.[!.]*; do
         [ -e "$entry" ] || [ -L "$entry" ] || continue
@@ -338,14 +343,46 @@ copy_view_entries() {
         for excluded_name in "${VIEW_EXCLUDED_ENTRY_NAMES[@]}"; do
             [ "$entry_name" = "$excluded_name" ] && continue 2
         done
+        case "$view_root/" in
+            "$entry"/*) continue ;;
+        esac
         cp -R "$entry" "$target_dir/"
     done
+}
+
+# Prints the nearest ancestor of the skill that holds a VIEW_BOUNDARY_MARKERS entry (the plugin
+# or repository root), or nothing when the skill lives outside any plugin or repository.
+find_skill_view_boundary() {
+    local directory marker
+    directory=$(dirname "$1")
+    while [ "$directory" != "/" ] && [ "$directory" != "." ]; do
+        for marker in "${VIEW_BOUNDARY_MARKERS[@]}"; do
+            if [ -e "$directory/$marker" ]; then
+                echo "$directory"
+                return 0
+            fi
+        done
+        directory=$(dirname "$directory")
+    done
+}
+
+# True when `directory` is `boundary` or sits inside it.
+is_within_view_boundary() {
+    local directory="$1"
+    local boundary="$2"
+    [ -n "$boundary" ] || return 1
+    case "$directory/" in
+        "$boundary"/*) return 0 ;;
+    esac
+    return 1
 }
 
 # Builds a read-only view of the skill for the agent under evaluation: a copy of the skill
 # directory without its top-level evals/ (assertions must stay hidden from the agent), plus
 # copies of the skill's siblings and its parent's siblings so relative references such as
-# ../other-skill/... or ../../references/... keep resolving. Everything is copied, never
+# ../other-skill/... or ../../references/... keep resolving. Those ancestors are copied only
+# inside the skill's plugin or repository root (find_skill_view_boundary), so a standalone skill
+# under /tmp or the home directory never copies unrelated trees. Everything is copied, never
 # symlinked: a link would resolve `..` inside the original tree and expose the skill's evals/
 # again (for example $view/../sibling-skill/../<skill>/evals). An explicit eval config that
 # lives inside the copied tree is removed from the view too. Prints the view path.
@@ -353,25 +390,32 @@ create_isolated_skill_view() {
     local source_path="$1"
     local view_root="$2"
     local config_file="${3:-}"
-    local skill_dir_name parent_path parent_name grandparent_path view_path copy_root
+    local skill_dir_name parent_path parent_name grandparent_path view_path boundary
+    local copy_root mirror_root
+    view_root=$(cd "$view_root" && pwd -P)
     skill_dir_name=$(basename "$source_path")
     parent_path=$(dirname "$source_path")
     parent_name=$(basename "$parent_path")
     grandparent_path=$(dirname "$parent_path")
     view_path="$view_root/$parent_name/$skill_dir_name"
     mkdir -p "$view_path"
+    boundary=$(find_skill_view_boundary "$source_path")
 
-    copy_view_entries "$source_path" "$view_path" "evals"
-    copy_view_entries "$parent_path" "$view_root/$parent_name" "$skill_dir_name"
-    copy_root="$parent_path"
-    if [ "$grandparent_path" != "/" ]; then
-        copy_view_entries "$grandparent_path" "$view_root" "$parent_name"
-        copy_root="$grandparent_path"
-    else
-        view_root="$view_root/$parent_name"
+    copy_view_entries "$source_path" "$view_path" "evals" "$view_root"
+    copy_root="$source_path"
+    mirror_root="$view_path"
+    if is_within_view_boundary "$parent_path" "$boundary"; then
+        copy_view_entries "$parent_path" "$view_root/$parent_name" "$skill_dir_name" "$view_root"
+        copy_root="$parent_path"
+        mirror_root="$view_root/$parent_name"
+        if [ "$grandparent_path" != "/" ] && is_within_view_boundary "$grandparent_path" "$boundary"; then
+            copy_view_entries "$grandparent_path" "$view_root" "$parent_name" "$view_root"
+            copy_root="$grandparent_path"
+            mirror_root="$view_root"
+        fi
     fi
     case "$config_file" in
-        "$copy_root"/*) rm -f "$view_root/${config_file#"$copy_root"/}" ;;
+        "$copy_root"/*) rm -f "$mirror_root/${config_file#"$copy_root"/}" ;;
     esac
     echo "$view_path"
 }
