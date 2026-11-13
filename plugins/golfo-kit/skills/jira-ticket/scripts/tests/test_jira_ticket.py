@@ -382,6 +382,28 @@ def test_backlink_fallbacks_first_heading_then_prepend():
     assert jira_ticket.apply_backlink("Cuerpo sin títulos\n", TARGET_KEY, SITE_URL).splitlines()[0] == link
 
 
+def test_backlink_ignores_headings_and_backlinks_inside_code_fences():
+    link = jira_ticket.backlink_line(TARGET_KEY, SITE_URL)
+    fenced_example = ["```markdown", "## Ejemplo", link, "```"]
+    body = "\n".join(["Intro", *fenced_example, "", "## Real", "Cuerpo"]) + "\n"
+    once = jira_ticket.apply_backlink(body, TARGET_KEY, SITE_URL)
+    lines = once.splitlines()
+    assert lines[1:5] == fenced_example
+    assert lines[lines.index("## Real") + 1 : lines.index("## Real") + 3] == ["", link]
+    assert jira_ticket.apply_backlink(once, TARGET_KEY, SITE_URL) == once
+    assert jira_ticket.verify_backlink(once, TARGET_KEY, SITE_URL) == {"key": TARGET_KEY, "occurrences": 1, "canonical": True}
+    assert jira_ticket.verify_backlink(body, TARGET_KEY, SITE_URL)["occurrences"] == 0
+
+
+def test_backlink_prepends_when_every_heading_is_fenced():
+    link = jira_ticket.backlink_line(TARGET_KEY, SITE_URL)
+    body = "Intro\n~~~~\n## Ejemplo\n~~~\n~~~~\n"
+    once = jira_ticket.apply_backlink(body, TARGET_KEY, SITE_URL)
+    assert once == f"{link}\n\n{body}"
+    assert jira_ticket.apply_backlink(once, TARGET_KEY, SITE_URL) == once
+    assert jira_ticket.verify_backlink(once, TARGET_KEY, SITE_URL)["canonical"] is True
+
+
 def test_backlink_rejects_invalid_key():
     with pytest.raises(jira_ticket.JiraTicketError):
         jira_ticket.backlink_line("acme-1; echo", SITE_URL)

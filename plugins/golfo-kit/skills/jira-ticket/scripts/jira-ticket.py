@@ -77,6 +77,8 @@ BACKLINK_PREFIX = "🎫 Jira:"
 DESCRIPTION_HEADING = "## 📝 Descripción"
 LEGACY_REFERENCE_PREFIX = "> **Referencia:**"
 ATX_HEADING_REGEX = re.compile(r"^#{1,6} ")
+CODE_FENCE_OPEN_REGEX = re.compile(r"^ {0,3}(?P<fence>`{3,}|~{3,})")
+CODE_FENCE_CLOSE_REGEX = re.compile(r"^ {0,3}(?P<fence>`{3,}|~{3,})\s*$")
 ISSUE_KEY_REGEX = re.compile(r"^[A-Z][A-Z0-9]+-[0-9]+$")
 EMBEDDED_ISSUE_KEY_REGEX = re.compile(r"(?<![A-Z0-9-])[A-Z][A-Z0-9]+-[0-9]+(?![0-9])")
 PR_NUMBER_REGEX = re.compile(r"^[0-9]+$")
@@ -407,16 +409,42 @@ def _is_same_ticket_line(line: str, key: str) -> bool:
     return referenced_keys == {key}
 
 
+def _fenced_line_flags(lines: list[str]) -> list[bool]:
+    """Marca las líneas dentro de bloques de código fenced (delimitadores incluidos); un fence sin cerrar llega al final."""
+    flags: list[bool] = []
+    open_fence: str | None = None
+    for line in lines:
+        if open_fence is None:
+            opening = CODE_FENCE_OPEN_REGEX.match(line)
+            if opening and not (opening.group("fence").startswith("`") and "`" in line[opening.end():]):
+                open_fence = opening.group("fence")
+            flags.append(open_fence is not None)
+            continue
+        flags.append(True)
+        closing = CODE_FENCE_CLOSE_REGEX.match(line)
+        if closing and closing.group("fence")[0] == open_fence[0] and len(closing.group("fence")) >= len(open_fence):
+            open_fence = None
+    return flags
+
+
 def apply_backlink(body: str, key: str, site_url: str) -> str:
-    """Inserta el backlink canónico una sola vez; idempotente y sin tocar el resto del body."""
+    """Inserta el backlink canónico una sola vez fuera de bloques de código; idempotente y sin tocar el resto del body."""
     link = backlink_line(key, site_url)
     newline = "\r\n" if "\r\n" in body else "\n"
     had_final_newline = body.endswith(("\n", "\r\n"))
-    lines = [line for line in body.splitlines() if not _is_same_ticket_line(line, key)]
-    if DESCRIPTION_HEADING in lines:
-        insert_at: int | None = lines.index(DESCRIPTION_HEADING) + 1
+    original_lines = body.splitlines()
+    kept_lines = [
+        (line, is_fenced)
+        for line, is_fenced in zip(original_lines, _fenced_line_flags(original_lines))
+        if is_fenced or not _is_same_ticket_line(line, key)
+    ]
+    lines = [line for line, _ in kept_lines]
+    heading_indexes = [index for index, (line, is_fenced) in enumerate(kept_lines) if not is_fenced and ATX_HEADING_REGEX.match(line)]
+    description_index = next((index for index in heading_indexes if lines[index] == DESCRIPTION_HEADING), None)
+    if description_index is not None:
+        insert_at: int | None = description_index + 1
     else:
-        insert_at = next((index + 1 for index, line in enumerate(lines) if ATX_HEADING_REGEX.match(line)), None)
+        insert_at = heading_indexes[0] + 1 if heading_indexes else None
     head, rest = (lines[:insert_at], lines[insert_at:]) if insert_at is not None else ([], lines)
     while rest and not rest[0].strip():
         rest = rest[1:]
@@ -428,7 +456,8 @@ def apply_backlink(body: str, key: str, site_url: str) -> str:
 
 def verify_backlink(body: str, key: str, site_url: str) -> dict[str, Any]:
     link = backlink_line(key, site_url)
-    count = body.splitlines().count(link)
+    lines = body.splitlines()
+    count = sum(1 for line, is_fenced in zip(lines, _fenced_line_flags(lines)) if not is_fenced and line == link)
     return {"key": key, "occurrences": count, "canonical": count == 1 and apply_backlink(body, key, site_url) == body}
 
 
