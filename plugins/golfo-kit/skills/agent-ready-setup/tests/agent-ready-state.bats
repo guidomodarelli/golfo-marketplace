@@ -908,4 +908,9 @@ PY
   template_total="$(context_field rulesLoadedAtStart.bytes --profiles react)"
   python3 -c 'open(".agents/rules/react-style.md", "w").write("# Local\n" + "y" * 50000 + "\n")'
   [ "$(context_field rulesLoadedAtStart.bytes --profiles react)" -gt "$((template_total + 30000))" ]
+
+  # Applied with the conflict, then dropped: the file stays, now as the project's own rule.
+  run_bootstrap_with "$skill_dir" --stack react
+  [ "$status" -eq 0 ]
+  [[ "$(context_field rulesLoadedAtStart.largest --profiles node)" == *"'profile': 'project'"* ]]
 }

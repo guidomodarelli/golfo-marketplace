@@ -3129,7 +3129,10 @@ def context_budget(project_root, skill_dir, catalog, plan, configuration):
     managed or the project's own; a rule the apply retires does not count. MCP servers are the ones the
     apply registers: the browser's when its tools are enabled, and the pack servers the policy allows.
     """
-    managed_destinations = {entry["destination"] for entry in plan["entries"]}
+    # The rules the apply writes or deletes. A dropped or retire-conflict entry leaves its file, which
+    # stays as the project's own.
+    managed_destinations = {entry["destination"] for entry in plan["entries"]
+                            if entry["sha256"] or entry["action"] == ACTION_RETIRE}
     rules_by_profile, rule_files = {}, 0
     for entry in plan["entries"]:
         destination = entry["destination"]
@@ -3223,22 +3226,13 @@ def projected_agents_md(project_root, skill_dir, catalog, plan, project_rules):
 def current_instructions(project_root, skill_dir):
     """The instructions the apply starts AGENTS.md from, or None for a new one.
 
-    Like instruction-normalization.sh: AGENTS.md when it exists, else a root CLAUDE.md that is not the
-    proxy, which the apply moves to AGENTS.md. Symlinks are never followed.
+    The file conflicts_review.project_instructions finds, the same discovery as the instruction
+    normalization: AGENTS.md, or a root CLAUDE.md (or its only case variant) that is not the proxy.
     """
-    agents_path = os.path.join(project_root, "AGENTS.md")
-    claude_path = os.path.join(project_root, "CLAUDE.md")
-    proxy_path = os.path.join(skill_dir, CLAUDE_PROXY_RELATIVE_PATH)
-    if os.path.lexists(agents_path):
-        source = agents_path if os.path.isfile(agents_path) and not is_link(agents_path) else None
-    elif os.path.isfile(claude_path) and not is_link(claude_path) and (
-            not os.path.isfile(proxy_path) or sha256_of_file(claude_path) != sha256_of_file(proxy_path)):
-        source = claude_path
-    else:
-        source = None
-    if source is None:
+    name = conflicts_review.project_instructions(project_root, skill_dir)
+    if name is None:
         return None
-    with open(source, encoding="utf-8", errors="replace") as instructions_file:
+    with open(os.path.join(project_root, name), encoding="utf-8", errors="replace") as instructions_file:
         return instructions_file.read()
 
 
