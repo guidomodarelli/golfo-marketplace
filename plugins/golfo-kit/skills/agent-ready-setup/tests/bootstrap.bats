@@ -1657,6 +1657,7 @@ EOF
 
   mkdir -p .agents/hooks
   cp "$hook" .agents/hooks/sync-marketplace.sh
+  cp "${hook%/*}/agent-ready-skill-source.sh" .agents/hooks/
 
   MARKETPLACE_INVOCATION_LOG="$invocation_log" PATH="$fake_bin:$PATH" \
     run bash .agents/hooks/sync-marketplace.sh
@@ -2408,6 +2409,7 @@ EOF
   printf '%s\n' '#!/bin/bash' > "$source_dir/scripts/normalize-instructions.sh"
   cp "$skill_dir/assets/common/hooks/sync-marketplace.sh" \
     "$source_dir/assets/common/hooks/sync-marketplace.sh"
+  cp "$skill_dir/assets/common/hooks/agent-ready-skill-source.sh" "$source_dir/assets/common/hooks/"
   cp "$skill_dir/scripts/asset-sync-common.sh" "$source_dir/scripts/asset-sync-common.sh"
   # Minimal sources still need the profile catalog, the configuration schemas and the state helper the hook resolves.
   cp "$skill_dir/scripts/agent-ready-state.py" "$source_dir/scripts/agent-ready-state.py"
@@ -2534,6 +2536,7 @@ EOF
   printf '%s\n' '#!/bin/bash' > "$source_dir/scripts/apply-managed-block.sh"
   cp "$skill_dir/assets/common/hooks/sync-marketplace.sh" \
     "$source_dir/assets/common/hooks/sync-marketplace.sh"
+  cp "$skill_dir/assets/common/hooks/agent-ready-skill-source.sh" "$source_dir/assets/common/hooks/"
   cp "$skill_dir/scripts/asset-sync-common.sh" "$source_dir/scripts/asset-sync-common.sh"
   # Minimal sources still need the profile catalog, the configuration schemas and the state helper the hook resolves.
   cp "$skill_dir/scripts/agent-ready-state.py" "$source_dir/scripts/agent-ready-state.py"
@@ -2564,6 +2567,7 @@ EOF
   mkdir -p .agents/hooks
   cp -R "$skill_dir"/. "$source_dir"/
   cp "$skill_dir/assets/common/hooks/sync-marketplace.sh" .agents/hooks/sync-marketplace.sh
+  cp "$skill_dir/assets/common/hooks/agent-ready-skill-source.sh" .agents/hooks/
   printf '%s\n' '# stale target marker' >> .agents/hooks/sync-marketplace.sh
 
   AGENT_READY_SETUP_SKILL_DIR="$source_dir" PATH="$test_root/bin:$PATH" \

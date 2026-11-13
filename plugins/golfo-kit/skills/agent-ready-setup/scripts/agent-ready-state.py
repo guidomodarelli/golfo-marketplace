@@ -25,6 +25,7 @@ import difflib
 import importlib.util
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -222,6 +223,9 @@ CONFLICTS_STATUS = 6
 CONFLICTS_MOMENT_SESSION_START = "session-start"
 CONFLICTS_MOMENT_EDIT = "edit"
 CONFLICTS_HOOK_PREFIX = "[conflicts]"
+# Besides the files of the repository facts, what the structural checks read: the instructions, the
+# harness directories (rules, skills, settings, hooks), MCP and the CI workflows.
+CONFLICT_INPUT_PATTERN = re.compile(r"^(AGENTS\.md|CLAUDE\.md|\.mcp\.json|(\.agents|\.claude|\.codex|\.github/workflows)/.+)$")
 # plan formats that print only the conflicts, for agent-ready conflicts.
 CONFLICTS_FORMAT = "conflicts"
 CONFLICTS_JSON_FORMAT = "conflicts-json"
@@ -2616,6 +2620,13 @@ def selection_differences(lock, plan):
     return differences
 
 
+def conflict_inputs_changed(changed, skill_dir):
+    """True when an edited path, relative to the project, is one the structural checks read."""
+    facts = repo_facts.load_facts(skill_dir) if skill_dir else {}
+    return any(CONFLICT_INPUT_PATTERN.match(path) or repo_facts.is_signal_file(path, facts)
+               for path in (changed_path.replace(os.sep, "/") for changed_path in changed))
+
+
 def compute_status(project_root, skill_dir, conflicts_key=None):
     """Read-only state: manifest, checkout versus lock, source versus lock.
 
@@ -3652,6 +3663,8 @@ def command_status(arguments):
         # The hooks: only the structural conflicts, and nothing at all when there is none.
         key = (EDIT_CONFLICTS_ENABLED_KEY if arguments.conflicts_only == CONFLICTS_MOMENT_EDIT
                else SESSION_START_CONFLICTS_ENABLED_KEY)
+        if arguments.changed is not None and not conflict_inputs_changed(arguments.changed, arguments.skill_dir):
+            return 0
         lines = compute_status(arguments.project, arguments.skill_dir, key).get("conflicts") or []
         for line in lines:
             write_line(f"{CONFLICTS_HOOK_PREFIX} {line.strip()}")
@@ -4965,6 +4978,9 @@ def build_parser():
     status_parser.add_argument("--conflicts-only", choices=(CONFLICTS_MOMENT_SESSION_START, CONFLICTS_MOMENT_EDIT),
                                help="only the structural conflicts, for the session or the edit hook "
                                     "(conflicts.sessionStart.enabled, conflicts.onEdit.enabled)")
+    status_parser.add_argument("--changed", action="append", metavar="PATH",
+                               help="with --conflicts-only edit: the edited paths, relative to the project; "
+                                    "nothing is checked when none of them is an input of the checks")
     status_parser.add_argument("--check", action="store_true", help=f"exit {DRIFT_STATUS} when anything drifted")
     status_parser.add_argument("--format", choices=("text", "json"), default="text", help="json is for scripts")
     status_parser.set_defaults(handler=command_status)

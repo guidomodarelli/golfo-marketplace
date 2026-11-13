@@ -256,6 +256,7 @@ lock_value() {
 @test "an explicit --stack wins over the profiles chosen in the environment" {
   mkdir -p .agents/hooks
   cp "$skill_dir/assets/common/hooks/sync-marketplace.sh" .agents/hooks/sync-marketplace.sh
+  cp "$skill_dir/assets/common/hooks/agent-ready-skill-source.sh" .agents/hooks/
 
   run env PATH="$fake_bin:$PATH" AGENT_READY_SETUP_SKILL_DIR="$skill_dir" AGENT_READY_SETUP_MARKETPLACE_UPGRADED=1 \
     AGENT_READY_SETUP_PROFILES=node bash .agents/hooks/sync-marketplace.sh --provider claude --stack go
@@ -752,6 +753,7 @@ EOF
 @test "SessionStart detects Android modules before the generic Gradle stack" {
   mkdir -p .agents/hooks
   cp "$skill_dir/assets/common/hooks/sync-marketplace.sh" .agents/hooks/sync-marketplace.sh
+  cp "$skill_dir/assets/common/hooks/agent-ready-skill-source.sh" .agents/hooks/
   printf '%s\n' 'plugins {}' > build.gradle.kts
   mkdir -p feature/login/src/main
   printf '%s\n' '<manifest />' > feature/login/src/main/AndroidManifest.xml
@@ -765,6 +767,7 @@ EOF
 @test "SessionStart keeps a Gradle service without an Android manifest on the java stack" {
   mkdir -p .agents/hooks
   cp "$skill_dir/assets/common/hooks/sync-marketplace.sh" .agents/hooks/sync-marketplace.sh
+  cp "$skill_dir/assets/common/hooks/agent-ready-skill-source.sh" .agents/hooks/
   printf '%s\n' 'plugins {}' > build.gradle.kts
 
   run env PATH="$fake_bin:$PATH" AGENT_READY_SETUP_SKILL_DIR="$skill_dir" AGENT_READY_SETUP_MARKETPLACE_UPGRADED=1 \
@@ -776,6 +779,7 @@ EOF
 @test "SessionStart keeps a React Native project with an android directory on the react stack" {
   mkdir -p .agents/hooks
   cp "$skill_dir/assets/common/hooks/sync-marketplace.sh" .agents/hooks/sync-marketplace.sh
+  cp "$skill_dir/assets/common/hooks/agent-ready-skill-source.sh" .agents/hooks/
   printf '%s\n' '{"dependencies": {"react": "19.0.0"}}' > package.json
   mkdir -p android/app/src/main
   printf '%s\n' '<manifest />' > android/app/src/main/AndroidManifest.xml

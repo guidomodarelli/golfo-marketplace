@@ -27,14 +27,9 @@ RULES_DIRECTORY = "rules"
 SKILLS_DIRECTORY = "skills"
 SKILL_FILE_NAME = "SKILL.md"
 LOG_PREFIX = "[harness-check]"
-# The inputs of the structural conflicts (agent-ready status --conflicts-only): instructions, rules,
-# skills, settings, hooks, MCP, CI workflows and the repository files that the assumes of a rule read.
-CONFLICT_INPUT_PATTERN = re.compile(
-    r"(^|/)(AGENTS\.md|CLAUDE\.md|\.mcp\.json|package\.json|\.editorconfig|\.prettierrc[^/]*|prettier\.config\.[^/]+"
-    r"|package-lock\.json|npm-shrinkwrap\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lockb?"
-    r"|\.agents/.+|\.claude/.+|\.codex/.+|\.github/workflows/.+)$")
-SYNC_HOOK_FILE_NAME = "sync-marketplace.sh"
-EDIT_CHECK_TIMEOUT_SECONDS = 120
+# The structural conflicts after an edit: the engine decides which changed paths are their inputs.
+CONFLICTS_CHECK_FILE_NAME = "check-conflicts.sh"
+CONFLICTS_CHECK_TIMEOUT_SECONDS = 120
 # The provider runs through the Bash of the hook: it finds the CLIs the session finds, including
 # shims without an extension that native Windows process creation cannot start. Its arguments
 # travel in a NUL-separated file: on Windows, a native process that starts the MSYS bash.exe
@@ -301,24 +296,23 @@ def review_root(bash, cache_module, cache, project_root, root, changed, provider
 
 
 def report_structural_conflicts(bash, provider, project_root, changed):
-    """The structural conflicts after an edit of one of their inputs, through the session hook,
-    which resolves the engine and reads offline; nothing when there is none."""
-    if not any(CONFLICT_INPUT_PATTERN.search(path) for path in changed):
-        return
-    sync_hook = os.path.join(os.path.dirname(os.path.abspath(__file__)), SYNC_HOOK_FILE_NAME)
-    if not os.path.isfile(sync_hook):
-        return
+    """The structural conflicts after an edit, through check-conflicts.sh beside this hook, which
+    resolves the engine, reads offline and prints nothing when no changed path is an input."""
+    command = [bash, os.path.join(os.path.dirname(os.path.abspath(__file__)), CONFLICTS_CHECK_FILE_NAME),
+               "--provider", provider]
+    for path in sorted(changed):
+        command += ["--changed", path]
     try:
-        completed = subprocess.run([bash, sync_hook, "--provider", provider, "--edit-check"], cwd=project_root,
-                                   capture_output=True, encoding="utf-8", errors="replace",
-                                   timeout=EDIT_CHECK_TIMEOUT_SECONDS)
+        completed = subprocess.run(command, cwd=project_root, capture_output=True, encoding="utf-8",
+                                   errors="replace", timeout=CONFLICTS_CHECK_TIMEOUT_SECONDS)
     except (OSError, subprocess.TimeoutExpired) as caught_error:
         print(f"{LOG_PREFIX} WARNING: the structural conflicts could not be checked: {caught_error}", file=sys.stderr)
         return
-    # The session hook writes its report to stderr, where a session start shows it.
-    lines = [line for line in (completed.stdout + completed.stderr).splitlines() if line.startswith("[conflicts] ")]
-    for line in lines:
-        print(line)
+    if completed.stdout:
+        print(completed.stdout, end="")
+    if completed.returncode != 0:
+        print(f"{LOG_PREFIX} WARNING: the structural conflicts could not be checked: "
+              f"{completed.stderr.strip() or f'exit {completed.returncode}'}", file=sys.stderr)
 
 
 def main():

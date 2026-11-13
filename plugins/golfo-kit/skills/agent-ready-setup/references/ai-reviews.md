@@ -413,11 +413,12 @@ separado:
 - **Al iniciar sesión:** el hook de `SessionStart` (`sync-marketplace.sh`) los lista con el prefijo
   `[conflicts]`, cualquiera sea `updates.mode`. Los hallazgos de IA salen de la caché, en la línea
   `AI reviews:` de `status`.
-- **Al editar:** el hook de `PostToolUse` (`check-harness-consistency.sh`) los recalcula cuando la
-  edición toca una de sus entradas: `AGENTS.md`, `CLAUDE.md`, lo que hay bajo `.agents/`, `.claude/`
-  y `.codex/`, `.mcp.json`, `.github/workflows/` y los archivos que leen los `assumes` (`package.json`,
-  lockfiles, `.editorconfig`, Prettier). Corre sin red y sin la CLI del provider. La revisión de IA
-  de rules y skills sigue igual que antes (sección 1).
+- **Al editar:** el hook de `PostToolUse` (`check-harness-consistency.sh`) le pasa los archivos
+  editados a `.agents/hooks/check-conflicts.sh`, que los recalcula si alguno es una de sus entradas:
+  `AGENTS.md`, `CLAUDE.md`, lo que hay bajo `.agents/`, `.claude/` y `.codex/`, `.mcp.json`,
+  `.github/workflows/` y los archivos que leen los `assumes` (`package.json`, `.editorconfig`,
+  Prettier y los de `assets/repo-facts.json`, como lockfiles o `jest.config.js`). Corre sin red y sin
+  la CLI del provider. La revisión de IA de rules y skills sigue igual que antes (sección 1).
 
 ```text
 [conflicts] ! .agents/rules/ours.md (project) assumes test runner vitest, but the repository uses jest (package.json)

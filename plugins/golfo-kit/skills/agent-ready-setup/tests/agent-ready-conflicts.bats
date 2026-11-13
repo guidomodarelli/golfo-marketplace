@@ -436,6 +436,10 @@ sys.exit(0)
   run env PATH="$fake_bin:$PATH" AGENT_READY_SETUP_SKILL_DIR="$engine_copy"     bash .agents/hooks/check-harness-consistency.sh <<< '{"tool_name":"Edit","tool_input":{"file_path":"package.json"}}'
   [ "$status" -eq 0 ]
   [[ "$output" == *"$conflict"* ]]
+  # The files of the repository facts catalog are inputs too, such as a test runner config.
+  run env PATH="$fake_bin:$PATH" AGENT_READY_SETUP_SKILL_DIR="$engine_copy"     bash .agents/hooks/check-harness-consistency.sh <<< '{"tool_name":"Write","tool_input":{"file_path":"jest.config.js"}}'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"$conflict"* ]]
   # An edit of a file that no check reads looks at nothing.
   run env PATH="$fake_bin:$PATH" AGENT_READY_SETUP_SKILL_DIR="$engine_copy"     bash .agents/hooks/check-harness-consistency.sh <<< '{"tool_name":"Edit","tool_input":{"file_path":"src/index.js"}}'
   [ "$status" -eq 0 ]
