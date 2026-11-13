@@ -3725,6 +3725,32 @@
           "description": "Dice que el MCP declarado distinto falla antes de escribir"
         }
       ]
+    },
+    {
+      "id": "context-budget-in-plan",
+      "description": "Con muchos profiles, plan informa el contexto que suma la selección y el usuario ajusta el umbral.",
+      "input": "Sumé varios profiles y siento que el agente arranca cada sesión con demasiado contexto. ¿Cómo veo cuánto suma la selección antes de aplicar y qué hago si se pasa? Quiero que me avise también por las rules de Claude. No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "agent-ready plan",
+          "description": "Usa agent-ready plan para ver el presupuesto",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "conflicts.contextBudget.rulesBytes",
+          "description": "Nombra la clave del umbral de las rules"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "paths:",
+            "skills"
+          ],
+          "description": "Propone mover contenido a rules con paths: o a skills"
+        }
+      ]
     }
   ]
 }

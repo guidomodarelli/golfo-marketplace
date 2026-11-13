@@ -17,6 +17,29 @@
       "type": "boolean",
       "default": false,
       "x-security": { "strictness": [false, true] }
+    },
+    "contextBudget": {
+      "description": "Cuánto contexto suma la selección al iniciar una sesión: el AGENTS.md que lee Codex, las rules sin paths: que Claude carga siempre y los servidores MCP. plan lo informa y avisa al pasar un umbral.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "description": "plan informa el presupuesto de contexto y avisa al pasarlo. Apagado, no se calcula.",
+          "type": "boolean",
+          "default": true
+        },
+        "bytes": {
+          "description": "Umbral del aviso para AGENTS.md, en bytes. El default es project_doc_max_bytes de Codex, el tamaño en que corta los AGENTS.md combinados.",
+          "type": "integer",
+          "minimum": 1024,
+          "default": 32768
+        },
+        "rulesBytes": {
+          "description": "Umbral del aviso para las rules sin paths: que Claude carga al iniciar cada sesión, en bytes. Sin valor, plan solo informa su tamaño.",
+          "type": "integer",
+          "minimum": 1024
+        }
+      }
     }
   }
 }
