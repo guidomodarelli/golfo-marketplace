@@ -22,6 +22,7 @@ network; plan and status read what the cache already has.
 
 import argparse
 import difflib
+import importlib.util
 import json
 import os
 import shutil
@@ -77,6 +78,9 @@ from agent_ready_options import (  # noqa: E402
     CI_PROVIDER_NONE,
     CI_WARN,
     DETECTION_ENABLED_KEY,
+    CONTEXT_BUDGET_BYTES_KEY,
+    CONTEXT_BUDGET_ENABLED_KEY,
+    CONTEXT_BUDGET_RULES_BYTES_KEY,
     EXCLUDED_DEFAULTS_KEY,
     PROFILES_KEY,
     PROVIDERS_KEY,
@@ -1636,6 +1640,34 @@ def extract_managed_block(text):
     return text[start:end + len(MANAGED_BLOCK_END)]
 
 
+def render_instructions(skill_dir, catalog, stack_root, project_rules_root, managed_block_only):
+    """AGENTS.md as render-instruction-template.sh writes it, or only its managed block; None on failure.
+
+    The new file takes the skeleton of the composed tree when a profile publishes one, as the
+    instruction normalization does.
+    """
+    renderer = [
+        bash_executable(), os.path.join(skill_dir, RENDERER_RELATIVE_PATH),
+        "--template", agents_template_path(skill_dir, catalog),
+        "--rules-dir", os.path.join(stack_root, "rules"),
+        "--common-rules-dir", os.path.join(skill_dir, catalog.get("baseAssets", "assets/common"), "rules"),
+        "--centralization", os.path.join(skill_dir, CENTRALIZATION_RELATIVE_PATH),
+    ]
+    if managed_block_only:
+        renderer.append("--managed-block")
+    else:
+        skeleton = os.path.join(stack_root, AGENTS_SKELETON_NAME)
+        if os.path.isfile(skeleton):
+            renderer += ["--skeleton", skeleton]
+    if project_rules_root:
+        renderer += ["--project-rules-dir", project_rules_root]
+    try:
+        completed = subprocess.run(renderer, capture_output=True, encoding="utf-8", errors="replace", check=False)
+    except OSError:
+        return None
+    return completed.stdout if completed.returncode == 0 else None
+
+
 def merged_file_changes(project_root, skill_dir, plan, source_state=None):
     """Describe whether each merged file would change, without writing it."""
     # The effective catalog: composing the tree needs the asset roots of the pack profiles too.
@@ -1655,17 +1687,10 @@ def merged_file_changes_from(project_root, skill_dir, plan, catalog, stack_root)
     changes = []
 
     agents_path = os.path.join(project_root, "AGENTS.md")
-    renderer = [
-        bash_executable(), os.path.join(skill_dir, RENDERER_RELATIVE_PATH),
-        "--template", agents_template_path(skill_dir, catalog),
-        "--rules-dir", os.path.join(stack_root, "rules"),
-        "--common-rules-dir", os.path.join(skill_dir, catalog.get("baseAssets", "assets/common"), "rules"),
-        "--centralization", os.path.join(skill_dir, CENTRALIZATION_RELATIVE_PATH),
-        "--managed-block",
-    ]
-    if os.path.isdir(os.path.join(project_root, ".agents/rules")):
-        renderer += ["--project-rules-dir", ".agents/rules"]
-    rendered_block = run_quiet(renderer, cwd=project_root)
+    project_rules_root = os.path.join(project_root, ".agents", "rules")
+    rendered_block = render_instructions(skill_dir, catalog, stack_root,
+                                         project_rules_root if os.path.isdir(project_rules_root) else None,
+                                         managed_block_only=True)
     if not os.path.isfile(agents_path):
         changes.append(("AGENTS.md", ACTION_CREATE, "created from the base template"))
     else:
@@ -2028,6 +2053,8 @@ def print_plan(project_root, skill_dir, plan, provider, skip_marketplace_upgrade
         write_line(f"Defaults left out: {', '.join(excluded)} ({EXCLUDED_DEFAULTS_KEY})")
     for override in plan.get("overrides", []):
         write_line(f"Overridden: {override['replaces']} by {override['profile']} (only its own asset is projected)")
+    if plan.get("context"):
+        print_context_budget(plan["context"])
     write_line(f"Source:   {describe_source(plan['source'])}")
     write_line(f"Lock:     {describe_source(plan['lockedSource']) if plan['hasLock'] else 'none (first apply creates it)'}")
     write_line("")
@@ -3038,6 +3065,8 @@ def command_plan(arguments):
         if configuration.value(DETECTION_ENABLED_KEY):
             plan["detection"] = detect_profiles(catalog["profiles"], arguments.project)
             plan["suggestions"] = capability_suggestions(catalog, plan["detection"], plan["profiles"])
+        if configuration.value(CONTEXT_BUDGET_ENABLED_KEY):
+            plan["context"] = context_budget(arguments.project, arguments.skill_dir, catalog, plan, configuration)
         if arguments.format == "json":
             write_line(serialize_json(plan_report(arguments.project, arguments.skill_dir, plan, configuration)).rstrip("\n"))
             return 0
@@ -3065,6 +3094,191 @@ def configuration_report(configuration):
         "layers": configuration.layers,
         "projectApproved": configuration.project_approved,
     }
+
+
+# How many profiles the context warning names as the ones that add the most.
+CONTEXT_LARGEST_PROFILES = 3
+# The entry point that registers the browser MCP servers; its SERVER_ALIASES is their roster.
+BROWSER_SETUP_RELATIVE_PATH = "scripts/setup-browser-tools.py"
+RULES_DESTINATION_PREFIX = ".agents/rules/"
+
+
+def loaded_at_start(text):
+    """True when Claude loads a rule at the start of a session: it has no paths: in its frontmatter."""
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != "---":
+        return True
+    for line in lines[1:]:
+        if line.strip() == "---":
+            return True
+        if line.startswith("paths:"):
+            return False
+    return True
+
+
+def text_bytes(text):
+    """Size of a text in UTF-8, the encoding every instruction file is written in."""
+    return len(text.encode("utf-8"))
+
+
+def context_budget(project_root, skill_dir, catalog, plan, configuration):
+    """What the selection adds to the context of every session, in bytes, and the profiles that add most.
+
+    AGENTS.md is the file the apply would write: the managed block rendered by
+    render-instruction-template.sh, as for the plan diff, and the stack sections the plan places with
+    the same block functions as the apply. Claude also loads every rule without paths: at the start,
+    managed or the project's own; a rule the apply retires does not count. MCP servers are the ones the
+    apply registers: the browser's when its tools are enabled, and the pack servers the policy allows.
+    """
+    # The rules the apply writes or deletes. A dropped or retire-conflict entry leaves its file, which
+    # stays as the project's own.
+    managed_destinations = {entry["destination"] for entry in plan["entries"]
+                            if entry["sha256"] or entry["action"] == ACTION_RETIRE}
+    rules_by_profile, rule_files = {}, 0
+    for entry in plan["entries"]:
+        destination = entry["destination"]
+        if not entry["sha256"] or not destination.startswith(RULES_DESTINATION_PREFIX) or not destination.endswith(".md"):
+            continue
+        # A conflict keeps the local file: that file is the one Claude loads, not the template.
+        local_path = os.path.join(project_root, destination)
+        kept_local = entry["action"] == ACTION_CONFLICT and os.path.isfile(local_path) and not is_link(local_path)
+        with open(local_path if kept_local else entry["sourcePath"], encoding="utf-8", errors="replace") as rule_file:
+            rule_text = rule_file.read()
+        if loaded_at_start(rule_text):
+            rule_files += 1
+            rules_by_profile[entry["profile"]] = rules_by_profile.get(entry["profile"], 0) + text_bytes(rule_text)
+    project_rules = project_owned_rules(project_root, managed_destinations)
+    for rule_text in project_rules.values():
+        if loaded_at_start(rule_text):
+            rule_files += 1
+            rules_by_profile["project"] = rules_by_profile.get("project", 0) + text_bytes(rule_text)
+
+    agents_text, sections_by_profile = projected_agents_md(project_root, skill_dir, catalog, plan, project_rules)
+    browser_servers = len(browser_mcp_servers(skill_dir)) if (
+        BROWSER_TOOL_NAME in plan["tools"] and configuration.value(TOOLS_ENABLED_KEY)) else 0
+    pack_servers, _ = pack_mcp.desired_servers(plan.get("packTools"))
+    agents_bytes, rules_bytes = text_bytes(agents_text), sum(rules_by_profile.values())
+    agents_limit = configuration.value(CONTEXT_BUDGET_BYTES_KEY)
+    rules_limit = configuration.value(CONTEXT_BUDGET_RULES_BYTES_KEY)
+    return {
+        "agentsMd": {"bytes": agents_bytes, "limitBytes": agents_limit, "exceeded": agents_bytes > agents_limit,
+                     "largest": largest_profiles(sections_by_profile)},
+        "rulesLoadedAtStart": {"bytes": rules_bytes, "files": rule_files, "limitBytes": rules_limit,
+                               "exceeded": rules_limit is not None and rules_bytes > rules_limit,
+                               "largest": largest_profiles(rules_by_profile)},
+        "mcpServers": browser_servers + len(pack_servers),
+    }
+
+
+def browser_mcp_servers(skill_dir):
+    """The MCP servers the browser setup registers, read from its own roster.
+
+    The setup needs Python 3.11 and exits before registering anything on an older one, so there the
+    roster is empty, as the registration would be.
+    """
+    specification = importlib.util.spec_from_file_location(
+        "agent_ready_browser_setup", os.path.join(skill_dir, BROWSER_SETUP_RELATIVE_PATH))
+    module = importlib.util.module_from_spec(specification)
+    try:
+        specification.loader.exec_module(module)
+    except SystemExit:
+        return ()
+    return tuple(module.SERVER_ALIASES)
+
+
+def project_owned_rules(project_root, managed_destinations):
+    """{relative path: text} of the rules in .agents/rules that no profile manages, now or before."""
+    rules_root = os.path.join(project_root, ".agents", "rules")
+    rules = {}
+    for relative_path, absolute_path in (walk_files(rules_root) if os.path.isdir(rules_root) else []):
+        if (not relative_path.endswith(".md") or is_link(absolute_path)
+                or RULES_DESTINATION_PREFIX + relative_path in managed_destinations):
+            continue
+        with open(absolute_path, encoding="utf-8", errors="replace") as rule_file:
+            rules[relative_path] = rule_file.read()
+    return rules
+
+
+def projected_agents_md(project_root, skill_dir, catalog, plan, project_rules):
+    """(text, {profile: bytes of its section}) of AGENTS.md after the apply, without writing it."""
+    with tempfile.TemporaryDirectory(prefix="agent-ready-context.") as work_root:
+        # Only the project's own rules: the ones the apply retires are gone when it renders the block.
+        rules_copy = os.path.join(work_root, "project-rules")
+        for relative_path, rule_text in project_rules.items():
+            destination = os.path.join(rules_copy, relative_path)
+            os.makedirs(os.path.dirname(destination), exist_ok=True)
+            with open(destination, "w", encoding="utf-8", newline="") as rule_file:
+                rule_file.write(rule_text)
+        stack_root = os.environ.get("AGENT_READY_SETUP_STACK_DIR") or compose_stack_directory(
+            skill_dir, catalog, plan["profiles"], os.path.join(work_root, "stack"))
+        current = current_instructions(project_root, skill_dir)
+        project_rules_root = rules_copy if project_rules else None
+        if current is not None and extract_managed_block(current) is not None:
+            rendered = render_instructions(skill_dir, catalog, stack_root, project_rules_root, managed_block_only=True)
+            text = current.replace(extract_managed_block(current), extract_managed_block(rendered or "") or "", 1)
+        elif current is not None:
+            # Without a block yet, the instruction review adds it after the project's content.
+            rendered = render_instructions(skill_dir, catalog, stack_root, project_rules_root, managed_block_only=True)
+            text = current.rstrip("\n") + "\n\n" + (rendered or "")
+        else:
+            text = render_instructions(skill_dir, catalog, stack_root, project_rules_root, managed_block_only=False) or ""
+    destination = managed_blocks.INSTRUCTION_SECTIONS_DESTINATION
+    sections_by_profile = {}
+    for block in plan.get("blocks", []):
+        if block["destination"] != destination or block.get("action") == ACTION_CONFLICT:
+            continue
+        try:
+            if block.get("content") is None:
+                text = managed_blocks.without_block(text, destination, block["id"])
+                continue
+            text = managed_blocks.with_block(text, destination, block["id"], block["content"])
+            # The whole section, markers included, whatever the file held before.
+            size = text_bytes(managed_blocks.with_block("", destination, block["id"], block["content"]))
+            sections_by_profile[block["profile"]] = sections_by_profile.get(block["profile"], 0) + size
+        except managed_blocks.MarkerError:
+            continue
+    return text, sections_by_profile
+
+
+def current_instructions(project_root, skill_dir):
+    """The instructions the apply starts AGENTS.md from, or None for a new one.
+
+    The file conflicts_review.project_instructions finds, the same discovery as the instruction
+    normalization: AGENTS.md, or a root CLAUDE.md (or its only case variant) that is not the proxy.
+    """
+    name = conflicts_review.project_instructions(project_root, skill_dir)
+    if name is None:
+        return None
+    with open(os.path.join(project_root, name), encoding="utf-8", errors="replace") as instructions_file:
+        return instructions_file.read()
+
+
+def largest_profiles(bytes_by_profile):
+    """The profiles that add the most bytes, largest first."""
+    ordered = sorted(bytes_by_profile.items(), key=lambda item: (-item[1], item[0]))[:CONTEXT_LARGEST_PROFILES]
+    return [{"profile": profile, "bytes": size} for profile, size in ordered]
+
+
+def print_context_budget(context):
+    """The context the selection adds to every session, and a warning when it passes the threshold."""
+    agents, rules = context["agentsMd"], context["rulesLoadedAtStart"]
+    write_line(f"Context at the start of a session: AGENTS.md ~{agents['bytes']} bytes; {rules['files']} rules "
+               f"without paths: ~{rules['bytes']} bytes; MCP servers: {context['mcpServers']}")
+    if agents["exceeded"]:
+        write_line(paint(f"  ! AGENTS.md passes {agents['limitBytes']} bytes ({CONTEXT_BUDGET_BYTES_KEY}): Codex cuts the "
+                         f"combined AGENTS.md there.{largest_suffix(agents['largest'])} Move content to rules or skills.",
+                         "warning", sys.stdout))
+    if rules["exceeded"]:
+        write_line(paint(f"  ! The rules without paths pass {rules['limitBytes']} bytes ({CONTEXT_BUDGET_RULES_BYTES_KEY}): "
+                         f"Claude loads them in every session.{largest_suffix(rules['largest'])} Give them paths: or move "
+                         "them to skills.", "warning", sys.stdout))
+
+
+def largest_suffix(largest):
+    """' Largest: a (n), b (m).' for a warning, or nothing when no profile adds to it."""
+    if not largest:
+        return ""
+    return " Largest: " + ", ".join(f"{item['profile']} ({item['bytes']})" for item in largest) + "."
 
 
 def plan_report(project_root, skill_dir, plan, configuration):

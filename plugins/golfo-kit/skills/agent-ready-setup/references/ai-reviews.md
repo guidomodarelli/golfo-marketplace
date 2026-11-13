@@ -15,6 +15,7 @@ descartar un hallazgo.
 5. Ver los hallazgos y forzar una revisión
 6. Aceptar o descartar un hallazgo
 7. Conflictos semánticos con lo propio del proyecto
+8. Presupuesto de contexto
 
 ## 1. Qué se revisa
 
@@ -196,3 +197,32 @@ Módulo `conflicts` de la configuración:
 Con `conflicts.block`, los conflictos de dirección project no frenan, porque ya están en el
 repositorio. Para destrabar el apply: cambiar la rule, o aceptar o descartar cada hallazgo con
 `agent-ready review accept|dismiss <id> --reason "<motivo>"`.
+
+## 8. Presupuesto de contexto
+
+Cada profile suma texto que el agente carga en todas las sesiones, y con varios profiles juntos el
+contexto se llena sin que nadie lo note. `agent-ready plan` informa cuánto suma la selección, sin IA:
+
+```text
+Context at the start of a session: AGENTS.md ~3590 bytes; 20 rules without paths: ~84643 bytes; MCP servers: 2
+```
+
+- **AGENTS.md**: el archivo como quedaría después del apply, con lo propio del proyecto (o el
+  esqueleto de uno nuevo), el bloque gestionado y la sección de cada stack. Codex corta los AGENTS.md
+  combinados en `project_doc_max_bytes` (32 KiB por default).
+- **Rules sin `paths:`**: Claude carga al inicio de cada sesión toda rule de `.agents/rules/` que no
+  declara `paths:` en su frontmatter, gestionada o propia del proyecto. Las que tienen `paths:` se
+  cargan solo al tocar esos archivos y no cuentan, y tampoco las de un profile que la selección deja,
+  porque el apply las retira.
+- **Servidores MCP**: los que el apply registra: los del browser si `tools.enabled` está prendido, y
+  los de los packs que la política permite. Cada uno suma la definición de sus herramientas.
+
+Al pasar un umbral, `plan` avisa y nombra los profiles que más suman, para mover contenido a rules
+con `paths:` o a skills, que se cargan solo cuando hacen falta. El aviso no frena el apply. Con
+`--json`, el detalle va en `context`.
+
+| Clave | Default | Efecto |
+|---|---|---|
+| `conflicts.contextBudget.enabled` | `true` | `false` no calcula el presupuesto |
+| `conflicts.contextBudget.bytes` | `32768` | avisa cuando AGENTS.md pasa esos bytes |
+| `conflicts.contextBudget.rulesBytes` | sin valor | avisa cuando las rules sin `paths:` pasan esos bytes; sin valor, solo informa |

@@ -819,3 +819,98 @@ EOF
   [ ! -e .mcp.json ]
   [ ! -e .codex/config.toml ]
 }
+
+# The context budget of the plan, as JSON: one field of plan --format json.
+context_field() {
+  local key="$1"
+  shift
+  python3 "$skill_dir/scripts/agent-ready-state.py" plan --project "$project_dir" --skill-dir "$skill_dir" --format json "$@" \
+    | python3 -c 'import json, sys; context = json.load(sys.stdin)["context"]
+for key in sys.argv[1].split("."):
+    context = context[key]
+print(context)' "$key" | tr -d '\r'
+}
+
+# Sets a key of the conflicts module in the manifest.
+set_budget() {
+  python3 - "$1" "$2" <<'PY'
+import json, sys
+path = ".agents/agent-ready.json"
+manifest = json.load(open(path, encoding="utf-8"))
+manifest.setdefault("conflicts", {}).setdefault("contextBudget", {})[sys.argv[1]] = json.loads(sys.argv[2])
+json.dump(manifest, open(path, "w", encoding="utf-8"), indent=2)
+PY
+}
+
+@test "the plan measures AGENTS.md as the apply writes it, and counts only rules without paths" {
+  run_bootstrap_with "$skill_dir" --stack node
+  [ "$status" -eq 0 ]
+  [ "$(context_field agentsMd.bytes)" = "$(wc -c < AGENTS.md | tr -d ' ')" ]
+
+  rules_before="$(context_field rulesLoadedAtStart.bytes)"
+  printf -- '---\npaths:\n  - "src/**"\n---\n# Scoped\n' > .agents/rules/scoped.md
+  [ "$(context_field rulesLoadedAtStart.bytes)" = "$rules_before" ]
+  printf '# Always\n\nLoaded in every session.\n' > .agents/rules/always.md
+  [ "$(context_field rulesLoadedAtStart.bytes)" = "$((rules_before + $(wc -c < .agents/rules/always.md)))" ]
+  [ "$(context_field agentsMd.exceeded)" = "False" ]
+  # AGENT_READY_SETUP_TOOLS=0: the browser servers are not registered, so they are not counted.
+  [ "$(context_field mcpServers)" = "0" ]
+}
+
+@test "the rules of a profile the selection drops do not count as the project's own" {
+  run_bootstrap_with "$skill_dir" --stack react
+  [ "$status" -eq 0 ]
+  [ -f .agents/rules/react-style.md ]
+
+  # Switching to node retires the react rules: they are not the project's and the budget leaves them out.
+  [[ "$(context_field rulesLoadedAtStart.largest --profiles node)" != *"'project'"* ]]
+  [ "$(context_field rulesLoadedAtStart.bytes --profiles node)" -lt "$(context_field rulesLoadedAtStart.bytes)" ]
+}
+
+@test "the plan warns past each context threshold and names the profiles that add most" {
+  run_bootstrap_with "$skill_dir" --stack node
+  [ "$status" -eq 0 ]
+
+  run_bootstrap_with "$skill_dir" --plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Context at the start of a session: AGENTS.md ~"* ]]
+  [[ "$output" != *"! AGENTS.md passes"* ]]
+  [[ "$output" != *"! The rules without paths pass"* ]]
+
+  set_budget bytes 1024
+  set_budget rulesBytes 1024
+  run_bootstrap_with "$skill_dir" --plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"! AGENTS.md passes 1024 bytes (conflicts.contextBudget.bytes)"*"Largest: node ("* ]]
+  [[ "$output" == *"! The rules without paths pass 1024 bytes (conflicts.contextBudget.rulesBytes)"*"software-development ("* ]]
+
+  set_budget enabled false
+  run_bootstrap_with "$skill_dir" --plan
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"Context at the start of a session"* ]]
+}
+
+@test "the budget starts from a CLAUDE.md the apply moves, and keeps each section's whole size" {
+  python3 -c 'open("CLAUDE.md", "w").write("# Own instructions\n" + "x" * 40000 + "\n")'
+  [ "$(context_field agentsMd.exceeded --profiles node)" = "True" ]
+  rm CLAUDE.md
+
+  run_bootstrap_with "$skill_dir" --stack node
+  [ "$status" -eq 0 ]
+  # The node section is already in AGENTS.md: the plan still attributes all of it to node.
+  [[ "$(context_field agentsMd.largest)" == *"'profile': 'node'"* ]]
+  [[ "$(context_field agentsMd.largest)" != *"'bytes': 0"* ]]
+}
+
+@test "a rule the apply keeps for a conflict is measured as the local file" {
+  run_bootstrap_with "$skill_dir" --stack node
+  [ "$status" -eq 0 ]
+  template_total="$(context_field rulesLoadedAtStart.bytes --profiles react)"
+  python3 -c 'open(".agents/rules/react-style.md", "w").write("# Local\n" + "y" * 50000 + "\n")'
+  [ "$(context_field rulesLoadedAtStart.bytes --profiles react)" -gt "$((template_total + 30000))" ]
+
+  # Applied with the conflict, then dropped: the file stays, now as the project's own rule.
+  run_bootstrap_with "$skill_dir" --stack react
+  [ "$status" -eq 0 ]
+  [[ "$(context_field rulesLoadedAtStart.largest --profiles node)" == *"'profile': 'project'"* ]]
+}
