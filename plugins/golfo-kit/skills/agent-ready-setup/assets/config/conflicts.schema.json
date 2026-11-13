@@ -31,7 +31,7 @@
       }
     },
     "userServers": {
-      "description": "Servidores MCP de los packs que el usuario ya tiene para todos los proyectos (~/.claude.json, config.toml de Codex), comparados por URL, paquete o comando. Solo se lee la configuración del usuario.",
+      "description": "Servidores MCP de los packs que el usuario ya tiene para todos los proyectos (~/.claude.json, config.toml de Codex), idénticos: el mismo endpoint, argumentos y configuración. Solo se lee la configuración del usuario.",
       "type": "object",
       "additionalProperties": false,
       "properties": {

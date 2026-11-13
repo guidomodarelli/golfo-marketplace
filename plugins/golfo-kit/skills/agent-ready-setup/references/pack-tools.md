@@ -179,7 +179,7 @@ Un apply registra cada servidor MCP permitido para los providers del repo (`prov
 - **Si dos packs declaran el mismo nombre,** declarado igual se registra una vez; distinto, el plan
   falla antes de escribir (sección 1).
 - **Si el usuario ya lo tiene** para todos los proyectos (`~/.claude.json`, `config.toml` de Codex),
-  con el mismo URL, paquete o comando, no se registra la copia del proyecto en ese provider y se
+  idéntico (endpoint, argumentos y configuración), no se registra la copia del proyecto en ese provider y se
   informa (`references/ai-reviews.md`, «Choques con la máquina»).
 - **El `command` se busca en el PATH del provider.** Claude Code y Codex lanzan el comando tal cual.
   Un CLI que instala un pack queda en el caché del usuario (sección 6), fuera de ese PATH, así que un

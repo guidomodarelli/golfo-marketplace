@@ -390,7 +390,7 @@ PY
 
 @test "a pack server the user already has is not registered again for that provider, and plan says so" {
   unset CLAUDE_CONFIG_DIR
-  printf '{"mcpServers": {"my-docs": {"command": "acme", "args": ["mcp"]}}}
+  printf '{"mcpServers": {"my-docs": {"command": "acme", "args": ["mcp"], "env": {"ACME_TOKEN": "${ACME_TOKEN}"}}}}
 ' > "$HOME/.claude.json"
   run_cli trust add acme
   run_cli plan

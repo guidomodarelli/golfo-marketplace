@@ -46,6 +46,8 @@ CODEX_BOTH_LISTED = "Codex lists both, with no documented order"
 CLAUDE_SHARED_NAMESPACE = {KIND_SKILL: (KIND_SKILL, KIND_COMMAND), KIND_COMMAND: (KIND_SKILL, KIND_COMMAND)}
 # An npm package in the arguments of a server: its identity, whatever version it pins.
 PACKAGE_ARGUMENT = re.compile(r"^(?P<name>(@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*)(@[^/\s]+)?$")
+# Keys of a server entry that say where it runs or how the provider treats it, not what it does.
+IDENTITY_IGNORED_KEYS = {"command", "args", "url", "type", "enabled", "startup_timeout_sec", "tool_timeout_sec"}
 PACKAGE_RUNNERS = ("npx", "pnpm", "bunx", "uvx", "pipx", "dlx", "exec", "-y", "--yes")
 
 
@@ -180,25 +182,33 @@ def shadowed_assets(project_root, entries):
 
 
 def server_identity(server):
-    """What makes two MCP servers the same, whatever their name: the URL, the package they run with
-    the arguments that configure it (only the pinned version is ignored), or the command and its
-    arguments."""
+    """What makes two MCP servers the same, whatever their name.
+
+    The endpoint (the URL, the package a runner starts with the arguments that configure it, or the
+    command with its full path and arguments) plus the rest of its configuration (env, headers,
+    credentials). Only a pinned package version and the provider's own switches are ignored, so a
+    server counts as the user's only when it would do exactly the same: anything else registers both.
+    """
     if not isinstance(server, dict):
         return None
     if server.get("url"):
-        return "url:" + str(server["url"]).rstrip("/")
-    command = server.get("command")
-    if not command:
+        endpoint = "url:" + str(server["url"]).rstrip("/")
+    elif server.get("command"):
+        command = str(server["command"])
+        arguments = [str(argument) for argument in server.get("args") or []]
+        endpoint = "command:" + " ".join([command] + arguments)
+        if os.path.basename(command).split(".")[0] in PACKAGE_RUNNERS:
+            for position, argument in enumerate(arguments):
+                if argument in PACKAGE_RUNNERS or argument.startswith("-"):
+                    continue
+                match = PACKAGE_ARGUMENT.match(argument)
+                if match:
+                    endpoint = "package:" + " ".join([match.group("name")] + arguments[position + 1:])
+                break
+    else:
         return None
-    arguments = [str(argument) for argument in server.get("args") or []]
-    for position, argument in enumerate(arguments):
-        if argument in PACKAGE_RUNNERS or argument.startswith("-"):
-            continue
-        match = PACKAGE_ARGUMENT.match(argument)
-        if match and os.path.basename(str(command)).split(".")[0] in PACKAGE_RUNNERS:
-            return "package:" + " ".join([match.group("name")] + arguments[position + 1:])
-        break
-    return "command:" + " ".join([os.path.basename(str(command))] + arguments)
+    configuration = {key: value for key, value in server.items() if key not in IDENTITY_IGNORED_KEYS}
+    return endpoint + " " + json.dumps(configuration, sort_keys=True, ensure_ascii=False)
 
 
 def user_servers():

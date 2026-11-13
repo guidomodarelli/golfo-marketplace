@@ -241,9 +241,11 @@ configuración del usuario y nunca la escribe.
   - Claude Code usa el subagente del proyecto antes que el del usuario y el de un plugin.
   - Codex lista las dos skills, sin un orden documentado.
 - **Servidores MCP del usuario:** un servidor de un pack que el usuario ya registró para todos los
-  proyectos (`~/.claude.json`, `config.toml` de Codex), comparado por URL, paquete o comando aunque
-  tenga otro nombre. El apply no registra la copia del proyecto en ese provider, así el agente no
-  arranca dos veces el mismo servidor, y lo informa. Codex necesita Python 3.11 para leer su
+  proyectos (`~/.claude.json`, `config.toml` de Codex), aunque tenga otro nombre. Cuenta como el
+  mismo solo si hace exactamente lo mismo: igual URL, paquete (sin contar la versión) o comando con
+  su ruta, los mismos argumentos y la misma configuración (`env`, headers, credenciales); ante
+  cualquier diferencia se registran los dos. El apply no registra la copia del proyecto en ese
+  provider, así el agente no arranca dos veces el mismo servidor, y lo informa. Codex necesita Python 3.11 para leer su
   configuración; con uno anterior no se compara.
 
 ```text
