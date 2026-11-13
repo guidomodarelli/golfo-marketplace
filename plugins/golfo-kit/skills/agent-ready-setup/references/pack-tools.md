@@ -61,8 +61,11 @@ un valor fuera del schema frena el apply antes de escribir y nombra el pack y el
     (`"ACME_TOKEN": "${ACME_TOKEN}"`). En `headers`, el valor es `${VAR}`, y solo `Authorization`
     acepta `Bearer ${VAR}`. Así los dos providers leen la variable de su entorno.
 - **`provides`** (opcional, en un CLI o un servidor): las capacidades que da, en kebab-case
-  (`["browser-automation"]`). Sirve para avisar de dos herramientas que compiten por lo mismo; no
-  cambia lo que se instala ni lo que se registra.
+  (`["browser-automation"]`). No cambia lo que se instala ni lo que se registra. Dos herramientas
+  de profiles distintos con una capacidad en común compiten, y `agent-ready plan` lo avisa: el
+  agente usa una u otra según el turno, con credenciales o datos distintos. Si van juntas a
+  propósito, el profile lo declara en `complements` (`"acme/base:mcpServers/base-docs"` o
+  `"acme/base:clis/acme"`) y el aviso no sale. Se apaga con `conflicts.competingTools.enabled`.
 - **El mismo CLI o servidor en dos profiles.** Declarado igual (sin contar `provides`), se instala o
   registra una vez. Con el mismo nombre y otra versión, paquete, comando, URL o argumentos, es un
   conflicto: el plan y el apply fallan antes de escribir y nombran los dos profiles.

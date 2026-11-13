@@ -88,6 +88,7 @@ from agent_ready_options import (  # noqa: E402
     PROVIDER_PARITY_ENABLED_KEY,
     ENVIRONMENT_CONFLICTS_ENABLED_KEY,
     CI_JOB_CONFLICTS_ENABLED_KEY,
+    COMPETING_TOOLS_ENABLED_KEY,
     USER_SERVERS_ENABLED_KEY,
     USER_SERVERS_REGISTER_KEY,
     EXCLUDED_DEFAULTS_KEY,
@@ -338,21 +339,28 @@ OVERRIDES_KEY = "overrides"
 COMPLEMENTS_KEY = "complements"
 ASSET_REFERENCE_SEPARATOR = ":"
 OVERRIDABLE_DIRECTORIES = ("rules", "skills", "agents", "commands")
+# What complements may name besides assets: the tools of a profile, by kind and name.
+COMPLEMENTABLE_DIRECTORIES = OVERRIDABLE_DIRECTORIES + ("mcpServers", "clis")
 # A bundle publishes nothing and only groups other profiles through ``requires``.
 BUNDLE_PROFILE_KIND = "bundle"
 BUNDLE_FORBIDDEN_KEYS = ("assets", "tools", "detect", DEFAULTS_KEY, OVERRIDES_KEY, COMPLEMENTS_KEY, "clis",
                          "mcpServers", "scripts")
 
 
-def parse_asset_reference(reference, what):
-    """(profile, path) of "<profile>:<path>", where path is a rule, agent or command file or a skill directory."""
+def parse_asset_reference(reference, what, directories=None):
+    """(profile, path) of "<profile>:<path>", where path is a rule, agent or command file or a skill directory.
+
+    ``directories`` are the first parts the reference may use: what an override can replace by
+    default; complements also name the tools of a profile (mcpServers/<name>, clis/<name>).
+    """
+    directories = directories or OVERRIDABLE_DIRECTORIES
     if not isinstance(reference, str) or reference.count(ASSET_REFERENCE_SEPARATOR) != 1:
         raise ProfileError(f"{what}: '{reference}' must be <profile>:<path>, such as react:rules/react-testing.md")
     profile, path = reference.split(ASSET_REFERENCE_SEPARATOR)
     parts = path.split("/")
-    if (not profile or len(parts) < 2 or parts[0] not in OVERRIDABLE_DIRECTORIES
+    if (not profile or len(parts) < 2 or parts[0] not in directories
             or any(part in ("", ".", "..") for part in parts)):
-        raise ProfileError(f"{what}: '{reference}' must name a path under {', '.join(OVERRIDABLE_DIRECTORIES)}, "
+        raise ProfileError(f"{what}: '{reference}' must name a path under {', '.join(directories)}, "
                            "such as react:rules/react-testing.md or software-development:skills/pr-review-workflow")
     return profile, path
 
@@ -423,9 +431,9 @@ def validate_selection_fields(name, profile):
     A bundle publishes nothing: no assets, tools, detection or defaults of its own, so what it brings
     is exactly the profiles it requires, each with its own defaults.
     """
-    for field in (OVERRIDES_KEY, COMPLEMENTS_KEY):
+    for field, directories in ((OVERRIDES_KEY, OVERRIDABLE_DIRECTORIES), (COMPLEMENTS_KEY, COMPLEMENTABLE_DIRECTORIES)):
         for reference in profile.get(field, []) if isinstance(profile.get(field, []), list) else [None]:
-            parse_asset_reference(reference, f"profile '{name}' {field}")
+            parse_asset_reference(reference, f"profile '{name}' {field}", directories)
     defaults = profile.get(DEFAULTS_KEY, [])
     if not isinstance(defaults, list) or not all(isinstance(item, str) and item for item in defaults):
         raise ProfileError(f"profile '{name}': '{DEFAULTS_KEY}' must be a list of profile names")
@@ -1937,7 +1945,7 @@ def semantic_conflicts(arguments, plan):
     lock = read_lock(arguments.project)
     directions, texts = conflicts_review.conflict_pairs(
         arguments.project, plan["entries"], (lock or {}).get("assets", {}), module.normalized_text,
-        project_owned_instructions, ENGINE_SKILL_DIRECTORY)
+        project_owned_instructions, ENGINE_SKILL_DIRECTORY, is_pack_profile)
     # Offline runs and automated reviews answer from the cache only.
     use_provider = not arguments.offline and os.environ.get("AGENT_READY_SETUP_REVIEW_MODE") != "1"
     # The options of this run: the hooks' copy of them only changes when an apply finishes.
@@ -1964,7 +1972,8 @@ def project_owned_instructions(text):
 
 
 def describe_conflict(finding):
-    direction = "this update" if finding["direction"] == conflicts_review.DIRECTION_UPDATE else "a project rule"
+    direction = {conflicts_review.DIRECTION_UPDATE: "this update",
+                 conflicts_review.DIRECTION_PROFILES: "two profiles"}.get(finding["direction"], "a project rule")
     return f"{review_cache_module().finding_line(finding)} ({direction})"
 
 
@@ -2072,6 +2081,7 @@ def print_plan(project_root, skill_dir, plan, provider, skip_marketplace_upgrade
     print_repo_reality(plan.get("repoReality", []))
     print_settings_conflicts(plan.get("settingsConflicts", {}))
     print_parity_report(plan.get("parity", {}))
+    print_competing_tools(plan.get("competingTools", []))
     write_line(f"Source:   {describe_source(plan['source'])}")
     write_line(f"Lock:     {describe_source(plan['lockedSource']) if plan['hasLock'] else 'none (first apply creates it)'}")
     write_line("")
@@ -3135,6 +3145,8 @@ def command_plan(arguments):
         if configuration.value(REPO_REALITY_ENABLED_KEY):
             plan["repoReality"] = repo_reality_report(arguments.project, arguments.skill_dir, plan)
         plan["parity"] = parity_report(arguments.project, arguments.skill_dir, plan, configuration)
+        if configuration.value(COMPETING_TOOLS_ENABLED_KEY):
+            plan["competingTools"] = pack_tools.competing_tools(plan.get("packToolDeclarations", []), catalog)
         plan["settingsConflicts"] = settings_conflicts.report(
             arguments.project, arguments.skill_dir, configuration.value(HOOK_CONFLICTS_ENABLED_KEY),
             configuration.value(PERMISSION_CONFLICTS_ENABLED_KEY))
@@ -3303,6 +3315,17 @@ def parity_report(project_root, skill_dir, plan, configuration):
         block_destinations = {block["destination"] for block in plan.get("blocks", []) if block.get("content")}
         report["ciJobs"] = parity.duplicated_ci_jobs(project_root, plan["entries"], block_destinations)
     return report
+
+
+def print_competing_tools(findings):
+    """One line per pair of tools that give the same capability."""
+    kinds = {pack_tools.TOOL_CLI: "CLI", pack_tools.TOOL_MCP_SERVER: "MCP server"}
+    for finding in findings:
+        first, second = finding["tools"]
+        write_line(paint(f"  ~ {kinds[first['type']]} {first['name']} ({first['profile']}) and {kinds[second['type']]} "
+                         f"{second['name']} ({second['profile']}) both provide {', '.join(finding['capabilities'])}: the "
+                         f"agent picks either; keep one, or declare complements if they go together",
+                         "warning", sys.stdout))
 
 
 def print_parity_report(report):

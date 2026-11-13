@@ -155,12 +155,13 @@ agent-ready review reset <id>... | --all                               # vuelven
 ## 7. Conflictos semánticos con lo propio del proyecto
 
 `agent-ready plan`, y el plan que corre antes de cada apply, revisan con IA si las rules
-gestionadas contradicen lo que el proyecto escribió, en dos direcciones:
+gestionadas contradicen lo que el proyecto escribió, o las de otro profile, en tres direcciones:
 
 | Dirección | Qué se compara | Marca en el plan |
 |---|---|---|
 | update | cada rule gestionada que el apply crea, actualiza o adopta, con el contenido que va a escribir, contra cada rule propia (`.agents/rules/` sin equivalente gestionado) y contra lo que el proyecto escribió en su `AGENTS.md`, fuera del bloque gestionado que el mismo apply puede reemplazar | `(this update)` |
 | project | cada rule propia contra cada rule gestionada ya aplicada que no cambia | `(a project rule)` |
+| profiles | cada rule de un pack contra cada rule gestionada de otro profile; las de los profiles de golfo-kit no se revisan entre sí. Como llega con el apply, `conflicts.block` lo frena igual que un update. Para quedarse con una de las dos, `overrides` | `(two profiles)` |
 
 - **Misma revisión y misma caché.** Usa el prompt, la llamada al provider y la caché de
   `harness-consistency`: un par que el hook ya revisó no se paga de nuevo, `status` muestra sus
