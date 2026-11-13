@@ -87,6 +87,8 @@ from agent_ready_options import (  # noqa: E402
     DETECTION_ENABLED_KEY,
     NESTED_ENABLED_KEY,
     NESTED_TARGETS_KEY,
+    NESTED_CODEX_INDEX_KEY,
+    CODEX_PROVIDER,
     CONTEXT_BUDGET_BYTES_KEY,
     CONTEXT_BUDGET_ENABLED_KEY,
     CONTEXT_BUDGET_RULES_BYTES_KEY,
@@ -937,6 +939,28 @@ def desired_nested_blocks(project_root, catalog, resolved, contents):
     return blocks, report
 
 
+def nested_index_block(project_root, nested_blocks, waiting):
+    """({(AGENTS.md, id): item}, report) of the index of the nested AGENTS.md files in the root AGENTS.md.
+
+    Codex reads the AGENTS.md files from the root down to the folder it starts in, once: the index tells
+    it which nested ones to read before working in their folders. It lists every nested AGENTS.md the
+    apply writes a block to (not one that waits, or sits beyond a symlink), and only when Codex is a
+    provider of the repository and nested.codexIndex is on. The report has the files it lists and the
+    bytes it adds to the root AGENTS.md, markers included.
+    """
+    configuration = configuration_of(project_root)
+    destinations = sorted({destination for destination, _ in nested_blocks
+                           if destination not in waiting and not managed_blocks.has_linked_directory(project_root, destination)})
+    if not destinations or CODEX_PROVIDER not in configuration.value(PROVIDERS_KEY) \
+            or not configuration.value(NESTED_CODEX_INDEX_KEY):
+        return {}, {"destinations": [], "bytes": 0}
+    destination, content = managed_blocks.INSTRUCTION_SECTIONS_DESTINATION, nested.index_content(destinations)
+    index = {(destination, nested.INDEX_BLOCK_ID): {"profile": BASE_PROFILE_NAME, "source": nested.INDEX_SOURCE,
+                                                    "content": content}}
+    return index, {"destinations": destinations,
+                   "bytes": text_bytes(managed_blocks.with_block("", destination, nested.INDEX_BLOCK_ID, content))}
+
+
 def reject_destinations_inside_files(assets, destinations_by_folded_name):
     """A destination cannot sit under another one: one of the two could not be written."""
     for destination, entry in sorted(assets.items()):
@@ -1664,6 +1688,8 @@ def compute_plan(project_root, skill_dir, catalog, profile_names):
     waiting_nested = waiting_instruction_files(project_root, skill_dir, {destination for destination, _ in nested_blocks})
     for target in nested_report:
         target["waiting"] = [folder for folder in target["paths"] if nested.destination_in(folder) in waiting_nested]
+    nested_index, nested_index_report = nested_index_block(project_root, nested_blocks, waiting_nested)
+    nested_blocks.update(nested_index)
     block_destinations = {destination for destination, _ in blocks}
     retiring_block_files = set()
     for destination, lock_entry in sorted(locked_assets.items()):
@@ -1710,6 +1736,7 @@ def compute_plan(project_root, skill_dir, catalog, profile_names):
                                                                                     (lock or {}).get("blocks", {})),
                                           retiring_block_files),
         "nested": nested_report,
+        "nestedIndex": nested_index_report,
         "editedViews": edited_views,
         "detachedViews": preserved_views,
         "merged": merged,
@@ -1855,7 +1882,14 @@ def claude_proxy_drift(project_root, skill_dir):
             required_proxies.add(os.path.join(os.path.dirname(relative_path), "CLAUDE.md").replace(os.sep, "/"))
         elif file_name == "claude.md":
             absolute_path = os.path.join(project_root, relative_path)
-            if os.path.isfile(absolute_path) and not os.path.islink(absolute_path) and sha256_of_file(absolute_path) != proxy_hash:
+            if not os.path.isfile(absolute_path) or os.path.islink(absolute_path):
+                continue
+            # A nested CLAUDE.md is the import alone; the root one is the whole proxy (instruction-normalization.sh).
+            if os.path.dirname(relative_path):
+                normalized = nested.is_bare_proxy(absolute_path)
+            else:
+                normalized = sha256_of_file(absolute_path) == proxy_hash
+            if not normalized:
                 drifted.append(relative_path)
     for proxy in sorted(required_proxies):
         if proxy.casefold() not in existing_proxies and not os.path.lexists(os.path.join(project_root, proxy)):
@@ -2158,6 +2192,10 @@ def print_plan(project_root, skill_dir, plan, provider, skip_marketplace_upgrade
         write_line(f"Overridden: {override['replaces']} by {override['profile']} (only its own asset is projected)")
     for target in plan.get("nested", []):
         write_line(f"Nested AGENTS.md: {nested.describe(target)}")
+    index = plan.get("nestedIndex") or {}
+    if index.get("destinations"):
+        write_line(f"Nested AGENTS.md index for Codex: {len(index['destinations'])} file(s) listed in AGENTS.md, "
+                   f"~{index['bytes']} bytes of its limit")
     if plan.get("context"):
         print_context_budget(plan["context"])
     print_machine_report(plan.get("machine"))
