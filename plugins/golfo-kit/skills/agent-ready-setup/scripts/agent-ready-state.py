@@ -3120,7 +3120,7 @@ def command_plan(arguments):
     except IncompleteEvaluationError as incomplete_error:
         if arguments.format == "protected":
             raise
-        if arguments.format == "json":
+        if arguments.format in ("json", CONFLICTS_JSON_FORMAT):
             write_line(serialize_json({"complete": False, "requestedProfiles": requested, "selection": selection,
                                        "incomplete": str(incomplete_error)}).rstrip("\n"))
             return INCOMPLETE_EVALUATION_STATUS
@@ -3828,11 +3828,15 @@ def check_conflicts(project_root, content_dir, offline):
     if structural_mode != CI_CONFLICTS_OFF:
         result["structural"] = structural_conflict_lines(
             structural_conflicts(project_root, content_dir, plan, catalog, configuration))
-    if semantic_mode != CI_CONFLICTS_OFF and run.provider is None:
+    # The reviews this configuration runs at all: none, and there is nothing to check or to call.
+    reviews_on = configuration.value(REVIEWS_ENABLED_KEY) and (
+        configuration.value(CONFLICTS_ENABLED_KEY) or configuration.value(COMPETING_SKILLS_ENABLED_KEY))
+    reviewing = semantic_mode != CI_CONFLICTS_OFF and reviews_on
+    if reviewing and run.provider is None:
         # Without a provider the reviews cannot even read their cache, whose keys include it.
         result["unchecked"] = 1
         result["semanticProblem"] = "no provider could be inferred; set AGENT_READY_SETUP_ACTIVE_PROVIDER"
-    elif semantic_mode != CI_CONFLICTS_OFF:
+    elif reviewing:
         reviews = {"semanticConflicts": semantic_conflicts(run, plan),
                    "competingSkills": competing_skills_report(run, plan, catalog, configuration)}
         result["semantic"], result["unchecked"] = semantic_conflict_lines(reviews)
