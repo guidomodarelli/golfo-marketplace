@@ -37,6 +37,7 @@ Revisión de IA de las rules gestionadas contra las propias del proyecto y su AG
 |---|---|---|---|---|---|---|
 | `conflicts.enabled` | boolean | `true` | todas | — | — | plan y el apply revisan con IA una rule gestionada nueva o cambiada contra las rules propias y el AGENTS.md del proyecto, y una rule propia contra las gestionadas. Usa la caché y las decisiones de las revisiones de IA. Apagado, no se revisa. También se apaga con reviews.enabled: false. |
 | `conflicts.block` | boolean | `false` | todas | — | `false` < `true` | Un apply que trae un conflicto semántico con lo propio del proyecto, o que no pudo revisarlo, se frena antes de escribir. Apagado, el conflicto solo se informa. |
+| `conflicts.competingSkills.enabled` | boolean | `true` | todas | — | — | plan revisa con IA las skills que compiten y avisa con el pedido en común y en qué difieren. Apagado, no se revisa. |
 | `conflicts.competingTools.enabled` | boolean | `true` | todas | — | — | plan informa las herramientas que compiten, con la capacidad en común. Apagado, no se compara. |
 | `conflicts.providerParity.enabled` | boolean | `true` | todas | — | — | plan muestra qué ve cada provider y avisa de los hooks que llegan a uno solo. Apagado, no se compara. |
 | `conflicts.environment.enabled` | boolean | `true` | todas | — | — | plan informa las variables que chocan, con los profiles que las piden. Apagado, no se compara. |

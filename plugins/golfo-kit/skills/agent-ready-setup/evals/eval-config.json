@@ -3888,6 +3888,30 @@
           "critical": true
         }
       ]
+    },
+    {
+      "id": "pack-skill-competes-with-golfo-skill",
+      "description": "Una skill de un pack que hace lo mismo que una de golfo-kit: plan la revisa con IA y complements declara las que van juntas.",
+      "input": "Mi pack trae una skill team-review para revisar pull requests con nuestro checklist, y golfo-kit ya trae pr-review-workflow. Me preocupa que el agente elija una u otra al azar. ¿agent-ready me avisa? Y si en realidad se complementan, ¿cómo lo declaro para que no avise? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "agent-ready plan",
+          "description": "Usa agent-ready plan",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "complements",
+          "description": "Propone complements para las que van juntas",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "software-development:skills/pr-review-workflow",
+          "description": "Escribe la referencia <profile>:skills/<nombre> correcta"
+        }
+      ]
     }
   ]
 }

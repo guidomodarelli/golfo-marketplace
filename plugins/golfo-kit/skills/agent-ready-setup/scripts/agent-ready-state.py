@@ -89,6 +89,7 @@ from agent_ready_options import (  # noqa: E402
     ENVIRONMENT_CONFLICTS_ENABLED_KEY,
     CI_JOB_CONFLICTS_ENABLED_KEY,
     COMPETING_TOOLS_ENABLED_KEY,
+    COMPETING_SKILLS_ENABLED_KEY,
     USER_SERVERS_ENABLED_KEY,
     USER_SERVERS_REGISTER_KEY,
     EXCLUDED_DEFAULTS_KEY,
@@ -128,6 +129,7 @@ import agent_ready_pack_clis as pack_clis  # noqa: E402
 import agent_ready_machine as machine  # noqa: E402
 import agent_ready_repo_facts as repo_facts  # noqa: E402
 import agent_ready_settings_conflicts as settings_conflicts  # noqa: E402
+import agent_ready_skill_overlap as skill_overlap  # noqa: E402
 import agent_ready_pack_mcp as pack_mcp  # noqa: E402
 import agent_ready_parity as parity  # noqa: E402
 import agent_ready_pack_scripts as pack_scripts  # noqa: E402
@@ -2082,6 +2084,7 @@ def print_plan(project_root, skill_dir, plan, provider, skip_marketplace_upgrade
     print_settings_conflicts(plan.get("settingsConflicts", {}))
     print_parity_report(plan.get("parity", {}))
     print_competing_tools(plan.get("competingTools", []))
+    print_competing_skills(plan.get("competingSkills"))
     write_line(f"Source:   {describe_source(plan['source'])}")
     write_line(f"Lock:     {describe_source(plan['lockedSource']) if plan['hasLock'] else 'none (first apply creates it)'}")
     write_line("")
@@ -3147,6 +3150,9 @@ def command_plan(arguments):
         plan["parity"] = parity_report(arguments.project, arguments.skill_dir, plan, configuration)
         if configuration.value(COMPETING_TOOLS_ENABLED_KEY):
             plan["competingTools"] = pack_tools.competing_tools(plan.get("packToolDeclarations", []), catalog)
+        competing_skills = competing_skills_report(arguments, plan, catalog, configuration)
+        if competing_skills is not None:
+            plan["competingSkills"] = competing_skills
         plan["settingsConflicts"] = settings_conflicts.report(
             arguments.project, arguments.skill_dir, configuration.value(HOOK_CONFLICTS_ENABLED_KEY),
             configuration.value(PERMISSION_CONFLICTS_ENABLED_KEY))
@@ -3315,6 +3321,40 @@ def parity_report(project_root, skill_dir, plan, configuration):
         block_destinations = {block["destination"] for block in plan.get("blocks", []) if block.get("content")}
         report["ciJobs"] = parity.duplicated_ci_jobs(project_root, plan["entries"], block_destinations)
     return report
+
+
+def competing_skills_report(arguments, plan, catalog, configuration):
+    """The AI review of the skills that compete for the same request, or None when it is off."""
+    if not configuration.value(COMPETING_SKILLS_ENABLED_KEY) or not configuration.value(REVIEWS_ENABLED_KEY):
+        return None
+    if not conflicts_review.engine_can_review(ENGINE_SKILL_DIRECTORY):
+        return None
+    module = review_cache_module()
+    directions, texts = skill_overlap.skill_pairs(plan["entries"], catalog, is_pack_profile, module.normalized_text)
+    if not directions:
+        return None
+    use_provider = not arguments.offline and os.environ.get("AGENT_READY_SETUP_REVIEW_MODE") != "1"
+    settings = {"enabled": True, "cache": configuration.value(REVIEWS_CACHE_KEY),
+                "ttl": configuration.value(REVIEWS_TTL_KEY), "commit": configuration.value(REVIEWS_COMMIT_KEY)}
+    check = skill_overlap.reviewer(conflicts_review.load_harness_review(ENGINE_SKILL_DIRECTORY))
+    report = conflicts_review.review_conflicts(arguments.project, ENGINE_SKILL_DIRECTORY, module, arguments.provider,
+                                               directions, texts, bash_executable(), use_provider, settings,
+                                               publish=arguments.format == "protected", check=check)
+    report.pop("pending", None)
+    return report
+
+
+def print_competing_skills(report):
+    """The skills that compete, with the requests both take and how they differ."""
+    if not report:
+        return
+    module = review_cache_module()
+    for finding in report["findings"]:
+        requests = "; ".join(f'"{request}"' for request in finding.get("lines", []))
+        write_line(paint(f"  {module.finding_line(finding)} (competing skills"
+                         f"{': ' + requests if requests else ''})", "warning", sys.stdout))
+    if report.get("unchecked"):
+        write_line(f"  Competing skills: {report['unchecked']} pair(s) not reviewed ({report['reason']})")
 
 
 def print_competing_tools(findings):

@@ -185,7 +185,7 @@ def engine_can_review(engine_dir):
 
 
 def review_conflicts(project_root, engine_dir, cache_module, provider, directions, texts, bash, use_provider,
-                     settings=None, publish=False):
+                     settings=None, publish=False, check=None):
     """Review the pairs that are not in the cache and return what plan reports.
 
     ``use_provider`` false (offline, review mode) answers from the cache only. A pair without an
@@ -195,6 +195,9 @@ def review_conflicts(project_root, engine_dir, cache_module, provider, direction
     results in the local cache, so it never changes a file of the repository.
     """
     harness = load_harness_review(engine_dir)
+    # The check to run: the contradictions of harness-review by default, or another one with its own
+    # CHECK, CHECK_VERSION and review_pairs (the competing skills of agent_ready_skill_overlap.py).
+    check = check or harness
     pairs = sorted(directions)
     report = {"pairs": len(pairs), "fromCache": 0, "reviewed": 0, "unchecked": 0, "uncheckedUpdate": 0,
               "reason": None, "findings": [], "quiet": 0}
@@ -212,8 +215,8 @@ def review_conflicts(project_root, engine_dir, cache_module, provider, direction
     pending = []
     for pair in pairs:
         contents = {name: texts[name] for name in pair}
-        key = cache_module.unit_key(harness.CHECK, harness.CHECK_VERSION, provider, model, engine, contents)
-        unit = cache_module.unit_id(harness.CHECK, pair)
+        key = cache_module.unit_key(check.CHECK, check.CHECK_VERSION, provider, model, engine, contents)
+        unit = cache_module.unit_id(check.CHECK, pair)
         entry = cache.lookup(unit, key)
         if entry is None:
             pending.append((pair, key, contents))
@@ -230,7 +233,7 @@ def review_conflicts(project_root, engine_dir, cache_module, provider, direction
         report["unchecked"], report["reason"] = len(pending), f"the {provider} CLI is not available"
         report["uncheckedUpdate"] = unchecked_update
     elif pending:
-        reviewed = harness.review_pairs(bash, provider, model, effort, [pair for pair, _, _ in pending], texts, project_root)
+        reviewed = check.review_pairs(bash, provider, model, effort, [pair for pair, _, _ in pending], texts, project_root)
         if reviewed is None:
             report["unchecked"], report["reason"] = len(pending), f"{provider} gave no valid answer"
             report["uncheckedUpdate"] = unchecked_update
@@ -238,8 +241,8 @@ def review_conflicts(project_root, engine_dir, cache_module, provider, direction
             records = {}
             for pair, key, contents in pending:
                 verdict = cache_module.VERDICT_FINDINGS if reviewed[pair] else cache_module.VERDICT_CONSISTENT
-                records[cache_module.unit_id(harness.CHECK, pair)] = cache_module.entry_for(
-                    harness.CHECK, harness.CHECK_VERSION, provider, model, engine, contents, key, verdict, reviewed[pair])
+                records[cache_module.unit_id(check.CHECK, pair)] = cache_module.entry_for(
+                    check.CHECK, check.CHECK_VERSION, provider, model, engine, contents, key, verdict, reviewed[pair])
                 known[pair] = reviewed[pair]
             report["reviewed"] = len(pending)
             try:
@@ -262,10 +265,10 @@ def review_conflicts(project_root, engine_dir, cache_module, provider, direction
         # A decision holds for the content that was reviewed, which for an update is what the
         # apply will write, not what is on disk.
         reviewed_files = {name: cache_module.text_hash(texts[name]) for name in pair}
-        for finding in decisions.annotate(cache_module.unit_id(harness.CHECK, pair), known[pair], recorded):
+        for finding in decisions.annotate(cache_module.unit_id(check.CHECK, pair), known[pair], recorded):
             if finding["decision"]:
                 finding["status"] = decision_status(cache_module, finding["decision"], reviewed_files)
-            annotated.append(dict(finding, direction=directions[pair], check=harness.CHECK, reviewedFiles=reviewed_files))
+            annotated.append(dict(finding, direction=directions[pair], check=check.CHECK, reviewedFiles=reviewed_files))
     report["findings"] = cache_module.visible(annotated)
     report["quiet"] = len(annotated) - len(report["findings"])
     report["pending"] = [finding for finding in annotated if finding["direction"] in APPLY_DIRECTIONS]

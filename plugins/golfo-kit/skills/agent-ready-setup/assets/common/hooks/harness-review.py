@@ -181,18 +181,23 @@ def run_through_bash(bash, command, scratch, documents_text, working_directory, 
                           encoding="utf-8", errors="replace", check=False)
 
 
-def run_provider(bash, provider, model, effort, documents_text, working_directory):
-    """Run the provider CLI without tools or session; returns the parsed result or None."""
+def run_provider(bash, provider, model, effort, documents_text, working_directory, prompt=PROMPT, schema=None):
+    """Run the provider CLI without tools or session; returns the parsed result or None.
+
+    ``prompt`` and ``schema`` default to this check's; another check (agent_ready_skill_overlap.py)
+    passes its own and reads the same ``findings`` list back.
+    """
+    schema = schema or RESULT_SCHEMA
     with tempfile.TemporaryDirectory() as scratch:
         if provider == "codex":
             schema_path = os.path.join(scratch, "schema.json")
             result_path = os.path.join(scratch, "result.json")
             with open(schema_path, "w", encoding="utf-8") as schema_file:
-                json.dump(RESULT_SCHEMA, schema_file)
+                json.dump(schema, schema_file)
             completed = run_through_bash(
                 bash, ["codex", "exec", "--model", model, "-c", f'model_reasoning_effort="{effort}"',
                        "--sandbox", "read-only", "--skip-git-repo-check", "--ephemeral", "--ignore-rules",
-                       "--output-schema", schema_path, "--output-last-message", result_path, PROMPT],
+                       "--output-schema", schema_path, "--output-last-message", result_path, prompt],
                 scratch, documents_text, working_directory)
             if completed.returncode != 0 or not os.path.isfile(result_path):
                 return None
@@ -200,8 +205,8 @@ def run_provider(bash, provider, model, effort, documents_text, working_director
                 return extract_result(result_file.read())
         environment = {name: value for name, value in os.environ.items() if name != "CLAUDECODE"}
         completed = run_through_bash(
-            bash, ["claude", "-p", PROMPT, "--model", model, "--effort", effort, "--output-format", "json",
-                   "--json-schema", json.dumps(RESULT_SCHEMA), "--tools", "", "--safe-mode", "--no-session-persistence"],
+            bash, ["claude", "-p", prompt, "--model", model, "--effort", effort, "--output-format", "json",
+                   "--json-schema", json.dumps(schema), "--tools", "", "--safe-mode", "--no-session-persistence"],
             scratch, documents_text, working_directory, environment)
         return extract_result(completed.stdout) if completed.returncode == 0 else None
 

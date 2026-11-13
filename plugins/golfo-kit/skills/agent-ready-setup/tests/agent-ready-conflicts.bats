@@ -55,6 +55,16 @@ text = sys.stdin.read()
 with open(os.environ["FAKE_INPUT"], "a", encoding="utf-8") as log:
     log.write(text)
 findings = []
+if "competition" in os.environ.get("FAKE_MODE", "") and '<document path=".agents/skills/' in text:
+    # The review of competing skills: report the pair whose names match.
+    for number, first, second in re.findall(r"^(\d+)\. (\S+) <-> (\S+)$", text, re.M):
+        names = (first, second)
+        if any(os.environ["FAKE_SKILL_FIRST"] in name for name in names) and any(
+                os.environ["FAKE_SKILL_SECOND"] in name for name in names):
+            findings.append({"pair": int(number), "requests": ["review this pull request"],
+                             "text": "Both review pull requests; one follows the team checklist."})
+    print(json.dumps({"structured_output": {"findings": findings}}))
+    sys.exit(0)
 # FAKE_REQUIRE_TEXT: report only when the documents sent contain this text.
 if os.environ.get("FAKE_REQUIRE_TEXT", "") not in text:
     print(json.dumps({"structured_output": {"findings": []}}))
@@ -420,4 +430,26 @@ PY
   [ "$status" -ne 0 ]
   [[ "$stderr" == *"conflicts.block"* ]]
   [ ! -e .agents/rules/acme-team.md ]
+}
+
+@test "a pack skill that competes with another profile's skill is reported, unless it declares complements" {
+  mkdir -p agent-packs/acme/profiles/team/skills/team-review
+  printf '%s\n' '{"schemaVersion": 1, "name": "acme", "version": "1.0.0", "profiles": {"team": {"kind": "capability", "description": "Team skills.", "assets": "profiles/team"}}}' > agent-packs/acme/agent-ready-pack.json
+  printf -- '---\nname: team-review\ndescription: Review a pull request with the team checklist.\n---\n# Team review\n' > agent-packs/acme/profiles/team/skills/team-review/SKILL.md
+  write_manifest '{"profiles": ["node", "acme/team"], "sources": {"packs": [{"name": "acme", "source": "path:./agent-packs/acme"}]}}'
+  export FAKE_MODE=competition FAKE_SKILL_FIRST=team-review FAKE_SKILL_SECOND=pr-review-workflow
+
+  agent_ready plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *".agents/skills/pr-review-workflow/SKILL.md <-> .agents/skills/team-review/SKILL.md: Both review pull requests; one follows the team checklist. (competing skills: \"review this pull request\")"* ]]
+  # Only pairs with the pack skill: golfo-kit's own skills are not reviewed against each other.
+  ! grep -Eq '^[0-9]+\. \.agents/skills/agent-browser/SKILL\.md <-> \.agents/skills/pr-review-workflow/SKILL\.md$' "$FAKE_INPUT"
+
+  # Declared complementary: the pair is not reviewed.
+  printf '%s\n' '{"schemaVersion": 1, "name": "acme", "version": "1.0.0", "profiles": {"team": {"kind": "capability", "description": "Team skills.", "assets": "profiles/team", "complements": ["software-development:skills/pr-review-workflow"]}}}' > agent-packs/acme/agent-ready-pack.json
+  : > "$FAKE_INPUT"
+  agent_ready plan
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"competing skills"* ]]
+  ! grep -Fq 'team-review/SKILL.md' "$FAKE_INPUT"
 }
