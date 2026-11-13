@@ -26,6 +26,8 @@ AGENT_READY_CHECK_PATTERN = re.compile(
     r"agent-ready-check\.sh|agent-ready(?:\.py)?\s+check\b|agent-ready-state\.py\s+check\b|bootstrap\.sh\b.*--check\b")
 REPOSITORY_CI_FILES = (".github/workflows/*.yml", ".github/workflows/*.yaml", ".gitlab-ci.yml", "Jenkinsfile",
                        ".circleci/config.yml", "azure-pipelines.yml", "bitbucket-pipelines.yml")
+# The plan action of an asset the apply deletes (agent-ready-state.py).
+ACTION_RETIRE = "retire"
 RULES_PREFIX = ".agents/rules/"
 SKILLS_PREFIX = ".agents/skills/"
 AGENTS_PREFIX = ".agents/agents/"
@@ -53,20 +55,26 @@ def provider_views(rule_count, scoped_rule_count, entries):
 
 def hook_differences(project_root, skill_dir):
     """Hooks one provider runs and the other does not: the golfo-kit templates (except the events
-    declared provider-specific) and the project's own hooks, compared by command."""
+    declared provider-specific there) and the project's own hooks.
+
+    A hook is its event and its command without the --provider it passes: the same command on
+    another event does not run at the same moment. Matchers are not compared, because each provider
+    names its tools differently (Edit and Write in Claude Code, apply_patch in Codex).
+    """
     layers = settings_conflicts.layers(project_root, skill_dir)
     differences = []
     for layer_name in (settings_conflicts.LAYER_GOLFO, settings_conflicts.LAYER_PROJECT):
-        commands = {provider: {} for provider in (PROVIDER_CLAUDE, PROVIDER_CODEX)}
+        hooks = {provider: {} for provider in (PROVIDER_CLAUDE, PROVIDER_CODEX)}
         for layer in layers:
-            if layer["layer"] == layer_name and layer["provider"] in commands:
+            if layer["layer"] == layer_name and layer["provider"] in hooks:
                 for event, _, command in settings_conflicts.hook_entries(layer["data"]):
-                    commands[layer["provider"]].setdefault(command, (event, layer["file"]))
+                    hooks[layer["provider"]].setdefault((event, provider_neutral(command)), (command, layer["file"]))
         for provider, other in ((PROVIDER_CLAUDE, PROVIDER_CODEX), (PROVIDER_CODEX, PROVIDER_CLAUDE)):
-            for command, (event, file) in sorted(commands[provider].items()):
-                if command in commands[other] or provider_neutral(command) in map(provider_neutral, commands[other]):
+            for (event, neutral), (command, file) in sorted(hooks[provider].items()):
+                if (event, neutral) in hooks[other]:
                     continue
-                if (provider, event) in PROVIDER_SPECIFIC_HOOK_EVENTS:
+                # Only golfo-kit declares hooks that belong to one provider; the project's are always compared.
+                if layer_name == settings_conflicts.LAYER_GOLFO and (provider, event) in PROVIDER_SPECIFIC_HOOK_EVENTS:
                     continue
                 differences.append({"provider": provider, "missing": other, "event": event, "command": command,
                                     "file": file})
@@ -126,6 +134,8 @@ def duplicated_ci_jobs(project_root, entries, block_destinations):
     repository's.
     """
     managed = {entry["destination"] for entry in entries if entry.get("sha256")}
+    # A workflow the same apply retires (another ci.provider) is the engine's too, not the repository's.
+    retiring = {entry["destination"] for entry in entries if entry.get("action") == ACTION_RETIRE}
     # The managed entry points of the CI: the helper script under .agents/ci only runs through them.
     managed_ci = sorted(path for path in managed | set(block_destinations)
                         if path.startswith(".github/workflows/") or path == ".gitlab-ci.yml")
@@ -135,7 +145,7 @@ def duplicated_ci_jobs(project_root, entries, block_destinations):
     for pattern in REPOSITORY_CI_FILES:
         for path in sorted(glob.glob(os.path.join(glob.escape(project_root), *pattern.split("/")))):
             relative = os.path.relpath(path, project_root).replace(os.sep, "/")
-            if relative in managed or os.path.islink(path) or not os.path.isfile(path):
+            if relative in managed or relative in retiring or os.path.islink(path) or not os.path.isfile(path):
                 continue
             try:
                 with open(path, encoding="utf-8", errors="replace") as ci_file:
