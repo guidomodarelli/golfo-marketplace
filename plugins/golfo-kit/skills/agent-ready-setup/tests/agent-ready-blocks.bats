@@ -821,3 +821,19 @@ write_nested_manifest() {
   [ "$status" -eq 0 ]
   ! grep -q 'agent-ready:nested-index' AGENTS.md
 }
+
+@test "a nested CLAUDE.md with @AGENTS.md and any final line ends is the nested proxy for plan as for the normalization" {
+  run_cli apply
+  mkdir -p service
+  printf '# Service\n' > service/AGENTS.md
+  printf '@AGENTS.md' > service/CLAUDE.md
+  run_cli plan --json
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s' "$output" | python3 -c 'import json, sys; print(json.load(sys.stdin)["claudeProxiesToNormalize"])')" = "[]" ]
+  printf '@AGENTS.md\n\n' > service/CLAUDE.md
+  run_cli plan --json
+  [ "$(printf '%s' "$output" | python3 -c 'import json, sys; print(json.load(sys.stdin)["claudeProxiesToNormalize"])')" = "[]" ]
+  cp "$skill_dir/assets/claude-proxy.md" service/CLAUDE.md
+  run_cli plan --json
+  [ "$(printf '%s' "$output" | python3 -c 'import json, sys; print(json.load(sys.stdin)["claudeProxiesToNormalize"])')" = "['service/CLAUDE.md']" ]
+}

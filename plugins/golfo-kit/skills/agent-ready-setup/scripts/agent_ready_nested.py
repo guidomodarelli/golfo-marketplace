@@ -251,6 +251,13 @@ def describe(entry):
 # Proxies
 # ---------------------------------------------------------------------------
 
+def is_bare_proxy(path):
+    """True for a CLAUDE.md that is @AGENTS.md alone, read as is_plain_claude_proxy in
+    instruction-normalization.sh reads it: a command substitution drops every final line end."""
+    with open(path, "rb") as file_handle:
+        return file_handle.read().rstrip(b"\n") == BARE_PROXY.encode("utf-8")
+
+
 def is_proxy(path, proxy_text):
     """True for a CLAUDE.md that only points to its AGENTS.md: the proxy or a bare @AGENTS.md."""
     if is_link(path) or not os.path.isfile(path):

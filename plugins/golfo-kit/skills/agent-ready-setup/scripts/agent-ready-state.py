@@ -1872,8 +1872,6 @@ def claude_proxy_drift(project_root, skill_dir):
         return []
     proxy_hash = sha256_of_file(proxy_path)
     listed_paths = listed.splitlines()
-    # A nested CLAUDE.md is the import alone; the root one is the whole proxy (instruction-normalization.sh).
-    nested_proxy_hash = sha256_of_text(nested.NESTED_PROXY_TEXT)
     existing_proxies = {path.casefold() for path in listed_paths if os.path.basename(path).lower() == "claude.md"}
     drifted = []
     # The root always needs its proxy, and so does every AGENTS.md: it is what loads the instructions.
@@ -1884,8 +1882,14 @@ def claude_proxy_drift(project_root, skill_dir):
             required_proxies.add(os.path.join(os.path.dirname(relative_path), "CLAUDE.md").replace(os.sep, "/"))
         elif file_name == "claude.md":
             absolute_path = os.path.join(project_root, relative_path)
-            expected = nested_proxy_hash if os.path.dirname(relative_path) else proxy_hash
-            if os.path.isfile(absolute_path) and not os.path.islink(absolute_path) and sha256_of_file(absolute_path) != expected:
+            if not os.path.isfile(absolute_path) or os.path.islink(absolute_path):
+                continue
+            # A nested CLAUDE.md is the import alone; the root one is the whole proxy (instruction-normalization.sh).
+            if os.path.dirname(relative_path):
+                normalized = nested.is_bare_proxy(absolute_path)
+            else:
+                normalized = sha256_of_file(absolute_path) == proxy_hash
+            if not normalized:
                 drifted.append(relative_path)
     for proxy in sorted(required_proxies):
         if proxy.casefold() not in existing_proxies and not os.path.lexists(os.path.join(project_root, proxy)):
