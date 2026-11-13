@@ -309,3 +309,36 @@ skip_without_pseudoterminal() {
   [ "$(json_value .agents/agent-ready.json 'document["ci"]["provider"]')" = '"none"' ]
   [ ! -e .agents/ci ]
 }
+
+@test "agent-ready conflicts exits 6 on a conflict, and check fails on it under ci.conflicts.structural" {
+  printf '{"devDependencies": {"jest": "29"}}\n' > package.json
+  mkdir -p .agents/rules
+  printf -- '---\nassumes:\n  testRunner: vitest\n---\n# Ours\n' > .agents/rules/ours.md
+  run_cli conflicts --offline
+  [ "$status" -eq 6 ]
+  [[ "$output" == *"! .agents/rules/ours.md (project) assumes test runner vitest, but the repository uses jest (package.json)"* ]]
+  run_cli conflicts --offline --json
+  [ "$status" -eq 6 ]
+  [ "$(printf '%s' "$output" | python3 -c 'import json, sys; print(json.load(sys.stdin)["found"])' | tr -d '\r')" = "True" ]
+
+  run_cli apply
+  [ "$status" -eq 0 ]
+  run_cli check --offline
+  [ "$status" -eq 6 ]
+  [[ "$output" == *"Conflicts (ci.conflicts.structural: fail):"* ]]
+
+  # warn lists them and passes; off does not look.
+  run_cli config set ci.conflicts.structural warn
+  run_cli check --offline
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Conflicts (ci.conflicts.structural: warn):"* ]]
+  run_cli config set ci.conflicts.structural off
+  run_cli check --offline
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"Conflicts ("* ]]
+
+  rm .agents/rules/ours.md
+  run_cli conflicts --offline
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"No conflicts between the profiles"* ]]
+}

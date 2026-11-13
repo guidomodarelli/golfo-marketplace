@@ -3912,6 +3912,40 @@
           "description": "Escribe la referencia <profile>:skills/<nombre> correcta"
         }
       ]
+    },
+    {
+      "id": "conflicts-command-and-ci",
+      "description": "El usuario quiere ver todos los conflictos juntos y que el CI falle por los estructurales pero no por los de IA.",
+      "input": "Quiero un comando que me liste todos los conflictos entre los perfiles de agent-ready de una vez, y que mi CI falle si hay conflictos estructurales pero que no llame a ninguna IA. ¿Cómo lo hago? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": [
+            "agent-ready conflicts",
+            "agent-ready\" conflicts",
+            "conflicts --offline",
+            "conflicts --json"
+          ],
+          "description": "Nombra el subcomando agent-ready conflicts",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "ci.conflicts",
+          "description": "Nombra las claves ci.conflicts",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "semantic",
+            "semántic",
+            "IA",
+            "AI"
+          ],
+          "description": "Distingue lo semántico (IA) de lo estructural"
+        }
+      ]
     }
   ]
 }

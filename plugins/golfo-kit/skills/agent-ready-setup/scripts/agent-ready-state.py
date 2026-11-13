@@ -31,6 +31,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import types
 
 # Shared modules load from this script's own directory and leave no bytecode beside
 # the skill source, which may be a read-only snapshot.
@@ -74,6 +75,10 @@ from agent_ready_config import (  # noqa: E402
 from agent_ready_options import (  # noqa: E402
     CI_ENABLED_KEY,
     CI_MODE_KEY,
+    CI_CONFLICTS_STRUCTURAL_KEY,
+    CI_CONFLICTS_SEMANTIC_KEY,
+    CI_CONFLICTS_OFF,
+    CI_CONFLICTS_FAIL,
     CI_PROVIDER_KEY,
     CI_PROVIDER_NONE,
     CI_WARN,
@@ -156,6 +161,8 @@ MANIFEST_RELATIVE_PATH = PROJECT_CONFIG_RELATIVE_PATH
 # The review cache lives with the hooks, which also run where the skill is not installed.
 REVIEW_CACHE_RELATIVE_PATH = "assets/common/hooks/review-cache.py"
 ENGINE_SKILL_DIRECTORY = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Infers the provider of a run from the environment and the installation path.
+PROVIDER_RESOLVER_RELATIVE_PATH = "scripts/resolve-provider.sh"
 LOCK_RELATIVE_PATH = ".agents/agent-ready.lock.json"
 PROFILE_CATALOG_RELATIVE_PATH = "assets/profiles.json"
 PROVIDER_CATALOG_RELATIVE_PATH = "assets/providers.json"
@@ -189,6 +196,7 @@ CHECK_OUTDATED = "outdated"
 CHECK_SOURCE_UNAVAILABLE = "source-unavailable"
 CHECK_CONFIG_ERROR = "config-error"
 CHECK_SKIPPED = "skipped"
+CHECK_CONFLICTS = "conflicts"
 FOREGROUND_SYNC_VARIABLE = "AGENT_READY_SETUP_SYNC_FOREGROUND"
 # The background update stops retrying for a while after this many failures in a row.
 BACKGROUND_UPDATE_MAX_FAILURES = 3
@@ -206,12 +214,18 @@ DETECTION_UNRESOLVED_STATUS = 3
 DRIFT_STATUS = 4
 # Exit status when a profile source the selection needs is not available or not adopted.
 INCOMPLETE_EVALUATION_STATUS = 5
+# agent-ready conflicts and agent-ready check found conflicts between the profiles.
+CONFLICTS_STATUS = 6
+# plan formats that print only the conflicts, for agent-ready conflicts.
+CONFLICTS_FORMAT = "conflicts"
+CONFLICTS_JSON_FORMAT = "conflicts-json"
 CHECK_EXIT_STATUSES = {
     CHECK_UP_TO_DATE: 0,
     CHECK_SKIPPED: 0,
     CHECK_CONFIG_ERROR: PROFILE_ERROR_STATUS,
     CHECK_OUTDATED: DRIFT_STATUS,
     CHECK_SOURCE_UNAVAILABLE: INCOMPLETE_EVALUATION_STATUS,
+    CHECK_CONFLICTS: CONFLICTS_STATUS,
 }
 
 # How a command treats profile sources. Read-only evaluates what is there and reports
@@ -1935,8 +1949,12 @@ def print_plan_sources(plan):
     write_line("")
 
 
-def semantic_conflicts(arguments, plan):
-    """The AI review of managed rules against the project's own, or None when it is off."""
+def semantic_conflicts(arguments, plan, instructions_with_applied=False):
+    """The AI review of managed rules against the project's own, or None when it is off.
+
+    ``instructions_with_applied`` also pairs the project's AGENTS.md with the rules already applied,
+    for a check of the whole repository rather than of what an apply changes.
+    """
     configuration = configuration_of(arguments.project, arguments.offline)
     if not configuration.value(CONFLICTS_ENABLED_KEY) or not configuration.value(REVIEWS_ENABLED_KEY):
         conflicts_review.record_pending(arguments.project, [], check=conflicts_review.CONFLICT_CHECK)
@@ -1947,7 +1965,7 @@ def semantic_conflicts(arguments, plan):
     lock = read_lock(arguments.project)
     directions, texts = conflicts_review.conflict_pairs(
         arguments.project, plan["entries"], (lock or {}).get("assets", {}), module.normalized_text,
-        project_owned_instructions, ENGINE_SKILL_DIRECTORY, is_pack_profile)
+        project_owned_instructions, ENGINE_SKILL_DIRECTORY, is_pack_profile, instructions_with_applied)
     # Offline runs and automated reviews answer from the cache only.
     use_provider = not arguments.offline and os.environ.get("AGENT_READY_SETUP_REVIEW_MODE") != "1"
     # The options of this run: the hooks' copy of them only changes when an apply finishes.
@@ -2470,18 +2488,26 @@ def machine_report(project_root, plan, configuration):
     return report
 
 
-def print_machine_report(report):
+def machine_report_lines(report):
     """The collisions with the machine, one line each."""
+    lines = []
     if not report:
-        return
+        return lines
     for finding in report.get("shadowed", []):
-        write_line(paint(f"  ~ {finding['kind']} {finding['name']} ({finding['profile']}) has the same name as "
-                         f"{finding['machine']}: {finding['winner']}", "warning", sys.stdout))
+        lines.append(f"  ~ {finding['kind']} {finding['name']} ({finding['profile']}) has the same name as "
+                     f"{finding['machine']}: {finding['winner']}")
     for server in report.get("userServers", []):
         action = ("registered anyway" if server["registered"]
                   else f"not registered for {server['provider']} ({USER_SERVERS_REGISTER_KEY}: true registers it)")
-        write_line(paint(f"  ~ MCP server {server['name']} ({server['profile']}) is the user's {server['userName']} "
-                         f"in {server['userFile']}: {action}", "warning", sys.stdout))
+        lines.append(f"  ~ MCP server {server['name']} ({server['profile']}) is the user's {server['userName']} "
+                     f"in {server['userFile']}: {action}")
+    return lines
+
+
+def print_machine_report(report):
+    """Print the lines of machine_report_lines."""
+    for line in machine_report_lines(report):
+        write_line(paint(line, "warning", sys.stdout) if line.lstrip().startswith(("!", "~")) else line)
 
 
 def print_pack_mcp_report(report, stream):
@@ -3098,7 +3124,7 @@ def command_plan(arguments):
     except IncompleteEvaluationError as incomplete_error:
         if arguments.format == "protected":
             raise
-        if arguments.format == "json":
+        if arguments.format in ("json", CONFLICTS_JSON_FORMAT):
             write_line(serialize_json({"complete": False, "requestedProfiles": requested, "selection": selection,
                                        "incomplete": str(incomplete_error)}).rstrip("\n"))
             return INCOMPLETE_EVALUATION_STATUS
@@ -3110,7 +3136,10 @@ def command_plan(arguments):
     tools_report = pack_tools_report(plan, catalog, configuration_of(arguments.project, arguments.offline))
     if tools_report:
         plan["packTools"] = tools_report
-    conflicts = semantic_conflicts(arguments, plan)
+    # agent-ready conflicts looks at the whole repository: the project's AGENTS.md against the rules
+    # already applied too, not only against what an apply changes.
+    conflicts = semantic_conflicts(arguments, plan,
+                                   instructions_with_applied=arguments.format in (CONFLICTS_FORMAT, CONFLICTS_JSON_FORMAT))
     # Before the apply too: it publishes what the previews reviewed to the versioned cache.
     competing_skills = competing_skills_report(arguments, plan, catalog,
                                                configuration_of(arguments.project, arguments.offline))
@@ -3147,17 +3176,9 @@ def command_plan(arguments):
         if configuration.value(DETECTION_ENABLED_KEY):
             plan["detection"] = detect_profiles(catalog["profiles"], arguments.project)
             plan["suggestions"] = capability_suggestions(catalog, plan["detection"], plan["profiles"])
-        if configuration.value(CONTEXT_BUDGET_ENABLED_KEY):
-            plan["context"] = context_budget(arguments.project, arguments.skill_dir, catalog, plan, configuration)
-        plan["machine"] = machine_report(arguments.project, plan, configuration)
-        if configuration.value(REPO_REALITY_ENABLED_KEY):
-            plan["repoReality"] = repo_reality_report(arguments.project, arguments.skill_dir, plan)
-        plan["parity"] = parity_report(arguments.project, arguments.skill_dir, plan, configuration)
-        if configuration.value(COMPETING_TOOLS_ENABLED_KEY):
-            plan["competingTools"] = pack_tools.competing_tools(plan.get("packToolDeclarations", []), catalog)
-        plan["settingsConflicts"] = settings_conflicts.report(
-            arguments.project, arguments.skill_dir, configuration.value(HOOK_CONFLICTS_ENABLED_KEY),
-            configuration.value(PERMISSION_CONFLICTS_ENABLED_KEY))
+        plan.update(structural_conflicts(arguments.project, arguments.skill_dir, plan, catalog, configuration))
+        if arguments.format in (CONFLICTS_FORMAT, CONFLICTS_JSON_FORMAT):
+            return report_conflicts(plan, arguments.format == CONFLICTS_JSON_FORMAT)
         if arguments.format == "json":
             write_line(serialize_json(plan_report(arguments.project, arguments.skill_dir, plan, configuration)).rstrip("\n"))
             return 0
@@ -3296,16 +3317,23 @@ def repo_reality_report(project_root, skill_dir, plan):
     return repo_facts.contradictions(project_root, repo_facts.load_facts(skill_dir), rules)
 
 
-def print_repo_reality(findings):
+def repo_reality_lines(findings):
     """One line per rule the repository contradicts."""
+    lines = []
     for finding in findings:
         if finding.get("unknown"):
-            write_line(paint(f"  ~ {finding['rule']} ({finding['profile']}) assumes {finding['fact']}: {finding['assumes']}, "
-                             f"which {repo_facts.FACTS_RELATIVE_PATH} does not know; it is not checked", "warning", sys.stdout))
+            lines.append(f"  ~ {finding['rule']} ({finding['profile']}) assumes {finding['fact']}: {finding['assumes']}, "
+                         f"which {repo_facts.FACTS_RELATIVE_PATH} does not know; it is not checked")
             continue
-        write_line(paint(f"  ! {finding['rule']} ({finding['profile']}) assumes {finding['description']} {finding['assumes']}, "
-                         f"but the repository uses {', '.join(finding['repository'])} ({', '.join(finding['evidence'])})",
-                         "warning", sys.stdout))
+        lines.append(f"  ! {finding['rule']} ({finding['profile']}) assumes {finding['description']} {finding['assumes']}, "
+                     f"but the repository uses {', '.join(finding['repository'])} ({', '.join(finding['evidence'])})")
+    return lines
+
+
+def print_repo_reality(findings):
+    """Print the lines of repo_reality_lines."""
+    for line in repo_reality_lines(findings):
+        write_line(paint(line, "warning", sys.stdout) if line.lstrip().startswith(("!", "~")) else line)
 
 
 def parity_report(project_root, skill_dir, plan, configuration):
@@ -3352,67 +3380,97 @@ def competing_skills_report(arguments, plan, catalog, configuration):
     return report
 
 
-def print_competing_skills(report):
+def competing_skills_lines(report):
     """The skills that compete, with the requests both take and how they differ."""
+    lines = []
     if not report:
-        return
+        return lines
     module = review_cache_module()
     for finding in report["findings"]:
         requests = "; ".join(f'"{request}"' for request in finding.get("lines", []))
-        write_line(paint(f"  {module.finding_line(finding)} (competing skills"
-                         f"{': ' + requests if requests else ''})", "warning", sys.stdout))
+        lines.append(f"  {module.finding_line(finding)} (competing skills"
+                     f"{': ' + requests if requests else ''})")
     if report.get("unchecked"):
-        write_line(f"  Competing skills: {report['unchecked']} pair(s) not reviewed ({report['reason']})")
+        lines.append(f"  Competing skills: {report['unchecked']} pair(s) not reviewed ({report['reason']})")
+    return lines
 
 
-def print_competing_tools(findings):
+def print_competing_skills(report):
+    """Print the lines of competing_skills_lines."""
+    for line in competing_skills_lines(report):
+        write_line(paint(line, "warning", sys.stdout) if line.lstrip().startswith(("!", "~")) else line)
+
+
+def competing_tools_lines(findings):
     """One line per pair of tools that give the same capability."""
+    lines = []
     kinds = {pack_tools.TOOL_CLI: "CLI", pack_tools.TOOL_MCP_SERVER: "MCP server"}
     for finding in findings:
         first, second = finding["tools"]
-        write_line(paint(f"  ~ {kinds[first['type']]} {first['name']} ({first['profile']}) and {kinds[second['type']]} "
-                         f"{second['name']} ({second['profile']}) both provide {', '.join(finding['capabilities'])}: the "
-                         f"agent picks either; keep one, or declare complements if they go together",
-                         "warning", sys.stdout))
+        lines.append(f"  ~ {kinds[first['type']]} {first['name']} ({first['profile']}) and {kinds[second['type']]} "
+                     f"{second['name']} ({second['profile']}) both provide {', '.join(finding['capabilities'])}: the "
+                     f"agent picks either; keep one, or declare complements if they go together")
+    return lines
 
 
-def print_parity_report(report):
+def print_competing_tools(findings):
+    """Print the lines of competing_tools_lines."""
+    for line in competing_tools_lines(findings):
+        write_line(paint(line, "warning", sys.stdout) if line.lstrip().startswith(("!", "~")) else line)
+
+
+def parity_report_lines(report):
     """What each provider sees, and one line per hook, variable or CI job that collides."""
+    lines = []
     views = report.get("views")
     if views:
         claude, codex = views[parity.PROVIDER_CLAUDE], views[parity.PROVIDER_CODEX]
-        write_line(f"Providers: Claude Code sees {claude['rules']} rules ({claude['rulesForPathsOnly']} only for their "
-                   f"paths), {claude['skills']} skills, {claude['subagents']} subagents and {claude['commands']} commands; "
-                   f"Codex sees {codex['rules']} rules in AGENTS.md and {codex['skills']} skills")
+        lines.append(f"Providers: Claude Code sees {claude['rules']} rules ({claude['rulesForPathsOnly']} only for their "
+                     f"paths), {claude['skills']} skills, {claude['subagents']} subagents and {claude['commands']} commands; "
+                     f"Codex sees {codex['rules']} rules in AGENTS.md and {codex['skills']} skills")
     for difference in report.get("hookDifferences", []):
-        write_line(paint(f"  ~ {difference['provider']} runs the {difference['event']} hook `{difference['command']}` "
-                         f"({difference['file']}) and {difference['missing']} does not", "warning", sys.stdout))
+        lines.append(f"  ~ {difference['provider']} runs the {difference['event']} hook `{difference['command']}` "
+                     f"({difference['file']}) and {difference['missing']} does not")
     for variable in report.get("environment", []):
         profiles = ", ".join(variable["profiles"])
         if variable.get("sources"):
-            write_line(paint(f"  ~ variable {variable['name']} is asked by the sources {', '.join(variable['sources'])} "
-                             f"({profiles}): check they mean the same", "warning", sys.stdout))
+            lines.append(f"  ~ variable {variable['name']} is asked by the sources {', '.join(variable['sources'])} "
+                         f"({profiles}): check they mean the same")
         else:
-            write_line(paint(f"  ~ variable {variable['name']} ({profiles}) is already listed in {variable['file']}: "
-                             "check the project uses it for the same", "warning", sys.stdout))
+            lines.append(f"  ~ variable {variable['name']} ({profiles}) is already listed in {variable['file']}: "
+                         "check the project uses it for the same")
     for job in report.get("ciJobs", []):
-        write_line(paint(f"  ~ {job['file']} already runs the Agent Ready check; the managed {', '.join(job['managed'])} "
-                         "runs it again", "warning", sys.stdout))
+        lines.append(f"  ~ {job['file']} already runs the Agent Ready check; the managed {', '.join(job['managed'])} "
+                     "runs it again")
+    return lines
+
+
+def print_parity_report(report):
+    """Print the lines of parity_report_lines."""
+    for line in parity_report_lines(report):
+        write_line(paint(line, "warning", sys.stdout) if line.lstrip().startswith(("!", "~")) else line)
+
+
+def settings_conflicts_lines(report):
+    """One line per permission, hook or formatter that collides across the layers."""
+    lines = []
+    for conflict in report.get("permissions", []):
+        lines.append(f"  ! permission {conflict['pattern']}: allowed in {', '.join(conflict['allow'])} and denied in "
+                     f"{', '.join(conflict['deny'])}; Claude Code applies the deny")
+    for hook in report.get("duplicatedHooks", []):
+        lines.append(f"  ~ {hook['provider']} hook {hook['event']} `{hook['command']}` is registered in "
+                     f"{' and '.join(hook['files'])}: it runs once per registration")
+    for clash in report.get("formatters", []):
+        first, second = clash["hooks"]
+        lines.append(f"  ~ {clash['provider']} {clash['event']} runs two formatters that can rewrite the same files: "
+                     f"{first['formatter']} ({first['file']}) and {second['formatter']} ({second['file']})")
+    return lines
 
 
 def print_settings_conflicts(report):
-    """One line per permission, hook or formatter that collides across the layers."""
-    for conflict in report.get("permissions", []):
-        write_line(paint(f"  ! permission {conflict['pattern']}: allowed in {', '.join(conflict['allow'])} and denied in "
-                         f"{', '.join(conflict['deny'])}; Claude Code applies the deny", "warning", sys.stdout))
-    for hook in report.get("duplicatedHooks", []):
-        write_line(paint(f"  ~ {hook['provider']} hook {hook['event']} `{hook['command']}` is registered in "
-                         f"{' and '.join(hook['files'])}: it runs once per registration", "warning", sys.stdout))
-    for clash in report.get("formatters", []):
-        first, second = clash["hooks"]
-        write_line(paint(f"  ~ {clash['provider']} {clash['event']} runs two formatters that can rewrite the same files: "
-                         f"{first['formatter']} ({first['file']}) and {second['formatter']} ({second['file']})",
-                         "warning", sys.stdout))
+    """Print the lines of settings_conflicts_lines."""
+    for line in settings_conflicts_lines(report):
+        write_line(paint(line, "warning", sys.stdout) if line.lstrip().startswith(("!", "~")) else line)
 
 
 def project_owned_rules(project_root, managed_destinations):
@@ -3664,13 +3722,160 @@ def evaluate_check(project_root, skill_dir, offline):
     problems, incomplete = check_problems(project_root, content_dir)
     if incomplete:
         unavailable.append(incomplete)
+    conflicts, failing_conflicts = {}, False
+    if not unavailable:
+        # With a source missing the selection cannot be evaluated: source-unavailable already says so.
+        try:
+            conflicts, failing_conflicts = check_conflicts(project_root, content_dir, offline)
+        except IncompleteEvaluationError as incomplete_error:
+            unavailable.append(str(incomplete_error))
     if unavailable:
         status = CHECK_SOURCE_UNAVAILABLE
     elif problems:
         status = CHECK_OUTDATED
+    elif failing_conflicts:
+        status = CHECK_CONFLICTS
     else:
         status = CHECK_UP_TO_DATE
-    return {"status": status, "ci": ci, "problems": problems, "unavailable": unavailable}
+    return {"status": status, "ci": ci, "problems": problems, "unavailable": unavailable, "conflicts": conflicts}
+
+
+def structural_conflicts(project_root, skill_dir, plan, catalog, configuration):
+    """The checks of the profiles that need no AI, on a plan: what plan, conflicts and check report."""
+    report = {}
+    if configuration.value(CONTEXT_BUDGET_ENABLED_KEY):
+        report["context"] = context_budget(project_root, skill_dir, catalog, plan, configuration)
+    report["machine"] = machine_report(project_root, plan, configuration)
+    if configuration.value(REPO_REALITY_ENABLED_KEY):
+        report["repoReality"] = repo_reality_report(project_root, skill_dir, plan)
+    report["parity"] = parity_report(project_root, skill_dir, plan, configuration)
+    if configuration.value(COMPETING_TOOLS_ENABLED_KEY):
+        report["competingTools"] = pack_tools.competing_tools(plan.get("packToolDeclarations", []), catalog)
+    report["settingsConflicts"] = settings_conflicts.report(
+        project_root, skill_dir, configuration.value(HOOK_CONFLICTS_ENABLED_KEY),
+        configuration.value(PERMISSION_CONFLICTS_ENABLED_KEY))
+    return report
+
+
+def structural_conflict_lines(report):
+    """One line per structural conflict. What only informs is left out: the context budget, what each
+    provider sees, the servers left to the user and an assumption the catalog cannot check."""
+    lines = machine_report_lines({"shadowed": (report.get("machine") or {}).get("shadowed", [])})
+    lines += repo_reality_lines([finding for finding in report.get("repoReality", []) if not finding.get("unknown")])
+    lines += settings_conflicts_lines(report.get("settingsConflicts") or {})
+    lines += parity_report_lines({key: value for key, value in (report.get("parity") or {}).items() if key != "views"})
+    lines += competing_tools_lines(report.get("competingTools") or [])
+    return lines
+
+
+def semantic_conflict_lines(report):
+    """One line per finding of the AI reviews, and how many pairs they could not review."""
+    module = review_cache_module()
+    lines, unchecked = [], 0
+    for key in ("semanticConflicts", "competingSkills"):
+        review = report.get(key) or {}
+        lines += [f"  {module.finding_line(finding)}" for finding in review.get("findings", [])]
+        unchecked += review.get("unchecked", 0)
+    return lines, unchecked
+
+
+def report_conflicts(plan, as_json):
+    """agent-ready conflicts: every conflict of the selection, and exit 6 when there is one."""
+    structural = structural_conflict_lines(plan)
+    semantic, unchecked = semantic_conflict_lines(plan)
+    found = bool(structural or semantic)
+    if as_json:
+        keys = ("machine", "repoReality", "parity", "competingTools", "settingsConflicts", "semanticConflicts",
+                "competingSkills")
+        write_line(serialize_json({"structural": structural, "semantic": semantic, "unchecked": unchecked,
+                                   "found": found, "details": {key: plan[key] for key in keys if key in plan}})
+                   .rstrip("\n"))
+        return CONFLICTS_STATUS if found else 0
+    stream = sys.stdout
+    if not found:
+        write_line(paint("No conflicts between the profiles", "ok", stream))
+    for title, lines in (("Structural conflicts", structural), ("AI review findings", semantic)):
+        if lines:
+            write_line(paint(f"{title}:", "warning", stream))
+            for line in lines:
+                write_line(line)
+    if unchecked:
+        write_line(f"{unchecked} pair(s) of the AI reviews could not be reviewed in this run.")
+    return CONFLICTS_STATUS if found else 0
+
+
+def has_review_pairs(project_root, plan, catalog):
+    """True when the AI reviews of agent-ready check have a pair to review: without one there is
+    nothing to check, and no provider is needed."""
+    configuration = configuration_of(project_root)
+    module = review_cache_module()
+    if configuration.value(CONFLICTS_ENABLED_KEY):
+        lock = read_lock(project_root)
+        directions, _ = conflicts_review.conflict_pairs(
+            project_root, plan["entries"], (lock or {}).get("assets", {}), module.normalized_text,
+            project_owned_instructions, ENGINE_SKILL_DIRECTORY, is_pack_profile, True)
+        if directions:
+            return True
+    if configuration.value(COMPETING_SKILLS_ENABLED_KEY):
+        directions, _ = skill_overlap.skill_pairs(project_root, plan["entries"], catalog, is_pack_profile,
+                                                  module.normalized_text)
+        if directions:
+            return True
+    return False
+
+
+def session_provider():
+    """The provider of this run as resolve-provider.sh infers it (the environment, then the
+    installation), the same as every other command; None when it cannot tell."""
+    from_environment = os.environ.get("AGENT_READY_SETUP_ACTIVE_PROVIDER")
+    if from_environment in SUPPORTED_PROVIDERS:
+        return from_environment
+    resolved = run_quiet([bash_executable(), os.path.join(ENGINE_SKILL_DIRECTORY, PROVIDER_RESOLVER_RELATIVE_PATH),
+                          "--skill-dir", ENGINE_SKILL_DIRECTORY])
+    return resolved if resolved in SUPPORTED_PROVIDERS else None
+
+
+def check_conflicts(project_root, content_dir, offline):
+    """The conflicts agent-ready check reports under ci.conflicts: (result, whether they fail the check)."""
+    configuration = configuration_of(project_root, offline)
+    structural_mode = configuration.value(CI_CONFLICTS_STRUCTURAL_KEY)
+    semantic_mode = configuration.value(CI_CONFLICTS_SEMANTIC_KEY)
+    result = {"structuralMode": structural_mode, "semanticMode": semantic_mode, "structural": [], "semantic": [],
+              "unchecked": 0}
+    if structural_mode == CI_CONFLICTS_OFF and semantic_mode == CI_CONFLICTS_OFF:
+        return result, False
+    catalog = load_effective_catalog(project_root, content_dir)
+    run = types.SimpleNamespace(project=project_root, skill_dir=content_dir, offline=offline, profiles=None, stack=None,
+                                format="text", provider=session_provider())
+    # The same selection the rest of the check evaluated: the manifest, else the lock's, and only then
+    # detection, so a repository that relies on its lock never needs detection here.
+    requested = configuration.value(PROFILES_KEY)
+    if requested is None:
+        requested = (read_lock(project_root) or {}).get("profileOrder")
+    if requested is None:
+        requested, _ = resolve_selection(run, catalog)
+    plan = compute_plan(project_root, content_dir, catalog, requested)
+    tools_report = pack_tools_report(plan, catalog, configuration)
+    if tools_report:
+        plan["packTools"] = tools_report
+    if structural_mode != CI_CONFLICTS_OFF:
+        result["structural"] = structural_conflict_lines(
+            structural_conflicts(project_root, content_dir, plan, catalog, configuration))
+    # The reviews this configuration runs at all: none, and there is nothing to check or to call.
+    reviews_on = configuration.value(REVIEWS_ENABLED_KEY) and (
+        configuration.value(CONFLICTS_ENABLED_KEY) or configuration.value(COMPETING_SKILLS_ENABLED_KEY))
+    reviewing = semantic_mode != CI_CONFLICTS_OFF and reviews_on and has_review_pairs(project_root, plan, catalog)
+    if reviewing and run.provider is None:
+        # Without a provider the reviews cannot even read their cache, whose keys include it.
+        result["unchecked"] = 1
+        result["semanticProblem"] = "no provider could be inferred; set AGENT_READY_SETUP_ACTIVE_PROVIDER"
+    elif reviewing:
+        reviews = {"semanticConflicts": semantic_conflicts(run, plan, instructions_with_applied=True),
+                   "competingSkills": competing_skills_report(run, plan, catalog, configuration)}
+        result["semantic"], result["unchecked"] = semantic_conflict_lines(reviews)
+    failing = ((structural_mode == CI_CONFLICTS_FAIL and bool(result["structural"]))
+               or (semantic_mode == CI_CONFLICTS_FAIL and bool(result["semantic"] or result["unchecked"])))
+    return result, failing
 
 
 def print_check_text(result):
@@ -3682,6 +3887,7 @@ def print_check_text(result):
         CHECK_SOURCE_UNAVAILABLE: ("source not available", "error"),
         CHECK_CONFIG_ERROR: ("configuration error", "error"),
         CHECK_SKIPPED: ("skipped", "muted"),
+        CHECK_CONFLICTS: ("conflicts between the profiles", "error"),
     }
     headline, color = headlines[result["status"]]
     ci = result["ci"]
@@ -3694,6 +3900,18 @@ def print_check_text(result):
     write_line(paint(f"Agent Ready check: {headline}{mode}", color, stream))
     for message in result["unavailable"] + result["problems"]:
         write_line(f"  ! {message}")
+    conflicts = result.get("conflicts") or {}
+    for kind, mode_key in (("structural", CI_CONFLICTS_STRUCTURAL_KEY), ("semantic", CI_CONFLICTS_SEMANTIC_KEY)):
+        if conflicts.get(kind):
+            write_line(f"Conflicts ({mode_key}: {conflicts[kind + 'Mode']}):")
+            for line in conflicts[kind]:
+                write_line(line)
+    if conflicts.get("semanticProblem"):
+        write_line(f"  ! the AI reviews could not run: {conflicts['semanticProblem']} "
+                   f"({CI_CONFLICTS_SEMANTIC_KEY}: {conflicts['semanticMode']})")
+    elif conflicts.get("unchecked"):
+        write_line(f"  ! {conflicts['unchecked']} pair(s) of the AI reviews could not be reviewed "
+                   f"({CI_CONFLICTS_SEMANTIC_KEY}: {conflicts['semanticMode']})")
     if result["status"] in (CHECK_OUTDATED, CHECK_SOURCE_UNAVAILABLE):
         write_line("Apply with bootstrap.sh, review the diff of the assets and the lockfile, and commit it.")
 
@@ -4677,8 +4895,9 @@ def build_parser():
     plan_parser = subparsers.add_parser("plan", help="read-only plan")
     add_common(plan_parser)
     add_selection(plan_parser)
-    plan_parser.add_argument("--format", choices=("text", "json", "protected"), default="text",
-                             help="json is for scripts; protected lists the destinations an apply preserves")
+    plan_parser.add_argument("--format", choices=("text", "json", "protected", CONFLICTS_FORMAT, CONFLICTS_JSON_FORMAT),
+                             default="text", help="json is for scripts; protected lists the destinations an apply "
+                             f"preserves; {CONFLICTS_FORMAT} prints only the conflicts and exits {CONFLICTS_STATUS} on one")
     plan_parser.add_argument("--save", help="also save the full plan as JSON to this path")
     plan_parser.add_argument("--provider", default="claude", choices=SUPPORTED_PROVIDERS)
     plan_parser.add_argument("--offline", action="store_true", help="this run uses no network (updates.refresh: false)")

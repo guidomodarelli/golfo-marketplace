@@ -63,6 +63,14 @@ def command_plan(arguments):
     return run_bash(bootstrap_command(resolve_provider(arguments.provider), *extra), arguments.project_root)
 
 
+def command_conflicts(arguments):
+    """Every conflict between the selected profiles, read-only; exits 6 when there is one."""
+    extra = ["--conflicts", *selection_arguments(arguments)]
+    extra += ["--offline"] if arguments.offline else []
+    extra += ["--json"] if arguments.json else []
+    return run_bash(bootstrap_command(resolve_provider(arguments.provider), *extra), arguments.project_root)
+
+
 def command_status(arguments):
     """Read-only status of the checkout against the lockfile and the sources."""
     extra = ["--status"] + (["--offline"] if arguments.offline else []) + (["--json"] if arguments.json else [])
@@ -307,6 +315,15 @@ def build_parser():
     add_selection(plan)
     plan.add_argument("--offline", action="store_true", help="use no network: compare with the cache only")
     plan.add_argument("--json", action="store_true", help="print the plan as JSON on stdout")
+
+    conflicts = new_subparser(subparsers, "conflicts",
+                              "List the conflicts between the selected profiles, read-only; exits 6 when there is one.",
+                              "  agent-ready conflicts\n  agent-ready conflicts --offline --json", command_conflicts,
+                              needs_provider=True)
+    add_selection(conflicts)
+    conflicts.add_argument("--offline", action="store_true",
+                           help="use no network: the AI reviews answer from the cache only")
+    conflicts.add_argument("--json", action="store_true", help="print the conflicts as JSON on stdout")
 
     status = new_subparser(subparsers, "status", "Compare the checkout with the lockfile and the sources, read-only.",
                            "  agent-ready status\n  agent-ready status --offline --json", command_status, needs_provider=True)

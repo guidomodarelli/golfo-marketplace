@@ -21,13 +21,28 @@ assets faltantes o modificados, archivos fusionados y una versión nueva de golf
 | `source-unavailable` | 5 | no se pudo llegar a una fuente: no se puede afirmar que esté al día |
 | `config-error` | 2 | una capa de configuración, el catálogo, un pack o la selección inválidos, o una variable con un valor que no existe |
 | `skipped` | 0 | `ci.enabled: false`: no evalúa nada, no usa la red y no ejecuta nada |
+| `conflicts` | 6 | está al día, pero hay conflictos entre los perfiles con `ci.conflicts.*: fail`; los lista |
 
 `ci.mode: warn` informa lo mismo pero sale con 0 ante `outdated` y `source-unavailable`. `config-error` sale con 2 en
 cualquier modo, y un argumento inválido del comando también sale con 2. Una fuente en `pinned` que sigue una `ref` también cuenta como
 desactualizada si la `ref` avanzó, porque el chequeo responde si falta actualizar y no si se aplica solo. Un commit
 completo nunca queda desactualizado. `updates.refresh` configura `plan` y `status`; el chequeo solo evita la red
 con `--offline`. `--format json` imprime un objeto con `status`, `ci` (`enabled` y `mode`), `exitStatus`,
-`problems` y `unavailable`.
+`problems`, `unavailable` y `conflicts`.
+
+### Conflictos entre perfiles (`ci.conflicts`)
+
+El chequeo también corre los chequeos de conflictos de `agent-ready conflicts`
+([ai-reviews.md](ai-reviews.md), secciones 9 a 14), en dos grupos con su propio modo:
+
+| Clave | Default | Qué cubre |
+|---|---|---|
+| `ci.conflicts.structural` | `fail` | sin IA, baratos y deterministas: sombras, rules contra la configuración del repo, permisos, hooks y formateadores, paridad entre providers, variables de entorno, jobs de CI duplicados y herramientas que compiten |
+| `ci.conflicts.semantic` | `off` | las revisiones de IA (contradicciones entre rules, skills que compiten): necesitan la CLI de un provider con credenciales en el CI, y un par sin revisar cuenta como fallido en `fail` |
+
+`off` no los mira, `warn` los lista sin cambiar el código y `fail` sale con 6 cuando hay alguno. Solo
+cuentan con el repo al día: `outdated` y `source-unavailable` ganan. `ci.mode: warn` también deja en 0
+el código de los conflictos.
 
 ## Archivos por proveedor (`ci.provider`)
 
