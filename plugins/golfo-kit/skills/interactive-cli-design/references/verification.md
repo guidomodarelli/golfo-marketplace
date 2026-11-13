@@ -25,6 +25,12 @@ Correr el CLI real, no una versión escrita para el chequeo. La herramienta de s
 | j | `--no-input` y `CI=1` con datos faltantes | Con terminal | Como c |
 | k | Acción peligrosa sin el flag | Sin terminal | Falla y no cambia nada |
 | l | Multiselect vacío, si vale | Con terminal | El comando impreso lo reproduce sin preguntar |
+| m | Flag abreviado (`--tok`) | Sin terminal | Exit 2, como un flag desconocido |
+| n | Secreto pasado como `--x v`, `--x=v`, `-xv` y por variable | Ambos | El valor no aparece en la salida, en el comando equivalente ni en lo que se guarda |
+| o | Lista con filtro: escribir parte de una opción y Enter | Con terminal | Elige esa opción. Sin color, el menú es numerado |
+| p | Segunda corrida, si recuerda respuestas | Con terminal | La anterior aparece primero y Enter la elige. Con el archivo ilegible, avisa y pregunta igual |
+| q | Ctrl+C dos veces seguidas | Con terminal | Un solo aviso, exit 130, sin traceback |
+| r | Ctrl+C o falla después del primer efecto | Con terminal | Lista lo que quedó hecho y el comando para seguir |
 
 ## Sin terminal
 

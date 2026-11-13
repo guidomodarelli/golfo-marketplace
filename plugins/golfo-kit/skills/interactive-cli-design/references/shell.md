@@ -74,6 +74,8 @@ printf 'Nombre: ' >&2
 IFS= read -r name || exit "$EXIT_CANCELLED"
 ```
 
+Un secreto se lee de `/dev/tty` con el eco apagado antes de la pregunta, y un wrapper que lanza otro programa deja que el hijo maneje Ctrl+C: [native-prompts.md](native-prompts.md#secretos).
+
 ## PowerShell
 
 Respetar el idioma: `-Name`, no `--name`. El contrato es el mismo.

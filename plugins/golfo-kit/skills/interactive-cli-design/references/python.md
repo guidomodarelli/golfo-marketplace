@@ -35,7 +35,7 @@ def main(
 - Un parámetro obligatorio se declara `Optional` con default `None`. Si no, Typer falla antes de poder preguntar.
 - `len(sys.argv) == 1` distingue la invocación sin argumentos, que abre el wizard completo.
 
-Con `argparse`: `parser.error(mensaje)` sale con 2 y `action="version"` imprime la versión en stdout.
+Con `argparse`: `parser.error(mensaje)` sale con 2 y `action="version"` imprime la versión en stdout. Crear el parser con `allow_abbrev=False`: por default acepta `--tok` por `--token`. Sus mensajes de error están en inglés; si el CLI habla otro idioma, sobrescribir `error()` y traducir los más comunes (`unrecognized arguments`, `expected one argument`, `not allowed with argument`).
 
 ## Se puede preguntar
 
@@ -148,4 +148,5 @@ En Windows no hay una forma de citar que sirva igual en `cmd.exe` y en PowerShel
   ```
 
 - **`input()`** escribe su texto en stdout. Sin questionary, imprimir la pregunta en stderr y llamar a `input()` sin argumentos.
+- **Sin questionary y con listas largas**, un menú propio con filtro: [native-prompts.md](native-prompts.md).
 - **Comando de arranque.** En Windows, `.venv\Scripts\python.exe` no anda con barras normales desde `cmd`. Documentarlo con barras invertidas o con `uv run`.

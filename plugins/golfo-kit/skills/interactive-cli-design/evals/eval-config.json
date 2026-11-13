@@ -25,7 +25,7 @@
         },
         {
           "type": "regex",
-          "pattern": "(exit|exitCode|salid|código)[^\\n]{0,40}\\b2\\b|\\b2\\b[^\\n]{0,40}(uso|usage)",
+          "pattern": "(exit|exitCode|salid|código).{0,40}\\b2\\b|\\b2\\b.{0,40}(uso|usage)",
           "description": "Sale con el código de uso incorrecto"
         },
         {
@@ -126,7 +126,7 @@
         },
         {
           "type": "regex",
-          "pattern": "default[^\\n]{0,40}(no\\b|«no»|\"no\"|false|segur)|(no\\b|false)[^\\n]{0,30}(por default|por defecto)",
+          "pattern": "default.{0,40}(no\\b|«no»|\"no\"|false|segur)|(no\\b|false).{0,30}(por default|por defecto)",
           "description": "El default de lo destructivo es la opción segura"
         }
       ]
@@ -143,7 +143,7 @@
         },
         {
           "type": "regex",
-          "pattern": "default[^\\n]{0,40}segur|segur[^\\n]{0,40}default|solo lectura|no destruye|no cambia",
+          "pattern": "default.{0,40}segur|segur.{0,40}default|solo lectura|no destruye|no cambia",
           "description": "Justifica por qué puede correr sin flags"
         }
       ]
@@ -197,7 +197,7 @@
         },
         {
           "type": "regex",
-          "pattern": "misma (función|validaci)|una sola validaci|no (sabe|sepa) de d[oó]nde|resolve|parse[A-Za-z_]*[^\\n]{0,60}(run|ejecut|act)",
+          "pattern": "misma (función|validaci)|una sola validaci|no (sabe|sepa) de d[oó]nde|resolve|parse[A-Za-z_]*.{0,60}(run|ejecut|act)",
           "description": "Separa parseo, resolución y acción"
         }
       ]
@@ -214,12 +214,12 @@
         },
         {
           "type": "regex",
-          "pattern": "(exit|exitCode|salid|código)[^\\n]{0,40}\\b2\\b|\\b2\\b[^\\n]{0,40}(uso|usage)",
+          "pattern": "(exit|exitCode|salid|código).{0,40}\\b2\\b|\\b2\\b.{0,40}(uso|usage)",
           "description": "Sale con el código de uso incorrecto"
         },
         {
           "type": "regex",
-          "pattern": "(válid|valid|acept|permit)[^\\n]{0,60}node",
+          "pattern": "(válid|valid|acept|permit).{0,60}node",
           "description": "El error lista los valores válidos"
         }
       ]
@@ -236,7 +236,7 @@
         },
         {
           "type": "regex",
-          "pattern": "(exit|exitCode|salid|código)[^\\n]{0,40}\\b2\\b|\\b2\\b[^\\n]{0,40}(uso|usage)",
+          "pattern": "(exit|exitCode|salid|código).{0,40}\\b2\\b|\\b2\\b.{0,40}(uso|usage)",
           "description": "En un script falla con el código de uso"
         },
         {
@@ -334,6 +334,137 @@
           "type": "regex",
           "pattern": "gum filter[^|]*[$]",
           "description": "Pasa las opciones como argumentos de gum filter"
+        }
+      ]
+    },
+    {
+      "id": "native-menu-filters-by-typing",
+      "description": "Sin librería de prompts, un menú largo se filtra escribiendo, con respaldo numerado y sin romper el redibujo.",
+      "input": "Tengo un script en Python 3.9 sin dependencias (no puedo instalar nada) que pregunta en qué región de AWS desplegar. Son 34 regiones y con un menú numerado es incómodo. Mostrame cómo armar la pregunta.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "filtr|escrib\\w* (parte|para)|type to (filter|search)|search",
+          "description": "Escribir filtra la lista"
+        },
+        {
+          "type": "regex",
+          "pattern": "casefold|\\.lower\\(\\)|unicodedata|acento|mayúscul",
+          "description": "El filtro no distingue mayúsculas ni acentos"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "import questionary",
+            "pip install",
+            "from prompt_toolkit",
+            "import inquirer",
+            "import pick"
+          ],
+          "description": "No suma dependencias: usa lo nativo del lenguaje"
+        },
+        {
+          "type": "regex",
+          "pattern": "numerad|numbered|n[úu]mero",
+          "description": "Cae a un menú numerado sin terminal con flechas"
+        },
+        {
+          "type": "regex",
+          "pattern": "stderr",
+          "description": "Dibuja el menú en stderr"
+        }
+      ]
+    },
+    {
+      "id": "remembers-last-answer-safely",
+      "description": "Recordar la última respuesta: archivo local con escritura atómica y permisos, ofrecida primero, sin fallar si no se puede leer.",
+      "input": "Mi CLI `deploy` en Python siempre me pregunta el entorno y casi siempre elijo el mismo. Quiero que la próxima vez me ofrezca el que elegí la última vez. ¿Cómo lo guardo?",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "os\\.replace|os\\.rename|temporal|temporary|mkstemp|at[óo]mic",
+          "description": "Escribe a un temporal y renombra"
+        },
+        {
+          "type": "regex",
+          "pattern": "0o600|\\b600\\b|chmod",
+          "description": "Solo lo lee el usuario"
+        },
+        {
+          "type": "regex",
+          "pattern": "XDG_CONFIG_HOME|Application Support|APPDATA|\\.config",
+          "description": "Usa el directorio de configuración del sistema"
+        },
+        {
+          "type": "regex",
+          "pattern": "(avis|warn|ignor|segu|contin).{0,80}(leer|lea|lectura|escritura|read|corrupt|ilegible|fall)|(leer|lectura|escritura|read|corrupt|ilegible|fall).{0,80}(avis|warn|ignor|segu|contin)",
+          "description": "Si el archivo falla, avisa y sigue preguntando"
+        },
+        {
+          "type": "regex",
+          "pattern": "primer|first|preselecci|default|Enter",
+          "description": "Ofrece la anterior primero o como default"
+        }
+      ]
+    },
+    {
+      "id": "no-abbreviations-secret-free-command",
+      "description": "Con argparse, flags sin abreviar y el comando equivalente sin el secreto en ninguna forma.",
+      "input": "En mi CLI de Python con argparse, además de --env y --region, hay un --token opcional. Al final del modo interactivo imprimo el comando para repetirlo y también lo guardo en un log. ¿Qué tengo que cuidar?",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "allow_abbrev\\s*=\\s*False",
+          "description": "Desactiva las abreviaturas de flags"
+        },
+        {
+          "type": "regex",
+          "pattern": "--token=|-t\\s?\\w|--tok\\b",
+          "description": "Considera las otras formas en que llega el token"
+        },
+        {
+          "type": "regex",
+          "pattern": "--token-file|stdin|getpass|variable de entorno|environment variable",
+          "description": "Ofrece una vía que no deja el token en argv"
+        },
+        {
+          "type": "regex",
+          "pattern": "(nunca|never|sin|without|no (incluir|incluyas|mostrar|muestres|guardar|guardes|registr))(.{0,120})token|token(.{0,60})(nunca|never|redact|ocult|omit|exclu)",
+          "description": "El comando equivalente y el log no traen el token"
+        }
+      ]
+    },
+    {
+      "id": "cancel-after-side-effects-reports-what-remains",
+      "description": "Ctrl+C o falla después de crear recursos: lista lo creado y cómo seguir, e ignora el segundo Ctrl+C.",
+      "input": "Mi CLI en Python crea un usuario de prueba, después un vehículo y después registra un driver, con un spinner en un hilo. Si el usuario aprieta Ctrl+C en el medio hoy dice 'Cancelado, no se cambió nada', y si lo aprieta dos veces sale un traceback de threading. ¿Cómo lo arreglo?",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "SIG_IGN|ignor\\w*.{0,40}(segundo|siguiente|repet)|(segundo|second).{0,40}(ignor|Ctrl)",
+          "description": "Ignora el segundo Ctrl+C"
+        },
+        {
+          "type": "regex",
+          "pattern": "(qued|cread|creaci|creó|created|already|ya se).{0,80}(usuario|user|vehículo|vehicle|identificador|ID)|(usuario|user|vehículo|vehicle).{0,40}(cread|created|existe)",
+          "description": "Lista lo que quedó creado"
+        },
+        {
+          "type": "regex",
+          "pattern": "(seguir|continu|resum|retom|reanud)",
+          "description": "Da el comando o la forma de seguir desde ahí"
+        },
+        {
+          "type": "regex",
+          "pattern": "\\b130\\b",
+          "description": "Sale con 130"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "no se cambió nada después de crear"
+          ],
+          "description": "No afirma que no cambió nada"
         }
       ]
     }
