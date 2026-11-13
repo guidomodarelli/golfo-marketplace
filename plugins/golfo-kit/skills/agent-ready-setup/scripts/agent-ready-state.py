@@ -22,6 +22,7 @@ network; plan and status read what the cache already has.
 
 import argparse
 import difflib
+import fnmatch
 import importlib.util
 import json
 import os
@@ -223,9 +224,9 @@ CONFLICTS_STATUS = 6
 CONFLICTS_MOMENT_SESSION_START = "session-start"
 CONFLICTS_MOMENT_EDIT = "edit"
 CONFLICTS_HOOK_PREFIX = "[conflicts]"
-# Besides the files of the repository facts, what the structural checks read: the instructions, the
-# harness directories (rules, skills, settings, hooks), MCP and the CI workflows.
-CONFLICT_INPUT_PATTERN = re.compile(r"^(AGENTS\.md|CLAUDE\.md|\.mcp\.json|(\.agents|\.claude|\.codex|\.github/workflows)/.+)$")
+# Besides the files of the repository facts and of the parity checks (CI and .env examples), what the
+# structural checks read: the instructions, the harness directories (rules, skills, settings, hooks) and MCP.
+CONFLICT_INPUT_PATTERN = re.compile(r"^(AGENTS\.md|CLAUDE\.md|\.mcp\.json|(\.agents|\.claude|\.codex)/.+)$")
 # plan formats that print only the conflicts, for agent-ready conflicts.
 CONFLICTS_FORMAT = "conflicts"
 CONFLICTS_JSON_FORMAT = "conflicts-json"
@@ -2623,7 +2624,9 @@ def selection_differences(lock, plan):
 def conflict_inputs_changed(changed, skill_dir):
     """True when an edited path, relative to the project, is one the structural checks read."""
     facts = repo_facts.load_facts(skill_dir) if skill_dir else {}
+    parity_patterns = parity.REPOSITORY_CI_FILES + parity.EXAMPLE_ENVIRONMENT_FILES
     return any(CONFLICT_INPUT_PATTERN.match(path) or repo_facts.is_signal_file(path, facts)
+               or any(fnmatch.fnmatchcase(path, pattern) for pattern in parity_patterns)
                for path in (changed_path.replace(os.sep, "/") for changed_path in changed))
 
 

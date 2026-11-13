@@ -416,7 +416,7 @@ separado:
 - **Al editar:** el hook de `PostToolUse` (`check-harness-consistency.sh`) le pasa los archivos
   editados a `.agents/hooks/check-conflicts.sh`, que los recalcula si alguno es una de sus entradas:
   `AGENTS.md`, `CLAUDE.md`, lo que hay bajo `.agents/`, `.claude/` y `.codex/`, `.mcp.json`,
-  `.github/workflows/` y los archivos que leen los `assumes` (`package.json`, `.editorconfig`,
+  los archivos de CI y de ejemplo de `.env` que lee la paridad (sección 12) y los que leen los `assumes` (`package.json`, `.editorconfig`,
   Prettier y los de `assets/repo-facts.json`, como lockfiles o `jest.config.js`). Corre sin red y sin
   la CLI del provider. La revisión de IA de rules y skills sigue igual que antes (sección 1).
 
