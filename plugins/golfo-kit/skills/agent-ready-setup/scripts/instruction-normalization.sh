@@ -25,9 +25,11 @@ configure_instruction_templates() {
 
   COMMON_SRC="$skill_dir/assets/common"
   SRC="$(resolve_stack_template_directory "$skill_dir" "$stack")" || exit 1
-  # The skeleton of AGENTS.md: the one a profile of the selection publishes, or the neutral base one.
-  AGENTS_TEMPLATE="$SRC/agents-template.md"
-  [[ -f "$AGENTS_TEMPLATE" ]] || AGENTS_TEMPLATE="$COMMON_SRC/agents-template.md"
+  # One template for the managed block; the skeleton of a new AGENTS.md can come from a profile of
+  # the selection (software-development) instead of the neutral one of the template.
+  AGENTS_TEMPLATE="$COMMON_SRC/agents-template.md"
+  AGENTS_SKELETON="$SRC/agents-skeleton.md"
+  [[ -f "$AGENTS_SKELETON" ]] || AGENTS_SKELETON=""
   ROOT_CLAUDE_TEMPLATE="$skill_dir/assets/claude-proxy.md"
   CENTRALIZATION_TEMPLATE="$skill_dir/assets/instruction-centralization.md"
   TEMPLATE_RENDERER="$skill_dir/scripts/render-instruction-template.sh"
@@ -263,6 +265,9 @@ create_root_agents_from_template() {
 
   if [[ -d "$COMMON_SRC/rules" ]]; then
     renderer_arguments+=(--common-rules-dir "$COMMON_SRC/rules")
+  fi
+  if [[ -n "$AGENTS_SKELETON" ]]; then
+    renderer_arguments+=(--skeleton "$AGENTS_SKELETON")
   fi
 
   mkdir -p -- "$(dirname -- "$AGENTS_FILE")"

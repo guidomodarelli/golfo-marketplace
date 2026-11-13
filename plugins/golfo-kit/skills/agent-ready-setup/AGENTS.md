@@ -7,7 +7,7 @@ Al agregar o modificar una rule, skill, agent, command, template de instruccione
 1. Antes de cerrar el cambio, verificar que no contradiga ni duplique las instrucciones que se cargan junto con ella:
    - rules del núcleo de `assets/common/rules/` y de la capability `assets/profiles/software-development/rules/`;
    - rules, skills, agents y commands de `assets/stacks/<stack>/`;
-   - `AGENTS.md` gestionado: el template neutro `assets/common/agents-template.md` y el de software `assets/profiles/software-development/agents-template.md`, `assets/instruction-centralization.md` y la sección de cada stack (`assets/stacks/<stack>/blocks/AGENTS.md`);
+   - `AGENTS.md` gestionado: el template `assets/common/agents-template.md` (bloque gestionado y esqueleto neutro), el esqueleto de software `assets/profiles/software-development/agents-skeleton.md`, `assets/instruction-centralization.md` y la sección de cada stack (`assets/stacks/<stack>/blocks/AGENTS.md`);
    - proxy `assets/claude-proxy.md`;
    - `SKILL.md`.
 2. Revisar el mismo cambio en todos los stacks (`react`, `nextjs`, `nextjs-app-router`, `node`, `java`, `go`, `android`) cuando aplique. Si una rule aplica igual a todos los stacks, publicarla una sola vez: en `assets/common/rules/` si sirve en cualquier repo, también sin código, o en `assets/profiles/software-development/rules/` si es de desarrollo; nunca copiarla en cada stack.

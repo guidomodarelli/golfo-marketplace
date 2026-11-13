@@ -1119,7 +1119,7 @@ project_asset_tree() {
   while IFS= read -r -d '' file; do
     relative="${file#"$source_root/"}"
 
-    if [[ "$relative" == "agents-template.md" ]]; then
+    if [[ "$relative" == "agents-template.md" || "$relative" == "agents-skeleton.md" ]]; then
       continue
     elif [[ "$relative" == "settings.json" ]]; then
       sync_claude_settings "$file"

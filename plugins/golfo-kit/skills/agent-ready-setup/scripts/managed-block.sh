@@ -105,10 +105,11 @@ validate_managed_block_inputs() {
   fi
 
   STACK_TEMPLATE_DIRECTORY="$(resolve_stack_template_directory "$SKILL_DIR" "$STACK")" || exit 1
-  # The skeleton a profile of the selection publishes (software-development), or the neutral one of the
-  # base; each stack adds its own section to AGENTS.md as a block.
-  TEMPLATE_FILE="$STACK_TEMPLATE_DIRECTORY/agents-template.md"
-  [[ -f "$TEMPLATE_FILE" ]] || TEMPLATE_FILE="$SKILL_DIR/assets/common/agents-template.md"
+  # One template for the managed block; a profile of the selection (software-development) can publish
+  # the skeleton of a new AGENTS.md. Each stack adds its own section to AGENTS.md as a block.
+  TEMPLATE_FILE="$SKILL_DIR/assets/common/agents-template.md"
+  SKELETON_FILE="$STACK_TEMPLATE_DIRECTORY/agents-skeleton.md"
+  [[ -f "$SKELETON_FILE" ]] || SKELETON_FILE=""
   RULES_DIRECTORY="$STACK_TEMPLATE_DIRECTORY/rules"
   COMMON_RULES_DIRECTORY="$SKILL_DIR/assets/common/rules"
   readonly PROJECT_RULES_DIRECTORY=".agents/rules"
@@ -300,8 +301,11 @@ run_template_renderer() {
 }
 
 render_template() {
+  local -a skeleton_arguments=()
+  [[ -z "$SKELETON_FILE" ]] || skeleton_arguments=(--skeleton "$SKELETON_FILE")
   run_template_renderer \
     --template "$TEMPLATE_FILE" \
+    ${skeleton_arguments[@]+"${skeleton_arguments[@]}"} \
     --rules-dir "$RULES_DIRECTORY" \
     --project-rules-dir "$PROJECT_RULES_DIRECTORY" \
     --centralization "$CENTRALIZATION_TEMPLATE" \

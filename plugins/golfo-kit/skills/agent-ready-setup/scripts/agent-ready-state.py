@@ -141,6 +141,8 @@ PROVIDER_CATALOG_RELATIVE_PATH = "assets/providers.json"
 CODEX_HOOKS_TEMPLATE_RELATIVE_PATH = "assets/codex/hooks.json"
 CLAUDE_SETTINGS_TEMPLATE_NAME = "settings.json"
 AGENTS_TEMPLATE_NAME = "agents-template.md"
+# The project part of a new AGENTS.md that a profile publishes in place of the template's.
+AGENTS_SKELETON_NAME = "agents-skeleton.md"
 CLAUDE_PROXY_RELATIVE_PATH = "assets/claude-proxy.md"
 CENTRALIZATION_RELATIVE_PATH = "assets/instruction-centralization.md"
 RENDERER_RELATIVE_PATH = "scripts/render-instruction-template.sh"
@@ -669,7 +671,7 @@ def destinations_for_template(relative_path, is_stack_root):
     sync-marketplace.sh. Merged files (settings.json) and the AGENTS.md
     template are handled separately and return no verbatim destination.
     """
-    if relative_path in (AGENTS_TEMPLATE_NAME, CLAUDE_SETTINGS_TEMPLATE_NAME):
+    if relative_path in (AGENTS_TEMPLATE_NAME, AGENTS_SKELETON_NAME, CLAUDE_SETTINGS_TEMPLATE_NAME):
         return []
     if managed_blocks.destination_of(relative_path) is not None:
         # A block goes inside a file shared with the project (desired_blocks), never as a whole file.
@@ -1222,23 +1224,18 @@ def golfo_kit_origin(skill_dir):
         return None
 
 
-def agents_template_path(skill_dir, catalog, resolved=()):
-    """The AGENTS.md template of a selection; each stack adds its section as a block.
+def agents_template_path(skill_dir, catalog):
+    """The one AGENTS.md template: its managed block is the same for every repository.
 
-    A profile of the selection can publish its own skeleton (software-development has Stack, Commands
-    and Architecture); otherwise the base assets hold the neutral one (Purpose, Structure, Conventions).
-    Two profiles that publish it collide when the tree is composed.
+    Each stack adds its section as a block, and a profile can publish only the skeleton of a new
+    AGENTS.md (software-development: Stack, Commands, Architecture) in place of the neutral one.
     """
-    for name in resolved:
-        asset_root = profile_asset_root(skill_dir, catalog, name) if name in catalog["profiles"] else None
-        if asset_root and os.path.isfile(os.path.join(asset_root, AGENTS_TEMPLATE_NAME)):
-            return os.path.join(asset_root, AGENTS_TEMPLATE_NAME)
     return os.path.join(skill_dir, catalog.get("baseAssets", "assets/common"), AGENTS_TEMPLATE_NAME)
 
 
 def merged_template_entries(skill_dir, catalog, resolved):
     """Files merged with project content instead of copied verbatim."""
-    agents_template = agents_template_path(skill_dir, catalog, resolved)
+    agents_template = agents_template_path(skill_dir, catalog)
     settings_template = os.path.join(skill_dir, catalog.get("baseAssets", "assets/common"), CLAUDE_SETTINGS_TEMPLATE_NAME)
     codex_template = os.path.join(skill_dir, CODEX_HOOKS_TEMPLATE_RELATIVE_PATH)
     entries = {}
@@ -1557,9 +1554,10 @@ def extract_managed_block(text):
     return text[start:end + len(MANAGED_BLOCK_END)]
 
 
-def merged_file_changes(project_root, skill_dir, plan):
+def merged_file_changes(project_root, skill_dir, plan, source_state=None):
     """Describe whether each merged file would change, without writing it."""
-    catalog = load_profile_catalog(skill_dir)
+    # The effective catalog: composing the tree needs the asset roots of the pack profiles too.
+    catalog = load_effective_catalog(project_root, skill_dir, source_state)
     # Bootstrap exports the composed tree, the one the managed block is rendered from; without it the
     # tree is composed in a temporary directory, so a plan still writes nothing of its own.
     stack_root = os.environ.get("AGENT_READY_SETUP_STACK_DIR")
@@ -1577,7 +1575,7 @@ def merged_file_changes_from(project_root, skill_dir, plan, catalog, stack_root)
     agents_path = os.path.join(project_root, "AGENTS.md")
     renderer = [
         bash_executable(), os.path.join(skill_dir, RENDERER_RELATIVE_PATH),
-        "--template", agents_template_path(skill_dir, catalog, plan["profiles"]),
+        "--template", agents_template_path(skill_dir, catalog),
         "--rules-dir", os.path.join(stack_root, "rules"),
         "--common-rules-dir", os.path.join(skill_dir, catalog.get("baseAssets", "assets/common"), "rules"),
         "--centralization", os.path.join(skill_dir, CENTRALIZATION_RELATIVE_PATH),

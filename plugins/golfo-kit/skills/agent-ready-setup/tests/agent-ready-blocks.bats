@@ -76,7 +76,7 @@ add_block_pack() {
   [ "$status" -eq 0 ]
   head -1 "$template" | grep -qx '<!-- BEGIN AGENT-READY MANAGED: software-development -->'
   grep -qx '<!-- END AGENT-READY MANAGED: software-development -->' "$template"
-  [ "$(lock_value 'lock["blocks"][".github/pull_request_template.md"]["common"]["state"]')" = "applied" ]
+  [ "$(lock_value 'lock["blocks"][".github/pull_request_template.md"]["software-development"]["state"]')" = "applied" ]
   [ "$(lock_value '".github/pull_request_template.md" in lock["assets"]')" = "False" ]
 
   printf '\n## Deploy notes\n\nSay which environment you tested.\n' >> "$template"
@@ -223,7 +223,7 @@ PY
 import json
 path = ".agents/agent-ready.lock.json"
 lock = json.load(open(path, encoding="utf-8"))
-lock["blocks"][".github/pull_request_template.md"]["common"]["sha256"] = "0" * 64
+lock["blocks"][".github/pull_request_template.md"]["software-development"]["sha256"] = "0" * 64
 json.dump(lock, open(path, "w", encoding="utf-8"), indent=2)
 PY
   cp "$template" "$test_root/before"
@@ -300,7 +300,7 @@ add_two_block_profiles() {
   run_cli apply
   chmod 0755 .github
   [[ "$output$stderr" == *"managed blocks of .github/pull_request_template.md"* ]]
-  [ "$(lock_value 'lock["blocks"][".github/pull_request_template.md"]["common"]["state"]')" = "failed" ]
+  [ "$(lock_value 'lock["blocks"][".github/pull_request_template.md"]["software-development"]["state"]')" = "failed" ]
   [ ! -e "$template" ]
 }
 
@@ -365,7 +365,7 @@ PY
   grep -qx '<!-- BEGIN AGENT-READY MANAGED: node -->' AGENTS.md
   grep -qx '## Node.js' AGENTS.md
   [ "$(lock_value 'sorted(lock["blocks"]["AGENTS.md"])')" = "['node', 'react']" ]
-  [ "$(lock_value 'lock["merged"]["AGENTS.md"]["template"]')" = "assets/profiles/software-development/agents-template.md" ]
+  [ "$(lock_value 'lock["merged"]["AGENTS.md"]["template"]')" = "assets/common/agents-template.md" ]
 
   printf '
 ## Ownership
@@ -562,6 +562,9 @@ PY
   [ "$status" -eq 0 ]
   grep -qx '## Purpose' AGENTS.md
   ! grep -qx '## Stack' AGENTS.md
+  # The core rules stand alone: none points to a rule only software-development publishes.
+  ! grep -q 'lint-gate.md\|patterns-we-do-not-use.md' .agents/rules/verify-changes.md .agents/rules/speculative-complexity-approval.md || \
+    grep -q 'When the project has `lint-gate.md`' .agents/rules/verify-changes.md
   ! grep -q 'AGENT-READY MANAGED: ' AGENTS.md
   [ -f .agents/rules/verify-changes.md ]
   [ -f .agents/rules/business-flows.md ]
@@ -578,5 +581,11 @@ PY
   [ "$status" -eq 0 ]
   [ -f .agents/rules/lint-gate.md ]
   grep -qx '<!-- BEGIN AGENT-READY MANAGED: software-development -->' .github/pull_request_template.md
+  # A new AGENTS.md with a stack takes the software skeleton; the managed block is the same one.
+  rm AGENTS.md
+  run_cli apply
+  [ "$status" -eq 0 ]
+  grep -qx '## Stack' AGENTS.md
+  ! grep -qx '## Purpose' AGENTS.md
   [ "$(lock_value 'lock["profileOrder"][:2]')" = "['software-development', 'node']" ]
 }

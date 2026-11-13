@@ -5,12 +5,13 @@ El bloque de `AGENTS.md`, que se arma con un template y las rules, la sección d
 el proyecto (sección final, «Bloques en otros archivos»).
 
 
-El template de `AGENTS.md` define el esqueleto del proyecto y el bloque entre `<!-- BEGIN AGENT-READY MANAGED -->` y
-`<!-- END AGENT-READY MANAGED -->`. Hay dos: el de software
-(`assets/profiles/software-development/agents-template.md`, con `Stack`, `Commands` y `Architecture`),
-que trae cualquier stack porque todos requieren `software-development`, y el neutro de la base
-(`assets/common/agents-template.md`, con propósito, estructura y convenciones) para un repo sin esa
-capability, como uno de documentos. El esqueleto solo se usa al crear `AGENTS.md`.
+Un único template (`assets/common/agents-template.md`) define el esqueleto del proyecto y el bloque
+entre `<!-- BEGIN AGENT-READY MANAGED -->` y `<!-- END AGENT-READY MANAGED -->`; el bloque es el mismo
+en cualquier repo. Su esqueleto es neutro (propósito, estructura y convenciones), para un repo sin
+código. `software-development`, que requiere cualquier stack, publica otro esqueleto
+(`assets/profiles/software-development/agents-skeleton.md`, con `Stack`, `Commands` y `Architecture`)
+que reemplaza al del template (`--skeleton` del renderer). El esqueleto solo se usa al crear
+`AGENTS.md`.
 `scripts/render-instruction-template.sh` lo materializa:
 
 - `{{AGENT_READY_RULE_REFERENCES}}`: una referencia portable
