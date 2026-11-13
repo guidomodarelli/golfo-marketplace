@@ -2446,8 +2446,9 @@ def compute_status(project_root, skill_dir):
             label for label, entry in sorted(managed_blocks.inventory(lock).items()) if entry.get("state") == STATE_FAILED)
 
     manifest_profiles = configuration.value(PROFILES_KEY)
-    profile_names = manifest_profiles or (lock.get("profileOrder") if lock else None)
-    if profile_names and skill_dir:
+    # An empty selection is a selection too: the core-only repository gets the same drift checks.
+    profile_names = manifest_profiles if manifest_profiles is not None else (lock.get("profileOrder") if lock else None)
+    if profile_names is not None and skill_dir:
         try:
             catalog = load_effective_catalog(project_root, skill_dir)
             if manifest_profiles:
@@ -2790,6 +2791,8 @@ def command_config(arguments):
         for key in sorted(configuration.schema.leaves):
             write_line(f"{key}\t{format_value(configuration.value(key))}")
         write_line(f"auto_sources\t{','.join(automatic_sources(configuration))}")
+        # profiles prints [] and an unset value alike: Bash tells a pinned empty selection from none here.
+        write_line(f"profiles_selected\t{'true' if configuration.value(PROFILES_KEY) is not None else 'false'}")
         return 0
     print_configuration_text(configuration)
     return 0

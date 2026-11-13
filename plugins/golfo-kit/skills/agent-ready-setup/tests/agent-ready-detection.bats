@@ -662,3 +662,28 @@ run_resolve() {
     [[ "$output" == *"ERROR: agent-ready profiles:"* ]]
   done
 }
+
+@test "a pinned empty selection survives ambiguous signals, takes new profiles and is checked for drift" {
+  run_bootstrap --profiles none
+  [ "$status" -eq 0 ]
+  [ "$(json_value .agents/agent-ready.json 'data["profiles"]')" = "[]" ]
+
+  # Two stacks match now: the pinned empty selection still decides, without a detection error.
+  printf '{}\n' > package.json
+  printf 'module example\n' > go.mod
+  run_bootstrap --plan --offline
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Profiles: none (the core only: no stack and no capability)"* ]]
+
+  # The core-only repository gets the same drift checks as any other.
+  run python3 "$skill_dir/scripts/agent-ready-state.py" status --project . --skill-dir "$skill_dir" --check
+  [ "$status" -eq 0 ]
+  sed -i.bak 's/^## Rules$/## Edited rules/' AGENTS.md && rm -f AGENTS.md.bak
+  run python3 "$skill_dir/scripts/agent-ready-state.py" status --project . --skill-dir "$skill_dir" --check
+  [ "$status" -eq 4 ]
+
+  # profiles add adopts a first profile into the empty selection.
+  run env PATH="$fake_bin:$PATH" python3 "$skill_dir/scripts/agent-ready" profiles add business-flows
+  [ "$status" -eq 0 ]
+  [ "$(json_value .agents/agent-ready.json 'data["profiles"]')" = "['business-flows']" ]
+}

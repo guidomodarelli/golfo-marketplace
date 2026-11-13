@@ -52,8 +52,8 @@ REPOSITORY_PURPOSES = (PURPOSE_CODE, PURPOSE_OTHER)
 
 
 def selected_profiles(project_root):
-    """Profiles the manifest selects, or an empty list when it selects none."""
-    return engine().configuration_of(project_root).value(PROFILES_KEY) or []
+    """Profiles the manifest selects: [] is the core-only selection, None means it has no selection yet."""
+    return engine().configuration_of(project_root).value(PROFILES_KEY)
 
 
 def validate_selection(catalog, names, project_root):
@@ -82,7 +82,7 @@ def profile_names(text):
 def command_profiles_list(arguments):
     """Every profile the repository can select, with its kind, source and whether it is selected."""
     catalog = engine().load_effective_catalog(arguments.project_root, content_root(arguments.project_root))
-    selected = set(selected_profiles(arguments.project_root))
+    selected = set(selected_profiles(arguments.project_root) or [])
     rows = []
     # The CI profiles are not selectable: agent-ready ci setup picks them through ci.provider.
     for name in engine().selectable_profile_names(catalog):
@@ -126,7 +126,7 @@ def apply_command_for(project_root, selection):
 def change_selection(arguments, compute, removing=False):
     """Validate the new selection against the catalog and write it; the projection is apply's job."""
     current = selected_profiles(arguments.project_root)
-    if not current:
+    if current is None:
         raise UsageError(f"this repository has no selection yet; start it with {CLI_NAME} init")
     if removing:
         catalog = catalog_for_removal(arguments.project_root)
@@ -155,7 +155,7 @@ def command_profiles_add(arguments):
 
 def command_profiles_remove(arguments):
     """Remove profiles from the selection of the manifest."""
-    current = selected_profiles(arguments.project_root)
+    current = selected_profiles(arguments.project_root) or []
     missing = [name for name in arguments.names if name not in current]
     if missing:
         # A profile can come without being selected: as a default of another one, left out
@@ -276,7 +276,7 @@ def pack_problem(project_root, name):
 def command_sources_remove(arguments):
     """Remove a profile source from the manifest, unless selected profiles still come from it."""
     prefix = f"{arguments.name}{NAMESPACE_SEPARATOR}"
-    selection = selected_profiles(arguments.project_root)
+    selection = selected_profiles(arguments.project_root) or []
     try:
         catalog = engine().load_effective_catalog(arguments.project_root, content_root(arguments.project_root))
     except (ProfileError, StateError):
@@ -321,14 +321,15 @@ def detected_defaults(catalog, project_root):
         stack = engine().stack_from_initial_detection(catalog, detection)
     except ProfileError:
         return [], []
-    defaults = engine().profiles_for_stack(catalog, stack)
+    # No stack signal: no default profile, and init asks what the repository is for.
+    defaults = engine().profiles_for_stack(catalog, stack) if stack else []
     suggestions = [item["profile"] for item in engine().capability_suggestions(catalog, detection, defaults)]
     return defaults, suggestions
 
 
 def command_init(arguments):
     """First setup of a repository: choose the profiles, write the manifest and apply."""
-    if selected_profiles(arguments.project_root):
+    if selected_profiles(arguments.project_root) is not None:
         raise UsageError(f"this repository is already set up; change it with {CLI_NAME} profiles add|remove "
                          f"and {CLI_NAME} apply")
     provider = resolve_provider(arguments.provider)
