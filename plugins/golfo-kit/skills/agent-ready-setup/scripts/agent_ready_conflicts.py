@@ -131,7 +131,8 @@ def current_hashes(cache_module, project_root, names, project_owned):
     return hashes
 
 
-def conflict_pairs(project_root, entries, locked_assets, read_text, project_owned, engine_dir, is_pack_profile=None):
+def conflict_pairs(project_root, entries, locked_assets, read_text, project_owned, engine_dir, is_pack_profile=None,
+                   instructions_with_applied=False):
     """Pairs to review, the text of each document and the direction of each pair.
 
     ``entries`` are the plan entries; a managed rule the apply creates or changes is reviewed
@@ -164,7 +165,10 @@ def conflict_pairs(project_root, entries, locked_assets, read_text, project_owne
     for managed_rule in changing:
         for counterpart in counterparts:
             directions[tuple(sorted((managed_rule, counterpart)))] = DIRECTION_UPDATE
-    for own_rule in own:
+    # A whole-repository check (agent-ready check) also reviews the project's AGENTS.md against the
+    # rules already applied; an apply only needs it against the rules it changes.
+    project_counterparts = own + ([AGENTS_FILE] if instructions_with_applied and AGENTS_FILE in counterparts else [])
+    for own_rule in project_counterparts:
         for managed_rule in applied:
             directions.setdefault(tuple(sorted((own_rule, managed_rule))), DIRECTION_PROJECT)
     # Rules of different profiles: a pack rule against every rule of another profile. golfo-kit's

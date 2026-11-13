@@ -1949,8 +1949,12 @@ def print_plan_sources(plan):
     write_line("")
 
 
-def semantic_conflicts(arguments, plan):
-    """The AI review of managed rules against the project's own, or None when it is off."""
+def semantic_conflicts(arguments, plan, instructions_with_applied=False):
+    """The AI review of managed rules against the project's own, or None when it is off.
+
+    ``instructions_with_applied`` also pairs the project's AGENTS.md with the rules already applied,
+    for a check of the whole repository rather than of what an apply changes.
+    """
     configuration = configuration_of(arguments.project, arguments.offline)
     if not configuration.value(CONFLICTS_ENABLED_KEY) or not configuration.value(REVIEWS_ENABLED_KEY):
         conflicts_review.record_pending(arguments.project, [], check=conflicts_review.CONFLICT_CHECK)
@@ -1961,7 +1965,7 @@ def semantic_conflicts(arguments, plan):
     lock = read_lock(arguments.project)
     directions, texts = conflicts_review.conflict_pairs(
         arguments.project, plan["entries"], (lock or {}).get("assets", {}), module.normalized_text,
-        project_owned_instructions, ENGINE_SKILL_DIRECTORY, is_pack_profile)
+        project_owned_instructions, ENGINE_SKILL_DIRECTORY, is_pack_profile, instructions_with_applied)
     # Offline runs and automated reviews answer from the cache only.
     use_provider = not arguments.offline and os.environ.get("AGENT_READY_SETUP_REVIEW_MODE") != "1"
     # The options of this run: the hooks' copy of them only changes when an apply finishes.
@@ -3797,6 +3801,26 @@ def report_conflicts(plan, as_json):
     return CONFLICTS_STATUS if found else 0
 
 
+def has_review_pairs(project_root, plan, catalog):
+    """True when the AI reviews of agent-ready check have a pair to review: without one there is
+    nothing to check, and no provider is needed."""
+    configuration = configuration_of(project_root)
+    module = review_cache_module()
+    if configuration.value(CONFLICTS_ENABLED_KEY):
+        lock = read_lock(project_root)
+        directions, _ = conflicts_review.conflict_pairs(
+            project_root, plan["entries"], (lock or {}).get("assets", {}), module.normalized_text,
+            project_owned_instructions, ENGINE_SKILL_DIRECTORY, is_pack_profile, True)
+        if directions:
+            return True
+    if configuration.value(COMPETING_SKILLS_ENABLED_KEY):
+        directions, _ = skill_overlap.skill_pairs(project_root, plan["entries"], catalog, is_pack_profile,
+                                                  module.normalized_text)
+        if directions:
+            return True
+    return False
+
+
 def session_provider():
     """The provider of this run as resolve-provider.sh infers it (the environment, then the
     installation), the same as every other command; None when it cannot tell."""
@@ -3831,13 +3855,13 @@ def check_conflicts(project_root, content_dir, offline):
     # The reviews this configuration runs at all: none, and there is nothing to check or to call.
     reviews_on = configuration.value(REVIEWS_ENABLED_KEY) and (
         configuration.value(CONFLICTS_ENABLED_KEY) or configuration.value(COMPETING_SKILLS_ENABLED_KEY))
-    reviewing = semantic_mode != CI_CONFLICTS_OFF and reviews_on
+    reviewing = semantic_mode != CI_CONFLICTS_OFF and reviews_on and has_review_pairs(project_root, plan, catalog)
     if reviewing and run.provider is None:
         # Without a provider the reviews cannot even read their cache, whose keys include it.
         result["unchecked"] = 1
         result["semanticProblem"] = "no provider could be inferred; set AGENT_READY_SETUP_ACTIVE_PROVIDER"
     elif reviewing:
-        reviews = {"semanticConflicts": semantic_conflicts(run, plan),
+        reviews = {"semanticConflicts": semantic_conflicts(run, plan, instructions_with_applied=True),
                    "competingSkills": competing_skills_report(run, plan, catalog, configuration)}
         result["semantic"], result["unchecked"] = semantic_conflict_lines(reviews)
     failing = ((structural_mode == CI_CONFLICTS_FAIL and bool(result["structural"]))
