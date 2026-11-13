@@ -223,7 +223,11 @@ def describe(entry):
         return f"{identifier}: no folder, nothing is written (tried {tried}; set one in nested.targets)"
     destinations = ", ".join(destination_in(folder) for folder in entry["paths"]) or "no folder (nested.targets)"
     origin = "nested.targets" if entry["origin"] == ORIGIN_MANIFEST else "detected"
-    return f"{identifier} -> {destinations} ({origin})"
+    line = f"{identifier} -> {destinations} ({origin})"
+    for folder in entry.get("waiting", []):
+        line += (f"; waits in {folder}: its {PROXY_FILE} has instructions of its own that the normalization does not "
+                 f"move to {INSTRUCTIONS_FILE} (they differ, or Git ignores it); merge them into {INSTRUCTIONS_FILE}")
+    return line
 
 
 # ---------------------------------------------------------------------------

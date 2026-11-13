@@ -1661,6 +1661,9 @@ def compute_plan(project_root, skill_dir, catalog, profile_names):
     blocks = desired_blocks(skill_dir, catalog, resolved, assets)
     targets = nested_contents(skill_dir, catalog, resolved)
     nested_blocks, nested_report = desired_nested_blocks(project_root, catalog, resolved, targets)
+    waiting_nested = waiting_instruction_files(project_root, skill_dir, {destination for destination, _ in nested_blocks})
+    for target in nested_report:
+        target["waiting"] = [folder for folder in target["paths"] if nested.destination_in(folder) in waiting_nested]
     block_destinations = {destination for destination, _ in blocks}
     retiring_block_files = set()
     for destination, lock_entry in sorted(locked_assets.items()):
@@ -2275,7 +2278,9 @@ def instructions_conflict(project_root, skill_dir, folder=""):
     Mirrors normalize_root_instructions and normalize_nested_instruction_pair in
     instruction-normalization.sh: a CLAUDE.md that is the proxy, the bare "@AGENTS.md" or the same bytes
     as AGENTS.md is normalized, and one without an AGENTS.md is moved there; any other one is a conflict
-    the agent resolves by hand, and so is a symlink or something that is not a file.
+    the agent resolves by hand, and so is a symlink or something that is not a file. The normalization
+    skips the files Git ignores, so in a nested folder an ignored CLAUDE.md of its own without an
+    AGENTS.md stays as it is and is a conflict too: an AGENTS.md beside it would never reach Claude Code.
     """
     claude_path = os.path.join(project_root, *folder.split("/"), "CLAUDE.md") if folder else \
         os.path.join(project_root, "CLAUDE.md")
@@ -2293,7 +2298,7 @@ def instructions_conflict(project_root, skill_dir, folder=""):
     if os.path.isfile(agents_path):
         with open(agents_path, "rb") as file_handle:
             return file_handle.read() != claude
-    return False
+    return bool(folder) and nested.is_ignored(project_root, f"{folder}/{nested.PROXY_FILE}")
 
 
 def instructions_wait(project_root, skill_dir, destination):

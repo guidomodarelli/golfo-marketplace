@@ -760,3 +760,19 @@ write_nested_manifest() {
   [ "$status" -ne 0 ]
   [[ "$output$stderr" == *"the candidate '../app' of the nested target 'app-router' is not a relative folder inside the repository"* ]]
 }
+
+@test "a nested target waits beside a CLAUDE.md of its own that Git ignores, which the normalization never moves" {
+  mkdir -p src/app && touch src/app/page.tsx
+  printf 'Local notes.\n' > src/app/CLAUDE.md
+  printf 'src/app/CLAUDE.md\n' > .gitignore
+  add_nested_pack
+  run_cli trust add --project .
+  run_cli plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Nested AGENTS.md: acme/web/app-router -> src/app/AGENTS.md (detected); waits in src/app: its CLAUDE.md has instructions of its own"* ]]
+  [[ "$output" != *"(block acme/web/app-router)"* ]]
+  run_cli apply
+  [ "$status" -eq 0 ]
+  [ ! -e src/app/AGENTS.md ]
+  grep -qx 'Local notes.' src/app/CLAUDE.md
+}
