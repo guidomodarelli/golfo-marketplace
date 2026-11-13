@@ -56,7 +56,7 @@ Antes de cualquier write, validar contenido redactado en español.
 | Artefacto | Responsabilidad |
 |---|---|
 | Padre JIRA | Descripción general, alcance técnico detallado, cobertura automática y links canónicos de PR |
-| Subtareas JIRA | Issues `Sub-task` para unidades del diff o hitos explícitamente solicitados |
+| Subtareas JIRA | Issues `<SUBTASK_TYPE>` para unidades del diff o hitos explícitamente solicitados |
 | Pull request | Resumen para reviewer, tipo de cambio, pruebas manuales, contratos HTTP y notas opcionales |
 | Skill sobre PR | Agregar o normalizar backlink al padre JIRA y label `jira-ticket` |
 
@@ -160,7 +160,7 @@ Recolectar números/URLs PR explícitos y PR identificable sin ambigüedad desde
 
 Aplicar precedencia:
 
-1. **Key JIRA explícita:** fetch primero; exigir project `<PROJECT_KEY>` y tipo `Story`, o `Task` legacy válido para reutilización. Si es `Sub-task`, resolver y verificar su padre. Rechazar otros tipos como padre sin convertirlos ni crear duplicados.
+1. **Key JIRA explícita:** fetch primero; exigir project `<PROJECT_KEY>` y tipo `<STORY_TYPE>`, o `<TASK_TYPE>` legacy válido para reutilización. Si es `<SUBTASK_TYPE>`, resolver y verificar su padre. Rechazar otros tipos como padre sin convertirlos ni crear duplicados.
 2. **Lookup JQL por cada `PR_LABELS`:** preferido cuando hay PR. Todos deben resolver al mismo padre; conflicto detiene flujo.
 3. **Referencias del PR:** verificar referencias JIRA estructuradas del body y resolver padre antes de memoria.
 4. **Memoria:** fallback cuando labels y referencias no encuentran ticket.
@@ -202,8 +202,8 @@ Omitir en modo tarea explícita. En modo repositorio, ejecutar contra `BASE_BRAN
 
 ```bash
 git log "$BASE_BRANCH"..HEAD --oneline
-git diff "$BASE_BRANCH"..HEAD --stat
-git diff "$BASE_BRANCH"..HEAD --name-only
+git diff "$BASE_BRANCH"...HEAD --stat
+git diff "$BASE_BRANCH"...HEAD --name-only
 git log "$BASE_BRANCH"..HEAD --reverse --format="%aI" | head -1
 test -f package.json && grep -E '"[a-z-]+":\s*"[0-9]' package.json | head -20
 ```
@@ -267,7 +267,7 @@ No incluir:
 
 ### Subtareas reales
 
-Crear issues `Sub-task` relacionados mediante `parent` con la Story, no checklists `- [ ]` o `- [x]` que pretendan reemplazarlos. Checklists internos de esta guía son controles del agente, no subtareas publicadas.
+Crear issues `<SUBTASK_TYPE>` relacionados mediante `parent` con la Story, no checklists `- [ ]` o `- [x]` que pretendan reemplazarlos. Checklists internos de esta guía son controles del agente, no subtareas publicadas.
 
 Derivar cada subtarea de una unidad cohesiva real o de un hito pedido explícitamente:
 
@@ -296,8 +296,8 @@ Consultar transiciones por subtarea antes de cambiar estado y verificar resultad
 ### Crear
 
 1. Leer payloads en `jira-fields.md`.
-2. Crear padre con `issueTypeName: "Story"`, description deseada, campos obligatorios, sprint resuelto y Due date confirmado, si lo tiene.
-3. Crear issues `Sub-task` independientes con `parent` igual a la key de la Story; heredar labels, quarter y start date, sin enviar sprint, con el Due date que confirmó el usuario para cada una. Verificar que cada hito solicitado tenga un issue hijo real.
+2. Crear padre con `issueTypeName: "<STORY_TYPE>"`, description deseada, campos obligatorios, sprint resuelto y Due date confirmado, si lo tiene.
+3. Crear issues `<SUBTASK_TYPE>` independientes con `parent` igual a la key de la Story; heredar labels, quarter y start date, sin enviar sprint, con el Due date que confirmó el usuario para cada una. Verificar que cada hito solicitado tenga un issue hijo real.
 4. Releer por key padre y subtareas; verificar asignación, sprint y Due date. Si alguna escritura falla, reportar claves creadas, causa y pasos pendientes; reutilizarlas al reanudar, sin recrear padre.
 5. Mostrar:
 
@@ -356,8 +356,8 @@ No continuar al gate final si máquina devuelve bloqueo.
 
 Releer por key padre y subtareas, y releer todos los PR en GitHub. Validar:
 
-- Padre nuevo de tipo `Story`; padre existente compatible reutilizado sin duplicación ni conversión implícita.
-- Cada unidad o hito solicitado tiene una `Sub-task` real con `parent` correcto, sin equivalentes duplicados; checklist textual no cuenta como issue.
+- Padre nuevo de tipo `<STORY_TYPE>`; padre existente compatible reutilizado sin duplicación ni conversión implícita.
+- Cada unidad o hito solicitado tiene una `<SUBTASK_TYPE>` real con `parent` correcto, sin equivalentes duplicados; checklist textual no cuenta como issue.
 - Estados de subtareas respaldados por evidencia específica; `PR testeado` no se completa por CI ni por estado del padre.
 - Campos obligatorios según `jira-fields.md`.
 - Contenido nuevo o modificado en español; contenido ajeno preservado.
