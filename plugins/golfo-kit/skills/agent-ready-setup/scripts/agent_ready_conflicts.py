@@ -185,7 +185,7 @@ def engine_can_review(engine_dir):
 
 
 def review_conflicts(project_root, engine_dir, cache_module, provider, directions, texts, bash, use_provider,
-                     settings=None, publish=False, check=None):
+                     settings=None, publish=False, check=None, pending_directions=APPLY_DIRECTIONS):
     """Review the pairs that are not in the cache and return what plan reports.
 
     ``use_provider`` false (offline, review mode) answers from the cache only. A pair without an
@@ -271,7 +271,9 @@ def review_conflicts(project_root, engine_dir, cache_module, provider, direction
             annotated.append(dict(finding, direction=directions[pair], check=check.CHECK, reviewedFiles=reviewed_files))
     report["findings"] = cache_module.visible(annotated)
     report["quiet"] = len(annotated) - len(report["findings"])
-    report["pending"] = [finding for finding in annotated if finding["direction"] in APPLY_DIRECTIONS]
+    # Every finding of these directions, decided ones included: their files are not on disk yet, so
+    # only this list lets agent-ready review find them before the apply.
+    report["pending"] = [finding for finding in annotated if finding["direction"] in pending_directions]
     return report
 
 

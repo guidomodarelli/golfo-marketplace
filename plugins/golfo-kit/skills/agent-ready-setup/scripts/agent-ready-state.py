@@ -3344,11 +3344,11 @@ def competing_skills_report(arguments, plan, catalog, configuration):
     check = skill_overlap.reviewer(conflicts_review.load_harness_review(ENGINE_SKILL_DIRECTORY))
     report = conflicts_review.review_conflicts(arguments.project, ENGINE_SKILL_DIRECTORY, module, arguments.provider,
                                                directions, texts, bash_executable(), use_provider, settings,
-                                               publish=arguments.format == "protected", check=check)
-    report.pop("pending", None)
-    # The skills an apply brings are not on disk yet: their findings wait here, so agent-ready review
-    # can accept or dismiss one before the apply.
-    conflicts_review.record_pending(arguments.project, report["findings"], check=skill_overlap.CHECK)
+                                               publish=arguments.format == "protected", check=check,
+                                               pending_directions=(skill_overlap.DIRECTION_SKILLS,))
+    # The skills an apply brings are not on disk yet: all their findings, decided ones included, wait
+    # here, so agent-ready review can accept or dismiss one before the apply and keep that decision.
+    conflicts_review.record_pending(arguments.project, report.pop("pending", []), check=skill_overlap.CHECK)
     return report
 
 

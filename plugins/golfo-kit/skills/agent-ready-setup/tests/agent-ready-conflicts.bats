@@ -449,6 +449,11 @@ PY
   skill_finding="$(printf '%s' "$output" | python3 -c 'import json,sys; print(json.load(sys.stdin)["competingSkills"]["findings"][0]["id"])' | tr -d '\r')"
   agent_ready review accept "$skill_finding" --reason "Both skills are wanted"
   [ "$status" -eq 0 ]
+  # A plan after the decision keeps the finding, so the decision still applies to it.
+  agent_ready plan
+  [ "$status" -eq 0 ]
+  agent_ready review dismiss "$skill_finding" --reason "Changed our mind"
+  [ "$status" -eq 0 ]
 
   # Declared complementary: the pair is not reviewed.
   printf '%s\n' '{"schemaVersion": 1, "name": "acme", "version": "1.0.0", "profiles": {"team": {"kind": "capability", "description": "Team skills.", "assets": "profiles/team", "complements": ["software-development:skills/pr-review-workflow"]}}}' > agent-packs/acme/agent-ready-pack.json
