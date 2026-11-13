@@ -18,6 +18,18 @@
       "default": false,
       "x-security": { "strictness": [false, true] }
     },
+    "competingSkills": {
+      "description": "Revisión de IA de las skills de profiles distintos (una de un pack) que compiten por el mismo pedido: hacen el mismo trabajo con descripciones que se pisan. Las complementarias, y los pares declarados en complements, no se avisan. Usa la caché de las revisiones; también se apaga con reviews.enabled: false.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "description": "plan revisa con IA las skills que compiten y avisa con el pedido en común y en qué difieren. Apagado, no se revisa.",
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
     "competingTools": {
       "description": "CLIs y servidores MCP de profiles distintos que declaran la misma capacidad en provides, sin complements entre ellos: el agente elige uno al azar según el turno.",
       "type": "object",

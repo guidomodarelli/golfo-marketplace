@@ -20,6 +20,7 @@ descartar un hallazgo.
 10. Rules contra la realidad del repo
 11. Hooks, permisos y settings
 12. Paridad entre providers, variables de entorno y CI
+13. Skills que compiten
 
 ## 1. Qué se revisa
 
@@ -354,3 +355,29 @@ Providers: Claude Code sees 20 rules (0 only for their paths), 5 skills, 5 subag
 | `conflicts.providerParity.enabled` | `true` | `false` no compara los providers |
 | `conflicts.environment.enabled` | `true` | `false` no compara las variables de entorno |
 | `conflicts.ciJobs.enabled` | `true` | `false` no busca jobs de CI duplicados |
+
+## 13. Skills que compiten
+
+Dos skills que hacen el mismo trabajo, con descripciones que se pisan («crear un endpoint»),
+parten la activación: el agente usa una u otra según cómo se pida. Que dos skills se activen ante
+el mismo pedido no es un problema si cada una resuelve una parte distinta: son complementarias (una
+mide, la otra arregla).
+
+`agent-ready plan` revisa con IA cada skill de un pack contra cada skill de otro profile y avisa
+solo de las que compiten, con el pedido en común y en qué difieren:
+
+```text
+  ! [a1b2c3] .agents/skills/pr-review-workflow/SKILL.md <-> .agents/skills/team-review/SKILL.md: Both review pull requests; one follows the team checklist. (competing skills: "review this pull request")
+```
+
+- **Qué pares.** Solo los de profiles distintos con una skill de un pack: las de golfo-kit no se
+  revisan entre sí. Un par que un profile declara en `complements`
+  (`"software-development:skills/pr-review-workflow"`) no se revisa.
+- **Misma infraestructura.** Usa la llamada al provider, la caché y las decisiones de las demás
+  revisiones (secciones 3 a 6), bajo su propio chequeo, `skill-overlap`: un par sin cambios no se
+  paga de nuevo, y sin red ni provider queda sin revisar, nunca limpio. Solo avisa: no frena el
+  apply.
+
+| Clave | Default | Efecto |
+|---|---|---|
+| `conflicts.competingSkills.enabled` | `true` | `false` no revisa las skills; `reviews.enabled: false` también la apaga |
