@@ -921,6 +921,7 @@ EOF
   touch "$source_dir/SKILL.md"
   cp "$skill_dir/assets/common/hooks/sync-marketplace.sh" \
     "$source_dir/assets/common/hooks/sync-marketplace.sh"
+  cp "$skill_dir/assets/common/hooks/agent-ready-skill-source.sh" "$source_dir/assets/common/hooks/"
   cp "$skill_dir/scripts/asset-sync-common.sh" "$source_dir/scripts/asset-sync-common.sh"
   # Minimal sources still need the profile catalog, the configuration schemas and the state helper the hook resolves.
   cp "$skill_dir/scripts/agent-ready-state.py" "$source_dir/scripts/agent-ready-state.py"
@@ -985,6 +986,7 @@ EOF
   touch "$source_dir/SKILL.md"
   cp "$skill_dir/assets/common/hooks/sync-marketplace.sh" \
     "$source_dir/assets/common/hooks/sync-marketplace.sh"
+  cp "$skill_dir/assets/common/hooks/agent-ready-skill-source.sh" "$source_dir/assets/common/hooks/"
   cp "$skill_dir/scripts/asset-sync-common.sh" "$source_dir/scripts/asset-sync-common.sh"
   # Minimal sources still need the profile catalog, the configuration schemas and the state helper the hook resolves.
   cp "$skill_dir/scripts/agent-ready-state.py" "$source_dir/scripts/agent-ready-state.py"

@@ -404,3 +404,59 @@ AI review findings:
 - **Código de salida:** `0` sin conflictos, `6` con alguno. `--json` deja el detalle de cada chequeo.
 
 En CI, `agent-ready check` corre los mismos chequeos con `ci.conflicts` (`ci-check.md`).
+
+### Al iniciar sesión y al editar
+
+Los conflictos estructurales también aparecen sin pedirlos, en dos momentos. Cada uno se apaga por
+separado:
+
+- **Al iniciar sesión:** el hook de `SessionStart` (`sync-marketplace.sh`) los lista con el prefijo
+  `[conflicts]`, cualquiera sea `updates.mode`. Los hallazgos de IA salen de la caché, en la línea
+  `AI reviews:` de `status`.
+- **Al editar:** el hook de `PostToolUse` (`check-harness-consistency.sh`) le pasa los archivos
+  editados a `.agents/hooks/check-conflicts.sh`, que los recalcula si alguno es una de sus entradas:
+  `AGENTS.md`, `CLAUDE.md`, lo que hay bajo `.agents/`, `.claude/` y `.codex/`, `.mcp.json`,
+  los archivos de CI y de ejemplo de `.env` que lee la paridad (sección 12) y los que leen los `assumes` (`package.json`, `.editorconfig`,
+  Prettier y los de `assets/repo-facts.json`, como lockfiles o `jest.config.js`). Corre sin red y sin
+  la CLI del provider. La revisión de IA de rules y skills sigue igual que antes (sección 1).
+
+```text
+[conflicts] ! .agents/rules/ours.md (project) assumes test runner vitest, but the repository uses jest (package.json)
+[conflicts] Each one with its fix: agent-ready conflicts
+```
+
+`agent-ready status` los lista siempre, bajo `Conflicts between the profiles:`.
+
+| Clave | Default | Efecto |
+|---|---|---|
+| `conflicts.sessionStart.enabled` | `true` | `false` no los calcula al iniciar sesión |
+| `conflicts.onEdit.enabled` | `true` | `false` no los recalcula al editar |
+
+### Para autores de packs
+
+Un pack detecta sus contradicciones en su propio CI, antes de publicarse, sin un repo consumidor:
+
+```bash
+agent-ready conflicts --pack .            # desde la raíz del pack (su agent-ready-pack.json)
+agent-ready conflicts --pack . --offline  # sin llamar a la IA: solo lo estructural y la caché
+```
+
+El chequeo copia el pack a un repo consumidor temporal y evalúa cada profile que publica, por separado,
+con la base de golfo-kit y los profiles que declara en `requires`, como lo vería un repo que lo
+selecciona. Corre los mismos chequeos que `agent-ready conflicts`, salvo los de la máquina del autor (las
+sombras con lo instalado, los servidores MCP y los settings y hooks del usuario), que no son los del
+consumidor. El repo temporal está vacío, así que tampoco hay nada que contradiga un `assumes`. La copia
+conserva los symlinks, así que un pack que publica uno falla igual que en un consumidor. `--provider`
+elige la CLI de la revisión de IA.
+
+```text
+Pack acme: 3 profile(s) checked against the golfo-kit base and their requires
+acme/base: no conflicts
+acme/kafka-interno:
+  ~ MCP server base-docs (acme/base) and MCP server acme-docs (acme/kafka-interno) both provide docs-search: …
+```
+
+- **Código de salida:** `0` sin conflictos, `6` con alguno y `2` si un profile no resuelve (por ejemplo, un
+  `requires` que no existe). `--json` deja el resultado de cada profile.
+- **Revisión de IA:** sin `--offline` usa la CLI del provider de la sesión (`AGENT_READY_SETUP_ACTIVE_PROVIDER`
+  en CI). El repo temporal no conserva la caché entre corridas, así que cada corrida revisa de nuevo.

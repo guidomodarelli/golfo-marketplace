@@ -56,6 +56,7 @@ run_bootstrap() {
 run_sync_hook() {
   mkdir -p .agents/hooks
   cp "$skill_dir/assets/common/hooks/sync-marketplace.sh" .agents/hooks/sync-marketplace.sh
+  cp "$skill_dir/assets/common/hooks/agent-ready-skill-source.sh" .agents/hooks/
   run env PATH="$fake_bin:$PATH" AGENT_READY_SETUP_SKILL_DIR="$skill_dir" AGENT_READY_SETUP_MARKETPLACE_UPGRADED=1 \
     bash .agents/hooks/sync-marketplace.sh --provider claude
 }

@@ -55,7 +55,7 @@ def provider_views(rule_count, scoped_rule_count, entries):
     }
 
 
-def hook_differences(project_root, skill_dir):
+def hook_differences(project_root, skill_dir, with_user=True):
     """Hooks one provider runs and the other does not: the golfo-kit templates (except the events
     declared provider-specific there) and the project's own hooks.
 
@@ -63,7 +63,7 @@ def hook_differences(project_root, skill_dir):
     another event does not run at the same moment. Matchers are not compared, because each provider
     names its tools differently (Edit and Write in Claude Code, apply_patch in Codex).
     """
-    layers = settings_conflicts.layers(project_root, skill_dir)
+    layers = settings_conflicts.layers(project_root, skill_dir, with_user)
     if settings_conflicts.claude_hooks_disabled(layers):
         # disableAllHooks: Claude Code runs none of its hooks, so only Codex's count.
         layers = [layer for layer in layers if layer["provider"] != PROVIDER_CLAUDE]
