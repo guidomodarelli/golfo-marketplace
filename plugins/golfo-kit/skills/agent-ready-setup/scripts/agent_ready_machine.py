@@ -52,6 +52,12 @@ CODEX_ENV_VARS_KEY = "env_vars"
 # Keys of a server entry that say where it runs or how the provider treats it, not what it does.
 IDENTITY_IGNORED_KEYS = {"command", "args", "url", "type", "enabled", "startup_timeout_sec", "tool_timeout_sec"}
 PACKAGE_RUNNERS = ("npx", "pnpm", "bunx", "uvx", "pipx", "dlx", "exec", "-y", "--yes")
+# The kind of package each runner resolves: the same name in npm and in PyPI is another program.
+RUNNER_ECOSYSTEMS = {"npx": "npm", "pnpm": "npm", "bunx": "npm", "uvx": "python", "pipx": "python"}
+# Claude Code settings that can turn an installed plugin off, lowest precedence first.
+CLAUDE_SETTINGS_FILE = "settings.json"
+PROJECT_SETTINGS_FILES = (os.path.join(".claude", "settings.json"), os.path.join(".claude", "settings.local.json"))
+ENABLED_PLUGINS_KEY = "enabledPlugins"
 
 
 def user_home():
@@ -121,7 +127,11 @@ def installed_plugins(project_root):
     if not isinstance(data, dict) or not isinstance(data.get("plugins"), dict):
         return plugins
     project = os.path.normcase(os.path.realpath(project_root))
+    enabled = plugin_enablement(project_root)
     for key, installs in sorted(data["plugins"].items()):
+        if enabled.get(key) is False:
+            # Installed but turned off: Claude Code does not load its assets.
+            continue
         for install in installs if isinstance(installs, list) else []:
             if not isinstance(install, dict) or not install.get("installPath"):
                 continue
@@ -131,6 +141,20 @@ def installed_plugins(project_root):
                                               and os.path.normcase(os.path.realpath(project_path)) == project):
                 plugins.append((key.split("@", 1)[0], install["installPath"]))
     return plugins
+
+
+def plugin_enablement(project_root):
+    """{plugin@marketplace: bool} from enabledPlugins in the user's, the project's and the local
+    settings, the later one winning, as Claude Code resolves them."""
+    enabled = {}
+    paths = [os.path.join(claude_home(), CLAUDE_SETTINGS_FILE)]
+    paths += [os.path.join(project_root, relative) for relative in PROJECT_SETTINGS_FILES]
+    for path in paths:
+        settings = read_json(path)
+        values = settings.get(ENABLED_PLUGINS_KEY) if isinstance(settings, dict) else None
+        if isinstance(values, dict):
+            enabled.update({key: value for key, value in values.items() if isinstance(value, bool)})
+    return enabled
 
 
 def project_assets(destinations):
@@ -200,13 +224,14 @@ def server_identity(server):
         command = str(server["command"])
         arguments = [str(argument) for argument in server.get("args") or []]
         endpoint = ["command", command] + arguments
-        if os.path.basename(command).split(".")[0] in PACKAGE_RUNNERS:
+        ecosystem = RUNNER_ECOSYSTEMS.get(os.path.basename(command).split(".")[0].lower())
+        if ecosystem:
             for position, argument in enumerate(arguments):
                 if argument in PACKAGE_RUNNERS or argument.startswith("-"):
                     continue
                 match = PACKAGE_ARGUMENT.match(argument)
                 if match:
-                    endpoint = ["package", match.group("name")] + arguments[position + 1:]
+                    endpoint = ["package", ecosystem, match.group("name")] + arguments[position + 1:]
                 break
     else:
         return None
