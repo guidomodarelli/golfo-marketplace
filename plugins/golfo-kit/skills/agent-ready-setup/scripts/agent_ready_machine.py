@@ -18,6 +18,8 @@ import json
 import os
 import re
 
+import agent_ready_pack_mcp as pack_mcp
+
 try:
     import tomllib
 except ImportError:  # Python before 3.11 cannot read config.toml: the Codex comparison is skipped.
@@ -46,6 +48,7 @@ CODEX_BOTH_LISTED = "Codex lists both, with no documented order"
 CLAUDE_SHARED_NAMESPACE = {KIND_SKILL: (KIND_SKILL, KIND_COMMAND), KIND_COMMAND: (KIND_SKILL, KIND_COMMAND)}
 # An npm package in the arguments of a server: its identity, whatever version it pins.
 PACKAGE_ARGUMENT = re.compile(r"^(?P<name>(@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*)(@[^/\s]+)?$")
+CODEX_ENV_VARS_KEY = "env_vars"
 # Keys of a server entry that say where it runs or how the provider treats it, not what it does.
 IDENTITY_IGNORED_KEYS = {"command", "args", "url", "type", "enabled", "startup_timeout_sec", "tool_timeout_sec"}
 PACKAGE_RUNNERS = ("npx", "pnpm", "bunx", "uvx", "pipx", "dlx", "exec", "-y", "--yes")
@@ -192,23 +195,27 @@ def server_identity(server):
     if not isinstance(server, dict):
         return None
     if server.get("url"):
-        endpoint = "url:" + str(server["url"]).rstrip("/")
+        endpoint = ["url", str(server["url"]).rstrip("/")]
     elif server.get("command"):
         command = str(server["command"])
         arguments = [str(argument) for argument in server.get("args") or []]
-        endpoint = "command:" + " ".join([command] + arguments)
+        endpoint = ["command", command] + arguments
         if os.path.basename(command).split(".")[0] in PACKAGE_RUNNERS:
             for position, argument in enumerate(arguments):
                 if argument in PACKAGE_RUNNERS or argument.startswith("-"):
                     continue
                 match = PACKAGE_ARGUMENT.match(argument)
                 if match:
-                    endpoint = "package:" + " ".join([match.group("name")] + arguments[position + 1:])
+                    endpoint = ["package", match.group("name")] + arguments[position + 1:]
                 break
     else:
         return None
     configuration = {key: value for key, value in server.items() if key not in IDENTITY_IGNORED_KEYS}
-    return endpoint + " " + json.dumps(configuration, sort_keys=True, ensure_ascii=False)
+    # Codex lists the variables it passes; their order does not change the server.
+    if isinstance(configuration.get(CODEX_ENV_VARS_KEY), list):
+        configuration[CODEX_ENV_VARS_KEY] = sorted(str(name) for name in configuration[CODEX_ENV_VARS_KEY])
+    # A structured value keeps every argument whole: "a b" is not "a" and "b".
+    return json.dumps([endpoint, configuration], sort_keys=True, ensure_ascii=False)
 
 
 def user_servers():
@@ -238,6 +245,10 @@ def user_server_paths():
             PROVIDER_CODEX: home_display(os.path.join(codex_home(), CODEX_CONFIG_FILE))}
 
 
+# How the apply writes a pack declaration for each provider (agent_ready_pack_mcp.py).
+PROVIDER_ENTRIES = {PROVIDER_CLAUDE: pack_mcp.claude_entry, PROVIDER_CODEX: pack_mcp.codex_entry}
+
+
 def duplicated_servers(desired, providers):
     """{provider: {name: user server name}} of the desired servers the user already has, by identity.
 
@@ -246,10 +257,14 @@ def duplicated_servers(desired, providers):
     known = user_servers()
     duplicates = {}
     for provider in providers:
+        if provider not in PROVIDER_ENTRIES:
+            continue
         identities = {server_identity(entry): user_name for user_name, entry in known.get(provider, {}).items()}
         identities.pop(None, None)
+        to_provider_entry = PROVIDER_ENTRIES[provider]
         for name, item in desired.items():
-            user_name = identities.get(server_identity(item["server"]))
+            # Compared as the apply would write it for that provider, the way the user's entry is written.
+            user_name = identities.get(server_identity(to_provider_entry(item["server"])))
             if user_name:
                 duplicates.setdefault(provider, {})[name] = user_name
     return duplicates
