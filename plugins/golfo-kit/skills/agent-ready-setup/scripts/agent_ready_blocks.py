@@ -161,6 +161,9 @@ def without_block(text, destination, block_id):
     del lines[start:end + 1]
     if start > 0 and start - 1 < len(lines) and lines[start - 1] == "" and (start >= len(lines) or lines[start] == ""):
         del lines[start - 1]
+    elif start == 0 and len(lines) > 1 and lines[0] == "":
+        # A block at the top leaves no blank first line before the project's content.
+        del lines[0]
     return "\n".join(lines)
 
 

@@ -85,6 +85,8 @@ from agent_ready_options import (  # noqa: E402
     CI_PROVIDER_NONE,
     CI_WARN,
     DETECTION_ENABLED_KEY,
+    NESTED_ENABLED_KEY,
+    NESTED_TARGETS_KEY,
     CONTEXT_BUDGET_BYTES_KEY,
     CONTEXT_BUDGET_ENABLED_KEY,
     CONTEXT_BUDGET_RULES_BYTES_KEY,
@@ -144,6 +146,7 @@ import agent_ready_parity as parity  # noqa: E402
 import agent_ready_pack_scripts as pack_scripts  # noqa: E402
 import agent_ready_pack_signatures as pack_signatures  # noqa: E402
 import agent_ready_blocks as managed_blocks  # noqa: E402
+import agent_ready_nested as nested  # noqa: E402
 import agent_ready_pack_tools as pack_tools  # noqa: E402
 import agent_ready_golfo_kit as golfo_kit  # noqa: E402
 from agent_ready_packs import (  # noqa: E402
@@ -373,7 +376,7 @@ COMPLEMENTABLE_DIRECTORIES = OVERRIDABLE_DIRECTORIES + ("mcpServers", "clis")
 # A bundle publishes nothing and only groups other profiles through ``requires``.
 BUNDLE_PROFILE_KIND = "bundle"
 BUNDLE_FORBIDDEN_KEYS = ("assets", "tools", "detect", DEFAULTS_KEY, OVERRIDES_KEY, COMPLEMENTS_KEY, "clis",
-                         "mcpServers", "scripts")
+                         "mcpServers", "scripts", nested.NESTED_KEY)
 
 
 def parse_asset_reference(reference, what, directories=None):
@@ -451,6 +454,8 @@ def load_profile_catalog(skill_dir):
         raise ProfileError(f"profile catalog {catalog_path}: {caught_error}") from caught_error
     for name, profile in sorted(profiles.items()):
         validate_selection_fields(name, profile)
+        relative_root = profile.get("assets")
+        nested.validate_published(name, profile, os.path.join(skill_dir, relative_root) if relative_root else None)
     return catalog
 
 
@@ -460,6 +465,7 @@ def validate_selection_fields(name, profile):
     A bundle publishes nothing: no assets, tools, detection or defaults of its own, so what it brings
     is exactly the profiles it requires, each with its own defaults.
     """
+    nested.validate_declaration(name, profile)
     for field, directories in ((OVERRIDES_KEY, OVERRIDABLE_DIRECTORIES), (COMPLEMENTS_KEY, COMPLEMENTABLE_DIRECTORIES)):
         for reference in profile.get(field, []) if isinstance(profile.get(field, []), list) else [None]:
             parse_asset_reference(reference, f"profile '{name}' {field}", directories)
@@ -739,8 +745,9 @@ def compose_stack_directory(skill_dir, catalog, resolved, compose_root):
             if is_overridden(overridden, name, relative_path):
                 # Another profile of the selection replaces it on purpose (overrides).
                 continue
-            if managed_blocks.destination_of(relative_path) is not None:
-                # Each profile keeps its own block of a shared file (desired_blocks).
+            if managed_blocks.destination_of(relative_path) is not None or relative_path.startswith(nested.NESTED_PREFIX):
+                # Each profile keeps its own block of a shared file (desired_blocks) or of the AGENTS.md
+                # of a folder (desired_nested_blocks).
                 continue
             if relative_path in owners:
                 raise ProfileError(
@@ -795,8 +802,9 @@ def destinations_for_template(relative_path, is_stack_root):
     """
     if relative_path in (AGENTS_TEMPLATE_NAME, AGENTS_SKELETON_NAME, CLAUDE_SETTINGS_TEMPLATE_NAME):
         return []
-    if managed_blocks.destination_of(relative_path) is not None:
-        # A block goes inside a file shared with the project (desired_blocks), never as a whole file.
+    if managed_blocks.destination_of(relative_path) is not None or relative_path.startswith(nested.NESTED_PREFIX):
+        # A block goes inside a file shared with the project (desired_blocks) or the AGENTS.md of a
+        # folder (desired_nested_blocks), never as a whole file.
         return []
     if relative_path.startswith("github/"):
         return [".github/" + relative_path[len("github/"):]]
@@ -898,6 +906,35 @@ def desired_blocks(skill_dir, catalog, resolved, assets):
                 "content": content,
             }
     return blocks
+
+
+def nested_contents(skill_dir, catalog, resolved):
+    """{id: {profile, source, content}} of every nested target the selection publishes, wherever it goes."""
+    contents = {}
+    for identifier, profile, name, _ in nested.declarations(catalog, resolved):
+        path = nested.content_path(profile_asset_root(skill_dir, catalog, profile), name)
+        with open(path, encoding="utf-8", newline="") as template_file:
+            content = managed_blocks.normalized_content(template_file.read())
+        contents[identifier] = {"profile": profile, "source": template_origin(skill_dir, catalog, profile, path),
+                                "content": content}
+    return contents
+
+
+def desired_nested_blocks(project_root, catalog, resolved, contents):
+    """({(destination, id): {profile, source, content}}, report) of the nested targets of the selection.
+
+    Each target puts its block, with its id, in the AGENTS.md of every folder it resolves to
+    (agent_ready_nested.resolve): the folders of nested.targets, or else the first candidate that exists.
+    """
+    configuration = configuration_of(project_root)
+    configured = nested.configured_targets(configuration.value(NESTED_TARGETS_KEY), MANIFEST_RELATIVE_PATH)
+    folders, report = nested.resolve(project_root, nested.declarations(catalog, resolved),
+                                     configuration.value(NESTED_ENABLED_KEY), configured, MANIFEST_RELATIVE_PATH)
+    blocks = {}
+    for identifier, target_folders in folders.items():
+        for folder in target_folders:
+            blocks[(nested.destination_in(folder), identifier)] = dict(contents[identifier])
+    return blocks, report
 
 
 def reject_destinations_inside_files(assets, destinations_by_folded_name):
@@ -1111,7 +1148,8 @@ def enforce_sync_policy(project_root, skill_dir, catalog, resolved, digests):
         assets = desired_assets(skill_dir, catalog, resolved)
         golfo_assets = {destination: entry for destination, entry in assets.items() if not is_pack_profile(entry["profile"])}
         identity = source_identity(skill_dir, golfo_assets, merged_template_entries(skill_dir, catalog, resolved),
-                                   golfo_blocks(desired_blocks(skill_dir, catalog, resolved, assets)))
+                                   golfo_blocks(desired_blocks(skill_dir, catalog, resolved, assets)),
+                                   golfo_blocks(nested_contents(skill_dir, catalog, resolved)))
         if lock.get("source", {}).get("contentDigest") != identity["contentDigest"]:
             raise IncompleteEvaluationError(
                 "this repository pins golfo-kit and has a release pending, and SessionStart cannot update a pack alone; "
@@ -1299,20 +1337,23 @@ def engine_version_of(skill_dir):
 
 
 def golfo_blocks(blocks):
-    """The managed blocks golfo-kit publishes: packs have their own digest."""
+    """The managed blocks, or nested targets, golfo-kit publishes: packs have their own digest."""
     return {key: item for key, item in blocks.items() if not is_pack_profile(item["profile"])}
 
 
-def source_identity(skill_dir, assets, merged_templates, blocks):
+def source_identity(skill_dir, assets, merged_templates, blocks, nested_targets):
     """Identity of the resolved source; contentDigest is the immutable part.
 
     Pinned golfo-kit content records the Git origin and revision it came from, so the next apply
-    of a pinned repository fetches exactly that content again.
+    of a pinned repository fetches exactly that content again. A nested target counts by its id, not
+    by the folders it goes to in this repository.
     """
     digest_lines = [f"{destination}\t{entry['sha256']}" for destination, entry in sorted(assets.items())]
     digest_lines += [f"{destination}\t{entry['templateSha256']}" for destination, entry in sorted(merged_templates.items())]
     digest_lines += [f"{destination}\t{block_id}\t{sha256_of_text(item['content'])}"
                      for (destination, block_id), item in sorted(blocks.items())]
+    digest_lines += [f"{nested.NESTED_PREFIX}{identifier}\t{sha256_of_text(item['content'])}"
+                     for identifier, item in sorted(nested_targets.items())]
     digest_lines += [
         f"{relative_path}\t{sha256_of_file(os.path.join(skill_dir, relative_path))}"
         for relative_path in RENDERED_INSTRUCTION_INPUTS
@@ -1618,6 +1659,8 @@ def compute_plan(project_root, skill_dir, catalog, profile_names):
             "local": local,
         })
     blocks = desired_blocks(skill_dir, catalog, resolved, assets)
+    targets = nested_contents(skill_dir, catalog, resolved)
+    nested_blocks, nested_report = desired_nested_blocks(project_root, catalog, resolved, targets)
     block_destinations = {destination for destination, _ in blocks}
     retiring_block_files = set()
     for destination, lock_entry in sorted(locked_assets.items()):
@@ -1644,7 +1687,7 @@ def compute_plan(project_root, skill_dir, catalog, profile_names):
     golfo_assets = {destination: entry for destination, entry in assets.items() if not is_pack_profile(entry["profile"])}
     # Without a lockfile the first apply keeps the previous overwrite contract.
     edited_views, preserved_views = detached_views(project_root, assets, locked_assets) if lock else ([], [])
-    identity = source_identity(skill_dir, golfo_assets, merged, golfo_blocks(blocks))
+    identity = source_identity(skill_dir, golfo_assets, merged, golfo_blocks(blocks), golfo_blocks(targets))
     return {
         "schemaVersion": SCHEMA_VERSION,
         "profiles": resolved,
@@ -1659,9 +1702,11 @@ def compute_plan(project_root, skill_dir, catalog, profile_names):
         "lockedSource": lock.get("source") if lock else None,
         "hasLock": lock is not None,
         "entries": entries,
-        "blocks": managed_blocks.classify(project_root, *without_waiting_sections(project_root, skill_dir, blocks,
+        "blocks": managed_blocks.classify(project_root, *without_waiting_sections(project_root, skill_dir,
+                                                                                    {**blocks, **nested_blocks},
                                                                                     (lock or {}).get("blocks", {})),
                                           retiring_block_files),
+        "nested": nested_report,
         "editedViews": edited_views,
         "detachedViews": preserved_views,
         "merged": merged,
@@ -2108,6 +2153,8 @@ def print_plan(project_root, skill_dir, plan, provider, skip_marketplace_upgrade
         write_line(f"Defaults left out: {', '.join(excluded)} ({EXCLUDED_DEFAULTS_KEY})")
     for override in plan.get("overrides", []):
         write_line(f"Overridden: {override['replaces']} by {override['profile']} (only its own asset is projected)")
+    for target in plan.get("nested", []):
+        write_line(f"Nested AGENTS.md: {nested.describe(target)}")
     if plan.get("context"):
         print_context_budget(plan["context"])
     print_machine_report(plan.get("machine"))
@@ -2217,17 +2264,24 @@ def remove_empty_parents(project_root, path):
         directory = os.path.dirname(directory)
 
 
-def root_instructions_conflict(project_root, skill_dir):
-    """True when the root CLAUDE.md holds instructions of its own besides AGENTS.md.
+def is_instruction_destination(destination):
+    """True for an AGENTS.md that takes blocks: the root one (stack sections) or a nested target's."""
+    return destination == managed_blocks.INSTRUCTION_SECTIONS_DESTINATION or nested.is_nested_destination(destination)
 
-    Mirrors normalize_root_instructions in instruction-normalization.sh: a CLAUDE.md that is the
-    proxy, the bare "@AGENTS.md" or the same bytes as AGENTS.md is normalized; any other one is a
-    conflict the agent resolves by hand, and so is a symlink or something that is not a file.
+
+def instructions_conflict(project_root, skill_dir, folder=""):
+    """True when the CLAUDE.md of a folder (the root by default) holds instructions of its own besides AGENTS.md.
+
+    Mirrors normalize_root_instructions and normalize_nested_instruction_pair in
+    instruction-normalization.sh: a CLAUDE.md that is the proxy, the bare "@AGENTS.md" or the same bytes
+    as AGENTS.md is normalized, and one without an AGENTS.md is moved there; any other one is a conflict
+    the agent resolves by hand, and so is a symlink or something that is not a file.
     """
-    claude_path = os.path.join(project_root, "CLAUDE.md")
+    claude_path = os.path.join(project_root, *folder.split("/"), "CLAUDE.md") if folder else \
+        os.path.join(project_root, "CLAUDE.md")
     if not os.path.lexists(claude_path):
         return False
-    agents_path = os.path.join(project_root, managed_blocks.INSTRUCTION_SECTIONS_DESTINATION)
+    agents_path = os.path.join(os.path.dirname(claude_path), managed_blocks.INSTRUCTION_SECTIONS_DESTINATION)
     if is_link(claude_path) or not os.path.isfile(claude_path) or is_link(agents_path):
         return True
     with open(claude_path, "rb") as file_handle:
@@ -2242,16 +2296,19 @@ def root_instructions_conflict(project_root, skill_dir):
     return False
 
 
-def instruction_sections_wait(project_root, skill_dir):
-    """True when the apply must leave the sections of AGENTS.md as they are.
+def instructions_wait(project_root, skill_dir, destination):
+    """True when the apply must leave the blocks of this AGENTS.md as they are.
 
-    AGENTS.md is the project's own file until the instruction review places the managed block (a
-    legacy file), and the two instruction files are the agent's to merge while CLAUDE.md conflicts
-    with AGENTS.md. In both cases the apply adds, updates and removes no section: they catch up on
-    the next apply after that, so it never writes into instructions it has not adopted.
+    The two instruction files of a folder are the agent's to merge while CLAUDE.md conflicts with
+    AGENTS.md, and the root AGENTS.md is the project's own file until the instruction review places the
+    managed block (a legacy file). In both cases the apply adds, updates and removes no block there:
+    they catch up on the next apply after that, so it never writes into instructions it has not adopted.
+    A nested AGENTS.md without the managed block is not legacy: the block of its target goes at the end.
     """
-    if root_instructions_conflict(project_root, skill_dir):
+    if instructions_conflict(project_root, skill_dir, os.path.dirname(destination)):
         return True
+    if destination != managed_blocks.INSTRUCTION_SECTIONS_DESTINATION:
+        return False
     path = os.path.join(project_root, managed_blocks.INSTRUCTION_SECTIONS_DESTINATION)
     if is_link(path) or not os.path.isfile(path):
         return False
@@ -2259,38 +2316,52 @@ def instruction_sections_wait(project_root, skill_dir):
         return MANAGED_BLOCK_START not in file_handle.read().splitlines()
 
 
+def waiting_instruction_files(project_root, skill_dir, destinations):
+    """The AGENTS.md files among these destinations whose blocks wait (instructions_wait)."""
+    return {destination for destination in destinations
+            if is_instruction_destination(destination) and instructions_wait(project_root, skill_dir, destination)}
+
+
 def without_waiting_sections(project_root, skill_dir, desired, locked):
-    """(desired, locked) of the blocks to classify, without those of AGENTS.md while its sections wait."""
-    if not instruction_sections_wait(project_root, skill_dir):
+    """(desired, locked) of the blocks to classify, without those of an AGENTS.md whose blocks wait."""
+    waiting = waiting_instruction_files(project_root, skill_dir, {destination for destination, _ in desired} | set(locked))
+    if not waiting:
         return desired, locked
-    destination = managed_blocks.INSTRUCTION_SECTIONS_DESTINATION
-    return ({key: item for key, item in desired.items() if key[0] != destination},
-            {target: blocks for target, blocks in locked.items() if target != destination})
+    return ({key: item for key, item in desired.items() if key[0] not in waiting},
+            {target: blocks for target, blocks in locked.items() if target not in waiting})
 
 
 def instruction_sections_now(project_root, skill_dir, entries):
-    """The block entries of a plan, with those of AGENTS.md classified again against the file as it is.
+    """The block entries of a plan, with those of each AGENTS.md classified again against the file as it is.
 
-    Between the plan and finalize the apply itself writes AGENTS.md: it creates the file from the
-    template or renders the managed block again. Without this, the sections of the stacks would see
-    a file that changed during synchronization and stay out of it.
+    Between the plan and finalize the apply itself writes the instructions: it creates the root
+    AGENTS.md from the template or renders the managed block again, and the normalization moves the
+    instructions of a CLAUDE.md to its AGENTS.md. Without this, the blocks would see a file that
+    changed during synchronization and stay out of it.
     """
-    destination = managed_blocks.INSTRUCTION_SECTIONS_DESTINATION
-    sections = [entry for entry in entries if entry["destination"] == destination]
-    if instruction_sections_wait(project_root, skill_dir):
-        return [entry for entry in entries if entry["destination"] != destination]
-    if not sections:
-        return entries
-    desired = {(destination, entry["id"]): {"profile": entry["profile"], "source": entry["source"],
-                                            "content": entry["content"]}
-               for entry in sections if entry.get("content") is not None}
-    # Every section the lock records stays in it: one that only comes from the lock (to retire) may
-    # have no applied base yet, when its first write was a conflict.
-    locked = {destination: {entry["id"]: {"profile": entry["profile"], "source": entry["source"],
-                                          "sha256": entry["baseSha256"]}
-                            for entry in sections if entry["baseSha256"] or entry.get("content") is None}}
-    kept = [entry for entry in entries if entry["destination"] != destination]
-    return kept + managed_blocks.classify(project_root, desired, locked)
+    kept = [entry for entry in entries if not is_instruction_destination(entry["destination"])]
+    destinations = sorted({entry["destination"] for entry in entries if is_instruction_destination(entry["destination"])})
+    waiting = waiting_instruction_files(project_root, skill_dir, destinations)
+    for destination in destinations:
+        if destination in waiting:
+            continue
+        sections = [entry for entry in entries if entry["destination"] == destination]
+        desired = {(destination, entry["id"]): {"profile": entry["profile"], "source": entry["source"],
+                                                "content": entry["content"]}
+                   for entry in sections if entry.get("content") is not None}
+        # Every block the lock records stays in it: one that only comes from the lock (to retire) may
+        # have no applied base yet, when its first write was a conflict.
+        locked = {destination: {entry["id"]: {"profile": entry["profile"], "source": entry["source"],
+                                              "sha256": entry["baseSha256"]}
+                                for entry in sections if entry["baseSha256"] or entry.get("content") is None}}
+        kept += managed_blocks.classify(project_root, desired, locked)
+    return kept
+
+
+def claude_proxy_text(skill_dir):
+    """The CLAUDE.md proxy the normalization writes next to every AGENTS.md."""
+    with open(os.path.join(skill_dir, CLAUDE_PROXY_RELATIVE_PATH), encoding="utf-8", newline="") as file_handle:
+        return file_handle.read()
 
 
 def finalize(project_root, skill_dir, plan, updates):
@@ -2363,6 +2434,10 @@ def finalize(project_root, skill_dir, plan, updates):
     block_report = managed_blocks.apply(project_root, instruction_sections_now(project_root, skill_dir, plan.get("blocks", [])))
     conflicts += block_report["conflicts"]
     failed += [f"managed blocks of {problem}" for problem in block_report["failed"]]
+    # Claude Code loads a nested AGENTS.md only through the CLAUDE.md next to it.
+    block_report["proxiesWritten"], block_report["proxiesRemoved"], proxy_failures = nested.place_proxies(
+        project_root, block_report["changed"], block_report["removed"], claude_proxy_text(skill_dir))
+    failed += [f"proxy {problem}" for problem in proxy_failures]
 
     lock = {
         "schemaVersion": SCHEMA_VERSION,
@@ -2377,10 +2452,10 @@ def finalize(project_root, skill_dir, plan, updates):
         "assets": lock_assets,
         "merged": plan["merged"],
     }
-    waiting_sections = ((previous_lock or {}).get("blocks") or {}).get(managed_blocks.INSTRUCTION_SECTIONS_DESTINATION)
-    if waiting_sections and instruction_sections_wait(project_root, skill_dir):
-        # The sections were left out of this apply: the lock keeps what it knew of them.
-        block_report["lock"][managed_blocks.INSTRUCTION_SECTIONS_DESTINATION] = waiting_sections
+    previous_blocks = (previous_lock or {}).get("blocks") or {}
+    for destination in waiting_instruction_files(project_root, skill_dir, previous_blocks):
+        # Its blocks were left out of this apply: the lock keeps what it knew of them.
+        block_report["lock"][destination] = previous_blocks[destination]
     if block_report["lock"]:
         lock["blocks"] = block_report["lock"]
     if plan["profileSources"]:
@@ -2569,6 +2644,10 @@ def print_block_report(report, stream):
         write_line(f"Managed blocks written: {path}", stream)
     for path in report["removed"]:
         write_line(f"Removed, only held managed blocks: {path}", stream)
+    for path in report.get("proxiesWritten", []):
+        write_line(f"Proxy written next to a nested AGENTS.md: {path}", stream)
+    for path in report.get("proxiesRemoved", []):
+        write_line(f"Removed, proxy of a removed AGENTS.md: {path}", stream)
     for conflict in report["conflicts"]:
         # WARNING: at the start of the line: the background update reports it in the next session.
         write_line(paint(f"WARNING: managed block kept: {conflict}", "warning", stream), stream)
@@ -4438,8 +4517,9 @@ def template_skeletons(skill_dir, lock):
     return skeletons
 
 
-def block_removal_entries(project_root, lock):
-    """Each file with managed blocks loses them; a file that only held blocks goes."""
+def block_removal_entries(project_root, skill_dir, lock):
+    """Each file with managed blocks loses them; a file that only held blocks goes, and so does the
+    proxy next to a nested AGENTS.md that goes."""
     entries = []
     for destination, blocks in sorted(((lock or {}).get("blocks") or {}).items()):
         if destination == managed_blocks.INSTRUCTION_SECTIONS_DESTINATION:
@@ -4471,6 +4551,12 @@ def block_removal_entries(project_root, lock):
                                   "block", local)
         entry["blocks"] = sorted(blocks)
         entries.append(entry)
+        proxy = nested.proxy_of(destination)
+        proxy_path = os.path.join(project_root, *proxy.split("/"))
+        if entry["action"] == REMOVAL_REMOVE and nested.is_nested_destination(destination) and \
+                nested.is_proxy(proxy_path, claude_proxy_text(skill_dir)):
+            entries.append(removal_entry(proxy, REMOVAL_REMOVE, f"proxy of {destination}", "instructions",
+                                         local_state(proxy_path)))
     return entries
 
 
@@ -4736,7 +4822,7 @@ def plan_removal(project_root, skill_dir):
         + local_removal_entries(project_root)
         + view_removal_entries(project_root, locked_assets)
         + asset_removal_entries(project_root, locked_assets)
-        + block_removal_entries(project_root, lock)
+        + block_removal_entries(project_root, skill_dir, lock)
         + instruction_removal_entries(project_root, skill_dir, lock)
         + settings_removal_entries(project_root, skill_dir)
         + config_removal_entries(project_root)

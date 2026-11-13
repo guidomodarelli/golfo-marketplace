@@ -18,8 +18,17 @@ import urllib.parse
 
 from agent_ready_compatibility import require_engine, validate_compatibility
 import agent_ready_blocks as managed_blocks
+import agent_ready_nested as nested
 import agent_ready_pack_tools as pack_tools
-from agent_ready_common import ProfileError, StateError, is_link, read_json_file, sha256_of_file, sha256_of_text
+from agent_ready_common import (
+    KEBAB_CASE_NAME,
+    ProfileError,
+    StateError,
+    is_link,
+    read_json_file,
+    sha256_of_file,
+    sha256_of_text,
+)
 from agent_ready_config import LAYER_ENVIRONMENT, LAYER_FLAGS
 from agent_ready_options import UPDATES_AUTO, UPDATES_MODE_KEY
 from agent_ready_detection import (
@@ -35,7 +44,7 @@ PACK_ALLOWED_TOP_LEVEL_KEYS = ("schemaVersion", "name", "profiles", "version", "
 # clis, mcpServers and scripts are declarations: the security policy decides whether they run
 # (agent_ready_pack_tools.py), never the pack.
 PACK_ALLOWED_PROFILE_KEYS = ("kind", "description", "assets", "requires", "conflicts", "defaults", "overrides",
-                             "complements", "tools", "detect") + pack_tools.DECLARATION_KEYS
+                             "complements", "tools", "detect", nested.NESTED_KEY) + pack_tools.DECLARATION_KEYS
 PACK_PROFILE_KIND = "capability"
 # A pack can also publish bundles: profiles that only group others through requires.
 PACK_BUNDLE_KIND = "bundle"
@@ -44,15 +53,16 @@ PACK_STACK_KIND = "stack"
 PACK_PROFILE_KINDS = (PACK_PROFILE_KIND, PACK_BUNDLE_KIND, PACK_STACK_KIND)
 # Tools the engine knows how to install; a pack cannot bring its own installer.
 KNOWN_TOOLS = ("browser",)
-# Packs add rules, skills, agents and commands as files, and managed blocks inside files of the
-# project (blocks/, agent_ready_blocks.py). Hooks, settings and the AGENTS.md
+# Packs add rules, skills, agents and commands as files, managed blocks inside files of the
+# project (blocks/, agent_ready_blocks.py) and the blocks of their nested targets, each in the
+# AGENTS.md of one folder (nested/, agent_ready_nested.py). Hooks, settings and the AGENTS.md
 # template stay under the control of the skill and the project; the tools a pack declares
 # (clis, mcpServers, scripts) only run through the security policy.
-PACK_ALLOWED_ASSET_DIRECTORIES = ("rules", "skills", "agents", "commands", managed_blocks.BLOCK_DIRECTORY)
+PACK_ALLOWED_ASSET_DIRECTORIES = ("rules", "skills", "agents", "commands", managed_blocks.BLOCK_DIRECTORY,
+                                  nested.NESTED_DIRECTORY)
 PACK_FORBIDDEN_ASSET_NAMES = ("agents.md", "claude.md")
 
 NAMESPACE_SEPARATOR = "/"
-KEBAB_CASE_NAME = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 # golfo-kit is a source of its own (agent_ready_golfo_kit.py): a pack cannot take its name.
 GOLFO_KIT_SOURCE_NAME = "golfo-kit"
 GOLFO_REFERENCE = KEBAB_CASE_NAME
@@ -658,6 +668,9 @@ def validate_asset_tree(source, profile_name, asset_root, relative_root):
                     # A block goes inside a file of the project (agent_ready_blocks.py).
                     managed_blocks.validate_destination(block_destination, f"{source_name}/{profile_name}")
                     continue
+                if relative_path.startswith(nested.NESTED_PREFIX):
+                    # The block of a nested target, inside the AGENTS.md of a folder (validate_pack_profile).
+                    continue
                 if entry_name.casefold() in PACK_FORBIDDEN_ASSET_NAMES:
                     raise ProfileError(f"pack '{source_name}' profile '{profile_name}': {relative_path} would change the instructions of the project, which packs cannot do")
 
@@ -687,8 +700,11 @@ def validate_pack_profile(source, short_name, entry, golfo_profile_names):
         pack_tools.validate_declarations(entry, source["root"], is_contained_pattern)
     except pack_tools.DeclarationError as declaration_error:
         raise ProfileError(f"pack '{source_name}' profile '{short_name}': {declaration_error}") from declaration_error
+    full_name = f"{source_name}{NAMESPACE_SEPARATOR}{short_name}"
+    nested.validate_declaration(full_name, entry)
     relative_root = entry.get("assets")
     if relative_root is None:
+        nested.validate_published(full_name, entry, None)
         return None
     if not isinstance(relative_root, str) or not is_contained_pattern(relative_root):
         raise ProfileError(f"pack '{source_name}' profile '{short_name}': 'assets' must be a relative directory inside the pack")
@@ -696,6 +712,7 @@ def validate_pack_profile(source, short_name, entry, golfo_profile_names):
     if not os.path.isdir(asset_root):
         raise ProfileError(f"pack '{source_name}' profile '{short_name}': assets directory {relative_root} is missing")
     validate_asset_tree(source, short_name, asset_root, relative_root)
+    nested.validate_published(full_name, entry, asset_root)
     return asset_root
 
 

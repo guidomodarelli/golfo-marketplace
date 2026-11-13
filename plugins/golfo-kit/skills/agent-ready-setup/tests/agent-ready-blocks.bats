@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 # Managed blocks inside files shared with the project (agent_ready_blocks.py): the pull request
 # template of the common profile, a block a path pack adds to the same file, the markers that stop
-# every change, and how status, plan and remove see each block.
+# every change, how status, plan and remove see each block, and the nested targets of a pack.
 
 bats_require_minimum_version 1.5.0
 
@@ -588,4 +588,175 @@ PY
   grep -qx '## Stack' AGENTS.md
   ! grep -qx '## Purpose' AGENTS.md
   [ "$(lock_value 'lock["profileOrder"][:2]')" = "['software-development', 'node']" ]
+}
+
+# A path pack whose profile publishes a nested target: a block for the AGENTS.md of the App Router folder.
+# $1 is the rest of the manifest after the selection and the source.
+add_nested_pack() {
+  mkdir -p packs/acme/profiles/web/nested
+  printf '## App Router\n\n- Each route exports a default component.\n' > packs/acme/profiles/web/nested/app-router.md
+  printf '%s\n' '{"schemaVersion": 1, "name": "acme", "profiles": {"web": {"kind": "capability", "description": "Acme web.", "assets": "profiles/web", "nested": {"app-router": {"candidates": ["app", "src/app"]}}}}}' \
+    > packs/acme/agent-ready-pack.json
+  write_nested_manifest "${1:-}"
+}
+
+write_nested_manifest() {
+  write_manifest "{\"profiles\": [\"node\", \"acme/web\"], \"sources\": {\"packs\": [{\"name\": \"acme\", \"source\": \"path:packs/acme\"}]}${1:+, $1}}"
+}
+
+@test "a nested target of a pack goes to the first candidate folder, with its CLAUDE.md proxy and the project's content kept" {
+  mkdir -p src/app && printf 'export default function Page() {}\n' > src/app/page.tsx
+  add_nested_pack
+  run_cli trust add --project .
+  run_cli plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Nested AGENTS.md: acme/web/app-router -> src/app/AGENTS.md (detected)"* ]]
+  [[ "$output" == *"+ create          src/app/AGENTS.md (block acme/web/app-router)  creates the file"* ]]
+  run_cli apply
+  [ "$status" -eq 0 ]
+  head -1 src/app/AGENTS.md | grep -qx '<!-- BEGIN AGENT-READY MANAGED: acme/web/app-router -->'
+  grep -qx -- '- Each route exports a default component.' src/app/AGENTS.md
+  cmp -s src/app/CLAUDE.md "$skill_dir/assets/claude-proxy.md"
+  [ "$(lock_value 'lock["blocks"]["src/app/AGENTS.md"]["acme/web/app-router"]["state"]')" = "applied" ]
+
+  printf '\n## Team notes\n\nKeep server actions in actions.ts.\n' >> src/app/AGENTS.md
+  run_cli apply
+  [ "$status" -eq 0 ]
+  grep -qx 'Keep server actions in actions.ts.' src/app/AGENTS.md
+  run_cli plan
+  [[ "$output" != *"(block acme/web/app-router)"* ]]
+
+  # A Next.js repository with app/ at the root gets it there: app is the first candidate.
+  git init -q "$test_root/root-app" && cd "$test_root/root-app"
+  printf '{}\n' > package.json
+  mkdir -p app && printf 'export default function Page() {}\n' > app/page.tsx
+  add_nested_pack
+  run_cli trust add --project .
+  run_cli apply
+  [ "$status" -eq 0 ]
+  grep -qx '<!-- BEGIN AGENT-READY MANAGED: acme/web/app-router -->' app/AGENTS.md
+  [ -f app/CLAUDE.md ]
+}
+
+@test "nested.targets wins over detection, and moving a target retires its block and an AGENTS.md left empty with its proxy" {
+  mkdir -p src/app apps/web/app && touch src/app/page.tsx apps/web/app/page.tsx
+  add_nested_pack
+  run_cli trust add --project .
+  run_cli apply
+  [ -f src/app/AGENTS.md ]
+
+  write_nested_manifest '"nested": {"targets": [{"id": "acme/web/app-router", "paths": ["apps/web/app"]}]}'
+  run_cli plan
+  [[ "$output" == *"Nested AGENTS.md: acme/web/app-router -> apps/web/app/AGENTS.md (nested.targets)"* ]]
+  [[ "$output" == *"- retire          src/app/AGENTS.md (block acme/web/app-router)"* ]]
+  run_cli apply
+  [ "$status" -eq 0 ]
+  grep -qx '<!-- BEGIN AGENT-READY MANAGED: acme/web/app-router -->' apps/web/app/AGENTS.md
+  [ -f apps/web/app/CLAUDE.md ]
+  [ ! -e src/app/AGENTS.md ]
+  [ ! -e src/app/CLAUDE.md ]
+  [ "$(lock_value '"src/app/AGENTS.md" in lock["blocks"]')" = "False" ]
+
+  # A folder with instructions of its own keeps them, and its CLAUDE.md, when the block leaves.
+  printf '\n## Web notes\n' >> apps/web/app/AGENTS.md
+  write_nested_manifest '"nested": {"targets": [{"id": "acme/web/app-router", "enabled": false}]}'
+  run_cli plan
+  [[ "$output" == *"Nested AGENTS.md: acme/web/app-router: off (nested.targets)"* ]]
+  run_cli apply
+  [ "$status" -eq 0 ]
+  ! grep -q 'AGENT-READY MANAGED' apps/web/app/AGENTS.md
+  head -1 apps/web/app/AGENTS.md | grep -qx '## Web notes'
+  [ -f apps/web/app/CLAUDE.md ]
+  [ ! -e src/app/AGENTS.md ]
+}
+
+@test "without a candidate folder or with nested off nothing is written, and plan says why" {
+  add_nested_pack
+  run_cli trust add --project .
+  run_cli plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Nested AGENTS.md: acme/web/app-router: no folder, nothing is written (tried app, src/app; set one in nested.targets)"* ]]
+
+  mkdir -p src/app && touch src/app/page.tsx
+  write_nested_manifest '"nested": {"enabled": false, "targets": [{"id": "acme/web/other"}]}'
+  run_cli plan
+  [[ "$output" == *"Nested AGENTS.md: acme/web/app-router: off (nested.enabled)"* ]]
+  [[ "$output" == *"Nested AGENTS.md: acme/web/other: in nested.targets, but no selected profile publishes it"* ]]
+  run_cli apply
+  [ "$status" -eq 0 ]
+  [ ! -e src/app/AGENTS.md ]
+  [ ! -e src/app/CLAUDE.md ]
+}
+
+@test "a folder of nested.targets outside the repository, reserved, a pattern, missing or ignored stops before writing" {
+  mkdir -p src/app ignored && touch src/app/page.tsx
+  printf 'ignored/\n' > .gitignore
+  add_nested_pack
+  run_cli trust add --project .
+  local folder expected
+  for folder in '../outside' '.agents/rules' 'src/*' 'missing' 'ignored'; do
+    case "$folder" in
+      ../outside) expected="is not a relative folder inside the repository" ;;
+      .agents/rules) expected="is under .git/, .agents/, .claude/, .codex/" ;;
+      'src/*') expected="is a pattern, not a folder" ;;
+      missing) expected="does not exist in the repository" ;;
+      ignored) expected="is ignored by Git" ;;
+    esac
+    write_nested_manifest "\"nested\": {\"targets\": [{\"id\": \"acme/web/app-router\", \"paths\": [\"$folder\"]}]}"
+    run_cli plan
+    [ "$status" -eq 2 ]
+    [[ "$stderr" == *"the folder '$folder' of the nested target acme/web/app-router $expected; nothing was written"* ]]
+    run_cli apply
+    [ "$status" -ne 0 ]
+    [[ "$stderr" == *"the folder '$folder' of the nested target acme/web/app-router $expected; nothing was written"* ]]
+    [ ! -e src/app/AGENTS.md ]
+    [ ! -e .agents/agent-ready.lock.json ]
+  done
+}
+
+@test "a symlinked folder on the path of a nested target keeps the block out" {
+  mkdir -p "$test_root/outside" && touch "$test_root/outside/page.tsx"
+  ln -s "$test_root/outside" linked || skip "this filesystem cannot create a symlink"
+  [ -L linked ] || skip "this filesystem cannot create a symlink"
+  add_nested_pack '"nested": {"targets": [{"id": "acme/web/app-router", "paths": ["linked"]}]}'
+  run_cli trust add --project .
+  run_cli plan
+  [[ "$output" == *"! conflict        linked/AGENTS.md (block acme/web/app-router)  a directory on its path is a symlink"* ]]
+  run_cli apply
+  [ ! -e "$test_root/outside/AGENTS.md" ]
+  [ ! -e "$test_root/outside/CLAUDE.md" ]
+}
+
+@test "remove takes a nested block out and deletes the AGENTS.md that only held it, with its proxy" {
+  mkdir -p src/app && touch src/app/page.tsx
+  add_nested_pack
+  run_cli trust add --project .
+  run_cli apply
+  [ -f src/app/CLAUDE.md ]
+  run_cli remove --yes
+  [ "$status" -eq 0 ]
+  [ ! -e src/app/AGENTS.md ]
+  [ ! -e src/app/CLAUDE.md ]
+  [ -f src/app/page.tsx ]
+}
+
+@test "a pack that declares a nested target without its block, or publishes a block it does not declare, fails" {
+  add_nested_pack
+  rm packs/acme/profiles/web/nested/app-router.md
+  run_cli plan
+  [ "$status" -ne 0 ]
+  [[ "$output$stderr" == *"profile 'acme/web' declares the nested target 'app-router' but does not publish nested/app-router.md"* ]]
+
+  printf 'x\n' > packs/acme/profiles/web/nested/app-router.md
+  printf 'x\n' > packs/acme/profiles/web/nested/stray.md
+  run_cli plan
+  [ "$status" -ne 0 ]
+  [[ "$output$stderr" == *"profile 'acme/web': nested/stray.md is not the block of a nested target it declares in 'nested'"* ]]
+
+  rm packs/acme/profiles/web/nested/stray.md
+  printf '%s\n' '{"schemaVersion": 1, "name": "acme", "profiles": {"web": {"kind": "capability", "description": "Acme web.", "assets": "profiles/web", "nested": {"app-router": {"candidates": ["../app"]}}}}}' \
+    > packs/acme/agent-ready-pack.json
+  run_cli plan
+  [ "$status" -ne 0 ]
+  [[ "$output$stderr" == *"the candidate '../app' of the nested target 'app-router' is not a relative folder inside the repository"* ]]
 }

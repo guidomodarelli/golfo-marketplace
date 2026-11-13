@@ -1140,8 +1140,9 @@ project_asset_tree() {
       sync_claude_settings "$file"
     else
       case "$relative" in
-        blocks/*)
-          # Managed blocks go inside files shared with the project: finalize writes them.
+        blocks/*|nested/*)
+          # Managed blocks go inside files shared with the project, and nested ones inside the
+          # AGENTS.md of a folder: finalize writes them.
           continue
           ;;
         github/*)
