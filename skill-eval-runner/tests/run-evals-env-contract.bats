@@ -53,7 +53,7 @@ setup() {
         _ "$TEST_ROOT" "$EVAL_RUNNER" "$SKILL_NAME"
 
     [ "$status" -eq 0 ]
-    grep -Fq -- "$SKILL_DIR/SKILL.md" "$CLAUDE_ARGS_LOG"
+    grep -Eq -- "Read and apply /[^ ]*/${SKILL_NAME}/SKILL\.md" "$CLAUDE_ARGS_LOG"
 }
 
 @test "removed provider is rejected before invoking Claude" {
@@ -136,7 +136,7 @@ setup() {
 
     [ "$status" -eq 0 ]
     [ "$(grep -c -- '--model ' "$CLAUDE_ARGS_LOG")" -eq 1 ]
-    grep -Fq -- "$SKILL_DIR/SKILL.md" "$CLAUDE_ARGS_LOG"
+    grep -Eq -- "Read and apply /[^ ]*/${SKILL_NAME}/SKILL\.md" "$CLAUDE_ARGS_LOG"
 
     run jq -e 'select(.event == "case" and .artifacts.baseline == null)' <<< "$output"
     [ "$status" -eq 0 ]
@@ -147,7 +147,7 @@ setup() {
 
     [ "$status" -eq 0 ]
     [ "$(grep -c -- '--model ' "$CLAUDE_ARGS_LOG")" -eq 2 ]
-    [ "$(grep -Fc -- "$SKILL_DIR/SKILL.md" "$CLAUDE_ARGS_LOG")" -eq 1 ]
+    [ "$(grep -Ec -- "Read and apply /[^ ]*/${SKILL_NAME}/SKILL\.md" "$CLAUDE_ARGS_LOG")" -eq 1 ]
 
     run jq -e 'select(.event == "case" and (.artifacts.baseline | endswith("/without-skill/contract.txt")))' <<< "$output"
     [ "$status" -eq 0 ]

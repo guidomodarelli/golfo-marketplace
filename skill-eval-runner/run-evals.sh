@@ -11,6 +11,7 @@
 #   run-evals --provider codex [...]    Run evals with Codex instead of auto-detecting
 #   run-evals --baseline [...]        Also run a no-skill baseline per case (env: EVAL_BASELINE=1)
 #   run-evals --repeat N [...]        Run every case N times and report flaky cases (env: EVAL_REPEAT)
+#   run-evals --config FILE [...]     Use an eval-config.json outside the skill tree (env: EVAL_CONFIG)
 #
 # Each skill only needs evals/eval-config.json — this script handles the rest.
 
@@ -35,6 +36,12 @@ EVAL_BASELINE="${EVAL_BASELINE:-0}"
 # passes some runs is reported as flaky, so a variable eval is not mistaken for a broken one. The case
 # line then shows the first failing run and lists every run in run_results, each with its own artifacts.
 EVAL_REPEAT="${EVAL_REPEAT:-1}"
+# Optional eval-config.json outside the skill tree (for example a held-out set). The agent under
+# evaluation never sees it: the skill is always exposed through a copy without its evals/ dir.
+EVAL_CONFIG="${EVAL_CONFIG:-}"
+# Assertion types the grader implements. An unknown type (for example a typo) is rejected when the
+# config is validated: grading it would only print a warning and let the case pass unchecked.
+SUPPORTED_ASSERTION_TYPES_JSON='["contains","contains_any","not_contains_any","regex"]'
 GOLFO_MARKETPLACE_EVAL_MODEL="${GOLFO_MARKETPLACE_EVAL_MODEL:-}"
 GOLFO_MARKETPLACE_EVAL_REASONING_EFFORT="${GOLFO_MARKETPLACE_EVAL_REASONING_EFFORT:-}"
 # Machine-readable JSONL is the default so CI, tests, and real eval runs are
@@ -83,6 +90,13 @@ usage() {
     echo "  --repeat N, -r N             Run every case N times (default: 1). A case passes"
     echo "                               only when every run passes; mixed runs are reported"
     echo "                               as flaky. Equivalent to EVAL_REPEAT=N."
+    echo "  --config FILE, -c FILE       Use this eval-config.json instead of"
+    echo "                               <skill>/evals/eval-config.json (for example a held-out"
+    echo "                               set kept outside the skill). Not valid with --all."
+    echo "                               Equivalent to EVAL_CONFIG=FILE."
+    echo ""
+    echo "The agent under evaluation always reads a copy of the skill without its evals/"
+    echo "directory, so it cannot see the assertions it is graded against."
     echo ""
 }
 
@@ -308,8 +322,53 @@ preflight_eval_provider() {
     return 0
 }
 
+# Builds a read-only view of the skill for the agent under evaluation: a copy of the skill
+# directory without its top-level evals/ (assertions must stay hidden from the agent), with the
+# skill's siblings and its parent's siblings symlinked so relative references such as
+# ../other-skill/... or ../../references/... keep resolving. Prints the view path.
+create_isolated_skill_view() {
+    local source_path="$1"
+    local view_root="$2"
+    local skill_dir_name parent_path parent_name grandparent_path view_path entry
+    skill_dir_name=$(basename "$source_path")
+    parent_path=$(dirname "$source_path")
+    parent_name=$(basename "$parent_path")
+    grandparent_path=$(dirname "$parent_path")
+    view_path="$view_root/$parent_name/$skill_dir_name"
+    mkdir -p "$view_path"
+
+    for entry in "$source_path"/* "$source_path"/.[!.]*; do
+        [ -e "$entry" ] || [ -L "$entry" ] || continue
+        [ "$(basename "$entry")" = "evals" ] && continue
+        cp -R "$entry" "$view_path/"
+    done
+    for entry in "$parent_path"/* "$parent_path"/.[!.]*; do
+        [ -e "$entry" ] || [ -L "$entry" ] || continue
+        [ "$(basename "$entry")" = "$skill_dir_name" ] && continue
+        ln -s "$entry" "$view_root/$parent_name/$(basename "$entry")"
+    done
+    if [ "$grandparent_path" != "/" ]; then
+        for entry in "$grandparent_path"/* "$grandparent_path"/.[!.]*; do
+            [ -e "$entry" ] || [ -L "$entry" ] || continue
+            [ "$(basename "$entry")" = "$parent_name" ] && continue
+            ln -s "$entry" "$view_root/$(basename "$entry")"
+        done
+    fi
+    echo "$view_path"
+}
+
 find_eval_config() {
     local skill_path="$1"
+
+    # An explicit config (--config / EVAL_CONFIG) wins over the skill's own evals/.
+    if [ -n "$EVAL_CONFIG" ]; then
+        if [ -f "$EVAL_CONFIG" ]; then
+            echo "$(cd "$(dirname "$EVAL_CONFIG")" && pwd -P)/$(basename "$EVAL_CONFIG")"
+            return 0
+        fi
+        echo ""
+        return 1
+    fi
 
     # Check evals/eval-config.json
     if [ -f "$skill_path/evals/eval-config.json" ]; then
@@ -333,9 +392,9 @@ validate_eval_config() {
         and all(.test_cases[]; .input | type == "string")
         and all(.test_cases[];
             (.assertions | type == "array")
-            and all(.assertions[]; .type | type == "string")
+            and all(.assertions[]; .type | type == "string" and IN($supported_types[]))
         )
-    ' "$config_file" >/dev/null 2>&1
+    ' --argjson supported_types "$SUPPORTED_ASSERTION_TYPES_JSON" "$config_file" >/dev/null 2>&1
 }
 
 # One line per paragraph, list item or heading: consecutive lines join, and a blank line, a new list item
@@ -803,10 +862,16 @@ run_single_case() {
 run_skill_evals() {
     local skill_path="$1"
     local config_file
-    config_file=$(find_eval_config "$skill_path")
+    # find_eval_config returns 1 when nothing is found; under `set -e` that would end the
+    # script silently before the "not found" message below.
+    config_file=$(find_eval_config "$skill_path") || true
 
     if [ -z "$config_file" ]; then
-        echo -e "${YELLOW}⚠ No eval-config.json found in $skill_path/evals/${NC}"
+        if [ -n "$EVAL_CONFIG" ]; then
+            echo -e "${RED}ERROR: eval config not found: $EVAL_CONFIG${NC}" >&2
+        else
+            echo -e "${YELLOW}⚠ No eval-config.json found in $skill_path/evals/${NC}"
+        fi
         return 1
     fi
 
@@ -818,7 +883,7 @@ run_skill_evals() {
     local skill_name
     skill_name=$(jq -r '.skill' "$config_file")
     local canonical_skill_path
-    canonical_skill_path=$(cd "$skill_path" && pwd)
+    canonical_skill_path=$(cd "$skill_path" && pwd -P)
     local total
     total=$(jq '.test_cases | length' "$config_file")
 
@@ -834,13 +899,15 @@ run_skill_evals() {
 
     # Shared temp dirs: with-skill has the skill symlinked for all supported
     # providers; baseline is a plain empty dir with no project-local skills.
-    local skill_cwd baseline_cwd skill_codex_home baseline_codex_home
+    local skill_cwd baseline_cwd skill_codex_home baseline_codex_home skill_view_root skill_view_path
     skill_cwd=$(mktemp -d)
     baseline_cwd=$(mktemp -d)
+    skill_view_root=$(mktemp -d)
+    skill_view_path=$(create_isolated_skill_view "$canonical_skill_path" "$skill_view_root")
     mkdir -p "$skill_cwd/.claude/skills"
-    ln -s "$canonical_skill_path" "$skill_cwd/.claude/skills/$skill_name"
+    ln -s "$skill_view_path" "$skill_cwd/.claude/skills/$skill_name"
     mkdir -p "$skill_cwd/.codex/skills"
-    ln -s "$canonical_skill_path" "$skill_cwd/.codex/skills/$skill_name"
+    ln -s "$skill_view_path" "$skill_cwd/.codex/skills/$skill_name"
     skill_codex_home=""
     baseline_codex_home=""
     if [ "$RESOLVED_EVAL_PROVIDER" = "codex" ]; then
@@ -848,9 +915,9 @@ run_skill_evals() {
         baseline_codex_home=$(mktemp -d)
         create_codex_eval_home "$skill_codex_home"
         create_codex_eval_home "$baseline_codex_home"
-        ln -s "$canonical_skill_path" "$skill_codex_home/skills/$skill_name"
+        ln -s "$skill_view_path" "$skill_codex_home/skills/$skill_name"
     fi
-    trap "rm -rf '$skill_cwd' '$baseline_cwd' '$skill_codex_home' '$baseline_codex_home'" RETURN
+    trap "rm -rf '$skill_cwd' '$baseline_cwd' '$skill_codex_home' '$baseline_codex_home' '$skill_view_root'" RETURN
 
     local suite_start=$SECONDS
 
@@ -901,7 +968,7 @@ run_skill_evals() {
                 [ ${#pids[@]} -ge "$EVAL_JOBS" ] && sleep 0.2
             done
 
-            run_single_case "$i" "$config_file" "$workspace" "$total" "$run_output_dir" "$run_result_dir" "$skill_cwd" "$baseline_cwd" "$skill_codex_home" "$baseline_codex_home" "$canonical_skill_path" &
+            run_single_case "$i" "$config_file" "$workspace" "$total" "$run_output_dir" "$run_result_dir" "$skill_cwd" "$baseline_cwd" "$skill_codex_home" "$baseline_codex_home" "$skill_view_path" &
             pids+=($!)
         done
 
@@ -1160,6 +1227,10 @@ while [ $# -gt 0 ]; do
             EVAL_REPEAT="${2:-}"
             shift 2 || shift
             ;;
+        --config|-c)
+            EVAL_CONFIG="${2:-}"
+            shift 2 || shift
+            ;;
         *)
             args+=("$1")
             shift
@@ -1176,6 +1247,11 @@ fi
 if target_requires_provider "$@"; then
     check_dependencies
     preflight_eval_provider
+fi
+
+if [ "${1:-}" = "--all" ] && [ -n "$EVAL_CONFIG" ]; then
+    echo -e "${RED}ERROR: --config applies to a single skill; it cannot be combined with --all${NC}" >&2
+    exit 2
 fi
 
 case "${1:-}" in
