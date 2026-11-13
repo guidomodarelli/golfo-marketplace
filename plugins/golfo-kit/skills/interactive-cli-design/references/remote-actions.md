@@ -229,16 +229,19 @@ def split_table_row(line):
 def is_separator(cells) -> bool:
     return all(cell and set(cell) <= set("-:") for cell in cells)
 
-def with_row(lines, new_cells):
-    """Devuelve las líneas del índice con la fila nueva. Fuera de la tabla, todo queda como estaba."""
+def split_index(lines):
+    """(antes, filas de la tabla de altas, después). Otras tablas de las notas quedan afuera del bloque."""
     header_index = next((index for index, line in enumerate(lines) if split_table_row(line) == INDEX_HEADER), None)
     if header_index is None:
-        before, block, after = list(lines), [], []
-    else:
-        end = header_index + 1
-        while end < len(lines) and lines[end].strip().startswith("|"):
-            end += 1
-        before, block, after = lines[:header_index], lines[header_index + 1:end], lines[end:]
+        return list(lines), [], []
+    end = header_index + 1
+    while end < len(lines) and lines[end].strip().startswith("|"):
+        end += 1
+    return lines[:header_index], lines[header_index + 1:end], lines[end:]
+
+def with_row(lines, new_cells):
+    """Devuelve las líneas del índice con la fila nueva. Fuera de la tabla, todo queda como estaba."""
+    before, block, after = split_index(lines)
     entries = []                                   # filas de datos (listas) o líneas que no se parsean (texto)
     for line in block:
         cells = split_table_row(line)
@@ -283,8 +286,9 @@ def history_rows(directory, limit):
             lines = index_file.read().splitlines()
     except FileNotFoundError:
         return []
-    rows = [split_table_row(line) for line in lines]
-    data = [cells for cells in rows if cells and len(cells) == len(INDEX_HEADER) and cells != INDEX_HEADER and not is_separator(cells)]
+    _, block, _ = split_index(lines)              # solo la tabla de altas, no las de las notas
+    rows = [split_table_row(line) for line in block]
+    data = [cells for cells in rows if cells and len(cells) == len(INDEX_HEADER) and not is_separator(cells)]
     return data[::-1][:limit]
 ```
 
