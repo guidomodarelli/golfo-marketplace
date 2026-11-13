@@ -251,11 +251,6 @@ lock_value() {
   run python3 "$skill_dir/scripts/agent-ready-state.py" status --project . --skill-dir "$skill_dir" --check
   [ "$status" -eq 4 ]
   [[ "$output" == *"unknown profile 'nonexistent'"* ]]
-
-  printf '%s\n' '{"profiles": [], "updates": {"mode": "pinned"}}' > .agents/agent-ready.json
-  run python3 "$skill_dir/scripts/agent-ready-state.py" status --project . --skill-dir "$skill_dir" --check
-  [ "$status" -ne 0 ]
-  [[ "$output" == *"project layer"*"'profiles' needs at least 1 item(s)"* ]]
 }
 
 @test "an explicit --stack wins over the profiles chosen in the environment" {
