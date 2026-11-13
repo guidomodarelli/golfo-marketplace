@@ -311,6 +311,24 @@ def test_backlink_replaces_same_key_variants_only():
     assert f"{TARGET_KEY}5" in result and f"Texto que menciona {TARGET_KEY} en prosa." in result
 
 
+def test_backlink_preserves_mixed_reference_line_with_other_ticket():
+    mixed_reference = f"> **Referencia:** [{TARGET_KEY}]({SITE_URL}/browse/{TARGET_KEY}) y [{OTHER_KEY}]({SITE_URL}/browse/{OTHER_KEY})"
+    body = f"## 📝 Descripción\n{mixed_reference}\nTexto\n"
+    once = jira_ticket.apply_backlink(body, TARGET_KEY, SITE_URL)
+    assert mixed_reference in once.splitlines()
+    assert once.splitlines().count(jira_ticket.backlink_line(TARGET_KEY, SITE_URL)) == 1
+    assert jira_ticket.apply_backlink(once, TARGET_KEY, SITE_URL) == once
+    assert jira_ticket.verify_backlink(once, TARGET_KEY, SITE_URL)["canonical"] is True
+
+
+@pytest.mark.parametrize("body", ["", "# Título", "## 📝 Descripción", "# Título\n"])
+def test_backlink_is_idempotent_for_empty_or_heading_only_bodies(body):
+    once = jira_ticket.apply_backlink(body, TARGET_KEY, SITE_URL)
+    assert jira_ticket.apply_backlink(once, TARGET_KEY, SITE_URL) == once
+    assert once.endswith("\n") == body.endswith("\n")
+    assert jira_ticket.verify_backlink(once, TARGET_KEY, SITE_URL)["canonical"] is True
+
+
 def test_backlink_fallbacks_first_heading_then_prepend():
     link = jira_ticket.backlink_line(TARGET_KEY, SITE_URL)
     assert jira_ticket.apply_backlink("# Título\nCuerpo\n", TARGET_KEY, SITE_URL).splitlines()[:3] == ["# Título", "", link]

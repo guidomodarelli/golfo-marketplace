@@ -76,6 +76,7 @@ DESCRIPTION_HEADING = "## 📝 Descripción"
 LEGACY_REFERENCE_PREFIX = "> **Referencia:**"
 ATX_HEADING_REGEX = re.compile(r"^#{1,6} ")
 ISSUE_KEY_REGEX = re.compile(r"^[A-Z][A-Z0-9]+-[0-9]+$")
+EMBEDDED_ISSUE_KEY_REGEX = re.compile(r"(?<![A-Z0-9-])[A-Z][A-Z0-9]+-[0-9]+(?![0-9])")
 PR_NUMBER_REGEX = re.compile(r"^[0-9]+$")
 PR_URL_REGEX = re.compile(r"^https://github\.com/(?P<owner>[A-Za-z0-9_.-]+)/(?P<repo>[A-Za-z0-9_.-]+)/pull/(?P<number>[0-9]+)$")
 PR_LABEL_TEMPLATE = "{repository_id}/PR-{number}"
@@ -386,9 +387,12 @@ def backlink_line(key: str, site_url: str) -> str:
 
 
 def _is_same_ticket_line(line: str, key: str) -> bool:
+    """Reemplazable solo si es backlink/referencia legacy cuyas keys Jira son únicamente la key objetivo."""
     stripped = line.strip()
-    exact_key = re.compile(rf"(?<![A-Z0-9-]){re.escape(key)}(?![0-9])")
-    return (stripped.startswith(BACKLINK_PREFIX) or stripped.startswith(LEGACY_REFERENCE_PREFIX)) and bool(exact_key.search(stripped))
+    if not (stripped.startswith(BACKLINK_PREFIX) or stripped.startswith(LEGACY_REFERENCE_PREFIX)):
+        return False
+    referenced_keys = set(EMBEDDED_ISSUE_KEY_REGEX.findall(stripped))
+    return referenced_keys == {key}
 
 
 def apply_backlink(body: str, key: str, site_url: str) -> str:
@@ -404,7 +408,8 @@ def apply_backlink(body: str, key: str, site_url: str) -> str:
     head, rest = (lines[:insert_at], lines[insert_at:]) if insert_at is not None else ([], lines)
     while rest and not rest[0].strip():
         rest = rest[1:]
-    new_lines = (head + ["", link, ""] + rest) if insert_at is not None else ([link, ""] + rest)
+    separator_after_link = [""] if rest else []
+    new_lines = (head + ["", link] + separator_after_link + rest) if insert_at is not None else ([link] + separator_after_link + rest)
     result = newline.join(new_lines)
     return result + newline if had_final_newline else result
 
