@@ -147,6 +147,7 @@ import agent_ready_blocks as managed_blocks  # noqa: E402
 import agent_ready_pack_tools as pack_tools  # noqa: E402
 import agent_ready_golfo_kit as golfo_kit  # noqa: E402
 from agent_ready_packs import (  # noqa: E402
+    KEBAB_CASE_NAME,
     PACK_CATALOG_FILE_NAME,
     SOURCE_AVAILABLE,
     SOURCE_TYPE_GIT,
@@ -3932,7 +3933,9 @@ def command_pack_conflicts(arguments):
         raise ProfileError(f"{pack_root} has no {PACK_CATALOG_FILE_NAME}: --pack takes the root of a profile pack")
     pack_catalog = read_json_file(catalog_path, "pack catalog")
     pack_name = pack_catalog.get("name") or os.path.basename(pack_root)
-    profiles = [f"{pack_name}/{name}" for name in pack_catalog.get("profiles", {})]
+    # The name becomes a folder of the throwaway repository: only a source name, never a path.
+    if not isinstance(pack_name, str) or not KEBAB_CASE_NAME.fullmatch(pack_name):
+        raise ProfileError(f"{catalog_path} has an invalid pack name {pack_name!r}; use kebab-case")
     results = {}
     with tempfile.TemporaryDirectory(prefix="agent-ready-pack-check.") as scratch:
         project = os.path.join(scratch, "project")
@@ -3943,11 +3946,15 @@ def command_pack_conflicts(arguments):
         run = types.SimpleNamespace(project=project, skill_dir=arguments.skill_dir, offline=arguments.offline,
                                     profiles=None, stack=None, format="text",
                                     provider=arguments.provider or session_provider())
+        source = {"name": pack_name, "source": f"path:./{PACK_CHECK_DIRECTORY}/{pack_name}"}
+        manifest_path = os.path.join(project, *MANIFEST_RELATIVE_PATH.split("/"))
+        # The whole catalog is validated first, as a consumer loads it: an empty or invalid pack fails
+        # here even when it publishes no profile to check.
+        write_text_atomically(manifest_path, serialize_json({"profiles": [], "sources": {"packs": [source]}}))
+        load_effective_catalog(project, arguments.skill_dir)
+        profiles = [f"{pack_name}/{name}" for name in pack_catalog.get("profiles", {})]
         for profile in profiles:
-            write_text_atomically(os.path.join(project, *MANIFEST_RELATIVE_PATH.split("/")), serialize_json({
-                "profiles": [profile],
-                "sources": {"packs": [{"name": pack_name, "source": f"path:./{PACK_CHECK_DIRECTORY}/{pack_name}"}]},
-            }))
+            write_text_atomically(manifest_path, serialize_json({"profiles": [profile], "sources": {"packs": [source]}}))
             try:
                 structural, semantic, unchecked = pack_profile_conflicts(run, profile)
                 results[profile] = {"structural": structural, "semantic": semantic, "unchecked": unchecked}
