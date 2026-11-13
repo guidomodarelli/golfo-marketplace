@@ -21,7 +21,8 @@ STACK=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --stack)
-      [[ $# -ge 2 && -n "${2:-}" ]] || { echo "ERROR: --stack requires a stack name" >&2; exit 1; }
+      # An empty value is a selection without a stack.
+      [[ $# -ge 2 ]] || { echo "ERROR: --stack requires a stack name (empty for a selection without a stack)" >&2; exit 1; }
       STACK="$2"
       shift 2
       ;;
@@ -32,7 +33,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ ! "$STACK" =~ ^[a-z0-9]+(-[a-z0-9]+)*(/[a-z0-9]+(-[a-z0-9]+)*)?$ ]]; then
+if [[ -n "$STACK" && ! "$STACK" =~ ^[a-z0-9]+(-[a-z0-9]+)*(/[a-z0-9]+(-[a-z0-9]+)*)?$ ]]; then
   echo "ERROR: --stack requires a stack name such as node or acme/cobol" >&2
   exit 1
 fi

@@ -16,7 +16,7 @@ description: >-
   descartar un hallazgo de sus revisiones de IA.
 license: MIT
 metadata:
-  version: "1.33.0"
+  version: "1.34.0"
   author: "guponce"
   category: "developer-experience"
   tags: "agent-ready, multi-provider, claude-code, codex, bootstrap, setup, scaffold, context-optimized-v1.20.1"
@@ -42,9 +42,9 @@ operación. El bootstrap distribuye assets según responsabilidad:
 - `.codex/`: bridge provider-specific para hooks Codex (`hooks.json`, junto a
   configuración de proyecto) y para MCP (`.mcp.json`) cuando el stack publica un
   `mcp.json`; hoy ningún stack lo publica.
-- `.github/pull_request_template.md`: bloque gestionado común con descripción,
+- `.github/pull_request_template.md`: bloque gestionado de `software-development` con descripción,
   tipo de cambio, pruebas manuales y secciones opcionales de API y revisión, desde
-  `assets/common/blocks/.github/pull_request_template.md`. El proyecto suma sus propias
+  `assets/profiles/software-development/blocks/.github/pull_request_template.md`. El proyecto suma sus propias
   secciones fuera del bloque; el contrato de los bloques está en
   [references/managed-agents-block.md](references/managed-agents-block.md). No ejecuta
   scripts ni calcula cantidad de archivos. Hooks incluyen `statusMessage` para mostrar progreso.
@@ -63,9 +63,11 @@ más la regla breve de centralización. Nunca se mantienen variantes de proxy ni
 clones de instrucciones en `CLAUDE.md`; las instrucciones específicas viven en
 el `AGENTS.md` hermano.
 
-Assets comunes viven en `assets/common/`; templates y hooks específicos viven en
-`assets/stacks/<stack>/` y reflejan estructura de assets. Las rules que aplican a
-todos los stacks viven una sola vez en `assets/common/rules/`; no duplicarlas en
+El núcleo vive en `assets/common/` y se aplica en cualquier repo, también sin código; lo de
+desarrollo vive en la capability `software-development` (`assets/profiles/software-development/`), que
+requiere cada stack; templates y hooks específicos viven en `assets/stacks/<stack>/` y reflejan
+estructura de assets. Las rules que aplican a cualquier repo viven una sola vez en
+`assets/common/rules/`, y las de cualquier repo de código en `software-development`; no duplicarlas en
 `assets/stacks/<stack>/rules/`. Un mismo nombre de rule no puede existir en ambos
 lugares: el renderer falla si ocurre. El marker `{{AGENT_READY_RULE_REFERENCES}}`
 se renderiza dinámicamente con cada archivo de `rules/` común y del stack, y con
@@ -396,7 +398,8 @@ copiados durante bootstrap. No modifica `~/.codex/config.toml`,
 
 Mostrar output del script sin alterarlo. En respuestas documentales, enumerar además del resumen cada asset del template detectado con su path relativo, copiado tal cual de este catálogo (el árbol de `assets/` manda si difiere). Cada uno se proyecta en `.agents/<path>`, con vista en `.claude/<path>` salvo los hooks; los bloques y los archivos de CI van al destino que nombra cada uno:
 
-- **Todos los stacks** (`assets/common/`): `rules/browser-before-user-questions.md`, `rules/database.md`, `rules/environment-readiness.md`, `rules/error-handling.md`, `rules/established-libraries.md`, `rules/language-consistency.md`, `rules/lint-gate.md`, `rules/patterns-we-do-not-use.md`, `rules/root-cause-bug-fixes.md`, `rules/speculative-complexity-approval.md`, `rules/testing-scope.md`, `rules/user-actions-first.md`, `rules/verify-changes.md`, `skills/agent-browser/`, `skills/pr-review-workflow/`, `hooks/sync-marketplace.sh`, `hooks/check-harness-consistency.sh` (con `hooks/harness-review.py` y `hooks/review-cache.py`), `settings.json`, los bloques `blocks/.github/pull_request_template.md` y `blocks/.gitignore`, y `agents-template.md`, el único template de `AGENTS.md` (esqueleto del proyecto y bloque de rules).
+- **Núcleo, en cualquier repo** (`assets/common/`): `rules/browser-before-user-questions.md`, `rules/language-consistency.md`, `rules/speculative-complexity-approval.md`, `rules/user-actions-first.md`, `rules/verify-changes.md`, `skills/agent-browser/`, `hooks/sync-marketplace.sh`, `hooks/check-harness-consistency.sh` (con `hooks/harness-review.py` y `hooks/review-cache.py`), `settings.json`, el bloque `blocks/.gitignore` y `agents-template.md`, el único template de `AGENTS.md` (propósito, estructura y convenciones, más el bloque de rules) para un repo sin `software-development`.
+- **Capability `software-development`** (`assets/profiles/software-development/`, requerida por cada stack): `rules/database.md`, `rules/environment-readiness.md`, `rules/error-handling.md`, `rules/established-libraries.md`, `rules/lint-gate.md`, `rules/patterns-we-do-not-use.md`, `rules/root-cause-bug-fixes.md`, `rules/testing-scope.md`, `skills/pr-review-workflow/`, el bloque `blocks/.github/pull_request_template.md` y `agents-skeleton.md`, el esqueleto de un proyecto de software (`Stack`, `Commands` y `Architecture`), que reemplaza al neutro del template.
 - **Android, Go, Java y Node:** con el nombre del stack como prefijo (`<stack>` es `android`, `go`, `java` o `node`), `rules/<stack>-coding-style.md`, `rules/<stack>-security.md`, `rules/<stack>-testing.md`, `agents/<stack>-perf-analyzer.md`, `agents/<stack>-security-scanner.md`, `commands/<stack>-review-pr.md` y `blocks/AGENTS.md`, su sección del `AGENTS.md` de la raíz; por ejemplo, `rules/node-security.md`. Cada stack nombra sus assets con su prefijo, así que dos stacks se combinan en un repo (`--profiles react,node`).
 - **React** (capa base de la web): `rules/cross-engine.md`, `rules/lodash.md`, `rules/no-unnecessary-mocks.md`, `rules/react-security.md`, `rules/react-style.md`, `rules/react-testing.md`, `rules/user-facing-feedback.md`, `agents/a11y-reviewer.md`, `agents/lint-reviewer.md`, `agents/react-perf-analyzer.md`, `agents/react-security-scanner.md`, `agents/test-reviewer.md`, `commands/react-review-pr.md`, `blocks/AGENTS.md` (su sección del `AGENTS.md` de la raíz), `skills/component-creation/`, `skills/karpathy-guidelines/` y `skills/react-act-test-fixes/`.
 - **Next.js** (`requires: ["react"]`): `rules/api-configuration.md`, `rules/api-validation-middleware.md`, `rules/hexagonal-architecture.md`, `rules/server-first-data-flow.md`, `rules/upstream-contracts.md`, `blocks/AGENTS.md`, `skills/api-endpoint/`, `skills/logger/` y `skills/service/`.

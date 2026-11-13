@@ -42,5 +42,9 @@ resolve_stack_template_directory() {
       fi
     done <<< "$resolution"
   fi
+  if [[ -z "$stack" ]]; then
+    printf 'ERROR: a selection without a stack needs its composed tree; run bootstrap.sh first\n' >&2
+    return 1
+  fi
   printf '%s/assets/stacks/%s\n' "$skill_dir" "$stack"
 }

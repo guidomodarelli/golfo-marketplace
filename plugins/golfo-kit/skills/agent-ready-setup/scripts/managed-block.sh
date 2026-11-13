@@ -56,8 +56,9 @@ parse_managed_block_arguments() {
         shift 2
         ;;
       --stack)
-        [[ $# -ge 2 && -n "${2:-}" ]] || {
-          echo "ERROR: --stack requires a stack name" >&2
+        # An empty value is a selection without a stack.
+        [[ $# -ge 2 ]] || {
+          echo "ERROR: --stack requires a stack name (empty for a selection without a stack)" >&2
           exit 1
         }
         STACK="$2"
@@ -85,7 +86,7 @@ parse_managed_block_arguments() {
 
 validate_managed_block_inputs() {
   # The profile catalog says which stacks exist, a pack's (<source>/<profile>) among them; here only the name.
-  if [[ ! "$STACK" =~ ^[a-z0-9]+(-[a-z0-9]+)*(/[a-z0-9]+(-[a-z0-9]+)*)?$ ]]; then
+  if [[ -n "$STACK" && ! "$STACK" =~ ^[a-z0-9]+(-[a-z0-9]+)*(/[a-z0-9]+(-[a-z0-9]+)*)?$ ]]; then
     echo "ERROR: --stack must be a stack name such as node or acme/cobol" >&2
     exit 1
   fi
@@ -104,8 +105,11 @@ validate_managed_block_inputs() {
   fi
 
   STACK_TEMPLATE_DIRECTORY="$(resolve_stack_template_directory "$SKILL_DIR" "$STACK")" || exit 1
-  # One base template for every stack: each stack adds its own section to AGENTS.md as a block.
+  # One template for the managed block; a profile of the selection (software-development) can publish
+  # the skeleton of a new AGENTS.md. Each stack adds its own section to AGENTS.md as a block.
   TEMPLATE_FILE="$SKILL_DIR/assets/common/agents-template.md"
+  SKELETON_FILE="$STACK_TEMPLATE_DIRECTORY/agents-skeleton.md"
+  [[ -f "$SKELETON_FILE" ]] || SKELETON_FILE=""
   RULES_DIRECTORY="$STACK_TEMPLATE_DIRECTORY/rules"
   COMMON_RULES_DIRECTORY="$SKILL_DIR/assets/common/rules"
   readonly PROJECT_RULES_DIRECTORY=".agents/rules"
@@ -297,8 +301,11 @@ run_template_renderer() {
 }
 
 render_template() {
+  local -a skeleton_arguments=()
+  [[ -z "$SKELETON_FILE" ]] || skeleton_arguments=(--skeleton "$SKELETON_FILE")
   run_template_renderer \
     --template "$TEMPLATE_FILE" \
+    ${skeleton_arguments[@]+"${skeleton_arguments[@]}"} \
     --rules-dir "$RULES_DIRECTORY" \
     --project-rules-dir "$PROJECT_RULES_DIRECTORY" \
     --centralization "$CENTRALIZATION_TEMPLATE" \

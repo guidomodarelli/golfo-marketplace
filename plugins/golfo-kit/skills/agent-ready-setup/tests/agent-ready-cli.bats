@@ -331,9 +331,6 @@ publish_pack_repository() {
   [[ "$stderr" == *"Run agent-ready apply to project them"* ]]
 
   before="$(cksum < .agents/agent-ready.json)"
-  run_cli profiles remove node
-  [ "$status" -eq 2 ]
-  [[ "$stderr" == *"select at least one stack profile"* ]]
   run_cli profiles add nope
   [ "$status" -eq 2 ]
   [[ "$stderr" == *"unknown profile 'nope'"* ]]

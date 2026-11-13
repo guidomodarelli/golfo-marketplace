@@ -141,6 +141,8 @@ PROVIDER_CATALOG_RELATIVE_PATH = "assets/providers.json"
 CODEX_HOOKS_TEMPLATE_RELATIVE_PATH = "assets/codex/hooks.json"
 CLAUDE_SETTINGS_TEMPLATE_NAME = "settings.json"
 AGENTS_TEMPLATE_NAME = "agents-template.md"
+# The project part of a new AGENTS.md that a profile publishes in place of the template's.
+AGENTS_SKELETON_NAME = "agents-skeleton.md"
 CLAUDE_PROXY_RELATIVE_PATH = "assets/claude-proxy.md"
 CENTRALIZATION_RELATIVE_PATH = "assets/instruction-centralization.md"
 RENDERER_RELATIVE_PATH = "scripts/render-instruction-template.sh"
@@ -529,9 +531,8 @@ def resolve_profiles(catalog, requested_names, ci_profile=None, excluded_default
                     f"profiles '{name}' and '{conflicting_name}' are declared incompatible; select only one"
                 )
 
-    if not any(profiles[name].get("kind") == STACK_PROFILE_KIND for name in resolved):
-        stacks = ", ".join(sorted(key for key, value in profiles.items() if value.get("kind") == STACK_PROFILE_KIND))
-        raise ProfileError(f"select at least one stack profile ({stacks}); it provides the rules and the section of AGENTS.md")
+    # A stack is optional: a repository without code (documents, research) selects capabilities only,
+    # and gets the base assets with the neutral AGENTS.md template.
     return resolved
 
 
@@ -572,7 +573,8 @@ def primary_stack(catalog, resolved):
     for name in resolved:
         if profiles[name].get("kind") == STACK_PROFILE_KIND and name not in required:
             return name
-    raise ProfileError("no stack profile resolved")
+    # A selection without a stack has no primary one.
+    return None
 
 
 def profile_asset_root(skill_dir, catalog, name):
@@ -609,7 +611,7 @@ def compose_stack_directory(skill_dir, catalog, resolved, compose_root):
     primary = primary_stack(catalog, resolved)
     # The instruction scripts read rules/ of the tree: a stack without rules of its own (a pack stack
     # that only publishes its section) is composed, which gives the tree an empty rules/.
-    if asset_profiles == [primary] and os.path.isdir(os.path.join(profile_asset_root(skill_dir, catalog, primary), "rules")):
+    if primary and asset_profiles == [primary] and os.path.isdir(os.path.join(profile_asset_root(skill_dir, catalog, primary), "rules")):
         return profile_asset_root(skill_dir, catalog, primary)
 
     owners = {}
@@ -669,7 +671,7 @@ def destinations_for_template(relative_path, is_stack_root):
     sync-marketplace.sh. Merged files (settings.json) and the AGENTS.md
     template are handled separately and return no verbatim destination.
     """
-    if relative_path in (AGENTS_TEMPLATE_NAME, CLAUDE_SETTINGS_TEMPLATE_NAME):
+    if relative_path in (AGENTS_TEMPLATE_NAME, AGENTS_SKELETON_NAME, CLAUDE_SETTINGS_TEMPLATE_NAME):
         return []
     if managed_blocks.destination_of(relative_path) is not None:
         # A block goes inside a file shared with the project (desired_blocks), never as a whole file.
@@ -1223,7 +1225,11 @@ def golfo_kit_origin(skill_dir):
 
 
 def agents_template_path(skill_dir, catalog):
-    """The one AGENTS.md template: the base assets hold it, and each stack adds its section as a block."""
+    """The one AGENTS.md template: its managed block is the same for every repository.
+
+    Each stack adds its section as a block, and a profile can publish only the skeleton of a new
+    AGENTS.md (software-development: Stack, Commands, Architecture) in place of the neutral one.
+    """
     return os.path.join(skill_dir, catalog.get("baseAssets", "assets/common"), AGENTS_TEMPLATE_NAME)
 
 
@@ -1548,12 +1554,23 @@ def extract_managed_block(text):
     return text[start:end + len(MANAGED_BLOCK_END)]
 
 
-def merged_file_changes(project_root, skill_dir, plan):
+def merged_file_changes(project_root, skill_dir, plan, source_state=None):
     """Describe whether each merged file would change, without writing it."""
+    # The effective catalog: composing the tree needs the asset roots of the pack profiles too.
+    catalog = load_effective_catalog(project_root, skill_dir, source_state)
+    # Bootstrap exports the composed tree, the one the managed block is rendered from; without it the
+    # tree is composed in a temporary directory, so a plan still writes nothing of its own.
+    stack_root = os.environ.get("AGENT_READY_SETUP_STACK_DIR")
+    if stack_root:
+        return merged_file_changes_from(project_root, skill_dir, plan, catalog, stack_root)
+    with tempfile.TemporaryDirectory(prefix="agent-ready-plan-compose.") as compose_root:
+        stack_root = compose_stack_directory(skill_dir, catalog, plan["profiles"], compose_root)
+        return merged_file_changes_from(project_root, skill_dir, plan, catalog, stack_root)
+
+
+def merged_file_changes_from(project_root, skill_dir, plan, catalog, stack_root):
+    """merged_file_changes with the stack tree the managed block is rendered from."""
     changes = []
-    catalog = load_profile_catalog(skill_dir)
-    # Bootstrap exports the composed tree, the one the managed block is rendered from.
-    stack_root = os.environ.get("AGENT_READY_SETUP_STACK_DIR") or profile_asset_root(skill_dir, catalog, plan["primaryStack"])
 
     agents_path = os.path.join(project_root, "AGENTS.md")
     renderer = [
@@ -1912,7 +1929,7 @@ def print_plan(project_root, skill_dir, plan, provider, skip_marketplace_upgrade
     """Human readable plan on stdout."""
     stream = sys.stdout
     write_line(paint("Agent Ready plan (read-only: nothing was written)", "heading", stream))
-    write_line(f"Profiles: {', '.join(plan['profiles'])} (primary stack: {plan['primaryStack']})")
+    write_line(f"Profiles: {', '.join(plan['profiles'])} (primary stack: {plan['primaryStack'] or 'none'})")
     write_line(f"Selected by: {plan['selection']}")
     for name, origin in plan["addedDependencies"].items():
         reasons = []
@@ -2676,7 +2693,7 @@ def command_resolve(arguments):
     write_line(f"profiles\t{','.join(resolved)}")
     write_line(f"requested\t{','.join(requested)}")
     write_line(f"selection\t{selection}")
-    write_line(f"primary\t{primary_stack(catalog, resolved)}")
+    write_line(f"primary\t{primary_stack(catalog, resolved) or ''}")
     write_line(f"stack_dir\t{stack_dir}")
     write_line(f"tools\t{','.join(resolved_tools(catalog, resolved))}")
     return 0
@@ -3472,17 +3489,29 @@ def normalized_lines(text):
     return [line.rstrip() for line in text.replace("\r\n", "\n").strip().split("\n")]
 
 
-def template_skeleton(skill_dir, lock):
-    """What the AGENTS.md template puts outside the managed block, or None when it is unknown."""
+def template_skeletons(skill_dir, lock):
+    """What a new AGENTS.md held outside the managed block: the template's skeleton, and the skeleton
+    a profile of the locked selection publishes in its place (software-development). Empty when unknown."""
+    skeletons = []
     template = ((lock or {}).get("merged") or {}).get("AGENTS.md", {}).get("template")
     path = os.path.join(skill_dir, template) if template else None
-    if not path or not os.path.isfile(path):
-        return None
-    with open(path, encoding="utf-8") as file_handle:
-        try:
-            return without_managed_block(file_handle.read())
-        except ValueError:
-            return None
+    if path and os.path.isfile(path):
+        with open(path, encoding="utf-8") as file_handle:
+            try:
+                skeletons.append(without_managed_block(file_handle.read()))
+            except ValueError:
+                pass
+    try:
+        catalog = load_profile_catalog(skill_dir)
+    except ProfileError:
+        return skeletons
+    for name in (lock or {}).get("profileOrder") or []:
+        relative_root = catalog["profiles"].get(name, {}).get("assets")
+        skeleton_path = os.path.join(skill_dir, relative_root, AGENTS_SKELETON_NAME) if relative_root else None
+        if skeleton_path and os.path.isfile(skeleton_path):
+            with open(skeleton_path, encoding="utf-8") as file_handle:
+                skeletons.append(file_handle.read())
+    return skeletons
 
 
 def block_removal_entries(project_root, lock):
@@ -3560,8 +3589,8 @@ def instruction_removal_entries(project_root, skill_dir, lock):
             return [removal_entry("AGENTS.md", REMOVAL_KEEP, AMBIGUOUS_MARKERS_REASON, "instructions")]
     if remaining is None:
         return []
-    skeleton = template_skeleton(skill_dir, lock)
-    if remaining.strip() and (skeleton is None or normalized_lines(remaining) != normalized_lines(skeleton)):
+    skeletons = [normalized_lines(skeleton) for skeleton in template_skeletons(skill_dir, lock)]
+    if remaining.strip() and normalized_lines(remaining) not in skeletons:
         entry = removal_entry("AGENTS.md", REMOVAL_EDIT,
                               "removes the managed block and the stack sections; the project's content stays",
                               "instructions", local)

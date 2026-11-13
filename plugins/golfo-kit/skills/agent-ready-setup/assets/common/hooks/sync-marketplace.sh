@@ -978,7 +978,7 @@ project_assets() {
       github/*)
         sync_file "$source_asset" ".github/${relative_asset#github/}"
         ;;
-      agents-template.md|settings.json)
+      agents-template.md|agents-skeleton.md|settings.json)
         continue
         ;;
       hooks/*)

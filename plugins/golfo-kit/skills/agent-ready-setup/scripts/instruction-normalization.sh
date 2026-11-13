@@ -25,6 +25,11 @@ configure_instruction_templates() {
 
   COMMON_SRC="$skill_dir/assets/common"
   SRC="$(resolve_stack_template_directory "$skill_dir" "$stack")" || exit 1
+  # One template for the managed block; the skeleton of a new AGENTS.md can come from a profile of
+  # the selection (software-development) instead of the neutral one of the template.
+  AGENTS_TEMPLATE="$COMMON_SRC/agents-template.md"
+  AGENTS_SKELETON="$SRC/agents-skeleton.md"
+  [[ -f "$AGENTS_SKELETON" ]] || AGENTS_SKELETON=""
   ROOT_CLAUDE_TEMPLATE="$skill_dir/assets/claude-proxy.md"
   CENTRALIZATION_TEMPLATE="$skill_dir/assets/instruction-centralization.md"
   TEMPLATE_RENDERER="$skill_dir/scripts/render-instruction-template.sh"
@@ -37,8 +42,8 @@ validate_instruction_templates() {
     echo "ERROR: No template found for stack '$stack' at $SRC" >&2
     return 1
   fi
-  if [[ ! -f "$COMMON_SRC/agents-template.md" ]]; then
-    echo "ERROR: Base template is missing agents-template.md: $COMMON_SRC/agents-template.md" >&2
+  if [[ ! -f "$AGENTS_TEMPLATE" ]]; then
+    echo "ERROR: Base template is missing agents-template.md: $AGENTS_TEMPLATE" >&2
     return 1
   fi
   if [[ ! -d "$SRC/rules" ]]; then
@@ -252,7 +257,7 @@ is_plain_claude_proxy() {
 create_root_agents_from_template() {
   local temporary_agents_file
   local -a renderer_arguments=(
-    --template "$COMMON_SRC/agents-template.md"
+    --template "$AGENTS_TEMPLATE"
     --rules-dir "$SRC/rules"
     --project-rules-dir "$SHARED_DIR/rules"
     --centralization "$CENTRALIZATION_TEMPLATE"
@@ -260,6 +265,9 @@ create_root_agents_from_template() {
 
   if [[ -d "$COMMON_SRC/rules" ]]; then
     renderer_arguments+=(--common-rules-dir "$COMMON_SRC/rules")
+  fi
+  if [[ -n "$AGENTS_SKELETON" ]]; then
+    renderer_arguments+=(--skeleton "$AGENTS_SKELETON")
   fi
 
   mkdir -p -- "$(dirname -- "$AGENTS_FILE")"

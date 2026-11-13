@@ -1119,7 +1119,7 @@ project_asset_tree() {
   while IFS= read -r -d '' file; do
     relative="${file#"$source_root/"}"
 
-    if [[ "$relative" == "agents-template.md" ]]; then
+    if [[ "$relative" == "agents-template.md" || "$relative" == "agents-skeleton.md" ]]; then
       continue
     elif [[ "$relative" == "settings.json" ]]; then
       sync_claude_settings "$file"
@@ -1195,7 +1195,7 @@ else
 fi
 
 # Print report
-printf '\nStack: %s\n' "$STACK"
+printf '\nStack: %s\n' "${STACK:-none}"
 printf 'Profiles: %s\n' "$RESOLVED_PROFILES"
 printf 'Providers: Claude Code + Codex-compatible shared tree\n'
 # Stable line the agent reads to run follow-up scripts from the resolved source.

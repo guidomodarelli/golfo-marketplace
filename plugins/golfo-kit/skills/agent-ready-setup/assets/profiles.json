@@ -4,6 +4,7 @@
   "profiles": {
     "react": {
       "kind": "stack",
+      "requires": ["software-development"],
       "defaults": ["browser"],
       "description": "React and TypeScript web frontends: components, styles, tests and their review agents.",
       "assets": "assets/stacks/react",
@@ -38,6 +39,7 @@
     },
     "node": {
       "kind": "stack",
+      "requires": ["software-development"],
       "defaults": ["browser"],
       "description": "Node.js services and backends.",
       "assets": "assets/stacks/node",
@@ -49,6 +51,7 @@
     },
     "java": {
       "kind": "stack",
+      "requires": ["software-development"],
       "defaults": ["browser"],
       "description": "Java and Kotlin services built with Maven or Gradle.",
       "assets": "assets/stacks/java",
@@ -60,6 +63,7 @@
     },
     "go": {
       "kind": "stack",
+      "requires": ["software-development"],
       "defaults": ["browser"],
       "description": "Go services.",
       "assets": "assets/stacks/go",
@@ -71,6 +75,7 @@
     },
     "android": {
       "kind": "stack",
+      "requires": ["software-development"],
       "description": "Android apps in Kotlin or Java built with Gradle and the Android Gradle Plugin.",
       "assets": "assets/stacks/android",
       "detect": {
@@ -80,6 +85,11 @@
           { "type": "gradle-plugin", "ids": ["com.android.application", "com.android.library"] }
         ]
       }
+    },
+    "software-development": {
+      "kind": "capability",
+      "description": "Rules for code, the pull request template, the PR review workflow and the AGENTS.md skeleton of a software project; every stack requires it.",
+      "assets": "assets/profiles/software-development"
     },
     "business-flows": {
       "kind": "capability",

@@ -525,7 +525,7 @@ PY
 
 @test "merge-instructions shows the id of each inconsistency and hides the accepted ones" {
   # As an apply leaves them: the template rules the review sees are in the repository.
-  cp "$skill_dir"/assets/common/rules/*.md "$skill_dir"/assets/stacks/node/rules/*.md .agents/rules/
+  cp "$skill_dir"/assets/common/rules/*.md "$skill_dir"/assets/profiles/software-development/rules/*.md     "$skill_dir"/assets/stacks/node/rules/*.md .agents/rules/
   printf '%s\n' '# Project' 'Mock every dependency.' > AGENTS.md
   printf '%s\n' '{"project_content": "# Project\nMock every dependency.\n\n<!-- AGENT-READY MANAGED BLOCK -->", "removed": [], "inconsistencies": ["Mock every dependency. — conflicts with .agents/rules/style.md: it forbids mocks"], "reason": "One conflict."}' > "$FAKE_RESPONSE"
   run env PATH="$fake_bin:$PATH" bash "$skill_dir/scripts/merge-instructions.sh" --provider claude --stack node --skill-dir "$skill_dir"

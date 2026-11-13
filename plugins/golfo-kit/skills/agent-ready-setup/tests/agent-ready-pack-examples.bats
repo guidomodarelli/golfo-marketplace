@@ -202,7 +202,7 @@ manifest = json.load(open(".agents/agent-ready.json", encoding="utf-8"))
 lock = json.load(open(".agents/agent-ready.lock.json", encoding="utf-8"))
 assert manifest["profiles"] == ["beam/elixir"], manifest["profiles"]
 assert lock["primaryStack"] == "beam/elixir", lock["primaryStack"]
-assert lock["profileOrder"] == ["beam/elixir", "business-flows"], lock["profileOrder"]
+assert lock["profileOrder"] == ["software-development", "beam/elixir", "business-flows"], lock["profileOrder"]
 PY
 }
 

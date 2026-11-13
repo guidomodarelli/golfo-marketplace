@@ -201,7 +201,7 @@ PY
   [ -e .claude/rules/acme-kafka.md ]
   grep -Fq -- '- Read and follow `.agents/rules/acme-kafka.md`.' AGENTS.md
   [ "$(json_value .agents/agent-ready.json '",".join(data["profiles"])')" = "acme/kafka-interno" ]
-  [ "$(lock_value '",".join(data["profileOrder"])')" = "node,acme/base,acme/kafka-interno,browser" ]
+  [ "$(lock_value '",".join(data["profileOrder"])')" = "software-development,node,acme/base,acme/kafka-interno,browser" ]
 }
 
 @test "the lockfile records owner, origin and hash, and no path of this machine" {
@@ -544,7 +544,7 @@ EOF
   printf '# Mine\n' > "$pack_dir/profiles/kafka-interno/rules/database.md"
   run_bootstrap
   [ "$status" -ne 0 ]
-  [[ "$output" == *"'common' and 'acme/kafka-interno' both write .agents/rules/database.md"* ]]
+  [[ "$output" == *"'software-development' and 'acme/kafka-interno' both write .agents/rules/database.md"* ]]
   [ "$(tree_fingerprint)" = "$before" ]
 }
 
@@ -1043,7 +1043,7 @@ PY
   [ "$status" -eq 0 ]
   [ -f .agents/rules/acme-kafka.md ]
   [ "$(json_value .agents/agent-ready.json '",".join(data["profiles"])')" = "acme/backend" ]
-  [ "$(lock_value '",".join(data["profileOrder"])')" = "node,acme/base,acme/kafka-interno,acme/backend,browser" ]
+  [ "$(lock_value '",".join(data["profileOrder"])')" = "software-development,node,acme/base,acme/kafka-interno,acme/backend,browser" ]
   # A bundle publishes no assets: no file of the lock inventory belongs to it.
   [ "$(lock_value 'sum(1 for item in data.get("assets", {}).values() if item.get("profile") == "acme/backend")')" = "0" ]
 }

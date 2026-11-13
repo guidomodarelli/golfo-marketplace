@@ -16,6 +16,7 @@ RULES_DIRECTORY=""
 COMMON_RULES_DIRECTORY=""
 PROJECT_RULES_DIRECTORY=""
 CENTRALIZATION_FILE=""
+SKELETON_FILE=""
 VALIDATE_FILE=""
 MANAGED_BLOCK_ONLY=0
 LIST_RULES=0
@@ -25,7 +26,7 @@ usage() {
 Usage:
   render-instruction-template.sh --template <file> --rules-dir <directory>
     [--common-rules-dir <directory>] [--project-rules-dir <directory>]
-    [--centralization <file>] [--managed-block]
+    [--centralization <file>] [--skeleton <file>] [--managed-block]
   render-instruction-template.sh --validate <file> --rules-dir <directory>
     [--common-rules-dir <directory>] [--project-rules-dir <directory>]
   render-instruction-template.sh --list-rules --rules-dir <directory>
@@ -63,6 +64,13 @@ while [[ $# -gt 0 ]]; do
     --managed-block)
       MANAGED_BLOCK_ONLY=1
       shift
+      ;;
+    --skeleton)
+      # The project part of a new AGENTS.md, in place of the one of the template: the managed block
+      # stays the template's, the single source of the instructions every repository gets.
+      [[ $# -ge 2 ]] || { echo "ERROR: --skeleton requires a value" >&2; exit 1; }
+      SKELETON_FILE="$2"
+      shift 2
       ;;
     --list-rules)
       LIST_RULES=1
@@ -103,6 +111,11 @@ fi
 
 if [[ -n "$TEMPLATE_FILE" && ! -f "$TEMPLATE_FILE" ]]; then
   echo "ERROR: --template must point to a regular file: $TEMPLATE_FILE" >&2
+  exit 1
+fi
+
+if [[ -n "$SKELETON_FILE" && ! -f "$SKELETON_FILE" ]]; then
+  echo "ERROR: --skeleton must point to a regular file: $SKELETON_FILE" >&2
   exit 1
 fi
 
@@ -282,22 +295,40 @@ if [[ -n "$TEMPLATE_FILE" ]]; then
 
   # An empty placeholder also drops its following blank separator so optional
   # sections leave no double blank line behind.
-  awk \
+  # The skeleton path goes through the environment: awk -v reads backslashes as escapes, and a
+  # Windows path to the composed tree (compose\<hash>) would lose them.
+  AGENT_READY_SKELETON_FILE="$SKELETON_FILE" awk \
     -v block_directory="$temporary_directory" \
     -v managed_only="$MANAGED_BLOCK_ONLY" \
     -v managed_start="$MANAGED_BLOCK_START" \
     -v managed_end="$MANAGED_BLOCK_END" '
+    BEGIN { skeleton = ENVIRON["AGENT_READY_SKELETON_FILE"] }
     function placeholder_path(placeholder, name) {
       name = placeholder
       gsub(/[^[:alnum:]_]/, "", name)
       return block_directory "/" name ".md"
     }
     function emit(line) {
+      # A skeleton replaces everything the template has before its managed block.
+      if (skeleton != "" && !seen_managed) {
+        return
+      }
       if (managed_only == 0 || in_managed) {
         print line
       }
     }
-    $0 == managed_start { in_managed = 1; emit($0); next }
+    $0 == managed_start {
+      if (skeleton != "" && managed_only == 0) {
+        while ((getline line < skeleton) > 0) {
+          print line
+        }
+        close(skeleton)
+      }
+      seen_managed = 1
+      in_managed = 1
+      emit($0)
+      next
+    }
     $0 == managed_end { emit($0); in_managed = 0; next }
     skip_blank && $0 == "" { skip_blank = 0; next }
     { skip_blank = 0 }
