@@ -296,6 +296,7 @@ add_legal_pack() {
   done
   [ -f .agents/skills/redactar-acta/SKILL.md ]
   [ -f .agents/skills/redactar-acta/templates/acta.md ]
+  [ -f .agents/skills/redactar-acta/evals/eval-config.json ]
   grep -qx '## Purpose' AGENTS.md
   grep -qx '<!-- BEGIN AGENT-READY MANAGED: estudio-juridico/estudio -->' AGENTS.md
   # A repository without code: none of software-development.

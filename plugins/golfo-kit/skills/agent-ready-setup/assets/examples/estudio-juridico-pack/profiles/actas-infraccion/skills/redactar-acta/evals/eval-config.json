@@ -1,0 +1,66 @@
+{
+  "schema_version": 2,
+  "skill": "redactar-acta",
+  "description": "Evalúa que la skill arme un acta desde la plantilla, no invente normas y cuide los datos personales.",
+  "test_cases": [
+    {
+      "id": "acta-nueva-desde-la-plantilla",
+      "description": "Arma un acta nueva con la cabecera, los hechos numerados y la ruta que define la regla de formato.",
+      "input": "Redactá el acta de infracción de hoy, 2026-03-10, en Avenida Corrientes 1234: el local no exhibía la lista de precios. Organismo: Defensa del Consumidor; inspector: Inspector B, legajo 123; infractor: Comercio X S.A. Ya existen actas/2026/acta-001.md y acta-002.md. No ejecutes comandos: mostrá la ruta y el contenido del acta.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "actas/2026/acta-003.md",
+          "description": "Toma el próximo número libre",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["## Hechos", "Hechos"],
+          "description": "Incluye el relato de los hechos"
+        },
+        {
+          "type": "contains_any",
+          "values": ["## Resolución", "Resolución"],
+          "description": "Incluye la parte resolutiva"
+        }
+      ]
+    },
+    {
+      "id": "norma-sin-confirmar",
+      "description": "No inventa el número de una norma que no se dio: la deja a confirmar.",
+      "input": "Armá el acta de una infracción por no exhibir precios. No sé qué ley ni qué artículo aplica. Fecha 2026-03-11, lugar Calle 5 n.º 10, organismo Defensa del Consumidor, inspector Inspector B, infractor Comercio Y. Es la primera del año. No ejecutes comandos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "[norma a confirmar]",
+          "description": "Deja la norma a confirmar en vez de inventarla",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["a confirmar", "confirmar"],
+          "description": "Lista los datos que quedaron a confirmar"
+        }
+      ]
+    },
+    {
+      "id": "datos-personales-solo-en-la-cabecera",
+      "description": "Deja el nombre y el documento de una persona solo en la cabecera, no en el relato ni en el nombre del archivo.",
+      "input": "Redactá el acta contra Persona A, DNI 00.000.000, domicilio Calle Falsa 123, que vendía sin factura en la feria el 2026-03-12. Organismo AFIP, inspector Inspector C. Es la primera del año. Explicá dónde va cada dato personal. No ejecutes comandos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "[Cc]abecera",
+          "description": "Ubica los datos personales en la cabecera",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "acta-001.md",
+          "description": "El nombre del archivo es el número, no el de la persona"
+        }
+      ]
+    }
+  ]
+}
