@@ -272,6 +272,10 @@ publica `beam/elixir`:
   golfo-kit o de su mismo pack; golfo-kit no conoce los de los packs, y dos packs no se reemplazan entre
   sí: sus stacks que coinciden piden una selección explícita.
 - Dos stacks que publican el mismo destino fallan antes de escribir, como cualquier par de profiles.
+- Un stack de un pack no tiene que ser de software: `assets/examples/estudio-juridico-pack/` publica
+  `estudio-juridico/estudio`, que se detecta por la estructura de carpetas (`actas/**/*.md`), no requiere
+  `software-development` y trae por `defaults` la capability `actas-infraccion`. El mismo caso funciona con
+  la capability sola.
 
 **Compatibilidad declarada.** El catálogo de un pack, y el de golfo-kit (`assets/profiles.json`),
 pueden declarar tres campos opcionales:

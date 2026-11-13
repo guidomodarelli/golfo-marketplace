@@ -3679,6 +3679,29 @@
           "description": "Aclara que Stack: none no es un error"
         }
       ]
+    },
+    {
+      "id": "legal-domain-pack-without-code",
+      "description": "Un estudio jurídico arma un pack con un stack de dominio detectado por carpetas y una capability de actas, sin software-development.",
+      "input": "En el estudio jurídico tenemos un repo con carpetas actas/2026/ y expedientes/ llenas de Markdown. Quiero que agent-ready-setup detecte solo que es un repo del estudio y le dé reglas de formato de actas y una skill para redactarlas. ¿Cómo lo armo y qué recibe el repo? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["estudio-juridico-pack", "estudio-juridico/estudio"],
+          "description": "Usa el pack de ejemplo estudio-juridico",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "carpeta[^.]{0,80}actas|actas[^.]{0,80}carpeta|actas/[*][*]",
+          "description": "Explica la detección por carpetas"
+        },
+        {
+          "type": "contains",
+          "value": "software-development",
+          "description": "Aclara que no recibe software-development"
+        }
+      ]
     }
   ]
 }

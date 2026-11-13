@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "name": "estudio-juridico",
+  "version": "1.0.0",
+  "profiles": {
+    "estudio": {
+      "kind": "stack",
+      "description": "Repositorio de un estudio jurídico: escritos y actas en Markdown, sin código. Se detecta por la carpeta actas/.",
+      "assets": "profiles/estudio",
+      "defaults": [
+        "estudio-juridico/actas-infraccion"
+      ],
+      "detect": {
+        "signals": [
+          {
+            "type": "glob",
+            "patterns": [
+              "actas/**/*.md",
+              "expedientes/**/*.md"
+            ]
+          }
+        ]
+      }
+    },
+    "actas-infraccion": {
+      "kind": "capability",
+      "description": "Redacción de actas de infracción: formato, citas normativas, datos personales y la skill redactar-acta.",
+      "assets": "profiles/actas-infraccion"
+    }
+  }
+}

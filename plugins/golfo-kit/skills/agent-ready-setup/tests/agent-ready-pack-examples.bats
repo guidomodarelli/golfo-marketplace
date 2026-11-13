@@ -271,3 +271,52 @@ PY
   grep -qx '<!-- BEGIN AGENT-READY MANAGED: beam/elixir -->' AGENTS.md
   [ "$(python3 -c 'import json; print(json.load(open(".agents/agent-ready.json"))["profiles"])' | tr -d '\r')" = "['beam/elixir']" ]
 }
+
+# A copy of the estudio-juridico example as a path source.
+add_legal_pack() {
+  mkdir -p agent-packs .agents
+  cp -R "$examples/estudio-juridico-pack" agent-packs/estudio-juridico
+  write_manifest '{"sources": {"packs": [{"name": "estudio-juridico", "source": "path:./agent-packs/estudio-juridico"}]}}'
+}
+
+@test "the legal example pack: its domain stack is detected by folders and brings its capability, without software-development" {
+  rm package.json
+  mkdir -p actas/2026
+  printf '%s\n' '# Acta de infracción N.º 001' > actas/2026/acta-001.md
+  add_legal_pack
+
+  run python3 "$skill_dir/scripts/agent-ready-state.py" detect --project . --skill-dir "$skill_dir"
+  [ "$status" -eq 0 ]
+  [[ "${lines[0]}" == "Stack: estudio-juridico/estudio" ]]
+
+  run_cli apply
+  [ "$status" -eq 0 ]
+  for rule in actas-formato actas-citas-normativas actas-datos-personales; do
+    [ -f ".agents/rules/$rule.md" ]
+  done
+  [ -f .agents/skills/redactar-acta/SKILL.md ]
+  [ -f .agents/skills/redactar-acta/templates/acta.md ]
+  [ -f .agents/skills/redactar-acta/evals/eval-config.json ]
+  grep -qx '## Purpose' AGENTS.md
+  grep -qx '<!-- BEGIN AGENT-READY MANAGED: estudio-juridico/estudio -->' AGENTS.md
+  # A repository without code: none of software-development.
+  [ ! -e .agents/rules/lint-gate.md ]
+  [ ! -e .github/pull_request_template.md ]
+  [ "$(python3 -c 'import json; print(json.load(open(".agents/agent-ready.lock.json"))["profileOrder"])' | tr -d '\r')" = "['estudio-juridico/estudio', 'estudio-juridico/actas-infraccion']" ]
+}
+
+@test "without its folders the legal domain stack is not detected, and its capability works alone" {
+  rm package.json
+  mkdir -p notas
+  printf '%s\n' '# Notas' > notas/reunion.md
+  add_legal_pack
+
+  run python3 "$skill_dir/scripts/agent-ready-state.py" detect --project . --skill-dir "$skill_dir"
+  [ "$status" -eq 0 ]
+  [[ "${lines[0]}" == "Stack: none" ]]
+
+  run_cli apply --profiles estudio-juridico/actas-infraccion
+  [ "$status" -eq 0 ]
+  [ -f .agents/rules/actas-formato.md ]
+  ! grep -q 'AGENT-READY MANAGED: estudio-juridico' AGENTS.md
+}
