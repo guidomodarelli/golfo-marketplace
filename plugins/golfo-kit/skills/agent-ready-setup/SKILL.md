@@ -16,7 +16,7 @@ description: >-
   descartar un hallazgo de sus revisiones de IA.
 license: MIT
 metadata:
-  version: "1.40.0"
+  version: "1.41.0"
   author: "guponce"
   category: "developer-experience"
   tags: "agent-ready, multi-provider, claude-code, codex, bootstrap, setup, scaffold, context-optimized-v1.20.1"
@@ -112,7 +112,7 @@ explícito fuera del cache conservan prioridad para desarrollo local.
 
 | Subcomando | Qué hace |
 |---|---|
-| `agent-ready plan [--offline] [--json]` | qué cambiaría un apply, sin escribir en el repo, cuánto contexto suma la selección, qué choca con lo instalado en la máquina y qué rules contradice el repo (`references/ai-reviews.md`, secciones 8 a 10) |
+| `agent-ready plan [--offline] [--json]` | qué cambiaría un apply, sin escribir en el repo, cuánto contexto suma la selección, qué choca con lo instalado en la máquina y qué rules contradice el repo y qué hooks o permisos chocan (`references/ai-reviews.md`, secciones 8 a 11) |
 | `agent-ready status [--offline] [--json]` | checkout contra el lockfile y las fuentes, sin escribir |
 | `agent-ready check [--offline] [--json]` | el chequeo de CI, con sus códigos `0`, `4`, `5` y `2` |
 | `agent-ready apply [--profiles a,b \| --stack s] [--updates auto\|pinned] [--recheck] [--dry-run]` | el Step 3 completo; `--recheck` vuelve a revisar `AGENTS.md` con IA aunque la caché tenga la revisión |
@@ -411,7 +411,7 @@ Mostrar output del script sin alterarlo. En respuestas documentales, enumerar ad
 - **Profile `business-flows`:** `rules/business-flows.md` y `skills/business-flow-design/SKILL.md`.
 - **CI, según `ci.provider`** (`assets/ci/`): con cualquier proveedor menos `none`, `.agents/ci/agent-ready-check.sh`; con `github`, además `.github/workflows/agent-ready.yml`; con `gitlab`, `.agents/ci/gitlab-ci.yml` y un bloque en `.gitlab-ci.yml` con su `include`; con `jenkins`, `.agents/ci/jenkins-stage.groovy`. Sin `ci.provider` o con `none`, ninguno.
 - **Profile packs:** los assets de cada profile seleccionado de `sources.packs`, con los paths que publique su pack bajo `rules/`, `skills/`, `agents/` y `commands/`.
-- **Estado del repo:** `.agents/agent-ready.json` (manifest) y `.agents/agent-ready.lock.json` (lockfile). `assets/profiles.json`, `assets/providers.json` y los schemas de `assets/config/` son catálogos internos de la skill, y `assets/examples/` guarda ejemplos para leer; ninguno se proyecta.
+- **Estado del repo:** `.agents/agent-ready.json` (manifest) y `.agents/agent-ready.lock.json` (lockfile). `assets/profiles.json`, `assets/providers.json`, `assets/repo-facts.json` (señales de las rules contra el repo), `assets/formatters.json` (formateadores de los hooks) y los schemas de `assets/config/` son catálogos internos de la skill, y `assets/examples/` guarda ejemplos para leer; ninguno se proyecta.
 
 Las skills que ya publica el plugin golfo-kit no se duplican en el catálogo de un stack: por ejemplo, el refactor de constantes se usa desde la skill `constants-refactor` del plugin y no se proyecta en `.agents/skills/`. Ningún stack publica hooks propios ni `mcp.json`: los únicos hooks proyectados son los comunes.
 

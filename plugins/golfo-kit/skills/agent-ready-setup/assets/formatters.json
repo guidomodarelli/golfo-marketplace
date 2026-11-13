@@ -1,0 +1,10 @@
+{
+  "prettier": {"command": "(^|[\\s/])prettier(\\s|$)", "writes": "\\s(--write|-w)(\\s|=|$)"},
+  "biome": {"command": "(^|[\\s/])biome\\s+(format|check|lint)\\b", "writes": "\\s--(write|apply|apply-unsafe|fix)(\\s|=|$)"},
+  "eslint --fix": {"command": "(^|[\\s/])eslint(\\s|$)", "writes": "\\s--fix(\\s|=|$)"},
+  "dprint": {"command": "(^|[\\s/])dprint\\s+fmt\\b"},
+  "black": {"command": "(^|[\\s/])black(\\s|$)", "checkOnly": "\\s--(check|diff)(\\s|$)"},
+  "ruff format": {"command": "(^|[\\s/])ruff\\s+format\\b", "checkOnly": "\\s--(check|diff)(\\s|$)"},
+  "gofmt": {"command": "(^|[\\s/])(gofmt|goimports)(\\s|$)", "writes": "\\s-w(\\s|$)"},
+  "rustfmt": {"command": "(^|[\\s/])(rustfmt|cargo\\s+fmt)(\\s|$)", "checkOnly": "\\s--check(\\s|$)"}
+}

@@ -46,8 +46,10 @@ ENGINE_OWNED_ASSET_PATHS = (
     "assets/common/settings.json",
     "assets/codex",
     "assets/config",
+    "assets/formatters.json",
     "assets/git-hooks",
     "assets/providers.json",
+    "assets/repo-facts.json",
 )
 # Parts of the installed skill that running the engine does not need.
 ENGINE_SKIPPED_DIRECTORIES = ("tests", "evals", "__pycache__")

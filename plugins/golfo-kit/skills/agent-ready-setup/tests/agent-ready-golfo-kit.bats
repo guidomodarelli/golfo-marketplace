@@ -765,3 +765,18 @@ PY
   [ "$status" -eq 0 ]
   [ "$(lock_value 'data["profileOrder"]')" = "['software-development', 'android']" ]
 }
+
+@test "a golfo-kit pinned before the engine catalogs existed plans with the catalogs of the engine" {
+  # An older revision has neither assets/formatters.json nor assets/repo-facts.json: the engine brings them.
+  git -C "$marketplace" rm -q plugins/golfo-kit/skills/agent-ready-setup/assets/formatters.json \
+    plugins/golfo-kit/skills/agent-ready-setup/assets/repo-facts.json
+  git -C "$marketplace" commit -qm "golfo-kit without the engine catalogs"
+  older_revision="$(git -C "$marketplace" rev-parse HEAD)"
+  write_manifest '{"profiles": ["node"], "sources": {"golfoKit": {"updates": "pinned"}}}'
+  run_cli update golfo-kit --to "$older_revision"
+  [ "$status" -eq 0 ]
+
+  run_cli plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Context at the start of a session"* ]]
+}

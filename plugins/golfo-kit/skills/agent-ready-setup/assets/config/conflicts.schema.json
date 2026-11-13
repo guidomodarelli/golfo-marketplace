@@ -18,6 +18,30 @@
       "default": false,
       "x-security": { "strictness": [false, true] }
     },
+    "hooks": {
+      "description": "Hooks de golfo-kit, del proyecto, locales y del usuario que chocan: el mismo hook registrado en dos capas, que corre dos veces, o dos formateadores en el mismo evento con matchers que se pisan.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "description": "plan informa los hooks que chocan. Apagado, no se comparan.",
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "permissions": {
+      "description": "Un patrón de permisos de Claude Code que una capa (golfo-kit, proyecto, local o usuario) permite y otra prohíbe.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "description": "plan informa cada patrón con allow y deny a la vez, con sus dos capas. Apagado, no se compara.",
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
     "repoReality": {
       "description": "Lo que una rule da por sentado (assumes en su frontmatter: testRunner, packageManager, indentation) contra las señales estáticas del repo: dependencias, lockfiles, packageManager, .editorconfig y Prettier.",
       "type": "object",
