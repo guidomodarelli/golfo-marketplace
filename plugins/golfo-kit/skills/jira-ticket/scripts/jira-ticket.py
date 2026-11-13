@@ -18,11 +18,13 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import functools
 import json
 import os
 import pathlib
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -323,10 +325,19 @@ def validate_pr_input(value: str) -> str:
     raise JiraTicketError(f"jira-ticket: PR inválido '{value[:80]}'; se acepta un número o https://github.com/<owner>/<repo>/pull/<n>")
 
 
-def gh_pr_view(pr_input: str) -> dict[str, Any]:
-    completed = subprocess.run(["gh", "pr", "view", pr_input, "--json", GH_PR_FIELDS], capture_output=True, text=True, encoding=STDIO_ENCODING, check=False)
+def gh_executable() -> str:
+    """Ruta de `gh` según `PATH` (y `PATHEXT` en Windows, donde puede ser un shim `.cmd`)."""
+    executable = shutil.which("gh")
+    if executable is None:
+        raise JiraTicketError("jira-ticket: no se encontró el ejecutable 'gh' en PATH; instalá GitHub CLI para usar pr-normalize", EXIT_UNRESOLVED)
+    return executable
+
+
+def gh_pr_view(pr_input: str, cwd: pathlib.Path | None = None) -> dict[str, Any]:
+    """Lee el PR con `gh pr view`; `cwd` define el repositorio donde se resuelve un número de PR."""
+    completed = subprocess.run([gh_executable(), "pr", "view", pr_input, "--json", GH_PR_FIELDS], capture_output=True, text=True, encoding=STDIO_ENCODING, check=False, cwd=cwd)
     if completed.returncode != 0:
-        raise JiraTicketError(f"jira-ticket: gh pr view {pr_input} falló (exit {completed.returncode}): {completed.stderr.strip()[:200]}", EXIT_UNRESOLVED)
+        raise JiraTicketError(f"jira-ticket: gh pr view {pr_input} falló en {cwd or pathlib.Path.cwd()} (exit {completed.returncode}): {completed.stderr.strip()[:200]}", EXIT_UNRESOLVED)
     return json.loads(completed.stdout)
 
 
@@ -366,8 +377,9 @@ def normalize_prs(
     }
 
 
-def current_repo_slug() -> str | None:
-    completed = subprocess.run(["gh", "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"], capture_output=True, text=True, encoding=STDIO_ENCODING, check=False)
+def current_repo_slug(cwd: pathlib.Path | None = None) -> str | None:
+    """`owner/repo` del repositorio en `cwd` según `gh repo view`, o None si gh no lo resuelve."""
+    completed = subprocess.run([gh_executable(), "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"], capture_output=True, text=True, encoding=STDIO_ENCODING, check=False, cwd=cwd)
     if completed.returncode != 0:
         return None
     return completed.stdout.strip() or None
@@ -499,8 +511,12 @@ def main(argv: list[str] | None = None, environ: dict[str, str] | None = None) -
         elif args.command == "repo-id":
             emit(repository_id(pathlib.Path(args.root), config))
         elif args.command == "pr-normalize":
-            local = repository_id(pathlib.Path(args.root), config)
-            emit(normalize_prs(args.prs, local, current_repo_slug(), config_list(config, "REPO_PREFIXES")))
+            root = pathlib.Path(args.root).resolve()
+            if not root.is_dir():
+                raise JiraTicketError(f"jira-ticket: pr-normalize --root '{args.root}' no es un directorio existente ({root})", EXIT_UNRESOLVED)
+            local = repository_id(root, config)
+            viewer = functools.partial(gh_pr_view, cwd=root)
+            emit(normalize_prs(args.prs, local, current_repo_slug(root), config_list(config, "REPO_PREFIXES"), viewer))
         elif args.command == "backlink":
             body = sys.stdin.read()
             site_url = config.require("SITE_URL")

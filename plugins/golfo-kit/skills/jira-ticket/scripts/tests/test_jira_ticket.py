@@ -265,6 +265,53 @@ def test_pr_normalize_empty_is_not_merged():
     assert jira_ticket.normalize_prs([], {"repository_id": "x", "source": "basename"}, None, [])["all_prs_merged"] is False
 
 
+FAKE_GH_SOURCE = """import json, pathlib, sys
+repo_name = pathlib.Path.cwd().name
+if sys.argv[1:3] == ["repo", "view"]:
+    print(f"acme/{repo_name}")
+else:
+    print(json.dumps({"number": int(sys.argv[3]), "url": f"https://github.com/acme/{repo_name}/pull/{sys.argv[3]}", "state": "OPEN"}))
+"""
+
+
+def install_fake_gh(bin_dir):
+    """`gh` falso que responde según su directorio de trabajo: `.cmd` en Windows, shebang en POSIX."""
+    bin_dir.mkdir()
+    fake_script = bin_dir / "fake_gh.py"
+    fake_script.write_text(FAKE_GH_SOURCE, encoding="utf-8")
+    if os.name == "nt":
+        (bin_dir / "gh.cmd").write_text(f'@"{sys.executable}" "{fake_script}" %*\r\n', encoding="utf-8")
+    else:
+        launcher = bin_dir / "gh"
+        launcher.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{fake_script}" "$@"\n', encoding="utf-8")
+        launcher.chmod(0o755)
+
+
+def test_pr_normalize_script_runs_gh_lookups_in_root_repository(tmp_path):
+    """Desde el repo A con --root B, `gh pr view` y `gh repo view` deben correr en B."""
+    bin_dir = tmp_path / "bin"
+    install_fake_gh(bin_dir)
+    current_repo = tmp_path / "acme_alpha"
+    root_repo = tmp_path / "acme_beta"
+    current_repo.mkdir()
+    root_repo.mkdir()
+    (root_repo / "package.json").write_text(json.dumps({"name": "@acme/beta-service"}), encoding="utf-8")
+    completed = subprocess.run(
+        [sys.executable, str(SCRIPT_PATH), "pr-normalize", "--root", str(root_repo), "12"],
+        cwd=current_repo,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env={**os.environ, **BASE_ENV, "PATH": f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}"},
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    pull_request = json.loads(completed.stdout)["pull_requests"][0]
+    assert pull_request["repo"] == "acme/acme_beta"
+    assert pull_request["repository_id"] == "beta-service"
+    assert pull_request["repository_id_source"] == "package.json:name"
+
+
 @pytest.mark.parametrize("bad_input", ["12; rm -rf /", "https://github.com/a/b/pull/1?x=1", "https://evil.example/a/b/pull/1", "PR-12", ""])
 def test_pr_normalize_rejects_unvalidated_input(bad_input):
     with pytest.raises(jira_ticket.JiraTicketError):
