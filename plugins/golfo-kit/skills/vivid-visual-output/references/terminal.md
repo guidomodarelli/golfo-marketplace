@@ -13,8 +13,9 @@ Cómo lograr una salida linda y con vida que se degrade bien. Los kits resuelven
 7. [Kit de Node](#7-kit-de-node)
 8. [Kit de PowerShell](#8-kit-de-powershell)
 9. [Kit de bash y zsh](#9-kit-de-bash-y-zsh)
-10. [Antes y después](#10-antes-y-después)
-11. [Verificar](#11-verificar)
+10. [Kit de Python](#10-kit-de-python)
+11. [Antes y después](#11-antes-y-después)
+12. [Verificar](#12-verificar)
 
 ## 1. Capacidades
 
@@ -41,6 +42,8 @@ Trampas de cada plataforma:
 - **PowerShell, captura en la sesión:** con `$datos = ./script.ps1` o `./script.ps1 > archivo`, `IsOutputRedirected` da `false` y `PipelineLength` da 1, y el texto puro llega con sus escapes. Pintar stdout solo cuando la invocación descarta una captura, como hace el kit.
 - **bash, `$(...)`:** adentro, el descriptor 1 es un pipe, así que `$(funcion_que_mira_-t_1)` siempre responde que no hay TTY. Guardar `[ -t 1 ]` antes, en el nivel superior.
 - **bash, `tput`:** `$(tput cols 2>/dev/null)` deja a `tput` sin ningún descriptor conectado a la terminal y devuelve siempre 80. Leer con `stty size </dev/tty`.
+- **Python, ancho:** `shutil.get_terminal_size()` consulta stdout. Con `tool > archivo`, la interfaz en stderr se dibuja a 80 columnas aunque la terminal tenga 40. Medir sobre el stream donde se dibuja: `os.get_terminal_size(stream.fileno())`, con respaldo a `COLUMNS` y a 80 (`terminal_columns` del kit de Python).
+- **`CI` y `FORCE_COLOR`:** comparar sin importar mayúsculas. `CI=False` no es CI.
 
 ## 2. Anatomía de una corrida
 
@@ -67,6 +70,10 @@ api-gateway     3.14.2   ✓ hecho
 - **Toda corrida de un CLI o script abre con la tarjeta de encabezado:** un recuadro con el nombre de la herramienta a la izquierda, la versión arriba a la derecha, una línea divisoria y una descripción breve de qué hace. El divisor va dentro de la celda, con un espacio a cada lado, sin tocar los bordes: es una sola tarjeta, no una tabla de dos filas. Los kits la dibujan con `renderBox`, `Write-Box` o `render_box` pasándoles la versión. Si el nombre y la versión no entran en una fila, la versión baja a la siguiente, alineada a la derecha. Sin logos gigantes ni arte ASCII. No se muestra con `--version`, con una salida para máquinas (`--json`) ni con `--quiet`; con `--help`, la tarjeta reemplaza la línea de «qué hace».
 - El producto de la herramienta (tabla, lista, JSON) va a stdout. Tarjeta, pasos, spinner, resumen y errores van a stderr.
 - El resumen dice qué pasó y qué hacer ahora. El código de salida dice lo mismo que el resumen.
+- **El resumen muestra lo que quedó en el sistema, no lo que se mandó.** Los IDs y datos se leen de vuelta de la fuente después de crear. Si la lectura falla, mostrar lo enviado marcado («según lo enviado») y avisar. Si la fuente devuelve datos enmascarados en algún entorno (PII en producción), mostrarlos con la marca «(enmascarado)», no como si fueran el dato real. Si falta un campo, «sin dato en <fuente>», atenuado. Agrupar el resumen por entidad (usuario, recurso).
+- **El entorno y la región van en el encabezado** del resumen y de cada reporte (chequeo de permisos, `--dry-run`), como etiquetas con color: `🧪 RELEASE · pruebas` en verde, `🚨 PROD · producción` en rojo. Sin color: `[RELEASE · pruebas]`.
+- **Entorno peligroso.** Al elegir producción, por flag, por archivo de configuración o en el menú, mostrar un cartel con fondo rojo y letras blancas, de hasta 80 columnas o el ancho de la terminal si es menor, con el nombre del entorno en letras grandes (5 filas de bloques `█`, todas del mismo ancho). Si la terminal es más angosta que el arte, sale sin las letras grandes. Sin color, el mismo cartel con bordes `│` y sin fondo. `render_danger_banner` del kit de Python lo dibuja. Después del cartel va la confirmación que pide escribir el nombre (`interactive-cli-design`, fila «Acción peligrosa»).
+  - Es una **excepción** a «sin logos gigantes ni arte ASCII» de la tarjeta de encabezado: esa regla es para la tarjeta. El cartel es una advertencia y tiene que verse.
 - Los errores son una línea clara con color y símbolo, no un stack crudo. El detalle técnico va a un log o detrás de un flag.
 
 ## 3. Estados, tablas y listas
@@ -93,12 +100,16 @@ Sumar un emoji a una opción de menú, una fila de tabla o un resultado solo cua
 
 | Sí | No |
 |---|---|
-| Valores concretos con un emoji que cualquiera asocia: sistemas (🍎 macOS, 🐧 Linux, 🪟 Windows), entornos (🧪 test, 🚀 producción), tipos de archivo (📄 documento, 🖼️ imagen), dispositivos (📱 Android) | Conceptos abstractos (modo, estrategia, nivel), donde cada lector elegiría otro emoji |
+| Valores concretos con un emoji que cualquiera asocia: sistemas (🍎 macOS, 🐧 Linux, 🪟 Windows), entornos (🧪 test, 🚨 producción), tipos de archivo (📄 documento, 🖼️ imagen), dispositivos (📱 Android) | Conceptos abstractos (modo, estrategia, nivel), donde cada lector elegiría otro emoji |
 | Un grupo donde **todas** las opciones tienen su emoji claro | Un grupo donde solo algunas lo tienen: o todas o ninguna |
-| Junto a la palabra: `🚀 producción` | En lugar de la palabra, o en los estados, que ya tienen su glifo de una celda |
+| Junto a la palabra: `🚨 producción` | En lugar de la palabra, o en los estados, que ya tienen su glifo de una celda |
 
-- Fijarlos en constantes por valor (`producción → 🚀`), así el mismo valor lleva el mismo emoji en el menú, en la tabla y en el resumen.
+- Para producción, 🚨 y no 🚀: 🚀 se lee como «deploy» o «lanzamiento», no como riesgo.
+- Fijarlos en constantes por valor (`producción → 🚨`), así el mismo valor lleva el mismo emoji en el menú, en la tabla y en el resumen.
 - Medir el ancho con los helpers de los kits de Node o PowerShell, que cuentan dos celdas por emoji; el kit de bash cuenta caracteres. Preferir emojis sin el selector U+FE0F (`🖼️` lo lleva), que algunas terminales dibujan con otro ancho.
+- **Banderas:** `🇧🇷` son dos indicadores regionales (U+1F1E7 U+1F1F7) y ocupan **dos** celdas, no cuatro. Los helpers de los kits de Node, PowerShell y Python las cuentan como un solo emoji; Windows PowerShell 5.1 las separa en dos y el kit las vuelve a juntar.
+- **Todo lo que recorre texto carácter por carácter** (degradés, cortes, animaciones de revelado) recorre graphemes: un escape de color entre los dos indicadores de una bandera, o dentro de una secuencia ZWJ (`👨‍👩‍👧`), la rompe.
+- **Sin color, sin emojis decorativos.** Con `NO_COLOR`, `TERM=dumb` o salida a un pipe, el emoji que acompaña a una palabra se omite y queda la palabra (`🚨 PROD` → `PROD`), igual que los íconos de Nerd Fonts pasan a su respaldo.
 - Nunca en una salida para máquinas (`--json`, datos por pipe que otro programa parsea). Con una regla de proyecto «solo ASCII», no van.
 
 ### Íconos de Nerd Fonts
@@ -120,10 +131,13 @@ Para roles fijos de la interfaz, no para valores: el comando para repetir la cor
 
 - **Tablas y recuadros miden como máximo 80 columnas**, o el ancho de la terminal si es menor. También la tarjeta de encabezado, el resumen y la tabla del `--help`. Sin TTY, el tope es 80. Los kits lo aplican con `layoutWidth`, `Get-LayoutWidth` o `layout_width` (`MAXIMUM_LAYOUT_COLUMNS`).
 - Con TTY, leer el ancho real en cada dibujo, porque puede cambiar durante la corrida. Fuera de tablas y recuadros, sin TTY no hay ancho: no truncar ni partir las demás líneas.
-- Si la tabla no entra, pasar a formato apilado: una línea por campo debajo del nombre. Nunca truncar un dato.
+- **Si la tabla no entra, primero achicar columnas.** Empezar por la más ancha, de a una, sin bajar del mínimo de cada columna (su parte indivisible más larga: una palabra, un ID), y partir esas celdas en varias líneas. Recién si ni así entra, pasar a formato apilado: una línea por campo debajo del nombre. Después de partir, cada columna mide lo que ocupa su línea más ancha. Nunca truncar un dato. `renderTable` de Node lo hace con `fitColumnWidths`, y el kit de Python trae `fit_column_widths`; los kits de PowerShell y bash apilan directo: si el proyecto los usa con una columna larga, portar esa función.
+- **Un dato que se copia nunca se parte.** Una URL, un mail o un ID más ancho que la línea va solo en su renglón, entero y sin sangría, aunque se pase del ancho (dentro de un recuadro, sin borde): partirlo rompe el clic y el copiado. Los tres kits y el de Python lo hacen al partir.
+- **Cortar o partir texto con color nunca parte un escape, y cierra el color al cortar.** Los escapes miden 0 celdas y se copian enteros; si se cortó un texto pintado, terminar con `ESC[0m`. `sliceVisible`, `Get-FittingPrefix` y `slice_visible` lo hacen; el kit de bash recibe texto sin pintar y pinta después.
 - Lo mismo vale para toda línea propia: pasos, errores, banner y el contenido del resumen, también dentro de un recuadro. Partirlas con el mismo ajuste, porque una sola línea larga rompe el recuadro a 40 columnas.
 - Lo decorativo sí se recorta: etiqueta del spinner, reglas y bordes. La línea del spinner tiene que medir menos que el ancho, o la terminal la parte y `\r` ya no la borra.
-- Medir graphemes y no bytes. `ñ` ocupa una celda; un ideograma, dos.
+- Medir graphemes y no bytes. `ñ` ocupa una celda; un ideograma, dos. ZWJ, U+FE0E y U+FE0F, cero. `👨‍👩‍👧` y `1️⃣` miden dos.
+- Medir sobre el stream donde se dibuja (stderr para la interfaz), no sobre stdout.
 
 ## 5. Esperas
 
@@ -132,6 +146,8 @@ Para roles fijos de la interfaz, no para valores: el comando para repetir la cor
 - Un cuadro cada 80 a 120 ms, solo con TTY. Antes de escribir cualquier otra línea, parar el spinner y limpiar la suya.
 - El trabajo síncrono congela los timers: correrlo en async, en un proceso hijo o en un job.
 - La pausa entre cuadros existe solo mientras hay trabajo pendiente. Medir: con trabajo de 0 ms, el script no tarda más que su arranque.
+- **Notas durante una espera.** Un estado («reintentando, 2/3») va al final de la línea del spinner. Sin animación, se escribe como línea propia **solo cuando cambia**: no se repite en cada intento.
+- **Spinner en un hilo (Python):** esperar con `stop_event.wait(intervalo)` y no con `time.sleep`, para cortar enseguida; hilo `daemon=True`; `stop()` idempotente, con `join()` antes de limpiar la línea y mostrar el cursor; un paso que termina con cualquier excepción (también Ctrl+C) se marca con ✖ y la excepción se relanza. `Spinner` y `step` del kit de Python.
 
 ## 6. Salida limpia
 
@@ -155,6 +171,7 @@ const ESCAPE = '\x1b[';
 const HIDE_CURSOR = `${ESCAPE}?25l`;
 const SHOW_CURSOR = `${ESCAPE}?25h`;
 const CLEAR_LINE = `\r${ESCAPE}2K`;
+const RESET = `${ESCAPE}0m`;
 const COLUMN_GAP = 2;
 const MAXIMUM_LAYOUT_COLUMNS = 80; // tablas y recuadros: nunca más anchos que esto
 
@@ -226,18 +243,20 @@ function paintBold(output, text) {
 
 function paintGradient(output, text) {
   if (output.depth < 24) return paint(output, 'accent', text, { bold: true });
-  const characters = [...text];
+  // Por grapheme, no por code point: un escape entre los dos indicadores de 🇧🇷 rompe la bandera.
+  const graphemes = [...graphemeSegmenter.segment(text)].map(({ segment }) => segment);
   const { from, to } = THEME.gradient;
-  const painted = characters.map((character, index) => {
-    const ratio = index / Math.max(characters.length - 1, 1);
+  const painted = graphemes.map((grapheme, index) => {
+    const ratio = index / Math.max(graphemes.length - 1, 1);
     const rgb = from.map((channel, channelIndex) => Math.round(channel + (to[channelIndex] - channel) * ratio));
-    return `${ESCAPE}1;38;2;${rgb.join(';')}m${character}`;
+    return `${ESCAPE}1;38;2;${rgb.join(';')}m${grapheme}`;
   });
-  return `${painted.join('')}${ESCAPE}0m`;
+  return `${painted.join('')}${RESET}`;
 }
 
 const WIDE_CHARACTER = /[\p{Emoji_Presentation}ᄀ-ᅟ⺀-꓏가-힣豈-﫿︰-﹯＀-｠￠-￦]/u;
 const graphemeSegmenter = new Intl.Segmenter();
+const ANSI_ESCAPE_SPLIT = /(\x1b\[[0-9;?]*[ -/]*[@-~])/;
 
 function visibleWidth(text) {
   let width = 0;
@@ -252,16 +271,33 @@ function padVisible(text, width, { alignRight = false } = {}) {
   return alignRight ? `${padding}${text}` : `${text}${padding}`;
 }
 
-/** Prefijo que entra en maximumWidth celdas. Siempre lleva un grapheme, para que el ajuste avance. */
+/**
+ * Prefijo que entra en maximumWidth celdas. Siempre lleva un grapheme, para que el ajuste avance.
+ * Los escapes de color miden 0 y se copian enteros; si se cortó un texto pintado, cierra el color.
+ */
 function sliceVisible(text, maximumWidth) {
   let usedWidth = 0;
   let prefix = '';
-  for (const { segment } of graphemeSegmenter.segment(text)) {
-    usedWidth += WIDE_CHARACTER.test(segment) ? 2 : 1;
-    if (prefix && usedWidth > maximumWidth) break;
-    prefix += segment;
+  let hasEscapes = false;
+  let wasCut = false;
+  for (const part of text.split(ANSI_ESCAPE_SPLIT)) {
+    if (ANSI_ESCAPE_SPLIT.test(part)) {
+      if (!wasCut) prefix += part;
+      hasEscapes = true;
+      continue;
+    }
+    for (const { segment } of graphemeSegmenter.segment(part)) {
+      if (wasCut) break;
+      const segmentWidth = WIDE_CHARACTER.test(segment) ? 2 : 1;
+      if (usedWidth > 0 && usedWidth + segmentWidth > maximumWidth) {
+        wasCut = true;
+        break;
+      }
+      usedWidth += segmentWidth;
+      prefix += segment;
+    }
   }
-  return prefix;
+  return wasCut && hasEscapes ? `${prefix}${RESET}` : prefix;
 }
 
 function truncateVisible(text, maximumWidth) {
@@ -269,6 +305,10 @@ function truncateVisible(text, maximumWidth) {
   return `${sliceVisible(text, Math.max(maximumWidth - 1, 1))}…`;
 }
 
+/**
+ * Parte en palabras. Una palabra más ancha que la línea (una URL, un mail, un ID) va sola en su renglón,
+ * entera aunque se pase: partirla rompe el clic y el copiado.
+ */
 function wrapText(text, width) {
   const lines = [];
   let line = '';
@@ -280,14 +320,27 @@ function wrapText(text, width) {
     }
     if (line) lines.push(line);
     line = word;
-    while (visibleWidth(line) > width) {
-      const fittingPart = sliceVisible(line, width);
-      lines.push(fittingPart);
-      line = line.slice(fittingPart.length);
+    if (visibleWidth(word) > width) {
+      lines.push(word);
+      line = '';
     }
   }
   if (line || lines.length === 0) lines.push(line);
   return lines;
+}
+
+/** Achica primero las columnas más anchas, sin bajar del mínimo de cada una (su palabra más larga). */
+function fitColumnWidths(naturalWidths, minimumWidths, availableWidth) {
+  const widths = [...naturalWidths];
+  let excess = widths.reduce((total, width) => total + width, 0) - availableWidth;
+  const widestFirst = widths.map((_, index) => index).sort((left, right) => widths[right] - widths[left]);
+  for (const column of widestFirst) {
+    if (excess <= 0) break;
+    const reduction = Math.min(excess, widths[column] - minimumWidths[column]);
+    widths[column] -= reduction;
+    excess -= reduction;
+  }
+  return widths; // si todavía suman más que availableWidth, la tabla se apila
 }
 
 function statusLabel(statusName) {
@@ -295,27 +348,47 @@ function statusLabel(statusName) {
   return `${glyph} ${word}`;
 }
 
-/** Cada columna: { title, read(row), colorOf?(row), alignRight? }. Apila las filas si no entran. */
+const longestWord = (text) => Math.max(...text.split(' ').map(visibleWidth));
+
+/**
+ * Cada columna: { title, read(row), colorOf?(row), alignRight? }. Si no entra, primero achica las columnas
+ * más anchas y parte sus celdas en varias líneas; recién si ni así entra, apila las filas.
+ */
 function renderTable(output, columns, rows) {
-  const columnWidths = columns.map(({ title, read }) =>
+  const naturalWidths = columns.map(({ title, read }) =>
     Math.max(visibleWidth(title), ...rows.map((row) => visibleWidth(read(row)))),
   );
-  const tableWidth = columnWidths.reduce((total, width) => total + width, 0) + COLUMN_GAP * (columns.length - 1);
-  if (tableWidth > output.layoutWidth) return renderStackedRows(output, columns, rows);
+  const minimumWidths = columns.map(({ title, read }) =>
+    Math.max(visibleWidth(title), ...rows.map((row) => longestWord(read(row)))),
+  );
+  const gapsWidth = COLUMN_GAP * (columns.length - 1);
+  const fitted = fitColumnWidths(naturalWidths, minimumWidths, output.layoutWidth - gapsWidth);
+  if (fitted.reduce((total, width) => total + width, 0) + gapsWidth > output.layoutWidth) {
+    return renderStackedRows(output, columns, rows);
+  }
+  const cellLines = rows.map((row) => columns.map(({ read }, index) => wrapText(read(row), fitted[index])));
+  // Después de partir, cada columna mide lo que ocupa su línea más ancha, sin espacio de sobra.
+  const columnWidths = columns.map(({ title }, index) =>
+    Math.max(visibleWidth(title), ...cellLines.flatMap((lines) => lines[index].map(visibleWidth))),
+  );
 
   const gap = ' '.repeat(COLUMN_GAP);
   const header = columns
     .map(({ title, alignRight }, index) => paintBold(output, padVisible(title, columnWidths[index], { alignRight })))
     .join(gap);
-  const body = rows.map((row) =>
-    columns
-      .map(({ read, colorOf, alignRight }, index) => {
-        const cell = padVisible(read(row), columnWidths[index], { alignRight });
-        return colorOf ? paint(output, colorOf(row), cell) : cell;
-      })
-      .join(gap),
-  );
-  return [header, ...body].join('\n');
+  const body = rows.flatMap((row, rowIndex) => {
+    const lineCount = Math.max(...cellLines[rowIndex].map((lines) => lines.length));
+    return Array.from({ length: lineCount }, (_, lineIndex) =>
+      columns
+        .map(({ colorOf, alignRight }, index) => {
+          const cell = padVisible(cellLines[rowIndex][index][lineIndex] ?? '', columnWidths[index], { alignRight });
+          return colorOf ? paint(output, colorOf(row), cell) : cell;
+        })
+        .join(gap)
+        .trimEnd(),
+    );
+  });
+  return [header.trimEnd(), ...body].join('\n');
 }
 
 function renderStackedRows(output, columns, rows) {
@@ -355,7 +428,10 @@ function renderBox(output, title, lines, { version } = {}) {
     ...titleRows,
     // El divisor queda dentro de la celda, sin tocar los bordes: es una sola tarjeta, no una tabla de dos filas.
     ...(versionLabel ? [toRow(paint(output, 'muted', '─'.repeat(innerWidth)))] : []),
-    ...lines.flatMap((line) => wrapText(line, innerWidth)).map((line) => toRow(padVisible(line, innerWidth))),
+    // Un dato más ancho que el recuadro (una URL) va entero y sin borde: con borde se partiría o se cortaría.
+    ...lines
+      .flatMap((line) => wrapText(line, innerWidth))
+      .map((line) => (visibleWidth(line) > innerWidth ? line : toRow(padVisible(line, innerWidth)))),
     border(`╰${'─'.repeat(innerWidth + 2)}╯`),
   ].join('\n');
 }
@@ -427,6 +503,9 @@ $script:CanPaintData = (-not [Console]::IsOutputRedirected) -and (
 )
 $script:Escape = [string][char]27
 $script:ClearLine = "`r$($script:Escape)[2K"
+$script:Reset = "$($script:Escape)[0m"
+$script:AnsiEscapePattern = "$([char]27)\[[0-9;?]*[ -/]*[@-~]"
+$script:RegionalIndicator = '^\uD83C[\uDDE6-\uDDFF]$'
 $script:ColumnGap = '  '
 $script:MaximumLayoutColumns = 80 # tablas y recuadros: nunca mas anchos que esto
 $script:WideCharacter = '^([\u1100-\u115F\u2E80-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE6F\uFF00-\uFF60\uFFE0-\uFFE6]|[\uD83C-\uD83E][\uDC00-\uDFFF])'
@@ -531,32 +610,63 @@ function Format-Bold {
   return "$($script:Escape)[1m$Text$($script:Escape)[0m"
 }
 
+# Graphemes con su ancho. Windows PowerShell 5.1 (.NET Framework) separa los dos indicadores regionales
+# de una bandera: se vuelven a juntar para que mida 2 celdas, como en PowerShell 7.
+function Get-TextElements {
+  param([AllowEmptyString()][string]$Text = '')
+
+  $result = New-Object System.Collections.Generic.List[object]
+  if (-not $Text) { return , $result.ToArray() }
+  $elements = [System.Globalization.StringInfo]::GetTextElementEnumerator($Text)
+  $isOpenFlag = $false
+  while ($elements.MoveNext()) {
+    $element = $elements.GetTextElement()
+    $isRegionalIndicator = $element -match $script:RegionalIndicator
+    if ($isRegionalIndicator -and $isOpenFlag) {
+      $result[$result.Count - 1].Text += $element
+      $isOpenFlag = $false
+      continue
+    }
+    $isOpenFlag = $isRegionalIndicator
+    $cells = 1
+    if ($element -match $script:WideCharacter) { $cells = 2 }
+    $result.Add([pscustomobject]@{ Text = $element; Cells = $cells })
+  }
+  return , $result.ToArray()
+}
+
 function Get-VisibleWidth {
   param([AllowEmptyString()][string]$Text = '')
 
-  if (-not $Text) { return 0 }
   $usedCells = 0
-  $elements = [System.Globalization.StringInfo]::GetTextElementEnumerator($Text)
-  while ($elements.MoveNext()) {
-    if ($elements.GetTextElement() -match $script:WideCharacter) { $usedCells += 2 } else { $usedCells += 1 }
-  }
+  foreach ($element in (Get-TextElements ($Text -replace $script:AnsiEscapePattern, ''))) { $usedCells += $element.Cells }
   return $usedCells
 }
 
 # Prefijo que entra en $Width celdas. Siempre lleva un grapheme, para que el ajuste avance.
+# Los escapes de color miden 0 y se copian enteros; si se corto un texto pintado, cierra el color.
 function Get-FittingPrefix {
   param([AllowEmptyString()][string]$Text = '', [int]$Width)
 
   if (-not $Text) { return '' }
   $usedCells = 0
   $prefix = ''
-  $elements = [System.Globalization.StringInfo]::GetTextElementEnumerator($Text)
-  while ($elements.MoveNext()) {
-    $element = $elements.GetTextElement()
-    if ($element -match $script:WideCharacter) { $usedCells += 2 } else { $usedCells += 1 }
-    if ($prefix -and $usedCells -gt $Width) { break }
-    $prefix += $element
+  $hasEscapes = $false
+  $wasCut = $false
+  foreach ($part in [regex]::Split($Text, "($($script:AnsiEscapePattern))")) {
+    if ($part -match "^$($script:AnsiEscapePattern)$") {
+      if (-not $wasCut) { $prefix += $part }
+      $hasEscapes = $true
+      continue
+    }
+    if ($wasCut -or -not $part) { continue }
+    foreach ($element in (Get-TextElements $part)) {
+      if ($usedCells -gt 0 -and $usedCells + $element.Cells -gt $Width) { $wasCut = $true; break }
+      $usedCells += $element.Cells
+      $prefix += $element.Text
+    }
   }
+  if ($wasCut -and $hasEscapes) { return "$prefix$($script:Reset)" }
   return $prefix
 }
 
@@ -582,10 +692,10 @@ function Split-TextToWidth {
     }
     if ($line) { $lines.Add($line) }
     $line = $word
-    while ((Get-VisibleWidth $line) -gt $Width) {
-      $fittingPart = Get-FittingPrefix -Text $line -Width $Width
-      $lines.Add($fittingPart)
-      $line = $line.Substring($fittingPart.Length)
+    # Una palabra mas ancha que la linea (URL, mail, ID) va sola y entera: partirla rompe el clic y el copiado.
+    if ((Get-VisibleWidth $word) -gt $Width) {
+      $lines.Add($word)
+      $line = ''
     }
   }
   if ($line -or $lines.Count -eq 0) { $lines.Add($line) }
@@ -679,6 +789,8 @@ function Write-Box {
   }
   foreach ($sourceLine in $Lines) {
     foreach ($line in (Split-TextToWidth -Text $sourceLine -Width $innerWidth)) {
+      # Un dato mas ancho que el recuadro va entero y sin borde.
+      if ((Get-VisibleWidth $line) -gt $innerWidth) { Write-Ui $line; continue }
       Write-Ui "$side $(Format-Pad -Text $line -Width $innerWidth) $side"
     }
   }
@@ -897,7 +1009,8 @@ render_table() { # profundidad, ancho (de layout_width), número de la columna d
       return depth <= 1 ? text : esc "[" code[status_name] "m" text esc "[0m"
     }
     function bold(text) { return depth <= 1 ? text : esc "[1m" text esc "[0m" }
-    # Parte el texto antes de pintarlo, en un espacio si hay uno: un dato largo no se trunca ni rompe la fila.
+    # Parte el texto antes de pintarlo, en un espacio: un dato largo no se trunca ni rompe la fila.
+    # Una palabra mas ancha que la linea (URL, mail, ID) va sola y entera: partirla rompe el clic y el copiado.
     function print_stacked(text, style, head, position, space) {
       while (text_length(text) > width) {
         head = text_prefix(text, width + 1)
@@ -905,13 +1018,10 @@ render_table() { # profundidad, ancho (de layout_width), número de la columna d
         for (position = length(head); position > 3; position--) {
           if (substr(head, position, 1) == " ") { space = position; break }
         }
-        if (space) {
-          print_styled(substr(text, 1, space - 1), style)
-          text = substr(text, space + 1)
-        } else {
-          print_styled(text_prefix(text, width), style)
-          text = text_rest(text, width)
-        }
+        if (!space) space = index(substr(text, 4), " ") ? index(substr(text, 4), " ") + 3 : 0
+        if (!space) break
+        print_styled(substr(text, 1, space - 1), style)
+        text = substr(text, space + 1)
         sub(/^ +/, "", text)
       }
       print_styled(text, style)
@@ -973,14 +1083,12 @@ render_box() { # profundidad, ancho (de layout_width), versión (opcional)
         if (current == "") current = words[position]
         else if (text_length(current) + 1 + text_length(words[position]) <= inner) current = current " " words[position]
         else { wrapped[++wrapped_count] = current; current = words[position] }
-        while (text_length(current) > inner) {
-          wrapped[++wrapped_count] = text_prefix(current, inner)
-          current = text_rest(current, inner)
-        }
       }
       wrapped[++wrapped_count] = current
     }
     function print_row(text) {
+      # Un dato mas ancho que el recuadro va entero y sin borde.
+      if (text_length(text) > inner) { print text; return }
       print accent("│") " " sprintf("%s%" (inner - text_length(text)) "s", text, "") " " accent("│")
     }
     function print_wrapped(row) {
@@ -1090,7 +1198,284 @@ run_with_spinner() { # etiqueta, comando...
 }
 ```
 
-## 10. Antes y después
+## 10. Kit de Python
+
+Sin dependencias. Python 3.9 o superior. Python no trae segmentación de graphemes: `graphemes` junta lo que una terminal dibuja como un solo carácter (marcas combinantes, selectores U+FE0E/U+FE0F, ZWJ, tonos de piel, keycaps y pares de indicadores regionales). Alcanza para medir y cortar; no es la segmentación completa de Unicode.
+
+```python
+import io, os, re, sys, threading, time, unicodedata
+from contextlib import contextmanager
+
+ESCAPE = "\x1b["
+RESET = f"{ESCAPE}0m"
+HIDE_CURSOR = f"{ESCAPE}?25l"
+SHOW_CURSOR = f"{ESCAPE}?25h"
+CLEAR_LINE = f"\r{ESCAPE}2K"
+MAXIMUM_LAYOUT_COLUMNS = 80                    # tablas, recuadros y carteles: nunca más anchos que esto
+FALLBACK_COLUMNS = 80
+ANSI_ESCAPE_PATTERN = re.compile(r"(\x1b\[[0-9;?]*[ -/]*[@-~])")
+ZERO_WIDTH_JOINER = "‍"
+VARIATION_SELECTORS = {"︎", "️"}
+KEYCAP = "⃣"
+SKIN_TONES = range(0x1F3FB, 0x1F400)
+REGIONAL_INDICATORS = range(0x1F1E6, 0x1F200)
+
+# El carácter del proyecto vive acá. Reemplazar estos valores: solo muestran la forma.
+COLORS = {"accent": "38;2;94;196;182", "muted": "38;2;138;147;166", "done": "38;2;126;211;135",
+          "warning": "38;2;240;196;96", "error": "38;2;244;118;118", "danger": "1;97;41"}
+SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+SPINNER_INTERVAL_SECONDS = 0.09
+DONE_GLYPH, ERROR_GLYPH = "✔", "✖"
+
+
+def has_color(stream, environment=os.environ) -> bool:
+    if environment.get("NO_COLOR") or environment.get("TERM") == "dumb":
+        return False
+    force_color = environment.get("FORCE_COLOR", "").lower()
+    if force_color in ("0", "false"):
+        return False
+    if force_color:
+        return True
+    if environment.get("CI", "").lower() not in ("", "0", "false"):   # CI=False no es CI
+        return False
+    return stream.isatty()
+
+
+def terminal_columns(stream, environment=os.environ) -> int:
+    """Columnas del stream donde se dibuja. shutil.get_terminal_size() mira stdout: con `tool > archivo` da 80."""
+    try:
+        return os.get_terminal_size(stream.fileno()).columns
+    except (AttributeError, OSError, ValueError, io.UnsupportedOperation):
+        pass
+    columns = environment.get("COLUMNS", "")
+    return int(columns) if columns.isascii() and columns.isdigit() and int(columns) > 0 else FALLBACK_COLUMNS
+
+
+def layout_width(stream) -> int:
+    return min(terminal_columns(stream), MAXIMUM_LAYOUT_COLUMNS)
+
+
+def paint(enabled: bool, color_name: str, text: str) -> str:
+    return f"{ESCAPE}{COLORS[color_name]}m{text}{RESET}" if enabled else text
+
+
+def strip_ansi(text: str) -> str:
+    return ANSI_ESCAPE_PATTERN.sub("", text)
+
+
+def _is_open_flag(cluster: str) -> bool:
+    return len(cluster) == 1 and ord(cluster) in REGIONAL_INDICATORS
+
+
+def graphemes(text: str) -> list:
+    clusters = []
+    for character in text:
+        code = ord(character)
+        if clusters and (
+            unicodedata.category(character) in ("Mn", "Me")
+            or character in VARIATION_SELECTORS
+            or character == ZERO_WIDTH_JOINER
+            or code in SKIN_TONES
+            or clusters[-1].endswith(ZERO_WIDTH_JOINER)
+            or (code in REGIONAL_INDICATORS and _is_open_flag(clusters[-1]))
+        ):
+            clusters[-1] += character
+            continue
+        clusters.append(character)
+    return clusters
+
+
+def cluster_width(cluster: str) -> int:
+    if ord(cluster[0]) in REGIONAL_INDICATORS:
+        return 2                               # una bandera son dos indicadores y ocupa 2 celdas, no 4
+    if "️" in cluster or ZERO_WIDTH_JOINER in cluster or KEYCAP in cluster:
+        return 2                               # presentación de emoji: 1️⃣ y 👨‍👩‍👧 miden 2
+    return 2 if unicodedata.east_asian_width(cluster[0]) in ("W", "F") else 1
+
+
+def display_width(text: str) -> int:
+    return sum(cluster_width(cluster) for cluster in graphemes(strip_ansi(text)))
+
+
+def pad_visible(text: str, width: int, align_right=False) -> str:
+    padding = " " * max(width - display_width(text), 0)
+    return f"{padding}{text}" if align_right else f"{text}{padding}"
+
+
+def slice_visible(text: str, maximum_width: int) -> str:
+    """Prefijo que entra en maximum_width celdas, con al menos un grapheme. Los escapes miden 0 y van enteros."""
+    used_width, prefix, has_escapes, was_cut = 0, "", False, False
+    for part in ANSI_ESCAPE_PATTERN.split(text):
+        if ANSI_ESCAPE_PATTERN.fullmatch(part):
+            if not was_cut:
+                prefix += part
+            has_escapes = True
+            continue
+        for cluster in graphemes(part):
+            if was_cut:
+                break
+            width = cluster_width(cluster)
+            if used_width and used_width + width > maximum_width:
+                was_cut = True
+                break
+            used_width += width
+            prefix += cluster
+    return prefix + RESET if was_cut and has_escapes else prefix
+
+
+def truncate_visible(text: str, maximum_width: int) -> str:
+    if display_width(text) <= maximum_width:
+        return text
+    return slice_visible(text, max(maximum_width - 1, 1)) + "…"
+
+
+def wrap_text(text: str, width: int) -> list:
+    """Parte en palabras. Una palabra más ancha que la línea (URL, mail, ID) va sola y entera."""
+    lines, line = [], ""
+    for word in text.split(" "):
+        candidate = f"{line} {word}" if line else word
+        if display_width(candidate) <= width:
+            line = candidate
+            continue
+        if line:
+            lines.append(line)
+        line = word
+        if display_width(word) > width:
+            lines.append(word)
+            line = ""
+    if line or not lines:
+        lines.append(line)
+    return lines
+
+
+def fit_column_widths(natural_widths, minimum_widths, available_width):
+    """Achica primero las columnas más anchas, sin bajar del mínimo de cada una (su palabra más larga)."""
+    widths = list(natural_widths)
+    excess = sum(widths) - available_width
+    for column in sorted(range(len(widths)), key=lambda index: widths[index], reverse=True):
+        if excess <= 0:
+            break
+        reduction = min(excess, widths[column] - minimum_widths[column])
+        widths[column] -= reduction
+        excess -= reduction
+    return widths                                  # si sum(widths) > available_width, apilar
+
+
+def option_label(emoji: str, word: str, color_enabled: bool) -> str:
+    """Sin color (NO_COLOR, TERM=dumb, pipe), la palabra sola: `🚨 PROD` pasa a `PROD`."""
+    return f"{emoji} {word}" if color_enabled else word
+
+
+# Letras grandes de los entornos peligrosos del proyecto: 5 filas del mismo ancho por letra.
+BIG_LETTERS = {
+    "P": ["████ ", "█   █", "████ ", "█    ", "█    "],
+    "R": ["████ ", "█   █", "████ ", "█  █ ", "█   █"],
+    "O": [" ███ ", "█   █", "█   █", "█   █", " ███ "],
+    "D": ["████ ", "█   █", "█   █", "█   █", "████ "],
+}
+BIG_LETTER_GAP = " "
+
+
+def big_text(word: str):
+    """Las 5 filas del nombre en letras grandes, o None si falta alguna letra."""
+    if any(letter not in BIG_LETTERS for letter in word):
+        return None
+    return [BIG_LETTER_GAP.join(BIG_LETTERS[letter][row] for letter in word) for row in range(5)]
+
+
+def render_danger_banner(environment_name: str, subtitle: str, columns: int, color_enabled: bool) -> list:
+    """Cartel de entorno peligroso: fondo rojo y letras blancas; sin color, bordes │ y sin fondo."""
+    width = min(columns, MAXIMUM_LAYOUT_COLUMNS)
+    inner_width = width - 4
+    art = big_text(environment_name.upper())
+    rows = [""]
+    if art and display_width(art[0]) <= inner_width:
+        rows += [*art, ""]                         # más angosta que el arte: sin letras grandes
+    rows += [*wrap_text(f"{option_label('🚨', environment_name.upper(), color_enabled)} · {subtitle}", inner_width), ""]
+    centered = [pad_visible(" " * ((inner_width - display_width(row)) // 2) + row, inner_width) for row in rows]
+    if color_enabled:
+        return [paint(True, "danger", f"  {row}  ") for row in centered]
+    return [f"│ {row} │" for row in centered]
+
+
+class Spinner:
+    """Spinner en un hilo. stop() es idempotente: lo llama quien necesita la terminal y lo llama el final."""
+
+    def __init__(self, stream, label, animate, clock=time.monotonic, interval_seconds=SPINNER_INTERVAL_SECONDS):
+        self.stream, self.label, self.animate = stream, label, animate
+        self.clock, self.interval_seconds = clock, interval_seconds
+        self.note = ""
+        self._stop_event = threading.Event()
+        self._lock = threading.Lock()
+        self._thread = None
+        self._is_stopped = False
+        self.started_at = clock()
+
+    def elapsed_text(self) -> str:
+        total_seconds = int(self.clock() - self.started_at)
+        return f"{total_seconds // 60:02d}:{total_seconds % 60:02d}"
+
+    def start(self):
+        if not self.animate:
+            self.stream.write(f"... {self.label}\n")
+            return self
+        self.stream.write(HIDE_CURSOR)
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+        return self
+
+    def set_note(self, note: str) -> None:
+        """Estado durante la espera («reintentando, 2/3»). Sin animación, una línea solo cuando cambia."""
+        with self._lock:
+            is_new = note != self.note
+            self.note = note
+        if is_new and note and not self.animate:
+            self.stream.write(f"    {note}\n")
+
+    def _run(self) -> None:
+        frame_index = 0
+        while True:
+            frame = SPINNER_FRAMES[frame_index % len(SPINNER_FRAMES)]
+            with self._lock:
+                note = f" · {self.note}" if self.note else ""
+            text = truncate_visible(f"{self.label} {self.elapsed_text()}{note}", terminal_columns(self.stream) - 3)
+            self.stream.write(f"{CLEAR_LINE}{frame} {text}")
+            self.stream.flush()
+            frame_index += 1
+            if self._stop_event.wait(self.interval_seconds):   # corta enseguida, sin esperar el intervalo
+                return
+
+    def stop(self) -> None:
+        with self._lock:
+            if self._is_stopped:
+                return
+            self._is_stopped = True
+        self._stop_event.set()
+        if self._thread:
+            self._thread.join()
+            self.stream.write(f"{CLEAR_LINE}{SHOW_CURSOR}")
+            self.stream.flush()
+
+
+@contextmanager
+def step(stream, label, animate, clock=time.monotonic):
+    """Un paso con spinner. Si termina con cualquier excepción (también Ctrl+C), lo marca ✖ y la relanza."""
+    spinner = Spinner(stream, label, animate, clock).start()
+    try:
+        yield spinner
+    except BaseException:
+        spinner.stop()
+        stream.write(f"  {ERROR_GLYPH} {label}\n")
+        raise
+    spinner.stop()
+    stream.write(f"  {DONE_GLYPH} {label} · {spinner.elapsed_text()}\n")
+```
+
+- La interfaz va a stderr: `ui_stream = sys.stderr`, y el ancho se mide sobre ese stream, no sobre stdout.
+- Un prompt que necesita la terminal (el broker de secretos de `interactive-cli-design`) llama a `spinner.stop()` antes de preguntar; el `step` lo vuelve a llamar al final sin efecto.
+- `render_table` sigue la forma del kit de Node: `fit_column_widths`, `wrap_text` por celda y, si no entra, filas apiladas.
+
+## 11. Antes y después
 
 Antes: se ve bien una vez, en una sola terminal.
 
@@ -1184,7 +1569,7 @@ main().catch((error) => {
 
 Qué cambió: abre con la tarjeta de encabezado. stdout solo lleva la tabla o el JSON; la tarjeta, los pasos y el resumen van a stderr. El tiempo total es el del trabajo real, a 40 columnas la tabla se apila sin perder datos, y cada estado dice su nombre.
 
-## 11. Verificar
+## 12. Verificar
 
 Correr el script real, no una versión escrita para el chequeo.
 
@@ -1203,6 +1588,93 @@ tool --json | node -e "JSON.parse(require('fs').readFileSync(0, 'utf8'))"   # JS
 **Un error forzado durante el spinner.** Lo mismo, más una línea de error clara.
 
 **Trabajo de 0 ms.** El script no tarda más que su arranque.
+
+**Casos que los kits tienen que pasar:**
+
+| Caso | Pasa si |
+|---|---|
+| `truncateVisible` y `renderBox` con texto ya pintado, a 12 y 40 columnas | Ningún escape cortado, el color cerrado y el ancho visible es el pedido |
+| Degradé con `🇧🇷` y `👨‍👩‍👧` | La bandera y el emoji se ven enteros; `🇧🇷 BR` mide 5 |
+| Tabla con una columna larga (un camino de 6 tramos) a 60 y a 22 columnas | A 60 se parte la celda larga y la tabla se mantiene; a 22, apilada. Ningún dato truncado |
+| Recuadro con una URL más ancha que la terminal | La URL va entera y sola en su renglón |
+| `tool > archivo` con stderr en una terminal de 40 columnas | La interfaz se dibuja a 40 |
+| `NO_COLOR=1` con opciones con emoji | Solo la palabra |
+| Producción elegida, a 80, a 24 y sin color | Cartel rojo con letras grandes; a 24, sin letras grandes; sin color, con bordes `│`. Ninguna fila más ancha que la terminal |
+
+**Sin pseudoconsola, en Python.** Lo que no depende de la terminal real se prueba en un test común:
+
+- **Reloj y `sleep` inyectados.** Un `FakeClock` vuelve deterministas las duraciones. `sleep=self.fail` prueba que no hay pausas decorativas; `sleep=delays.append` verifica la secuencia exacta de reintentos sin esperar.
+- **`TtyStream`:** un `io.StringIO` que dice ser terminal, para ejercitar el camino con color y animación.
+- **Emulador de pantalla mínimo:** interpreta `\n`, `\r`, `ESC[nA` y `ESC[2K`, con el salto diferido en la última columna. Verifica qué queda en pantalla después de redibujar: la pregunta una sola vez, sin restos y ninguna fila más ancha que la terminal.
+- **Override del chequeo de terminal** en `can_prompt` para tests, que nunca anula `--no-input`.
+
+```python
+import io, re
+
+class FakeClock:
+    def __init__(self, now=0.0):
+        self.now = now
+    def __call__(self):
+        return self.now
+    def advance(self, seconds):
+        self.now += seconds
+
+class TtyStream(io.StringIO):
+    def isatty(self):
+        return True
+
+SCREEN_CONTROL = re.compile(r"\x1b\[([?\d;]*)([A-Za-z])")
+
+class ScreenEmulator:
+    """Lo que queda en pantalla: \\n, \\r, ESC[nA y ESC[2K, con salto diferido en la última columna."""
+
+    def __init__(self, columns):
+        self.columns, self.rows, self.row, self.column, self.wrap_pending = columns, [[]], 0, 0, False
+
+    def feed(self, text):
+        position = 0
+        while position < len(text):
+            control = SCREEN_CONTROL.match(text, position)
+            if control:
+                parameters, command = control.group(1), control.group(2)
+                count = int(parameters) if parameters.isdigit() else 1
+                if command == "A":
+                    self.row, self.wrap_pending = max(self.row - count, 0), False
+                elif command == "K" and parameters == "2":
+                    self.rows[self.row] = []
+                position = control.end()          # ESC[...m, ESC[?25h y el resto no mueven el cursor
+                continue
+            character = text[position]
+            position += 1
+            if character == "\n":
+                self._next_row()
+            elif character == "\r":
+                self.column, self.wrap_pending = 0, False
+            else:
+                self._write(character)
+
+    def _next_row(self):
+        self.row, self.column, self.wrap_pending = self.row + 1, 0, False
+        while len(self.rows) <= self.row:
+            self.rows.append([])
+
+    def _write(self, character):
+        if self.wrap_pending:
+            self._next_row()
+        cells = self.rows[self.row]
+        cells.extend(" " * (self.column + 1 - len(cells)))
+        cells[self.column] = character
+        if self.column == self.columns - 1:
+            self.wrap_pending = True               # la terminal recién salta con el próximo carácter
+        else:
+            self.column += 1
+
+    def lines(self):
+        return ["".join(cells).rstrip() for cells in self.rows]
+```
+
+El emulador cuenta un carácter por celda: para emojis, medir aparte con `display_width`.
+
 
 Trampas al automatizar estos chequeos:
 

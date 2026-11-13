@@ -42,11 +42,12 @@ Con `argparse`: `parser.error(mensaje)` sale con 2 y `action="version"` imprime 
 ## Se puede preguntar
 
 ```python
-def can_prompt(no_input: bool) -> bool:
-    continuous_integration = os.environ.get("CI", "") not in ("", "0", "false")
+def can_prompt(no_input: bool, is_terminal=None) -> bool:
+    """`is_terminal` es para tests: reemplaza el chequeo de terminal, pero nunca anula --no-input."""
+    continuous_integration = os.environ.get("CI", "").lower() not in ("", "0", "false")   # CI=False no es CI
+    has_terminal = is_terminal if is_terminal is not None else sys.stdin.isatty() and sys.stderr.isatty()
     return (
-        sys.stdin.isatty()
-        and sys.stderr.isatty()
+        has_terminal
         and not no_input
         and not continuous_integration
         and os.environ.get("TERM") != "dumb"
@@ -160,6 +161,10 @@ En Windows no hay una forma de citar que sirva igual en `cmd.exe` y en PowerShel
       stream.reconfigure(encoding="utf-8")
   ```
 
+- **Ancho de la terminal.** `shutil.get_terminal_size()` consulta stdout: con `tool > archivo`, la interfaz en stderr se dibuja a 80 columnas aunque la terminal tenga 40. Medir sobre el stream donde se dibuja, con `os.get_terminal_size(sys.stderr.fileno())` y respaldo a `COLUMNS` y a 80 (`terminal_columns` del kit de Python de `vivid-visual-output`). Lo mismo para el `width` del formatter de `argparse`, que dibuja en stdout.
+- **`argparse` y los cortos de varias letras.** Con `-s` y `-ss`, `-ssx` se lee como `-s sx`: los cortos van de una letra ([flags-and-config.md](flags-and-config.md#cortos-de-una-letra)).
+- **`urllib` y el token.** Un token con un `\n` pegado hace que `http.client` lance un `ValueError` con el valor de la cabecera en el mensaje. Envolverlo sin el mensaje (`from None`): [remote-actions.md](remote-actions.md#errores-sin-datos-sensibles). Reintentos y su secuencia testeable: [remote-actions.md](remote-actions.md#reintentos).
+- **Tests de un CLI interactivo** (`start_new_session`, `openpty`, `pty.fork`, reloj inyectado): [verification.md](verification.md#python-sin-node-pty).
 - **`input()`** escribe su texto en stdout. Sin questionary, imprimir la pregunta en stderr y llamar a `input()` sin argumentos.
 - **Sin questionary y con listas largas**, un menú propio con filtro: [native-prompts.md](native-prompts.md).
 - **Comando de arranque.** En Windows, `.venv\Scripts\python.exe` no anda con barras normales desde `cmd`. Documentarlo con barras invertidas o con `uv run`.
