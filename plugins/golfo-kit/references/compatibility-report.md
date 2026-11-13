@@ -8,7 +8,7 @@
 ## A. Resumen ejecutivo
 
 - **Fecha de auditoría:** 2026-10-23 (generado 2026-10-23T21:00:00Z).
-- **Total de skills analizadas:** 46.
+- **Total de skills analizadas:** 47.
 - **Funcionalidades deshabilitadas:** 0.
 - **Adaptaciones implementadas:** 42; verificadas: 20.
 - **Problemas críticos pendientes:** ninguno.
@@ -43,7 +43,7 @@ Dependencias implícitas de navegador de measured-performance-optimization, prev
 | `adapted` | 0 | 1 | 1 |
 | `partial` | 0 | 0 | 0 |
 | `incompatible` | 0 | 0 | 0 |
-| `unverified` | 42 | 45 | 45 |
+| `unverified` | 43 | 46 | 46 |
 
 ### Regla de derivación del estado
 
@@ -83,6 +83,7 @@ Una funcionalidad `disabled` lista las alternativas investigadas y ninguna es vi
 | `improve-spec` | `unverified` | `unverified` | `unverified` |
 | `inline-thread-autofix` | `unverified` | `unverified` | `unverified` |
 | `interactive-cli-design` | `unverified` | `unverified` | `unverified` |
+| `jira-ticket` | `unverified` | `unverified` | `unverified` |
 | `measured-performance-optimization` | `unverified` | `unverified` | `unverified` |
 | `mobile-first-responsive-layout` | `unverified` | `unverified` | `unverified` |
 | `mock-first-testing-design` | `unverified` | `unverified` | `unverified` |
@@ -1403,6 +1404,79 @@ Pendiente de verificar:
 - Ejecutar la skill en Claude Code con un caso real.
 - Ejecutar la skill en Codex CLI con un caso real.
 - Ejecutar la skill en Hermes Agent con un caso real.
+
+### `jira-ticket`
+
+**Identificación**
+
+- Nombre: Jira Ticket; versión: 1.0.0; SKILL.md: `plugins/golfo-kit/skills/jira-ticket/SKILL.md`.
+- Propósito: Crea y sincroniza Stories de Jira con subtareas reales y las enlaza en ambos sentidos con pull requests, con la organización configurada por variables JIRA_TICKET_*.
+- Funcionalidades principales: creación y actualización de Story con Sub-task; trazabilidad Jira↔PR; cierre por merge; configuración por variables de entorno.
+- Agentes soportados declarados: no declara.
+
+**Dependencias**
+
+| Dependencia | Tipo | Obligatoria | Agentes que la tienen |
+|---|---|---|---|
+| MCP de Atlassian (Jira) | mcp | sí | `claude_code`; `codex`; `hermes` |
+| `python3` en PATH (scripts/jira-ticket.py) | command | no | `claude_code`; `codex`; `hermes` |
+| `git` y `gh` en PATH | command | no | `claude_code`; `codex`; `hermes` |
+| Memoria persistente (Engram) | mcp | no | `claude_code`; `codex`; `hermes` |
+
+**Compatibilidad por agente**
+
+#### jira-ticket / `claude_code`: `unverified`
+
+Depende del MCP de Atlassian y de `gh` para los PRs; sin herramientas específicas de agente. No se ejecutó en Claude Code contra un Jira real durante esta auditoría, así que su funcionamiento no está verificado.
+
+- Capacidades faltantes: ninguna.
+- Alternativas investigadas: ninguna.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `core-workflow` | sí | `unverified` | `native` | Instrucciones de la skill y helper scripts/jira-ticket.py; las escrituras en Jira usan el MCP de Atlassian disponible en el agente. | — | Sin dependencias específicas de agente detectadas por inspección; no ejecutada en Claude Code contra un Jira real en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
+
+#### jira-ticket / `codex`: `unverified`
+
+Depende del MCP de Atlassian y de `gh` para los PRs; sin herramientas específicas de agente. No se ejecutó en Codex CLI contra un Jira real durante esta auditoría, así que su funcionamiento no está verificado.
+
+- Capacidades faltantes: ninguna.
+- Alternativas investigadas: ninguna.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `core-workflow` | sí | `unverified` | `native` | Instrucciones de la skill y helper scripts/jira-ticket.py; las escrituras en Jira usan el MCP de Atlassian disponible en el agente. | — | Sin dependencias específicas de agente detectadas por inspección; no ejecutada en Codex CLI contra un Jira real en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
+
+#### jira-ticket / `hermes`: `unverified`
+
+Depende del MCP de Atlassian y de `gh` para los PRs; sin herramientas específicas de agente. No se ejecutó en Hermes Agent contra un Jira real durante esta auditoría, así que su funcionamiento no está verificado.
+
+- Capacidades faltantes: ninguna.
+- Alternativas investigadas: ninguna.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `core-workflow` | sí | `unverified` | `native` | Instrucciones de la skill y helper scripts/jira-ticket.py; las escrituras en Jira usan el MCP de Atlassian disponible en el agente. | — | Sin dependencias específicas de agente detectadas por inspección; no ejecutada en Hermes Agent contra un Jira real en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
+
+**Implementación**
+
+- Adaptaciones: ninguna.
+- Archivos modificados: ninguno.
+- Fallback: ninguno.
+- Cambios de comportamiento respecto del original: ninguno.
+
+**Verificación**
+
+| Prueba | Agente | Tipo | Comando | Resultado | Evidencia |
+|---|---|---|---|---|---|
+| `static-inspection` | `any` | static | `grep -rE "AskUserQuestion\|request_user_input\|Monitor\|Cron(Create\|List\|Delete)\|PushNotification\|TaskStop\|Agent\|subagent\|mcp__\|claude -p\|codex exec\|~/.claude\|~/.codex\|apply_patch\|update_plan" plugins/golfo-kit/skills/<skill>` | `passed` | Inspección de SKILL.md, references y scripts del 2026-11-13: solo usa herramientas MCP de Atlassian y `gh`, sin herramientas exclusivas de un agente. |
+| `helper-pytest` | `any` | bats | `python3 -m pytest plugins/golfo-kit/skills/jira-ticket/scripts/tests` | `passed` | 42 tests del helper con datos ficticios en Windows (Python 3.12); la versión anterior de la suite (41 tests) pasó en macOS (Python 3.12). |
+
+Pendiente de verificar:
+
+- Ejecutar la skill en Claude Code contra un Jira real.
+- Ejecutar la skill en Codex CLI contra un Jira real.
+- Ejecutar la skill en Hermes Agent contra un Jira real.
 
 ### `measured-performance-optimization`
 

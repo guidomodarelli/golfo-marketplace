@@ -343,6 +343,7 @@ lo que cubre el cambio y dejá la suite completa a la CI:
 | `review-fix-loop`, `sibling-worktree`, `create-version`, `check-version-bump`, `validate-portable-plugins` o el eval runner | Su suite (`pnpm run test:review-fix-loop`, `pnpm run test:sibling-worktree`, `pnpm exec bats tests/create-version.bats tests/check-version-bump.bats tests/validate-portable-plugins.bats`, `pnpm exec bats skill-eval-runner/tests/*.bats`) |
 | Motor de cobertura de skills (`plugins/golfo-kit/tools/skill-coverage/**`) | `pnpm run test:skill-coverage` |
 | `user-manual`: navegación de `DESIGN.md`, `scripts/check-*`, `build-manual.mjs` o `assets/` | `pnpm run test:user-manual` (con Playwright para la suite de navegador) y, si se tocó la paleta, `pnpm exec bats plugins/golfo-kit/skills/user-manual/tests/check-design-tokens.bats` |
+| Helper de `jira-ticket` (`scripts/jira-ticket.py`) | `pnpm run test:jira-ticket` (necesita `pytest`: `python3 -m pip install pytest`) |
 | Frontmatter de una skill o `plugin.json` de un plugin | `pnpm validate-portable-plugins` |
 
 Anteponé `LC_ALL=C.UTF-8` a cada `bats` (ver más abajo). En Windows, `bats --jobs` no funciona:
