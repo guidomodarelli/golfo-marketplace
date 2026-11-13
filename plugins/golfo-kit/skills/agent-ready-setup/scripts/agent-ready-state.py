@@ -161,6 +161,8 @@ MANIFEST_RELATIVE_PATH = PROJECT_CONFIG_RELATIVE_PATH
 # The review cache lives with the hooks, which also run where the skill is not installed.
 REVIEW_CACHE_RELATIVE_PATH = "assets/common/hooks/review-cache.py"
 ENGINE_SKILL_DIRECTORY = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Infers the provider of a run from the environment and the installation path.
+PROVIDER_RESOLVER_RELATIVE_PATH = "scripts/resolve-provider.sh"
 LOCK_RELATIVE_PATH = ".agents/agent-ready.lock.json"
 PROFILE_CATALOG_RELATIVE_PATH = "assets/profiles.json"
 PROVIDER_CATALOG_RELATIVE_PATH = "assets/providers.json"
@@ -3713,7 +3715,13 @@ def evaluate_check(project_root, skill_dir, offline):
     problems, incomplete = check_problems(project_root, content_dir)
     if incomplete:
         unavailable.append(incomplete)
-    conflicts, failing_conflicts = check_conflicts(project_root, content_dir, offline)
+    conflicts, failing_conflicts = {}, False
+    if not unavailable:
+        # With a source missing the selection cannot be evaluated: source-unavailable already says so.
+        try:
+            conflicts, failing_conflicts = check_conflicts(project_root, content_dir, offline)
+        except IncompleteEvaluationError as incomplete_error:
+            unavailable.append(str(incomplete_error))
     if unavailable:
         status = CHECK_SOURCE_UNAVAILABLE
     elif problems:
@@ -3789,6 +3797,17 @@ def report_conflicts(plan, as_json):
     return CONFLICTS_STATUS if found else 0
 
 
+def session_provider():
+    """The provider of this run as resolve-provider.sh infers it (the environment, then the
+    installation), the same as every other command; None when it cannot tell."""
+    from_environment = os.environ.get("AGENT_READY_SETUP_ACTIVE_PROVIDER")
+    if from_environment in SUPPORTED_PROVIDERS:
+        return from_environment
+    resolved = run_quiet([bash_executable(), os.path.join(ENGINE_SKILL_DIRECTORY, PROVIDER_RESOLVER_RELATIVE_PATH),
+                          "--skill-dir", ENGINE_SKILL_DIRECTORY])
+    return resolved if resolved in SUPPORTED_PROVIDERS else None
+
+
 def check_conflicts(project_root, content_dir, offline):
     """The conflicts agent-ready check reports under ci.conflicts: (result, whether they fail the check)."""
     configuration = configuration_of(project_root, offline)
@@ -3800,7 +3819,7 @@ def check_conflicts(project_root, content_dir, offline):
         return result, False
     catalog = load_effective_catalog(project_root, content_dir)
     run = types.SimpleNamespace(project=project_root, skill_dir=content_dir, offline=offline, profiles=None, stack=None,
-                                format="text", provider=os.environ.get("AGENT_READY_SETUP_ACTIVE_PROVIDER") or "claude")
+                                format="text", provider=session_provider())
     requested, _ = resolve_selection(run, catalog)
     plan = compute_plan(project_root, content_dir, catalog, requested)
     tools_report = pack_tools_report(plan, catalog, configuration)
@@ -3809,7 +3828,11 @@ def check_conflicts(project_root, content_dir, offline):
     if structural_mode != CI_CONFLICTS_OFF:
         result["structural"] = structural_conflict_lines(
             structural_conflicts(project_root, content_dir, plan, catalog, configuration))
-    if semantic_mode != CI_CONFLICTS_OFF:
+    if semantic_mode != CI_CONFLICTS_OFF and run.provider is None:
+        # Without a provider the reviews cannot even read their cache, whose keys include it.
+        result["unchecked"] = 1
+        result["semanticProblem"] = "no provider could be inferred; set AGENT_READY_SETUP_ACTIVE_PROVIDER"
+    elif semantic_mode != CI_CONFLICTS_OFF:
         reviews = {"semanticConflicts": semantic_conflicts(run, plan),
                    "competingSkills": competing_skills_report(run, plan, catalog, configuration)}
         result["semantic"], result["unchecked"] = semantic_conflict_lines(reviews)
@@ -3846,7 +3869,10 @@ def print_check_text(result):
             write_line(f"Conflicts ({mode_key}: {conflicts[kind + 'Mode']}):")
             for line in conflicts[kind]:
                 write_line(line)
-    if conflicts.get("unchecked"):
+    if conflicts.get("semanticProblem"):
+        write_line(f"  ! the AI reviews could not run: {conflicts['semanticProblem']} "
+                   f"({CI_CONFLICTS_SEMANTIC_KEY}: {conflicts['semanticMode']})")
+    elif conflicts.get("unchecked"):
         write_line(f"  ! {conflicts['unchecked']} pair(s) of the AI reviews could not be reviewed "
                    f"({CI_CONFLICTS_SEMANTIC_KEY}: {conflicts['semanticMode']})")
     if result["status"] in (CHECK_OUTDATED, CHECK_SOURCE_UNAVAILABLE):
