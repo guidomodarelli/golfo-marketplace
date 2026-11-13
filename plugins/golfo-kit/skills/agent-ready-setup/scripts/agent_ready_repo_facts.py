@@ -38,20 +38,43 @@ def load_facts(skill_dir):
         return json.load(facts_file)
 
 
+def without_comment(value):
+    """A YAML scalar without its inline comment (" # ...") and quotes."""
+    if " #" in value:
+        value = value.split(" #", 1)[0]
+    return value.strip().strip("'\"")
+
+
 def rule_assumptions(text):
-    """{fact: value} the rule declares under ``assumes`` in its frontmatter; {} without one."""
+    """{fact: value} the rule declares under ``assumes`` in its frontmatter; {} without one.
+
+    Accepts the block form (one indented ``fact: value`` per line, with blank lines and comments in
+    between) and the inline form (``assumes: {testRunner: vitest}``), the two a rule uses.
+    """
     lines = text.splitlines()
     if not lines or lines[0].strip() != FRONTMATTER_DELIMITER:
         return {}
     assumptions, inside = {}, False
     for line in lines[1:]:
-        if line.strip() == FRONTMATTER_DELIMITER:
+        stripped = line.strip()
+        if stripped == FRONTMATTER_DELIMITER:
             break
+        if not stripped or stripped.startswith("#"):
+            continue
         if not line.startswith((" ", "\t")):
-            inside = line.split(":", 1)[0].strip() == ASSUMES_KEY
+            key, _, rest = line.partition(":")
+            inside = key.strip() == ASSUMES_KEY
+            rest = without_comment(rest) if inside else ""
+            if rest.startswith("{") and rest.endswith("}"):
+                for pair in rest[1:-1].split(","):
+                    fact, _, value = pair.partition(":")
+                    if fact.strip() and without_comment(value):
+                        assumptions[fact.strip().strip("'\"")] = without_comment(value)
+                inside = False
             continue
         if inside and ":" in line:
-            fact, value = (part.strip().strip("'\"") for part in line.split(":", 1))
+            fact, _, value = line.partition(":")
+            fact, value = fact.strip().strip("'\""), without_comment(value)
             if fact and value:
                 assumptions[fact] = value
     return assumptions
@@ -62,7 +85,8 @@ def read_json(path):
     if not os.path.isfile(path) or os.path.islink(path):
         return None
     try:
-        with open(path, encoding="utf-8") as json_file:
+        # utf-8-sig, like the detector: Windows tools may write a BOM.
+        with open(path, encoding="utf-8-sig") as json_file:
             return json.load(json_file)
     except (OSError, ValueError):
         return None
@@ -75,7 +99,7 @@ def editorconfig_values(project_root):
         return {}
     parser = configparser.ConfigParser(interpolation=None, strict=False)
     try:
-        with open(path, encoding="utf-8") as editorconfig_file:
+        with open(path, encoding="utf-8-sig") as editorconfig_file:
             parser.read_string("[__root__]\n" + editorconfig_file.read())
     except (OSError, configparser.Error):
         return {}
@@ -118,8 +142,8 @@ def value_evidence(project_root, signals, package, editorconfig, prettier):
         evidence.append(EDITORCONFIG)
     wanted = signals.get("prettier")
     config, prettier_file = prettier
-    if wanted and prettier_file and all(config.get(key, False if isinstance(value, bool) else None) == value
-                                        for key, value in wanted.items()):
+    # Only an explicit option counts: without it Prettier takes the indentation from .editorconfig.
+    if wanted and prettier_file and all(key in config and config[key] == value for key, value in wanted.items()):
         evidence.append(prettier_file)
     return sorted(set(evidence))
 

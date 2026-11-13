@@ -944,7 +944,9 @@ plan_text() {
   mkdir -p .agents/rules
   printf -- '---\nassumes:\n  linter: biome\n---\n# Ours\n' > .agents/rules/ours.md
   printf 'root = true\n[*]\nindent_style = tab\n' > .editorconfig
-  printf -- '---\nassumes:\n  indentation: spaces\n---\n# Format\n' > .agents/rules/format.md
+  # A blank line and a comment inside assumes, and a Prettier config that leaves indentation to .editorconfig.
+  printf -- '---\nassumes:\n\n  # format\n  indentation: spaces # why\n---\n# Format\n' > .agents/rules/format.md
+  printf '{"semi": false}\n' > .prettierrc
   plan_text --profiles node
   [ "$status" -eq 0 ]
   [[ "$output" == *"~ .agents/rules/ours.md (project) assumes linter: biome, which assets/repo-facts.json does not know; it is not checked"* ]]
