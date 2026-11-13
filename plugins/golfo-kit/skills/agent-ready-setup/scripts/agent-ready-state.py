@@ -22,9 +22,11 @@ network; plan and status read what the cache already has.
 
 import argparse
 import difflib
+import fnmatch
 import importlib.util
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -95,6 +97,8 @@ from agent_ready_options import (  # noqa: E402
     CI_JOB_CONFLICTS_ENABLED_KEY,
     COMPETING_TOOLS_ENABLED_KEY,
     COMPETING_SKILLS_ENABLED_KEY,
+    EDIT_CONFLICTS_ENABLED_KEY,
+    SESSION_START_CONFLICTS_ENABLED_KEY,
     USER_SERVERS_ENABLED_KEY,
     USER_SERVERS_REGISTER_KEY,
     EXCLUDED_DEFAULTS_KEY,
@@ -216,6 +220,13 @@ DRIFT_STATUS = 4
 INCOMPLETE_EVALUATION_STATUS = 5
 # agent-ready conflicts and agent-ready check found conflicts between the profiles.
 CONFLICTS_STATUS = 6
+# The moments a hook asks status for the conflicts alone, and the prefix of each line it prints.
+CONFLICTS_MOMENT_SESSION_START = "session-start"
+CONFLICTS_MOMENT_EDIT = "edit"
+CONFLICTS_HOOK_PREFIX = "[conflicts]"
+# Besides the files of the repository facts and of the parity checks (CI and .env examples), what the
+# structural checks read: the instructions, the harness directories (rules, skills, settings, hooks) and MCP.
+CONFLICT_INPUT_PATTERN = re.compile(r"^(AGENTS\.md|CLAUDE\.md|\.mcp\.json|(\.agents|\.claude|\.codex)/.+)$")
 # plan formats that print only the conflicts, for agent-ready conflicts.
 CONFLICTS_FORMAT = "conflicts"
 CONFLICTS_JSON_FORMAT = "conflicts-json"
@@ -2610,8 +2621,21 @@ def selection_differences(lock, plan):
     return differences
 
 
-def compute_status(project_root, skill_dir):
-    """Read-only state: manifest, checkout versus lock, source versus lock."""
+def conflict_inputs_changed(changed, skill_dir):
+    """True when an edited path, relative to the project, is one the structural checks read."""
+    facts = repo_facts.load_facts(skill_dir) if skill_dir else {}
+    parity_patterns = parity.REPOSITORY_CI_FILES + parity.EXAMPLE_ENVIRONMENT_FILES
+    return any(CONFLICT_INPUT_PATTERN.match(path) or repo_facts.is_signal_file(path, facts)
+               or any(fnmatch.fnmatchcase(path, pattern) for pattern in parity_patterns)
+               for path in (changed_path.replace(os.sep, "/") for changed_path in changed))
+
+
+def compute_status(project_root, skill_dir, conflicts_key=None):
+    """Read-only state: manifest, checkout versus lock, source versus lock.
+
+    ``conflicts_key`` also lists the structural conflicts of the selection when that boolean key is
+    on (True always lists them); without it, status stays as cheap as the checks that call it.
+    """
     manifest = read_manifest(project_root)
     configuration = configuration_of(project_root)
     lock = read_lock(project_root)
@@ -2671,6 +2695,11 @@ def compute_status(project_root, skill_dir):
             status["sources"] = plan["sourceReport"]
             status["plan"] = plan
             status["packTools"] = pack_tools_report(plan, catalog, configuration)
+            if conflicts_key is True or (conflicts_key and configuration.value(conflicts_key)):
+                if status["packTools"]:
+                    plan["packTools"] = status["packTools"]
+                status["conflicts"] = structural_conflict_lines(
+                    structural_conflicts(project_root, skill_dir, plan, catalog, configuration, with_context=False))
             changed = [entry["destination"] for entry in plan["entries"]
                        if entry["action"] not in (ACTION_UNCHANGED, ACTION_DROP)]
             changed += [f"{entry['destination']} (block {entry['id']})" for entry in plan.get("blocks", [])
@@ -2771,6 +2800,16 @@ def print_review_summary(reviews, brief, stream):
         write_line(f"  {reviews['stale']} review(s) are out of date and run again on the next edit or apply.", stream)
 
 
+def print_status_conflicts(lines, stream):
+    """The structural conflicts status knows about, one per line; nothing when there is none."""
+    if not lines:
+        return
+    write_line(paint(f"Conflicts between the profiles: {len(lines)} structural, "
+                     f"listed with their fix by `agent-ready conflicts`:", "warning", stream))
+    for line in lines:
+        write_line(paint(line, "warning", stream))
+
+
 def print_status(status, brief):
     """Human readable status."""
     stream = sys.stdout
@@ -2823,6 +2862,7 @@ def print_status(status, brief):
             ))
         else:
             write_line(paint("Source matches the lock: no update pending.", "ok", stream))
+    print_status_conflicts(status.get("conflicts"), stream)
     print_review_summary(status.get("reviews"), brief, stream)
     print_pack_tools(status.get("packTools"), stream, brief=True)
     if not brief and status["capabilities"]:
@@ -3622,7 +3662,21 @@ def command_pack_scripts(arguments):
 
 def command_status(arguments):
     """Print the read-only status."""
-    status = compute_status(arguments.project, arguments.skill_dir)
+    if arguments.conflicts_only:
+        # The hooks: only the structural conflicts, and nothing at all when there is none.
+        key = (EDIT_CONFLICTS_ENABLED_KEY if arguments.conflicts_only == CONFLICTS_MOMENT_EDIT
+               else SESSION_START_CONFLICTS_ENABLED_KEY)
+        if arguments.changed is not None and not conflict_inputs_changed(arguments.changed, arguments.skill_dir):
+            return 0
+        lines = compute_status(arguments.project, arguments.skill_dir, key).get("conflicts") or []
+        for line in lines:
+            write_line(f"{CONFLICTS_HOOK_PREFIX} {line.strip()}")
+        if lines:
+            write_line(f"{CONFLICTS_HOOK_PREFIX} Each one with its fix: agent-ready conflicts")
+        return 0
+    # The session hook asks for --brief; agent-ready status always lists them.
+    conflicts_key = SESSION_START_CONFLICTS_ENABLED_KEY if arguments.brief else True
+    status = compute_status(arguments.project, arguments.skill_dir, conflicts_key)
     if arguments.format == "json":
         write_line(serialize_json(status_report(status)).rstrip("\n"))
         return DRIFT_STATUS if arguments.check and status_has_drift(status) else 0
@@ -3740,10 +3794,13 @@ def evaluate_check(project_root, skill_dir, offline):
     return {"status": status, "ci": ci, "problems": problems, "unavailable": unavailable, "conflicts": conflicts}
 
 
-def structural_conflicts(project_root, skill_dir, plan, catalog, configuration):
-    """The checks of the profiles that need no AI, on a plan: what plan, conflicts and check report."""
+def structural_conflicts(project_root, skill_dir, plan, catalog, configuration, with_context=True):
+    """The checks of the profiles that need no AI, on a plan: what plan, conflicts and check report.
+
+    ``with_context`` adds the context budget, which only informs: status leaves it out.
+    """
     report = {}
-    if configuration.value(CONTEXT_BUDGET_ENABLED_KEY):
+    if with_context and configuration.value(CONTEXT_BUDGET_ENABLED_KEY):
         report["context"] = context_budget(project_root, skill_dir, catalog, plan, configuration)
     report["machine"] = machine_report(project_root, plan, configuration)
     if configuration.value(REPO_REALITY_ENABLED_KEY):
@@ -4921,6 +4978,12 @@ def build_parser():
     add_common(status_parser, needs_skill=False)
     status_parser.add_argument("--skill-dir", help="resolved source, to detect pending updates")
     status_parser.add_argument("--brief", action="store_true", help="summary lines only")
+    status_parser.add_argument("--conflicts-only", choices=(CONFLICTS_MOMENT_SESSION_START, CONFLICTS_MOMENT_EDIT),
+                               help="only the structural conflicts, for the session or the edit hook "
+                                    "(conflicts.sessionStart.enabled, conflicts.onEdit.enabled)")
+    status_parser.add_argument("--changed", action="append", metavar="PATH",
+                               help="with --conflicts-only edit: the edited paths, relative to the project; "
+                                    "nothing is checked when none of them is an input of the checks")
     status_parser.add_argument("--check", action="store_true", help=f"exit {DRIFT_STATUS} when anything drifted")
     status_parser.add_argument("--format", choices=("text", "json"), default="text", help="json is for scripts")
     status_parser.set_defaults(handler=command_status)

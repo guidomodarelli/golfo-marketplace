@@ -50,6 +50,8 @@ Revisión de IA de las rules gestionadas contra las propias del proyecto y su AG
 | `conflicts.shadowing.enabled` | boolean | `true` | todas | — | — | plan informa las sombras con lo instalado en la máquina. Apagado, no se buscan. |
 | `conflicts.userServers.enabled` | boolean | `true` | todas | — | — | plan informa los servidores que el usuario ya tiene y el apply no registra la copia del proyecto en ese provider. Apagado, no se compara. |
 | `conflicts.userServers.register` | boolean | `false` | todas | — | — | Registra igual la copia del proyecto aunque el usuario ya tenga el mismo servidor; plan lo sigue informando. |
+| `conflicts.sessionStart.enabled` | boolean | `true` | todas | — | — | Al iniciar una sesión se listan los conflictos estructurales conocidos. Apagado, no se calculan; agent-ready status y agent-ready conflicts los siguen mostrando. |
+| `conflicts.onEdit.enabled` | boolean | `true` | todas | — | — | Cada edición de una entrada lista los conflictos estructurales. Apagado, el hook solo corre la revisión de IA de rules y skills. |
 | `conflicts.contextBudget.enabled` | boolean | `true` | todas | — | — | plan informa el presupuesto de contexto y avisa al pasarlo. Apagado, no se calcula. |
 | `conflicts.contextBudget.bytes` | integer | `32768` | todas | — | — | Umbral del aviso para AGENTS.md, en bytes. El default es project_doc_max_bytes de Codex, el tamaño en que corta los AGENTS.md combinados. |
 | `conflicts.contextBudget.rulesBytes` | integer | — | todas | — | — | Umbral del aviso para las rules sin paths: que Claude carga al iniciar cada sesión, en bytes. Sin valor, plan solo informa su tamaño. |

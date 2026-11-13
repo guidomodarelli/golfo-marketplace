@@ -16,6 +16,7 @@ nothing is written.
 """
 
 import configparser
+import fnmatch
 import glob
 import json
 import os
@@ -36,6 +37,16 @@ def load_facts(skill_dir):
     """The catalog of facts: {fact: {description, values: {value: signals}}}."""
     with open(os.path.join(skill_dir, *FACTS_RELATIVE_PATH.split("/")), encoding="utf-8") as facts_file:
         return json.load(facts_file)
+
+
+def is_signal_file(relative_path, facts):
+    """True when the repository path is a file some fact reads: package.json, .editorconfig, the
+    Prettier config or a file of the catalog (lockfiles, test runner configs)."""
+    if relative_path in (PACKAGE_JSON, EDITORCONFIG, *PRETTIER_FILES):
+        return True
+    patterns = [pattern for fact in facts.values() for signals in fact.get("values", {}).values()
+                for pattern in signals.get("files", [])]
+    return any(fnmatch.fnmatchcase(relative_path, pattern) for pattern in patterns)
 
 
 def without_comment(value):
