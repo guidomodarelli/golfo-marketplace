@@ -18,6 +18,18 @@
       "default": false,
       "x-security": { "strictness": [false, true] }
     },
+    "repoReality": {
+      "description": "Lo que una rule da por sentado (assumes en su frontmatter: testRunner, packageManager, indentation) contra las señales estáticas del repo: dependencias, lockfiles, packageManager, .editorconfig y Prettier.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "description": "plan informa cada rule que el repo contradice, con el archivo que lo muestra. Apagado, no se compara.",
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
     "shadowing": {
       "description": "Skills, subagentes y comandos de la selección con el mismo nombre que uno del usuario (~/.claude, ~/.agents/skills) o de un plugin instalado. plan informa cuál usa cada provider; nunca lee ni escribe más que esos nombres.",
       "type": "object",

@@ -37,6 +37,7 @@ Revisión de IA de las rules gestionadas contra las propias del proyecto y su AG
 |---|---|---|---|---|---|---|
 | `conflicts.enabled` | boolean | `true` | todas | — | — | plan y el apply revisan con IA una rule gestionada nueva o cambiada contra las rules propias y el AGENTS.md del proyecto, y una rule propia contra las gestionadas. Usa la caché y las decisiones de las revisiones de IA. Apagado, no se revisa. También se apaga con reviews.enabled: false. |
 | `conflicts.block` | boolean | `false` | todas | — | `false` < `true` | Un apply que trae un conflicto semántico con lo propio del proyecto, o que no pudo revisarlo, se frena antes de escribir. Apagado, el conflicto solo se informa. |
+| `conflicts.repoReality.enabled` | boolean | `true` | todas | — | — | plan informa cada rule que el repo contradice, con el archivo que lo muestra. Apagado, no se compara. |
 | `conflicts.shadowing.enabled` | boolean | `true` | todas | — | — | plan informa las sombras con lo instalado en la máquina. Apagado, no se buscan. |
 | `conflicts.userServers.enabled` | boolean | `true` | todas | — | — | plan informa los servidores que el usuario ya tiene y el apply no registra la copia del proyecto en ese provider. Apagado, no se compara. |
 | `conflicts.userServers.register` | boolean | `false` | todas | — | — | Registra igual la copia del proyecto aunque el usuario ya tenga el mismo servidor; plan lo sigue informando. |

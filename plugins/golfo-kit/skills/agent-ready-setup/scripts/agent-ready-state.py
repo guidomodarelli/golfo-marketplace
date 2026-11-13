@@ -82,6 +82,7 @@ from agent_ready_options import (  # noqa: E402
     CONTEXT_BUDGET_ENABLED_KEY,
     CONTEXT_BUDGET_RULES_BYTES_KEY,
     SHADOWING_ENABLED_KEY,
+    REPO_REALITY_ENABLED_KEY,
     USER_SERVERS_ENABLED_KEY,
     USER_SERVERS_REGISTER_KEY,
     EXCLUDED_DEFAULTS_KEY,
@@ -119,6 +120,7 @@ import agent_ready_compatibility as compatibility  # noqa: E402
 import agent_ready_conflicts as conflicts_review  # noqa: E402
 import agent_ready_pack_clis as pack_clis  # noqa: E402
 import agent_ready_machine as machine  # noqa: E402
+import agent_ready_repo_facts as repo_facts  # noqa: E402
 import agent_ready_pack_mcp as pack_mcp  # noqa: E402
 import agent_ready_pack_scripts as pack_scripts  # noqa: E402
 import agent_ready_pack_signatures as pack_signatures  # noqa: E402
@@ -2060,6 +2062,7 @@ def print_plan(project_root, skill_dir, plan, provider, skip_marketplace_upgrade
     if plan.get("context"):
         print_context_budget(plan["context"])
     print_machine_report(plan.get("machine"))
+    print_repo_reality(plan.get("repoReality", []))
     write_line(f"Source:   {describe_source(plan['source'])}")
     write_line(f"Lock:     {describe_source(plan['lockedSource']) if plan['hasLock'] else 'none (first apply creates it)'}")
     write_line("")
@@ -3120,6 +3123,8 @@ def command_plan(arguments):
         if configuration.value(CONTEXT_BUDGET_ENABLED_KEY):
             plan["context"] = context_budget(arguments.project, arguments.skill_dir, catalog, plan, configuration)
         plan["machine"] = machine_report(arguments.project, plan, configuration)
+        if configuration.value(REPO_REALITY_ENABLED_KEY):
+            plan["repoReality"] = repo_reality_report(arguments.project, arguments.skill_dir, plan)
         if arguments.format == "json":
             write_line(serialize_json(plan_report(arguments.project, arguments.skill_dir, plan, configuration)).rstrip("\n"))
             return 0
@@ -3154,6 +3159,8 @@ CONTEXT_LARGEST_PROFILES = 3
 # The entry point that registers the browser MCP servers; its SERVER_ALIASES is their roster.
 BROWSER_SETUP_RELATIVE_PATH = "scripts/setup-browser-tools.py"
 RULES_DESTINATION_PREFIX = ".agents/rules/"
+# The owner the reports give to the rules the project wrote itself.
+PROJECT_RULES_PROFILE = "project"
 
 
 def loaded_at_start(text):
@@ -3183,28 +3190,12 @@ def context_budget(project_root, skill_dir, catalog, plan, configuration):
     managed or the project's own; a rule the apply retires does not count. MCP servers are the ones the
     apply registers: the browser's when its tools are enabled, and the pack servers the policy allows.
     """
-    # The rules the apply writes or deletes. A dropped or retire-conflict entry leaves its file, which
-    # stays as the project's own.
-    managed_destinations = {entry["destination"] for entry in plan["entries"]
-                            if entry["sha256"] or entry["action"] == ACTION_RETIRE}
+    rules, project_rules = projected_rules(project_root, plan)
     rules_by_profile, rule_files = {}, 0
-    for entry in plan["entries"]:
-        destination = entry["destination"]
-        if not entry["sha256"] or not destination.startswith(RULES_DESTINATION_PREFIX) or not destination.endswith(".md"):
-            continue
-        # A conflict keeps the local file: that file is the one Claude loads, not the template.
-        local_path = os.path.join(project_root, destination)
-        kept_local = entry["action"] == ACTION_CONFLICT and os.path.isfile(local_path) and not is_link(local_path)
-        with open(local_path if kept_local else entry["sourcePath"], encoding="utf-8", errors="replace") as rule_file:
-            rule_text = rule_file.read()
-        if loaded_at_start(rule_text):
+    for rule in rules:
+        if loaded_at_start(rule["text"]):
             rule_files += 1
-            rules_by_profile[entry["profile"]] = rules_by_profile.get(entry["profile"], 0) + text_bytes(rule_text)
-    project_rules = project_owned_rules(project_root, managed_destinations)
-    for rule_text in project_rules.values():
-        if loaded_at_start(rule_text):
-            rule_files += 1
-            rules_by_profile["project"] = rules_by_profile.get("project", 0) + text_bytes(rule_text)
+            rules_by_profile[rule["profile"]] = rules_by_profile.get(rule["profile"], 0) + text_bytes(rule["text"])
 
     agents_text, sections_by_profile = projected_agents_md(project_root, skill_dir, catalog, plan, project_rules)
     browser_servers = len(browser_mcp_servers(skill_dir)) if (
@@ -3237,6 +3228,51 @@ def browser_mcp_servers(skill_dir):
     except SystemExit:
         return ()
     return tuple(module.SERVER_ALIASES)
+
+
+def projected_rules(project_root, plan):
+    """([{path, profile, text}], {path: text}) of the rules in .agents/rules after the apply.
+
+    The first list holds every rule: the managed ones (the local file when the apply keeps it for a
+    conflict, the template otherwise) and the project's own, with profile "project". The second
+    holds only the project's own.
+    """
+    # The rules the apply writes or deletes. A dropped or retire-conflict entry leaves its file, which
+    # stays as the project's own.
+    managed_destinations = {entry["destination"] for entry in plan["entries"]
+                            if entry["sha256"] or entry["action"] == ACTION_RETIRE}
+    rules = []
+    for entry in plan["entries"]:
+        destination = entry["destination"]
+        if not entry["sha256"] or not destination.startswith(RULES_DESTINATION_PREFIX) or not destination.endswith(".md"):
+            continue
+        # A conflict keeps the local file: that file is the one the agents load, not the template.
+        local_path = os.path.join(project_root, destination)
+        kept_local = entry["action"] == ACTION_CONFLICT and os.path.isfile(local_path) and not is_link(local_path)
+        with open(local_path if kept_local else entry["sourcePath"], encoding="utf-8", errors="replace") as rule_file:
+            rules.append({"path": destination, "profile": entry["profile"], "text": rule_file.read()})
+    project_rules = project_owned_rules(project_root, managed_destinations)
+    rules += [{"path": RULES_DESTINATION_PREFIX + path, "profile": PROJECT_RULES_PROFILE, "text": text}
+              for path, text in sorted(project_rules.items())]
+    return rules, project_rules
+
+
+def repo_reality_report(project_root, skill_dir, plan):
+    """The assumptions of the rules that the repository contradicts. Read-only."""
+    rules, _ = projected_rules(project_root, plan)
+    return repo_facts.contradictions(project_root, repo_facts.load_facts(skill_dir), rules)
+
+
+def print_repo_reality(findings):
+    """One line per rule the repository contradicts."""
+    for finding in findings:
+        if finding.get("unknown"):
+            write_line(paint(f"  ~ {finding['rule']} ({finding['profile']}) assumes {finding['fact']}: {finding['assumes']}, "
+                             f"which {repo_facts.FACTS_RELATIVE_PATH} does not know; it is not checked", "warning", sys.stdout))
+            continue
+        write_line(paint(f"  ! {finding['rule']} ({finding['profile']}) assumes {finding['description']} {finding['assumes']}, "
+                         f"but the repository uses {', '.join(finding['repository'])} ({', '.join(finding['evidence'])})",
+                         "warning", sys.stdout))
 
 
 def project_owned_rules(project_root, managed_destinations):

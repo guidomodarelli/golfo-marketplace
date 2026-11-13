@@ -3780,6 +3780,30 @@
           "description": "Nombra la clave para registrar igual la copia del proyecto"
         }
       ]
+    },
+    {
+      "id": "rule-contradicts-repo-config",
+      "description": "Una rule de testing que pide Vitest en un repo con Jest: plan lo informa y la rule propia declara lo que asume con assumes.",
+      "input": "Mi repo usa Jest y pnpm, pero el profile react de agent-ready-setup trae una rule que pide Vitest. ¿agent-ready me avisa de esa contradicción? Y quiero que una rule mía declare que asume pnpm para que me avise si alguien mete un package-lock.json. No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "agent-ready plan",
+          "description": "Usa agent-ready plan para ver la contradicción",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "assumes",
+          "description": "Explica el campo assumes del frontmatter",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "packageManager",
+          "description": "Usa el dato packageManager para pnpm"
+        }
+      ]
     }
   ]
 }

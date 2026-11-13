@@ -1,3 +1,8 @@
+---
+assumes:
+  testRunner: vitest
+---
+
 # Mocking Strategy — Component Tests vs Service Tests
 
 Tests run with **Vitest**. They are split into two contexts with different isolation strategies; apply the rules for the context you are in. In both, the project's own code runs for real: never `vi.mock` or `vi.spyOn` the project's internal services, components, hooks, or modules, and never mock the component libraries or platform packages listed in `react-testing.md`. The only doubles allowed are test implementations of domain ports passed by injection, and `nock` for outbound HTTP.

@@ -914,3 +914,46 @@ PY
   [ "$status" -eq 0 ]
   [[ "$(context_field rulesLoadedAtStart.largest --profiles node)" == *"'profile': 'project'"* ]]
 }
+
+# The plan as text, for the selection given.
+plan_text() {
+  run python3 "$skill_dir/scripts/agent-ready-state.py" plan --project "$project_dir" --skill-dir "$skill_dir" "$@"
+}
+
+@test "plan reports a rule whose assumption the repository contradicts, with the file that shows it" {
+  printf '{"name": "app", "dependencies": {"react": "18"}, "devDependencies": {"jest": "29"}}\n' > package.json
+  : > package-lock.json
+  mkdir -p .agents/rules
+  printf -- '---\nassumes:\n  packageManager: pnpm\n---\n# Ours\n' > .agents/rules/ours.md
+  plan_text --profiles react
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"! .agents/rules/react-testing.md (react) assumes test runner vitest, but the repository uses jest (package.json)"* ]]
+  [[ "$output" == *"! .agents/rules/ours.md (project) assumes package manager pnpm, but the repository uses npm (package-lock.json)"* ]]
+
+  # With the tools the rules assume, nothing is reported.
+  printf '{"name": "app", "dependencies": {"react": "18"}, "devDependencies": {"vitest": "2"}}\n' > package.json
+  rm package-lock.json
+  : > pnpm-lock.yaml
+  plan_text --profiles react
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"assumes test runner"* ]]
+  [[ "$output" != *"assumes package manager"* ]]
+}
+
+@test "an assumption the catalog does not know is reported as not checked, and the check turns off" {
+  mkdir -p .agents/rules
+  printf -- '---\nassumes:\n  linter: biome\n---\n# Ours\n' > .agents/rules/ours.md
+  printf 'root = true\n[*]\nindent_style = tab\n' > .editorconfig
+  # A blank line and a comment inside assumes, and a Prettier config that leaves indentation to .editorconfig.
+  printf -- '---\nassumes:\n\n  # format\n  indentation: spaces # why\n---\n# Format\n' > .agents/rules/format.md
+  printf '{"semi": false}\n' > .prettierrc
+  plan_text --profiles node
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"~ .agents/rules/ours.md (project) assumes linter: biome, which assets/repo-facts.json does not know; it is not checked"* ]]
+  [[ "$output" == *"! .agents/rules/format.md (project) assumes indentation spaces, but the repository uses tabs (.editorconfig)"* ]]
+
+  printf '{"conflicts": {"repoReality": {"enabled": false}}}\n' > .agents/agent-ready.json
+  plan_text --profiles node
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"assumes"* ]]
+}

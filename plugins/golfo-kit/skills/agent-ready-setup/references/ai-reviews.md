@@ -17,6 +17,7 @@ descartar un hallazgo.
 7. Conflictos semánticos con lo propio del proyecto
 8. Presupuesto de contexto
 9. Choques con la máquina
+10. Rules contra la realidad del repo
 
 ## 1. Qué se revisa
 
@@ -258,3 +259,38 @@ configuración del usuario y nunca la escribe.
 | `conflicts.shadowing.enabled` | `true` | `false` no busca sombras con la máquina |
 | `conflicts.userServers.enabled` | `true` | `false` no compara con los servidores del usuario y registra todos |
 | `conflicts.userServers.register` | `false` | `true` registra igual la copia del proyecto; `plan` lo sigue informando |
+
+## 10. Rules contra la realidad del repo
+
+Una rule declara en su frontmatter lo que da por sentado, y `agent-ready plan` lo compara con las
+señales estáticas del repo, sin IA y sin ejecutar nada:
+
+```markdown
+---
+assumes:
+  testRunner: vitest
+---
+```
+
+| Dato | Valores | Qué mira |
+|---|---|---|
+| `testRunner` | `vitest`, `jest`, `mocha` | dependencias de `package.json`, su clave `jest` y los archivos de configuración |
+| `packageManager` | `pnpm`, `npm`, `yarn`, `bun` | lockfiles y el campo `packageManager` de `package.json` |
+| `indentation` | `tabs`, `spaces` | `indent_style` de `[*]` en `.editorconfig` y `useTabs` de Prettier en JSON |
+
+La rule contradice al repo cuando este muestra otro valor del mismo dato y ninguno del que la rule
+asume. El agente que obedece la rule rompe el proyecto, y el que obedece al proyecto ignora la rule:
+
+```text
+  ! .agents/rules/react-testing.md (react) assumes test runner vitest, but the repository uses jest (package.json)
+```
+
+Las rules de golfo-kit que solo valen con una herramienta lo declaran, como las de testing de
+`react` con Vitest. Un dato o un valor que el catálogo (`assets/repo-facts.json`) no conoce se
+informa como no chequeado. Una contradicción escrita en prosa, sin `assumes`, la busca la revisión
+semántica. Para reemplazar la rule de golfo-kit por la del proyecto, `overrides`
+(`profiles-and-lockfile.md`).
+
+| Clave | Default | Efecto |
+|---|---|---|
+| `conflicts.repoReality.enabled` | `true` | `false` no compara las rules con el repo |

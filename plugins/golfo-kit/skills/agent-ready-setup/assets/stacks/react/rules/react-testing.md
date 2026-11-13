@@ -1,3 +1,8 @@
+---
+assumes:
+  testRunner: vitest
+---
+
 # Testing Rules — React + TypeScript
 
 Standards for writing and reviewing tests. The `test-reviewer` agent uses this file as the reference for what a good test looks like in this stack.
