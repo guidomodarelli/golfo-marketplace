@@ -36,8 +36,11 @@ CLAUDE_USER_SETTINGS = "settings.json"
 CODEX_USER_HOOKS = "hooks.json"
 PERMISSION_ALLOW = "allow"
 PERMISSION_DENY = "deny"
-# A matcher that is empty or missing applies to every tool.
-MATCH_EVERYTHING = ("", "*")
+# A matcher that is empty, missing or a catch-all applies to every tool.
+MATCH_EVERYTHING = ("", "*", ".*")
+# The tools a hook matcher names, to test two matchers against the same tool.
+KNOWN_TOOL_NAMES = ("Bash", "Edit", "MultiEdit", "Write", "Read", "Glob", "Grep", "LS", "NotebookEdit",
+                    "NotebookRead", "WebFetch", "WebSearch", "Task", "TodoWrite", "apply_patch", "shell")
 
 
 def skill_path(skill_dir, relative):
@@ -139,34 +142,80 @@ def permission_conflicts(found):
 
 
 def duplicated_hooks(found):
-    """The same command on the same event in two layers of one provider: it runs twice."""
+    """The same command on the same event in two layers of one provider, with matchers that overlap:
+    it runs once per registration."""
     places = {}
     for layer in found:
-        for event, _, command in set(hook_entries(layer["data"])):
-            places.setdefault((layer["provider"], event, command), []).append(layer["file"])
-    return [{"provider": provider, "event": event, "command": command, "files": files}
-            for (provider, event, command), files in sorted(places.items()) if len(files) > 1]
+        for event, matcher, command in set(hook_entries(layer["data"])):
+            places.setdefault((layer["provider"], event, command), []).append((layer["file"], matcher))
+    findings = []
+    for (provider, event, command), registrations in sorted(places.items()):
+        files = set()
+        for position, (first_file, first_matcher) in enumerate(registrations):
+            for second_file, second_matcher in registrations[position + 1:]:
+                if first_file != second_file and matchers_overlap(first_matcher, second_matcher):
+                    files.update((first_file, second_file))
+        if files:
+            ordered = [registration[0] for registration in registrations if registration[0] in files]
+            findings.append({"provider": provider, "event": event, "command": command,
+                             "files": list(dict.fromkeys(ordered))})
+    return findings
+
+
+def matcher_candidates(*matchers):
+    """Tool names to try two matchers against: the known tools and every name the matchers spell."""
+    candidates = set(KNOWN_TOOL_NAMES)
+    for matcher in matchers:
+        candidates.update(re.findall(r"[A-Za-z_][A-Za-z0-9_]*", matcher))
+    return candidates
+
+
+def matcher_matches(matcher, tool):
+    """True when a hook matcher fires on a tool: an exact name, or a regular expression over it."""
+    if matcher in MATCH_EVERYTHING or matcher == tool:
+        return True
+    return re.fullmatch(matcher, tool) is not None
 
 
 def matchers_overlap(first, second):
-    """True when two hook matchers can fire on the same tool."""
+    """True when two hook matchers can fire on the same tool. A matcher that is not a valid
+    expression cannot be ruled out, so it overlaps."""
     if first in MATCH_EVERYTHING or second in MATCH_EVERYTHING:
         return True
-    return bool(set(first.split("|")) & set(second.split("|")))
+    try:
+        re.compile(first)
+        re.compile(second)
+    except re.error:
+        return True
+    return any(matcher_matches(first, tool) and matcher_matches(second, tool)
+               for tool in matcher_candidates(first, second))
+
+
+def formatter_of(command, formatters):
+    """The formatter a hook command runs in a mode that rewrites files, or None."""
+    for name, definition in formatters.items():
+        if not re.search(definition["command"], command):
+            continue
+        if definition.get("writes") and not re.search(definition["writes"], command):
+            return None
+        if definition.get("checkOnly") and re.search(definition["checkOnly"], command):
+            return None
+        return name
+    return None
 
 
 def competing_formatters(found, skill_dir):
-    """Two different formatters on the same event of a provider with overlapping matchers."""
+    """Two different formatters that rewrite files on the same event of a provider, with matchers
+    that overlap. A check-only invocation (prettier --check, black --check) rewrites nothing."""
     with open(skill_path(skill_dir, FORMATTERS_RELATIVE_PATH), encoding="utf-8") as formatters_file:
-        patterns = {name: re.compile(pattern) for name, pattern in json.load(formatters_file).items()}
+        formatters = json.load(formatters_file)
     hooks = []
     for layer in found:
         for event, matcher, command in hook_entries(layer["data"]):
-            for name, pattern in patterns.items():
-                if pattern.search(command):
-                    hooks.append({"provider": layer["provider"], "event": event, "matcher": matcher,
-                                  "formatter": name, "command": command, "file": layer["file"]})
-                    break
+            name = formatter_of(command, formatters)
+            if name:
+                hooks.append({"provider": layer["provider"], "event": event, "matcher": matcher,
+                              "formatter": name, "command": command, "file": layer["file"]})
     findings, seen = [], set()
     for position, first in enumerate(hooks):
         for second in hooks[position + 1:]:
