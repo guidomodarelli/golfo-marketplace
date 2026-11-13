@@ -16,6 +16,7 @@ descartar un hallazgo.
 6. Aceptar o descartar un hallazgo
 7. Conflictos semánticos con lo propio del proyecto
 8. Presupuesto de contexto
+9. Choques con la máquina
 
 ## 1. Qué se revisa
 
@@ -226,3 +227,32 @@ con `paths:` o a skills, que se cargan solo cuando hacen falta. El aviso no fren
 | `conflicts.contextBudget.enabled` | `true` | `false` no calcula el presupuesto |
 | `conflicts.contextBudget.bytes` | `32768` | avisa cuando AGENTS.md pasa esos bytes |
 | `conflicts.contextBudget.rulesBytes` | sin valor | avisa cuando las rules sin `paths:` pasan esos bytes; sin valor, solo informa |
+
+## 9. Choques con la máquina
+
+`agent-ready plan` compara la selección con lo que el usuario ya tiene instalado. Solo lee la
+configuración del usuario y nunca la escribe.
+
+- **Sombra:** una skill, un subagente o un comando de un profile con el mismo nombre que uno del
+  usuario (`~/.claude/skills`, `~/.claude/agents`, `~/.claude/commands`, `~/.agents/skills`) o de un
+  plugin instalado. Cada provider aplica su precedencia en silencio, y `plan` dice cuál gana:
+  - Claude Code usa la skill o el comando del usuario antes que el del proyecto; los de un plugin
+    tienen namespace (`/plugin:skill`), así que se cargan los dos.
+  - Claude Code usa el subagente del proyecto antes que el del usuario y el de un plugin.
+  - Codex lista las dos skills, sin un orden documentado.
+- **Servidores MCP del usuario:** un servidor de un pack que el usuario ya registró para todos los
+  proyectos (`~/.claude.json`, `config.toml` de Codex), comparado por URL, paquete o comando aunque
+  tenga otro nombre. El apply no registra la copia del proyecto en ese provider, así el agente no
+  arranca dos veces el mismo servidor, y lo informa. Codex necesita Python 3.11 para leer su
+  configuración; con uno anterior no se compara.
+
+```text
+  ~ skill component-creation (react) has the same name as ~/.claude/skills/component-creation: Claude Code uses the user's
+  ~ MCP server acme-docs (acme/kafka-interno) is the user's my-docs in ~/.claude.json: not registered for claude (conflicts.userServers.register: true registers it)
+```
+
+| Clave | Default | Efecto |
+|---|---|---|
+| `conflicts.shadowing.enabled` | `true` | `false` no busca sombras con la máquina |
+| `conflicts.userServers.enabled` | `true` | `false` no compara con los servidores del usuario y registra todos |
+| `conflicts.userServers.register` | `false` | `true` registra igual la copia del proyecto; `plan` lo sigue informando |

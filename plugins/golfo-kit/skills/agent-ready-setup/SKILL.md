@@ -16,7 +16,7 @@ description: >-
   descartar un hallazgo de sus revisiones de IA.
 license: MIT
 metadata:
-  version: "1.38.0"
+  version: "1.39.0"
   author: "guponce"
   category: "developer-experience"
   tags: "agent-ready, multi-provider, claude-code, codex, bootstrap, setup, scaffold, context-optimized-v1.20.1"
@@ -112,7 +112,7 @@ explícito fuera del cache conservan prioridad para desarrollo local.
 
 | Subcomando | Qué hace |
 |---|---|
-| `agent-ready plan [--offline] [--json]` | qué cambiaría un apply, sin escribir en el repo, y cuánto contexto suma la selección (`references/ai-reviews.md`, «Presupuesto de contexto») |
+| `agent-ready plan [--offline] [--json]` | qué cambiaría un apply, sin escribir en el repo, cuánto contexto suma la selección y qué choca con lo instalado en la máquina (`references/ai-reviews.md`, «Presupuesto de contexto» y «Choques con la máquina») |
 | `agent-ready status [--offline] [--json]` | checkout contra el lockfile y las fuentes, sin escribir |
 | `agent-ready check [--offline] [--json]` | el chequeo de CI, con sus códigos `0`, `4`, `5` y `2` |
 | `agent-ready apply [--profiles a,b \| --stack s] [--updates auto\|pinned] [--recheck] [--dry-run]` | el Step 3 completo; `--recheck` vuelve a revisar `AGENTS.md` con IA aunque la caché tenga la revisión |
