@@ -309,11 +309,13 @@ del proyecto, `.claude/settings.local.json` y la configuración del usuario (`~/
   registro.
 - **Formateadores que compiten:** dos formateadores distintos (`assets/formatters.json`: Prettier,
   Biome, `eslint --fix`, dprint, Black, `ruff format`, gofmt, rustfmt) en el mismo evento, con matchers
-  que se pisan, reescriben el mismo archivo.
+  que se pisan, pueden reescribir el mismo archivo. Si los dos nombran rutas y no comparten ninguna
+  (`black backend/` y `prettier --write frontend/`), no se informa. Solo cuenta el modo que reescribe:
+  `prettier --check` o `black --check` no compiten.
 
 ```text
   ! permission Bash(npm run *): allowed in .claude/settings.json and denied in ~/.claude/settings.json; Claude Code applies the deny
-  ! claude PostToolUse runs two formatters on the same files: prettier (.claude/settings.json) and biome (.claude/settings.local.json)
+  ~ claude PostToolUse runs two formatters that can rewrite the same files: prettier (.claude/settings.json) and biome (.claude/settings.local.json)
 ```
 
 Que un hook de un profile bloquee una acción que pide otro profile lo cubre la revisión semántica.

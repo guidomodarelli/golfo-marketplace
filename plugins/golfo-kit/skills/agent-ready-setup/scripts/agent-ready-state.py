@@ -3292,7 +3292,7 @@ def print_settings_conflicts(report):
                          f"{' and '.join(hook['files'])}: it runs once per registration", "warning", sys.stdout))
     for clash in report.get("formatters", []):
         first, second = clash["hooks"]
-        write_line(paint(f"  ! {clash['provider']} {clash['event']} runs two formatters on the same files: "
+        write_line(paint(f"  ~ {clash['provider']} {clash['event']} runs two formatters that can rewrite the same files: "
                          f"{first['formatter']} ({first['file']}) and {second['formatter']} ({second['file']})",
                          "warning", sys.stdout))
 

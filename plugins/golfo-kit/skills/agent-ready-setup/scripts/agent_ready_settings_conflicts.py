@@ -17,6 +17,7 @@ Three checks, read-only:
 import json
 import os
 import re
+import shlex
 
 import agent_ready_machine as machine
 
@@ -204,6 +205,32 @@ def formatter_of(command, formatters):
     return None
 
 
+def formatter_targets(command):
+    """The paths a formatter command names, or None when it can reach any file of the repository
+    (no path, ".", a glob or a variable such as $FILE that the hook fills in)."""
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        return None
+    targets = set()
+    for token in tokens[1:]:
+        if token.startswith("-") or "/" not in token and "." not in os.path.basename(token):
+            continue
+        if token in (".", "./") or any(marker in token for marker in ("$", "*", "?", "{")):
+            return None
+        targets.add(token[2:] if token.startswith("./") else token.rstrip("/"))
+    return targets or None
+
+
+def targets_overlap(first, second):
+    """True unless both commands name paths and none of one contains or equals one of the other."""
+    first, second = formatter_targets(first), formatter_targets(second)
+    if first is None or second is None:
+        return True
+    return any(one == other or one.startswith(other + "/") or other.startswith(one + "/")
+               for one in first for other in second)
+
+
 def competing_formatters(found, skill_dir):
     """Two different formatters that rewrite files on the same event of a provider, with matchers
     that overlap. A check-only invocation (prettier --check, black --check) rewrites nothing."""
@@ -222,6 +249,8 @@ def competing_formatters(found, skill_dir):
             if (first["provider"], first["event"]) != (second["provider"], second["event"]):
                 continue
             if first["formatter"] == second["formatter"] or not matchers_overlap(first["matcher"], second["matcher"]):
+                continue
+            if not targets_overlap(first["command"], second["command"]):
                 continue
             key = (first["provider"], first["event"], frozenset((first["formatter"], second["formatter"])))
             if key not in seen:

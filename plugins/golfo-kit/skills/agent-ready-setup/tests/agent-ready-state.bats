@@ -968,7 +968,7 @@ plan_text() {
   [ "$status" -eq 0 ]
   [[ "$output" == *"! permission Bash(npm run *): allowed in .claude/settings.json and denied in ~/.claude/settings.json; Claude Code applies the deny"* ]]
   [[ "$output" == *"~ claude hook SessionStart \`bash .agents/hooks/sync-marketplace.sh --provider claude\` is registered in .claude/settings.json (golfo-kit) and ~/.claude/settings.json"* ]]
-  [[ "$output" == *"! claude PostToolUse runs two formatters on the same files: prettier (.claude/settings.json) and biome (.claude/settings.local.json)"* ]]
+  [[ "$output" == *"~ claude PostToolUse runs two formatters that can rewrite the same files: prettier (.claude/settings.json) and biome (.claude/settings.local.json)"* ]]
 
   # Different matchers never touch the same files; each check turns off on its own.
   printf '%s\n' '{"hooks": {"PostToolUse": [{"matcher": "Read", "hooks": [{"type": "command", "command": "npx biome format --write ."}]}]}}' > .claude/settings.local.json

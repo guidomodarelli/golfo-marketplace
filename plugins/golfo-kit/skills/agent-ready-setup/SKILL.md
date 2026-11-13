@@ -411,7 +411,7 @@ Mostrar output del script sin alterarlo. En respuestas documentales, enumerar ad
 - **Profile `business-flows`:** `rules/business-flows.md` y `skills/business-flow-design/SKILL.md`.
 - **CI, según `ci.provider`** (`assets/ci/`): con cualquier proveedor menos `none`, `.agents/ci/agent-ready-check.sh`; con `github`, además `.github/workflows/agent-ready.yml`; con `gitlab`, `.agents/ci/gitlab-ci.yml` y un bloque en `.gitlab-ci.yml` con su `include`; con `jenkins`, `.agents/ci/jenkins-stage.groovy`. Sin `ci.provider` o con `none`, ninguno.
 - **Profile packs:** los assets de cada profile seleccionado de `sources.packs`, con los paths que publique su pack bajo `rules/`, `skills/`, `agents/` y `commands/`.
-- **Estado del repo:** `.agents/agent-ready.json` (manifest) y `.agents/agent-ready.lock.json` (lockfile). `assets/profiles.json`, `assets/providers.json` y los schemas de `assets/config/` son catálogos internos de la skill, y `assets/examples/` guarda ejemplos para leer; ninguno se proyecta.
+- **Estado del repo:** `.agents/agent-ready.json` (manifest) y `.agents/agent-ready.lock.json` (lockfile). `assets/profiles.json`, `assets/providers.json`, `assets/repo-facts.json` (señales de las rules contra el repo), `assets/formatters.json` (formateadores de los hooks) y los schemas de `assets/config/` son catálogos internos de la skill, y `assets/examples/` guarda ejemplos para leer; ninguno se proyecta.
 
 Las skills que ya publica el plugin golfo-kit no se duplican en el catálogo de un stack: por ejemplo, el refactor de constantes se usa desde la skill `constants-refactor` del plugin y no se proyecta en `.agents/skills/`. Ningún stack publica hooks propios ni `mcp.json`: los únicos hooks proyectados son los comunes.
 
