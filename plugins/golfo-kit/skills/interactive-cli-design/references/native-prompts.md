@@ -26,31 +26,88 @@ Las teclas:
 | Un dígito, con el filtro vacío | Salta a esa opción |
 | Ctrl+C | `KeyboardInterrupt`, que el programa convierte en exit 130 |
 
-Leer una tecla del descriptor en modo cbreak, no de `sys.stdin`: el buffer de `sys.stdin` parte una secuencia de flecha en dos lecturas.
+Leer del descriptor en modo cbreak, no de `sys.stdin`: el buffer de `sys.stdin` parte una secuencia de flecha en dos lecturas. Un `os.read` puede traer varias teclas juntas (flecha y Enter, o un texto pegado), así que `KeyReader` guarda lo leído y devuelve una tecla por llamada: una secuencia de escape completa o un carácter UTF-8. Lo que sobra queda para la llamada siguiente.
 
 ```python
 import os, select, sys, termios, tty, unicodedata
 
-KEY_READ_MAX_BYTES = 8                 # una flecha o un carácter UTF-8 de hasta 4 bytes
+KEY_READ_MAX_BYTES = 64                # lo que haya llegado: varias teclas o un texto pegado
 ESCAPE_SEQUENCE_TIMEOUT_SECONDS = 0.05
-ARROWS = {"\x1b[A": "up", "\x1b[B": "down", "\x1bOA": "up", "\x1bOB": "down"}
+ESCAPE = b"\x1b"
+ESCAPE_SEQUENCE_INTRODUCERS = (b"[", b"O")
+ARROWS = {b"\x1b[A": "up", b"\x1b[B": "down", b"\x1bOA": "up", b"\x1bOB": "down"}
+ENTER_KEYS = {"\r": "enter", "\n": "enter"}
 
-def read_key(file_descriptor: int) -> str:
-    previous = termios.tcgetattr(file_descriptor)
-    try:
-        tty.setcbreak(file_descriptor)
-        key = os.read(file_descriptor, KEY_READ_MAX_BYTES)
-        # Un Esc solo no trae más bytes: esperar un instante y seguir, en vez de bloquear.
-        if key == b"\x1b" and select.select([file_descriptor], [], [], ESCAPE_SEQUENCE_TIMEOUT_SECONDS)[0]:
-            key += os.read(file_descriptor, KEY_READ_MAX_BYTES)
-    finally:
-        termios.tcsetattr(file_descriptor, termios.TCSADRAIN, previous)
-    if not key:
-        raise EOFError
-    text = key.decode(errors="replace")
-    if text == "\x03":
-        raise KeyboardInterrupt
-    return ARROWS.get(text, {"\r": "enter", "\n": "enter"}.get(text, text))
+def escape_sequence_length(data: bytes) -> int:
+    """Largo de la secuencia que empieza en data, o 0 si todavía está incompleta."""
+    if len(data) < 2:
+        return 0
+    if data[1:2] not in ESCAPE_SEQUENCE_INTRODUCERS:
+        return 1                       # Esc seguido de otra tecla: el Esc va solo
+    for index in range(2, len(data)):
+        if 0x40 <= data[index] <= 0x7E:  # byte final de la secuencia
+            return index + 1
+    return 0
+
+def utf8_length(first_byte: int) -> int:
+    if first_byte >> 5 == 0b110:
+        return 2
+    if first_byte >> 4 == 0b1110:
+        return 3
+    if first_byte >> 3 == 0b11110:
+        return 4
+    return 1
+
+def split_first_key(data: bytes) -> tuple:
+    """Separa la primera tecla de lo leído. Devuelve ("", data) si todavía está incompleta."""
+    if not data:
+        return "", data
+    if data.startswith(ESCAPE):
+        length = escape_sequence_length(data)
+        if not length:
+            return "", data
+        sequence = data[:length]
+        return ARROWS.get(sequence, sequence.decode(errors="replace")), data[length:]
+    length = utf8_length(data[0])
+    if len(data) < length:
+        return "", data
+    text = data[:length].decode(errors="replace")
+    return ENTER_KEYS.get(text, text), data[length:]
+
+class KeyReader:
+    """Devuelve una tecla por llamada. Lo que sobra de cada lectura queda para la siguiente."""
+
+    def __init__(self, file_descriptor: int):
+        self.file_descriptor = file_descriptor
+        self.pending = b""
+
+    def _read_more(self, timeout=None) -> bool:
+        if timeout is not None and not select.select([self.file_descriptor], [], [], timeout)[0]:
+            return False
+        chunk = os.read(self.file_descriptor, KEY_READ_MAX_BYTES)
+        if not chunk:
+            raise EOFError
+        self.pending += chunk
+        return True
+
+    def read_key(self) -> str:
+        previous = termios.tcgetattr(self.file_descriptor)
+        try:
+            tty.setcbreak(self.file_descriptor)
+            key, rest = split_first_key(self.pending)
+            while not key:
+                # Un Esc solo no trae más bytes: esperar un instante y seguir, en vez de bloquear.
+                timeout = ESCAPE_SEQUENCE_TIMEOUT_SECONDS if self.pending.startswith(ESCAPE) else None
+                if not self._read_more(timeout):
+                    key, rest = "\x1b", self.pending[1:]
+                    break
+                key, rest = split_first_key(self.pending)
+        finally:
+            termios.tcsetattr(self.file_descriptor, termios.TCSADRAIN, previous)
+        self.pending = rest
+        if key == "\x03":
+            raise KeyboardInterrupt
+        return key
 
 def normalized(text: str) -> str:
     decomposed = unicodedata.normalize("NFD", text.casefold())
@@ -68,6 +125,8 @@ El dibujo: ocultar el cursor, escribir la pregunta (con el filtro tipeado a la d
 - **Ancho de los emojis.** Cuentan dos columnas. Evitar el selector de variante U+FE0F, que algunas terminales dibujan con un ancho distinto al calculado y desalinea el corte.
 - **Dígitos Unicode.** `"²".isdigit()` da `True` e `int("²")` lanza `ValueError`. Para saltar a una opción, aceptar solo `text.isascii() and text.isdigit()`.
 - **Esc solo.** Sin el timeout de `select`, el menú se queda esperando el resto de una secuencia que nunca llega.
+- **Varias teclas en una lectura.** Comparar el bloque entero contra `"\x1b[B"` o `"\n"` falla cuando llegan juntas: Abajo y Enter dan `"\x1b[B\n"`, y un texto pegado con Enter mete el salto de línea en el filtro. Separar una tecla por vez, como `split_first_key`.
+- **Secuencias que el menú no usa** (flecha derecha, teclas de función) vuelven enteras, como `"\x1b[C"`: ignorarlas en lugar de sumarlas al filtro.
 - **Fin de la entrada.** `os.read` devuelve vacío y `readline()` devuelve `""`: tratarlo como cancelación, no como Enter.
 - **Letras como atajos.** Con filtro, `j` y `k` son texto. Si el proyecto ya usaba esos atajos, avisarlo en el cambio.
 
@@ -83,7 +142,7 @@ El dibujo: ocultar el cursor, escribir la pregunta (con el filtro tipeado a la d
 
 Pedirlo recién cuando un paso lo necesita: `--help`, `--dry-run` o un comando de solo lectura no lo piden. Antes de preguntar, buscarlo sin molestar, en este orden: el flag `--<dato>-file` o la variable documentada, el llavero del sistema (si le queda margen antes de vencer), y la herramienta oficial de login (`gh auth token`, `fury get-token`). Recién después, la terminal.
 
-En bash, leer de `/dev/tty` y apagar el eco **antes** de imprimir la pregunta, para que un valor pegado enseguida tampoco se vea. Restaurar la terminal en un `trap`:
+En bash, leer de `/dev/tty` y apagar el eco **antes** de imprimir la pregunta, para que un valor pegado enseguida tampoco se vea. Restaurar la terminal apenas termina la lectura, así las preguntas siguientes vuelven a mostrar lo que se escribe, y además en un `trap` por si la lectura se corta:
 
 ```bash
 exec 3<>/dev/tty || { echo "tool: falta el token y no hay una terminal para pedirlo: usá --token-file." >&2; exit 2; }
@@ -93,6 +152,7 @@ trap 'exit 130' INT TERM
 stty -echo <&3
 printf 'Token (no se muestra): ' >&3
 IFS= read -r token <&3 || token=""
+stty "$terminal_settings" <&3
 printf '\n' >&3
 ```
 
