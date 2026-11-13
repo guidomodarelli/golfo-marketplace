@@ -444,6 +444,11 @@ PY
   [[ "$output" == *".agents/skills/pr-review-workflow/SKILL.md <-> .agents/skills/team-review/SKILL.md: Both review pull requests; one follows the team checklist. (competing skills: \"review this pull request\")"* ]]
   # Only pairs with the pack skill: golfo-kit's own skills are not reviewed against each other.
   ! grep -Eq '^[0-9]+\. \.agents/skills/agent-browser/SKILL\.md <-> \.agents/skills/pr-review-workflow/SKILL\.md$' "$FAKE_INPUT"
+  # The skill is not on disk yet, and the team can still decide on the finding before the apply.
+  agent_ready plan --json
+  skill_finding="$(printf '%s' "$output" | python3 -c 'import json,sys; print(json.load(sys.stdin)["competingSkills"]["findings"][0]["id"])' | tr -d '\r')"
+  agent_ready review accept "$skill_finding" --reason "Both skills are wanted"
+  [ "$status" -eq 0 ]
 
   # Declared complementary: the pair is not reviewed.
   printf '%s\n' '{"schemaVersion": 1, "name": "acme", "version": "1.0.0", "profiles": {"team": {"kind": "capability", "description": "Team skills.", "assets": "profiles/team", "complements": ["software-development:skills/pr-review-workflow"]}}}' > agent-packs/acme/agent-ready-pack.json

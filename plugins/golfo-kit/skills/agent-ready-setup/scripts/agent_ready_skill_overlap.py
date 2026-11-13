@@ -12,6 +12,7 @@ its own skills apart where they are written. A pair a profile declares in ``comp
 call and the review cache, under its own check, so a pair already reviewed is not paid twice.
 """
 
+import os
 import types
 
 CHECK = "skill-overlap"
@@ -22,6 +23,8 @@ FINDING_KIND = "competition"
 SKILLS_PREFIX = ".agents/skills/"
 SKILL_FILE = "SKILL.md"
 COMPLEMENTS_KEY = "complements"
+# The plan action of an asset whose local file the apply keeps (agent-ready-state.py).
+ACTION_CONFLICT = "conflict"
 RESULT_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
@@ -77,14 +80,21 @@ def complemented(catalog, profile, other_profile, other_skill):
     return reference in catalog["profiles"].get(profile, {}).get(COMPLEMENTS_KEY, [])
 
 
-def skill_pairs(entries, catalog, is_pack_profile, read_text):
+def skill_pairs(project_root, entries, catalog, is_pack_profile, read_text):
     """(directions, texts) of the skill pairs to review: different profiles, one of them a pack, and
-    no complements between them. ``entries`` are the plan entries."""
+    no complements between them. ``entries`` are the plan entries.
+
+    A skill the apply keeps for a conflict is reviewed as the local file the agent loads, not as the
+    template it does not install.
+    """
     skills = {}
     for entry in entries:
         name = skill_name(entry["destination"]) if entry.get("sha256") else None
         if name:
-            skills[entry["destination"]] = (name, entry["profile"], entry["sourcePath"])
+            local_path = os.path.join(project_root, entry["destination"])
+            kept_local = (entry.get("action") == ACTION_CONFLICT and os.path.isfile(local_path)
+                          and not os.path.islink(local_path))
+            skills[entry["destination"]] = (name, entry["profile"], local_path if kept_local else entry["sourcePath"])
     directions, texts = {}, {}
     ordered = sorted(skills)
     for position, first in enumerate(ordered):

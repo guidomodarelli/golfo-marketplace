@@ -298,12 +298,19 @@ def pending_path(project_root):
     return os.path.normpath(os.path.join(project_root, located))
 
 
-def record_pending(project_root, findings):
-    """Keep the update conflicts of this plan for agent-ready review; a plan without any clears them."""
+def record_pending(project_root, findings, check=None):
+    """Keep the findings of this plan that come with the apply, for agent-ready review.
+
+    ``check`` names the review the findings belong to: they replace that check's pending findings
+    and leave the other checks' (the conflicts and the competing skills are recorded apart). Without
+    it, the findings replace everything, as after an apply.
+    """
     path = pending_path(project_root)
     if not path:
         return
     kept = [{field: finding[field] for field in PENDING_FIELDS if field in finding} for finding in findings]
+    if check is not None:
+        kept = [finding for finding in read_pending(path) if finding.get("check", CONFLICT_CHECK) != check] + kept
     temporary_path = None
     try:
         if not kept:
@@ -322,6 +329,17 @@ def record_pending(project_root, findings):
     finally:
         if temporary_path and os.path.exists(temporary_path):
             os.unlink(temporary_path)
+
+
+def read_pending(path):
+    """The findings recorded in the pending file, or none when it is missing or unreadable."""
+    try:
+        with open(path, encoding="utf-8") as file_handle:
+            data = json.load(file_handle)
+    except (OSError, ValueError):
+        return []
+    findings = data.get("findings", []) if isinstance(data, dict) else []
+    return [finding for finding in findings if isinstance(finding, dict)]
 
 
 def pending_findings(cache_module, project_root, recorded):

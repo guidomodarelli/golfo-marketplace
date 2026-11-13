@@ -1939,7 +1939,7 @@ def semantic_conflicts(arguments, plan):
     """The AI review of managed rules against the project's own, or None when it is off."""
     configuration = configuration_of(arguments.project, arguments.offline)
     if not configuration.value(CONFLICTS_ENABLED_KEY) or not configuration.value(REVIEWS_ENABLED_KEY):
-        conflicts_review.record_pending(arguments.project, [])
+        conflicts_review.record_pending(arguments.project, [], check=conflicts_review.CONFLICT_CHECK)
         return None
     if not conflicts_review.engine_can_review(ENGINE_SKILL_DIRECTORY):
         return None
@@ -1956,7 +1956,7 @@ def semantic_conflicts(arguments, plan):
     report = conflicts_review.review_conflicts(arguments.project, ENGINE_SKILL_DIRECTORY, module, arguments.provider,
                                                directions, texts, bash_executable(), use_provider, settings,
                                                publish=arguments.format == "protected")
-    conflicts_review.record_pending(arguments.project, report.pop("pending", []))
+    conflicts_review.record_pending(arguments.project, report.pop("pending", []), check=conflicts_review.CONFLICT_CHECK)
     report["block"] = configuration.value(CONFLICTS_BLOCK_KEY)
     return report
 
@@ -3111,6 +3111,11 @@ def command_plan(arguments):
     if tools_report:
         plan["packTools"] = tools_report
     conflicts = semantic_conflicts(arguments, plan)
+    # Before the apply too: it publishes what the previews reviewed to the versioned cache.
+    competing_skills = competing_skills_report(arguments, plan, catalog,
+                                               configuration_of(arguments.project, arguments.offline))
+    if competing_skills is not None:
+        plan["competingSkills"] = competing_skills
     if conflicts is not None:
         plan["semanticConflicts"] = conflicts
         if arguments.format == "protected":
@@ -3150,9 +3155,6 @@ def command_plan(arguments):
         plan["parity"] = parity_report(arguments.project, arguments.skill_dir, plan, configuration)
         if configuration.value(COMPETING_TOOLS_ENABLED_KEY):
             plan["competingTools"] = pack_tools.competing_tools(plan.get("packToolDeclarations", []), catalog)
-        competing_skills = competing_skills_report(arguments, plan, catalog, configuration)
-        if competing_skills is not None:
-            plan["competingSkills"] = competing_skills
         plan["settingsConflicts"] = settings_conflicts.report(
             arguments.project, arguments.skill_dir, configuration.value(HOOK_CONFLICTS_ENABLED_KEY),
             configuration.value(PERMISSION_CONFLICTS_ENABLED_KEY))
@@ -3326,12 +3328,15 @@ def parity_report(project_root, skill_dir, plan, configuration):
 def competing_skills_report(arguments, plan, catalog, configuration):
     """The AI review of the skills that compete for the same request, or None when it is off."""
     if not configuration.value(COMPETING_SKILLS_ENABLED_KEY) or not configuration.value(REVIEWS_ENABLED_KEY):
+        conflicts_review.record_pending(arguments.project, [], check=skill_overlap.CHECK)
         return None
     if not conflicts_review.engine_can_review(ENGINE_SKILL_DIRECTORY):
         return None
     module = review_cache_module()
-    directions, texts = skill_overlap.skill_pairs(plan["entries"], catalog, is_pack_profile, module.normalized_text)
+    directions, texts = skill_overlap.skill_pairs(arguments.project, plan["entries"], catalog, is_pack_profile,
+                                                  module.normalized_text)
     if not directions:
+        conflicts_review.record_pending(arguments.project, [], check=skill_overlap.CHECK)
         return None
     use_provider = not arguments.offline and os.environ.get("AGENT_READY_SETUP_REVIEW_MODE") != "1"
     settings = {"enabled": True, "cache": configuration.value(REVIEWS_CACHE_KEY),
@@ -3341,6 +3346,9 @@ def competing_skills_report(arguments, plan, catalog, configuration):
                                                directions, texts, bash_executable(), use_provider, settings,
                                                publish=arguments.format == "protected", check=check)
     report.pop("pending", None)
+    # The skills an apply brings are not on disk yet: their findings wait here, so agent-ready review
+    # can accept or dismiss one before the apply.
+    conflicts_review.record_pending(arguments.project, report["findings"], check=skill_overlap.CHECK)
     return report
 
 
