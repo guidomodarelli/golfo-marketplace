@@ -147,6 +147,7 @@ import agent_ready_blocks as managed_blocks  # noqa: E402
 import agent_ready_pack_tools as pack_tools  # noqa: E402
 import agent_ready_golfo_kit as golfo_kit  # noqa: E402
 from agent_ready_packs import (  # noqa: E402
+    PACK_CATALOG_FILE_NAME,
     SOURCE_AVAILABLE,
     SOURCE_TYPE_GIT,
     download_declared_sources,
@@ -3892,6 +3893,89 @@ def session_provider():
     return resolved if resolved in SUPPORTED_PROVIDERS else None
 
 
+# Pack-author mode of agent-ready conflicts: the pack is copied into a throwaway consumer repository,
+# under this folder, and every profile it publishes is checked there with the golfo-kit base and its requires.
+PACK_CHECK_DIRECTORY = "agent-packs"
+
+
+def pack_profile_conflicts(run, profile):
+    """The conflicts of one pack profile with the base and its requires: (structural, semantic, unchecked).
+
+    The author's machine is not the consumer's: shadowing and the user's MCP servers stay out.
+    """
+    catalog = load_effective_catalog(run.project, run.skill_dir)
+    plan = compute_plan(run.project, run.skill_dir, catalog, [profile])
+    configuration = configuration_of(run.project, run.offline)
+    tools_report = pack_tools_report(plan, catalog, configuration)
+    if tools_report:
+        plan["packTools"] = tools_report
+    report = structural_conflicts(run.project, run.skill_dir, plan, catalog, configuration, with_context=False)
+    report.pop("machine", None)
+    report["semanticConflicts"] = semantic_conflicts(run, plan)
+    report["competingSkills"] = competing_skills_report(run, plan, catalog, configuration)
+    semantic, unchecked = semantic_conflict_lines(report)
+    return structural_conflict_lines(report), semantic, unchecked
+
+
+def command_pack_conflicts(arguments):
+    """agent-ready conflicts --pack: each profile of a pack against the golfo-kit base and its requires,
+    without a consumer repository. Exits 6 when one has a conflict, 2 when the pack cannot resolve."""
+    pack_root = os.path.abspath(arguments.pack)
+    catalog_path = os.path.join(pack_root, PACK_CATALOG_FILE_NAME)
+    if not os.path.isfile(catalog_path):
+        raise ProfileError(f"{pack_root} has no {PACK_CATALOG_FILE_NAME}: --pack takes the root of a profile pack")
+    pack_catalog = read_json_file(catalog_path, "pack catalog")
+    pack_name = pack_catalog.get("name") or os.path.basename(pack_root)
+    profiles = [f"{pack_name}/{name}" for name in pack_catalog.get("profiles", {})]
+    results = {}
+    with tempfile.TemporaryDirectory(prefix="agent-ready-pack-check.") as scratch:
+        project = os.path.join(scratch, "project")
+        shutil.copytree(pack_root, os.path.join(project, PACK_CHECK_DIRECTORY, pack_name),
+                        ignore=shutil.ignore_patterns(".git"))
+        if run_quiet(["git", "init", "-q", project]) is None:
+            raise StateError(f"git init failed in {project}: the pack check needs Git")
+        run = types.SimpleNamespace(project=project, skill_dir=arguments.skill_dir, offline=arguments.offline,
+                                    profiles=None, stack=None, format="text", provider=session_provider())
+        for profile in profiles:
+            write_text_atomically(os.path.join(project, *MANIFEST_RELATIVE_PATH.split("/")), serialize_json({
+                "profiles": [profile],
+                "sources": {"packs": [{"name": pack_name, "source": f"path:./{PACK_CHECK_DIRECTORY}/{pack_name}"}]},
+            }))
+            try:
+                structural, semantic, unchecked = pack_profile_conflicts(run, profile)
+                results[profile] = {"structural": structural, "semantic": semantic, "unchecked": unchecked}
+            except (ProfileError, IncompleteEvaluationError) as caught_error:
+                results[profile] = {"error": str(caught_error)}
+    errors = any("error" in result for result in results.values())
+    found = any(result.get("structural") or result.get("semantic") for result in results.values())
+    if arguments.format == "json":
+        write_line(serialize_json({"pack": pack_name, "profiles": results, "found": found}).rstrip("\n"))
+    else:
+        print_pack_conflicts(pack_name, results)
+    if errors:
+        return PROFILE_ERROR_STATUS
+    return CONFLICTS_STATUS if found else 0
+
+
+def print_pack_conflicts(pack_name, results):
+    """One block per profile of the pack: its conflicts, or that it has none."""
+    stream = sys.stdout
+    write_line(f"Pack {pack_name}: {len(results)} profile(s) checked against the golfo-kit base and their requires")
+    for profile, result in results.items():
+        if "error" in result:
+            write_line(paint(f"{profile}: does not resolve: {result['error']}", "error", stream))
+            continue
+        lines = result["structural"] + result["semantic"]
+        if not lines:
+            write_line(paint(f"{profile}: no conflicts", "ok", stream))
+        else:
+            write_line(paint(f"{profile}:", "warning", stream))
+            for line in lines:
+                write_line(paint(line, "warning", stream))
+        if result["unchecked"]:
+            write_line(f"  {result['unchecked']} pair(s) of the AI reviews could not be reviewed in this run.")
+
+
 def check_conflicts(project_root, content_dir, offline):
     """The conflicts agent-ready check reports under ci.conflicts: (result, whether they fail the check)."""
     configuration = configuration_of(project_root, offline)
@@ -4938,6 +5022,15 @@ def build_parser():
     check_parser.add_argument("--offline", action="store_true", help="compare with the cache, without the network")
     check_parser.add_argument("--format", choices=("text", "json"), default="text", help="json is for pipelines")
     check_parser.set_defaults(handler=command_check)
+
+    pack_conflicts_parser = subparsers.add_parser(
+        "pack-conflicts",
+        help=f"each profile of a pack against the golfo-kit base and its requires; exits {CONFLICTS_STATUS} on a conflict")
+    add_common(pack_conflicts_parser)
+    pack_conflicts_parser.add_argument("--pack", required=True, help="root of the profile pack (its agent-ready-pack.json)")
+    pack_conflicts_parser.add_argument("--offline", action="store_true", help="the AI reviews answer from the cache only")
+    pack_conflicts_parser.add_argument("--format", choices=("text", "json"), default="text", help="json is for scripts")
+    pack_conflicts_parser.set_defaults(handler=command_pack_conflicts)
 
     background_parser = subparsers.add_parser("background-update", help="run the sync hook and record its result")
     add_common(background_parser)

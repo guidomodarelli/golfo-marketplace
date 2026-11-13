@@ -10,6 +10,7 @@ same with and without one.
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 
@@ -65,6 +66,13 @@ def command_plan(arguments):
 
 def command_conflicts(arguments):
     """Every conflict between the selected profiles, read-only; exits 6 when there is one."""
+    if arguments.pack:
+        # A pack author checks the pack itself, with this engine and no consumer repository.
+        command = [sys.executable, STATE_SCRIPT, "pack-conflicts", "--pack", os.path.abspath(arguments.pack),
+                   "--skill-dir", SKILL_ROOT]
+        command += ["--offline"] if arguments.offline else []
+        command += ["--format", "json"] if arguments.json else []
+        return subprocess.call(command)
     extra = ["--conflicts", *selection_arguments(arguments)]
     extra += ["--offline"] if arguments.offline else []
     extra += ["--json"] if arguments.json else []
@@ -318,9 +326,13 @@ def build_parser():
 
     conflicts = new_subparser(subparsers, "conflicts",
                               "List the conflicts between the selected profiles, read-only; exits 6 when there is one.",
-                              "  agent-ready conflicts\n  agent-ready conflicts --offline --json", command_conflicts,
+                              "  agent-ready conflicts\n  agent-ready conflicts --offline --json\n"
+                              "  agent-ready conflicts --pack .", command_conflicts,
                               needs_provider=True)
     add_selection(conflicts)
+    conflicts.add_argument("--pack", metavar="DIR",
+                           help="check a profile pack instead of this repository: each of its profiles against the "
+                                "golfo-kit base and its requires, for the pack's own CI")
     conflicts.add_argument("--offline", action="store_true",
                            help="use no network: the AI reviews answer from the cache only")
     conflicts.add_argument("--json", action="store_true", help="print the conflicts as JSON on stdout")
@@ -406,7 +418,8 @@ def main(argv=None):
         parser.print_help(sys.stderr)
         return EXIT_USAGE
     try:
-        if getattr(arguments, "needs_repository", True):
+        # A pack author runs agent-ready conflicts --pack from the pack, which needs no consumer repository.
+        if getattr(arguments, "needs_repository", True) and not getattr(arguments, "pack", None):
             arguments.project_root = find_repository_root(arguments.project)
         return arguments.handler(arguments)
     except UsageError as usage_error:

@@ -3974,6 +3974,35 @@
           "description": "No apaga el aviso al iniciar sesión"
         }
       ]
+    },
+    {
+      "id": "pack-author-conflicts-check",
+      "description": "El autor de un profile pack quiere que el CI del pack detecte contradicciones con golfo-kit antes de publicarlo.",
+      "input": "Mantengo un profile pack de agent-ready en su propio repo y quiero que su CI falle si alguno de sus perfiles choca con la base de golfo-kit o con los perfiles que requiere, sin tener un repo consumidor. ¿Qué comando corro? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "--pack",
+          "description": "Nombra la opción --pack",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "conflicts --pack",
+            "agent-ready conflicts"
+          ],
+          "description": "Usa agent-ready conflicts",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "6"
+          ],
+          "description": "Menciona el código de salida 6"
+        }
+      ]
     }
   ]
 }

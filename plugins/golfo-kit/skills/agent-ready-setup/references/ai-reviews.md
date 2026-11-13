@@ -431,3 +431,30 @@ separado:
 |---|---|---|
 | `conflicts.sessionStart.enabled` | `true` | `false` no los calcula al iniciar sesión |
 | `conflicts.onEdit.enabled` | `true` | `false` no los recalcula al editar |
+
+### Para autores de packs
+
+Un pack detecta sus contradicciones en su propio CI, antes de publicarse, sin un repo consumidor:
+
+```bash
+agent-ready conflicts --pack .            # desde la raíz del pack (su agent-ready-pack.json)
+agent-ready conflicts --pack . --offline  # sin llamar a la IA: solo lo estructural y la caché
+```
+
+El chequeo copia el pack a un repo consumidor temporal y evalúa cada profile que publica, por separado,
+con la base de golfo-kit y los profiles que declara en `requires`, como lo vería un repo que lo
+selecciona. Corre los mismos chequeos que `agent-ready conflicts`, salvo los de la máquina del autor (las
+sombras con lo instalado y los servidores MCP del usuario), que no son los del consumidor. El repo
+temporal está vacío, así que tampoco hay nada que contradiga un `assumes`.
+
+```text
+Pack acme: 3 profile(s) checked against the golfo-kit base and their requires
+acme/base: no conflicts
+acme/kafka-interno:
+  ~ MCP server base-docs (acme/base) and MCP server acme-docs (acme/kafka-interno) both provide docs-search: …
+```
+
+- **Código de salida:** `0` sin conflictos, `6` con alguno y `2` si un profile no resuelve (por ejemplo, un
+  `requires` que no existe). `--json` deja el resultado de cada profile.
+- **Revisión de IA:** sin `--offline` usa la CLI del provider de la sesión (`AGENT_READY_SETUP_ACTIVE_PROVIDER`
+  en CI). El repo temporal no conserva la caché entre corridas, así que cada corrida revisa de nuevo.

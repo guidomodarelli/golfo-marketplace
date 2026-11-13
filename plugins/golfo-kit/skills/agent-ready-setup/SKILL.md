@@ -16,7 +16,7 @@ description: >-
   descartar un hallazgo de sus revisiones de IA.
 license: MIT
 metadata:
-  version: "1.46.0"
+  version: "1.47.0"
   author: "guponce"
   category: "developer-experience"
   tags: "agent-ready, multi-provider, claude-code, codex, bootstrap, setup, scaffold, context-optimized-v1.20.1"
@@ -115,6 +115,7 @@ explícito fuera del cache conservan prioridad para desarrollo local.
 | `agent-ready plan [--offline] [--json]` | qué cambiaría un apply, sin escribir en el repo, cuánto contexto suma la selección, qué choca con lo instalado en la máquina y qué rules contradice el repo y qué hooks o permisos chocan, qué ve cada provider y qué variables o jobs de CI se repiten y qué skills compiten (`references/ai-reviews.md`, secciones 8 a 13) |
 | `agent-ready status [--offline] [--json]` | checkout contra el lockfile y las fuentes, sin escribir |
 | `agent-ready conflicts [--offline] [--json]` | todos los conflictos entre los perfiles, sin escribir; sale con `6` si hay alguno (`references/ai-reviews.md`, «Todos los conflictos juntos») |
+| `agent-ready conflicts --pack <dir>` | desde el repo de un pack: cada profile contra la base de golfo-kit y sus `requires`, para el CI del pack (`references/ai-reviews.md`, «Para autores de packs») |
 | `agent-ready check [--offline] [--json]` | el chequeo de CI, con sus códigos `0`, `4`, `5`, `6` (conflictos con `ci.conflicts`) y `2` |
 | `agent-ready apply [--profiles a,b \| --stack s] [--updates auto\|pinned] [--recheck] [--dry-run]` | el Step 3 completo; `--recheck` vuelve a revisar `AGENTS.md` con IA aunque la caché tenga la revisión |
 | `agent-ready apply --from-lock [--dry-run]` | aplica exactamente el lock (selección, revisiones y sha256) o falla antes de escribir nombrando la fuente; ver «Apply reproducible» en [profiles-and-lockfile.md](references/profiles-and-lockfile.md) |
