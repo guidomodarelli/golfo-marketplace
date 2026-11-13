@@ -3136,7 +3136,10 @@ def command_plan(arguments):
     tools_report = pack_tools_report(plan, catalog, configuration_of(arguments.project, arguments.offline))
     if tools_report:
         plan["packTools"] = tools_report
-    conflicts = semantic_conflicts(arguments, plan)
+    # agent-ready conflicts looks at the whole repository: the project's AGENTS.md against the rules
+    # already applied too, not only against what an apply changes.
+    conflicts = semantic_conflicts(arguments, plan,
+                                   instructions_with_applied=arguments.format in (CONFLICTS_FORMAT, CONFLICTS_JSON_FORMAT))
     # Before the apply too: it publishes what the previews reviewed to the versioned cache.
     competing_skills = competing_skills_report(arguments, plan, catalog,
                                                configuration_of(arguments.project, arguments.offline))
@@ -3844,7 +3847,13 @@ def check_conflicts(project_root, content_dir, offline):
     catalog = load_effective_catalog(project_root, content_dir)
     run = types.SimpleNamespace(project=project_root, skill_dir=content_dir, offline=offline, profiles=None, stack=None,
                                 format="text", provider=session_provider())
-    requested, _ = resolve_selection(run, catalog)
+    # The same selection the rest of the check evaluated: the manifest, else the lock's, and only then
+    # detection, so a repository that relies on its lock never needs detection here.
+    requested = configuration.value(PROFILES_KEY)
+    if requested is None:
+        requested = (read_lock(project_root) or {}).get("profileOrder")
+    if requested is None:
+        requested, _ = resolve_selection(run, catalog)
     plan = compute_plan(project_root, content_dir, catalog, requested)
     tools_report = pack_tools_report(plan, catalog, configuration)
     if tools_report:
