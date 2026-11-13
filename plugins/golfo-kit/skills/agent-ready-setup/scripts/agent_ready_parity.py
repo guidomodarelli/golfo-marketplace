@@ -23,7 +23,9 @@ EXAMPLE_ENVIRONMENT_FILES = (".env.example", ".env.sample", ".env.template", ".e
 ENVIRONMENT_LINE = re.compile(r"^\s*(?:export\s+)?(?P<name>[A-Z][A-Z0-9_]*)\s*=")
 # What a CI job runs when it already does the Agent Ready check.
 AGENT_READY_CHECK_PATTERN = re.compile(
-    r"agent-ready-check\.sh|agent-ready(?:\.py)?\s+check\b|agent-ready-state\.py\s+check\b|bootstrap\.sh\b.*--check\b")
+    # The executable may close a quoted path: python3 "$SKILL_DIR/scripts/agent-ready" check.
+    r"agent-ready-check\.sh|agent-ready(?:\.py)?[\"']?\s+check\b|agent-ready-state\.py[\"']?\s+check\b"
+    r"|bootstrap\.sh\b.*--check\b")
 REPOSITORY_CI_FILES = (".github/workflows/*.yml", ".github/workflows/*.yaml", ".gitlab-ci.yml", "Jenkinsfile",
                        ".circleci/config.yml", "azure-pipelines.yml", "bitbucket-pipelines.yml")
 # The plan action of an asset the apply deletes (agent-ready-state.py).
@@ -62,6 +64,9 @@ def hook_differences(project_root, skill_dir):
     names its tools differently (Edit and Write in Claude Code, apply_patch in Codex).
     """
     layers = settings_conflicts.layers(project_root, skill_dir)
+    if settings_conflicts.claude_hooks_disabled(layers):
+        # disableAllHooks: Claude Code runs none of its hooks, so only Codex's count.
+        layers = [layer for layer in layers if layer["provider"] != PROVIDER_CLAUDE]
     differences = []
     for layer_name in (settings_conflicts.LAYER_GOLFO, settings_conflicts.LAYER_PROJECT):
         hooks = {provider: {} for provider in (PROVIDER_CLAUDE, PROVIDER_CODEX)}
