@@ -1,0 +1,26 @@
+{
+  "testRunner": {
+    "description": "test runner",
+    "values": {
+      "vitest": {"dependencies": ["vitest"], "files": ["vitest.config.ts", "vitest.config.mts", "vitest.config.js", "vitest.config.mjs", "vitest.workspace.ts", "vitest.workspace.js"]},
+      "jest": {"dependencies": ["jest"], "files": ["jest.config.ts", "jest.config.js", "jest.config.mjs", "jest.config.cjs", "jest.config.json"], "packageJsonKeys": ["jest"]},
+      "mocha": {"dependencies": ["mocha"], "files": [".mocharc", ".mocharc.json", ".mocharc.js", ".mocharc.cjs", ".mocharc.yml", ".mocharc.yaml"]}
+    }
+  },
+  "packageManager": {
+    "description": "package manager",
+    "values": {
+      "pnpm": {"files": ["pnpm-lock.yaml"], "packageManagerField": "pnpm"},
+      "npm": {"files": ["package-lock.json", "npm-shrinkwrap.json"], "packageManagerField": "npm"},
+      "yarn": {"files": ["yarn.lock"], "packageManagerField": "yarn"},
+      "bun": {"files": ["bun.lock", "bun.lockb"], "packageManagerField": "bun"}
+    }
+  },
+  "indentation": {
+    "description": "indentation",
+    "values": {
+      "tabs": {"editorconfig": {"indent_style": "tab"}, "prettier": {"useTabs": true}},
+      "spaces": {"editorconfig": {"indent_style": "space"}, "prettier": {"useTabs": false}}
+    }
+  }
+}
