@@ -314,9 +314,64 @@ def has_linked_parent(project_root, destination):
 
 # A profile's ``defaults``: the profiles it brings unless excludedDefaults leaves them out.
 DEFAULTS_KEY = "defaults"
+# An asset of another profile of the selection that a profile replaces, as "<profile>:<path>":
+# "react:rules/react-testing.md", or "software-development:skills/pr-review-workflow" for a skill.
+OVERRIDES_KEY = "overrides"
+# Skills of other profiles a skill goes together with, as "<profile>:skills/<name>" (read in #72c).
+COMPLEMENTS_KEY = "complements"
+ASSET_REFERENCE_SEPARATOR = ":"
+OVERRIDABLE_DIRECTORIES = ("rules", "skills", "agents", "commands")
 # A bundle publishes nothing and only groups other profiles through ``requires``.
 BUNDLE_PROFILE_KIND = "bundle"
-BUNDLE_FORBIDDEN_KEYS = ("assets", "tools", "detect", DEFAULTS_KEY, "clis", "mcpServers", "scripts")
+BUNDLE_FORBIDDEN_KEYS = ("assets", "tools", "detect", DEFAULTS_KEY, OVERRIDES_KEY, COMPLEMENTS_KEY, "clis",
+                         "mcpServers", "scripts")
+
+
+def parse_asset_reference(reference, what):
+    """(profile, path) of "<profile>:<path>", where path is a rule, agent or command file or a skill directory."""
+    if not isinstance(reference, str) or reference.count(ASSET_REFERENCE_SEPARATOR) != 1:
+        raise ProfileError(f"{what}: '{reference}' must be <profile>:<path>, such as react:rules/react-testing.md")
+    profile, path = reference.split(ASSET_REFERENCE_SEPARATOR)
+    parts = path.split("/")
+    if (not profile or len(parts) < 2 or parts[0] not in OVERRIDABLE_DIRECTORIES
+            or any(part in ("", ".", "..") for part in parts)):
+        raise ProfileError(f"{what}: '{reference}' must name a path under {', '.join(OVERRIDABLE_DIRECTORIES)}, "
+                           "such as react:rules/react-testing.md or software-development:skills/pr-review-workflow")
+    return profile, path
+
+
+def resolved_overrides(skill_dir, catalog, resolved):
+    """{target profile: {path: overriding profile}} of the selection, validated against what it publishes.
+
+    A profile replaces an asset of another selected profile on purpose: only its own asset is
+    projected. An override of an asset, or a profile, that the selection does not have is an error.
+    """
+    overridden = {}
+    for name in resolved:
+        for reference in catalog["profiles"][name].get(OVERRIDES_KEY, []):
+            target, path = parse_asset_reference(reference, f"profile '{name}' {OVERRIDES_KEY}")
+            if target == name:
+                raise ProfileError(f"profile '{name}' overrides its own {path}; remove the file instead")
+            if target == BASE_PROFILE_NAME:
+                raise ProfileError(f"profile '{name}' overrides {reference}: the core cannot be overridden yet; "
+                                   f"add a rule of your own next to it")
+            if target not in resolved:
+                raise ProfileError(f"profile '{name}' overrides {reference}, but the selection does not have "
+                                   f"'{target}'; nothing was written")
+            target_root = profile_asset_root(skill_dir, catalog, target)
+            if not target_root or not os.path.exists(os.path.join(target_root, *path.split("/"))):
+                raise ProfileError(f"profile '{name}' overrides {reference}, which '{target}' does not publish; "
+                                   f"nothing was written")
+            previous = overridden.setdefault(target, {}).setdefault(path, name)
+            if previous != name:
+                raise ProfileError(f"profiles '{previous}' and '{name}' both override {reference}; keep one")
+    return overridden
+
+
+def is_overridden(overridden, profile, relative_path):
+    """True when another profile of the selection replaces this asset (a file, or a file of a skill directory)."""
+    return any(relative_path == path or relative_path.startswith(path + "/")
+               for path in overridden.get(profile, {}))
 
 
 def load_profile_catalog(skill_dir):
@@ -351,6 +406,9 @@ def validate_selection_fields(name, profile):
     A bundle publishes nothing: no assets, tools, detection or defaults of its own, so what it brings
     is exactly the profiles it requires, each with its own defaults.
     """
+    for field in (OVERRIDES_KEY, COMPLEMENTS_KEY):
+        for reference in profile.get(field, []) if isinstance(profile.get(field, []), list) else [None]:
+            parse_asset_reference(reference, f"profile '{name}' {field}")
     defaults = profile.get(DEFAULTS_KEY, [])
     if not isinstance(defaults, list) or not all(isinstance(item, str) and item for item in defaults):
         raise ProfileError(f"profile '{name}': '{DEFAULTS_KEY}' must be a list of profile names")
@@ -615,14 +673,18 @@ def compose_stack_directory(skill_dir, catalog, resolved, compose_root):
     """
     asset_profiles = [name for name in resolved if profile_asset_root(skill_dir, catalog, name)]
     primary = primary_stack(catalog, resolved)
+    overridden = resolved_overrides(skill_dir, catalog, resolved)
     # The instruction scripts read rules/ of the tree: a stack without rules of its own (a pack stack
     # that only publishes its section) is composed, which gives the tree an empty rules/.
-    if primary and asset_profiles == [primary] and os.path.isdir(os.path.join(profile_asset_root(skill_dir, catalog, primary), "rules")):
+    if not overridden and primary and asset_profiles == [primary] and os.path.isdir(os.path.join(profile_asset_root(skill_dir, catalog, primary), "rules")):
         return profile_asset_root(skill_dir, catalog, primary)
 
     owners = {}
     for name in asset_profiles:
         for relative_path, _ in walk_files(profile_asset_root(skill_dir, catalog, name)):
+            if is_overridden(overridden, name, relative_path):
+                # Another profile of the selection replaces it on purpose (overrides).
+                continue
             if managed_blocks.destination_of(relative_path) is not None:
                 # Each profile keeps its own block of a shared file (desired_blocks).
                 continue
@@ -722,8 +784,11 @@ def desired_assets(skill_dir, catalog, resolved):
 
     assets = {}
     destinations_by_folded_name = {}
+    overridden = resolved_overrides(skill_dir, catalog, resolved)
     for profile_name, root, is_stack_root in sources:
         for relative_path, absolute_path in walk_files(root):
+            if is_overridden(overridden, profile_name, relative_path):
+                continue
             for destination in destinations_for_template(relative_path, is_stack_root):
                 previous = destinations_by_folded_name.setdefault(destination.casefold(), destination)
                 if previous in assets and assets[previous]["sourcePath"] != absolute_path:
@@ -1547,8 +1612,19 @@ def compute_plan(project_root, skill_dir, catalog, profile_names):
         "detachedViews": preserved_views,
         "merged": merged,
         # What the selected pack profiles declare besides files; the policy judges them later.
-        "packToolDeclarations": pack_tools.declared_tools(catalog, resolved, source_of_profile, is_pack_profile),
+        "packToolDeclarations": declared_pack_tools(catalog, resolved),
+        "overrides": [{"profile": by, "replaces": f"{target}{ASSET_REFERENCE_SEPARATOR}{path}"}
+                      for target, paths in sorted(resolved_overrides(skill_dir, catalog, resolved).items())
+                      for path, by in sorted(paths.items())],
     }
+
+
+def declared_pack_tools(catalog, resolved):
+    """pack_tools.declared_tools, with a conflict between two declarations as a ProfileError."""
+    try:
+        return pack_tools.declared_tools(catalog, resolved, source_of_profile, is_pack_profile)
+    except pack_tools.DeclarationError as declaration_error:
+        raise ProfileError(str(declaration_error)) from declaration_error
 
 
 def extract_managed_block(text):
@@ -1950,6 +2026,8 @@ def print_plan(project_root, skill_dir, plan, provider, skip_marketplace_upgrade
     excluded = configuration.value(EXCLUDED_DEFAULTS_KEY) or []
     if excluded:
         write_line(f"Defaults left out: {', '.join(excluded)} ({EXCLUDED_DEFAULTS_KEY})")
+    for override in plan.get("overrides", []):
+        write_line(f"Overridden: {override['replaces']} by {override['profile']} (only its own asset is projected)")
     write_line(f"Source:   {describe_source(plan['source'])}")
     write_line(f"Lock:     {describe_source(plan['lockedSource']) if plan['hasLock'] else 'none (first apply creates it)'}")
     write_line("")

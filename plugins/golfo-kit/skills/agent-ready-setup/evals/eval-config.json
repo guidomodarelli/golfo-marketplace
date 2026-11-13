@@ -3702,6 +3702,29 @@
           "description": "Aclara que no recibe software-development"
         }
       ]
+    },
+    {
+      "id": "pack-overrides-a-golfo-rule",
+      "description": "Un pack reemplaza a propósito una rule de golfo con overrides; sin overrides las dos quedan activas.",
+      "input": "Mi pack de empresa tiene su propia rule de testing y quiero que reemplace a testing-scope.md de golfo-kit, no que queden las dos. ¿Cómo lo declaro en agent-ready-pack.json y cómo veo que funcionó? ¿Qué pasa si dos profiles declaran el mismo servidor MCP con distinta URL? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "overrides",
+          "description": "Usa overrides",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "software-development:rules/testing-scope.md",
+          "description": "Nombra la referencia <profile>:<path> correcta"
+        },
+        {
+          "type": "contains_any",
+          "values": ["antes de escribir", "falla", "conflicto"],
+          "description": "Dice que el MCP declarado distinto falla antes de escribir"
+        }
+      ]
     }
   ]
 }

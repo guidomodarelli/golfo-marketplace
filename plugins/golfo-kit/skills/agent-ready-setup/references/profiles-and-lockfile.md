@@ -29,6 +29,8 @@ un repositorio. La implementación vive en `scripts/agent-ready-state.py`.
 | `requires` | profiles que se agregan antes, en orden; siempre vienen |
 | `defaults` | profiles que trae al elegirlo, después de la selección; el repo puede dejarlos afuera con `excludedDefaults` |
 | `conflicts` | profiles incompatibles; seleccionarlos juntos es error |
+| `overrides` | assets de otro profile de la selección que este reemplaza a propósito, como `<profile>:<path>` (`software-development:rules/testing-scope.md`, o `react:skills/component-creation` para una skill): se proyecta solo el suyo y `plan` lo muestra (`Overridden: …`). Reemplazar algo que la selección no tiene, o el núcleo (`common`), falla antes de escribir |
+| `complements` | skills de otros profiles con las que esta va junto, como `<profile>:skills/<nombre>`: documenta que no compiten (la revisión de skills que compiten lo lee) |
 | `tools` | herramientas que el apply instala o registra (`browser`) |
 | `detect` | señales estáticas para detectar el profile; opcional (ver «Detección») |
 
