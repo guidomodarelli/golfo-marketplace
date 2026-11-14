@@ -147,7 +147,8 @@ Fuentes de profiles: golfo-kit, packs en Git y carpetas locales del repositorio.
 |---|---|---|---|---|---|---|
 | `sources.enabled` | boolean | `true` | todas | — | `true` < `false` | Apagado, los packs declarados no se descargan ni se leen, y seleccionar un profile de un pack falla. Encenderlo desde el proyecto cuando otra capa lo apagó afloja la seguridad. |
 | `sources.packs` | lista de objetos | `[]` | project | — | — | Packs disponibles para seleccionar sus profiles por nombre con namespace (acme/kafka-interno). Declararlos no selecciona ninguno. |
-| `sources.golfoKit.ref` | string | — | todas | — | — | Rama, tag o commit completo del marketplace a seguir en auto o a adoptar con agent-ready update golfo-kit. Sin valor, la versión del plugin instalado. |
+| `sources.golfoKit.source` | string | — | todas | — | — | git+https://... o git+ssh://... de un repositorio con el contenido en formato de pack (agent-ready-pack.json con baseAssets) en vez del marketplace. Necesita ref o #<revisión> en la URL. Sin valor, el contenido sale del marketplace. |
+| `sources.golfoKit.ref` | string | — | todas | — | — | Rama, tag o commit completo a seguir en auto o a adoptar con agent-ready update golfo-kit, del marketplace o de source. Sin valor y sin source, la versión del plugin instalado. |
 | `sources.golfoKit.updates` | `auto` \| `pinned` | — | todas | — | — | Modo de actualización de golfo-kit; pisa updates.mode del repositorio. |
 
 Campos de cada elemento de `sources.packs`:

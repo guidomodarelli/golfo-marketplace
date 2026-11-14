@@ -352,8 +352,10 @@ estos límites:
 - `kind` es `capability`, `bundle` o `stack`. Un profile que necesita un stack lo declara en `requires`;
   un pack publica un `stack` propio para una tecnología que golfo-kit no tiene (ver «Stacks de un pack»).
 - `tools` solo acepta herramientas que el motor ya conoce (`browser`).
-- Un pack no declara `baseAssets` ni otras fuentes, ni redefine un profile de
-  Golfo. Los assets compartidos van en un profile propio, como `acme/base`, que los demás requieren.
+- Un pack no declara otras fuentes ni redefine un profile de Golfo. Tampoco declara `baseAssets`: la base y el
+  template de `AGENTS.md` vienen solo de la fuente de contenido (ver «Contenido de otro repositorio», en la
+  sección 4), y un pack de `sources.packs` que la declara falla antes de escribir. Los assets compartidos van en un
+  profile propio, como `acme/base`, que los demás requieren.
 - `assets` publica solo `rules/`, `skills/`, `agents/`, `commands/`, `blocks/`, los bloques gestionados
   de archivos compartidos con el proyecto ([managed-agents-block.md](managed-agents-block.md), sección
   «Bloques en otros archivos»), y `nested/`, el bloque de cada destino anidado que declara
@@ -544,6 +546,33 @@ agents, commands y templates de instrucciones) se puede fijar como un pack, con 
   disponible y a `plan` y `status` comparando con el contenido instalado, con un aviso.
 - `golfo-kit` es un nombre reservado: un pack de `sources.packs` no puede llamarse así.
 
+**Contenido de otro repositorio.** `sources.golfoKit.source` toma el contenido de un repositorio Git en vez del
+marketplace, con un `ref` (o `#<revisión>` en la URL) y los mismos `updates`:
+
+```json
+{ "sources": { "golfoKit": { "source": "git+https://github.com/acme/agent-content", "ref": "main" } } }
+```
+
+- Ese repositorio es un **pack de contenido**: un `agent-ready-pack.json` en la raíz con `schemaVersion`, `name`,
+  `version` (obligatoria) y, si hace falta, `minEngine` y `changes`, sus `profiles` y `baseAssets`.
+- **Base:** `baseAssets` es la carpeta de la base que recibe todo repositorio. Lleva `rules/`, `skills/`, `blocks/`
+  y `agents-template.md`, el template de `AGENTS.md`, que es obligatorio. Los hooks y los settings son del motor.
+- **Profiles:** los del pack se nombran sin prefijo (`node`, no `acme/node`), con los campos de la sección 1. Sus
+  `assets` publican lo mismo que un pack (`rules/`, `skills/`, `agents/`, `commands/`, `blocks/`, `nested/`) y, en
+  una capability, `agents-skeleton.md`, el esqueleto de `AGENTS.md` (como `software-development`). Un profile no
+  puede poner sus assets en una carpeta que usa el motor (`common/`, `ci/`, `config/`, …).
+- **CI:** los profiles de CI (`kind: ci`) siempre salen del motor, porque sus workflows corren el CLI de esa
+  versión. Un pack de contenido que declara uno falla antes de escribir.
+- **Precedencia:** la base y el template salen solo de la fuente de contenido: hay una por repositorio. El gate de
+  colisiones de la sección 3 compara su base con los profiles y con los packs de `sources.packs`.
+- **Revisión:** no hay copia instalada de la que partir, así que el primer apply adopta la `ref`, también en
+  `pinned`; después se comporta como golfo-kit fijado. Cambiar `source` es adoptar otro contenido: el lock de la
+  fuente anterior no cuenta, y `apply --from-lock` falla hasta un apply que lo adopte. El lock registra
+  `source.layout: "pack"` y el `origin` de ese repositorio, y `status` lo nombra.
+- **Validación:** un repositorio sin `agent-ready-pack.json`, sin `baseAssets`, con un symlink o con algo que no
+  puede publicar frena el apply, el plan y el status antes de escribir. `source` acepta solo `git+https://` y
+  `git+ssh://`, sin credenciales en la URL.
+
 `AGENT_READY_SETUP_SYNC_FOREGROUND=1`, o `--stack` y `--profiles` en el hook, corren la sincronización en
 primer plano. `AGENT_READY_SETUP_REVIEW_MODE=1` nunca actualiza, nunca usa la red y nunca escribe.
 
@@ -575,7 +604,8 @@ El lockfile registra `source.plugin`, `source.version` (versión del contenido d
 golfo-kit), `source.kind` (`marketplace-snapshot`, `plugin-cache`, `local` o `git`
 cuando golfo-kit está fijado), `source.revision` (commit git del source cuando
 existe), `source.origin` (repositorio del que se puede volver a descargar),
-`source.requestedRef` cuando un update eligió una ref, y `source.contentDigest`,
+`source.requestedRef` cuando un update eligió una ref, `source.layout: "pack"` cuando el contenido sale de
+`sources.golfoKit.source`, y `source.contentDigest`,
 que identifica el contenido exacto (assets, templates fusionados y plantillas de
 instrucciones) aunque no haya revisión git. `generator.version` es la versión del
 motor que proyectó. Cada fuente de `profileSources` guarda además su `version`, si el

@@ -57,15 +57,19 @@
       }
     },
     "golfoKit": {
-      "description": "golfo-kit como fuente fijable. Sin declarar, su contenido sigue al plugin instalado. Con updates pinned, cada apply proyecta el contenido de la revisión del lock, descargado con Git del marketplace, y solo agent-ready update golfo-kit lo cambia. El motor (scripts, hooks, settings, schemas de configuración) sigue siempre al plugin instalado.",
+      "description": "golfo-kit como fuente fijable. Sin declarar, su contenido sigue al plugin instalado; con source, sale de ese pack de contenido. Con updates pinned, cada apply proyecta el contenido de la revisión del lock, descargado con Git del marketplace, y solo agent-ready update golfo-kit lo cambia. El motor (scripts, hooks, settings, schemas de configuración) sigue siempre al plugin instalado.",
       "type": "object",
       "x-layers": [
         "project"
       ],
       "additionalProperties": false,
       "properties": {
+        "source": {
+          "description": "git+https://... o git+ssh://... de un repositorio con el contenido en formato de pack (agent-ready-pack.json con baseAssets) en vez del marketplace. Necesita ref o #<revisión> en la URL. Sin valor, el contenido sale del marketplace.",
+          "type": "string"
+        },
         "ref": {
-          "description": "Rama, tag o commit completo del marketplace a seguir en auto o a adoptar con agent-ready update golfo-kit. Sin valor, la versión del plugin instalado.",
+          "description": "Rama, tag o commit completo a seguir en auto o a adoptar con agent-ready update golfo-kit, del marketplace o de source. Sin valor y sin source, la versión del plugin instalado.",
           "type": "string"
         },
         "updates": {

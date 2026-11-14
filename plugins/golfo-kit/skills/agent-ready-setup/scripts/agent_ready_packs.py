@@ -730,6 +730,10 @@ def load_pack_catalog(source, golfo_profile_names, engine_version=None):
         catalog = read_json_file(catalog_path, "pack catalog")
     except StateError as caught_error:
         raise ProfileError(f"profile source '{source_name}': {caught_error}") from caught_error
+    if "baseAssets" in catalog:
+        # Precedence between sources: the base and the AGENTS.md template come only from the content source.
+        raise ProfileError(f"pack '{source_name}' declares baseAssets, but only the content source (sources.golfoKit.source) "
+                           "publishes the base; put the shared assets in a profile of the pack that the others require")
     extra_keys = sorted(set(catalog) - set(PACK_ALLOWED_TOP_LEVEL_KEYS))
     if extra_keys:
         raise ProfileError(f"pack '{source_name}' has fields a pack cannot declare: {', '.join(extra_keys)}")

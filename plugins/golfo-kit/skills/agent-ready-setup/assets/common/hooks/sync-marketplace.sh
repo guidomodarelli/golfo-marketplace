@@ -31,6 +31,8 @@ readonly SHARED_DIR=".agents"
 readonly CLAUDE_DIR=".claude"
 readonly CODEX_DIR=".codex"
 readonly RUN_DETACHED_SCRIPT="scripts/run-detached.py"
+# golfo-kit-source exits with this when the content pack of the repository is not on this machine yet.
+readonly CONTENT_PENDING_STATUS=7
 readonly MARKETPLACE_UPGRADE_INTERVAL_MINUTES=60
 readonly SYNC_LOCK_DIRECTORY="$SHARED_DIR/.agent-ready-assets.lock"
 # shellcheck disable=SC2034
@@ -357,7 +359,15 @@ golfo_kit_arguments=(golfo-kit-source --project . --skill-dir "$skill_dir")
 if [[ "$review_mode" -eq 1 || "$defer_to_background" -eq 1 ]]; then
   golfo_kit_arguments+=(--offline --read-only)
 fi
-if ! content_skill_dir="$(python3 "$state_script" "${golfo_kit_arguments[@]}")"; then
+content_pending=0
+content_status=0
+content_skill_dir="$(python3 "$state_script" "${golfo_kit_arguments[@]}")" || content_status=$?
+if [[ "$content_status" -eq "$CONTENT_PENDING_STATUS" && "$defer_to_background" -eq 1 ]]; then
+  # The content pack of this repository is not on this machine yet: nothing is reported from other
+  # content, and the detached sync below downloads it.
+  content_pending=1
+  content_skill_dir=""
+elif [[ "$content_status" -ne 0 ]]; then
   printf 'WARNING: could not prepare the golfo-kit content; nothing was synchronized.\n' >&2
   exit 0
 fi
@@ -408,6 +418,18 @@ start_background_task() {
     printf 'WARNING: background task %s could not start; it retries in the next session.\n' "$log_name" >&2
   fi
 }
+
+if [[ "$content_pending" -eq 1 ]]; then
+  if [[ "$updates_enabled" != true ]]; then
+    echo "[marketplace-sync] The golfo-kit content of this repository is not on this machine yet and automatic updates are off (updates.enabled: false); an apply downloads it."
+    exit 0
+  fi
+  echo "[marketplace-sync] The golfo-kit content of this repository is not on this machine yet; the sync downloads it in the background."
+  start_background_task "background-update-$(project_log_key)" \
+    python3 "$state_script" background-update --project . --skill-dir "$skill_dir" \
+    --hook "$hook_path" --provider "$provider"
+  exit 0
+fi
 
 # The session-start scripts of the packs run on every session start, whatever the update mode,
 # in the background and only as the last apply recorded them (agent_ready_pack_scripts.py).
