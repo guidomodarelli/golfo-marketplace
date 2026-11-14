@@ -57,10 +57,24 @@ write_manifest() {
 }
 
 run_cli() {
-  # DIAGNOSTIC (to remove): which command does not return on the Windows runners.
+  # DIAGNOSTIC (to remove): which command does not return on the Windows runners, and where every
+  # Python process of it is after 150 seconds (faulthandler writes its stack and ends it).
   printf '# %s run_cli %s\n' "$(date +%T)" "$*" >&3
-  run --separate-stderr env PATH="$fake_bin:$PATH" python3 "$skill_dir/scripts/agent-ready" "$@"
+  mkdir -p "$test_root/diagnostic"
+  cat > "$test_root/diagnostic/sitecustomize.py" <<'PY'
+import faulthandler, os, sys, time
+_log = open(os.environ["DIAGNOSTIC_TRACEBACKS"], "a", encoding="utf-8")
+_log.write(f"{time.strftime('%H:%M:%S')} start {os.getpid()} {sys.argv[:4]}\n")
+_log.flush()
+faulthandler.dump_traceback_later(150, exit=True, file=_log)
+PY
+  run --separate-stderr env PATH="$fake_bin:$PATH" PYTHONPATH="$test_root/diagnostic" \
+    DIAGNOSTIC_TRACEBACKS="$test_root/diagnostic/tracebacks.log" python3 "$skill_dir/scripts/agent-ready" "$@"
   printf '# %s done %s (status %s)\n' "$(date +%T)" "$1" "$status" >&3
+  if [[ -s "$test_root/diagnostic/tracebacks.log" ]]; then
+    sed 's/^/# /' "$test_root/diagnostic/tracebacks.log" >&3
+    : > "$test_root/diagnostic/tracebacks.log"
+  fi
 }
 
 manifest_value() {
