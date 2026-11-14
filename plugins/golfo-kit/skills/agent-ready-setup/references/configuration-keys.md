@@ -176,3 +176,5 @@ Presets:
 - `updates.preset: delivered` → `updates.mode: pinned`, `sources.golfoKit.updates: pinned`, `updates.refresh: false`, `updates.fromLock: true`, `ci.mode: fail`
 
 `locked` es una lista de claves (o namespaces enteros) que solo declara la organización.
+
+<!-- prueba del filtro de CI (#135): no mergear -->
