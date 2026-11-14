@@ -181,9 +181,13 @@ jobs:
           git config --global user.email "ci@example.invalid"
       - name: Agent Ready suites
         working-directory: plugins/golfo-kit/skills/agent-ready-setup/tests
+        # A test that hangs fails on its own, with its name, instead of stopping the whole shard at the
+        # 45-minute limit of the job: no test takes more than a few minutes, even on a slow Windows runner.
+        env:
+          BATS_TEST_TIMEOUT: "600"
         run: |
           bash --version | head -n 1
-          LC_ALL=C.UTF-8 pnpm exec bats ${{ matrix.suites }}
+          LC_ALL=C.UTF-8 pnpm exec bats --timing ${{ matrix.suites }}
 
   bootstrap:
     name: Agent Ready bootstrap (shard ${{ matrix.shard }}/3)
