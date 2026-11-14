@@ -84,6 +84,8 @@ CONTENT_PACK_TOP_LEVEL_KEYS = ("schemaVersion", "name", "version", "minEngine", 
 CONTENT_PACK_PROFILE_KEYS = ("kind", "description", "assets", "requires", "conflicts", "defaults", "overrides",
                              "complements", "tools", "detect", nested.NESTED_KEY)
 CONTENT_PACK_PROFILE_KINDS = ("stack", "capability", "bundle")
+# The name the engine gives the base in the lock, the blocks and the digests: no profile can take it.
+RESERVED_PROFILE_NAMES = ("common",)
 # CI profiles bring the files that run the CLI of this engine, so they always come from the engine.
 ENGINE_PROFILE_KIND = "ci"
 AGENTS_TEMPLATE_FILE_NAME = "agents-template.md"
@@ -156,6 +158,14 @@ def declaration_of(configuration, engine_dir, locked_source):
             origin = None
     return {"name": GOLFO_KIT_SOURCE_NAME, "type": SOURCE_TYPE_GIT, "origin": origin, "requestedRef": ref,
             "layout": LAYOUT_MARKETPLACE, "updates": configuration.value(SOURCES_GOLFO_KIT_UPDATES_KEY)}
+
+
+class ContentPendingError(ProfileError):
+    """The content pack of the repository is not on this machine and this run cannot download it.
+
+    A run that writes nothing (a session start that hands the sync to the background) reports
+    nothing from other content: the detached sync downloads it.
+    """
 
 
 def locked_source_of(declaration, locked_source):
@@ -452,6 +462,9 @@ def compose_pack_content(engine_dir, tree, staged_skill, label):
             raise content_pack_error(label, f"has an invalid profile name '{name}'; use kebab-case")
         if not isinstance(entry, dict):
             raise content_pack_error(label, f"profile '{name}' must be an object")
+        if name in RESERVED_PROFILE_NAMES:
+            raise content_pack_error(label, f"declares a profile named '{name}', the name the engine gives the base; "
+                                            "use another name")
         if entry.get("kind") == ENGINE_PROFILE_KIND:
             raise content_pack_error(label, f"declares the CI profile '{name}': CI profiles come with the engine")
         if entry.get("kind") not in CONTENT_PACK_PROFILE_KINDS:
@@ -511,14 +524,21 @@ def content_skill_dir(configuration, engine_dir, engine_revision, locked_source,
     is_pack = declaration["layout"] == LAYOUT_PACK
     if commit is None or (commit == engine_revision and not is_pack):
         if is_pack:
-            raise ProfileError(f"golfo-kit: sources.golfoKit.source needs the content at a revision, and none of "
-                               f"{declaration['origin']} is known yet; run it with network")
+            unknown = (f"golfo-kit: sources.golfoKit.source needs the content at a revision, and none of "
+                       f"{declaration['origin']} is known on this machine yet")
+            if read_only and not from_lock:
+                raise ContentPendingError(f"{unknown}; a sync with network downloads it")
+            raise ProfileError(f"{unknown}; run it with network")
         return engine_dir, resolution_warning
     if not declaration["origin"]:
         raise ProfileError("golfo-kit: the plugin manifest of this installation declares no https repository to fetch "
                            f"revision {commit[:12]} from")
     if not cached_tree(declaration["origin"], commit):
-        if (offline or resolution_warning) and read_only and not from_lock and not is_pack:
+        if (offline or resolution_warning) and read_only and not from_lock:
+            if is_pack:
+                # The installed engine has other content: compare with nothing until the content is here.
+                raise ContentPendingError(f"golfo-kit: the content pack {declaration['origin']} at {commit[:12]} is not "
+                                          "in the cache of this machine yet; a sync with network downloads it")
             return engine_dir, (f"golfo-kit {commit[:12]} is not in the cache of this machine yet; comparing with the "
                                 f"installed one until a run with network downloads it")
         if offline:

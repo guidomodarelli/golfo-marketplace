@@ -982,3 +982,33 @@ PY
   run_cli apply --from-lock
   [ "$status" -eq 0 ]
 }
+
+
+@test "a session start without the content pack in the cache downloads it in the background" {
+  publish_content_pack
+  write_manifest "{\"profiles\": [\"node\"], \"sources\": {$content_source}}"
+  run_cli apply
+  [ "$status" -eq 0 ]
+  # Another machine: the lock is committed and its cache is empty; main moved since.
+  rm -rf "$XDG_CACHE_HOME/agent-ready-setup"
+  printf 'Second rule text of the content pack.\n' >> "$content_pack/base/rules/verify-changes.md"
+  git -C "$content_pack" commit -qam "content 3.1.0"
+
+  run env PATH="$fake_bin:$PATH" AGENT_READY_SETUP_SKILL_DIR="$skill_dir" \
+    bash .agents/hooks/sync-marketplace.sh --provider claude
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"The golfo-kit content of this repository is not on this machine yet; the sync downloads it in the background."* ]]
+  [[ "$output" != *"could not prepare the golfo-kit content"* ]]
+  wait_for_background_update
+  grep -Fq 'Second rule text of the content pack.' .agents/rules/verify-changes.md
+}
+
+@test "a content pack cannot take the name the engine gives the base" {
+  publish_content_pack
+  write_manifest "{\"profiles\": [\"node\"], \"sources\": {$content_source}}"
+  edit_content_catalog 'data["profiles"]["common"] = {"kind": "capability"}'
+  run_cli apply
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"declares a profile named 'common', the name the engine gives the base"* ]]
+  [ ! -e .agents/rules ]
+}
