@@ -1573,16 +1573,20 @@ class Spinner:
 
 @contextmanager
 def step(stream, label, animate, clock=time.monotonic):
-    """Un paso con spinner. Si termina con cualquier excepción (también Ctrl+C), lo marca ✖ y la relanza."""
-    spinner = Spinner(stream, label, animate, clock).start()
+    """Un paso con spinner. Si termina con cualquier excepción (también Ctrl+C), lo marca ✖ y la relanza.
+    Bajo un agente, una sola línea por paso y sin glifos: `Compilar… ok` o `Compilar… error`."""
+    is_agent = is_agent_session()
+    spinner = Spinner(stream, label, animate and not is_agent, clock)
+    if not is_agent:
+        spinner.start()
     try:
         yield spinner
     except BaseException:
         spinner.stop()
-        stream.write(f"  {ERROR_GLYPH} {label}\n")
+        stream.write(f"{label}… error\n" if is_agent else f"  {ERROR_GLYPH} {label}\n")
         raise
     spinner.stop()
-    stream.write(f"  {DONE_GLYPH} {label} · {spinner.elapsed_text()}\n")
+    stream.write(f"{label}… ok\n" if is_agent else f"  {DONE_GLYPH} {label} · {spinner.elapsed_text()}\n")
 ```
 
 - La interfaz va a stderr: `ui_stream = sys.stderr`, y el ancho se mide sobre ese stream, no sobre stdout.
@@ -1641,14 +1645,28 @@ const rows = [
 const columns = [
   { title: 'Servicio', read: (row) => row.service },
   { title: 'Versión', read: (row) => row.version },
-  { title: 'Estado', read: (row) => statusLabel(row.status), colorOf: (row) => row.status },
+  // Bajo un agente, la palabra sola: el glifo es decorativo.
+  { title: 'Estado', read: (row) => (uiOutput.isAgent ? THEME.statuses[row.status].word : statusLabel(row.status)), colorOf: (row) => row.status },
   { title: 'Duración', read: (row) => row.duration, alignRight: true },
 ];
 const workMs = Number(process.env.WORK_MS ?? 1500);
 const doWork = () => new Promise((resolve) => setTimeout(resolve, workMs));
 
 async function runStep(step, stepIndex) {
-  uiOutput.stream.write(`${paint(uiOutput, 'muted', `[${stepIndex + 1}/${steps.length}]`)} ${step}\n`);
+  const position = `[${stepIndex + 1}/${steps.length}]`;
+  if (uiOutput.isAgent) {
+    // Una línea por paso, sin spinner, glifos ni duración aparte.
+    try {
+      await doWork();
+      if (process.argv.includes('--fail') && stepIndex === 2) throw new Error('registry timeout');
+    } catch (error) {
+      uiOutput.stream.write(`${position} ${step}… error\n`);
+      throw error;
+    }
+    uiOutput.stream.write(`${position} ${step}… ok\n`);
+    return;
+  }
+  uiOutput.stream.write(`${paint(uiOutput, 'muted', position)} ${step}\n`);
   const spinner = startSpinner(uiOutput, step);
   try {
     await doWork();
@@ -1668,20 +1686,20 @@ async function main() {
   for (const [stepIndex, step] of steps.entries()) await runStep(step, stepIndex);
   uiOutput.stream.write('\n');
   dataOutput.stream.write(`${renderTable(dataOutput, columns, rows)}\n`);
-  uiOutput.stream.write('\n');
-  uiOutput.stream.write(
-    `${renderBox(uiOutput, 'Listo', [`${rows.length} servicios, 1 con error`, 'Siguiente: pnpm release:notes'])}\n`,
-  );
+  const summary = [`${rows.length} servicios, 1 con error`, 'Siguiente: pnpm release:notes'];
+  // Bajo un agente, el resultado y el próximo comando quedan, sin el recuadro.
+  if (uiOutput.isAgent) uiOutput.stream.write(`${summary.join('\n')}\n`);
+  else uiOutput.stream.write(`\n${renderBox(uiOutput, 'Listo', summary)}\n`);
 }
 
 main().catch((error) => {
-  const message = `${statusLabel('error')}: ${error.message}`;
+  const message = uiOutput.isAgent ? `error: ${error.message}` : `${statusLabel('error')}: ${error.message}`;
   uiOutput.stream.write(`${paint(uiOutput, 'error', message)}\n`);
   process.exitCode = 1;
 });
 ```
 
-Qué cambió: abre con la tarjeta de encabezado. stdout solo lleva la tabla o el JSON; la tarjeta, los pasos y el resumen van a stderr. El tiempo total es el del trabajo real, a 40 columnas la tabla se apila sin perder datos, y cada estado dice su nombre.
+Qué cambió: abre con la tarjeta de encabezado (bajo un agente, no: una línea por paso, la palabra del estado sin glifo y el resumen sin recuadro). stdout solo lleva la tabla o el JSON; la tarjeta, los pasos y el resumen van a stderr. El tiempo total es el del trabajo real, a 40 columnas la tabla se apila sin perder datos, y cada estado dice su nombre.
 
 ## 12. Verificar
 
