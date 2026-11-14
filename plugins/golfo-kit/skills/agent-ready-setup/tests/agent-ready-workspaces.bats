@@ -78,12 +78,17 @@ PY
         : > "$test_root/diagnostic/tracebacks.log"
       fi
       if (( tick % 4 == 0 )); then
-        { ps -W 2>/dev/null || ps -ef; } | grep -Ei 'python|bash|git|claude|codex|node|sh\.exe' | sed 's/^/# ps: /' >&3
+        { ps -W 2>/dev/null || ps -ef; } | grep -Eiv 'svchost|System|Registry|smss|csrss|wininit|services|lsass|winlogon|fontdrvhost|dwm|spoolsv|MsMpEng|WmiPrv|sihost|taskhostw|explorer|RuntimeBroker|SearchIndexer|ctfmon|dllhost|conhost.exe *$' \
+          | tail -n 40 | sed 's/^/# ps: /' >&3
+        tail -n 25 "$test_root/diagnostic/trace.log" 2>/dev/null | sed 's/^/# trace: /' >&3
       fi
     done
   ) &
   local watcher=$!
+  printf '%s\n' 'exec 19>>"$DIAGNOSTIC_TRACE"' 'BASH_XTRACEFD=19' 'PS4='"'"'+ $$ ${BASH_SOURCE##*/}:${LINENO}: '"'" 'set -x' \
+    > "$test_root/diagnostic/bash-env.sh"
   run --separate-stderr env PATH="$fake_bin:$PATH" PYTHONPATH="$test_root/diagnostic" \
+    BASH_ENV="$test_root/diagnostic/bash-env.sh" DIAGNOSTIC_TRACE="$test_root/diagnostic/trace.log" \
     DIAGNOSTIC_TRACEBACKS="$test_root/diagnostic/tracebacks.log" python3 "$skill_dir/scripts/agent-ready" "$@"
   kill "$watcher" 2>/dev/null || true
   wait "$watcher" 2>/dev/null || true
