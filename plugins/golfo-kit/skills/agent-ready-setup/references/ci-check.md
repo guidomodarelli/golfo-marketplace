@@ -48,7 +48,9 @@ el código de los conflictos.
 
 `agent-ready ci setup --provider <proveedor>` escribe `ci.provider` en el manifest (solo la capa del proyecto) y
 aplica. Los archivos son assets de un profile de CI (`ci-<proveedor>`, `kind: ci`) que elige esa clave y nunca la
-selección de profiles: se proyectan, se registran en el lock y se retiran como cualquier asset gestionado.
+selección de profiles: se proyectan, se registran en el lock y se retiran como cualquier asset gestionado. Esos
+profiles son del motor, en `assets/ci/profiles.json`, porque sus workflows corren el CLI de esa versión: siguen al
+plugin instalado aunque el contenido esté fijado, y un profile de CI que declare el contenido no cuenta.
 `--no-apply` solo escribe la clave, y el próximo `apply` crea los archivos; hasta entonces `check` sale con 4.
 Sin `--provider`, `ci setup` pregunta si hay terminal, con el proveedor detectado primero y como default
 (`none` si no detecta ninguno), e imprime el comando equivalente; sin terminal, o con `--no-input`, sale con 2.

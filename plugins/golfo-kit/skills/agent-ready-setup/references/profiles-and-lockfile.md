@@ -24,7 +24,7 @@ un repositorio. La implementación vive en `scripts/agent-ready-state.py`.
 
 | Campo | Significado |
 |---|---|
-| `kind` | `stack` (aporta sus rules y su sección de `AGENTS.md`), `capability`, `bundle` (solo agrupa otros profiles, ver «Bundles») o `ci` (los archivos de CI de un proveedor, que elige `ci.provider` y nunca la selección; ver [ci-check.md](ci-check.md)) |
+| `kind` | `stack` (aporta sus rules y su sección de `AGENTS.md`), `capability`, `bundle` (solo agrupa otros profiles, ver «Bundles») o `ci` (los archivos de CI de un proveedor, que elige `ci.provider` y nunca la selección; son del motor, en `assets/ci/profiles.json`; ver [ci-check.md](ci-check.md)) |
 | `assets` | árbol de templates del profile, relativo a la skill; opcional |
 | `requires` | profiles que se agregan antes, en orden; siempre vienen |
 | `defaults` | profiles que trae al elegirlo, después de la selección; el repo puede dejarlos afuera con `excludedDefaults` |
@@ -538,7 +538,8 @@ agents, commands y templates de instrucciones) se puede fijar como un pack, con 
   solo, como a un pack en `auto`.
 - **El motor nunca se fija.** Los scripts, los hooks (`assets/common/hooks/`, que se actualizan solos en cada
   sync), los templates de `.claude/settings.json` y `.codex/hooks.json` que los conectan, los schemas de
-  configuración y `providers.json` siguen siempre al plugin instalado. El lock registra la versión del contenido
+  configuración, `providers.json` y los profiles de CI con sus archivos (`assets/ci/`) siguen siempre al plugin
+  instalado. El lock registra la versión del contenido
   en `source.version` y la del motor en `generator.version`.
 - Con golfo-kit fijado, `status` avisa cuando el plugin instalado trae otra versión y cómo adoptarla. Si el
   plugin instalado no es un checkout de Git (la caché del provider), compara las versiones.
@@ -561,8 +562,8 @@ marketplace, con un `ref` (o `#<revisión>` en la URL) y los mismos `updates`:
   `assets` publican lo mismo que un pack (`rules/`, `skills/`, `agents/`, `commands/`, `blocks/`, `nested/`) y, en
   una capability, `agents-skeleton.md`, el esqueleto de `AGENTS.md` (como `software-development`). Un profile no
   puede poner sus assets en una carpeta que usa el motor (`common/`, `ci/`, `config/`, …).
-- **CI:** los profiles de CI (`kind: ci`) siempre salen del motor, porque sus workflows corren el CLI de esa
-  versión. Un pack de contenido que declara uno falla antes de escribir.
+- **CI:** los profiles de CI (`kind: ci`) siempre salen del catálogo del motor (`assets/ci/profiles.json`),
+  porque sus workflows corren el CLI de esa versión. Un pack de contenido que declara uno falla antes de escribir.
 - **Precedencia:** la base y el template salen solo de la fuente de contenido: hay una por repositorio. El gate de
   colisiones de la sección 3 compara su base con los profiles y con los packs de `sources.packs`.
 - **Revisión:** no hay copia instalada de la que partir, así que el primer apply adopta la `ref`, también en
