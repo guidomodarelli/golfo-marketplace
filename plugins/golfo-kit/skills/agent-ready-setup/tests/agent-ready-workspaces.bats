@@ -57,46 +57,7 @@ write_manifest() {
 }
 
 run_cli() {
-  # DIAGNOSTIC (to remove): which command does not return on the Windows runners, and where every
-  # Python process of it is after 150 seconds (faulthandler writes its stack and ends it).
-  printf '# %s run_cli %s\n' "$(date +%T)" "$*" >&3
-  mkdir -p "$test_root/diagnostic"
-  cat > "$test_root/diagnostic/sitecustomize.py" <<'PY'
-import faulthandler, os, sys, time
-_log = open(os.environ["DIAGNOSTIC_TRACEBACKS"], "a", encoding="utf-8")
-_log.write(f"{time.strftime('%H:%M:%S')} start {os.getpid()} {sys.argv[:4]}\n")
-_log.flush()
-faulthandler.dump_traceback_later(150, exit=True, file=_log)
-PY
-  : > "$test_root/diagnostic/tracebacks.log"
-  (
-    tick=0
-    while sleep 15; do
-      tick=$((tick + 1))
-      if [[ -s "$test_root/diagnostic/tracebacks.log" ]]; then
-        sed 's/^/# log: /' "$test_root/diagnostic/tracebacks.log" >&3
-        : > "$test_root/diagnostic/tracebacks.log"
-      fi
-      if (( tick % 4 == 0 )); then
-        { ps -W 2>/dev/null || ps -ef; } | grep -Eiv 'svchost|System|Registry|smss|csrss|wininit|services|lsass|winlogon|fontdrvhost|dwm|spoolsv|MsMpEng|WmiPrv|sihost|taskhostw|explorer|RuntimeBroker|SearchIndexer|ctfmon|dllhost|conhost.exe *$' \
-          | tail -n 40 | sed 's/^/# ps: /' >&3
-        tail -n 25 "$test_root/diagnostic/trace.log" 2>/dev/null | sed 's/^/# trace: /' >&3
-      fi
-    done
-  ) &
-  local watcher=$!
-  printf '%s\n' 'exec 19>>"$DIAGNOSTIC_TRACE"' 'BASH_XTRACEFD=19' 'PS4='"'"'+ $$ ${BASH_SOURCE##*/}:${LINENO}: '"'" 'set -x' \
-    > "$test_root/diagnostic/bash-env.sh"
-  run --separate-stderr env PATH="$fake_bin:$PATH" PYTHONPATH="$test_root/diagnostic" \
-    BASH_ENV="$test_root/diagnostic/bash-env.sh" DIAGNOSTIC_TRACE="$test_root/diagnostic/trace.log" \
-    DIAGNOSTIC_TRACEBACKS="$test_root/diagnostic/tracebacks.log" python3 "$skill_dir/scripts/agent-ready" "$@"
-  kill "$watcher" 2>/dev/null || true
-  wait "$watcher" 2>/dev/null || true
-  printf '# %s done %s (status %s)\n' "$(date +%T)" "$1" "$status" >&3
-  if [[ -s "$test_root/diagnostic/tracebacks.log" ]]; then
-    sed 's/^/# /' "$test_root/diagnostic/tracebacks.log" >&3
-    : > "$test_root/diagnostic/tracebacks.log"
-  fi
+  run --separate-stderr env PATH="$fake_bin:$PATH" python3 "$skill_dir/scripts/agent-ready" "$@"
 }
 
 manifest_value() {
@@ -113,8 +74,10 @@ lock_value() {
   [ "$status" -eq 0 ]
   [[ "$output" == *"Workspace apps/web: nextjs-app-router (adds react, nextjs, nextjs-app-router to the root selection)"* ]]
   [[ "$output" == *"Workspace services/api: node (nothing of its own: the root selection already has it)"* ]]
-  run_cli plan --json
-  [ "$(printf '%s' "$output" | python3 -c 'import json, sys; print([(item["path"], item["own"]) for item in json.load(sys.stdin)["workspaces"]])')" = "[('apps/web', ['react', 'nextjs', 'nextjs-app-router']), ('services/api', [])]" ]
+  # The plan as JSON goes to a file: on the Windows runners, Git Bash can keep waiting for the end of a
+  # large output that a native process wrote to the pipe of $(...).
+  env PATH="$fake_bin:$PATH" python3 "$skill_dir/scripts/agent-ready" plan --json > "$test_root/plan.json"
+  [ "$(python3 -c 'import json, sys; print([(item["path"], item["own"]) for item in json.load(open(sys.argv[1], encoding="utf-8"))["workspaces"]])' "$test_root/plan.json")" = "[('apps/web', ['react', 'nextjs', 'nextjs-app-router']), ('services/api', [])]" ]
 
   run_cli apply
   [ "$status" -eq 0 ]
