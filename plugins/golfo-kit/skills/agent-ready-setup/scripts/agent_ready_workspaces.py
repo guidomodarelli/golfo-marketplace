@@ -170,8 +170,9 @@ def without_comment(value):
     return value.strip()
 
 
-def is_comment_line(line):
-    return line.strip().startswith("#")
+def is_skipped_line(line):
+    """True for a blank or comment line: inside a sequence YAML skips it without ending the sequence."""
+    return not line.strip() or line.strip().startswith("#")
 
 
 def inline_items(value):
@@ -212,10 +213,10 @@ def frontmatter_patterns(lines, start, rule):
         patterns = inline_items(inline.group(1)) if inline else [unquoted(value)]
         return patterns, start + 1
     patterns, end = [], start + 1
-    # A comment line between the items stays out of the list without ending it.
-    while end < len(lines) and (LIST_ITEM.match(lines[end]) or is_comment_line(lines[end])):
+    # A blank or comment line between the items stays out of the list without ending it.
+    while end < len(lines) and (LIST_ITEM.match(lines[end]) or is_skipped_line(lines[end])):
         item = LIST_ITEM.match(lines[end])
-        if item and not is_comment_line(lines[end]):
+        if item and not is_skipped_line(lines[end]):
             patterns.append(unquoted(without_comment(item.group(1))))
         end += 1
     if not patterns:
