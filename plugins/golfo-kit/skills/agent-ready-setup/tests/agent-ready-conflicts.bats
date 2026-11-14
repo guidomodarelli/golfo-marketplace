@@ -17,6 +17,8 @@ setup() {
   mkdir -p "$project_dir" "$fake_bin" "$test_root/tmp"
   export TMPDIR="$test_root/tmp"
   export XDG_CACHE_HOME="$test_root/cache"
+  source "$BATS_TEST_DIRNAME/content-pack.bash"
+  use_content_pack
   export XDG_CONFIG_HOME="$test_root/config"
   export HOME="$test_root/home"
   mkdir -p "$HOME"
@@ -107,6 +109,7 @@ install_engine_copy() {
   cp "$repository_root/plugins/golfo-kit/plugin.json" "$installed_plugin/"
   cp -R "$repository_root/plugins/golfo-kit/.claude-plugin" "$repository_root/plugins/golfo-kit/.codex-plugin" "$installed_plugin/"
   cp -R "$skill_dir/assets" "$skill_dir/scripts" "$skill_dir/SKILL.md" "$engine_copy/"
+  copy_content_pack
 }
 
 agent_ready() {
@@ -134,7 +137,7 @@ project_rule() {
 
 # The next version of the engine's content changes a managed rule.
 change_managed_rule() {
-  printf '\nVerify every change.\n' >> "$engine_copy/assets/common/rules/verify-changes.md"
+  printf '\nVerify every change.\n' >> "$content_dir/base/rules/verify-changes.md"
 }
 
 first_conflict_id() {
@@ -223,7 +226,7 @@ first_conflict_id() {
   conflict_id="$(first_conflict_id)"
   agent_ready review accept "$conflict_id" --reason "The team rule is on purpose"
   [ "$status" -eq 0 ]
-  printf 'Verify every change twice.\n' >> "$engine_copy/assets/common/rules/verify-changes.md"
+  printf 'Verify every change twice.\n' >> "$content_dir/base/rules/verify-changes.md"
 
   agent_ready apply
   [ "$status" -ne 0 ]
@@ -468,7 +471,7 @@ sys.exit(0)
   agent_ready plan
   [ "$status" -eq 0 ]
   [[ "$output" == *".agents/rules/acme-team.md <-> .agents/rules/verify-changes.md: One rule verifies every change and the other forbids it. (two profiles)"* ]]
-  # Only pairs with the pack rule: golfo-kit's own rules are not reviewed against each other.
+  # Only pairs with the pack rule: the rules of the golfo content are not reviewed against each other.
   ! grep -Eq '^[0-9]+\. \.agents/rules/lint-gate\.md <-> \.agents/rules/verify-changes\.md$' "$FAKE_INPUT"
 
   # A conflict between profiles comes with the apply, so conflicts.block stops it.
@@ -531,7 +534,7 @@ sys.exit(0)
   agent_ready plan
   [ "$status" -eq 0 ]
   [[ "$output" == *".agents/skills/pr-review-workflow/SKILL.md <-> .agents/skills/team-review/SKILL.md: Both review pull requests; one follows the team checklist. (competing skills: \"review this pull request\")"* ]]
-  # Only pairs with the pack skill: golfo-kit's own skills are not reviewed against each other.
+  # Only pairs with the pack skill: the skills of the golfo content are not reviewed against each other.
   ! grep -Eq '^[0-9]+\. \.agents/skills/agent-browser/SKILL\.md <-> \.agents/skills/pr-review-workflow/SKILL\.md$' "$FAKE_INPUT"
   # The skill is not on disk yet, and the team can still decide on the finding before the apply.
   agent_ready plan --json

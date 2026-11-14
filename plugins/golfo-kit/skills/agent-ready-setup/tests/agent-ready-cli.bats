@@ -19,6 +19,8 @@ setup() {
   mkdir -p "$project_dir" "$fake_bin" "$test_root/tmp"
   export TMPDIR="$test_root/tmp"
   export XDG_CACHE_HOME="$test_root/cache"
+  source "$BATS_TEST_DIRNAME/content-pack.bash"
+  use_content_pack
   export XDG_CONFIG_HOME="$test_root/config"
   export HOME="$test_root/home"
   mkdir -p "$HOME"
@@ -258,7 +260,7 @@ publish_pack_repository() {
 
   run_cli update other
   [ "$status" -eq 2 ]
-  [[ "$stderr" == *"unknown profile source other; the sources are: golfo-kit, acme"* ]]
+  [[ "$stderr" == *"unknown profile source other; the sources are: golfo, acme"* ]]
 
   before="$(tree_fingerprint)"
   run_cli update acme --dry-run
@@ -271,7 +273,7 @@ publish_pack_repository() {
   [ -f .agents/rules/acme-new.md ]
 }
 
-@test "update follows the effective configuration: with sources off it only updates golfo-kit" {
+@test "update follows the effective configuration: with sources off it only updates the golfo content" {
   mkdir -p .agents "$XDG_CONFIG_HOME/agent-ready-setup"
   printf '%s\n' '{"profiles": ["node"], "sources": {"packs": [{"name": "acme", "source": "git+https://packs.example.invalid/acme", "ref": "main"}]}}' > .agents/agent-ready.json
   printf '%s\n' '{"sources": {"enabled": false}}' > "$XDG_CONFIG_HOME/agent-ready-setup/config.json"
@@ -448,7 +450,7 @@ publish_pack_repository() {
 
   run_cli profiles remove acme/kafka-interno
   [ "$status" -eq 0 ]
-  [[ "$stderr" == *"checked against golfo-kit's catalog only"* ]]
+  [[ "$stderr" == *"checked against the golfo catalog only"* ]]
   [ "$(json_value "$(cat .agents/agent-ready.json)" 'data["profiles"]')" = "['node']" ]
   run_cli sources remove acme
   [ "$status" -eq 0 ]

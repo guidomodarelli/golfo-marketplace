@@ -16,6 +16,8 @@ setup() {
   mkdir -p "$project_dir" "$fake_bin" "$test_root/tmp"
   export TMPDIR="$test_root/tmp"
   export XDG_CACHE_HOME="$test_root/cache"
+  source "$BATS_TEST_DIRNAME/content-pack.bash"
+  use_content_pack
   export XDG_CONFIG_HOME="$test_root/config"
   export HOME="$test_root/home"
   mkdir -p "$HOME"
@@ -165,7 +167,7 @@ add_block_pack() {
 @test "a whole-file template the lock still records is retired and the file holds only the block" {
   run_cli apply
   # The previous format: the template as a whole managed asset, without blocks in the lock.
-  cp "$skill_dir/assets/profiles/software-development/blocks/.github/pull_request_template.md" "$template"
+  cp "$content_pack/profiles/software-development/blocks/.github/pull_request_template.md" "$template"
   python3 - <<'PY'
 import hashlib, json
 path = ".agents/agent-ready.lock.json"
@@ -179,7 +181,7 @@ PY
   run_cli apply
   [ "$status" -eq 0 ]
   head -1 "$template" | grep -qx '<!-- BEGIN AGENT-READY MANAGED: software-development -->'
-  [ "$(grep -c '^## ' "$template")" -eq "$(grep -c '^## ' "$skill_dir/assets/profiles/software-development/blocks/.github/pull_request_template.md")" ]
+  [ "$(grep -c '^## ' "$template")" -eq "$(grep -c '^## ' "$content_pack/profiles/software-development/blocks/.github/pull_request_template.md")" ]
   [ "$(lock_value '".github/pull_request_template.md" in lock["assets"]')" = "False" ]
 }
 

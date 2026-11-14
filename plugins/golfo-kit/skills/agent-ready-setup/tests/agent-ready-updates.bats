@@ -17,6 +17,8 @@ setup() {
   mkdir -p "$project_dir" "$fake_bin" "$test_root/tmp"
   export TMPDIR="$test_root/tmp"
   export XDG_CACHE_HOME="$test_root/cache"
+  source "$BATS_TEST_DIRNAME/content-pack.bash"
+  use_content_pack
   # Sync flows run with an empty home: nothing installed on this machine may decide them.
   export HOME="$test_root/home"
   mkdir -p "$HOME"
@@ -133,10 +135,11 @@ advance_pack_repository() {
 copy_skill() {
   source_copy="$test_root/skill"
   cp -R "$skill_dir" "$source_copy"
+  copy_content_pack
 }
 
 release_new_golfo_version() {
-  printf '\nA new sentence.\n' >> "$source_copy/assets/stacks/node/rules/node-testing.md"
+  printf '\nA new sentence.\n' >> "$content_dir/stacks/node/rules/node-testing.md"
 }
 
 update_report_path() {
@@ -331,7 +334,7 @@ EOF
   grep -Fq 'changed locally' .agents/rules/acme-kafka.md
 }
 
-@test "a pinned golfo-kit counts what a profile only a workspace selects projects" {
+@test "pinned content counts what a profile only a workspace selects projects" {
   copy_skill
   publish_pack_repository
   mkdir -p apps/web
@@ -350,14 +353,14 @@ EOF
 
   # A command goes to .agents/ for the whole repository; the digest still counts it by its file.
   [ -f .agents/commands/react-review-pr.md ]
-  printf '\nA workspace sentence.\n' >> "$source_copy/assets/stacks/react/commands/react-review-pr.md"
+  printf '\nA workspace sentence.\n' >> "$content_dir/stacks/react/commands/react-review-pr.md"
   run_session_start AGENT_READY_SETUP_SYNC_FOREGROUND=1 AGENT_READY_SETUP_MARKETPLACE_UPGRADED=1
   [ "$status" -eq 0 ]
-  [[ "$output" == *"pins golfo-kit and has a release pending"* ]]
+  [[ "$output" == *"pins its golfo content and has a release pending"* ]]
   ! grep -Fq 'A workspace sentence' .agents/commands/react-review-pr.md
 }
 
-@test "a source in auto updates a pinned repository, unless golfo-kit has a release pending" {
+@test "a source in auto updates a pinned repository, unless its content has a release pending" {
   copy_skill
   publish_pack_repository
   write_manifest acme/kafka-interno '{"updates": {"mode": "pinned"}, "sources": {"packs": [{"name": "acme", "source": "git+https://packs.example.invalid/acme", "ref": "main", "updates": "auto"}]}}'
@@ -375,7 +378,7 @@ EOF
   release_new_golfo_version
   run_session_start AGENT_READY_SETUP_SYNC_FOREGROUND=1 AGENT_READY_SETUP_MARKETPLACE_UPGRADED=1
   [ "$status" -eq 0 ]
-  [[ "$output" == *"pins golfo-kit and has a release pending"* ]]
+  [[ "$output" == *"pins its golfo content and has a release pending"* ]]
   [[ "$output" != *"bootstrap"* ]]
   [ ! -e .agents/rules/acme-newer.md ]
   ! grep -Fq 'A new sentence' .agents/rules/node-testing.md
@@ -605,7 +608,8 @@ PY
 
   run env PATH="$fake_bin:$PATH" AGENT_READY_SETUP_DETECTION=off bash "$skill_dir/scripts/bootstrap.sh" --skill-dir "$skill_dir" --provider claude
   [ "$status" -ne 0 ]
-  [[ "$output" == *"Detection is off"* ]]
+  # The resolution says it, with the catalog of the content: the engine has none to detect with.
+  [[ "$output" == *"detection is off (detection.enabled: false): select the profiles with --stack or --profiles"* ]]
   [ "$(tree_fingerprint)" = "$before" ]
 
   run env PATH="$fake_bin:$PATH" AGENT_READY_SETUP_DETECTION=off bash "$skill_dir/scripts/bootstrap.sh" --skill-dir "$skill_dir" --provider claude --stack react
@@ -683,7 +687,7 @@ PY
   [ "$status" -eq 0 ]
 }
 
-@test "the check fails with a new golfo-kit release and with committed assets out of date" {
+@test "the check fails with a new release of the content and with committed assets out of date" {
   copy_skill
   run_bootstrap --stack node
   [ "$status" -eq 0 ]
@@ -702,7 +706,7 @@ PY
   release_new_golfo_version
   run_check
   [ "$status" -eq 4 ]
-  [[ "$output" == *"golfo-kit: the lock has"* ]]
+  [[ "$output" == *"golfo: the lock has"* ]]
 }
 
 @test "the check fails when the selection differs from the lock, even with no file to change" {

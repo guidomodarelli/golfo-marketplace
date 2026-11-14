@@ -207,9 +207,11 @@ fi
 is_valid_skill_dir() {
   local candidate="$1"
 
+  # The engine carries no content (agent_ready_content.py): its scripts and CI catalog identify it.
   [[ -f "$candidate/SKILL.md" && \
     -f "$candidate/scripts/bootstrap.sh" && \
-    -d "$candidate/assets/stacks" ]]
+    -f "$candidate/scripts/agent-ready-state.py" && \
+    -f "$candidate/assets/ci/profiles.json" ]]
 }
 
 if [[ ! -d "$REQUESTED_SKILL_DIR" ]]; then
@@ -594,8 +596,6 @@ fi
 [[ "$RUN_MODE" != apply ]] || cat -- "$configuration_messages" >&2
 rm -f -- "$configuration_messages"
 CONFIGURED_PROFILES=""
-CONFIGURED_PACK_SOURCES=""
-CONFIGURED_CONTENT_SOURCE=""
 PROFILES_SELECTED=false
 TOOLS_ENABLED=true
 FROM_LOCK_CONFIGURED=false
@@ -607,8 +607,6 @@ while IFS=$'\t' read -r configuration_key configuration_value; do
     updates.refresh) [[ "$configuration_value" == false && ${#UPDATE_SOURCES[@]} -eq 0 ]] && OFFLINE=1 ;;
     tools.enabled) TOOLS_ENABLED="$configuration_value" ;;
     profiles) CONFIGURED_PROFILES="$configuration_value" ;;
-    sources.packs) CONFIGURED_PACK_SOURCES="$configuration_value" ;;
-    sources.golfoKit.source) CONFIGURED_CONTENT_SOURCE="$configuration_value" ;;
     # A pinned empty selection ([]: the core only) is a selection; profiles alone prints it as empty.
     profiles_selected) PROFILES_SELECTED="$configuration_value" ;;
     updates.fromLock) FROM_LOCK_CONFIGURED="$configuration_value" ;;
@@ -623,18 +621,6 @@ if [[ "$FROM_LOCK" -eq 0 && "$FROM_LOCK_CONFIGURED" == true && ( "$RUN_MODE" == 
 fi
 OFFLINE_ARGUMENTS=()
 [[ "$OFFLINE" -eq 1 ]] && OFFLINE_ARGUMENTS=(--offline)
-
-# A repository without a selection that detection cannot settle stops before the upgrade. With
-# profile sources or a content source declared, a pack not fetched yet may bring the stack: the
-# resolution after fetch-sources detects with it, and still stops before writing.
-if [[ "$RUN_MODE" != status && -z "$STACK" && -z "$PROFILES" && "$PROFILES_SELECTED" != true &&
-      -z "$CONFIGURED_PACK_SOURCES" && -z "$CONFIGURED_CONTENT_SOURCE" ]]; then
-  if ! detection_report="$(python3 "$SKILL_DIR/scripts/agent-ready-state.py" detect --project . --skill-dir "$SKILL_DIR")"; then
-    printf '%s\n' "$detection_report" >&2
-    echo "ERROR: could not detect project stack; pass --profiles or --stack" >&2
-    exit 1
-  fi
-fi
 
 validate_provider_roots
 
@@ -691,21 +677,22 @@ fi
 describe_skill_source "$SKILL_DIR"
 STATE_SCRIPT="$SKILL_DIR/scripts/agent-ready-state.py"
 
-# golfo-kit is a source too: pinned, its content comes from the revision of the lock and the
-# engine stays this installed one (agent_ready_golfo_kit.py). Everything below reads the
-# composed directory, so no step mixes two revisions of the content.
-GOLFO_KIT_SOURCE="golfo-kit"
+# The content (rules, skills, catalog, templates) is a source of its own, sources.golfo: a content pack
+# at a revision, composed with this installed engine (agent_ready_content.py). Everything below reads
+# the composed directory, so no step mixes two revisions of the content. A repository without a
+# selection that detection cannot settle stops at the resolution, before writing.
+CONTENT_SOURCE="golfo"
 PACK_UPDATE_SOURCES=()
-golfo_kit_arguments=(golfo-kit-source --project . --skill-dir "$SKILL_DIR")
+content_arguments=(content-source --project . --skill-dir "$SKILL_DIR")
 for update_source in ${UPDATE_SOURCES[@]+"${UPDATE_SOURCES[@]}"}; do
-  if [[ "$update_source" == "$GOLFO_KIT_SOURCE" ]]; then
-    golfo_kit_arguments+=(--update)
-    [[ -n "$UPDATE_TO" ]] && golfo_kit_arguments+=(--to "$UPDATE_TO")
+  if [[ "$update_source" == "$CONTENT_SOURCE" ]]; then
+    content_arguments+=(--update)
+    [[ -n "$UPDATE_TO" ]] && content_arguments+=(--to "$UPDATE_TO")
   else
     PACK_UPDATE_SOURCES+=("$update_source")
   fi
 done
-# Plan and status stay off the network when asked to and may compare with the installed content.
+# Plan and status stay off the network when asked to, with the revisions this machine already has.
 # An apply always gets the revision it writes, downloading it if missing (updates.refresh only
 # concerns plan and status), and review mode never uses the network: without it, it stops.
 FROM_LOCK_ARGUMENTS=()
@@ -715,23 +702,23 @@ if [[ "$FROM_LOCK" -eq 1 ]]; then
     exit 1
   fi
   FROM_LOCK_ARGUMENTS=(--from-lock)
-  golfo_kit_arguments+=(--from-lock)
+  content_arguments+=(--from-lock)
 fi
 if [[ "$RUN_MODE" != apply ]]; then
-  golfo_kit_arguments+=(--read-only)
-  [[ "$OFFLINE" -eq 1 ]] && golfo_kit_arguments+=(--offline)
+  content_arguments+=(--read-only)
+  [[ "$OFFLINE" -eq 1 ]] && content_arguments+=(--offline)
 elif [[ "${AGENT_READY_SETUP_REVIEW_MODE:-0}" == 1 ]]; then
-  golfo_kit_arguments+=(--offline)
+  content_arguments+=(--offline)
 fi
-if ! CONTENT_SKILL_DIR="$(python3 "$STATE_SCRIPT" "${golfo_kit_arguments[@]}")"; then
-  echo "ERROR: could not prepare the golfo-kit content; no asset was changed" >&2
+if ! CONTENT_SKILL_DIR="$(python3 "$STATE_SCRIPT" "${content_arguments[@]}")" || [[ -z "$CONTENT_SKILL_DIR" ]]; then
+  echo "ERROR: could not prepare the golfo content; no asset was changed" >&2
   exit 1
 fi
-if [[ -n "$CONTENT_SKILL_DIR" ]]; then
-  echo "[marketplace-bootstrap] Using the golfo-kit content of $(python3 -c 'import json,sys; m=json.load(open(sys.argv[1], encoding="utf-8")); print(m["commit"][:12])' "$CONTENT_SKILL_DIR/.agent-ready-golfo-kit.json") with this engine."
-  SKILL_DIR="$CONTENT_SKILL_DIR"
-  STATE_SCRIPT="$SKILL_DIR/scripts/agent-ready-state.py"
-fi
+echo "[marketplace-bootstrap] Using the golfo content of $(python3 -c 'import json,sys; m=json.load(open(sys.argv[1], encoding="utf-8")); print(m["origin"] + " " + (m["commit"] or "")[:12])' "$CONTENT_SKILL_DIR/.agent-ready-content.json") with this engine."
+# The installed engine is the source this run reports; everything below reads the composed content.
+ENGINE_SKILL_DIR="$SKILL_DIR"
+SKILL_DIR="$CONTENT_SKILL_DIR"
+STATE_SCRIPT="$SKILL_DIR/scripts/agent-ready-state.py"
 PROFILE_SELECTION=()
 if [[ -n "$PROFILES" ]]; then
   PROFILE_SELECTION=(--profiles "$PROFILES")
@@ -1219,8 +1206,9 @@ fi
 printf '\nStack: %s\n' "${STACK:-none}"
 printf 'Profiles: %s\n' "$RESOLVED_PROFILES"
 printf 'Providers: Claude Code + Codex-compatible shared tree\n'
-# Stable line the agent reads to run follow-up scripts from the resolved source.
-printf 'Resolved %s source: %s\n' "$SKILL_NAME" "$SKILL_DIR"
+# Stable line the agent reads to run follow-up scripts from the resolved source: the engine, which
+# composes the content of the lock again (resolve_content_skill_directory in stack-directory.sh).
+printf 'Resolved %s source: %s\n' "$SKILL_NAME" "$ENGINE_SKILL_DIR"
 # The stack this apply composed, at the revisions it adopted: merge-instructions.sh renders from it
 # (AGENT_READY_SETUP_STACK_DIR) instead of resolving the sources again.
 [[ -n "${AGENT_READY_SETUP_STACK_DIR:-}" ]] && printf 'Resolved stack directory: %s\n' "$AGENT_READY_SETUP_STACK_DIR"

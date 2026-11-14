@@ -154,7 +154,7 @@ import agent_ready_blocks as managed_blocks  # noqa: E402
 import agent_ready_nested as nested  # noqa: E402
 import agent_ready_workspaces as workspace_selection  # noqa: E402
 import agent_ready_pack_tools as pack_tools  # noqa: E402
-import agent_ready_golfo_kit as golfo_kit  # noqa: E402
+import agent_ready_content as content_source  # noqa: E402
 from agent_ready_packs import (  # noqa: E402
     KEBAB_CASE_NAME,
     PACK_CATALOG_FILE_NAME,
@@ -185,6 +185,8 @@ ENGINE_CI_CATALOG_RELATIVE_PATH = "assets/ci/profiles.json"
 PROVIDER_CATALOG_RELATIVE_PATH = "assets/providers.json"
 CODEX_HOOKS_TEMPLATE_RELATIVE_PATH = "assets/codex/hooks.json"
 CLAUDE_SETTINGS_TEMPLATE_NAME = "settings.json"
+# The template of .claude/settings.json is part of the engine, beside its hooks.
+CLAUDE_SETTINGS_TEMPLATE_RELATIVE_PATH = "assets/common/settings.json"
 AGENTS_TEMPLATE_NAME = "agents-template.md"
 # The project part of a new AGENTS.md that a profile publishes in place of the template's.
 AGENTS_SKELETON_NAME = "agents-skeleton.md"
@@ -202,7 +204,7 @@ BASE_PROFILE_NAME = "common"
 CI_PROFILE_KIND = "ci"
 CI_PROFILE_PREFIX = "ci-"
 SCHEMA_VERSION = 1
-# The schemaVersion of golfo-kit's catalog this engine reads; a newer one asks for a newer plugin.
+# The schemaVersion of the content catalog this engine reads; a newer one asks for a newer plugin.
 GOLFO_CATALOG_SCHEMA_VERSION = 1
 MANAGED_BLOCK_START = "<!-- BEGIN AGENT-READY MANAGED -->"
 MANAGED_BLOCK_END = "<!-- END AGENT-READY MANAGED -->"
@@ -233,8 +235,10 @@ DRIFT_STATUS = 4
 INCOMPLETE_EVALUATION_STATUS = 5
 # agent-ready conflicts and agent-ready check found conflicts between the profiles.
 CONFLICTS_STATUS = 6
-# golfo-kit-source: the content pack of the repository is not on this machine yet (sync-marketplace.sh).
+# content-source: the content pack of the repository is not on this machine yet (sync-marketplace.sh).
 CONTENT_PENDING_STATUS = 7
+# The commands that read the content: given the installed engine, they compose it first (main).
+CONTENT_COMMANDS = ("resolve", "detect", "plan", "finalize", "pack-scripts", "status")
 # The moments a hook asks status for the conflicts alone, and the prefix of each line it prints.
 CONFLICTS_MOMENT_SESSION_START = "session-start"
 CONFLICTS_MOMENT_EDIT = "edit"
@@ -474,19 +478,17 @@ def load_profile_catalog(skill_dir):
         catalog = read_json_file(catalog_path, "profile catalog")
     except StateError as caught_error:
         raise ProfileError(str(caught_error)) from caught_error
-    label = f"the {golfo_kit.GOLFO_KIT_SOURCE_NAME} catalog"
+    label = f"the {content_source.CONTENT_SOURCE_NAME} catalog"
     compatibility.require_engine(label, catalog, engine_version_of(skill_dir), GOLFO_CATALOG_SCHEMA_VERSION)
     compatibility.validate_compatibility(label, catalog)
     profiles = catalog.get("profiles")
     if not isinstance(profiles, dict) or not profiles:
         raise ProfileError(f"profile catalog {catalog_path} has no profiles")
-    # The CI profiles come with the engine: a CI profile of the content (an older revision) gives way to them.
+    # The CI profiles come with the engine (assets/ci/profiles.json): the content declares none.
     ci_profiles = engine_ci_profiles(skill_dir)
-    for name in list(profiles):
-        if isinstance(profiles[name], dict) and profiles[name].get("kind") == CI_PROFILE_KIND:
-            del profiles[name]
-        elif name in ci_profiles:
-            raise ProfileError(f"profile catalog {catalog_path}: profile '{name}' takes the name of a CI profile of the engine")
+    taken_names = sorted(set(profiles) & set(ci_profiles))
+    if taken_names:
+        raise ProfileError(f"profile catalog {catalog_path}: profile '{taken_names[0]}' takes the name of a CI profile of the engine")
     profiles.update(ci_profiles)
     try:
         validate_catalog_detection(profiles)
@@ -711,8 +713,8 @@ def ci_profile_of(catalog, project_root):
         return None
     name = CI_PROFILE_PREFIX + provider
     if catalog["profiles"].get(name, {}).get("kind") != CI_PROFILE_KIND:
-        raise ProfileError(f"{CI_PROVIDER_KEY}: {provider} needs the profile '{name}', which this golfo-kit content "
-                           "does not have; update golfo-kit or choose another provider")
+        raise ProfileError(f"{CI_PROVIDER_KEY}: {provider} needs the profile '{name}', which this engine does not "
+                           "have; update the golfo-kit plugin or choose another provider")
     return name
 
 
@@ -1012,7 +1014,7 @@ def desired_assets(skill_dir, catalog, resolved, workspace_rules=None, workspace
 
 
 WORKSPACE_RULES_CACHE = "workspace-rules"
-# Prefix of the lines of the content digest for the rules golfo-kit profiles add to workspaces.
+# Prefix of the lines of the content digest for the rules the profiles of the content add to workspaces.
 WORKSPACE_ORIGIN_PREFIX = "workspace:"
 
 
@@ -1064,12 +1066,12 @@ def workspace_rule_files(skill_dir, catalog, workspaces):
 
 
 def workspace_profile_origins(skill_dir, catalog, workspace_profiles):
-    """{"<profile>:<path>": sha256} of every file of the golfo-kit profiles only workspaces select.
+    """{"<profile>:<path>": sha256} of every file of the profiles of the content only workspaces select.
 
     What those profiles project depends on the folders of this repository (rules with paths:, sections
-    with the references of a workspace, the folders of their nested targets): the content digest of
-    golfo-kit takes the files they come from instead, so a pinned golfo-kit sees their change and the
-    digest does not depend on the folders. Packs have their own digest.
+    with the references of a workspace, the folders of their nested targets): the content digest takes
+    the files they come from instead, so pinned content sees their change and the digest does not depend
+    on the folders. Packs have their own digest.
     """
     origins = {}
     for name in workspace_profiles:
@@ -1359,7 +1361,7 @@ def version_changes(catalog, plan_source, lock):
     if not lock:
         return []
     changes = []
-    golfo_change = compatibility.version_change(golfo_kit.GOLFO_KIT_SOURCE_NAME, (lock.get("source") or {}).get("version"),
+    golfo_change = compatibility.version_change(content_source.CONTENT_SOURCE_NAME, (lock.get("source") or {}).get("version"),
                                                 plan_source.get("version"), catalog.get("changes", []))
     if golfo_change:
         changes.append(golfo_change)
@@ -1468,13 +1470,13 @@ def describe_source_item(name, item):
 def enforce_sync_policy(project_root, skill_dir, catalog, resolved, digests, selected=None, workspace_origins=None):
     """An unattended sync only adopts what is in ``auto``.
 
-    A pinned source that differs from the lock stops it, golfo-kit included: its mode is
-    ``sources.golfoKit.updates``, then ``updates.mode``. A pinned golfo-kit projects the
-    revision of the lock, so its content only differs when that revision cannot be fetched
-    (a local source without Git); then a pack in ``auto`` waits too, because an apply writes
-    the whole selection and cannot update a pack without updating golfo-kit.
-    ``selected`` adds the profiles of the workspaces to the sources checked; the content digest of
-    golfo-kit is the one of the root selection plus ``workspace_origins``, as compute_plan records it.
+    A pinned source that differs from the lock stops it, the content included: its mode is
+    ``sources.golfo.updates``, then ``updates.mode``. Pinned content projects the revision of the lock,
+    so it only differs when the composition does (a new engine with other engine files does not count);
+    then a pack in ``auto`` waits too, because an apply writes the whole selection and cannot update a
+    pack without updating the content.
+    ``selected`` adds the profiles of the workspaces to the sources checked; the content digest is the
+    one of the root selection plus ``workspace_origins``, as compute_plan records it.
     """
     lock = read_lock(project_root)
     report = source_report(catalog, selected or resolved, digests, lock)
@@ -1484,11 +1486,13 @@ def enforce_sync_policy(project_root, skill_dir, catalog, resolved, digests, sel
                 f"profile source '{name}' is pinned and differs from the lock ({'; '.join(item['differences'])}); "
                 "SessionStart does not adopt it, so this repository keeps its committed assets until someone adopts the change"
             )
-    marker = golfo_kit.read_marker(skill_dir)
-    projects_locked_revision = bool(marker) and marker.get("commit") == (lock or {}).get("source", {}).get("revision")
+    marker = content_source.read_marker(skill_dir)
+    # A local content directory (AGENT_READY_SETUP_CONTENT_DIR) has no revision: its digest decides.
+    locked_revision = (lock or {}).get("source", {}).get("revision")
+    projects_locked_revision = bool(marker and marker.get("commit")) and marker["commit"] == locked_revision
     # The content digest covers engine-owned files too (hooks, settings templates): with the revision
-    # of the lock projected, a new engine is not a golfo-kit release and the sync goes on.
-    if lock and not projects_locked_revision and golfo_kit.update_mode(configuration_of(project_root)) == UPDATES_PINNED:
+    # of the lock projected, a new engine is not a release of the content and the sync goes on.
+    if lock and not projects_locked_revision and content_source.update_mode(configuration_of(project_root)) == UPDATES_PINNED:
         assets = desired_assets(skill_dir, catalog, resolved)
         golfo_assets = {destination: entry for destination, entry in assets.items() if not is_pack_profile(entry["profile"])}
         identity = source_identity(skill_dir, golfo_assets, merged_template_entries(skill_dir, catalog, resolved),
@@ -1496,20 +1500,20 @@ def enforce_sync_policy(project_root, skill_dir, catalog, resolved, digests, sel
                                    golfo_blocks(nested_contents(skill_dir, catalog, resolved)), workspace_origins)
         if lock.get("source", {}).get("contentDigest") != identity["contentDigest"]:
             raise IncompleteEvaluationError(
-                "this repository pins golfo-kit and has a release pending, and SessionStart cannot update a pack alone; "
+                "this repository pins its golfo content and has a release pending, and SessionStart cannot update a pack alone; "
                 "the repository keeps its committed assets until someone adopts both"
             )
 
 
 def asset_owner(entry):
-    """The source an asset of a plan or a lock comes from: a pack, or golfo-kit."""
+    """The source an asset of a plan or a lock comes from: a pack, or the content (golfo)."""
     profile = entry.get("profile") or ""
-    return source_of_profile(profile) if is_pack_profile(profile) else golfo_kit.GOLFO_KIT_SOURCE_NAME
+    return source_of_profile(profile) if is_pack_profile(profile) else content_source.CONTENT_SOURCE_NAME
 
 
 def is_engine_asset(entry):
     """An asset the installed engine projects (hooks and what connects them): never pinned, so never compared."""
-    return asset_owner(entry) == golfo_kit.GOLFO_KIT_SOURCE_NAME and golfo_kit.is_engine_owned(entry.get("source") or "")
+    return asset_owner(entry) == content_source.CONTENT_SOURCE_NAME and content_source.is_engine_owned(entry.get("source") or "")
 
 
 def locked_desired_sha256(locked_entry):
@@ -1522,7 +1526,7 @@ def locked_desired_sha256(locked_entry):
 def lock_differences(plan, lock):
     """Why a plan does not reproduce the lock, one line per source, and how many engine files differ.
 
-    Content is compared byte for byte: the selection, the revision of golfo-kit and of each
+    Content is compared byte for byte: the selection, the revision of the content and of each
     pack, the digest of each pack and the sha256 of every asset and merged template. The files
     of the engine follow the installed one, so they are only counted.
     """
@@ -1537,7 +1541,7 @@ def lock_differences(plan, lock):
         plan.get("workspaces", []), lock.get("workspaces") or {})]
     locked_revision = (lock.get("source") or {}).get("revision")
     if locked_revision and plan["source"].get("revision") != locked_revision:
-        differences.append(f"{golfo_kit.GOLFO_KIT_SOURCE_NAME}: revision {(plan['source'].get('revision') or 'none')[:12]} "
+        differences.append(f"{content_source.CONTENT_SOURCE_NAME}: revision {(plan['source'].get('revision') or 'none')[:12]} "
                            f"instead of {locked_revision[:12]}")
     locked_sources = lock.get("profileSources", {})
     for name in sorted(set(locked_sources) | set(plan["profileSources"])):
@@ -1580,13 +1584,13 @@ def lock_differences(plan, lock):
                 differences.append(f"{locked_entry.get('profile')}: the block {block_id} of {destination} is in the lock "
                                    "but not in this resolution")
     for destination, entry in sorted(plan["merged"].items()):
-        if golfo_kit.is_engine_owned(entry["template"]):
+        if content_source.is_engine_owned(entry["template"]):
             continue
         locked_entry = lock.get("merged", {}).get(destination)
         if not locked_entry or locked_entry.get("templateSha256") != entry["templateSha256"]:
-            differences.append(f"{golfo_kit.GOLFO_KIT_SOURCE_NAME}: the template of {destination} does not match the lock")
+            differences.append(f"{content_source.CONTENT_SOURCE_NAME}: the template of {destination} does not match the lock")
         elif locked_entry.get("inputsSha256") != entry.get("inputsSha256"):
-            differences.append(f"{golfo_kit.GOLFO_KIT_SOURCE_NAME}: what {destination} is rendered with (the centralization "
+            differences.append(f"{content_source.CONTENT_SOURCE_NAME}: what {destination} is rendered with (the centralization "
                                "and proxy texts) does not match the lock")
     return differences, engine_changes
 
@@ -1625,75 +1629,34 @@ def run_quiet(command, cwd=None):
 
 
 SOURCE_KIND_GIT = "git"
-
-
-def source_kind(skill_dir):
-    """Where the skill source comes from: marketplace snapshot, cache or local."""
-    normalized = os.path.abspath(skill_dir).replace(os.sep, "/")
-    if "/plugins/marketplaces/" in normalized or "/.tmp/marketplaces/" in normalized:
-        return "marketplace-snapshot"
-    if "/plugins/cache/" in normalized:
-        return "plugin-cache"
-    return "local"
-
-
-def source_revision(skill_dir):
-    """Git revision of the skill source and whether it has local changes."""
-    top_level = run_quiet(["git", "-C", skill_dir, "rev-parse", "--show-toplevel"])
-    if not top_level:
-        return None, None
-    revision = run_quiet(["git", "-C", skill_dir, "rev-parse", "HEAD"])
-    porcelain = run_quiet(["git", "-C", skill_dir, "status", "--porcelain", "--", "."])
-    return revision, bool(porcelain)
-
-
-def golfo_kit_pending(skill_dir):
-    """A newer golfo-kit the installed plugin brings while the repository projects pinned content, or None."""
-    marker = golfo_kit.read_marker(skill_dir)
-    # Content from sources.golfoKit.source does not come with the plugin: its ref says what is new.
-    if not marker or marker.get("layout") == golfo_kit.LAYOUT_PACK:
-        return None
-    engine_revision, _ = source_revision(marker["engineSkillDir"]) if os.path.isdir(marker["engineSkillDir"]) else (None, None)
-    pinned_version, engine_version = plugin_version(skill_dir), marker.get("engineVersion")
-    if engine_revision == marker["commit"]:
-        return None
-    # An installed plugin outside a Git checkout (the provider cache) has no revision: its version decides.
-    if not engine_revision and engine_version == pinned_version:
-        return None
-    brings = f"{engine_version} ({engine_revision[:12]})" if engine_revision else f"{engine_version}"
-    return {
-        "pinnedRevision": marker["commit"], "pinnedVersion": pinned_version,
-        "engineRevision": engine_revision, "engineVersion": engine_version,
-        "message": (f"golfo-kit stays at {pinned_version} ({marker['commit'][:12]}); the installed plugin brings "
-                    f"{brings}. Adopt it with: agent-ready update golfo-kit"),
-    }
+SOURCE_KIND_LOCAL = "local"
 
 
 def content_version(skill_dir):
-    """Version of the golfo-kit content: the ``version`` its catalog declares, else its plugin's."""
+    """Version of the content: the ``version`` its catalog declares (a content pack must declare one)."""
     try:
         declared = read_json_file(os.path.join(skill_dir, PROFILE_CATALOG_RELATIVE_PATH), "profile catalog").get("version")
     except StateError:
         declared = None
-    return declared if isinstance(declared, str) and compatibility.semver_key(declared) else plugin_version(skill_dir)
+    return declared if isinstance(declared, str) and compatibility.semver_key(declared) else None
 
 
 def engine_version_of(skill_dir):
-    """Version of the engine that projects ``skill_dir``: the installed one, also for pinned content."""
-    marker = golfo_kit.read_marker(skill_dir)
+    """Version of the engine that projects ``skill_dir``: the installed one, whatever the content."""
+    marker = content_source.read_marker(skill_dir)
     return marker["engineVersion"] if marker else plugin_version(skill_dir)
 
 
 def golfo_blocks(blocks):
-    """The managed blocks, or nested targets, golfo-kit publishes: packs have their own digest."""
+    """The managed blocks, or nested targets, the content publishes: packs have their own digest."""
     return {key: item for key, item in blocks.items() if not is_pack_profile(item["profile"])}
 
 
 def source_identity(skill_dir, assets, merged_templates, blocks, nested_targets, workspace_origins=None):
     """Identity of the resolved source; contentDigest is the immutable part.
 
-    Pinned golfo-kit content records the Git origin and revision it came from, so the next apply
-    of a pinned repository fetches exactly that content again. A nested target counts by its id, not
+    The content records the Git origin, ref and revision it came from, so the next apply of a
+    pinned repository fetches exactly that content again. A nested target counts by its id, not
     by the folders it goes to in this repository, and what a profile only workspaces select projects by
     the files it comes from (workspace_profile_origins).
     """
@@ -1709,37 +1672,19 @@ def source_identity(skill_dir, assets, merged_templates, blocks, nested_targets,
         for relative_path in RENDERED_INSTRUCTION_INPUTS
         if os.path.isfile(os.path.join(skill_dir, relative_path))
     ]
-    marker = golfo_kit.read_marker(skill_dir)
-    if marker:
-        revision, dirty, kind = marker["commit"], False, SOURCE_KIND_GIT
-    else:
-        (revision, dirty), kind = source_revision(skill_dir), source_kind(skill_dir)
+    marker = content_source.read_marker(skill_dir) or {}
     identity = {
-        "plugin": PLUGIN_NAME,
-        "skill": SKILL_NAME,
+        "name": content_source.CONTENT_SOURCE_NAME,
         "version": content_version(skill_dir),
-        "kind": kind,
-        "revision": revision,
+        # The development override (a local directory) has no revision: its files identify it.
+        "kind": SOURCE_KIND_GIT if marker.get("commit") else SOURCE_KIND_LOCAL,
+        "revision": marker.get("commit"),
         "contentDigest": sha256_of_text("\n".join(digest_lines)),
     }
-    origin = marker["origin"] if marker else golfo_kit_origin(skill_dir) if revision else None
-    if origin:
-        identity["origin"] = origin
-    if marker and marker.get("requestedRef"):
-        identity["requestedRef"] = marker["requestedRef"]
-    if marker and marker.get("layout") == golfo_kit.LAYOUT_PACK:
-        identity["layout"] = golfo_kit.LAYOUT_PACK
-    if dirty:
-        identity["revisionHasLocalChanges"] = True
+    for key, field in (("origin", "origin"), ("requestedRef", "requestedRef")):
+        if marker.get(field):
+            identity[key] = marker[field]
     return identity
-
-
-def golfo_kit_origin(skill_dir):
-    """The marketplace a revision of this installation can be fetched from, or None."""
-    try:
-        return golfo_kit.engine_origin(skill_dir)
-    except ProfileError:
-        return None
 
 
 def agents_template_path(skill_dir, catalog):
@@ -1754,7 +1699,7 @@ def agents_template_path(skill_dir, catalog):
 def merged_template_entries(skill_dir, catalog, resolved):
     """Files merged with project content instead of copied verbatim."""
     agents_template = agents_template_path(skill_dir, catalog)
-    settings_template = os.path.join(skill_dir, catalog.get("baseAssets", "assets/common"), CLAUDE_SETTINGS_TEMPLATE_NAME)
+    settings_template = os.path.join(skill_dir, *CLAUDE_SETTINGS_TEMPLATE_RELATIVE_PATH.split("/"))
     codex_template = os.path.join(skill_dir, CODEX_HOOKS_TEMPLATE_RELATIVE_PATH)
     entries = {}
     for destination, template, kind in (
@@ -1777,7 +1722,7 @@ def rendered_inputs_digest(skill_dir):
     """Content the managed block of AGENTS.md is rendered with besides its template; the renderer is the engine's."""
     lines = [f"{relative_path}\t{sha256_of_file(os.path.join(skill_dir, relative_path))}"
              for relative_path in RENDERED_INSTRUCTION_INPUTS
-             if not golfo_kit.is_engine_owned(relative_path) and relative_path != RENDERER_RELATIVE_PATH
+             if not content_source.is_engine_owned(relative_path) and relative_path != RENDERER_RELATIVE_PATH
              and os.path.isfile(os.path.join(skill_dir, relative_path))]
     return sha256_of_text("\n".join(lines))
 
@@ -2358,11 +2303,10 @@ def describe_source(identity):
     version = identity.get("version") or "unknown version"
     revision = identity.get("revision")
     suffix = f", revision {revision[:12]}" if revision else ""
-    if identity.get("revisionHasLocalChanges"):
-        suffix += " with local changes"
-    if identity.get("layout") == golfo_kit.LAYOUT_PACK and identity.get("origin"):
-        suffix += f", from the content pack {identity['origin']}"
-    return f"{identity.get('plugin', PLUGIN_NAME)} {version} ({identity.get('kind', 'unknown')}{suffix}; content {identity.get('contentDigest', '')[:12]})"
+    if identity.get("origin"):
+        suffix += f", from {identity['origin']}"
+    name = identity.get("name", content_source.CONTENT_SOURCE_NAME)
+    return f"{name} {version} ({identity.get('kind', 'unknown')}{suffix}; content {identity.get('contentDigest', '')[:12]})"
 
 
 def print_detection_matches(detection):
@@ -3233,7 +3177,6 @@ def compute_status(project_root, skill_dir, conflicts_key=None):
         "selectionDifferences": [],
         "reviews": review_summary(project_root),
         "packTools": None,
-        "golfoKit": golfo_kit_pending(skill_dir) if skill_dir else None,
         "workspaceDifferences": workspace_selection.differences(configuration.value(WORKSPACES_KEY) or [],
                                                                 (lock or {}).get("workspaces") or {}) if lock else [],
     }
@@ -3418,8 +3361,6 @@ def print_status(status, brief):
         write_line(paint("No lockfile: applied assets are not pinned yet.", "warning", stream))
     else:
         write_line(f"Locked source: {describe_source(status['lockedSource'])}")
-        if status.get("golfoKit"):
-            write_line(paint(status["golfoKit"]["message"], "warning", stream))
         checkout = status["checkout"]
         write_line(
             "Checkout: "
@@ -3591,8 +3532,8 @@ def print_ignored_configuration(configuration, stream):
 
 
 def automatic_sources(configuration):
-    """Names of the sources whose effective update mode is auto: golfo-kit, then the declared packs."""
-    names = [golfo_kit.GOLFO_KIT_SOURCE_NAME] if golfo_kit.update_mode(configuration) == UPDATES_AUTO else []
+    """Names of the sources whose effective update mode is auto: the content, then the declared packs."""
+    names = [content_source.CONTENT_SOURCE_NAME] if content_source.update_mode(configuration) == UPDATES_AUTO else []
     return names + [declaration["name"] for declaration in declared_sources(configuration.project_root)
                     if effective_update_mode(configuration, declaration) == UPDATES_AUTO]
 
@@ -3624,7 +3565,7 @@ def command_config(arguments):
     """Print the effective configuration: text explains it, json and tsv are for scripts.
 
     tsv prints one ``key<TAB>value`` line per option (booleans as true/false, lists joined
-    with commas) and the derived line ``auto_sources``: golfo-kit and the declared sources in auto.
+    with commas) and the derived line ``auto_sources``: the content and the declared sources in auto.
     """
     configuration = configuration_of(arguments.project, arguments.offline)
     if arguments.format == "json":
@@ -3690,15 +3631,14 @@ def command_fetch_sources(arguments):
     return 0
 
 
-def golfo_kit_content_dir(project_root, skill_dir, offline=False, read_only=True):
-    """Skill directory with the golfo-kit content this repository uses, for a run that writes nothing.
+def content_dir_of(project_root, skill_dir, offline=False, read_only=True):
+    """Skill directory with the content this repository uses, composed with the engine ``skill_dir``.
 
-    Offline, a pinned revision missing from the cache falls back to ``skill_dir`` with a warning.
+    Offline, a revision missing from the cache raises ContentPendingError for a run that writes nothing.
     """
     lock = read_lock(project_root)
-    engine_revision, _ = source_revision(skill_dir)
-    content_dir, warning = golfo_kit.content_skill_dir(
-        configuration_of(project_root, offline), skill_dir, engine_revision, (lock or {}).get("source"),
+    content_dir, warning = content_source.content_skill_dir(
+        configuration_of(project_root, offline), skill_dir, (lock or {}).get("source"),
         offline=offline, read_only=read_only,
     )
     if warning:
@@ -3706,28 +3646,22 @@ def golfo_kit_content_dir(project_root, skill_dir, offline=False, read_only=True
     return content_dir
 
 
-def command_golfo_kit_source(arguments):
-    """Print the composed skill directory when the golfo-kit content of this run is not the engine's; see agent_ready_golfo_kit."""
+def command_content_source(arguments):
+    """Print the skill directory with the content of this run composed with this engine; see agent_ready_content."""
     lock = read_lock(arguments.project)
-    # A revision of the lock that is the HEAD of the installed engine stays with it, local changes
-    # included: that is a checkout of the skill under development, not another revision to fetch.
-    engine_revision, _ = source_revision(arguments.skill_dir)
     try:
-        content_dir, warning = golfo_kit.content_skill_dir(
-            configuration_of(arguments.project, arguments.offline), arguments.skill_dir,
-            engine_revision, (lock or {}).get("source"),
+        content_dir, warning = content_source.content_skill_dir(
+            configuration_of(arguments.project, arguments.offline), arguments.skill_dir, (lock or {}).get("source"),
             update=arguments.update, to_ref=arguments.to, offline=arguments.offline, read_only=arguments.read_only,
             from_lock=arguments.from_lock,
         )
-    except golfo_kit.ContentPendingError as pending_error:
+    except content_source.ContentPendingError as pending_error:
         write_line(f"WARNING: {pending_error}", sys.stderr)
         return CONTENT_PENDING_STATUS
     if warning:
         write_line(f"WARNING: {warning}", sys.stderr)
-    # Nothing when the installed engine brings the content; a forward-slash path that Bash on
-    # every system can use when it comes from a composed directory.
-    if content_dir != arguments.skill_dir:
-        write_line(content_dir.replace(os.sep, "/"))
+    # A forward-slash path that Bash on every system can use.
+    write_line(content_dir.replace(os.sep, "/"))
     return 0
 
 
@@ -4347,7 +4281,7 @@ def check_problems(project_root, skill_dir):
         plan = status["plan"]
         locked_digest = (status["lockedSource"] or {}).get("contentDigest")
         if locked_digest != plan["source"]["contentDigest"]:
-            problems.append(f"golfo-kit: the lock has {describe_source(status['lockedSource'])}; the source is {describe_source(plan['source'])}")
+            problems.append(f"{content_source.CONTENT_SOURCE_NAME}: the lock has {describe_source(status['lockedSource'])}; the source is {describe_source(plan['source'])}")
         problems += [f"{destination}: an apply would change it" for destination in update["changedDestinations"]]
     if status.get("plan") and status["hasLock"]:
         problems += merged_file_problems(project_root, skill_dir, status["plan"])
@@ -4375,13 +4309,12 @@ def evaluate_check(project_root, skill_dir, offline):
     unavailable = []
     if not offline:
         unavailable = refresh_declared_sources(declared_sources(project_root), locked_sources_of(project_root))
-    # A repository that pins golfo-kit is checked against the content of its revision, like an apply.
+    # The repository is checked against the content of its revision, like an apply.
     locked_source = (read_lock(project_root) or {}).get("source")
-    golfo_kit.declaration_of(configuration, skill_dir, locked_source)  # an invalid declaration is a configuration error
-    engine_revision, _ = source_revision(skill_dir)
+    content_source.declaration_of(configuration)  # an invalid declaration is a configuration error
     try:
-        content_dir, missing_content = golfo_kit.content_skill_dir(
-            configuration, skill_dir, engine_revision, locked_source, offline=offline, read_only=True,
+        content_dir, missing_content = content_source.content_skill_dir(
+            configuration, skill_dir, locked_source, offline=offline, read_only=True,
         )
     except ProfileError as fetch_error:
         # The revision or its ref could not be fetched: like a pack that cannot refresh.
@@ -4512,7 +4445,7 @@ def session_provider():
 
 
 # Pack-author mode of agent-ready conflicts: the pack is copied into a throwaway consumer repository,
-# under this folder, and every profile it publishes is checked there with the golfo-kit base and its requires.
+# under this folder, and every profile it publishes is checked there with the base of the content and its requires.
 PACK_CHECK_DIRECTORY = "agent-packs"
 
 
@@ -4536,7 +4469,7 @@ def pack_profile_conflicts(run, profile):
 
 
 def command_pack_conflicts(arguments):
-    """agent-ready conflicts --pack: each profile of a pack against the golfo-kit base and its requires,
+    """agent-ready conflicts --pack: each profile of a pack against the base of the content and its requires,
     without a consumer repository. Exits 6 when one has a conflict, 2 when the pack cannot resolve."""
     pack_root = os.path.abspath(arguments.pack)
     catalog_path = os.path.join(pack_root, PACK_CATALOG_FILE_NAME)
@@ -4562,7 +4495,8 @@ def command_pack_conflicts(arguments):
         # The whole catalog is validated first, as a consumer loads it: an empty or invalid pack fails
         # here even when it publishes no profile to check.
         write_text_atomically(manifest_path, serialize_json({"profiles": [], "sources": {"packs": [source]}}))
-        load_effective_catalog(project, arguments.skill_dir)
+        run.skill_dir = content_dir_of(project, arguments.skill_dir, offline=arguments.offline, read_only=False)
+        load_effective_catalog(project, run.skill_dir)
         profiles = [f"{pack_name}/{name}" for name in pack_catalog.get("profiles", {})]
         for profile in profiles:
             write_text_atomically(manifest_path, serialize_json({"profiles": [profile], "sources": {"packs": [source]}}))
@@ -4585,7 +4519,7 @@ def command_pack_conflicts(arguments):
 def print_pack_conflicts(pack_name, results):
     """One block per profile of the pack: its conflicts, or that it has none."""
     stream = sys.stdout
-    write_line(f"Pack {pack_name}: {len(results)} profile(s) checked against the golfo-kit base and their requires")
+    write_line(f"Pack {pack_name}: {len(results)} profile(s) checked against the golfo base and their requires")
     for profile, result in results.items():
         if "error" in result:
             write_line(paint(f"{profile}: does not resolve: {result['error']}", "error", stream))
@@ -4764,7 +4698,7 @@ def summarize_lock_changes(before, after):
             changes["sources"].append(f"{name} {old_revision} -> {new_revision}")
     source_before, source_after = before.get("source", {}), after.get("source", {})
     if source_before.get("contentDigest") != source_after.get("contentDigest"):
-        changes["sources"].append(f"golfo-kit {source_before.get('version') or 'none'} -> {source_after.get('version') or 'unknown'}")
+        changes["sources"].append(f"{content_source.CONTENT_SOURCE_NAME} {source_before.get('version') or 'none'} -> {source_after.get('version') or 'unknown'}")
     return changes
 
 
@@ -5195,9 +5129,8 @@ def serialize_settings(document):
 
 def settings_templates(skill_dir):
     """Merged JSON files and the template each one is merged from."""
-    base_assets = load_profile_catalog(skill_dir).get("baseAssets", "assets/common")
     return (
-        (".claude/settings.json", os.path.join(skill_dir, base_assets, CLAUDE_SETTINGS_TEMPLATE_NAME)),
+        (".claude/settings.json", os.path.join(skill_dir, *CLAUDE_SETTINGS_TEMPLATE_RELATIVE_PATH.split("/"))),
         (".codex/hooks.json", os.path.join(skill_dir, CODEX_HOOKS_TEMPLATE_RELATIVE_PATH)),
     )
 
@@ -5342,6 +5275,22 @@ def config_removal_entries(project_root):
     return entries
 
 
+def removal_content_dir(skill_dir, lock):
+    """The skill directory with the content that generated this repository, to recognize what it wrote.
+
+    The engine carries no templates: without the content of the lock, the generated AGENTS.md and its
+    blocks look like the project's own and stay.
+    """
+    if not lock or os.path.isfile(os.path.join(skill_dir, PROFILE_CATALOG_RELATIVE_PATH)):
+        return skill_dir
+    try:
+        return content_source.locked_content_dir(skill_dir, lock.get("source"))
+    except ProfileError as content_error:
+        write_line(f"WARNING: agent-ready remove: the content of the lock is not available ({content_error}); "
+                   "the generated AGENTS.md text and managed blocks are kept as the project's own", sys.stderr)
+        return skill_dir
+
+
 def plan_removal(project_root, skill_dir):
     """What `agent-ready remove` deletes, edits and keeps, without writing anything.
 
@@ -5350,6 +5299,7 @@ def plan_removal(project_root, skill_dir):
     """
     lock = read_lock(project_root)
     locked_assets = lock["assets"] if lock else {}
+    content_dir = removal_content_dir(skill_dir, lock)
     entries = (
         pack_mcp_removal_entries(project_root, lock)
         + pack_cli_removal_entries(project_root, lock)
@@ -5357,8 +5307,8 @@ def plan_removal(project_root, skill_dir):
         + local_removal_entries(project_root)
         + view_removal_entries(project_root, locked_assets)
         + asset_removal_entries(project_root, locked_assets)
-        + block_removal_entries(project_root, skill_dir, lock)
-        + instruction_removal_entries(project_root, skill_dir, lock)
+        + block_removal_entries(project_root, content_dir, lock)
+        + instruction_removal_entries(project_root, content_dir, lock)
         + settings_removal_entries(project_root, skill_dir)
         + config_removal_entries(project_root)
     )
@@ -5627,15 +5577,15 @@ def build_parser():
     trust_parser.add_argument("--revoke", action="store_true", help="remove the approval")
     trust_parser.set_defaults(handler=command_trust)
 
-    golfo_kit_parser = subparsers.add_parser("golfo-kit-source", help="skill directory with the golfo-kit content of this run")
-    add_common(golfo_kit_parser)
-    golfo_kit_parser.add_argument("--update", action="store_true", help="adopt the latest revision of its ref, or of the installed engine")
-    golfo_kit_parser.add_argument("--to", help="adopt this tag, branch or full commit")
-    golfo_kit_parser.add_argument("--offline", action="store_true", help="use no network: only revisions already in the cache")
-    golfo_kit_parser.add_argument("--from-lock", action="store_true", help="the revision of the lock, whatever the mode")
-    golfo_kit_parser.add_argument("--read-only", action="store_true",
+    content_parser = subparsers.add_parser("content-source", help="skill directory with the content of this run composed with this engine")
+    add_common(content_parser)
+    content_parser.add_argument("--update", action="store_true", help="adopt the latest revision of its ref")
+    content_parser.add_argument("--to", help="adopt this tag, branch or full commit")
+    content_parser.add_argument("--offline", action="store_true", help="use no network: only revisions already in the cache")
+    content_parser.add_argument("--from-lock", action="store_true", help="the revision of the lock, whatever the mode")
+    content_parser.add_argument("--read-only", action="store_true",
                                   help="the run writes nothing: offline, a missing revision compares with the installed one")
-    golfo_kit_parser.set_defaults(handler=command_golfo_kit_source)
+    content_parser.set_defaults(handler=command_content_source)
 
     detect_parser = subparsers.add_parser("detect", help="read-only detection of stacks and capabilities")
     add_common(detect_parser)
@@ -5663,7 +5613,7 @@ def build_parser():
 
     pack_conflicts_parser = subparsers.add_parser(
         "pack-conflicts",
-        help=f"each profile of a pack against the golfo-kit base and its requires; exits {CONFLICTS_STATUS} on a conflict")
+        help=f"each profile of a pack against the golfo base and its requires; exits {CONFLICTS_STATUS} on a conflict")
     add_common(pack_conflicts_parser)
     pack_conflicts_parser.add_argument("--pack", required=True, help="root of the profile pack (its agent-ready-pack.json)")
     pack_conflicts_parser.add_argument("--offline", action="store_true", help="the AI reviews answer from the cache only")
@@ -5737,6 +5687,12 @@ def main(argv=None):
     if getattr(arguments, "skill_dir", None):
         arguments.skill_dir = os.path.abspath(arguments.skill_dir)
     try:
+        # Run with the installed engine, which carries no content, a command that reads it composes the
+        # content of the repository first, as bootstrap.sh and the hooks do (content-source).
+        if (arguments.command in CONTENT_COMMANDS and getattr(arguments, "skill_dir", None)
+                and not os.path.isfile(os.path.join(arguments.skill_dir, PROFILE_CATALOG_RELATIVE_PATH))):
+            arguments.skill_dir = content_dir_of(arguments.project, arguments.skill_dir,
+                                                 offline=bool(getattr(arguments, "offline", False)))
         return arguments.handler(arguments)
     except IncompleteEvaluationError as caught_error:
         sys.stderr.write(f"Evaluation incomplete: {caught_error}\n")

@@ -60,8 +60,8 @@ if ! project_root="$(git rev-parse --show-toplevel 2>/dev/null)" || ! command -v
 fi
 cd -- "$project_root"
 state_script="$skill_dir/scripts/agent-ready-state.py"
-# A pinned golfo-kit brings its content from the revision of the lock, read from the cache only.
-if ! content_skill_dir="$(python3 "$state_script" golfo-kit-source --project . --skill-dir "$skill_dir" --offline --read-only)"; then
+# The content of the repository, at the revision of the lock or of its ref, read from the cache only.
+if ! content_skill_dir="$(python3 "$state_script" content-source --project . --skill-dir "$skill_dir" --offline --read-only)"; then
   exit 0
 fi
 if [[ -n "$content_skill_dir" ]]; then

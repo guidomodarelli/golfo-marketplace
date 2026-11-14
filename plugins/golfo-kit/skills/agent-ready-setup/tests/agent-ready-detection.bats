@@ -14,6 +14,8 @@ setup() {
   mkdir -p "$project_dir" "$fake_bin" "$test_root/tmp"
   export TMPDIR="$test_root/tmp"
   export XDG_CACHE_HOME="$test_root/cache"
+  source "$BATS_TEST_DIRNAME/content-pack.bash"
+  use_content_pack
   # Sync flows run with an empty home: nothing installed on this machine may decide them.
   export HOME="$test_root/home"
   mkdir -p "$HOME"
@@ -82,11 +84,13 @@ manifest_profiles() {
   json_value .agents/agent-ready.json '",".join(data["profiles"])'
 }
 
-# Copy of the skill whose catalog a test edits; the Python expression receives it as `catalog`.
+# Copy of the skill with a copy of the content whose catalog a test edits; the Python expression
+# receives the catalog of the content pack as `catalog`.
 copy_skill_with_catalog() {
   source_copy="$test_root/skill"
   cp -R "$skill_dir" "$source_copy"
-  python3 - "$source_copy/assets/profiles.json" "$1" <<'PY'
+  copy_content_pack
+  python3 - "$content_dir/agent-ready-pack.json" "$1" <<'PY'
 import json, sys
 path, expression = sys.argv[1:]
 with open(path, encoding="utf-8") as catalog_file:
@@ -167,11 +171,12 @@ PY
 
   run_bootstrap
   [ "$status" -ne 0 ]
-  [[ "$output" == *"Stack: ambiguous (go, node)"* ]]
-  [[ "$output" == *"go: go.mod exists"* ]]
-  [[ "$output" == *"could not detect project stack; pass --profiles or --stack"* ]]
+  [[ "$output" == *"could not detect project stack: several stacks match and none has priority: go (go.mod exists), node (package.json exists)"* ]]
+  [[ "$output" == *"select one with --stack"* ]]
   [ "$(tree_fingerprint)" = "$before" ]
-  [ ! -e "$cli_calls" ]
+  # The catalog that settles it comes with the content, prepared after the marketplace upgrade: that
+  # upgrade is the only call to the provider CLI.
+  [ ! -e "$cli_calls" ] || ! grep -Fvq 'plugin marketplace' "$cli_calls"
 
   run_bootstrap --stack go
   [ "$status" -eq 0 ]
@@ -487,12 +492,13 @@ EOF
 @test "editing only the detection signals of a release does not report an update" {
   source_copy="$test_root/skill"
   cp -R "$skill_dir" "$source_copy"
+  copy_content_pack
   printf 'module example\n' > go.mod
   run env PATH="$fake_bin:$PATH" bash "$source_copy/scripts/bootstrap.sh" --skill-dir "$source_copy" --provider claude
   [ "$status" -eq 0 ]
   lock_before="$(cksum < .agents/agent-ready.lock.json)"
 
-  python3 - "$source_copy/assets/profiles.json" <<'PY'
+  python3 - "$content_dir/agent-ready-pack.json" <<'PY'
 import json, sys
 path = sys.argv[1]
 with open(path, encoding="utf-8") as catalog_file:
@@ -677,7 +683,7 @@ run_resolve() {
 
 @test "a bundle that publishes something or groups nothing invalidates the catalog" {
   for expression in \
-    'catalog["profiles"]["web-team"] = {"kind": "bundle", "requires": ["react"], "assets": "assets/stacks/react"}' \
+    'catalog["profiles"]["web-team"] = {"kind": "bundle", "requires": ["react"], "assets": "stacks/react"}' \
     'catalog["profiles"]["web-team"] = {"kind": "bundle", "requires": ["react"], "defaults": ["browser"]}' \
     'catalog["profiles"]["web-team"] = {"kind": "bundle"}' \
     'catalog["profiles"]["node"]["defaults"] = "browser"'

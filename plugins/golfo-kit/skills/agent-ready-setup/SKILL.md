@@ -16,7 +16,7 @@ description: >-
   descartar un hallazgo de sus revisiones de IA.
 license: MIT
 metadata:
-  version: "1.57.0"
+  version: "1.58.0"
   author: "guponce"
   category: "developer-experience"
   tags: "agent-ready, multi-provider, claude-code, codex, bootstrap, setup, scaffold, context-optimized-v1.20.1"
@@ -44,11 +44,11 @@ operación. El bootstrap distribuye assets según responsabilidad:
   `mcp.json`; hoy ningún stack lo publica.
 - `.github/pull_request_template.md`: bloque gestionado de `software-development` con descripción,
   tipo de cambio, pruebas manuales y secciones opcionales de API y revisión, desde
-  `assets/profiles/software-development/blocks/.github/pull_request_template.md`. El proyecto suma sus propias
+  `profiles/software-development/blocks/.github/pull_request_template.md` del pack de contenido. El proyecto suma sus propias
   secciones fuera del bloque; el contrato de los bloques está en
   [references/managed-agents-block.md](references/managed-agents-block.md). No ejecuta
   scripts ni calcula cantidad de archivos. Hooks incluyen `statusMessage` para mostrar progreso.
-- `.gitignore`: bloque gestionado común (`assets/common/blocks/.gitignore`) que ignora el
+- `.gitignore`: bloque gestionado común (`base/blocks/.gitignore` del pack de contenido) que ignora el
   estado local de agent-ready-setup: el lock de una sincronización en curso, la metadata
   del navegador (`.agents/browser-tools.json`) y el manifest de vistas por hard link. Las
   reglas propias del proyecto van fuera del bloque.
@@ -69,12 +69,19 @@ todos los directorios. El `CLAUDE.md` de un subdirectorio solo contiene
 clones de instrucciones en `CLAUDE.md`; las instrucciones específicas viven en
 el `AGENTS.md` hermano.
 
-El núcleo vive en `assets/common/` y se aplica en cualquier repo, también sin código; lo de
-desarrollo vive en la capability `software-development` (`assets/profiles/software-development/`), que
-requiere cada stack; templates y hooks específicos viven en `assets/stacks/<stack>/` y reflejan
-estructura de assets. Las rules que aplican a cualquier repo viven una sola vez en
-`assets/common/rules/`, y las de cualquier repo de código en `software-development`; no duplicarlas en
-`assets/stacks/<stack>/rules/`. Un mismo nombre de rule no puede existir en ambos
+**El contenido no vive en esta skill.** Las rules, skills, agents, commands, el catálogo de profiles y el
+template de `AGENTS.md` salen de un pack de contenido (`sources.golfo`): por defecto el oficial,
+[guidomodarelli/golfo-agent-profiles](https://github.com/guidomodarelli/golfo-agent-profiles), siguiendo `main`,
+que se descarga en la caché del usuario y se compone con este motor
+([references/profiles-and-lockfile.md](references/profiles-and-lockfile.md), «El contenido»). La skill es el
+motor: scripts, hooks (`assets/common/hooks/`), los templates de settings, los schemas de configuración, los
+profiles de CI (`assets/ci/`) y las capacidades de los providers.
+
+En el pack, el núcleo vive en `base/` y se aplica en cualquier repo, también sin código; lo de desarrollo
+vive en la capability `software-development` (`profiles/software-development/`), que requiere cada stack, y
+lo de cada stack en `stacks/<stack>/`. Las rules que aplican a cualquier repo viven una sola vez en
+`base/rules/`, y las de cualquier repo de código en `software-development`; no duplicarlas en
+`stacks/<stack>/rules/`. Un mismo nombre de rule no puede existir en ambos
 lugares: el renderer falla si ocurre. El marker `{{AGENT_READY_RULE_REFERENCES}}`
 se renderiza dinámicamente con cada archivo de `rules/` común y del stack, y con
 cada rule propia del proyecto; no mantener listado duplicado en templates.
@@ -121,11 +128,11 @@ explícito fuera del cache conservan prioridad para desarrollo local.
 | `agent-ready plan [--offline] [--json]` | qué cambiaría un apply, sin escribir en el repo, cuánto contexto suma la selección, qué choca con lo instalado en la máquina y qué rules contradice el repo y qué hooks o permisos chocan, qué ve cada provider y qué variables o jobs de CI se repiten y qué skills compiten (`references/ai-reviews.md`, secciones 8 a 13) |
 | `agent-ready status [--offline] [--json]` | checkout contra el lockfile y las fuentes, sin escribir |
 | `agent-ready conflicts [--offline] [--json]` | todos los conflictos entre los perfiles, sin escribir; sale con `6` si hay alguno (`references/ai-reviews.md`, «Todos los conflictos juntos») |
-| `agent-ready conflicts --pack <dir>` | desde el repo de un pack: cada profile contra la base de golfo-kit y sus `requires`, para el CI del pack (`references/ai-reviews.md`, «Para autores de packs») |
+| `agent-ready conflicts --pack <dir>` | desde el repo de un pack: cada profile contra la base del contenido (golfo) y sus `requires`, para el CI del pack (`references/ai-reviews.md`, «Para autores de packs») |
 | `agent-ready check [--offline] [--json]` | el chequeo de CI, con sus códigos `0`, `4`, `5`, `6` (conflictos con `ci.conflicts`) y `2` |
 | `agent-ready apply [--profiles a,b \| --stack s] [--updates auto\|pinned] [--recheck] [--dry-run]` | el Step 3 completo; `--recheck` vuelve a revisar `AGENTS.md` con IA aunque la caché tenga la revisión |
 | `agent-ready apply --from-lock [--dry-run]` | aplica exactamente el lock (selección, revisiones y sha256) o falla antes de escribir nombrando la fuente; ver «Apply reproducible» en [profiles-and-lockfile.md](references/profiles-and-lockfile.md) |
-| `agent-ready update [<fuente>...] [--to <ref>] [--dry-run]` | adopta la última revisión de esas fuentes (o de todas) y de golfo-kit; `--to` elige la revisión de una sola, golfo-kit incluido ([references/profiles-and-lockfile.md](references/profiles-and-lockfile.md), «golfo-kit como fuente»). `--dry-run` muestra además la versión actual y la nueva, el changelog y los cambios `breaking` («Compatibilidad declarada») |
+| `agent-ready update [<fuente>...] [--to <ref>] [--dry-run]` | adopta la última revisión de esas fuentes (o de todas) y del contenido (`golfo`); `--to` elige la revisión de una sola, `golfo` incluido ([references/profiles-and-lockfile.md](references/profiles-and-lockfile.md), «El contenido»). `--dry-run` muestra además la versión actual y la nueva, el changelog y los cambios `breaking` («Compatibilidad declarada») |
 | `agent-ready config explain\|get\|set\|unset` | la configuración efectiva por capas ([references/configuration.md](references/configuration.md)) |
 | `agent-ready preset [delivered\|none]` | elige un preset con una sola clave o los lista; `delivered` deja una solución entregada estable hasta que alguien decida actualizarla ([references/stable-delivery.md](references/stable-delivery.md)) |
 | `agent-ready init [--profiles a,b \| --stack s] [--updates m] [--ci-provider p] [--yes] [--no-input]` | primera configuración: detecta, pregunta lo que falta si hay terminal (también el proveedor de CI) y aplica |
@@ -199,7 +206,7 @@ el usuario las pide. `business-flows` no tiene señales: se pide con
 `--profiles <stack>,business-flows` cuando el proyecto diseña flujos de negocio, en
 cualquier stack.
 
-Las señales y sus prioridades viven en `assets/profiles.json`; el evaluador, en
+Las señales y sus prioridades viven en el catálogo del pack de contenido (`agent-ready-pack.json`); el evaluador, en
 `scripts/agent_ready_detection.py`. Leer
 [references/profiles-and-lockfile.md](references/profiles-and-lockfile.md) (sección
 «Detección») para explicar un resultado o los formatos de Gradle reconocidos.
@@ -411,18 +418,18 @@ copiados durante bootstrap. No modifica `~/.codex/config.toml`,
 
 ## Step 4 — Report
 
-Mostrar output del script sin alterarlo. En respuestas documentales, enumerar además del resumen cada asset del template detectado con su path relativo, copiado tal cual de este catálogo (el árbol de `assets/` manda si difiere). Cada uno se proyecta en `.agents/<path>`, con vista en `.claude/<path>` salvo los hooks; los bloques y los archivos de CI van al destino que nombra cada uno:
+Mostrar output del script sin alterarlo. En respuestas documentales, enumerar además del resumen cada asset del template detectado con su path relativo, copiado tal cual de este catálogo del pack oficial `v1.0.0` (el pack que use el repo manda si difiere). Cada uno se proyecta en `.agents/<path>`, con vista en `.claude/<path>` salvo los hooks; los bloques y los archivos de CI van al destino que nombra cada uno:
 
-- **Núcleo, en cualquier repo** (`assets/common/`): `rules/browser-before-user-questions.md`, `rules/language-consistency.md`, `rules/speculative-complexity-approval.md`, `rules/user-actions-first.md`, `rules/verify-changes.md`, `skills/agent-browser/`, `hooks/sync-marketplace.sh`, `hooks/check-harness-consistency.sh` (con `hooks/harness-review.py`, `hooks/review-cache.py` y `hooks/check-conflicts.sh`), `hooks/agent-ready-skill-source.sh` (la resolución del source que comparten los hooks), `settings.json`, el bloque `blocks/.gitignore` y `agents-template.md`, el único template de `AGENTS.md` (propósito, estructura y convenciones, más el bloque de rules) para un repo sin `software-development`.
-- **Capability `software-development`** (`assets/profiles/software-development/`, requerida por cada stack): `rules/database.md`, `rules/environment-readiness.md`, `rules/error-handling.md`, `rules/established-libraries.md`, `rules/lint-gate.md`, `rules/patterns-we-do-not-use.md`, `rules/root-cause-bug-fixes.md`, `rules/testing-scope.md`, `skills/pr-review-workflow/`, el bloque `blocks/.github/pull_request_template.md` y `agents-skeleton.md`, el esqueleto de un proyecto de software (`Stack`, `Commands` y `Architecture`), que reemplaza al neutro del template.
+- **Núcleo, en cualquier repo** (`base/` del pack): `rules/browser-before-user-questions.md`, `rules/language-consistency.md`, `rules/speculative-complexity-approval.md`, `rules/user-actions-first.md`, `rules/verify-changes.md`, `skills/agent-browser/`, el bloque `blocks/.gitignore` y `agents-template.md`, el único template de `AGENTS.md` (propósito, estructura y convenciones, más el bloque de rules) para un repo sin `software-development`. Del motor (`assets/common/` de esta skill): `hooks/sync-marketplace.sh`, `hooks/check-harness-consistency.sh` (con `hooks/harness-review.py`, `hooks/review-cache.py` y `hooks/check-conflicts.sh`), `hooks/agent-ready-skill-source.sh` (la resolución del source que comparten los hooks) y `settings.json`.
+- **Capability `software-development`** (`profiles/software-development/` del pack, requerida por cada stack): `rules/database.md`, `rules/environment-readiness.md`, `rules/error-handling.md`, `rules/established-libraries.md`, `rules/lint-gate.md`, `rules/patterns-we-do-not-use.md`, `rules/root-cause-bug-fixes.md`, `rules/testing-scope.md`, `skills/pr-review-workflow/`, el bloque `blocks/.github/pull_request_template.md` y `agents-skeleton.md`, el esqueleto de un proyecto de software (`Stack`, `Commands` y `Architecture`), que reemplaza al neutro del template.
 - **Android, Go, Java y Node:** con el nombre del stack como prefijo (`<stack>` es `android`, `go`, `java` o `node`), `rules/<stack>-coding-style.md`, `rules/<stack>-security.md`, `rules/<stack>-testing.md`, `agents/<stack>-perf-analyzer.md`, `agents/<stack>-security-scanner.md`, `commands/<stack>-review-pr.md` y `blocks/AGENTS.md`, su sección del `AGENTS.md` de la raíz; por ejemplo, `rules/node-security.md`. Cada stack nombra sus assets con su prefijo, así que dos stacks se combinan en un repo (`--profiles react,node`).
 - **React** (capa base de la web): `rules/cross-engine.md`, `rules/lodash.md`, `rules/no-unnecessary-mocks.md`, `rules/react-security.md`, `rules/react-style.md`, `rules/react-testing.md`, `rules/user-facing-feedback.md`, `agents/a11y-reviewer.md`, `agents/lint-reviewer.md`, `agents/react-perf-analyzer.md`, `agents/react-security-scanner.md`, `agents/test-reviewer.md`, `commands/react-review-pr.md`, `blocks/AGENTS.md` (su sección del `AGENTS.md` de la raíz), `skills/component-creation/`, `skills/karpathy-guidelines/` y `skills/react-act-test-fixes/`.
 - **Next.js** (`requires: ["react"]`): `rules/api-configuration.md`, `rules/api-validation-middleware.md`, `rules/hexagonal-architecture.md`, `rules/server-first-data-flow.md`, `rules/upstream-contracts.md`, `blocks/AGENTS.md`, `skills/api-endpoint/`, `skills/logger/` y `skills/service/`.
 - **Next.js App Router** (`requires: ["nextjs"]`): `rules/nextjs-app-router.md`, `blocks/AGENTS.md` y `nested/app-router.md`, el bloque del `AGENTS.md` de `app/` o `src/app/`.
 - **Profile `business-flows`:** `rules/business-flows.md` y `skills/business-flow-design/SKILL.md`.
-- **CI, según `ci.provider`** (`assets/ci/`): con cualquier proveedor menos `none`, `.agents/ci/agent-ready-check.sh`; con `github`, además `.github/workflows/agent-ready.yml`; con `gitlab`, `.agents/ci/gitlab-ci.yml` y un bloque en `.gitlab-ci.yml` con su `include`; con `jenkins`, `.agents/ci/jenkins-stage.groovy`. Sin `ci.provider` o con `none`, ninguno.
+- **CI, según `ci.provider`** (`assets/ci/` del motor): con cualquier proveedor menos `none`, `.agents/ci/agent-ready-check.sh`; con `github`, además `.github/workflows/agent-ready.yml`; con `gitlab`, `.agents/ci/gitlab-ci.yml` y un bloque en `.gitlab-ci.yml` con su `include`; con `jenkins`, `.agents/ci/jenkins-stage.groovy`. Sin `ci.provider` o con `none`, ninguno.
 - **Profile packs:** los assets de cada profile seleccionado de `sources.packs`, con los paths que publique su pack bajo `rules/`, `skills/`, `agents/` y `commands/`.
-- **Estado del repo:** `.agents/agent-ready.json` (manifest) y `.agents/agent-ready.lock.json` (lockfile). `assets/profiles.json`, `assets/providers.json`, `assets/repo-facts.json` (señales de las rules contra el repo), `assets/formatters.json` (formateadores de los hooks) y los schemas de `assets/config/` son catálogos internos de la skill, y `assets/examples/` guarda ejemplos para leer; ninguno se proyecta.
+- **Estado del repo:** `.agents/agent-ready.json` (manifest) y `.agents/agent-ready.lock.json` (lockfile). `assets/ci/profiles.json` (los profiles de CI), `assets/providers.json`, `assets/repo-facts.json` (señales de las rules contra el repo), `assets/formatters.json` (formateadores de los hooks) y los schemas de `assets/config/` son catálogos internos de la skill, y `assets/examples/` guarda ejemplos para leer; ninguno se proyecta.
 
 Las skills que ya publica el plugin golfo-kit no se duplican en el catálogo de un stack: por ejemplo, el refactor de constantes se usa desde la skill `constants-refactor` del plugin y no se proyecta en `.agents/skills/`. Ningún stack publica hooks propios ni `mcp.json`: los únicos hooks proyectados son los comunes.
 

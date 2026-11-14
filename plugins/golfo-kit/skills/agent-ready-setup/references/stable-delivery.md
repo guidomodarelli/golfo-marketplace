@@ -22,7 +22,7 @@ Una sola clave, `updates.preset: delivered`, fija todo lo que necesita una soluc
 | Clave | Valor | Efecto |
 |---|---|---|
 | `updates.mode` | `pinned` | ninguna fuente se actualiza sola; el inicio de sesión solo informa |
-| `sources.golfoKit.updates` | `pinned` | golfo-kit también queda en la revisión del lock |
+| `sources.golfo.updates` | `pinned` | el contenido (`golfo`) también queda en la revisión del lock |
 | `updates.refresh` | `false` | plan, status y el inicio de sesión no usan la red para buscar versiones nuevas |
 | `updates.fromLock` | `true` | cada apply que no actualiza ni cambia la selección reproduce el lock, como `--from-lock` |
 | `ci.mode` | `fail` | el chequeo de CI falla si el repo se aparta del lock |
@@ -32,7 +32,8 @@ Sin el preset, el repositorio sigue en `auto`, como siempre: es opt-in por repos
 ## 2. Dejarlo estable
 
 1. `agent-ready preset delivered` escribe `updates.preset: delivered` en `.agents/agent-ready.json`.
-2. Opcional: fijar golfo-kit a una versión concreta con `agent-ready update golfo-kit --to <tag>`.
+2. Opcional: fijar el contenido a una versión concreta con `agent-ready update golfo --to <tag>` (el pack
+   oficial publica un tag por versión, como `v1.0.0`).
    Sin `--to`, queda en la revisión que aplicó el último apply.
 3. `agent-ready apply`, y commitear `.agents/agent-ready.json`, `.agents/agent-ready.lock.json` y
    los assets. El lock registra la revisión y el digest de cada fuente y el sha256 de cada asset.

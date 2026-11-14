@@ -214,19 +214,19 @@ _ENGINE = None
 
 
 def content_root(project_root, offline=False):
-    """Skill directory whose catalog the repository selects from: its pinned golfo-kit revision, or this installation.
+    """Skill directory whose catalog the repository selects from: its content (sources.golfo) composed with this engine.
 
-    It reads the cache first, so choosing profiles needs no network. A content pack this machine has not
-    downloaded yet (sources.golfoKit.source) is downloaded, unless ``offline``: there is no other catalog
+    It reads the cache first, so choosing profiles needs no network. Content this machine has not
+    downloaded yet (sources.golfo) is downloaded, unless ``offline``: the engine has no catalog of its own
     to choose from.
     """
     state = engine()
     try:
-        return state.golfo_kit_content_dir(project_root, SKILL_ROOT, offline=True)
-    except state.golfo_kit.ContentPendingError:
+        return state.content_dir_of(project_root, SKILL_ROOT, offline=True)
+    except state.content_source.ContentPendingError:
         if offline:
             raise
-        return state.golfo_kit_content_dir(project_root, SKILL_ROOT, offline=False)
+        return state.content_dir_of(project_root, SKILL_ROOT, offline=False)
 
 
 def engine():

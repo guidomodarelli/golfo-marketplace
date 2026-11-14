@@ -9,6 +9,28 @@
 
 # Per-user cache where composed multi-profile stack trees live; nothing
 # machine-specific lands in the project.
+# A skill directory with content: the installed engine carries none, so given one, this is the
+# directory content-source composes for the repository (agent_ready_content.py). After an apply it is
+# the revision of the lock, the one that apply projected, even if the ref moved since.
+resolve_content_skill_directory() {
+  local skill_dir="$1"
+  local composed
+  local content_arguments=(content-source --project . --skill-dir "$skill_dir")
+
+  if [[ -f "$skill_dir/assets/profiles.json" ]]; then
+    printf '%s\n' "$skill_dir"
+    return 0
+  fi
+  [[ -f .agents/agent-ready.lock.json ]] && content_arguments+=(--from-lock)
+  if ! composed="$(python3 "$skill_dir/scripts/agent-ready-state.py" "${content_arguments[@]}")" ||
+    [[ -z "$composed" ]]; then
+    printf 'ERROR: could not prepare the golfo content for %s\n' "$skill_dir" >&2
+    return 1
+  fi
+  # Windows Python ends lines with CRLF.
+  printf '%s\n' "${composed%$'\r'}"
+}
+
 agent_ready_compose_directory() {
   printf '%s/agent-ready-setup/compose\n' "${XDG_CACHE_HOME:-$HOME/.cache}"
 }

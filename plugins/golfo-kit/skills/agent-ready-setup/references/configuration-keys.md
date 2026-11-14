@@ -141,15 +141,15 @@ Campos de cada elemento de `security.signers`:
 
 ## `sources`: Profile packs
 
-Fuentes de profiles: golfo-kit, packs en Git y carpetas locales del repositorio.
+Fuentes de profiles: el contenido (golfo), packs en Git y carpetas locales del repositorio.
 
 | Clave | Tipo | Default | Capas | Variable | Seguridad | Descripción |
 |---|---|---|---|---|---|---|
 | `sources.enabled` | boolean | `true` | todas | — | `true` < `false` | Apagado, los packs declarados no se descargan ni se leen, y seleccionar un profile de un pack falla. Encenderlo desde el proyecto cuando otra capa lo apagó afloja la seguridad. |
 | `sources.packs` | lista de objetos | `[]` | project | — | — | Packs disponibles para seleccionar sus profiles por nombre con namespace (acme/kafka-interno). Declararlos no selecciona ninguno. |
-| `sources.golfoKit.source` | string | — | todas | — | — | git+https://... o git+ssh://... de un repositorio con el contenido en formato de pack (agent-ready-pack.json con baseAssets) en vez del marketplace. Necesita ref o #<revisión> en la URL. Sin valor, el contenido sale del marketplace. |
-| `sources.golfoKit.ref` | string | — | todas | — | — | Rama, tag o commit completo a seguir en auto o a adoptar con agent-ready update golfo-kit, del marketplace o de source. Sin valor y sin source, la versión del plugin instalado. |
-| `sources.golfoKit.updates` | `auto` \| `pinned` | — | todas | — | — | Modo de actualización de golfo-kit; pisa updates.mode del repositorio. |
+| `sources.golfo.source` | string | `"git+https://github.com/guidomodarelli/golfo-agent-profiles"` | todas | — | — | git+https://... o git+ssh://... de un repositorio con el contenido en formato de pack (agent-ready-pack.json con baseAssets), sin revisión en la URL. |
+| `sources.golfo.ref` | string | `"main"` | todas | — | — | Rama, tag o commit completo de source a seguir en auto, a adoptar en el primer apply o con agent-ready update golfo. |
+| `sources.golfo.updates` | `auto` \| `pinned` | — | todas | — | — | Modo de actualización del contenido; pisa updates.mode del repositorio. |
 
 Campos de cada elemento de `sources.packs`:
 
@@ -181,6 +181,6 @@ Cómo se mantienen al día los assets: la actualización en segundo plano del in
 Presets:
 
 - `updates.preset: none` → sin cambios
-- `updates.preset: delivered` → `updates.mode: pinned`, `sources.golfoKit.updates: pinned`, `updates.refresh: false`, `updates.fromLock: true`, `ci.mode: fail`
+- `updates.preset: delivered` → `updates.mode: pinned`, `sources.golfo.updates: pinned`, `updates.refresh: false`, `updates.fromLock: true`, `ci.mode: fail`
 
 `locked` es una lista de claves (o namespaces enteros) que solo declara la organización.

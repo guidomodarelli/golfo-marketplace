@@ -12,7 +12,7 @@ python3 "$SKILL_DIR/scripts/agent-ready" check [--offline] [--json]
 ```
 
 Trae las fuentes, resuelve cada `ref` y compara contra el lock y los assets commiteados: profiles, digests,
-assets faltantes o modificados, archivos fusionados y una versión nueva de golfo-kit. No escribe en el repo.
+assets faltantes o modificados, archivos fusionados y una versión nueva del contenido. No escribe en el repo.
 
 | Resultado (`status` en JSON) | Código de salida | Significado |
 |---|---|---|
@@ -103,7 +103,7 @@ la URL depende del servidor (`oauth2`, `x-access-token`).
 ## Ejemplos a mano
 
 Para armar el job sin `ci.provider`. Los tres ejemplos clonan la skill **fuera** del repo. Dentro, sus `CLAUDE.md` contarían como archivos del proyecto.
-Para que una versión nueva de golfo-kit no falle un PR ajeno, usar `AGENT_READY_SETUP_CI=warn` en los PR y dejar
+Para que una versión nueva del contenido no falle un PR ajeno, usar `AGENT_READY_SETUP_CI=warn` en los PR y dejar
 `fail` en una corrida programada.
 
 GitHub Actions (`.github/workflows/agent-ready.yml`):

@@ -63,8 +63,8 @@ PACK_ALLOWED_ASSET_DIRECTORIES = ("rules", "skills", "agents", "commands", manag
 PACK_FORBIDDEN_ASSET_NAMES = ("agents.md", "claude.md")
 
 NAMESPACE_SEPARATOR = "/"
-# golfo-kit is a source of its own (agent_ready_golfo_kit.py): a pack cannot take its name.
-GOLFO_KIT_SOURCE_NAME = "golfo-kit"
+# The content is a source of its own (agent_ready_content.py, sources.golfo): a pack cannot take its name.
+CONTENT_SOURCE_NAME = "golfo"
 GOLFO_REFERENCE = KEBAB_CASE_NAME
 PACK_REFERENCE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*/[a-z0-9]+(?:-[a-z0-9]+)*$")
 
@@ -165,9 +165,9 @@ def parse_profile_sources(entries, manifest_path):
         name, text = entry["name"], entry["source"]
         if not KEBAB_CASE_NAME.fullmatch(name):
             raise StateError(f"{manifest_path} has a profile source with an invalid name '{name}'; use kebab-case")
-        if name == GOLFO_KIT_SOURCE_NAME:
+        if name == CONTENT_SOURCE_NAME:
             raise StateError(f"{manifest_path} declares a profile source named '{name}', which is reserved for "
-                             "golfo-kit itself; give the pack another name")
+                             "the content (sources.golfo); give the pack another name")
         if name in declarations:
             raise StateError(f"{manifest_path} declares the profile source '{name}' more than once")
         declared_ref = entry.get("ref")
@@ -732,7 +732,7 @@ def load_pack_catalog(source, golfo_profile_names, engine_version=None):
         raise ProfileError(f"profile source '{source_name}': {caught_error}") from caught_error
     if "baseAssets" in catalog:
         # Precedence between sources: the base and the AGENTS.md template come only from the content source.
-        raise ProfileError(f"pack '{source_name}' declares baseAssets, but only the content source (sources.golfoKit.source) "
+        raise ProfileError(f"pack '{source_name}' declares baseAssets, but only the content source (sources.golfo) "
                            "publishes the base; put the shared assets in a profile of the pack that the others require")
     extra_keys = sorted(set(catalog) - set(PACK_ALLOWED_TOP_LEVEL_KEYS))
     if extra_keys:

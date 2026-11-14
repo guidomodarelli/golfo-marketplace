@@ -17,6 +17,8 @@ setup() {
   mkdir -p "$project_dir" "$fake_bin" "$test_root/tmp" "$test_root/organization"
   export TMPDIR="$test_root/tmp"
   export XDG_CACHE_HOME="$test_root/cache"
+  source "$BATS_TEST_DIRNAME/content-pack.bash"
+  use_content_pack
   export XDG_CONFIG_HOME="$test_root/config"
   export HOME="$test_root/home"
   mkdir -p "$HOME"
@@ -107,6 +109,7 @@ run_bootstrap() {
 copy_skill() {
   source_copy="$test_root/skill"
   cp -R "$skill_dir" "$source_copy"
+  copy_content_pack
 }
 
 @test "a repository without a manifest is configured with every default, and the apply writes none of them" {
