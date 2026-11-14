@@ -1680,6 +1680,12 @@ def resolve_workspaces(project_root, catalog, profile_names, resolved):
     entries = configuration_of(project_root).value(WORKSPACES_KEY) or []
     workspace_selection.validate(project_root, entries, MANIFEST_RELATIVE_PATH)
     root_names = [name for name in profile_names if catalog["profiles"].get(name, {}).get("kind") != CI_PROFILE_KIND]
+    for entry in entries:
+        # resolve_project_profiles drops CI profiles, which a lock lists: a workspace naming one is an error.
+        try:
+            rejecting_ci_profiles(catalog, entry["profiles"])
+        except ProfileError as profile_error:
+            raise ProfileError(f"workspace {entry['path']}: {profile_error}") from profile_error
     return workspace_selection.resolve(entries, root_names, resolved,
                                        lambda names: resolve_project_profiles(catalog, names, project_root))
 
@@ -3899,6 +3905,7 @@ def check_problems(project_root, skill_dir):
         if item["pendingUpdate"]:
             problems.append(f"profile source {name}: {item['pendingUpdate']}")
     problems += status["selectionDifferences"]
+    problems += status["workspaceDifferences"]
     update = status["update"]
     if update and update["available"]:
         plan = status["plan"]

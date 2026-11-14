@@ -79,10 +79,12 @@ lock_value() {
 
   # A selection the lock does not have yet, and a workspace that left the manifest, are drift.
   write_manifest '{"profiles": ["node"], "workspaces": [{"path": "apps/web", "profiles": ["react"]}]}'
-  run_cli status --check
-  [ "$status" -ne 0 ]
+  run_cli status
   [[ "$output" == *"! workspace apps/web selects react, the lock nextjs-app-router: run agent-ready apply to adopt it"* ]]
   [[ "$output" == *"! workspace services/api left the manifest: run agent-ready apply to adopt it"* ]]
+  run_cli check --offline
+  [ "$status" -ne 0 ]
+  [[ "$output$stderr" == *"workspace apps/web selects react, the lock nextjs-app-router"* ]]
   run_cli apply
   [ "$status" -eq 0 ]
   [ "$(lock_value 'sorted(lock["workspaces"])')" = "['apps/web']" ]
@@ -99,7 +101,8 @@ lock_value() {
     '{"path": ".agents", "profiles": ["node"]}' \
     '{"path": "apps", "profiles": ["node"]}, {"path": "apps/web", "profiles": ["react"]}' \
     '{"path": "apps/web", "profiles": ["node"]}, {"path": "apps/web", "profiles": ["react"]}' \
-    '{"path": "apps/web", "profiles": ["no-such-profile"]}'; do
+    '{"path": "apps/web", "profiles": ["no-such-profile"]}' \
+    '{"path": "apps/web", "profiles": ["ci-github"]}'; do
     case "$entries" in
       *missing*) expected="the workspace 'missing' does not exist in the repository; nothing was written" ;;
       *ignored*) expected="the workspace 'ignored' is ignored by Git; nothing was written" ;;
@@ -107,6 +110,7 @@ lock_value() {
       *'".agents"'*) expected="the workspace '.agents' is under .git/, .agents/, .claude/, .codex/" ;;
       *'"apps",'*) expected="the workspace 'apps/web' is inside the workspace 'apps'" ;;
       *no-such-profile*) expected="workspace apps/web: unknown profile 'no-such-profile'" ;;
+      *ci-github*) expected="workspace apps/web: profile 'ci-github' comes from ci.provider, not from the selection" ;;
       *) expected="the workspace 'apps/web' is listed twice" ;;
     esac
     write_manifest "{\"profiles\": [\"node\"], \"workspaces\": [$entries]}"

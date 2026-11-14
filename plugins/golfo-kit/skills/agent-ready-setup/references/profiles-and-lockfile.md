@@ -80,14 +80,15 @@ repositorio:
   - Git no la ignora;
   - no aparece dos veces ni está dentro de otro workspace.
 
-  Un profile de un workspace que no resuelve también frena el plan, y el error nombra el workspace.
+  Un profile de un workspace que no resuelve, o uno de CI (los elige `ci.provider`), también frena el
+  plan, y el error nombra el workspace.
 - **Lectura:** `agent-ready plan` muestra una línea por workspace con lo que suma
   (`Workspace apps/web: nextjs-app-router (adds react, nextjs, nextjs-app-router to the root selection)`), y
   `--json` deja la lista en `workspaces`.
 - **Lock y drift:** el lock registra en `workspaces` la selección y lo que suma cada uno, y
   `apply --from-lock` falla si un workspace del manifest no es el del lock. `status` muestra
   los workspaces del manifest y marca como drift el que el último apply no adoptó o el que salió del
-  manifest; `status --check` falla en esos casos.
+  manifest; `agent-ready check` lo cuenta como un problema del CI.
 - **Assets:** por ahora la selección de un workspace se resuelve y se registra, pero todavía no proyecta
   assets. Las rules con `paths:` para Claude Code y el `AGENTS.md` del workspace para Codex son la parte
   64b de #64.
