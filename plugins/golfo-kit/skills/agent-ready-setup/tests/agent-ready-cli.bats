@@ -611,6 +611,30 @@ PY
   grep -Fq -- "2 problems" <<< "$stderr"
   run_cli doctor --offline --json
   [ "$(json_value "$output" '[check["name"] + ":" + check["status"] for check in data["checks"] if check["name"].startswith(("content", "pack"))]')" = "['content golfo:missing', 'pack acme:missing']" ]
+
+  # Offline and without the content on this machine, the packs that are here are still checked.
+  unset AGENT_READY_SETUP_CONTENT_DIR
+  run_cli doctor --offline --json
+  [ "$status" -eq 1 ]
+  [ "$(json_value "$output" '[check["name"] + ":" + check["status"] for check in data["checks"] if check["name"].startswith(("content", "pack"))]')" = "['content:skipped', 'pack acme:missing']" ]
+
+  # A catalog newer than this engine reads asks for the newest plugin; a malformed one, a fix of the catalog.
+  export AGENT_READY_SETUP_CONTENT_DIR="$content_pack"
+  printf '%s\n' '{"schemaVersion": 9, "name": "acme", "profiles": {"team": {"kind": "capability", "assets": "profiles/team"}}}' > packs/acme/agent-ready-pack.json
+  run_cli doctor --offline
+  [ "$status" -eq 1 ]
+  grep -Fq -- "fix: install the newest golfo-kit plugin: claude plugin update golfo-kit@golfo-marketplace" <<< "$output"
+  printf '%s\n' '{"schemaVersion": 1, "name": "acme", "minEngine": "soon", "profiles": {}}' > packs/acme/agent-ready-pack.json
+  run_cli doctor --offline
+  [ "$status" -eq 1 ]
+  grep -Fq -- "minEngine must be a semantic version" <<< "$output"
+  grep -Fq -- "fix: fix the catalog it names" <<< "$output"
+
+  # A source the manifest declares wrong keeps the report: the sources check names it.
+  printf '%s\n' '{"sources": {"packs": [{"name": "acme", "source": "path:/absolute"}]}}' > .agents/agent-ready.json
+  run_cli doctor --offline --json
+  [ "$status" -eq 1 ]
+  [ "$(json_value "$output" '[check["name"] + ":" + check["status"] for check in data["checks"] if check["name"].startswith(("content", "pack", "sources"))]')" = "['sources:missing', 'content golfo:ok']" ]
 }
 
 @test "doctor runs outside a repository and names the missing worktree; a missing agent CLI says how to fix it" {

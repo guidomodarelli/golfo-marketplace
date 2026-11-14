@@ -184,14 +184,17 @@ def check_sources(project, configuration, offline):
     return checks
 
 
-def engine_requirement_check(requirement, kind, installed_version):
-    """One source against this engine: what it declares, or why an apply would stop on it, with the plugin to install."""
-    name = f"{kind} {requirement['source']}"
+def engine_requirement_check(requirement, installed_version):
+    """One source against this engine: what it declares, or why an apply would stop on it, with what fixes it."""
+    name = f"{requirement['kind']} {requirement['source']}"
     label = f"{requirement['source']} {requirement['version'] or '(no version)'}"
     if requirement["problem"]:
-        minimum = requirement["minEngine"]
-        fix = (f"install the golfo-kit plugin {minimum} or newer: {', or '.join(ENGINE_UPDATE_COMMANDS)}" if minimum
-               else "fix the catalog it names")
+        if requirement["category"] == engine().ENGINE_PROBLEM_ENGINE:
+            target = (f"the golfo-kit plugin {requirement['requiredVersion']} or newer" if requirement["requiredVersion"]
+                      else "the newest golfo-kit plugin")
+            fix = f"install {target}: {', or '.join(ENGINE_UPDATE_COMMANDS)}"
+        else:
+            fix = "fix the catalog it names"
         return check(name, CHECK_MISSING, requirement["problem"], fix)
     if requirement["minEngine"]:
         return check(name, CHECK_OK, f"{label} needs golfo-kit {requirement['minEngine']} or newer; this is {installed_version}")
@@ -199,21 +202,24 @@ def engine_requirement_check(requirement, kind, installed_version):
 
 
 def check_engine_requirements(project, configuration, offline):
-    """The content and each pack this machine has, against this engine: the minEngine an apply checks, ahead of it."""
+    """The content and each pack this machine has, against this engine: the minEngine an apply checks, ahead of it.
+
+    A pack that is on this machine is checked even when the content cannot be prepared.
+    """
     if configuration is None:
         return [check("content", CHECK_SKIPPED, "the configuration is not valid")]
+    content_dir, checks = None, []
     try:
         content_dir = content_root(project, offline=offline)
     except engine().content_source.ContentPendingError:
-        return [check("content", CHECK_SKIPPED, "--offline: the content of this repository is not on this machine yet",
-                      f"run {CLI_NAME} doctor without --offline to download it")]
+        checks.append(check("content", CHECK_SKIPPED, "--offline: the content of this repository is not on this machine yet",
+                            f"run {CLI_NAME} doctor without --offline to download it"))
     except (ProfileError, StateError) as content_error:
-        return [check("content", CHECK_MISSING, f"could not prepare the content: {content_error}",
-                      f"check the network and your access to sources.golfo ({CLI_NAME} config explain sources.golfo.source)")]
+        checks.append(check("content", CHECK_MISSING, f"could not prepare the content: {content_error}",
+                            f"check the network and your access to sources.golfo ({CLI_NAME} config explain sources.golfo.source)"))
     installed_version = plugin_version(SKILL_ROOT) or "unknown"
-    requirements = engine().engine_requirements(project, content_dir)
-    return [engine_requirement_check(requirement, "content" if index == 0 else "pack", installed_version)
-            for index, requirement in enumerate(requirements)]
+    requirements = engine().engine_requirements(project, SKILL_ROOT, content_dir)
+    return checks + [engine_requirement_check(requirement, installed_version) for requirement in requirements]
 
 
 def hook_handlers(document):
