@@ -158,6 +158,7 @@ import agent_ready_content as content_source  # noqa: E402
 from agent_ready_packs import (  # noqa: E402
     KEBAB_CASE_NAME,
     PACK_CATALOG_FILE_NAME,
+    PACK_SCHEMA_VERSION,
     SOURCE_AVAILABLE,
     SOURCE_TYPE_GIT,
     download_declared_sources,
@@ -585,6 +586,63 @@ def load_effective_catalog(project_root, skill_dir, source_state=None):
         except DetectionSchemaError as caught_error:
             raise ProfileError(f"profile sources: {caught_error}") from caught_error
     return catalog
+
+
+# What a source asks of the engine: an engine this one is not (update the plugin), or a catalog it cannot read.
+ENGINE_PROBLEM_ENGINE = "engine"
+ENGINE_PROBLEM_CATALOG = "catalog"
+
+
+def engine_requirement(kind, source_name, catalog_path, label, engine_version, supported_schema):
+    """What one catalog asks of the engine: the check an apply runs before writing (minEngine, schemaVersion).
+
+    ``problem`` says why an apply would stop on it (None if it would not); ``category`` tells an engine to
+    update (``requiredVersion``: the plugin version to install, None for the newest) from a catalog to fix.
+    """
+    requirement = {"kind": kind, "source": source_name, "version": None, "minEngine": None, "problem": None,
+                   "category": None, "requiredVersion": None}
+    try:
+        catalog = read_json_file(catalog_path, f"{kind} catalog")
+    except StateError as catalog_error:
+        return dict(requirement, problem=str(catalog_error), category=ENGINE_PROBLEM_CATALOG)
+    requirement.update(version=catalog.get("version"), minEngine=catalog.get("minEngine"))
+    try:
+        compatibility.require_engine(label, catalog, engine_version, supported_schema)
+    except compatibility.EngineRequirementError as engine_error:
+        requirement.update(problem=str(engine_error), category=ENGINE_PROBLEM_ENGINE, requiredVersion=engine_error.required_version)
+    except ProfileError as catalog_error:
+        requirement.update(problem=str(catalog_error), category=ENGINE_PROBLEM_CATALOG)
+    return requirement
+
+
+def engine_requirements(project_root, engine_dir, content_dir=None):
+    """What the content (when ``content_dir`` has it) and every pack this machine has ask of this engine.
+
+    Only the engine check an apply runs before writing (minEngine, schemaVersion), done ahead of it: the
+    rest of a catalog is checked by the apply. A pack this machine has not fetched yet, or a declaration
+    that is not valid, is left out: the source checks of doctor report them. No network.
+    """
+    engine_version = engine_version_of(content_dir or engine_dir)
+    requirements = []
+    if content_dir:
+        requirements.append(engine_requirement(
+            "content", content_source.CONTENT_SOURCE_NAME, os.path.join(content_dir, PROFILE_CATALOG_RELATIVE_PATH),
+            f"the {content_source.CONTENT_SOURCE_NAME} catalog", engine_version, GOLFO_CATALOG_SCHEMA_VERSION))
+    try:
+        declarations = declared_sources(project_root) or []
+        locked_sources = locked_sources_of(project_root)
+        configuration = configuration_of(project_root)
+    except (StateError, ConfigurationError):
+        return requirements
+    for declaration in declarations:
+        update_mode = effective_update_mode(configuration, declaration)
+        source = locate_source(declaration, locked_sources.get(declaration["name"]), project_root, update_mode)
+        if source["state"] != SOURCE_AVAILABLE:
+            continue
+        requirements.append(engine_requirement(
+            "pack", declaration["name"], os.path.join(source["root"], PACK_CATALOG_FILE_NAME),
+            f"pack '{declaration['name']}'", engine_version, PACK_SCHEMA_VERSION))
+    return requirements
 
 
 def raise_unknown_profile(catalog, name, requested_by):

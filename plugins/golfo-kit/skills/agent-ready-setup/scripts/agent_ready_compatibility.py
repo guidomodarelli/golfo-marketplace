@@ -23,6 +23,14 @@ SEMVER = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]
 ENGINE_PLUGIN = "golfo-kit"
 
 
+class EngineRequirementError(ProfileError):
+    """A catalog this engine is too old for; ``required_version`` is the plugin to install (None: the newest)."""
+
+    def __init__(self, message, required_version=None):
+        super().__init__(message)
+        self.required_version = required_version
+
+
 def semver_key(text):
     """A key that orders versions by semver precedence, or None when ``text`` is not one.
 
@@ -68,9 +76,9 @@ def require_engine(label, catalog, engine_version, supported_schema):
     """Stop before writing when this engine cannot apply the catalog, saying what to install."""
     schema = catalog.get("schemaVersion")
     if isinstance(schema, int) and not isinstance(schema, bool) and schema > supported_schema:
-        raise ProfileError(f"{label} uses catalog schemaVersion {schema}, and this engine ({ENGINE_PLUGIN} "
-                           f"{engine_version or 'unknown'}) reads up to {supported_schema}: update the {ENGINE_PLUGIN} "
-                           "plugin and run it again; nothing was changed")
+        raise EngineRequirementError(f"{label} uses catalog schemaVersion {schema}, and this engine ({ENGINE_PLUGIN} "
+                                     f"{engine_version or 'unknown'}) reads up to {supported_schema}: update the "
+                                     f"{ENGINE_PLUGIN} plugin and run it again; nothing was changed")
     minimum = catalog.get("minEngine")
     if minimum is None:
         return
@@ -79,9 +87,9 @@ def require_engine(label, catalog, engine_version, supported_schema):
         raise ProfileError(f"{label}: minEngine must be a semantic version such as 1.2.0, not {minimum!r}")
     engine_key = semver_key(engine_version)
     if engine_key and engine_key < minimum_key:
-        raise ProfileError(f"{label} needs the agent-ready-setup engine {minimum} or newer, and this installation "
-                           f"runs {ENGINE_PLUGIN} {engine_version}: install the {ENGINE_PLUGIN} plugin {minimum} or "
-                           "newer and run it again; nothing was changed")
+        raise EngineRequirementError(f"{label} needs the agent-ready-setup engine {minimum} or newer, and this installation "
+                                     f"runs {ENGINE_PLUGIN} {engine_version}: install the {ENGINE_PLUGIN} plugin {minimum} "
+                                     "or newer and run it again; nothing was changed", required_version=minimum)
 
 
 def changes_between(changes, current, new):

@@ -20,11 +20,13 @@ from agent_ready_cli_common import (
     SKILL_ROOT,
     SUPPORTED_PROVIDERS,
     UsageError,
+    content_root,
     declared_sources,
     engine,
     find_repository_root,
 )
-from agent_ready_common import StateError, bash_executable, plugin_version, read_json_file, serialize_json
+from agent_ready_common import ProfileError, StateError, bash_executable, plugin_version, read_json_file, serialize_json
+from agent_ready_compatibility import EngineRequirementError
 from agent_ready_config import ConfigurationError, resolve_configuration
 from agent_ready_options import PROVIDERS_KEY
 from agent_ready_packs import SOURCE_TYPE_GIT, SOURCE_TYPE_PATH
@@ -47,6 +49,9 @@ PYTHON_VERSION_PATTERN = re.compile(r"Python (\d+)\.(\d+)")
 HOOK_SCRIPTS_DIRECTORY = ".agents/hooks/"
 # Where each provider reads the hooks that an apply merges.
 PROVIDER_HOOK_FILES = {"claude": ".claude/settings.json", "codex": ".codex/hooks.json"}
+# How each provider updates the golfo-kit plugin, the engine.
+ENGINE_UPDATE_COMMANDS = ("claude plugin update golfo-kit@golfo-marketplace", "codex plugin marketplace upgrade golfo-marketplace",
+                          "hermes plugins update golfo-kit")
 
 
 def check(name, status, detail, fix=None):
@@ -180,6 +185,50 @@ def check_sources(project, configuration, offline):
     return checks
 
 
+def engine_update_fix(required_version):
+    """How to get an engine new enough: that plugin version, or the newest one when none is named."""
+    target = f"the golfo-kit plugin {required_version} or newer" if required_version else "the newest golfo-kit plugin"
+    return f"install {target}: {', or '.join(ENGINE_UPDATE_COMMANDS)}"
+
+
+def engine_requirement_check(requirement, installed_version):
+    """One source against this engine: what it declares, or why an apply would stop on it, with what fixes it."""
+    name = f"{requirement['kind']} {requirement['source']}"
+    label = f"{requirement['source']} {requirement['version'] or '(no version)'}"
+    if requirement["problem"]:
+        fix = (engine_update_fix(requirement["requiredVersion"]) if requirement["category"] == engine().ENGINE_PROBLEM_ENGINE
+               else "fix the catalog it names")
+        return check(name, CHECK_MISSING, requirement["problem"], fix)
+    if requirement["minEngine"]:
+        return check(name, CHECK_OK, f"{label} needs golfo-kit {requirement['minEngine']} or newer; this is {installed_version}")
+    return check(name, CHECK_OK, f"{label} declares no minimum engine")
+
+
+def check_engine_requirements(project, configuration, offline):
+    """The content and each pack this machine has, against this engine: the minEngine an apply checks, ahead of it.
+
+    A pack that is on this machine is checked even when the content cannot be prepared.
+    """
+    if configuration is None:
+        return [check("content", CHECK_SKIPPED, "the configuration is not valid")]
+    content_dir, checks = None, []
+    try:
+        content_dir = content_root(project, offline=offline)
+    except engine().content_source.ContentPendingError:
+        checks.append(check("content", CHECK_SKIPPED, "--offline: the content of this repository is not on this machine yet",
+                            f"run {CLI_NAME} doctor without --offline to download it"))
+    except EngineRequirementError as engine_error:
+        # The content is written for a newer engine, and cannot even be composed with this one.
+        checks.append(check(f"content {engine().content_source.CONTENT_SOURCE_NAME}", CHECK_MISSING, str(engine_error),
+                            engine_update_fix(engine_error.required_version)))
+    except (ProfileError, StateError) as content_error:
+        checks.append(check("content", CHECK_MISSING, f"could not prepare the content: {content_error}",
+                            f"check the network and your access to sources.golfo ({CLI_NAME} config explain sources.golfo.source)"))
+    installed_version = plugin_version(SKILL_ROOT) or "unknown"
+    requirements = engine().engine_requirements(project, SKILL_ROOT, content_dir)
+    return checks + [engine_requirement_check(requirement, installed_version) for requirement in requirements]
+
+
 def hook_handlers(document):
     """(event, matcher, command) of every command hook: a handler only runs in its event and matcher."""
     hooks = document.get("hooks")
@@ -245,6 +294,7 @@ def doctor_checks(project, offline):
         check("engine", CHECK_OK, f"golfo-kit {plugin_version(SKILL_ROOT) or 'with an unknown version'}"),
         configuration_check,
         *check_sources(project, configuration, offline),
+        *check_engine_requirements(project, configuration, offline),
         *check_hooks(project, providers),
     ]
 

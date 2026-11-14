@@ -585,6 +585,74 @@ PY
   [ "$(json_value "$output" '[check["status"] for check in data["checks"] if check["name"] == "configuration"]')" = "['missing']" ]
 }
 
+@test "doctor names the content or the pack that needs a newer engine, with the plugin to install" {
+  run_cli doctor --offline --json
+  [ "$status" -eq 0 ]
+  [ "$(json_value "$output" '[check["name"] + ":" + check["status"] for check in data["checks"] if check["name"].startswith(("content", "pack"))]')" = "['content golfo:ok']" ]
+
+  # The content and a pack that ask for engines newer than this one: an apply would stop on both.
+  copy_content_pack
+  python3 - "$content_dir/agent-ready-pack.json" <<'PY'
+import json, sys
+catalog = json.load(open(sys.argv[1], encoding="utf-8"))
+catalog["minEngine"] = "99.0.0"
+json.dump(catalog, open(sys.argv[1], "w", encoding="utf-8"), indent=2)
+PY
+  mkdir -p packs/acme/profiles/team/rules
+  printf '# Team\n' > packs/acme/profiles/team/rules/acme-team.md
+  printf '%s\n' '{"schemaVersion": 1, "name": "acme", "version": "2.0.0", "minEngine": "98.0.0", "profiles": {"team": {"kind": "capability", "assets": "profiles/team"}}}' > packs/acme/agent-ready-pack.json
+  mkdir -p .agents
+  printf '%s\n' '{"sources": {"packs": [{"name": "acme", "source": "path:packs/acme"}]}}' > .agents/agent-ready.json
+  run_cli doctor --offline
+  [ "$status" -eq 1 ]
+  grep -Fq -- "(AGENT_READY_SETUP_CONTENT_DIR) needs the agent-ready-setup engine 99.0.0 or newer" <<< "$output"
+  grep -Fq -- "pack 'acme' needs the agent-ready-setup engine 98.0.0 or newer" <<< "$output"
+  grep -Fq -- "fix: install the golfo-kit plugin 98.0.0 or newer: claude plugin update golfo-kit@golfo-marketplace" <<< "$output"
+  grep -Fq -- "2 problems" <<< "$stderr"
+  run_cli doctor --offline --json
+  [ "$(json_value "$output" '[check["name"] + ":" + check["status"] for check in data["checks"] if check["name"].startswith(("content", "pack"))]')" = "['content golfo:missing', 'pack acme:missing']" ]
+
+  # Offline and without the content on this machine, the packs that are here are still checked.
+  unset AGENT_READY_SETUP_CONTENT_DIR
+  run_cli doctor --offline --json
+  [ "$status" -eq 1 ]
+  [ "$(json_value "$output" '[check["name"] + ":" + check["status"] for check in data["checks"] if check["name"].startswith(("content", "pack"))]')" = "['content:skipped', 'pack acme:missing']" ]
+
+  # A catalog newer than this engine reads asks for the newest plugin; a malformed one, a fix of the catalog.
+  export AGENT_READY_SETUP_CONTENT_DIR="$content_pack"
+  printf '%s\n' '{"schemaVersion": 9, "name": "acme", "profiles": {"team": {"kind": "capability", "assets": "profiles/team"}}}' > packs/acme/agent-ready-pack.json
+  run_cli doctor --offline
+  [ "$status" -eq 1 ]
+  grep -Fq -- "fix: install the newest golfo-kit plugin: claude plugin update golfo-kit@golfo-marketplace" <<< "$output"
+  printf '%s\n' '{"schemaVersion": 1, "name": "acme", "minEngine": "soon", "profiles": {}}' > packs/acme/agent-ready-pack.json
+  run_cli doctor --offline
+  [ "$status" -eq 1 ]
+  grep -Fq -- "minEngine must be a semantic version" <<< "$output"
+  grep -Fq -- "fix: fix the catalog it names" <<< "$output"
+
+  # Content written for a newer catalog format cannot even be composed: doctor and the apply both ask for the newest plugin.
+  python3 - "$content_dir/agent-ready-pack.json" <<'PY'
+import json, sys
+catalog = json.load(open(sys.argv[1], encoding="utf-8"))
+catalog.update(schemaVersion=9, fieldOfANewerFormat=True)
+json.dump(catalog, open(sys.argv[1], "w", encoding="utf-8"), indent=2)
+PY
+  export AGENT_READY_SETUP_CONTENT_DIR="$content_dir"
+  run_cli doctor --offline --json
+  [ "$status" -eq 1 ]
+  [ "$(json_value "$output" '[check["fix"] for check in data["checks"] if check["name"] == "content golfo"][0].split(":")[0]')" = "install the newest golfo-kit plugin" ]
+  run_cli apply --stack node
+  [ "$status" -ne 0 ]
+  grep -Fq -- "uses catalog schemaVersion 9, and this engine" <<< "$stderr"
+  export AGENT_READY_SETUP_CONTENT_DIR="$content_pack"
+
+  # A source the manifest declares wrong keeps the report: the sources check names it.
+  printf '%s\n' '{"sources": {"packs": [{"name": "acme", "source": "path:/absolute"}]}}' > .agents/agent-ready.json
+  run_cli doctor --offline --json
+  [ "$status" -eq 1 ]
+  [ "$(json_value "$output" '[check["name"] + ":" + check["status"] for check in data["checks"] if check["name"].startswith(("content", "pack", "sources"))]')" = "['sources:missing', 'content golfo:ok']" ]
+}
+
 @test "doctor runs outside a repository and names the missing worktree; a missing agent CLI says how to fix it" {
   mkdir "$test_root/plain"
   cd "$test_root/plain"

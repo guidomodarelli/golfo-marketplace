@@ -16,7 +16,7 @@ description: >-
   descartar un hallazgo de sus revisiones de IA.
 license: MIT
 metadata:
-  version: "1.58.0"
+  version: "1.59.0"
   author: "guponce"
   category: "developer-experience"
   tags: "agent-ready, multi-provider, claude-code, codex, bootstrap, setup, scaffold, context-optimized-v1.20.1"
@@ -139,7 +139,7 @@ explícito fuera del cache conservan prioridad para desarrollo local.
 | `agent-ready profiles list\|add\|remove` | la selección del manifest, validada contra el catálogo; después, `apply` |
 | `agent-ready workspaces list\|add\|remove` | los workspaces de un monorepo, validados antes de escribir; `list` muestra los que sugiere la detección y `add` sin profiles toma el stack que detecta en la carpeta; después, `apply` ([references/profiles-and-lockfile.md](references/profiles-and-lockfile.md), «Workspaces») |
 | `agent-ready sources list\|add\|remove` | las fuentes de packs del manifest; `add` además la trae a la caché |
-| `agent-ready doctor [--offline] [--json]` | revisa Git, Bash, Python, la CLI del provider, la configuración, las fuentes y los hooks, y dice cómo arreglar lo que falta |
+| `agent-ready doctor [--offline] [--json]` | revisa Git, Bash, Python, la CLI del provider, la configuración, las fuentes, el motor que piden el contenido y cada pack (`minEngine`) y los hooks, y dice cómo arreglar lo que falta |
 | `agent-ready remove [--dry-run] [--yes]` | saca agent-ready-setup del repo y conserva lo que escribió el proyecto |
 | `agent-ready ci detect [--json]` | el proveedor de CI cuyos archivos tiene el repo y el archivo que lo muestra, o `none`; solo lee |
 | `agent-ready ci setup [--provider github\|gitlab\|jenkins\|generic\|none] [--no-apply] [--no-input]` | elige el proveedor de CI (`ci.provider`) y aplica: crea el script `.agents/ci/agent-ready-check.sh` y el workflow, el job de GitLab con su `include` o el stage de Jenkins para copiar; cambiarlo retira los archivos del anterior ([references/ci-check.md](references/ci-check.md)) |
