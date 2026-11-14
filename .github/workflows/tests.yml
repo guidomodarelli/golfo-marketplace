@@ -11,9 +11,33 @@ permissions:
 
 concurrency:
   group: tests-${{ github.ref }}
-  cancel-in-progress: true
+  # Only pull requests cancel an older run: every push to main has to finish, because it is the
+  # full run that backs up the path filter.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Decides which heavy areas this run needs (scripts/detect-test-areas.js). Pull requests run the
+  # agent-ready-setup suites only when they touch that skill, its tooling or a golfo-kit manifest
+  # beyond its version; a push to main and workflow_dispatch always run everything. If the detection
+  # cannot compare, it asks for every area instead of skipping one.
+  changes:
+    name: Detect changed areas
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      agent_ready: ${{ steps.detect.outputs.agent_ready }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - id: detect
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: node scripts/detect-test-areas.js "${BASE_SHA:-HEAD}"
+
   shell:
     name: Shell suites
     runs-on: ubuntu-latest
@@ -32,36 +56,9 @@ jobs:
         run: |
           git config --global user.name "CI"
           git config --global user.email "ci@example.invalid"
+      # The list of suites lives in package.json (test:shell), so CI and local runs never drift.
       - name: Fast bats suites
-        run: >-
-          LC_ALL=C.UTF-8 BATS_TEST_TIMEOUT=30 node_modules/.bin/bats
-          tests/create-version.bats
-          tests/check-version-bump.bats
-          tests/validate-compatibility-report.bats
-          tests/validate-portable-plugins.bats
-          plugins/golfo-kit/skills/codex-autofix-loop/tests/wait-for-pr-event.bats
-          plugins/golfo-kit/skills/codex-comment-closeout/tests/closeout.bats
-          plugins/golfo-kit/skills/user-manual/tests/check-design-tokens.bats
-          plugins/golfo-kit/skills/agent-ready-setup/tests/merge-instructions.bats
-          plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-state.bats
-          plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-detection.bats
-          plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-packs.bats
-          plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-updates.bats
-          plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-config.bats
-          plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-cli.bats
-          plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-reviews.bats
-          plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-golfo-kit.bats
-          plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-conflicts.bats
-          plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-pack-tools.bats
-          plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-pack-clis.bats
-          plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-pack-scripts.bats
-          plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-pack-examples.bats
-          plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-blocks.bats
-          plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-workspaces.bats
-          plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-ci.bats
-          skill-eval-runner/tests/run-evals-env-contract.bats
-          skill-eval-runner/tests/run-evals-assertions.bats
-          skill-eval-runner/tests/install.bats
+        run: pnpm run test:shell
       - run: pnpm run compat:validate
       - run: pnpm run test:review-fix-loop
       - run: pnpm run test:sibling-worktree
@@ -78,11 +75,35 @@ jobs:
       - name: User manual suites (validators and real browser)
         run: pnpm run test:user-manual
 
+  agent-ready-linux:
+    name: Agent Ready (ubuntu-latest)
+    needs: changes
+    if: needs.changes.outputs.agent_ready == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Configure git identity for test repositories
+        run: |
+          git config --global user.name "CI"
+          git config --global user.email "ci@example.invalid"
+      # The list of suites lives in package.json (test:agent-ready).
+      - name: Agent Ready suites
+        run: pnpm run test:agent-ready
+
   # agent-ready-setup runs on Linux, macOS and Windows, and what breaks differs on
   # each: line endings, code pages and hard-link views on Windows; Bash 3.2 and BSD
   # tools on macOS. The Linux run of these suites lives in the jobs around this one.
   agent-ready-cross-platform:
     name: Agent Ready (${{ matrix.os }}, Python ${{ matrix.python }}${{ matrix.shard && format(', shard {0}', matrix.shard) || '' }})
+    needs: changes
+    if: needs.changes.outputs.agent_ready == 'true'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:
@@ -157,6 +178,8 @@ jobs:
 
   bootstrap:
     name: Agent Ready bootstrap (shard ${{ matrix.shard }}/3)
+    needs: changes
+    if: needs.changes.outputs.agent_ready == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -193,6 +216,8 @@ jobs:
 
   browser:
     name: Browser registration
+    needs: changes
+    if: needs.changes.outputs.agent_ready == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -209,15 +234,40 @@ jobs:
       - run: pnpm run setup:browser-tests
       - run: pnpm run test:browser
 
+  # The check that reports for the whole workflow. A skipped job only passes when the detection ran
+  # and said its area was not needed: a failed or cancelled detection never turns into a green run.
   tests:
     name: Tests
     if: always()
-    needs: [shell, agent-ready-cross-platform, bootstrap, browser]
+    needs: [changes, shell, agent-ready-linux, agent-ready-cross-platform, bootstrap, browser]
     runs-on: ubuntu-latest
     steps:
-      - name: Require every suite to pass
+      - name: Require every suite that had to run to pass
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          AGENT_READY_NEEDED: ${{ needs.changes.outputs.agent_ready }}
+          SHELL_RESULT: ${{ needs.shell.result }}
+          AGENT_READY_RESULTS: >-
+            agent-ready-linux=${{ needs.agent-ready-linux.result }}
+            agent-ready-cross-platform=${{ needs.agent-ready-cross-platform.result }}
+            bootstrap=${{ needs.bootstrap.result }}
+            browser=${{ needs.browser.result }}
         run: |
-          [[ "${{ needs.shell.result }}" == success ]]
-          [[ "${{ needs.agent-ready-cross-platform.result }}" == success ]]
-          [[ "${{ needs.bootstrap.result }}" == success ]]
-          [[ "${{ needs.browser.result }}" == success ]]
+          failed=0
+          if [[ "$CHANGES_RESULT" != success ]]; then
+            echo "::error::Detect changed areas ended with '$CHANGES_RESULT'."
+            failed=1
+          fi
+          if [[ "$SHELL_RESULT" != success ]]; then
+            echo "::error::Shell suites ended with '$SHELL_RESULT'."
+            failed=1
+          fi
+          expected=skipped
+          if [[ "$AGENT_READY_NEEDED" == true ]]; then expected=success; fi
+          for entry in $AGENT_READY_RESULTS; do
+            if [[ "${entry#*=}" != "$expected" ]]; then
+              echo "::error::${entry%%=*} ended with '${entry#*=}' (expected '$expected', agent_ready=$AGENT_READY_NEEDED)."
+              failed=1
+            fi
+          done
+          exit "$failed"
