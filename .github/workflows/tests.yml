@@ -93,6 +93,10 @@ jobs:
         run: |
           git config --global user.name "CI"
           git config --global user.email "ci@example.invalid"
+      # The suites project the official content pack at the tag of tests/content-pack.ref: cloned once here,
+      # read by every test without network.
+      - name: Content pack of the tests
+        run: bash plugins/golfo-kit/skills/agent-ready-setup/tests/prepare-content-pack.sh
       # The list of suites lives in package.json (test:agent-ready).
       - name: Agent Ready suites
         run: pnpm run test:agent-ready
@@ -126,7 +130,7 @@ jobs:
           - os: windows-latest
             python: "3.13"
             shard: 3/5
-            suites: agent-ready-golfo-kit.bats agent-ready-detection.bats agent-ready-pack-clis.bats
+            suites: agent-ready-content.bats agent-ready-detection.bats agent-ready-pack-clis.bats
           - os: windows-latest
             python: "3.13"
             shard: 4/5
@@ -145,7 +149,7 @@ jobs:
           - os: macos-latest
             python: "3.13"
             shard: 2/3
-            suites: agent-ready-golfo-kit.bats agent-ready-state.bats agent-ready-updates.bats agent-ready-detection.bats agent-ready-reviews.bats
+            suites: agent-ready-content.bats agent-ready-state.bats agent-ready-updates.bats agent-ready-detection.bats agent-ready-reviews.bats
           - os: macos-latest
             python: "3.13"
             shard: 3/3
@@ -155,7 +159,7 @@ jobs:
           - os: macos-latest
             python: "3.9"
             shard: 1/2
-            suites: agent-ready-golfo-kit.bats agent-ready-state.bats agent-ready-blocks.bats agent-ready-updates.bats agent-ready-config.bats agent-ready-reviews.bats
+            suites: agent-ready-content.bats agent-ready-state.bats agent-ready-blocks.bats agent-ready-updates.bats agent-ready-config.bats agent-ready-reviews.bats
           - os: macos-latest
             python: "3.9"
             shard: 2/2
@@ -196,6 +200,10 @@ jobs:
         run: |
           git config --global user.name "CI"
           git config --global user.email "ci@example.invalid"
+      # The suites project the official content pack at the tag of tests/content-pack.ref: cloned once here,
+      # read by every test without network.
+      - name: Content pack of the tests
+        run: bash plugins/golfo-kit/skills/agent-ready-setup/tests/prepare-content-pack.sh
       - name: Agent Ready suites
         working-directory: plugins/golfo-kit/skills/agent-ready-setup/tests
         # A test that hangs fails on its own, with its name, instead of stopping the whole shard at the
@@ -230,6 +238,10 @@ jobs:
         run: |
           git config --global user.name "CI"
           git config --global user.email "ci@example.invalid"
+      # The suites project the official content pack at the tag of tests/content-pack.ref: cloned once here,
+      # read by every test without network.
+      - name: Content pack of the tests
+        run: bash plugins/golfo-kit/skills/agent-ready-setup/tests/prepare-content-pack.sh
       - name: Run this shard of bootstrap.bats
         env:
           SHARD: ${{ matrix.shard }}

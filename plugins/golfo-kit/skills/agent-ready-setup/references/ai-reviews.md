@@ -49,7 +49,7 @@ puede cambiar su resultado:
 - el contenido de cada archivo, con los fines de línea normalizados a LF;
 - el id y la versión del chequeo, que cambia con su prompt;
 - el provider y el modelo (`AGENT_READY_SETUP_MERGE_MODEL` cambia el de `instructions`);
-- la versión de golfo-kit que aplicó el repo (`generator.version` del lockfile).
+- la versión del motor que aplicó el repo (`generator.version` del lockfile).
 
 Si cambia cualquiera de estas partes, la unidad se revisa otra vez y su entrada se
 reemplaza. Cada entrada guarda el veredicto (`consistent` o `findings`) y los hallazgos:
@@ -164,7 +164,7 @@ direcciones:
 |---|---|---|
 | update | cada rule gestionada que el apply crea, actualiza o adopta, con el contenido que va a escribir, contra cada rule propia (`.agents/rules/` sin equivalente gestionado) y contra lo que el proyecto escribió en su `AGENTS.md`, fuera del bloque gestionado que el mismo apply puede reemplazar | `(this update)` |
 | project | cada rule propia contra cada rule gestionada ya aplicada que no cambia | `(a project rule)` |
-| profiles | cada rule de un pack contra cada rule gestionada de otro profile del mismo nivel; las de los profiles de golfo-kit no se revisan entre sí. Como llega con el apply, `conflicts.block` lo frena igual que un update. Para quedarse con una de las dos, `overrides` | `(two profiles)` |
+| profiles | cada rule de un pack contra cada rule gestionada de otro profile del mismo nivel; las de los profiles del contenido (`golfo`) no se revisan entre sí. Como llega con el apply, `conflicts.block` lo frena igual que un update. Para quedarse con una de las dos, `overrides` | `(two profiles)` |
 | levels | una rule de la raíz contra una de un workspace de un monorepo, con un pack de alguno de los dos lados, y lo que el proyecto escribió en un `AGENTS.md` anidado (de un workspace o de un destino anidado) contra cada rule gestionada de la raíz que el apply cambia; `agent-ready check` la compara también con las ya aplicadas. Las rules de dos workspaces no se comparan, porque nunca se cargan juntas. Llega con el apply, como profiles | `(two levels; root and apps/web/)` |
 
 - **Los dos niveles.** Cuando los dos archivos de un hallazgo son de niveles distintos (la raíz, un
@@ -296,10 +296,10 @@ asume. El agente que obedece la rule rompe el proyecto, y el que obedece al proy
   ! .agents/rules/react-testing.md (react) assumes test runner vitest, but the repository uses jest (package.json)
 ```
 
-Las rules de golfo-kit que solo valen con una herramienta lo declaran, como las de testing de
+Las rules del contenido que solo valen con una herramienta lo declaran, como las de testing de
 `react` con Vitest. Un dato o un valor que el catálogo (`assets/repo-facts.json`) no conoce se
 informa como no chequeado. Una contradicción escrita en prosa, sin `assumes`, la busca la revisión
-semántica. Para reemplazar la rule de golfo-kit por la del proyecto, `overrides`
+semántica. Para reemplazar la rule del contenido por la del proyecto, `overrides`
 (`profiles-and-lockfile.md`).
 
 | Clave | Default | Efecto |
@@ -377,7 +377,7 @@ solo de las que compiten, con el pedido en común y en qué difieren:
   ! [a1b2c3] .agents/skills/pr-review-workflow/SKILL.md <-> .agents/skills/team-review/SKILL.md: Both review pull requests; one follows the team checklist. (competing skills: "review this pull request")
 ```
 
-- **Qué pares.** Solo los de profiles distintos con una skill de un pack: las de golfo-kit no se
+- **Qué pares.** Solo los de profiles distintos con una skill de un pack: las del contenido no se
   revisan entre sí. Un par que un profile declara en `complements`
   (`"software-development:skills/pr-review-workflow"`) no se revisa.
 - **Misma infraestructura.** Usa la llamada al provider, la caché y las decisiones de las demás
@@ -448,7 +448,7 @@ agent-ready conflicts --pack . --offline  # sin llamar a la IA: solo lo estructu
 ```
 
 El chequeo copia el pack a un repo consumidor temporal y evalúa cada profile que publica, por separado,
-con la base de golfo-kit y los profiles que declara en `requires`, como lo vería un repo que lo
+con la base del contenido (`golfo`) y los profiles que declara en `requires`, como lo vería un repo que lo
 selecciona. Corre los mismos chequeos que `agent-ready conflicts`, salvo los de la máquina del autor (las
 sombras con lo instalado, los servidores MCP y los settings y hooks del usuario), que no son los del
 consumidor. El repo temporal está vacío, así que tampoco hay nada que contradiga un `assumes`. La copia
@@ -456,7 +456,7 @@ conserva los symlinks, así que un pack que publica uno falla igual que en un co
 elige la CLI de la revisión de IA.
 
 ```text
-Pack acme: 3 profile(s) checked against the golfo-kit base and their requires
+Pack acme: 3 profile(s) checked against the golfo base and their requires
 acme/base: no conflicts
 acme/kafka-interno:
   ~ MCP server base-docs (acme/base) and MCP server acme-docs (acme/kafka-interno) both provide docs-search: …

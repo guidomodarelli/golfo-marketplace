@@ -5,18 +5,18 @@ El bloque de `AGENTS.md`, que se arma con un template y las rules, la sección d
 el proyecto (sección final, «Bloques en otros archivos»).
 
 
-Un único template (`assets/common/agents-template.md`) define el esqueleto del proyecto y el bloque
+Un único template (`agents-template.md` de la base del pack de contenido) define el esqueleto del proyecto y el bloque
 entre `<!-- BEGIN AGENT-READY MANAGED -->` y `<!-- END AGENT-READY MANAGED -->`; el bloque es el mismo
 en cualquier repo. Su esqueleto es neutro (propósito, estructura y convenciones), para un repo sin
 código. `software-development`, que requiere cualquier stack, publica otro esqueleto
-(`assets/profiles/software-development/agents-skeleton.md`, con `Stack`, `Commands` y `Architecture`)
+(`profiles/software-development/agents-skeleton.md` del pack, con `Stack`, `Commands` y `Architecture`)
 que reemplaza al del template (`--skeleton` del renderer). El esqueleto solo se usa al crear
 `AGENTS.md`.
 `scripts/render-instruction-template.sh` lo materializa:
 
 - `{{AGENT_READY_RULE_REFERENCES}}`: una referencia portable
   `- Read and follow \`.agents/rules/<relative-path>\`.` por cada rule del
-  template (del núcleo en `assets/common/rules/`, de `software-development` y del stack, en orden
+  template (del núcleo en `base/rules/` del pack, de `software-development` y del stack, en orden
   alfabético)
   y, bajo `### Project rules`, por cada rule propia del proyecto. Las rules de
   `rules/workspaces/` son de un workspace de un monorepo: las lista el `AGENTS.md` de su carpeta, no
@@ -88,7 +88,7 @@ Los hooks generados no pasan flags de confirmación durante `SessionStart`.
 
 ## Secciones de los stacks
 
-Cada stack publica su sección en `assets/stacks/<stack>/blocks/AGENTS.md`: un bloque con id (sección
+Cada stack publica su sección en `stacks/<stack>/blocks/AGENTS.md` del pack de contenido: un bloque con id (sección
 siguiente) en el `AGENTS.md` de la raíz, con el nombre del stack como id
 (`<!-- BEGIN AGENT-READY MANAGED: node -->`). Con `--profiles react,node`, el `AGENTS.md` lleva el
 template base, el bloque de rules y una sección `## React` y otra `## Node.js`; una sección nueva
@@ -118,10 +118,10 @@ se agrega al final del archivo. El stack primario solo desempata la detección; 
 
 ## Bloques en otros archivos
 
-Un profile, de golfo-kit o de un pack, publica la parte que le toca de un archivo compartido con el
+Un profile, del contenido o de un pack, publica la parte que le toca de un archivo compartido con el
 proyecto como `blocks/<ruta en el repo>` en su árbol de assets. Por ejemplo, `software-development`
-publica `assets/profiles/software-development/blocks/.github/pull_request_template.md`, y el profile
-`common` publica `assets/common/blocks/.gitignore`, que ignora
+publica `profiles/software-development/blocks/.github/pull_request_template.md`, y el profile
+`common` publica `base/blocks/.gitignore`, que ignora
 el estado local de agent-ready-setup: el lock de una sincronización en curso
 (`.agents/.agent-ready-assets.lock/`), la metadata del navegador (`.agents/browser-tools.json`) y el
 manifest de vistas por hard link (`.claude/.agent-ready-hard-link-views`). `scripts/agent_ready_blocks.py` lo aplica en
@@ -152,7 +152,7 @@ manifest de vistas por hard link (`.claude/.agent-ready-hard-link-views`). `scri
 - **Lock, plan y status.** El lock guarda en `blocks` el sha256 de cada bloque por archivo e id. `plan`
   muestra cada bloque que cambia con su diff, y `status` reporta como `modified` un bloque editado a mano
   y como conflicto uno que el apply no puede escribir, aunque nunca se haya aplicado. `apply --from-lock`
-  también compara los bloques con el lock, y el `contentDigest` de golfo-kit incluye los suyos.
+  también compara los bloques con el lock, y el `contentDigest` del contenido incluye los suyos.
 - **`agent-ready remove`.** Saca cada bloque del lock y deja el resto del archivo; si no queda nada, lo borra.
 - **JSON.** `settings.json`, `hooks.json` y `.mcp.json` no admiten comentarios, así que siguen con merge por
   claves.

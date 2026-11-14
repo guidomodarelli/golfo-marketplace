@@ -14,6 +14,8 @@ setup() {
   export TMPDIR="$test_root/tmp"
   # Keeps the SessionStart upgrade window stamp out of the user's real cache.
   export XDG_CACHE_HOME="$test_root/cache"
+  load content-pack
+  use_content_pack
   git -C "$project_dir" -c init.defaultBranch=main init -q
   cd "$project_dir"
   managed_placeholder='<!-- AGENT-READY MANAGED BLOCK -->'
@@ -50,9 +52,14 @@ teardown() {
   rm -rf "$test_root"
 }
 
+# The skill directory with the content of this repository composed with the engine (content-source).
+content_skill() {
+  python3 "$skill_dir/scripts/agent-ready-state.py" content-source --project . --skill-dir "$skill_dir" | tr -d '\r'
+}
+
 render_managed_block() {
   local stack="$1"
-  local source_dir="${2:-$skill_dir}"
+  local source_dir="${2:-$(content_skill)}"
 
   bash "$source_dir/scripts/render-instruction-template.sh" \
     --template "$source_dir/assets/common/agents-template.md" \
@@ -182,8 +189,8 @@ EOF
   ! grep -Fq 'Local edit inside the block.' AGENTS.md
   ! grep -Fq 'retired.md' AGENTS.md
   bash "$skill_dir/scripts/render-instruction-template.sh" --validate AGENTS.md \
-    --rules-dir "$skill_dir/assets/stacks/node/rules" \
-    --common-rules-dir "$skill_dir/assets/common/rules"
+    --rules-dir "$content_pack/stacks/node/rules" \
+    --common-rules-dir "$content_pack/base/rules"
 }
 
 @test "managed block omits skill lists because providers discover skills natively" {
@@ -357,8 +364,8 @@ marker_count() {
   grep -Fxq 'Team Astra owns this service.' AGENTS.md
   ! grep -Fq "$section_placeholder" AGENTS.md
   bash "$skill_dir/scripts/render-instruction-template.sh" --validate AGENTS.md \
-    --rules-dir "$skill_dir/assets/stacks/node/rules" \
-    --common-rules-dir "$skill_dir/assets/common/rules"
+    --rules-dir "$content_pack/stacks/node/rules" \
+    --common-rules-dir "$content_pack/base/rules"
 }
 
 @test "a review that drops, repeats or rewrites a stack section is rejected and the file keeps it" {
@@ -490,7 +497,7 @@ EOF
 
   [ "$status" -eq 0 ]
   grep -Fq '<rule path=".agents/rules/node-security.md">' "$test_root/provider-prompt.log"
-  grep -Fq "$(sed -n '1p' "$skill_dir/assets/stacks/node/rules/node-security.md")" "$test_root/provider-prompt.log"
+  grep -Fq "$(sed -n '1p' "$content_pack/stacks/node/rules/node-security.md")" "$test_root/provider-prompt.log"
   grep -Fq '# Existing project instructions' "$test_root/provider-prompt.log"
   grep -Fq '<!-- BEGIN AGENT-READY MANAGED -->' "$test_root/provider-prompt.log"
   ! grep -Fq '{{AGENT_READY_' "$test_root/provider-prompt.log"
@@ -499,30 +506,29 @@ EOF
 }
 
 @test "new rule files enter the managed block and rule changes trigger a new review" {
-  dynamic_skill_dir="$test_root/dynamic-skill"
-  cp -R "$skill_dir" "$dynamic_skill_dir"
-  printf '%s\n' '# Runtime-specific rules' > "$dynamic_skill_dir/assets/stacks/node/rules/runtime.md"
+  copy_content_pack
+  printf '%s\n' '# Runtime-specific rules' > "$content_dir/stacks/node/rules/runtime.md"
   printf '%s\n' '# Existing project instructions' > AGENTS.md
   write_review_response $'# Existing project instructions\n\n'"$managed_placeholder"
 
-  run_merge node "$dynamic_skill_dir"
+  run_merge node
 
   [ "$status" -eq 0 ]
   grep -Fxq -- '- Read and follow `.agents/rules/runtime.md`.' AGENTS.md
   [ "$(provider_call_count)" -eq 1 ]
 
-  run_merge node "$dynamic_skill_dir"
+  run_merge node
   [ "$(provider_call_count)" -eq 1 ]
 
-  printf '%s\n' '# Runtime-specific rules, revised' > "$dynamic_skill_dir/assets/stacks/node/rules/runtime.md"
-  run_merge node "$dynamic_skill_dir"
+  printf '%s\n' '# Runtime-specific rules, revised' > "$content_dir/stacks/node/rules/runtime.md"
+  run_merge node
   [ "$status" -eq 0 ]
   [ "$(provider_call_count)" -eq 2 ]
 }
 
 @test "common rules are template rules for every stack and never project rules" {
   mkdir -p .agents/rules
-  cp "$skill_dir/assets/common/rules/verify-changes.md" .agents/rules/verify-changes.md
+  cp "$content_pack/base/rules/verify-changes.md" .agents/rules/verify-changes.md
   printf '%s\n' '# Project' > AGENTS.md
   write_review_response $'# Project\n\n'"$managed_placeholder"
 
@@ -537,13 +543,12 @@ EOF
 }
 
 @test "a rule defined in both common and stack rules is rejected" {
-  duplicate_skill_dir="$test_root/duplicate-skill"
-  cp -R "$skill_dir" "$duplicate_skill_dir"
-  cp "$duplicate_skill_dir/assets/common/rules/verify-changes.md" "$duplicate_skill_dir/assets/stacks/node/rules/verify-changes.md"
+  copy_content_pack
+  cp "$content_dir/base/rules/verify-changes.md" "$content_dir/stacks/node/rules/verify-changes.md"
 
-  run bash "$duplicate_skill_dir/scripts/render-instruction-template.sh" --list-rules \
-    --rules-dir "$duplicate_skill_dir/assets/stacks/node/rules" \
-    --common-rules-dir "$duplicate_skill_dir/assets/common/rules"
+  run bash "$skill_dir/scripts/render-instruction-template.sh" --list-rules \
+    --rules-dir "$content_dir/stacks/node/rules" \
+    --common-rules-dir "$content_dir/base/rules"
 
   [ "$status" -ne 0 ]
   [[ "$output" == *"rule is defined in both common and stack rules: verify-changes.md"* ]]
@@ -554,7 +559,7 @@ EOF
   mkdir -p .agents/rules/area
   printf '%s\n' '# Team conventions' 'Deploy only on Tuesdays.' > .agents/rules/team-conventions.md
   printf '%s\n' '# Area rule' > .agents/rules/area/payments.md
-  cp "$skill_dir/assets/stacks/node/rules/node-security.md" .agents/rules/node-security.md
+  cp "$content_pack/stacks/node/rules/node-security.md" .agents/rules/node-security.md
   ln -s /etc/hosts .agents/rules/linked.md
   printf '%s\n' '# Project' > AGENTS.md
   write_review_response $'# Project\n\n'"$managed_placeholder"
@@ -570,8 +575,8 @@ EOF
   grep -Fq '<rule path=".agents/rules/team-conventions.md">' "$test_root/provider-prompt.log"
   grep -Fq 'Deploy only on Tuesdays.' "$test_root/provider-prompt.log"
   bash "$skill_dir/scripts/render-instruction-template.sh" --validate AGENTS.md \
-    --rules-dir "$skill_dir/assets/stacks/node/rules" \
-    --common-rules-dir "$skill_dir/assets/common/rules" --project-rules-dir .agents/rules
+    --rules-dir "$content_pack/stacks/node/rules" \
+    --common-rules-dir "$content_pack/base/rules" --project-rules-dir .agents/rules
   [ "$(provider_call_count)" -eq 1 ]
 
   printf '%s\n' 'Deploy only on Wednesdays.' >> .agents/rules/team-conventions.md
@@ -881,8 +886,8 @@ EOF
   grep -Fxq 'Team Astra owns this service.' AGENTS.md
   [[ "$output" == *"redundancy review runs in the background"* ]]
   bash "$skill_dir/scripts/render-instruction-template.sh" --validate AGENTS.md \
-    --rules-dir "$skill_dir/assets/stacks/node/rules" \
-    --common-rules-dir "$skill_dir/assets/common/rules"
+    --rules-dir "$content_pack/stacks/node/rules" \
+    --common-rules-dir "$content_pack/base/rules"
 
   run_apply_managed_block node
   [ "$status" -eq 0 ]
@@ -923,11 +928,10 @@ EOF
     "$source_dir/assets/common/hooks/sync-marketplace.sh"
   cp "$skill_dir/assets/common/hooks/agent-ready-skill-source.sh" "$source_dir/assets/common/hooks/"
   cp "$skill_dir/scripts/asset-sync-common.sh" "$source_dir/scripts/asset-sync-common.sh"
-  # Minimal sources still need the profile catalog, the configuration schemas and the state helper the hook resolves.
+  # Minimal sources still need the configuration schemas and the state helper the hook resolves; the
+  # content comes from the content pack of the tests.
   cp "$skill_dir/scripts/agent-ready-state.py" "$source_dir/scripts/agent-ready-state.py"
   cp "$skill_dir/scripts/"agent_ready_*.py "$source_dir/scripts/"
-  cp "$skill_dir/assets/profiles.json" "$source_dir/assets/profiles.json"
-  mkdir -p "$source_dir/assets/profiles/software-development"
   cp -R "$skill_dir/assets/config" "$source_dir/assets/config"
   cp "$skill_dir/scripts/merge-managed-settings.py" "$source_dir/scripts/merge-managed-settings.py"
   printf '%s\n' '#!/bin/bash' > "$source_dir/scripts/normalize-instructions.sh"
@@ -968,12 +972,9 @@ EOF
   grep -Fq -- "Sync hook updated; restarting with latest version." <<< "$output"
   [ -f .agents/hooks/sync-marketplace.sh ]
   cmp -s .agents/hooks/sync-marketplace.sh "$source_dir/assets/common/hooks/sync-marketplace.sh"
-  expected_skill_dir="$source_dir"
-  # Git Bash translates paths passed to native Windows Python (run-detached.py) into C:/ form.
-  if command -v cygpath >/dev/null 2>&1 && grep -Fq -- "$(cygpath -m "$source_dir")" "$merge_log"; then
-    expected_skill_dir="$(cygpath -m "$source_dir")"
-  fi
-  grep -Fq -- "--provider claude --stack react --skill-dir $expected_skill_dir" "$merge_log"
+  # The merge reads the content composed with that engine, in the cache of the user.
+  grep -Fq -- "--provider claude --stack react --skill-dir " "$merge_log"
+  grep -Eq -- '--skill-dir .*/agent-ready-setup/content/[0-9a-f]+/plugins/golfo-kit/skills/agent-ready-setup$' "$merge_log"
 }
 
 @test "automatic sync hook preserves session when the managed block needs human review" {
@@ -988,11 +989,10 @@ EOF
     "$source_dir/assets/common/hooks/sync-marketplace.sh"
   cp "$skill_dir/assets/common/hooks/agent-ready-skill-source.sh" "$source_dir/assets/common/hooks/"
   cp "$skill_dir/scripts/asset-sync-common.sh" "$source_dir/scripts/asset-sync-common.sh"
-  # Minimal sources still need the profile catalog, the configuration schemas and the state helper the hook resolves.
+  # Minimal sources still need the configuration schemas and the state helper the hook resolves; the
+  # content comes from the content pack of the tests.
   cp "$skill_dir/scripts/agent-ready-state.py" "$source_dir/scripts/agent-ready-state.py"
   cp "$skill_dir/scripts/"agent_ready_*.py "$source_dir/scripts/"
-  cp "$skill_dir/assets/profiles.json" "$source_dir/assets/profiles.json"
-  mkdir -p "$source_dir/assets/profiles/software-development"
   cp -R "$skill_dir/assets/config" "$source_dir/assets/config"
   cp "$skill_dir/scripts/merge-managed-settings.py" "$source_dir/scripts/merge-managed-settings.py"
   printf '%s\n' '#!/bin/bash' > "$source_dir/scripts/normalize-instructions.sh"

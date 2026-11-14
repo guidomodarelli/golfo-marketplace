@@ -19,6 +19,8 @@ setup() {
   mkdir -p "$project_dir" "$fake_bin" "$test_root/tmp"
   export TMPDIR="$test_root/tmp"
   export XDG_CACHE_HOME="$test_root/cache"
+  load content-pack
+  use_content_pack
   export XDG_CONFIG_HOME="$test_root/config"
   export HOME="$test_root/home"
   mkdir -p "$HOME"
@@ -479,7 +481,7 @@ PY2
   [[ "$output" != *"both provide docs-search"* ]]
 }
 
-@test "agent-ready conflicts --pack checks each profile of the pack against the golfo-kit base and its requires" {
+@test "agent-ready conflicts --pack checks each profile of the pack against the golfo base and its requires" {
   python3 - "$pack_repository/agent-ready-pack.json" <<'PY2'
 import json, sys
 path = sys.argv[1]

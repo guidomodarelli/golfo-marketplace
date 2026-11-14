@@ -31,7 +31,7 @@ readonly SHARED_DIR=".agents"
 readonly CLAUDE_DIR=".claude"
 readonly CODEX_DIR=".codex"
 readonly RUN_DETACHED_SCRIPT="scripts/run-detached.py"
-# golfo-kit-source exits with this when the content pack of the repository is not on this machine yet.
+# content-source exits with this when the content pack of the repository is not on this machine yet.
 readonly CONTENT_PENDING_STATUS=7
 readonly MARKETPLACE_UPGRADE_INTERVAL_MINUTES=60
 readonly SYNC_LOCK_DIRECTORY="$SHARED_DIR/.agent-ready-assets.lock"
@@ -352,23 +352,23 @@ while IFS=$'\t' read -r configuration_key configuration_value; do
     auto_sources) auto_sources="$configuration_value" ;;
   esac
 done <<< "$configuration"
-# golfo-kit is a source too: pinned, its content comes from the revision of the lock and the
-# engine stays this one (agent_ready_golfo_kit.py). Review mode and a session start that hands
-# the sync to the background only read the cache: the detached sync resolves refs and downloads.
-golfo_kit_arguments=(golfo-kit-source --project . --skill-dir "$skill_dir")
+# The content (sources.golfo) is a content pack at a revision, composed with this engine
+# (agent_ready_content.py). Review mode and a session start that hands the sync to the background
+# only read the cache: the detached sync resolves refs and downloads.
+content_arguments=(content-source --project . --skill-dir "$skill_dir")
 if [[ "$review_mode" -eq 1 || "$defer_to_background" -eq 1 ]]; then
-  golfo_kit_arguments+=(--offline --read-only)
+  content_arguments+=(--offline --read-only)
 fi
 content_pending=0
 content_status=0
-content_skill_dir="$(python3 "$state_script" "${golfo_kit_arguments[@]}")" || content_status=$?
+content_skill_dir="$(python3 "$state_script" "${content_arguments[@]}")" || content_status=$?
 if [[ "$content_status" -eq "$CONTENT_PENDING_STATUS" && "$defer_to_background" -eq 1 ]]; then
   # The content pack of this repository is not on this machine yet: nothing is reported from other
   # content, and the detached sync below downloads it.
   content_pending=1
   content_skill_dir=""
 elif [[ "$content_status" -ne 0 ]]; then
-  printf 'WARNING: could not prepare the golfo-kit content; nothing was synchronized.\n' >&2
+  printf 'WARNING: could not prepare the golfo content; nothing was synchronized.\n' >&2
   exit 0
 fi
 if [[ -n "$content_skill_dir" ]]; then
@@ -421,10 +421,10 @@ start_background_task() {
 
 if [[ "$content_pending" -eq 1 ]]; then
   if [[ "$updates_enabled" != true ]]; then
-    echo "[marketplace-sync] The golfo-kit content of this repository is not on this machine yet and automatic updates are off (updates.enabled: false); an apply downloads it."
+    echo "[marketplace-sync] The golfo content of this repository is not on this machine yet and automatic updates are off (updates.enabled: false); an apply downloads it."
     exit 0
   fi
-  echo "[marketplace-sync] The golfo-kit content of this repository is not on this machine yet; the sync downloads it in the background."
+  echo "[marketplace-sync] The golfo content of this repository is not on this machine yet; the sync downloads it in the background."
   start_background_task "background-update-$(project_log_key)" \
     python3 "$state_script" background-update --project . --skill-dir "$skill_dir" \
     --hook "$hook_path" --provider "$provider"

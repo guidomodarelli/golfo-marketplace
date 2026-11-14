@@ -19,7 +19,7 @@ is_valid_skill_dir() {
   local require_asset_sync_helper="${2:-0}"
 
   [[ -f "$candidate/SKILL.md" && \
-    -d "$candidate/assets/stacks" && \
+    -f "$candidate/scripts/agent-ready-state.py" && \
     -f "$candidate/assets/common/hooks/sync-marketplace.sh" && \
     -f "$candidate/assets/common/settings.json" && \
     -f "$candidate/assets/codex/hooks.json" && \

@@ -103,6 +103,7 @@ validate_managed_block_inputs() {
     echo "ERROR: --skill-dir must point to an existing directory: $SKILL_DIR" >&2
     exit 1
   fi
+  SKILL_DIR="$(resolve_content_skill_directory "$SKILL_DIR")" || exit 1
 
   STACK_TEMPLATE_DIRECTORY="$(resolve_stack_template_directory "$SKILL_DIR" "$STACK")" || exit 1
   # One template for the managed block; a profile of the selection (software-development) can publish

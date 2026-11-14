@@ -301,6 +301,12 @@ eval runner, la detección de áreas de la CI y las de otras skills). `pnpm run 
 suites bats de `agent-ready-setup` y `pnpm run test:bootstrap`, `bootstrap.bats`. La CI usa esos mismos
 scripts, así que la lista de suites vive en un solo lugar: `package.json`.
 
+Las suites de `agent-ready-setup` proyectan el pack oficial de contenido
+([golfo-agent-profiles](https://github.com/guidomodarelli/golfo-agent-profiles)) en el tag de
+`plugins/golfo-kit/skills/agent-ready-setup/tests/content-pack.ref`. `tests/prepare-content-pack.sh` lo clona una
+sola vez en `node_modules/.cache/agent-ready-content-pack/`, así que la primera corrida necesita red y las
+siguientes no.
+
 `pnpm run test:review-fix-loop` corre solo la suite del helper de `review-fix-loop`, que usa
 providers falsos y no llama a Claude ni a Codex reales.
 `pnpm run test:sibling-worktree` corre la suite del helper de `sibling-worktree` sobre repos git
@@ -353,14 +359,14 @@ lo que cubre el cambio y dejá la suite completa a la CI:
 
 | Cambio | Comando local |
 |---|---|
-| Solo rules `.md` bajo `assets/**/rules/` o el template de `AGENTS.md` | `pnpm exec bats plugins/golfo-kit/skills/agent-ready-setup/tests/merge-instructions.bats` y `pnpm exec bats --filter 'rules' plugins/golfo-kit/skills/agent-ready-setup/tests/bootstrap.bats` |
+| La ref del pack de contenido de los tests (`tests/content-pack.ref`) o el bloque gestionado de `AGENTS.md` | `pnpm exec bats plugins/golfo-kit/skills/agent-ready-setup/tests/merge-instructions.bats` y `pnpm exec bats --filter 'rules' plugins/golfo-kit/skills/agent-ready-setup/tests/bootstrap.bats` (las rules y el template viven en [golfo-agent-profiles](https://github.com/guidomodarelli/golfo-agent-profiles)) |
 | Un flujo puntual de `agent-ready-setup` | `pnpm exec bats --filter '<parte del nombre del test>' plugins/golfo-kit/skills/agent-ready-setup/tests/bootstrap.bats` |
 | Scripts compartidos de `agent-ready-setup` (`scripts/*.sh`, `sync-marketplace.sh`) | `pnpm run test:bootstrap` completo |
-| Profiles, manifest, lockfile u ownership de `agent-ready-setup` (`scripts/agent-ready-state.py`, `assets/profiles.json`, `assets/providers.json`) | `pnpm exec bats plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-state.bats` y `pnpm run test:bootstrap` completo |
+| Profiles, manifest, lockfile u ownership de `agent-ready-setup` (`scripts/agent-ready-state.py`, `assets/providers.json`) | `pnpm exec bats plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-state.bats` y `pnpm run test:bootstrap` completo |
 | Configuración por capas de `agent-ready-setup` (`assets/config/*.schema.json`, `scripts/agent_ready_config.py`) | `pnpm exec bats plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-config.bats` |
 | CLI `agent-ready` (`scripts/agent-ready`, `scripts/agent_ready_cli.py`) | `pnpm exec bats plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-cli.bats` |
 | Caché de las revisiones de IA de `agent-ready-setup` (`assets/common/hooks/review-cache.py`, `harness-review.py`, `check-harness-consistency.sh`) | `pnpm exec bats plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-reviews.bats`, y para la revisión de `AGENTS.md` también `merge-instructions.bats` |
-| golfo-kit como fuente fijable de `agent-ready-setup` (`scripts/agent_ready_golfo_kit.py`) | `pnpm exec bats plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-golfo-kit.bats` |
+| El contenido de `agent-ready-setup` (`sources.golfo`, `scripts/agent_ready_content.py`) | `pnpm exec bats plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-content.bats` |
 | Conflictos semánticos entre rules gestionadas y propias de `agent-ready-setup` (`scripts/agent_ready_conflicts.py`) | `pnpm exec bats plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-conflicts.bats` |
 | Archivos de CI por proveedor de `agent-ready-setup` (`assets/ci/`, `ci.provider`, `agent-ready ci setup`) | `pnpm exec bats plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-ci.bats` |
 | Herramientas de un pack y política de seguridad de `agent-ready-setup` (`scripts/agent_ready_pack_tools.py`, `agent-ready trust`) | `pnpm exec bats plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-pack-tools.bats` |

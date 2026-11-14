@@ -1,18 +1,20 @@
 # agent-ready-setup
 
+## El contenido vive en otro repositorio
+
+Esta skill es el motor: no tiene rules, skills de stack, agents, commands, catálogo de profiles ni el template de `AGENTS.md`. Ese contenido vive en el pack oficial, [guidomodarelli/golfo-agent-profiles](https://github.com/guidomodarelli/golfo-agent-profiles), con su propio `AGENTS.md` de mantenimiento, su CI y sus releases por tag. Un cambio de contenido se hace ahí, nunca copiándolo a `assets/`.
+
+1. Para probar un cambio del motor con un checkout local del pack, usar `AGENT_READY_SETUP_CONTENT_DIR=<carpeta absoluta del checkout>` ([references/profiles-and-lockfile.md](references/profiles-and-lockfile.md), «El contenido»).
+2. Los tests del motor proyectan el pack oficial en el tag de `tests/content-pack.ref`, que clona `tests/prepare-content-pack.sh`. Un cambio del motor que necesita contenido nuevo se publica primero en el pack, con su tag, y después sube esa ref.
+3. El catálogo de «Step 4 — Report» en `SKILL.md` describe el pack oficial en la versión de `tests/content-pack.ref`: actualizarlo cuando sube la ref.
+
 ## Consistencia de instrucciones
 
-Al agregar o modificar una rule, skill, agent, command, template de instrucciones o cualquier otra instrucción de este skill:
+Al agregar o modificar un template de instrucciones o cualquier otra instrucción de este skill:
 
-1. Antes de cerrar el cambio, verificar que no contradiga ni duplique las instrucciones que se cargan junto con ella:
-   - rules del núcleo de `assets/common/rules/` y de la capability `assets/profiles/software-development/rules/`;
-   - rules, skills, agents y commands de `assets/stacks/<stack>/`;
-   - `AGENTS.md` gestionado: el template `assets/common/agents-template.md` (bloque gestionado y esqueleto neutro), el esqueleto de software `assets/profiles/software-development/agents-skeleton.md`, `assets/instruction-centralization.md` y la sección de cada stack (`assets/stacks/<stack>/blocks/AGENTS.md`);
-   - proxy `assets/claude-proxy.md`;
-   - `SKILL.md`.
-2. Revisar el mismo cambio en todos los stacks (`react`, `nextjs`, `nextjs-app-router`, `node`, `java`, `go`, `android`) cuando aplique. Si una rule aplica igual a todos los stacks, publicarla una sola vez: en `assets/common/rules/` si sirve en cualquier repo, también sin código, o en `assets/profiles/software-development/rules/` si es de desarrollo; nunca copiarla en cada stack.
-3. Verificar que cada referencia a un archivo o sección apunte a uno existente. Al agregar, renombrar o quitar un asset de `assets/`, actualizar el catálogo de «Step 4 — Report» en `SKILL.md`.
-4. Reportar al usuario cada inconsistencia encontrada (contradicción, duplicado o referencia rota) con paths, fragmentos afectados y una recomendación. No resolver en silencio contradicciones que requieran decidir precedencia.
+1. Antes de cerrar el cambio, verificar que no contradiga ni duplique las instrucciones que se cargan junto con ella: `assets/instruction-centralization.md`, el proxy `assets/claude-proxy.md`, `SKILL.md` y, en el pack oficial, la base y el template de `AGENTS.md`.
+2. Verificar que cada referencia a un archivo o sección apunte a uno existente. Al agregar, renombrar o quitar un asset de `assets/`, actualizar el catálogo de «Step 4 — Report» en `SKILL.md`.
+3. Reportar al usuario cada inconsistencia encontrada (contradicción, duplicado o referencia rota) con paths, fragmentos afectados y una recomendación. No resolver en silencio contradicciones que requieran decidir precedencia.
 
 ## Assets y configuración gestionados
 

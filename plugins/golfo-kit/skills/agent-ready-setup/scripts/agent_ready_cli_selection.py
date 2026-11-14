@@ -42,7 +42,7 @@ from agent_ready_cli_trust import change_trusted_sources
 from agent_ready_packs import NAMESPACE_SEPARATOR, SOURCE_TYPE_GIT, parse_profile_sources
 from agent_ready_prompts import ask_confirmation, ask_text, can_prompt, equivalent_command
 
-GOLFO_SOURCE_LABEL = "golfo-kit"
+GOLFO_SOURCE_LABEL = "golfo"
 
 
 # What a repository without stack signals is for: code (pick a stack) or other work (documents, research).
@@ -105,12 +105,12 @@ def command_profiles_list(arguments):
 
 
 def catalog_for_removal(project_root):
-    """The effective catalog, or golfo-kit's alone when a pack cannot load, so a broken pack can be dropped."""
+    """The effective catalog, or the content's alone when a pack cannot load, so a broken pack can be dropped."""
     try:
         return engine().load_effective_catalog(project_root, content_root(project_root))
     except (ProfileError, StateError) as broken_pack:
         sys.stderr.write(f"WARNING: a profile source could not be loaded ({broken_pack}); "
-                         "the remaining selection is checked against golfo-kit's catalog only.\n")
+                         "the remaining selection is checked against the golfo catalog only.\n")
         return engine().load_profile_catalog(content_root(project_root))
 
 

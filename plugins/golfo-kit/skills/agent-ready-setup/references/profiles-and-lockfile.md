@@ -20,7 +20,8 @@ un repositorio. La implementación vive en `scripts/agent-ready-state.py`.
 
 ## 1. Profiles
 
-`assets/profiles.json` es el catálogo. Cada profile declara:
+El catálogo es el `agent-ready-pack.json` del pack de contenido (sección 4, «El contenido»), más los profiles
+de CI del motor (`assets/ci/profiles.json`). Cada profile declara:
 
 | Campo | Significado |
 |---|---|
@@ -151,9 +152,9 @@ repositorio:
   - `remove <path> [profile...]`: saca esos profiles del workspace, o el workspace entero; uno que queda
     sin profiles también sale.
 - **Fuentes:** un pack que solo elige un workspace cuenta como seleccionado: su digest va al lock y su modo
-  `pinned` frena al sync como el de un pack de la raíz. Lo que proyecta un profile de golfo-kit que solo
+  `pinned` frena al sync como el de un pack de la raíz. Lo que proyecta un profile del contenido que solo
   eligen workspaces entra al `contentDigest` por los archivos de los que sale, no por dónde queda: un
-  golfo-kit fijado ve su cambio y el digest no depende de las carpetas del repositorio.
+  contenido fijado ve su cambio y el digest no depende de las carpetas del repositorio.
 
 **Capas.** Un stack puede extender otro con `requires`: la web va en tres capas,
 `react` ← `nextjs` ← `nextjs-app-router`. Cada capa publica solo sus propios assets, con
@@ -350,7 +351,7 @@ con el significado de la sección 1, más `clis`, `mcpServers` y `scripts` ([pac
 estos límites:
 
 - `kind` es `capability`, `bundle` o `stack`. Un profile que necesita un stack lo declara en `requires`;
-  un pack publica un `stack` propio para una tecnología que golfo-kit no tiene (ver «Stacks de un pack»).
+  un pack publica un `stack` propio para una tecnología que el contenido no tiene (ver «Stacks de un pack»).
 - `tools` solo acepta herramientas que el motor ya conoce (`browser`).
 - Un pack no declara otras fuentes ni redefine un profile de Golfo. Tampoco declara `baseAssets`: la base y el
   template de `AGENTS.md` vienen solo de la fuente de contenido (ver «Contenido de otro repositorio», en la
@@ -365,19 +366,19 @@ estos límites:
 - Las rules de un pack entran en la lista del bloque gestionado de `AGENTS.md`, como las de cualquier
   profile. Un pack no cambia el template ni las instrucciones propias del proyecto.
 
-**Stacks de un pack.** Un profile `kind: stack` de un pack es un stack primario como los de golfo-kit,
-para una tecnología que golfo-kit no tiene (un lenguaje, un DSL propio). `assets/examples/elixir-stack-pack/`
+**Stacks de un pack.** Un profile `kind: stack` de un pack es un stack primario como los del contenido,
+para una tecnología que el contenido no tiene (un lenguaje, un DSL propio). `assets/examples/elixir-stack-pack/`
 publica `beam/elixir`:
 
 - Se detecta por sus señales (`detect`) en cuanto el manifest declara la fuente: sin `profiles`, la
   detección inicial lo elige como a cualquier stack. También se elige con `--profiles beam/elixir` o
   `--stack beam/elixir`.
-- Declara sus `defaults` y su sección de `AGENTS.md`, y se combina con las capabilities de golfo-kit.
-  Puede requerir un stack de golfo-kit (una capa, como en «Capas») o no requerir ninguno.
-- **Precedencia entre fuentes:** ninguna fuente gana por ser de golfo-kit o de un pack. Si un stack de un
-  pack y otro (de golfo-kit u otra fuente) coinciden en la detección, se pide una selección explícita,
+- Declara sus `defaults` y su sección de `AGENTS.md`, y se combina con las capabilities del contenido.
+  Puede requerir un stack del contenido (una capa, como en «Capas») o no requerir ninguno.
+- **Precedencia entre fuentes:** ninguna fuente gana por ser del contenido o de un pack. Si un stack de un
+  pack y otro (del contenido u otra fuente) coinciden en la detección, se pide una selección explícita,
   salvo que uno declare `supersedes` sobre el otro. Un stack de un pack solo puede reemplazar a uno de
-  golfo-kit o de su mismo pack; golfo-kit no conoce los de los packs, y dos packs no se reemplazan entre
+  del contenido o de su mismo pack; el contenido no conoce los de los packs, y dos packs no se reemplazan entre
   sí: sus stacks que coinciden piden una selección explícita.
 - Dos stacks que publican el mismo destino fallan antes de escribir, como cualquier par de profiles.
 - Un stack de un pack no tiene que ser de software: `assets/examples/estudio-juridico-pack/` publica
@@ -385,8 +386,8 @@ publica `beam/elixir`:
   `software-development` y trae por `defaults` la capability `actas-infraccion`. El mismo caso funciona con
   la capability sola.
 
-**Compatibilidad declarada.** El catálogo de un pack, y el de golfo-kit (`assets/profiles.json`),
-pueden declarar tres campos opcionales:
+**Compatibilidad declarada.** El catálogo de un pack, y el del contenido (`agent-ready-pack.json`),
+pueden declarar tres campos opcionales (en el contenido, `version` es obligatoria):
 
 ```json
 {
@@ -402,7 +403,7 @@ pueden declarar tres campos opcionales:
 }
 ```
 
-- `version` es la versión semver del contenido. Sin `version`, golfo-kit usa la de su plugin.
+- `version` es la versión semver del contenido.
 - `minEngine` es la versión más vieja del motor (el plugin golfo-kit que corre agent-ready-setup)
   que tiene lo que el contenido usa. No hay tope: el motor nunca se fija y un motor más nuevo sigue
   aplicando. Con un motor más viejo, el apply, el plan o el status fallan antes de escribir y dicen
@@ -498,81 +499,72 @@ explícito de `bootstrap.sh` o una sincronización en primer plano cambian los a
 Se puede combinar por fuente. Un repo en `auto` puede fijar una fuente con `"updates": "pinned"`, y entonces
 un cambio de esa fuente frena el sync sin escribir nada. Un repo `pinned` puede seguir una fuente con
 `"updates": "auto"` (si el usuario o la organización fijaron `pinned`, eso cuenta como aflojar; ver
-[configuration.md](configuration.md)). golfo-kit queda en la revisión del lock (ver «golfo-kit como fuente»), así que
-el pack se actualiza solo sin arrastrarlo. Si el lock no tiene una revisión de golfo-kit que se pueda descargar (un
-source local sin Git), un apply proyecta toda la selección: si golfo-kit tiene una versión pendiente, el sync no
-actualiza el pack solo y espera una adopción explícita de ambos.
+[configuration.md](configuration.md)). El contenido queda en la revisión del lock (ver «El contenido»), así que
+el pack se actualiza solo sin arrastrarlo. Si el lock no tiene una revisión del contenido (el override de desarrollo),
+un apply proyecta toda la selección: si el contenido tiene una versión pendiente, el sync no actualiza el pack solo y
+espera una adopción explícita de ambos.
 
-**golfo-kit como fuente.** El contenido de golfo-kit (catálogo, base, stacks, capabilities y sus rules, skills,
-agents, commands y templates de instrucciones) se puede fijar como un pack, con `sources.golfoKit` en el manifest:
+**El contenido.** El catálogo, la base, los stacks, las capabilities y sus rules, skills, agents, commands y el
+template de `AGENTS.md` no vienen con el plugin: salen de un **pack de contenido**, la fuente `golfo` del manifest.
+Sin declararla, es el pack oficial,
+[guidomodarelli/golfo-agent-profiles](https://github.com/guidomodarelli/golfo-agent-profiles), siguiendo `main`:
 
 ```json
-{ "sources": { "golfoKit": { "updates": "pinned", "ref": "main" } } }
+{ "sources": { "golfo": { "source": "git+https://github.com/guidomodarelli/golfo-agent-profiles", "ref": "main", "updates": "pinned" } } }
 ```
 
-- Sin declararlo, el contenido sigue al plugin instalado, como siempre.
-- `updates` pisa `updates.mode` solo para golfo-kit. En `pinned`, cada apply proyecta el contenido de la
-  revisión del lock (`source.revision` y `source.origin`), aunque el marketplace publique una nueva: sumar un
-  profile, recrear un asset borrado o adoptar otra fuente no cambia nada de golfo-kit. El primer apply adopta la
-  revisión del plugin instalado.
-- `ref` (rama, tag o commit completo) es lo que sigue en `auto` y lo que adopta `agent-ready update golfo-kit`.
-  Sin `ref`, el update adopta la versión del plugin instalado. Sin red, la `ref` vale el último commit que vio
-  esta máquina o, si no vio ninguno, la revisión del lock que vino de esa `ref`. Si el remoto no responde, `plan`,
-  `status` y `check` avisan y comparan con esa revisión; un apply falla antes de escribir.
-- `agent-ready update golfo-kit --to <tag|rama|commit>` adopta exactamente esa revisión, y `--to` también sirve
-  para un pack (`agent-ready update acme --to v2`). La actualización es por fuente, nunca por archivo, y
-  `--dry-run` muestra antes qué cambia. Hoy el marketplace no publica tags por versión de golfo-kit: usar un
-  commit o una rama.
-- La revisión se descarga con Git del repositorio del marketplace (el `repository` del manifest del plugin) en
-  la caché del usuario, sin depender de la versión instalada. Un apply siempre la descarga si falta, aunque
-  `updates.refresh` esté apagado, y si no puede, falla antes de escribir: nunca reemplaza el contenido fijado por
-  el instalado. Solo `plan`, `status` y el inicio de sesión (que no escriben) comparan con el instalado, con un
-  aviso, cuando la revisión no está en la caché y corren sin red. El inicio de sesión nunca usa la red en primer
-  plano: resuelve la `ref` y descarga en la sincronización en segundo plano.
-- `agent-ready check` compara con el contenido fijado. Si no tiene esa revisión (sin red o sin acceso al
+- `source` es el repositorio del pack: solo `git+https://` o `git+ssh://`, sin credenciales ni `#<revisión>` en la
+  URL (la revisión va en `ref`). Cambiarlo es adoptar otro contenido: el lock de la fuente anterior no cuenta, y
+  `apply --from-lock` falla hasta un apply que lo adopte.
+- `ref` (rama, tag o commit completo) es lo que sigue en `auto` y lo que adopta `agent-ready update golfo`. Sin red,
+  la `ref` vale el último commit que vio esta máquina o, si no vio ninguno, la revisión del lock que vino de esa
+  `ref`. Si el remoto no responde, `plan`, `status` y `check` avisan y comparan con esa revisión; un apply falla
+  antes de escribir.
+- `updates` pisa `updates.mode` solo para el contenido. En `pinned`, cada apply proyecta el contenido de la revisión
+  del lock (`source.revision` y `source.origin`), aunque el pack publique una nueva: sumar un profile, recrear un
+  asset borrado o adoptar otra fuente no cambia nada del contenido. No hay copia instalada de la que partir, así que
+  el primer apply adopta la `ref`, también en `pinned`. En un repositorio `pinned`, `sources.golfo.updates: auto`
+  hace que el inicio de sesión adopte el contenido solo, como a un pack en `auto`.
+- `agent-ready update golfo --to <tag|rama|commit>` adopta exactamente esa revisión, y `--to` también sirve para un
+  pack (`agent-ready update acme --to v2`). La actualización es por fuente, nunca por archivo, y `--dry-run` muestra
+  antes qué cambia. El pack oficial publica un tag por versión (`v1.0.0`).
+- **Descarga.** La revisión se descarga con Git en la caché del usuario y se compone con el motor instalado en una
+  carpeta propia de esa revisión y de ese motor. Un apply siempre la descarga si falta, aunque `updates.refresh`
+  esté apagado, y si no puede, falla antes de escribir. `plan`, `status` e `init` también la descargan; sin red,
+  `plan` y `status` frenan antes de escribir nada si esta máquina nunca la bajó. El inicio de sesión nunca usa la
+  red en primer plano: resuelve la `ref` y descarga en la sincronización en segundo plano, y avisa que el contenido
+  todavía no está en la máquina.
+- `agent-ready check` compara con el contenido de la revisión del lock. Si no la tiene (sin red o sin acceso al
   repositorio), informa la fuente como no disponible, bajo el `ci.mode` vigente, en vez de cambios que un apply no
-  haría. `agent-ready profiles list|add|remove` e `init` eligen del catálogo de la revisión fijada.
-- Un motor nuevo (hooks o templates de settings distintos) no frena la sincronización de un golfo-kit fijado:
-  solo cambia lo que es del motor.
-- En un repositorio `pinned`, `sources.golfoKit.updates: auto` hace que el inicio de sesión adopte golfo-kit
-  solo, como a un pack en `auto`.
-- **El motor nunca se fija.** Los scripts, los hooks (`assets/common/hooks/`, que se actualizan solos en cada
-  sync), los templates de `.claude/settings.json` y `.codex/hooks.json` que los conectan, los schemas de
-  configuración, `providers.json` y los profiles de CI con sus archivos (`assets/ci/`) siguen siempre al plugin
-  instalado. El lock registra la versión del contenido
-  en `source.version` y la del motor en `generator.version`.
-- Con golfo-kit fijado, `status` avisa cuando el plugin instalado trae otra versión y cómo adoptarla. Si el
-  plugin instalado no es un checkout de Git (la caché del provider), compara las versiones.
-- Sin red, una `ref` que esta máquina nunca resolvió y que el lock no registra deja a `check` con la fuente no
-  disponible y a `plan` y `status` comparando con el contenido instalado, con un aviso.
-- `golfo-kit` es un nombre reservado: un pack de `sources.packs` no puede llamarse así.
-
-**Contenido de otro repositorio.** `sources.golfoKit.source` toma el contenido de un repositorio Git en vez del
-marketplace, con un `ref` (o `#<revisión>` en la URL) y los mismos `updates`:
-
-```json
-{ "sources": { "golfoKit": { "source": "git+https://github.com/acme/agent-content", "ref": "main" } } }
-```
-
-- Ese repositorio es un **pack de contenido**: un `agent-ready-pack.json` en la raíz con `schemaVersion`, `name`,
-  `version` (obligatoria) y, si hace falta, `minEngine` y `changes`, sus `profiles` y `baseAssets`.
-- **Base:** `baseAssets` es la carpeta de la base que recibe todo repositorio. Lleva `rules/`, `skills/`, `blocks/`
-  y `agents-template.md`, el template de `AGENTS.md`, que es obligatorio. Los hooks y los settings son del motor.
-- **Profiles:** los del pack se nombran sin prefijo (`node`, no `acme/node`), con los campos de la sección 1. Sus
-  `assets` publican lo mismo que un pack (`rules/`, `skills/`, `agents/`, `commands/`, `blocks/`, `nested/`) y, en
-  una capability, `agents-skeleton.md`, el esqueleto de `AGENTS.md` (como `software-development`). Un profile no
-  puede poner sus assets en una carpeta que usa el motor (`common/`, `ci/`, `config/`, …).
-- **CI:** los profiles de CI (`kind: ci`) siempre salen del catálogo del motor (`assets/ci/profiles.json`),
-  porque sus workflows corren el CLI de esa versión. Un pack de contenido que declara uno falla antes de escribir.
-- **Precedencia:** la base y el template salen solo de la fuente de contenido: hay una por repositorio. El gate de
-  colisiones de la sección 3 compara su base con los profiles y con los packs de `sources.packs`.
-- **Revisión:** no hay copia instalada de la que partir, así que el primer apply adopta la `ref`, también en
-  `pinned`; después se comporta como golfo-kit fijado. Cambiar `source` es adoptar otro contenido: el lock de la
-  fuente anterior no cuenta, y `apply --from-lock` falla hasta un apply que lo adopte. El lock registra
-  `source.layout: "pack"` y el `origin` de ese repositorio, y `status` lo nombra.
-- **Validación:** un repositorio sin `agent-ready-pack.json`, sin `baseAssets`, con un symlink o con algo que no
-  puede publicar frena el apply, el plan y el status antes de escribir. `source` acepta solo `git+https://` y
-  `git+ssh://`, sin credenciales en la URL.
+  haría. `agent-ready profiles list|add|remove` e `init` eligen del catálogo de esa revisión.
+- **El motor nunca se fija.** Los scripts, los hooks (`assets/common/hooks/`, que se actualizan solos en cada sync),
+  los templates de `.claude/settings.json` y `.codex/hooks.json` que los conectan, los schemas de configuración,
+  `providers.json` y los profiles de CI con sus archivos (`assets/ci/`) siguen siempre al plugin instalado. Un motor
+  nuevo no frena la sincronización de un contenido fijado: solo cambia lo que es del motor. El lock registra la
+  versión del contenido en `source.version` y la del motor en `generator.version`.
+- **Formato del pack.** Un `agent-ready-pack.json` en la raíz con `schemaVersion`, `name`, `version` (obligatoria)
+  y, si hace falta, `minEngine` y `changes` («Compatibilidad declarada»), sus `profiles` y `baseAssets`:
+  - **Base:** `baseAssets` es la carpeta de la base que recibe todo repositorio. Lleva `rules/`, `skills/`, `blocks/`
+    y `agents-template.md`, el template de `AGENTS.md`, que es obligatorio. Los hooks y los settings son del motor.
+  - **Profiles:** se nombran sin prefijo (`node`, no `acme/node`), con los campos de la sección 1, y ninguno se
+    llama `common`, el nombre que el motor le da a la base. Sus `assets` publican lo mismo que un pack (`rules/`,
+    `skills/`, `agents/`, `commands/`, `blocks/`, `nested/`) y, en una capability, `agents-skeleton.md`, el
+    esqueleto de `AGENTS.md` (como `software-development`). Un profile no puede poner sus assets en una carpeta
+    que usa el motor (`ci/`, `codex/`, `config/`, …).
+  - **CI:** los profiles de CI (`kind: ci`) siempre salen del catálogo del motor (`assets/ci/profiles.json`),
+    porque sus workflows corren el CLI de esa versión. Un pack de contenido que declara uno falla antes de escribir.
+  - **Validación:** un repositorio sin `agent-ready-pack.json`, sin `baseAssets`, con un symlink o con algo que no
+    puede publicar frena el apply, el plan y el status antes de escribir.
+- **Precedencia:** la base y el template salen solo del contenido: hay uno por repositorio. Un pack de
+  `sources.packs` no puede declarar `baseAssets` ni llamarse `golfo`. El gate de colisiones de la sección 3 compara
+  la base con los profiles y con los packs.
+- **Override de desarrollo.** `AGENT_READY_SETUP_CONTENT_DIR=<carpeta absoluta>` toma el contenido de un checkout
+  local del pack tal como está, sin Git, sin `ref` y sin la revisión del lock: sirve para probar un cambio del pack
+  antes de publicarlo y para los tests del motor. El lock registra `source.kind: "local"`, sin `revision`, con el
+  `contentDigest` de lo proyectado.
+- El lock nombra la fuente en `source`: `name` (`golfo`), `version`, `kind` (`git` o `local`), `revision`,
+  `origin`, `requestedRef` y `contentDigest`; `status` la muestra como `golfo 1.0.0 (git, revision <commit>, from
+  <origin>; ...)`.
 
 `AGENT_READY_SETUP_SYNC_FOREGROUND=1`, o `--stack` y `--profiles` en el hook, corren la sincronización en
 primer plano. `AGENT_READY_SETUP_REVIEW_MODE=1` nunca actualiza, nunca usa la red y nunca escribe.
@@ -601,12 +593,10 @@ Comando, códigos de salida, autenticación y ejemplos: [ci-check.md](ci-check.m
 | `.agents/agent-ready.json` | personas (versionado) | `profiles` elegidos y lo que difiere de los defaults (capa de proyecto de [configuration.md](configuration.md)) |
 | `.agents/agent-ready.lock.json` | solo el apply | source resuelto, profiles con digest, fuentes de packs, inventario de assets, archivos fusionados |
 
-El lockfile registra `source.plugin`, `source.version` (versión del contenido de
-golfo-kit), `source.kind` (`marketplace-snapshot`, `plugin-cache`, `local` o `git`
-cuando golfo-kit está fijado), `source.revision` (commit git del source cuando
-existe), `source.origin` (repositorio del que se puede volver a descargar),
-`source.requestedRef` cuando un update eligió una ref, `source.layout: "pack"` cuando el contenido sale de
-`sources.golfoKit.source`, y `source.contentDigest`,
+El lockfile registra `source.name` (`golfo`), `source.version` (versión del contenido),
+`source.kind` (`git`, o `local` con el override de desarrollo), `source.revision` (commit del pack de
+contenido), `source.origin` (repositorio del que se puede volver a descargar), `source.requestedRef` (la ref de
+la que vino) y `source.contentDigest`,
 que identifica el contenido exacto (assets, templates fusionados y plantillas de
 instrucciones) aunque no haya revisión git. `generator.version` es la versión del
 motor que proyectó. Cada fuente de `profileSources` guarda además su `version`, si el
@@ -627,13 +617,13 @@ que suma a la raíz (`own`), sección 1, «Workspaces».
 **Apply reproducible.** `agent-ready apply --from-lock` aplica exactamente el lock, en otra máquina o un año
 después, sin importar `updates.mode` ni las `ref` del manifest:
 
-- Toma la selección del lock y la revisión de golfo-kit y de cada pack que registra, aunque el manifest declare
+- Toma la selección del lock y la revisión del contenido y de cada pack que registra, aunque el manifest declare
   ahora otra `ref` (el origen tiene que ser el mismo). Las descarga en la caché del usuario si faltan; con
   `--dry-run` y `updates.refresh: false` no descarga nada y falla si falta una revisión.
 - Antes de escribir compara byte a byte: la selección, las revisiones, el digest de cada pack, el sha256 de cada
   asset, y el template y los textos con que se arma el bloque gestionado de `AGENTS.md`
   (`merged["AGENTS.md"].inputsSha256`). Si algo no coincide, falla sin escribir y nombra la fuente
-  (`golfo-kit`, un pack o `selection`) y el archivo.
+  (`golfo`, un pack o `selection`) y el archivo.
 - `merge-instructions.sh` arma `AGENTS.md` desde el stack que compuso el apply (la línea
   `Resolved stack directory:` de `bootstrap.sh`, en `AGENT_READY_SETUP_STACK_DIR`), así nunca toma una revisión
   más nueva de un pack que esté en la caché.
@@ -707,8 +697,8 @@ python3 "$SKILL_DIR/scripts/agent-ready" remove [--dry-run] [--yes] [--json]
   `updates.refresh: false` comparan contra lo ya disponible y no llaman a la CLI del provider.
 - `agent-ready check` compara para CI, y su código de salida sigue a `ci.mode` (sección 4).
 - `agent-ready config explain` muestra la configuración efectiva y la capa de cada valor.
-- `update` sin fuentes adopta la última revisión de cada fuente Git que sigue una `ref` y de golfo-kit (también
-  fijado, ver sección 4); `--to <ref>` elige la revisión de una sola fuente;
+- `update` sin fuentes adopta la última revisión de cada fuente Git que sigue una `ref` y del contenido (también
+  fijado, ver sección 4, «El contenido»); `--to <ref>` elige la revisión de una sola fuente;
   con `--dry-run` muestra el plan de esa adopción y solo descarga en la caché del usuario.
 - `status` separa assets aplicados, modificados, faltantes, conflictos
   preservados, escrituras fallidas y retirados que no se pudieron borrar; además dice si el
@@ -814,12 +804,12 @@ seleccionado declara `tools: ["browser"]`; `tools.enabled: false` (o
   índice, para recuperar las que git separa cuando recrea el asset. Sin historial
   por vista no distingue ese caso de una edición guardada como archivo nuevo en la
   vista, que se pierde ahí. Para cambiar comportamiento, usar una rule propia.
-- Si el lock no tiene una revisión de golfo-kit que se pueda descargar (un source local
-  sin Git), un asset faltante se recrea desde el source resuelto en el próximo apply, no
+- Si el lock no tiene una revisión del contenido que se pueda descargar (el override de
+  desarrollo), un asset faltante se recrea desde el contenido local en el próximo apply, no
   desde la versión del lock: el apply es un cambio explícito y revisable, y el lock pasa a
   registrar la versión nueva. `status` avisa antes si el source difiere del lock, y
   `--from-lock` falla en vez de proyectar otro contenido.
 - `--from-lock` reproduce el contenido, no el motor: en otra versión del plugin, los
   hooks y los templates de settings que los conectan pueden diferir del lock.
-- Las rules y la skill de browser siguen en `assets/common/` porque otras rules
+- Las rules y la skill de browser siguen en la base del contenido porque otras rules
   comunes las enlazan; el profile `browser` controla solo la instalación.

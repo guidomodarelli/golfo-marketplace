@@ -2046,7 +2046,7 @@
     {
       "id": "pinned-session-start-only-reports-updates",
       "description": "En un repo pinned, SessionStart no escribe: informa el update y deriva a plan y apply explícitos.",
-      "input": "Nuestro repo tiene `.agents/agent-ready.json` con `\"updates\": {\"mode\": \"pinned\"}` y ayer se publicó una versión nueva de golfo-kit que cambia rules del stack node. ¿Qué hace el hook de SessionStart cuando abro Claude Code mañana, cómo veo qué cambiaría antes de aceptarlo y cómo lo aplico de forma revisable? No ejecutes Bash ni escribas archivos.",
+      "input": "Nuestro repo tiene `.agents/agent-ready.json` con `\"updates\": {\"mode\": \"pinned\"}` y ayer el pack oficial de contenido publicó una versión nueva que cambia rules del stack node. ¿Qué hace el hook de SessionStart cuando abro Claude Code mañana, cómo veo qué cambiaría antes de aceptarlo y cómo lo aplico de forma revisable? No ejecutes Bash ni escribas archivos.",
       "assertions": [
         {
           "type": "contains_any",
@@ -3101,14 +3101,14 @@
       ]
     },
     {
-      "id": "golfo-kit-pinned-for-a-delivered-solution",
-      "description": "Para que golfo-kit no cambie en un repo entregado se fija con sources.golfoKit en pinned y se actualiza solo con agent-ready update golfo-kit; el motor sigue al plugin.",
-      "input": "Entregamos a un cliente un repo que usa agent-ready-setup. Necesito que las rules de golfo-kit no cambien aunque se publique una versión nueva del plugin, y poder pasar a una versión concreta solo cuando lo decidamos. ¿Qué configuro y qué comando uso para actualizar? ¿Qué parte sigue actualizándose sola? No ejecutes Bash ni escribas archivos.",
+      "id": "content-pinned-for-a-delivered-solution",
+      "description": "Para que el contenido no cambie en un repo entregado se fija sources.golfo en pinned y se actualiza solo con agent-ready update golfo; el motor sigue al plugin.",
+      "input": "Entregamos a un cliente un repo que usa agent-ready-setup. Necesito que sus rules no cambien aunque el pack oficial de contenido publique una versión nueva, y poder pasar a una versión concreta solo cuando lo decidamos. ¿Qué configuro y qué comando uso para actualizar? ¿Qué parte sigue actualizándose sola? No ejecutes Bash ni escribas archivos.",
       "assertions": [
         {
-          "type": "contains",
-          "value": "golfoKit",
-          "description": "Declara golfo-kit como fuente en sources.golfoKit",
+          "type": "regex",
+          "pattern": "(sources\\.golfo\\b|\"golfo\"\\s*:)",
+          "description": "Fija la fuente del contenido en sources.golfo",
           "critical": true
         },
         {
@@ -3118,8 +3118,8 @@
         },
         {
           "type": "regex",
-          "pattern": "update golfo-kit.{0,40}--to",
-          "description": "Actualiza con agent-ready update golfo-kit --to"
+          "pattern": "update golfo\\b.{0,40}--to",
+          "description": "Actualiza con agent-ready update golfo --to"
         },
         {
           "type": "regex",
@@ -3131,7 +3131,7 @@
     {
       "id": "apply-from-lock-on-another-machine",
       "description": "Para reproducir exactamente el lock en otra máquina se usa agent-ready apply --from-lock, que verifica revisiones y sha256 y falla antes de escribir.",
-      "input": "Tenemos un repo con agent-ready-setup aplicado hace meses y su lockfile commiteado. En la máquina de un cliente necesito que quede exactamente igual a lo que dice el lock, sin traer versiones nuevas de golfo-kit ni de los packs, y que falle si no se puede. ¿Qué comando corro y qué pasa si algo no coincide? No ejecutes Bash ni escribas archivos.",
+      "input": "Tenemos un repo con agent-ready-setup aplicado hace meses y su lockfile commiteado. En la máquina de un cliente necesito que quede exactamente igual a lo que dice el lock, sin traer versiones nuevas del contenido ni de los packs, y que falle si no se puede. ¿Qué comando corro y qué pasa si algo no coincide? No ejecutes Bash ni escribas archivos.",
       "assertions": [
         {
           "type": "contains",
@@ -3210,7 +3210,7 @@
     {
       "id": "delivered-solution-with-one-preset",
       "description": "Para dejar estable una solución entregada a un cliente se usa el preset delivered (agent-ready preset delivered), que fija pinned, apaga el refresco, reproduce el lock y deja el CI en fail; se actualiza solo con agent-ready update.",
-      "input": "Le entregamos a un estudio de abogados una herramienta armada con agent-ready-setup. Necesito que quede estable: que no cambie sola ni golfo-kit ni los packs, que cada apply deje exactamente lo que dice el lock y que el CI falle si el repo se aparta. ¿Hay una forma de configurar todo eso de una vez, y cómo actualizo cuando lo decidamos? No ejecutes Bash ni escribas archivos.",
+      "input": "Le entregamos a un estudio de abogados una herramienta armada con agent-ready-setup. Necesito que quede estable: que no cambien solos ni el contenido ni los packs, que cada apply deje exactamente lo que dice el lock y que el CI falle si el repo se aparta. ¿Hay una forma de configurar todo eso de una vez, y cómo actualizo cuando lo decidamos? No ejecutes Bash ni escribas archivos.",
       "assertions": [
         {
           "type": "regex",
@@ -3706,7 +3706,7 @@
     {
       "id": "pack-overrides-a-golfo-rule",
       "description": "Un pack reemplaza a propósito una rule de golfo con overrides; sin overrides las dos quedan activas.",
-      "input": "Mi pack de empresa tiene su propia rule de testing y quiero que reemplace a testing-scope.md de golfo-kit, no que queden las dos. ¿Cómo lo declaro en agent-ready-pack.json y cómo veo que funcionó? ¿Qué pasa si dos profiles declaran el mismo servidor MCP con distinta URL? No ejecutes Bash ni escribas archivos.",
+      "input": "Mi pack de empresa tiene su propia rule de testing y quiero que reemplace a testing-scope.md del pack oficial, no que queden las dos. ¿Cómo lo declaro en agent-ready-pack.json y cómo veo que funcionó? ¿Qué pasa si dos profiles declaran el mismo servidor MCP con distinta URL? No ejecutes Bash ni escribas archivos.",
       "assertions": [
         {
           "type": "contains",
@@ -3868,7 +3868,7 @@
     {
       "id": "pack-rule-contradicts-golfo-and-tools-compete",
       "description": "Una rule de un pack que contradice la de golfo y dos servidores MCP con la misma capacidad: plan lo informa y complements u overrides lo resuelven.",
-      "input": "Mi pack acme trae una rule de testing que pide Jest y golfo-kit trae otra que pide Vitest. Además el pack declara dos servidores MCP de documentación en profiles distintos, los dos con provides docs-search. ¿agent-ready me avisa? ¿Cómo me quedo con una sola rule y cómo digo que los dos servidores van juntos a propósito? No ejecutes Bash ni escribas archivos.",
+      "input": "Mi pack acme trae una rule de testing que pide Jest y el pack oficial trae otra que pide Vitest. Además el pack declara dos servidores MCP de documentación en profiles distintos, los dos con provides docs-search. ¿agent-ready me avisa? ¿Cómo me quedo con una sola rule y cómo digo que los dos servidores van juntos a propósito? No ejecutes Bash ni escribas archivos.",
       "assertions": [
         {
           "type": "contains",
@@ -3892,7 +3892,7 @@
     {
       "id": "pack-skill-competes-with-golfo-skill",
       "description": "Una skill de un pack que hace lo mismo que una de golfo-kit: plan la revisa con IA y complements declara las que van juntas.",
-      "input": "Mi pack trae una skill team-review para revisar pull requests con nuestro checklist, y golfo-kit ya trae pr-review-workflow. Me preocupa que el agente elija una u otra al azar. ¿agent-ready me avisa? Y si en realidad se complementan, ¿cómo lo declaro para que no avise? No ejecutes Bash ni escribas archivos.",
+      "input": "Mi pack trae una skill team-review para revisar pull requests con nuestro checklist, y el pack oficial ya trae pr-review-workflow. Me preocupa que el agente elija una u otra al azar. ¿agent-ready me avisa? Y si en realidad se complementan, ¿cómo lo declaro para que no avise? No ejecutes Bash ni escribas archivos.",
       "assertions": [
         {
           "type": "contains",
@@ -3978,7 +3978,7 @@
     {
       "id": "pack-author-conflicts-check",
       "description": "El autor de un profile pack quiere que el CI del pack detecte contradicciones con golfo-kit antes de publicarlo.",
-      "input": "Mantengo un profile pack de agent-ready en su propio repo y quiero que su CI falle si alguno de sus perfiles choca con la base de golfo-kit o con los perfiles que requiere, sin tener un repo consumidor. ¿Qué comando corro? No ejecutes Bash ni escribas archivos.",
+      "input": "Mantengo un profile pack de agent-ready en su propio repo y quiero que su CI falle si alguno de sus perfiles choca con la base del pack oficial o con los perfiles que requiere, sin tener un repo consumidor. ¿Qué comando corro? No ejecutes Bash ni escribas archivos.",
       "assertions": [
         {
           "type": "contains",
@@ -4302,16 +4302,13 @@
     },
     {
       "id": "content-pack-source",
-      "description": "Explica cómo tomar el contenido de golfo-kit de un repositorio propio en formato de pack",
-      "input": "Quiero que mis repos tomen las rules comunes, el template de AGENTS.md y los stacks de un repositorio propio (github.com/acme/agent-content) en vez de los de golfo-kit. ¿Qué declaro en .agents/agent-ready.json, qué tiene que tener ese repositorio y de dónde salen los profiles de CI? ¿Puedo publicar la base desde un pack de sources.packs? No ejecutes Bash ni escribas archivos.",
+      "description": "Explica cómo tomar el contenido de un repositorio propio en formato de pack en vez del pack oficial",
+      "input": "Quiero que mis repos tomen las rules comunes, el template de AGENTS.md y los stacks de un repositorio propio (github.com/acme/agent-content) en vez de los del pack oficial. ¿Qué declaro en .agents/agent-ready.json, qué tiene que tener ese repositorio y de dónde salen los profiles de CI? ¿Puedo publicar la base desde un pack de sources.packs? No ejecutes Bash ni escribas archivos.",
       "assertions": [
         {
-          "type": "contains_any",
-          "values": [
-            "sources.golfoKit.source",
-            "\"source\": \"git+https://github.com/acme/agent-content\""
-          ],
-          "description": "Declara la fuente de contenido en sources.golfoKit.source",
+          "type": "regex",
+          "pattern": "(sources\\.golfo\\.source|\"golfo\"\\s*:\\s*\\{[^}]*\"source\")",
+          "description": "Declara la fuente de contenido en sources.golfo.source",
           "critical": true
         },
         {
@@ -4344,6 +4341,38 @@
             "solo la fuente de contenido"
           ],
           "description": "Dice que un pack de sources.packs no puede publicar la base",
+          "critical": true
+        }
+      ]
+    },
+    {
+      "id": "content-comes-from-the-official-pack",
+      "description": "Sin declarar nada, el contenido sale del pack oficial golfo-agent-profiles siguiendo main; un checkout local del pack se prueba con AGENT_READY_SETUP_CONTENT_DIR sin publicarlo.",
+      "input": "Instalé el plugin golfo-kit y no encuentro las rules de node dentro de la skill agent-ready-setup. ¿De dónde salen las rules, las skills y el template de AGENTS.md que proyecta, qué revisión usa si no declaro nada, y cómo pruebo un cambio en mi checkout local de ese contenido antes de publicarlo? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "golfo-agent-profiles",
+          "description": "Nombra el pack oficial de contenido",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "sources.golfo",
+            "\"golfo\""
+          ],
+          "description": "Nombra la fuente golfo del manifest"
+        },
+        {
+          "type": "contains",
+          "value": "main",
+          "description": "Dice que por defecto sigue main"
+        },
+        {
+          "type": "contains",
+          "value": "AGENT_READY_SETUP_CONTENT_DIR",
+          "description": "Usa el override de desarrollo para un checkout local",
           "critical": true
         }
       ]

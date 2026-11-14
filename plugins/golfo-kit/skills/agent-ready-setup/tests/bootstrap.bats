@@ -13,6 +13,8 @@ setup() {
   export TMPDIR="$test_root/tmp"
   # Keeps the SessionStart upgrade window stamp out of the user's real cache.
   export XDG_CACHE_HOME="$test_root/cache"
+  load content-pack
+  use_content_pack
   # Asset-projection tests use the documented offline bootstrap option. Browser
   # installation and real MCP registration are exercised in their own suite.
   export AGENT_READY_SETUP_TOOLS=0
@@ -110,6 +112,18 @@ done
 exec "$real_ln" "\$@"
 EOF
   chmod +x "$fake_bin/ln"
+}
+
+# A content pack with only the go stack and the template of AGENTS.md, which the run reads through
+# AGENT_READY_SETUP_CONTENT_DIR, so a test knows every file the content brings.
+write_minimal_content_pack() {
+  minimal_content="$test_root/minimal-content"
+  mkdir -p "$minimal_content/base" "$minimal_content/stacks/go/rules" "$minimal_content/stacks/go/agents" \
+    "$minimal_content/stacks/go/commands" "$minimal_content/stacks/go/skills/deploy-helper"
+  cp "$content_pack/base/agents-template.md" "$minimal_content/base/agents-template.md"
+  printf '%s\n' '{"schemaVersion": 1, "name": "minimal", "version": "1.0.0", "baseAssets": "base", "profiles": {"go": {"kind": "stack", "assets": "stacks/go"}}}' \
+    > "$minimal_content/agent-ready-pack.json"
+  export AGENT_READY_SETUP_CONTENT_DIR="$(cd "$minimal_content" && (pwd -W 2>/dev/null || pwd))"
 }
 
 assert_claude_view() {
@@ -328,7 +342,7 @@ EOF
 
 # True when the managed block of the common profile in the PR template holds the template of the skill.
 pr_template_block_matches() {
-  python3 - "$skill_dir/assets/profiles/software-development/blocks/.github/pull_request_template.md" .github/pull_request_template.md <<'PY'
+  python3 - "$content_pack/profiles/software-development/blocks/.github/pull_request_template.md" .github/pull_request_template.md <<'PY'
 import sys
 template = open(sys.argv[1], encoding="utf-8").read()
 lines = open(sys.argv[2], encoding="utf-8").read().split("\n")
@@ -435,7 +449,7 @@ PY
   assert_claude_view .claude/rules/react-security.md "../../.agents/rules/react-security.md"
   [ -f .agents/rules/react-security.md ]
   assert_claude_view .claude/rules/lint-gate.md "../../.agents/rules/lint-gate.md"
-  cmp -s .agents/rules/lint-gate.md "$skill_dir/assets/profiles/software-development/rules/lint-gate.md"
+  cmp -s .agents/rules/lint-gate.md "$content_pack/profiles/software-development/rules/lint-gate.md"
   assert_claude_view .claude/skills/component-creation/SKILL.md "../../../.agents/skills/component-creation/SKILL.md"
   [ -f .agents/skills/component-creation/SKILL.md ]
   [ -f .agents/skills/react-act-test-fixes/SKILL.md ]
@@ -704,7 +718,7 @@ EOF
 
   [ "$status" -eq 0 ]
   assert_claude_view .claude/rules/react-security.md "../../.agents/rules/react-security.md"
-  cmp -s .agents/rules/react-security.md "$skill_dir/assets/stacks/react/rules/react-security.md"
+  cmp -s .agents/rules/react-security.md "$content_pack/stacks/react/rules/react-security.md"
   [[ "$output" == *".claude/rules/react-security.md -> managed view"* ]]
 }
 
@@ -719,12 +733,12 @@ EOF
     [ -f "$skill_path" ]
     [ "$(sed -n '1p' "$skill_path")" = '---' ]
     grep -Fxq "name: $skill_name" <(sed -n '2p' "$skill_path")
-    cmp -s "$skill_path" "$skill_dir/assets/stacks/${layer_skill%%/*}/skills/$skill_name/SKILL.md"
+    cmp -s "$skill_path" "$content_pack/stacks/${layer_skill%%/*}/skills/$skill_name/SKILL.md"
   done
   for skill_name in logger service; do
     eval_config=".agents/skills/$skill_name/evals/eval-config.json"
     [ -f "$eval_config" ]
-    cmp -s "$eval_config" "$skill_dir/assets/stacks/nextjs/skills/$skill_name/evals/eval-config.json"
+    cmp -s "$eval_config" "$content_pack/stacks/nextjs/skills/$skill_name/evals/eval-config.json"
   done
   [ ! -e .agents/skills/evals/SKILL.md ]
   [ -f .agents/skills/karpathy-guidelines/EXAMPLES.md ]
@@ -745,7 +759,7 @@ EOF
       [ "$status" -eq 0 ]
       rule_path=".agents/rules/browser-before-user-questions.md"
       [ -f "$rule_path" ]
-      cmp -s "$rule_path" "$skill_dir/assets/common/rules/browser-before-user-questions.md"
+      cmp -s "$rule_path" "$content_pack/base/rules/browser-before-user-questions.md"
       assert_claude_view .claude/rules/browser-before-user-questions.md
       cmp -s .claude/rules/browser-before-user-questions.md "$rule_path"
       grep -Fq -- "- Read and follow \`$rule_path\`." AGENTS.md
@@ -763,13 +777,13 @@ EOF
     run_bootstrap "$stack"
 
     [ "$status" -eq 0 ]
-    for common_rule in "$skill_dir/assets/common/rules/"*.md; do
+    for common_rule in "$content_pack/base/rules/"*.md; do
       rule_name="${common_rule##*/}"
       cmp -s ".agents/rules/$rule_name" "$common_rule"
       cmp -s ".claude/rules/$rule_name" "$common_rule"
     done
     while IFS= read -r template; do
-      relative="${template#"$skill_dir/assets/stacks/$stack/"}"
+      relative="${template#"$content_pack/stacks/$stack/"}"
       case "$relative" in
         skills/*/SKILL.md)
           skill_name="${relative#skills/}"
@@ -784,7 +798,7 @@ EOF
           ;;
       esac
       cmp -s ".agents/skills/$skill_name/SKILL.md" "$template"
-    done < <(find "$skill_dir/assets/stacks/$stack" -type f \( -path '*/skills/*/SKILL.md' -o -path '*/agents/*.md' -o -path '*/commands/*.md' \))
+    done < <(find "$content_pack/stacks/$stack" -type f \( -path '*/skills/*/SKILL.md' -o -path '*/agents/*.md' -o -path '*/commands/*.md' \))
     cd "$project_dir"
   done
 }
@@ -799,7 +813,7 @@ EOF
     frontmatter="$(sed -n '2,/^---$/p' "$template")"
     grep -Fxq "name: $expected_name" <<< "$frontmatter" || { echo "missing name: $template"; false; }
     grep -Eq '^description: .+' <<< "$frontmatter" || { echo "missing description: $template"; false; }
-  done < <(find "$skill_dir/assets/stacks" -type f \( -path '*/skills/*/SKILL.md' -o -path '*/agents/*.md' -o -path '*/commands/*.md' \))
+  done < <(find "$content_pack/stacks" -type f \( -path '*/skills/*/SKILL.md' -o -path '*/agents/*.md' -o -path '*/commands/*.md' \))
 }
 
 @test "Claude registers each agent and command once while Codex keeps its adapter" {
@@ -885,7 +899,7 @@ exit 0
 EOF
   run_bootstrap react
   [ "$status" -eq 0 ]
-  template="$skill_dir/assets/stacks/react/skills/karpathy-guidelines/SKILL.md"
+  template="$content_pack/stacks/react/skills/karpathy-guidelines/SKILL.md"
   {
     printf '%s\n' '---' 'name: karpathy-guidelines' \
       'description: Provider-neutral reusable workflow for karpathy-guidelines.' '---' ''
@@ -1705,7 +1719,7 @@ EOF
   run_bootstrap react < /dev/null
 
   [ "$status" -eq 0 ]
-  cmp -s .agents/rules/react-security.md "$skill_dir/assets/stacks/react/rules/react-security.md"
+  cmp -s .agents/rules/react-security.md "$content_pack/stacks/react/rules/react-security.md"
   [[ "$output" == *"Diff for .agents/rules/react-security.md"* ]]
   [[ "$output" != *"Pending confirmation"* ]]
   [[ "$output" != *"Replace .agents/rules/react-security.md with the template?"* ]]
@@ -1723,7 +1737,7 @@ EOF
   run_bootstrap react
 
   [ "$status" -eq 0 ]
-  cmp -s .agents/rules/react-security.md "$skill_dir/assets/stacks/react/rules/react-security.md"
+  cmp -s .agents/rules/react-security.md "$content_pack/stacks/react/rules/react-security.md"
   [ "$(shasum AGENTS.md CLAUDE.md | shasum | cut -d ' ' -f 1)" = "$root_hash_before" ]
   [[ "$output" == *"Updated from templates:"* ]]
 }
@@ -1808,7 +1822,7 @@ EOF
 
   [ "$status" -eq 0 ]
   [ ! -L .agents/rules/node-security.md ]
-  cmp -s .agents/rules/node-security.md "$skill_dir/assets/stacks/node/rules/node-security.md"
+  cmp -s .agents/rules/node-security.md "$content_pack/stacks/node/rules/node-security.md"
   [ "$(cat "$outside_file")" = '# Outside asset' ]
   [[ "$output" == *".agents/rules/node-security.md (symlink replaced with template)"* ]]
 }
@@ -1853,7 +1867,7 @@ EOF
   mkdir -p "$old_source" "$updated_source"
   cp -R "$skill_dir"/. "$old_source"/
   cp -R "$skill_dir"/. "$updated_source"/
-  printf '%s\n' '# Updated marketplace template' >> "$updated_source/assets/stacks/node/rules/node-security.md"
+  printf '%s\n' '# Updated marketplace template' >> "$updated_source/assets/common/hooks/check-harness-consistency.sh"
   cat > "$fake_bin/claude" <<EOF
 #!/bin/bash
 rm -rf "$old_source"
@@ -1867,7 +1881,7 @@ EOF
 
   [ "$status" -eq 0 ]
   [ ! -e "$old_source" ]
-  grep -Fq '# Updated marketplace template' .agents/rules/node-security.md
+  grep -Fq '# Updated marketplace template' .agents/hooks/check-harness-consistency.sh
 }
 
 @test "bootstrap ignores higher versions from another plugin cache" {
@@ -1877,8 +1891,8 @@ EOF
   mkdir -p "$target_source" "$unrelated_source"
   cp -R "$skill_dir"/. "$target_source"/
   cp -R "$skill_dir"/. "$unrelated_source"/
-  printf '%s\n' '# golfo-kit template' > "$target_source/assets/stacks/node/rules/node-security.md"
-  printf '%s\n' '# unrelated template' > "$unrelated_source/assets/stacks/node/rules/node-security.md"
+  printf '%s\n' '# golfo-kit template' >> "$target_source/assets/common/hooks/check-harness-consistency.sh"
+  printf '%s\n' '# unrelated template' >> "$unrelated_source/assets/common/hooks/check-harness-consistency.sh"
   cat > "$target_source/scripts/merge-instructions.sh" <<'EOF'
 #!/bin/bash
 exit 0
@@ -1892,8 +1906,8 @@ EOF
       --provider claude
 
   [ "$status" -eq 0 ]
-  grep -Fxq '# golfo-kit template' .agents/rules/node-security.md
-  ! grep -Fxq '# unrelated template' .agents/rules/node-security.md
+  grep -Fxq '# golfo-kit template' .agents/hooks/check-harness-consistency.sh
+  ! grep -Fxq '# unrelated template' .agents/hooks/check-harness-consistency.sh
 }
 
 @test "resolvers select highest semantic cache version for Claude and Codex" {
@@ -1904,8 +1918,8 @@ EOF
     mkdir -p "$old_source" "$new_source"
     cp -R "$skill_dir"/. "$old_source"/
     cp -R "$skill_dir"/. "$new_source"/
-    printf '%s\n' "# old $provider template" > "$old_source/assets/stacks/node/rules/node-security.md"
-    printf '%s\n' "# newest $provider template" > "$new_source/assets/stacks/node/rules/node-security.md"
+    printf '%s\n' "# old $provider template" >> "$old_source/assets/common/hooks/check-harness-consistency.sh"
+    printf '%s\n' "# newest $provider template" >> "$new_source/assets/common/hooks/check-harness-consistency.sh"
     cat > "$new_source/scripts/merge-instructions.sh" <<'EOF'
 #!/bin/bash
 exit 0
@@ -1913,8 +1927,8 @@ EOF
     chmod +x "$new_source/scripts/merge-instructions.sh"
 
     rm -rf .agents .claude .codex AGENTS.md CLAUDE.md
-    mkdir -p .agents/rules
-    printf '%s\n' "# existing $provider rule" > .agents/rules/node-security.md
+    mkdir -p .agents/hooks
+    printf '%s\n' "# existing $provider rule" > .agents/hooks/check-harness-consistency.sh
 
     run env HOME="$test_root" PATH="$test_root/bin:$PATH" \
       bash "$old_source/scripts/bootstrap.sh" \
@@ -1923,11 +1937,11 @@ EOF
         --provider "$provider"
 
     [ "$status" -eq 0 ]
-    grep -Fxq "# newest $provider template" .agents/rules/node-security.md
+    grep -Fxq "# newest $provider template" .agents/hooks/check-harness-consistency.sh
 
     rm -rf .agents .claude .codex AGENTS.md CLAUDE.md
-    mkdir -p .agents/rules
-    printf '%s\n' "# existing hook $provider rule" > .agents/rules/node-security.md
+    mkdir -p .agents/hooks
+    printf '%s\n' "# existing hook $provider rule" > .agents/hooks/check-harness-consistency.sh
 
     run env HOME="$test_root" PATH="$test_root/bin:$PATH" \
       bash "$old_source/assets/common/hooks/sync-marketplace.sh" \
@@ -1935,7 +1949,7 @@ EOF
         --stack node
 
     [ "$status" -eq 0 ]
-    grep -Fxq "# newest $provider template" .agents/rules/node-security.md
+    grep -Fxq "# newest $provider template" .agents/hooks/check-harness-consistency.sh
   done
 }
 
@@ -1948,8 +1962,8 @@ EOF
     mkdir -p "$old_source" "$new_source"
     cp -R "$skill_dir"/. "$old_source"/
     cp -R "$skill_dir"/. "$new_source"/
-    printf '%s\n' "# old $provider template" > "$old_source/assets/stacks/node/rules/node-security.md"
-    printf '%s\n' "# newest $provider template" > "$new_source/assets/stacks/node/rules/node-security.md"
+    printf '%s\n' "# old $provider template" >> "$old_source/assets/common/hooks/check-harness-consistency.sh"
+    printf '%s\n' "# newest $provider template" >> "$new_source/assets/common/hooks/check-harness-consistency.sh"
     cat > "$new_source/scripts/merge-instructions.sh" <<'EOF'
 #!/bin/bash
 exit 0
@@ -1957,8 +1971,8 @@ EOF
     chmod +x "$new_source/scripts/merge-instructions.sh"
 
     rm -rf .agents .claude .codex AGENTS.md CLAUDE.md
-    mkdir -p .agents/rules
-    printf '%s\n' "# existing $provider rule" > .agents/rules/node-security.md
+    mkdir -p .agents/hooks
+    printf '%s\n' "# existing $provider rule" > .agents/hooks/check-harness-consistency.sh
 
     run env \
       HOME="$test_root" \
@@ -1969,7 +1983,7 @@ EOF
         --stack node
 
     [ "$status" -eq 0 ]
-    grep -Fxq "# newest $provider template" .agents/rules/node-security.md
+    grep -Fxq "# newest $provider template" .agents/hooks/check-harness-consistency.sh
     [[ "$output" == *"[marketplace-sync] Using agent-ready-setup cache version 1.10.2."* ]]
   done
 }
@@ -1985,7 +1999,7 @@ create_marketplace_snapshot() {
   cp -R "$skill_dir"/. "$snapshot_skill"/
   printf '{\n  "name": "golfo-kit",\n  "version": "%s"\n}\n' "$version" \
     | tee "$plugin_root/.claude-plugin/plugin.json" > "$plugin_root/.codex-plugin/plugin.json"
-  printf '%s\n' "$template" > "$snapshot_skill/assets/stacks/node/rules/node-security.md"
+  printf '%s\n' "$template" >> "$snapshot_skill/assets/common/hooks/check-harness-consistency.sh"
   cat > "$snapshot_skill/scripts/merge-instructions.sh" <<'EOF'
 #!/bin/bash
 exit 0
@@ -2001,7 +2015,7 @@ create_cache_source() {
 
   mkdir -p "$cache_source"
   cp -R "$skill_dir"/. "$cache_source"/
-  printf '%s\n' "$template" > "$cache_source/assets/stacks/node/rules/node-security.md"
+  printf '%s\n' "$template" >> "$cache_source/assets/common/hooks/check-harness-consistency.sh"
   cat > "$cache_source/scripts/merge-instructions.sh" <<'EOF'
 #!/bin/bash
 exit 0
@@ -2029,7 +2043,7 @@ EOF
         --stack node
 
     [ "$status" -eq 0 ]
-    grep -Fxq "# $provider snapshot template" .agents/rules/node-security.md
+    grep -Fxq "# $provider snapshot template" .agents/hooks/check-harness-consistency.sh
     [[ "$output" == *"[marketplace-sync] Using agent-ready-setup marketplace snapshot version 2.0.0."* ]]
   done
 }
@@ -2055,7 +2069,7 @@ EOF
       --stack node
 
   [ "$status" -eq 0 ]
-  grep -Fxq '# local snapshot template' .agents/rules/node-security.md
+  grep -Fxq '# local snapshot template' .agents/hooks/check-harness-consistency.sh
 }
 
 # Codex rejects `marketplace upgrade` for local sources, so the fake fails the
@@ -2100,7 +2114,7 @@ FAKE
   [ "$status" -eq 0 ]
   [ ! -e "$invocation_log" ]
   [[ "$output" == *"[marketplace-bootstrap] golfo-marketplace es un marketplace Codex local; se omite el upgrade"* ]]
-  grep -Fxq '# local snapshot template' .agents/rules/node-security.md
+  grep -Fxq '# local snapshot template' .agents/hooks/check-harness-consistency.sh
 }
 
 @test "bootstrap upgrades a Codex Git marketplace" {
@@ -2134,7 +2148,7 @@ FAKE
   [ "$status" -eq 0 ]
   [ ! -e "$invocation_log" ]
   [[ "$output" == *"[marketplace-sync] golfo-marketplace es un marketplace Codex local; se omite el upgrade"* ]]
-  grep -Fxq '# local snapshot template' .agents/rules/node-security.md
+  grep -Fxq '# local snapshot template' .agents/hooks/check-harness-consistency.sh
 }
 
 # CODEX_HOME outside $HOME/.codex is the home Codex uses; a local marketplace
@@ -2158,7 +2172,7 @@ CONFIG
   [ "$status" -eq 0 ]
   [ ! -e "$invocation_log" ]
   [[ "$output" == *"[marketplace-sync] golfo-marketplace es un marketplace Codex local; se omite el upgrade"* ]]
-  grep -Fxq '# local snapshot template' .agents/rules/node-security.md
+  grep -Fxq '# local snapshot template' .agents/hooks/check-harness-consistency.sh
 }
 
 @test "bootstrap honors CODEX_HOME for a local marketplace" {
@@ -2180,7 +2194,7 @@ CONFIG
   [ "$status" -eq 0 ]
   [ ! -e "$invocation_log" ]
   [[ "$output" == *"[marketplace-bootstrap] golfo-marketplace es un marketplace Codex local; se omite el upgrade"* ]]
-  grep -Fxq '# local snapshot template' .agents/rules/node-security.md
+  grep -Fxq '# local snapshot template' .agents/hooks/check-harness-consistency.sh
 }
 
 @test "sync hook upgrades a Codex Git marketplace" {
@@ -2211,7 +2225,7 @@ CONFIG
       --stack node
 
   [ "$status" -eq 0 ]
-  grep -Fxq '# newer cache template' .agents/rules/node-security.md
+  grep -Fxq '# newer cache template' .agents/hooks/check-harness-consistency.sh
   [[ "$output" == *"[marketplace-sync] Using agent-ready-setup cache version 1.10.2."* ]]
 }
 
@@ -2233,7 +2247,7 @@ CONFIG
         --provider "$provider"
 
     [ "$status" -eq 0 ]
-    grep -Fxq "# $provider snapshot template" .agents/rules/node-security.md
+    grep -Fxq "# $provider snapshot template" .agents/hooks/check-harness-consistency.sh
     [[ "$output" == *"[marketplace-bootstrap] Using agent-ready-setup marketplace snapshot version 2.0.0."* ]]
     [[ "$output" == *"Resolved agent-ready-setup source: $snapshot_root/plugins/golfo-kit/skills/agent-ready-setup"* ]]
   done
@@ -2251,7 +2265,7 @@ CONFIG
       --provider claude
 
   [ "$status" -eq 0 ]
-  grep -Fxq '# newer cache template' .agents/rules/node-security.md
+  grep -Fxq '# newer cache template' .agents/hooks/check-harness-consistency.sh
   [[ "$output" == *"Using agent-ready-setup cache version 1.10.2."* ]]
   [[ "$output" == *"Resolved agent-ready-setup source: $new_source"* ]]
 }
@@ -2268,7 +2282,7 @@ CONFIG
 
   [ "$status" -eq 0 ]
   [[ "$output" == *"Resolved agent-ready-setup source: $skill_dir"* ]]
-  cmp -s "$skill_dir/assets/stacks/node/rules/node-security.md" .agents/rules/node-security.md
+  cmp -s "$content_pack/stacks/node/rules/node-security.md" .agents/rules/node-security.md
 }
 
 @test "bootstrap keeps requested newest cache version instead of downgrading" {
@@ -2278,8 +2292,8 @@ CONFIG
   mkdir -p "$old_source" "$new_source"
   cp -R "$skill_dir"/. "$old_source"/
   cp -R "$skill_dir"/. "$new_source"/
-  printf '%s\n' '# old template' > "$old_source/assets/stacks/node/rules/node-security.md"
-  printf '%s\n' '# newest template' > "$new_source/assets/stacks/node/rules/node-security.md"
+  printf '%s\n' '# old template' >> "$old_source/assets/common/hooks/check-harness-consistency.sh"
+  printf '%s\n' '# newest template' >> "$new_source/assets/common/hooks/check-harness-consistency.sh"
 
   run env HOME="$test_root" PATH="$test_root/bin:$PATH" \
     bash "$new_source/scripts/bootstrap.sh" \
@@ -2288,7 +2302,7 @@ CONFIG
       --provider claude
 
   [ "$status" -eq 0 ]
-  grep -Fxq '# newest template' .agents/rules/node-security.md
+  grep -Fxq '# newest template' .agents/hooks/check-harness-consistency.sh
   [[ "$output" == *"Using agent-ready-setup cache version 1.10.2."* ]]
   [[ "$output" != *"cache version 1.9.0"* ]]
 }
@@ -2395,40 +2409,30 @@ EOF
   mkdir -p \
     "$fake_bin" \
     "$source_dir/assets/common/hooks" \
-    "$source_dir/assets/common/shared" \
     "$source_dir/assets/codex" \
-    "$source_dir/assets/stacks/go/hooks" \
-    "$source_dir/assets/stacks/go/rules" \
-    "$source_dir/assets/stacks/go/agents" \
-    "$source_dir/assets/stacks/go/commands" \
-    "$source_dir/assets/stacks/go/skills/deploy-helper" \
-    "$source_dir/assets/profiles/software-development" \
     "$source_dir/scripts" \
     .agents/rules
+  write_minimal_content_pack
   touch "$source_dir/SKILL.md"
   printf '%s\n' '#!/bin/bash' > "$source_dir/scripts/normalize-instructions.sh"
   cp "$skill_dir/assets/common/hooks/sync-marketplace.sh" \
     "$source_dir/assets/common/hooks/sync-marketplace.sh"
   cp "$skill_dir/assets/common/hooks/agent-ready-skill-source.sh" "$source_dir/assets/common/hooks/"
   cp "$skill_dir/scripts/asset-sync-common.sh" "$source_dir/scripts/asset-sync-common.sh"
-  # Minimal sources still need the profile catalog, the configuration schemas and the state helper the hook resolves.
+  # Minimal sources still need the configuration schemas and the state helper the hook resolves.
   cp "$skill_dir/scripts/agent-ready-state.py" "$source_dir/scripts/agent-ready-state.py"
   cp "$skill_dir/scripts/"agent_ready_*.py "$source_dir/scripts/"
-  cp "$skill_dir/assets/profiles.json" "$source_dir/assets/profiles.json"
-  mkdir -p "$source_dir/assets/profiles/software-development"
   cp -R "$skill_dir/assets/config" "$source_dir/assets/config"
   cp "$skill_dir/scripts/render-instruction-template.sh" "$source_dir/scripts/render-instruction-template.sh"
   cp "$skill_dir/scripts/merge-managed-settings.py" "$source_dir/scripts/merge-managed-settings.py"
   cp "$skill_dir/scripts/run-detached.py" "$source_dir/scripts/run-detached.py"
   printf '%s\n' '{"settings":"updated"}' > "$source_dir/assets/common/settings.json"
-  printf '%s\n' '# updated common asset' > "$source_dir/assets/common/shared/asset.md"
   printf '%s\n' '{"hooks":"updated"}' > "$source_dir/assets/codex/hooks.json"
   printf '%s\n' '#!/bin/bash' > "$source_dir/assets/common/hooks/check-harness-consistency.sh"
-  printf '%s\n' '# updated pre-tool hook' > "$source_dir/assets/stacks/go/hooks/pre-tool-use.md"
-  printf '%s\n' '# updated coding style' > "$source_dir/assets/stacks/go/rules/go-coding-style.md"
-  printf '%s\n' '# security scanner' > "$source_dir/assets/stacks/go/agents/go-security-scanner.md"
-  printf '%s\n' '# review command' > "$source_dir/assets/stacks/go/commands/go-review-pr.md"
-  cat > "$source_dir/assets/stacks/go/skills/deploy-helper/SKILL.md" <<'EOF'
+  printf '%s\n' '# updated coding style' > "$minimal_content/stacks/go/rules/go-coding-style.md"
+  printf '%s\n' '# security scanner' > "$minimal_content/stacks/go/agents/go-security-scanner.md"
+  printf '%s\n' '# review command' > "$minimal_content/stacks/go/commands/go-review-pr.md"
+  cat > "$minimal_content/stacks/go/skills/deploy-helper/SKILL.md" <<'EOF'
 ---
 name: deploy-helper
 description: Deploy applications.
@@ -2436,9 +2440,6 @@ description: Deploy applications.
 
 # Deploy helper
 EOF
-  printf '%s\n' '{"mcp":"updated"}' > "$source_dir/assets/stacks/go/mcp.json"
-  mkdir -p .agents/shared
-  printf '%s\n' '# previous common asset' > .agents/shared/asset.md
   printf '%s\n' '# previous coding style' > .agents/rules/go-coding-style.md
   cat > "$source_dir/scripts/bootstrap.sh" <<'EOF'
 #!/bin/bash
@@ -2448,12 +2449,10 @@ EOF
   chmod +x "$source_dir/scripts/bootstrap.sh"
   cat > "$source_dir/scripts/apply-managed-block.sh" <<'EOF'
 #!/bin/bash
-[[ "$(cat .agents/shared/asset.md)" = '# updated common asset' ]] || exit 42
-[[ -f .agents/rules/go-coding-style.md ]] || exit 42
+[[ "$(cat .agents/rules/go-coding-style.md)" = '# updated coding style' ]] || exit 42
 [[ -f .agents/agents/go-security-scanner.md ]] || exit 42
 [[ -f .agents/commands/go-review-pr.md ]] || exit 42
 [[ -f .agents/skills/deploy-helper/SKILL.md ]] || exit 42
-[[ -f .codex/.mcp.json ]] || exit 42
 printf 'apply\n' >> "$EVENT_LOG"
 EOF
   cat > "$source_dir/scripts/merge-instructions.sh" <<'EOF'
@@ -2485,22 +2484,17 @@ EOF
   grep -Fxq 'claude plugin marketplace update golfo-marketplace' "$test_root/marketplace.log"
   cmp -s .agents/hooks/sync-marketplace.sh "$source_dir/assets/common/hooks/sync-marketplace.sh"
   cmp -s .agents/hooks/check-harness-consistency.sh "$source_dir/assets/common/hooks/check-harness-consistency.sh"
-  cmp -s .agents/hooks/pre-tool-use.md "$source_dir/assets/stacks/go/hooks/pre-tool-use.md"
-  cmp -s .agents/shared/asset.md "$source_dir/assets/common/shared/asset.md"
-  assert_claude_view .claude/shared/asset.md "../../.agents/shared/asset.md"
-  cmp -s .agents/rules/go-coding-style.md "$source_dir/assets/stacks/go/rules/go-coding-style.md"
-  cmp -s .agents/agents/go-security-scanner.md "$source_dir/assets/stacks/go/agents/go-security-scanner.md"
-  cmp -s .agents/commands/go-review-pr.md "$source_dir/assets/stacks/go/commands/go-review-pr.md"
+  cmp -s .agents/rules/go-coding-style.md "$minimal_content/stacks/go/rules/go-coding-style.md"
+  cmp -s .agents/agents/go-security-scanner.md "$minimal_content/stacks/go/agents/go-security-scanner.md"
+  cmp -s .agents/commands/go-review-pr.md "$minimal_content/stacks/go/commands/go-review-pr.md"
   grep -Fq '# Deploy helper' .agents/skills/deploy-helper/SKILL.md
   adapter_mode="$(python3 -c 'import os, stat, sys; print(format(stat.S_IMODE(os.stat(sys.argv[1]).st_mode), "o"))' .agents/skills/deploy-helper/SKILL.md)"
   # NTFS has no POSIX permission bits: Windows Python always reports 666 there.
   [ "$adapter_mode" = "644" ] || [ "$adapter_mode" = "666" ]
   claude_adapter_mode="$(python3 -c 'import os, stat, sys; print(format(stat.S_IMODE(os.stat(sys.argv[1]).st_mode), "o"))' .claude/skills/deploy-helper/SKILL.md)"
   [ "$claude_adapter_mode" = "644" ] || [ "$claude_adapter_mode" = "666" ]
-  cmp -s .agents/mcp.json "$source_dir/assets/stacks/go/mcp.json"
   cmp -s .claude/settings.json "$source_dir/assets/common/settings.json"
   cmp -s .codex/hooks.json "$source_dir/assets/codex/hooks.json"
-  cmp -s .codex/.mcp.json "$source_dir/assets/stacks/go/mcp.json"
   assert_claude_view .claude/rules/go-coding-style.md "../../.agents/rules/go-coding-style.md"
   assert_claude_view .claude/agents/go-security-scanner.md
   assert_claude_view .claude/commands/go-review-pr.md
@@ -2529,8 +2523,8 @@ EOF
   mkdir -p \
     "$source_dir/assets/common/hooks" \
     "$source_dir/assets/codex" \
-    "$source_dir/assets/stacks/go/hooks" \
     "$source_dir/scripts"
+  write_minimal_content_pack
   touch "$source_dir/SKILL.md"
   printf '%s\n' '#!/bin/bash' > "$source_dir/scripts/normalize-instructions.sh"
   printf '%s\n' '#!/bin/bash' > "$source_dir/scripts/apply-managed-block.sh"
@@ -2538,11 +2532,9 @@ EOF
     "$source_dir/assets/common/hooks/sync-marketplace.sh"
   cp "$skill_dir/assets/common/hooks/agent-ready-skill-source.sh" "$source_dir/assets/common/hooks/"
   cp "$skill_dir/scripts/asset-sync-common.sh" "$source_dir/scripts/asset-sync-common.sh"
-  # Minimal sources still need the profile catalog, the configuration schemas and the state helper the hook resolves.
+  # Minimal sources still need the configuration schemas and the state helper the hook resolves.
   cp "$skill_dir/scripts/agent-ready-state.py" "$source_dir/scripts/agent-ready-state.py"
   cp "$skill_dir/scripts/"agent_ready_*.py "$source_dir/scripts/"
-  cp "$skill_dir/assets/profiles.json" "$source_dir/assets/profiles.json"
-  mkdir -p "$source_dir/assets/profiles/software-development"
   cp -R "$skill_dir/assets/config" "$source_dir/assets/config"
   cp "$skill_dir/scripts/merge-managed-settings.py" "$source_dir/scripts/merge-managed-settings.py"
   printf '%s\n' '{"settings":"updated"}' > "$source_dir/assets/common/settings.json"
@@ -2684,15 +2676,15 @@ EOF
   [ -f "$skill_dir/scripts/merge-managed-settings.py" ]
 
   for stack in react nextjs nextjs-app-router node java go android; do
-    [ ! -e "$skill_dir/assets/stacks/$stack/settings.json" ]
-    [ ! -e "$skill_dir/assets/stacks/$stack/hooks/sync-marketplace.sh" ]
-    [ ! -e "$skill_dir/assets/stacks/$stack/rules/language-consistency.md" ]
-    [ ! -e "$skill_dir/assets/stacks/$stack/rules/lint-gate.md" ]
-    [ ! -e "$skill_dir/assets/stacks/$stack/rules/established-libraries.md" ]
-    [ ! -e "$skill_dir/assets/stacks/$stack/rules/verify-changes.md" ]
-    [ ! -e "$skill_dir/assets/stacks/$stack/rules/user-actions-first.md" ]
-    [ ! -e "$skill_dir/assets/stacks/$stack/rules/speculative-complexity-approval.md" ]
-    [ ! -e "$skill_dir/assets/stacks/$stack/rules/patterns-we-do-not-use.md" ]
+    [ ! -e "$content_pack/stacks/$stack/settings.json" ]
+    [ ! -e "$content_pack/stacks/$stack/hooks/sync-marketplace.sh" ]
+    [ ! -e "$content_pack/stacks/$stack/rules/language-consistency.md" ]
+    [ ! -e "$content_pack/stacks/$stack/rules/lint-gate.md" ]
+    [ ! -e "$content_pack/stacks/$stack/rules/established-libraries.md" ]
+    [ ! -e "$content_pack/stacks/$stack/rules/verify-changes.md" ]
+    [ ! -e "$content_pack/stacks/$stack/rules/user-actions-first.md" ]
+    [ ! -e "$content_pack/stacks/$stack/rules/speculative-complexity-approval.md" ]
+    [ ! -e "$content_pack/stacks/$stack/rules/patterns-we-do-not-use.md" ]
   done
 }
 

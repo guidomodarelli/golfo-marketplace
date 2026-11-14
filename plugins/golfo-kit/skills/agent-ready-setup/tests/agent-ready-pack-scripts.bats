@@ -17,6 +17,8 @@ setup() {
   mkdir -p "$project_dir" "$fake_bin" "$test_root/tmp"
   export TMPDIR="$test_root/tmp"
   export XDG_CACHE_HOME="$test_root/cache"
+  load content-pack
+  use_content_pack
   export XDG_CONFIG_HOME="$test_root/config"
   export HOME="$test_root/home"
   mkdir -p "$HOME"

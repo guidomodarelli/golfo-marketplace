@@ -52,7 +52,7 @@ raíz le indica cuándo leerlo (sección 4).
 
 ## 2. Destinos anidados
 
-Un profile, de golfo-kit o de un pack, declara cada destino en su entrada del catálogo y publica el
+Un profile, del contenido o de un pack, declara cada destino en su entrada del catálogo y publica el
 bloque en `nested/<nombre>.md` de su árbol de assets:
 
 ```json
@@ -60,7 +60,7 @@ bloque en `nested/<nombre>.md` de su árbol de assets:
 ```
 
 - **Id:** `<profile>/<nombre>`, como `nextjs-app-router/app-router` o `acme/web/app-router`.
-- **Destino de golfo-kit:** `nextjs-app-router/app-router` lleva al `AGENTS.md` de `app/` o `src/app/` qué guarda
+- **Destino del pack oficial:** `nextjs-app-router/app-router` lleva al `AGENTS.md` de `app/` o `src/app/` qué guarda
   el directorio de rutas y cómo validan los route handlers. La rule `nextjs-app-router.md`, que se carga en cada
   sesión, conserva lo que vale fuera de esa carpeta. Es el id del
   bloque en sus marcadores (`<!-- BEGIN AGENT-READY MANAGED: acme/web/app-router -->`).
@@ -172,7 +172,7 @@ Before you read or change files under one of these folders, read and follow its 
   Muestra el diff de cada bloque que cambia, y `--json` deja los destinos en `nested`.
 - **`status`:** informa como `modified` un bloque editado a mano.
 - **`--from-lock`:** compara los bloques con el lock.
-- **`contentDigest` de golfo-kit:** cuenta cada destino por su id y su contenido, no por la carpeta del repo.
+- **`contentDigest` del contenido:** cuenta cada destino por su id y su contenido, no por la carpeta del repo.
 - **`agent-ready remove`:** saca cada bloque, y borra el `AGENTS.md` que queda vacío junto con su proxy.
 
 ## 6. Fuera de alcance

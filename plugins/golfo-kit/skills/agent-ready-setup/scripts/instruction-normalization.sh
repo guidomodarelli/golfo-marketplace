@@ -23,6 +23,7 @@ configure_instruction_templates() {
   local skill_dir="$1"
   local stack="$2"
 
+  skill_dir="$(resolve_content_skill_directory "$skill_dir")" || exit 1
   COMMON_SRC="$skill_dir/assets/common"
   SRC="$(resolve_stack_template_directory "$skill_dir" "$stack")" || exit 1
   # One template for the managed block; the skeleton of a new AGENTS.md can come from a profile of
