@@ -278,7 +278,9 @@ lock_value() {
   mkdir -p apps/site/app packs/acme/profiles/web/blocks
   touch apps/site/app/page.tsx
   printf 'dist/\n' > packs/acme/profiles/web/blocks/.gitignore
-  printf '## Acme web\n' > packs/acme/profiles/web/blocks/CONTRIBUTING.md
+  mkdir -p packs/acme/profiles/web/rules
+  printf '# Acme checklist\n' > packs/acme/profiles/web/rules/acme-checklist.md
+  printf '%s\n' '## Acme web' '' 'Follow `.agents/rules/acme-checklist.md`.' > packs/acme/profiles/web/blocks/CONTRIBUTING.md
   printf '%s\n' '{"schemaVersion": 1, "name": "acme", "profiles": {"web": {"kind": "capability", "description": "Acme web.", "assets": "profiles/web"}}}' \
     > packs/acme/agent-ready-pack.json
   write_manifest '{"profiles": ["node"], "providers": ["claude", "codex"], "sources": {"packs": [{"name": "acme", "source": "path:packs/acme"}]}, "workspaces": [{"path": "apps/web", "profiles": ["acme/web"]}, {"path": "apps/site", "profiles": ["nextjs-app-router"]}]}'
@@ -297,6 +299,8 @@ lock_value() {
   grep -qx '# BEGIN AGENT-READY MANAGED: acme/web' apps/web/.gitignore
   ! grep -q 'acme/web' .gitignore
   grep -qx '<!-- BEGIN AGENT-READY MANAGED: acme/web -->' CONTRIBUTING.md
+  # The block names the rule where the workspace has it.
+  grep -qF 'Follow `.agents/rules/workspaces/apps/web/acme-checklist.md`.' CONTRIBUTING.md
 
   run_cli plan
   [[ "$output" != *"+ create"* ]]

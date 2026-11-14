@@ -884,6 +884,16 @@ def is_workspace_shared_asset(relative_path):
 WORKSPACE_ASSETS_CACHE = "workspace-assets"
 
 
+def rule_workspaces_of(workspace_rules, workspace_paths):
+    """{rule path: [workspace]} of the rules those workspaces have (workspace_rule_files), for
+    agent_ready_workspaces.scoped_references."""
+    rule_workspaces = {}
+    for entry in workspace_rules.values():
+        if entry["workspace"] in workspace_paths:
+            rule_workspaces.setdefault(entry["rulePath"], []).append(entry["workspace"])
+    return rule_workspaces
+
+
 def workspace_shared_texts(skill_dir, catalog, workspaces, workspace_profiles, workspace_rules):
     """{(profile, relative path): (text path, sha256)} of the shared assets whose text names a rule of a workspace.
 
@@ -897,11 +907,8 @@ def workspace_shared_texts(skill_dir, catalog, workspaces, workspace_profiles, w
         asset_root = profile_asset_root(skill_dir, catalog, name)
         if not asset_root:
             continue
-        workspace_paths = {workspace["path"] for workspace in workspaces if name in workspace["own"]}
-        rule_workspaces = {}
-        for entry in workspace_rules.values():
-            if entry["workspace"] in workspace_paths:
-                rule_workspaces.setdefault(entry["rulePath"], []).append(entry["workspace"])
+        rule_workspaces = rule_workspaces_of(
+            workspace_rules, {workspace["path"] for workspace in workspaces if name in workspace["own"]})
         if not rule_workspaces:
             continue
         for relative_path, absolute_path in walk_files(asset_root):
@@ -1088,12 +1095,13 @@ def workspace_blocks(skill_dir, catalog, workspaces, workspace_rules):
     return blocks
 
 
-def workspace_file_blocks(skill_dir, catalog, workspaces, assets, root_blocks):
+def workspace_file_blocks(skill_dir, catalog, workspaces, assets, root_blocks, workspace_rules):
     """{(destination, id): item} of the blocks the profiles only workspaces select publish for other files.
 
     A block of a file Git or Docker reads for its own folder goes to the one of the workspace
-    (agent_ready_workspaces.FOLDER_BLOCK_FILES); any other goes to the root file, once for the repository,
-    under the spelling the root selection already uses. The section of AGENTS.md is workspace_blocks.
+    (agent_ready_workspaces.FOLDER_BLOCK_FILES) and names the rules of that workspace; any other goes to
+    the root file, once for the repository, under the spelling the root selection already uses, and names
+    the rules of every workspace that selects its profile. The section of AGENTS.md is workspace_blocks.
     """
     blocks = {}
     folded_assets = {destination.casefold() for destination in assets}
@@ -1108,12 +1116,17 @@ def workspace_file_blocks(skill_dir, catalog, workspaces, assets, root_blocks):
                 if destination is None or destination == managed_blocks.INSTRUCTION_SECTIONS_DESTINATION:
                     continue
                 managed_blocks.validate_destination(destination, name)
-                destination = workspace_selection.block_destination(workspace["path"], destination)
-                destination = spelling_by_folded.setdefault(destination.casefold(), destination)
+                scoped = workspace_selection.block_destination(workspace["path"], destination)
+                workspace_paths = {workspace["path"]} if scoped != destination else \
+                    {other["path"] for other in workspaces if name in other["own"]}
+                destination = spelling_by_folded.setdefault(scoped.casefold(), scoped)
                 if destination.casefold() in folded_assets:
                     raise ProfileError(f"profile '{name}' publishes a block for {destination}, which another "
                                        "profile writes as a whole file; nothing was written")
-                blocks[(destination, name)] = block_item(skill_dir, catalog, name, absolute_path)
+                item = block_item(skill_dir, catalog, name, absolute_path)
+                item["content"] = workspace_selection.scoped_references(
+                    item["content"], rule_workspaces_of(workspace_rules, workspace_paths))
+                blocks[(destination, name)] = item
     return blocks
 
 
@@ -2007,7 +2020,7 @@ def compute_plan(project_root, skill_dir, catalog, profile_names):
             "workspace": desired_entry.get("workspace"),
         })
     root_blocks = desired_blocks(skill_dir, catalog, resolved, assets)
-    blocks = {**root_blocks, **workspace_file_blocks(skill_dir, catalog, workspaces, assets, root_blocks)}
+    blocks = {**root_blocks, **workspace_file_blocks(skill_dir, catalog, workspaces, assets, root_blocks, workspace_rules)}
     targets = nested_contents(skill_dir, catalog, resolved)
     nested_blocks, nested_report = desired_nested_blocks(
         project_root, catalog, resolved, {**targets, **nested_contents(skill_dir, catalog, workspace_profiles)}, workspaces,
