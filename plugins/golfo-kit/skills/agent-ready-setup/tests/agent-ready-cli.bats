@@ -585,6 +585,34 @@ PY
   [ "$(json_value "$output" '[check["status"] for check in data["checks"] if check["name"] == "configuration"]')" = "['missing']" ]
 }
 
+@test "doctor names the content or the pack that needs a newer engine, with the plugin to install" {
+  run_cli doctor --offline --json
+  [ "$status" -eq 0 ]
+  [ "$(json_value "$output" '[check["name"] + ":" + check["status"] for check in data["checks"] if check["name"].startswith(("content", "pack"))]')" = "['content golfo:ok']" ]
+
+  # The content and a pack that ask for engines newer than this one: an apply would stop on both.
+  copy_content_pack
+  python3 - "$content_dir/agent-ready-pack.json" <<'PY'
+import json, sys
+catalog = json.load(open(sys.argv[1], encoding="utf-8"))
+catalog["minEngine"] = "99.0.0"
+json.dump(catalog, open(sys.argv[1], "w", encoding="utf-8"), indent=2)
+PY
+  mkdir -p packs/acme/profiles/team/rules
+  printf '# Team\n' > packs/acme/profiles/team/rules/acme-team.md
+  printf '%s\n' '{"schemaVersion": 1, "name": "acme", "version": "2.0.0", "minEngine": "98.0.0", "profiles": {"team": {"kind": "capability", "assets": "profiles/team"}}}' > packs/acme/agent-ready-pack.json
+  mkdir -p .agents
+  printf '%s\n' '{"sources": {"packs": [{"name": "acme", "source": "path:packs/acme"}]}}' > .agents/agent-ready.json
+  run_cli doctor --offline
+  [ "$status" -eq 1 ]
+  grep -Fq -- "the golfo catalog needs the agent-ready-setup engine 99.0.0 or newer" <<< "$output"
+  grep -Fq -- "pack 'acme' needs the agent-ready-setup engine 98.0.0 or newer" <<< "$output"
+  grep -Fq -- "fix: install the golfo-kit plugin 98.0.0 or newer: claude plugin update golfo-kit@golfo-marketplace" <<< "$output"
+  grep -Fq -- "2 problems" <<< "$stderr"
+  run_cli doctor --offline --json
+  [ "$(json_value "$output" '[check["name"] + ":" + check["status"] for check in data["checks"] if check["name"].startswith(("content", "pack"))]')" = "['content golfo:missing', 'pack acme:missing']" ]
+}
+
 @test "doctor runs outside a repository and names the missing worktree; a missing agent CLI says how to fix it" {
   mkdir "$test_root/plain"
   cd "$test_root/plain"

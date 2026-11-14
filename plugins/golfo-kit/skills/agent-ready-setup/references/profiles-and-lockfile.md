@@ -407,7 +407,8 @@ pueden declarar tres campos opcionales (en el contenido, `version` es obligatori
 - `minEngine` es la versión más vieja del motor (el plugin golfo-kit que corre agent-ready-setup)
   que tiene lo que el contenido usa. No hay tope: el motor nunca se fija y un motor más nuevo sigue
   aplicando. Con un motor más viejo, el apply, el plan o el status fallan antes de escribir y dicen
-  qué versión del plugin instalar.
+  qué versión del plugin instalar. `agent-ready doctor` lo avisa antes, para el contenido y para cada
+  pack, con el comando que actualiza el plugin en cada provider.
 - `schemaVersion` sube solo si el formato del catálogo cambia de forma incompatible. Un motor que
   no conoce ese `schemaVersion` falla con el mismo pedido de actualizar el plugin.
 - `changes` es el changelog: `version`, `summary` y `breaking` opcional.
@@ -723,7 +724,9 @@ python3 "$SKILL_DIR/scripts/agent-ready" remove [--dry-run] [--yes] [--json]
 - `doctor` solo lee. Revisa Git y el worktree, Bash, el Python que corre y el `python3` que usan
   los hooks (3.8 o más nuevo), la CLI de los providers que declara el repo (alcanza con una), la
   versión de golfo-kit, cada capa de configuración, cada fuente de packs (un path que exista, un
-  repositorio que responda a `git ls-remote`; `--offline` no contacta ninguno) y, si el repo ya
+  repositorio que responda a `git ls-remote`; `--offline` no contacta ninguno), el motor que piden el
+  contenido y cada pack que esta máquina tiene (`minEngine` y `schemaVersion`, sección «Compatibilidad
+  declarada»; sin red usa solo la caché) y, si el repo ya
   tiene lockfile, los hooks que el apply fusiona en `.claude/settings.json` y `.codex/hooks.json`
   junto con sus scripts. Imprime una línea por chequeo y, debajo de lo que falta, `fix:` con el
   arreglo. Sale con 1 si falta algo y con 0 si no. Funciona también fuera de un repositorio, donde

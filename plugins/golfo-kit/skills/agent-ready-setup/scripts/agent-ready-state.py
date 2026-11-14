@@ -587,6 +587,50 @@ def load_effective_catalog(project_root, skill_dir, source_state=None):
     return catalog
 
 
+def engine_requirement(source_name, catalog, problem):
+    """What one source declares about the engine, and why an apply would stop on it (None if it would not)."""
+    return {"source": source_name, "version": catalog.get("version"), "minEngine": catalog.get("minEngine"), "problem": problem}
+
+
+def engine_requirements(project_root, content_dir):
+    """What the content and every pack this machine has need from the engine, with what would stop an apply.
+
+    The same checks an apply runs before writing (minEngine, schemaVersion), done ahead of it. A pack this
+    machine has not fetched yet is left out: the source checks of doctor report it. No network.
+    """
+    engine_version = engine_version_of(content_dir)
+    try:
+        catalog = read_json_file(os.path.join(content_dir, PROFILE_CATALOG_RELATIVE_PATH), "profile catalog")
+    except StateError as caught_error:
+        return [engine_requirement(content_source.CONTENT_SOURCE_NAME, {}, str(caught_error))]
+    problem = None
+    try:
+        compatibility.require_engine(f"the {content_source.CONTENT_SOURCE_NAME} catalog", catalog, engine_version,
+                                     GOLFO_CATALOG_SCHEMA_VERSION)
+    except ProfileError as engine_error:
+        problem = str(engine_error)
+    requirements = [engine_requirement(content_source.CONTENT_SOURCE_NAME, catalog, problem)]
+    golfo_profile_names = set(catalog.get("profiles") or {})
+    locked_sources = locked_sources_of(project_root)
+    configuration = configuration_of(project_root)
+    for declaration in declared_sources(project_root) or []:
+        update_mode = effective_update_mode(configuration, declaration)
+        source = locate_source(declaration, locked_sources.get(declaration["name"]), project_root, update_mode)
+        if source["state"] != SOURCE_AVAILABLE:
+            continue
+        try:
+            pack_catalog = read_json_file(os.path.join(source["root"], PACK_CATALOG_FILE_NAME), "pack catalog")
+        except StateError:
+            pack_catalog = {}
+        problem = None
+        try:
+            load_pack_catalog(source, golfo_profile_names, engine_version)
+        except ProfileError as pack_error:
+            problem = str(pack_error)
+        requirements.append(engine_requirement(declaration["name"], pack_catalog, problem))
+    return requirements
+
+
 def raise_unknown_profile(catalog, name, requested_by):
     """Explain a profile that is not in the catalog, naming the source when it has one."""
     origin = f" (required by {requested_by})" if requested_by else ""

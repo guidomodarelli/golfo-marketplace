@@ -4376,6 +4376,44 @@
           "critical": true
         }
       ]
+    },
+    {
+      "id": "doctor-reports-sources-that-need-a-newer-engine",
+      "description": "Para saber antes de aplicar si el contenido o un pack piden un golfo-kit más nuevo se usa agent-ready doctor, que compara el minEngine de cada fuente con el motor instalado, dice qué versión instalar y sale con 1.",
+      "input": "Agregamos el pack de la empresa a sources.packs y no quiero enterarme recién al aplicar de que necesita una versión de golfo-kit más nueva que la que tengo instalada. ¿Cómo lo reviso antes, qué me va a decir si falta actualizar y cómo actualizo el plugin? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "agent-ready doctor",
+          "description": "Usa agent-ready doctor",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "minEngine",
+          "description": "Explica que compara el minEngine declarado",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "sale con 1",
+            "exit 1",
+            "código 1",
+            "exit code 1"
+          ],
+          "description": "Dice que doctor sale con 1 si falta actualizar"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "claude plugin update",
+            "codex plugin marketplace upgrade",
+            "hermes plugins update"
+          ],
+          "description": "Da el comando que actualiza el plugin"
+        }
+      ]
     }
   ]
 }
