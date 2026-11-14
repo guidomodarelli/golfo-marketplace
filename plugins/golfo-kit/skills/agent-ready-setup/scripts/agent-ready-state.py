@@ -897,6 +897,8 @@ def desired_assets(skill_dir, catalog, resolved, workspace_rules=None):
 
 
 WORKSPACE_RULES_CACHE = "workspace-rules"
+# Prefix of the lines of the content digest for the rules golfo-kit profiles add to workspaces.
+WORKSPACE_ORIGIN_PREFIX = "workspace:"
 
 
 def workspace_rule_files(skill_dir, catalog, workspaces):
@@ -942,8 +944,19 @@ def workspace_rule_files(skill_dir, catalog, workspaces):
                 files[workspace_selection.rule_tree_path(workspace["path"], rule_path)] = {
                     "profile": name, "source": template_origin(skill_dir, catalog, name, absolute_path),
                     "sourcePath": cache_path, "sha256": sha256, "workspace": workspace["path"],
-                    "rulePath": rule_path}
+                    "rulePath": rule_path, "originSha256": sha256_of_file(absolute_path)}
     return files
+
+
+def workspace_rule_origins(workspace_rules):
+    """{"<profile>:rules/<rule>": sha256} of the rules that golfo-kit profiles add to workspaces.
+
+    It is the content they come from, without the folder each workspace scopes them to: it counts in
+    the content digest of golfo-kit, so a pinned golfo-kit sees a change of a profile only a workspace
+    selects, and the digest does not depend on the folders of this repository.
+    """
+    return {f"{entry['profile']}:{workspace_selection.RULES_DIRECTORY}/{entry['rulePath']}": entry["originSha256"]
+            for entry in workspace_rules.values() if not is_pack_profile(entry["profile"])}
 
 
 def workspace_blocks(workspaces, workspace_rules):
@@ -1245,7 +1258,7 @@ def describe_source_item(name, item):
     return f"{name} ({item['type']} {item['origin']}): " + "; ".join(details)
 
 
-def enforce_sync_policy(project_root, skill_dir, catalog, resolved, digests, selected=None):
+def enforce_sync_policy(project_root, skill_dir, catalog, resolved, digests, selected=None, workspace_origins=None):
     """An unattended sync only adopts what is in ``auto``.
 
     A pinned source that differs from the lock stops it, golfo-kit included: its mode is
@@ -1254,7 +1267,7 @@ def enforce_sync_policy(project_root, skill_dir, catalog, resolved, digests, sel
     (a local source without Git); then a pack in ``auto`` waits too, because an apply writes
     the whole selection and cannot update a pack without updating golfo-kit.
     ``selected`` adds the profiles of the workspaces to the sources checked; the content digest of
-    golfo-kit is the one of the root selection, as compute_plan records it.
+    golfo-kit is the one of the root selection plus ``workspace_origins``, as compute_plan records it.
     """
     lock = read_lock(project_root)
     report = source_report(catalog, selected or resolved, digests, lock)
@@ -1273,7 +1286,7 @@ def enforce_sync_policy(project_root, skill_dir, catalog, resolved, digests, sel
         golfo_assets = {destination: entry for destination, entry in assets.items() if not is_pack_profile(entry["profile"])}
         identity = source_identity(skill_dir, golfo_assets, merged_template_entries(skill_dir, catalog, resolved),
                                    golfo_blocks(desired_blocks(skill_dir, catalog, resolved, assets)),
-                                   golfo_blocks(nested_contents(skill_dir, catalog, resolved)))
+                                   golfo_blocks(nested_contents(skill_dir, catalog, resolved)), workspace_origins)
         if lock.get("source", {}).get("contentDigest") != identity["contentDigest"]:
             raise IncompleteEvaluationError(
                 "this repository pins golfo-kit and has a release pending, and SessionStart cannot update a pack alone; "
@@ -1468,12 +1481,13 @@ def golfo_blocks(blocks):
     return {key: item for key, item in blocks.items() if not is_pack_profile(item["profile"])}
 
 
-def source_identity(skill_dir, assets, merged_templates, blocks, nested_targets):
+def source_identity(skill_dir, assets, merged_templates, blocks, nested_targets, workspace_origins=None):
     """Identity of the resolved source; contentDigest is the immutable part.
 
     Pinned golfo-kit content records the Git origin and revision it came from, so the next apply
     of a pinned repository fetches exactly that content again. A nested target counts by its id, not
-    by the folders it goes to in this repository.
+    by the folders it goes to in this repository, and a rule of a workspace by the rule it comes from
+    (workspace_rule_origins).
     """
     digest_lines = [f"{destination}\t{entry['sha256']}" for destination, entry in sorted(assets.items())]
     digest_lines += [f"{destination}\t{entry['templateSha256']}" for destination, entry in sorted(merged_templates.items())]
@@ -1481,6 +1495,7 @@ def source_identity(skill_dir, assets, merged_templates, blocks, nested_targets)
                      for (destination, block_id), item in sorted(blocks.items())]
     digest_lines += [f"{nested.NESTED_PREFIX}{identifier}\t{sha256_of_text(item['content'])}"
                      for identifier, item in sorted(nested_targets.items())]
+    digest_lines += [f"{WORKSPACE_ORIGIN_PREFIX}{origin}\t{sha256}" for origin, sha256 in sorted((workspace_origins or {}).items())]
     digest_lines += [
         f"{relative_path}\t{sha256_of_file(os.path.join(skill_dir, relative_path))}"
         for relative_path in RENDERED_INSTRUCTION_INPUTS
@@ -1846,12 +1861,13 @@ def compute_plan(project_root, skill_dir, catalog, profile_names):
     # A pack only a workspace selects is still projected: its digest and its pinned mode count.
     selected = workspace_selection.selected_profiles(resolved, workspaces)
     digests = profile_digests(skill_dir, catalog, selected)
-    # The rules of a workspace depend on the folders of this repository: they stay out of the content digest.
+    # The text of a rule of a workspace depends on its folder: the digest takes the rule it comes from.
     golfo_assets = {destination: entry for destination, entry in assets.items()
                     if not is_pack_profile(entry["profile"]) and not entry.get("workspace")}
+    workspace_origins = workspace_rule_origins(workspace_rules)
     # Without a lockfile the first apply keeps the previous overwrite contract.
     edited_views, preserved_views = detached_views(project_root, assets, locked_assets) if lock else ([], [])
-    identity = source_identity(skill_dir, golfo_assets, merged, golfo_blocks(blocks), golfo_blocks(targets))
+    identity = source_identity(skill_dir, golfo_assets, merged, golfo_blocks(blocks), golfo_blocks(targets), workspace_origins)
     return {
         "schemaVersion": SCHEMA_VERSION,
         "profiles": resolved,
@@ -1861,6 +1877,7 @@ def compute_plan(project_root, skill_dir, catalog, profile_names):
         "source": identity,
         "profileDigests": digests,
         "selectedProfiles": selected,
+        "workspaceOrigins": workspace_origins,
         "profileSources": source_entries(catalog, selected, digests, (lock or {}).get("profileSources", {})),
         "sourceReport": source_report(catalog, selected, digests, lock),
         "versionChanges": version_changes(catalog, identity, lock),
@@ -3245,7 +3262,8 @@ def command_resolve(arguments):
     if arguments.source_mode == SOURCE_MODE_SYNC:
         selected = workspace_selection.selected_profiles(resolved, workspaces)
         enforce_sync_policy(arguments.project, arguments.skill_dir, catalog, resolved,
-                            profile_digests(arguments.skill_dir, catalog, selected), selected)
+                            profile_digests(arguments.skill_dir, catalog, selected), selected,
+                            workspace_rule_origins(workspace_rules))
     stack_dir = compose_stack_directory(arguments.skill_dir, catalog, resolved, arguments.compose_dir, workspace_rules)
     if selection == SELECTION_DETECTION:
         detection = detect_profiles(catalog["profiles"], arguments.project)
@@ -3465,7 +3483,7 @@ def command_plan(arguments):
         return INCOMPLETE_EVALUATION_STATUS
     if arguments.source_mode == SOURCE_MODE_SYNC:
         enforce_sync_policy(arguments.project, arguments.skill_dir, catalog, plan["profiles"], plan["profileDigests"],
-                            plan["selectedProfiles"])
+                            plan["selectedProfiles"], plan["workspaceOrigins"])
         keep_locked_entries_of_unselected_sources(plan, read_lock(arguments.project))
     tools_report = pack_tools_report(plan, catalog, configuration_of(arguments.project, arguments.offline))
     if tools_report:

@@ -116,7 +116,9 @@ repositorio:
   `AGENTS.md` de los profiles de un workspace son la parte 64c de #64. La sección queda afuera hasta
   entonces porque nombra comandos y skills que el workspace todavía no proyecta.
 - **Fuentes:** un pack que solo elige un workspace cuenta como seleccionado: su digest va al lock y su modo
-  `pinned` frena al sync como el de un pack de la raíz.
+  `pinned` frena al sync como el de un pack de la raíz. Las rules que un profile de golfo-kit suma a un
+  workspace entran al `contentDigest` por el archivo del que salen, no por la carpeta: un golfo-kit
+  fijado ve su cambio y el digest no depende de las carpetas del repositorio.
 
 **Capas.** Un stack puede extender otro con `requires`: la web va en tres capas,
 `react` ← `nextjs` ← `nextjs-app-router`. Cada capa publica solo sus propios assets, con

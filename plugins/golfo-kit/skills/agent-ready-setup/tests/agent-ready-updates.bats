@@ -331,6 +331,30 @@ EOF
   grep -Fq 'changed locally' .agents/rules/acme-kafka.md
 }
 
+@test "a pinned golfo-kit counts the rules of a profile only a workspace selects" {
+  copy_skill
+  publish_pack_repository
+  mkdir -p apps/web
+  printf '{}\n' > apps/web/package.json
+  # The pack in auto makes SessionStart sync a pinned repository.
+  write_manifest acme/kafka-interno '{"updates": {"mode": "pinned"}, "sources": {"packs": [{"name": "acme", "source": "git+https://packs.example.invalid/acme", "ref": "main", "updates": "auto"}]}, "workspaces": [{"path": "apps/web", "profiles": ["react"]}]}'
+  run_bootstrap
+  [ "$status" -eq 0 ]
+  [ -f .agents/rules/workspaces/apps/web/react-style.md ]
+
+  # Nothing changed: the workspace does not look like a release pending.
+  run_session_start AGENT_READY_SETUP_SYNC_FOREGROUND=1 AGENT_READY_SETUP_MARKETPLACE_UPGRADED=1
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"has a release pending"* ]]
+  [[ "$output" == *"projection completed"* ]]
+
+  printf '\nA workspace sentence.\n' >> "$source_copy/assets/stacks/react/rules/react-style.md"
+  run_session_start AGENT_READY_SETUP_SYNC_FOREGROUND=1 AGENT_READY_SETUP_MARKETPLACE_UPGRADED=1
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"pins golfo-kit and has a release pending"* ]]
+  ! grep -Fq 'A workspace sentence' .agents/rules/workspaces/apps/web/react-style.md
+}
+
 @test "a source in auto updates a pinned repository, unless golfo-kit has a release pending" {
   copy_skill
   publish_pack_repository

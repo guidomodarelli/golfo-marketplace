@@ -157,6 +157,23 @@ def quoted(pattern):
     return '"' + pattern.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
+def without_comment(value):
+    """The value without its YAML comment: a # at the start or after a space, outside quotes."""
+    quote = None
+    for index, character in enumerate(value):
+        if quote:
+            quote = None if character == quote else quote
+        elif character in "\"'":
+            quote = character
+        elif character == "#" and (index == 0 or value[index - 1].isspace()):
+            return value[:index].strip()
+    return value.strip()
+
+
+def is_comment_line(line):
+    return line.strip().startswith("#")
+
+
 def inline_items(value):
     """The items of an inline YAML list, split on the commas outside quotes and braces ({ts,tsx})."""
     items, current, quote, depth = [], "", None, 0
@@ -189,14 +206,17 @@ def selected_profiles(root_resolved, workspaces):
 
 def frontmatter_patterns(lines, start, rule):
     """(patterns, end) of the paths: key at lines[start]: its patterns and the first line after them."""
-    value = PATHS_LINE.match(lines[start]).group(1).strip()
+    value = without_comment(PATHS_LINE.match(lines[start]).group(1))
     if value:
         inline = INLINE_LIST.match(value)
         patterns = inline_items(inline.group(1)) if inline else [unquoted(value)]
         return patterns, start + 1
     patterns, end = [], start + 1
-    while end < len(lines) and LIST_ITEM.match(lines[end]):
-        patterns.append(unquoted(LIST_ITEM.match(lines[end]).group(1)))
+    # A comment line between the items stays out of the list without ending it.
+    while end < len(lines) and (LIST_ITEM.match(lines[end]) or is_comment_line(lines[end])):
+        item = LIST_ITEM.match(lines[end])
+        if item and not is_comment_line(lines[end]):
+            patterns.append(unquoted(without_comment(item.group(1))))
         end += 1
     if not patterns:
         raise ProfileError(f"rule {rule}: paths: in its frontmatter is not a list of patterns")
