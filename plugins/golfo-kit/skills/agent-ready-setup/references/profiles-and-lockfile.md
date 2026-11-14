@@ -54,6 +54,45 @@ prefijo (`rules/node-security.md`, `agents/react-perf-analyzer.md`,
 sección de `AGENTS.md` como bloque con id ([managed-agents-block.md](managed-agents-block.md),
 «Secciones de los stacks»).
 
+**Workspaces.** En un monorepo, `workspaces` le da a una carpeta su propia selección, al lado de la del
+repositorio:
+
+```json
+{
+  "profiles": ["node"],
+  "workspaces": [
+    { "path": "apps/web", "profiles": ["nextjs-app-router"] },
+    { "path": "services/api", "profiles": ["node"] }
+  ]
+}
+```
+
+- **Resolución:** cada workspace resuelve sus profiles junto con los de la raíz (`requires`, `defaults`,
+  `excludedDefaults`), así que un profile suyo que choca con uno de la raíz (`conflicts`) falla como fallaría en
+  la raíz. Lo que la raíz ya resuelve vale para todo el repositorio, así que un workspace solo suma los
+  profiles que la raíz no tiene; dos workspaces no se afectan entre sí. En el ejemplo, `apps/web` suma `react`, `nextjs` y
+  `nextjs-app-router`, y `services/api` no suma nada.
+- **Validación:** el plan y el apply frenan antes de escribir si un path no cumple estas condiciones:
+  - es una carpeta que existe;
+  - es relativa y está dentro del repositorio;
+  - no está bajo `.git/`, `.agents/`, `.claude/` o `.codex/`;
+  - no se llega por un symlink;
+  - Git no la ignora;
+  - no aparece dos veces ni está dentro de otro workspace.
+
+  Un profile de un workspace que no resuelve, o uno de CI (los elige `ci.provider`), también frena el
+  plan, y el error nombra el workspace.
+- **Lectura:** `agent-ready plan` muestra una línea por workspace con lo que suma
+  (`Workspace apps/web: nextjs-app-router (adds react, nextjs, nextjs-app-router to the root selection)`), y
+  `--json` deja la lista en `workspaces`.
+- **Lock y drift:** el lock registra en `workspaces` la selección y lo que suma cada uno, y
+  `apply --from-lock` falla si un workspace del manifest no es el del lock. `status` muestra
+  los workspaces del manifest y marca como drift el que el último apply no adoptó o el que salió del
+  manifest; `agent-ready check` lo cuenta como un problema del CI.
+- **Assets:** por ahora la selección de un workspace se resuelve y se registra, pero todavía no proyecta
+  assets. Las rules con `paths:` para Claude Code y el `AGENTS.md` del workspace para Codex son la parte
+  64b de #64.
+
 **Capas.** Un stack puede extender otro con `requires`: la web va en tres capas,
 `react` ← `nextjs` ← `nextjs-app-router`. Cada capa publica solo sus propios assets, con
 nombres que no repite ninguna otra, y trae por `requires` las capas que extiende:
@@ -489,7 +528,8 @@ bloque gestionado de un archivo compartido ([managed-agents-block.md](managed-ag
 sección «Bloques en otros archivos»), también de cada `AGENTS.md` anidado
 ([nested-instructions.md](nested-instructions.md)). El JSON es
 determinista (sin timestamps ni paths de la máquina): la misma resolución
-produce los mismos bytes.
+produce los mismos bytes. `workspaces` registra, por carpeta, los `profiles` que elige el manifest y los
+que suma a la raíz (`own`), sección 1, «Workspaces».
 
 **Apply reproducible.** `agent-ready apply --from-lock` aplica exactamente el lock, en otra máquina o un año
 después, sin importar `updates.mode` ni las `ref` del manifest:
@@ -674,8 +714,8 @@ seleccionado declara `tools: ["browser"]`; `tools.enabled: false` (o
 
 ## 10. Límites conocidos
 
-- No hay asignación de profiles por ruta en monorepos: un repositorio tiene una
-  sola selección.
+- Los profiles de un workspace todavía no proyectan assets: `plan`, `status` y el lock registran su
+  selección («Workspaces», sección 1).
 - En Windows sin symlinks, las vistas son hard links y
   `relink-hard-link-views.sh` las reenlaza en cada prompt y en cada escritura del
   índice, para recuperar las que git separa cuando recrea el asset. Sin historial
