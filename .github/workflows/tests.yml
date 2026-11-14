@@ -90,16 +90,16 @@ jobs:
         include:
           # Git Bash pays for every process it starts, and these suites start thousands, so
           # on Windows the same suites take about four times as long as on macOS. Three
-          # shards of similar length (about 9, 9 and 11 minutes of tests) keep the Windows
-          # run close to the others. bootstrap.bats would not fit in its time budget at all.
+          # shards of similar length (about 34, 39 and 36 minutes) keep each one under the
+          # 45-minute limit of the job. bootstrap.bats would not fit in its time budget at all.
           - os: windows-latest
             python: "3.13"
             shard: 1/3
-            suites: agent-ready-state.bats agent-ready-config.bats agent-ready-pack-tools.bats agent-ready-pack-examples.bats agent-ready-blocks.bats
+            suites: agent-ready-state.bats agent-ready-config.bats agent-ready-pack-examples.bats agent-ready-blocks.bats
           - os: windows-latest
             python: "3.13"
             shard: 2/3
-            suites: agent-ready-updates.bats agent-ready-detection.bats agent-ready-reviews.bats agent-ready-conflicts.bats agent-ready-pack-clis.bats agent-ready-ci.bats
+            suites: agent-ready-updates.bats agent-ready-detection.bats agent-ready-reviews.bats agent-ready-conflicts.bats agent-ready-pack-clis.bats agent-ready-pack-tools.bats agent-ready-ci.bats
           - os: windows-latest
             python: "3.13"
             shard: 3/3
