@@ -12,6 +12,11 @@
       "type": "boolean",
       "default": true,
       "x-env": "AGENT_READY_SETUP_DETECTION"
+    },
+    "workspaces": {
+      "description": "Apagada, plan y agent-ready workspaces list no sugieren workspaces: las carpetas de un monorepo con un stack que la raíz no tiene.",
+      "type": "boolean",
+      "default": true
     }
   }
 }

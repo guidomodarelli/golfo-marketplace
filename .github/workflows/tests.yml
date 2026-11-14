@@ -111,21 +111,30 @@ jobs:
       matrix:
         include:
           # Git Bash pays for every process it starts, and these suites start thousands, so
-          # on Windows the same suites take about four times as long as on macOS. Three
-          # shards of similar length (about 38, 37 and 39 minutes) keep each one under the
-          # 45-minute limit of the job. bootstrap.bats would not fit in its time budget at all.
+          # on Windows the same suites take about four times as long as on macOS, and one run
+          # can be twice as slow as another. Five shards of 15 to 19 minutes on a fast runner
+          # (about 40 on a slow one) keep each one under the 45-minute limit of the job.
+          # bootstrap.bats would not fit in its time budget at all.
           - os: windows-latest
             python: "3.13"
-            shard: 1/3
-            suites: agent-ready-state.bats agent-ready-config.bats agent-ready-pack-examples.bats agent-ready-blocks.bats agent-ready-workspaces.bats
+            shard: 1/5
+            suites: agent-ready-blocks.bats agent-ready-config.bats agent-ready-pack-examples.bats agent-ready-reviews.bats agent-ready-conflicts.bats
           - os: windows-latest
             python: "3.13"
-            shard: 2/3
-            suites: agent-ready-updates.bats agent-ready-detection.bats agent-ready-reviews.bats agent-ready-conflicts.bats agent-ready-pack-clis.bats agent-ready-pack-tools.bats
+            shard: 2/5
+            suites: agent-ready-state.bats agent-ready-updates.bats agent-ready-ci.bats
           - os: windows-latest
             python: "3.13"
-            shard: 3/3
-            suites: agent-ready-packs.bats agent-ready-cli.bats agent-ready-golfo-kit.bats agent-ready-pack-scripts.bats agent-ready-ci.bats
+            shard: 3/5
+            suites: agent-ready-golfo-kit.bats agent-ready-detection.bats agent-ready-pack-clis.bats
+          - os: windows-latest
+            python: "3.13"
+            shard: 4/5
+            suites: agent-ready-packs.bats agent-ready-pack-tools.bats
+          - os: windows-latest
+            python: "3.13"
+            shard: 5/5
+            suites: agent-ready-workspaces.bats agent-ready-cli.bats agent-ready-pack-scripts.bats
           - os: macos-latest
             python: "3.13"
             suites: agent-ready-state.bats agent-ready-detection.bats agent-ready-packs.bats agent-ready-updates.bats agent-ready-config.bats agent-ready-cli.bats agent-ready-reviews.bats agent-ready-golfo-kit.bats agent-ready-conflicts.bats agent-ready-pack-tools.bats agent-ready-pack-clis.bats agent-ready-pack-scripts.bats agent-ready-pack-examples.bats agent-ready-blocks.bats agent-ready-workspaces.bats agent-ready-ci.bats merge-instructions.bats bootstrap.bats
@@ -172,9 +181,13 @@ jobs:
           git config --global user.email "ci@example.invalid"
       - name: Agent Ready suites
         working-directory: plugins/golfo-kit/skills/agent-ready-setup/tests
+        # A test that hangs fails on its own, with its name, instead of stopping the whole shard at the
+        # 45-minute limit of the job: no test takes more than a few minutes, even on a slow Windows runner.
+        env:
+          BATS_TEST_TIMEOUT: "600"
         run: |
           bash --version | head -n 1
-          LC_ALL=C.UTF-8 pnpm exec bats ${{ matrix.suites }}
+          LC_ALL=C.UTF-8 pnpm exec bats --timing ${{ matrix.suites }}
 
   bootstrap:
     name: Agent Ready bootstrap (shard ${{ matrix.shard }}/3)
