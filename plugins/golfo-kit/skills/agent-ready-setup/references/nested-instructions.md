@@ -59,7 +59,10 @@ bloque en `nested/<nombre>.md` de su árbol de assets:
 "nested": { "app-router": { "candidates": ["app", "src/app"] } }
 ```
 
-- **Id:** `<profile>/<nombre>`, como `nextjs-app-router/app-router` o `acme/web/app-router`. Es el id del
+- **Id:** `<profile>/<nombre>`, como `nextjs-app-router/app-router` o `acme/web/app-router`.
+- **Destino de golfo-kit:** `nextjs-app-router/app-router` lleva al `AGENTS.md` de `app/` o `src/app/` qué guarda
+  el directorio de rutas y cómo validan los route handlers. La rule `nextjs-app-router.md`, que se carga en cada
+  sesión, conserva lo que vale fuera de esa carpeta. Es el id del
   bloque en sus marcadores (`<!-- BEGIN AGENT-READY MANAGED: acme/web/app-router -->`).
 - **`candidates`:** carpetas relativas a la raíz, en orden. Es opcional: un destino sin candidatas solo se
   escribe donde lo configura el manifest.
@@ -172,4 +175,3 @@ Before you read or change files under one of these folders, read and follow its 
 
 - La revisión de redundancias con IA (`merge-instructions.sh`) solo trabaja sobre el `AGENTS.md` raíz.
 - Las contradicciones entre el `AGENTS.md` raíz y los anidados son la parte 72e de #72.
-- El primer destino de golfo-kit (App Router en `nextjs-app-router`) es la parte 61c de #61.
