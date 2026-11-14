@@ -122,7 +122,9 @@ repositorio:
   repositorio.
 - **Otros archivos con bloques:** el bloque de `.gitignore`, `.gitattributes` o `.dockerignore`, que Git y
   Docker leen por carpeta, va al archivo del workspace (`apps/web/.gitignore`). El bloque de cualquier otro
-  archivo (`.github/pull_request_template.md`, `CONTRIBUTING.md`) va al de la raíz, una sola vez.
+  archivo (`.github/pull_request_template.md`, `CONTRIBUTING.md`) va al de la raíz, una sola vez. Sus
+  referencias a una rule del workspace apuntan a `.agents/rules/workspaces/<path>/`, como las de los
+  skills compartidos.
 - **Destinos anidados:** un profile que suma un workspace busca sus candidatas dentro del workspace: el
   destino App Router de `apps/web` es `apps/web/app/AGENTS.md`. Su bloque nombra las rules del workspace, y
   `agent-ready plan` agrega el workspace a la línea del destino. `nested.enabled` y la entrada de
