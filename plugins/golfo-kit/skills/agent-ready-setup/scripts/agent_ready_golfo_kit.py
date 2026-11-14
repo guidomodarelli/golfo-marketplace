@@ -334,8 +334,9 @@ def compose(engine_dir, origin, commit, requested_ref, layout=LAYOUT_MARKETPLACE
         raise ProfileError(f"golfo-kit: {len(missing)} file(s) of revision {commit[:12]} could not be written to the cache "
                            f"(first: {missing[0]}); a content source cannot use symlinks, and a long path needs "
                            "XDG_CACHE_HOME in a shorter directory")
-    # A short name keeps the deepest asset under the path limit of Windows.
-    identity = f"{commit}\0{engine_digest(engine_dir, layout)}\0{requested_ref or ''}"
+    # A short name keeps the deepest asset under the path limit of Windows. The origin counts: the same
+    # commit from a fork or a mirror is another source, and the marker and the lock name it.
+    identity = f"{commit}\0{engine_digest(engine_dir, layout)}\0{requested_ref or ''}\0{origin}"
     pair = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:ENGINE_DIGEST_LENGTH]
     root = os.path.join(composed_root(), pair)
     skill_dir = os.path.join(root, *SKILL_RELATIVE_PATH.split("/"))

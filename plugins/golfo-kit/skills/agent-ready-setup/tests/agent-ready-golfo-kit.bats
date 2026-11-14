@@ -965,3 +965,20 @@ PY
   [[ "$output" != *".github/workflows/agent-ready.yml"* ]]
   [[ "$output" == *"gitlab-ci.yml"* ]]
 }
+
+
+@test "the same commit of a content pack from another origin records that origin" {
+  publish_content_pack
+  git config --global "url.file:///$(native_path "$content_pack" | sed 's#^/##').insteadOf" "https://mirror.example.invalid/golfo"
+  write_manifest "{\"profiles\": [\"node\"], \"sources\": {$content_source}}"
+  run_cli apply
+  [ "$status" -eq 0 ]
+
+  # A mirror with the same commit at the same ref is another source: the lock names it, and the lock reproduces.
+  write_manifest '{"profiles": ["node"], "sources": {"golfoKit": {"source": "git+https://mirror.example.invalid/golfo", "ref": "main"}}}'
+  run_cli apply
+  [ "$status" -eq 0 ]
+  [ "$(lock_value '[data["source"][key] for key in ("revision", "origin")]')" = "['$content_revision', 'https://mirror.example.invalid/golfo']" ]
+  run_cli apply --from-lock
+  [ "$status" -eq 0 ]
+}
