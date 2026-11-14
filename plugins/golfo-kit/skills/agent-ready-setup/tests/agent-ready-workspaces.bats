@@ -2,7 +2,8 @@
 # Workspaces of a monorepo (agent_ready_workspaces.py): the selection of each folder, resolved against
 # the root selection, shown by plan and status, recorded in the lock, the paths that cannot be one, the
 # rules a workspace adds (scoped with paths: and listed by its own AGENTS.md), and the rest of its assets:
-# skills, subagents and commands once for the repository, blocks and nested targets where they belong.
+# skills, subagents and commands once for the repository, blocks and nested targets where they belong; the
+# workspaces detection suggests and agent-ready workspaces list|add|remove.
 
 bats_require_minimum_version 1.5.0
 
@@ -59,6 +60,10 @@ run_cli() {
   run --separate-stderr env PATH="$fake_bin:$PATH" python3 "$skill_dir/scripts/agent-ready" "$@"
 }
 
+manifest_value() {
+  python3 -c 'import json, sys; data = json.load(open(".agents/agent-ready.json", encoding="utf-8")); print(eval(sys.argv[1]))' "$1"
+}
+
 lock_value() {
   python3 -c 'import json, sys; lock = json.load(open(".agents/agent-ready.lock.json", encoding="utf-8")); print(eval(sys.argv[1]))' "$1"
 }
@@ -69,8 +74,10 @@ lock_value() {
   [ "$status" -eq 0 ]
   [[ "$output" == *"Workspace apps/web: nextjs-app-router (adds react, nextjs, nextjs-app-router to the root selection)"* ]]
   [[ "$output" == *"Workspace services/api: node (nothing of its own: the root selection already has it)"* ]]
-  run_cli plan --json
-  [ "$(printf '%s' "$output" | python3 -c 'import json, sys; print([(item["path"], item["own"]) for item in json.load(sys.stdin)["workspaces"]])')" = "[('apps/web', ['react', 'nextjs', 'nextjs-app-router']), ('services/api', [])]" ]
+  # The plan as JSON goes to a file: on the Windows runners, Git Bash can keep waiting for the end of a
+  # large output that a native process wrote to the pipe of $(...).
+  env PATH="$fake_bin:$PATH" python3 "$skill_dir/scripts/agent-ready" plan --json > "$test_root/plan.json"
+  [ "$(python3 -c 'import json, sys; print([(item["path"], item["own"]) for item in json.load(open(sys.argv[1], encoding="utf-8"))["workspaces"]])' "$test_root/plan.json")" = "[('apps/web', ['react', 'nextjs', 'nextjs-app-router']), ('services/api', [])]" ]
 
   run_cli apply
   [ "$status" -eq 0 ]
@@ -334,4 +341,115 @@ lock_value() {
   run_cli plan
   [[ "$output" != *"+ create"* ]]
   [[ "$output" != *"~ update"* ]]
+}
+
+@test "agent-ready workspaces add, list and remove change the manifest and check it before writing" {
+  write_manifest '{"profiles": ["node"]}'
+  run_cli workspaces add apps/web react
+  [ "$status" -eq 0 ]
+  [ "$(manifest_value 'data["workspaces"]')" = "[{'path': 'apps/web', 'profiles': ['react']}]" ]
+  run_cli workspaces add ./apps/web/ business-flows
+  [ "$status" -eq 0 ]
+  [ "$(manifest_value 'data["workspaces"][0]["profiles"]')" = "['react', 'business-flows']" ]
+  run_cli workspaces list
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"apps/web"*"react, business-flows"*"(adds react, business-flows)"* ]]
+  run_cli workspaces list --json
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s' "$output" | python3 -c 'import json, sys; print(json.load(sys.stdin)["workspaces"][0]["adds"])')" = "['react', 'business-flows']" ]
+
+  before="$(cat .agents/agent-ready.json)"
+  run_cli workspaces add missing react
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"the workspace 'missing' does not exist in the repository"* ]]
+  run_cli workspaces add services/api no-such-profile
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"workspace services/api: unknown profile 'no-such-profile'"* ]]
+  run_cli workspaces remove services/api
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"services/api is not a workspace"* ]]
+  run_cli workspaces remove apps/web go
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"workspace apps/web does not select go"* ]]
+  [ "$(cat .agents/agent-ready.json)" = "$before" ]
+
+  run_cli workspaces remove apps/web business-flows
+  [ "$status" -eq 0 ]
+  [ "$(manifest_value 'data["workspaces"][0]["profiles"]')" = "['react']" ]
+  run_cli workspaces remove apps/web
+  [ "$status" -eq 0 ]
+  [ "$(manifest_value '"workspaces" in data')" = "False" ]
+}
+
+@test "detection suggests a workspace for each folder with a stack the root does not have, and add takes it" {
+  printf '{"dependencies": {"next": "15", "react": "19"}}\n' > apps/web/package.json
+  mkdir -p apps/web/app libs/ui tools/gen packages/docs
+  touch apps/web/app/layout.tsx packages/docs/README.md
+  printf 'module example.invalid/api\n' > services/api/go.mod
+  # Folders the package managers declare count too, besides apps/, packages/ and services/.
+  printf '%s\n' 'packages: # the shared packages' '  - "libs/*" # ui' > pnpm-workspace.yaml
+  printf '{"dependencies": {"react": "19"}}\n' > libs/ui/package.json
+  printf '%s\n' 'go 1.22' '' 'use (' '	./tools/gen' ')' > go.work
+  printf 'module example.invalid/gen\n' > tools/gen/go.mod
+  # Every ** of a pattern goes into the subfolders, but never into installed dependencies; a literal
+  # folder (./tools/gen of go.work) counts as it is.
+  printf '{"workspaces": ["modules/**/api/**"]}\n' > package.json
+  mkdir -p modules/team/api/server/v2 modules/team/api/node_modules/lib
+  printf 'module example.invalid/team\n' > modules/team/api/server/v2/go.mod
+  printf 'module example.invalid/lib\n' > modules/team/api/node_modules/lib/go.mod
+  write_manifest '{"profiles": ["node"]}'
+  run_cli plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"? apps/web: nextjs-app-router (apps/web/app/layout.tsx matches app/layout.tsx)"* ]]
+  [[ "$output" == *"Add it with agent-ready workspaces add services/api"* ]]
+  [[ "$output" == *"? libs/ui: react"* ]]
+  [[ "$output" == *"? tools/gen: go"* ]]
+  [[ "$output" == *"? modules/team/api/server/v2: go"* ]]
+  [[ "$output" != *"node_modules"* ]]
+  [[ "$output" != *"? packages/docs"* ]]
+
+  run_cli workspaces add apps/web
+  [ "$status" -eq 0 ]
+  [ "$(manifest_value 'data["workspaces"]')" = "[{'path': 'apps/web', 'profiles': ['nextjs-app-router']}]" ]
+  run_cli workspaces list
+  [ "$status" -eq 0 ]
+  [[ "$stderr" != *"Suggested: apps/web"* ]]
+  [[ "$stderr" == *"Suggested: services/api: go"* ]]
+
+  # A folder without a stack of its own needs its profiles named.
+  run_cli workspaces add packages/docs
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"no stack detected in packages/docs"* ]]
+
+  # pnpm also takes the list inline.
+  printf '%s\n' 'packages: ["libs/*"] # inline' > pnpm-workspace.yaml
+  run_cli workspaces list
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"Suggested: libs/ui: react"* ]]
+
+  write_manifest '{"profiles": ["node"], "detection": {"workspaces": false}}'
+  run_cli plan
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"Workspaces suggested"* ]]
+}
+
+@test "agent-ready workspaces add refuses a workspace an apply could not project" {
+  mkdir -p packs/acme/profiles/jest/rules
+  printf '# Jest\n' > packs/acme/profiles/jest/rules/react-testing.md
+  printf '%s\n' '{"schemaVersion": 1, "name": "acme", "profiles": {"jest": {"kind": "capability", "description": "Jest.", "assets": "profiles/jest", "overrides": ["react:rules/react-testing.md"]}}}' \
+    > packs/acme/agent-ready-pack.json
+  write_manifest '{"profiles": ["react"], "sources": {"packs": [{"name": "acme", "source": "path:packs/acme"}]}}'
+  run_cli trust add --project .
+  run_cli workspaces add apps/web acme/jest
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"overrides an asset of 'react', which the root selection projects for the whole repository"* ]]
+  [ "$(manifest_value '"workspaces" in data')" = "False" ]
+
+  # Removing some profiles checks the ones that stay: acme/jest needs react in the workspace.
+  write_manifest '{"profiles": ["node"], "sources": {"packs": [{"name": "acme", "source": "path:packs/acme"}]}, "workspaces": [{"path": "apps/web", "profiles": ["react", "acme/jest"]}]}'
+  before="$(cat .agents/agent-ready.json)"
+  run_cli workspaces remove apps/web react
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"the selection does not have 'react'"* ]]
+  [ "$(cat .agents/agent-ready.json)" = "$before" ]
 }

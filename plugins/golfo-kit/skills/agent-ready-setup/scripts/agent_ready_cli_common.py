@@ -20,7 +20,7 @@ from agent_ready_config import (
     user_config_path,
     validate_layer,
 )
-from agent_ready_options import SOURCES_ENABLED_KEY, SOURCES_PACKS_KEY
+from agent_ready_options import SOURCES_ENABLED_KEY, SOURCES_PACKS_KEY, WORKSPACES_KEY
 from agent_ready_packs import FULL_COMMIT, SOURCE_TYPE_GIT, parse_profile_sources
 
 CLI_NAME = "agent-ready"
@@ -232,6 +232,22 @@ def engine():
         specification.loader.exec_module(module)
         _ENGINE = module
     return _ENGINE
+
+
+def write_project_workspaces(project_root, workspaces):
+    """Write the workspaces of the manifest, validated, and nothing else; none left drops the key."""
+    path = os.path.join(project_root, PROJECT_CONFIG_RELATIVE_PATH)
+    schema = load_schema()
+    label = describe_layer(LAYER_PROJECT, path)
+    document = read_layer_file(path, LAYER_PROJECT) or {}
+    if workspaces:
+        document[WORKSPACES_KEY] = [{"path": entry["path"], "profiles": list(entry["profiles"])}
+                                             for entry in workspaces]
+    else:
+        document.pop(WORKSPACES_KEY, None)
+    validate_layer(schema, document, LAYER_PROJECT, label)
+    write_text_atomically(path, serialize_json(document))
+    return path
 
 
 def write_project_selection(project_root, profiles):

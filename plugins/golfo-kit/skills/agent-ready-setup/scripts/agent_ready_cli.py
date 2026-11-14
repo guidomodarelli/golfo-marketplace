@@ -50,6 +50,7 @@ from agent_ready_cli_reviews import register as register_review_commands
 from agent_ready_golfo_kit import GOLFO_KIT_SOURCE_NAME as GOLFO_KIT_SOURCE
 from agent_ready_cli_selection import register as register_selection_commands
 from agent_ready_cli_trust import register as register_trust_commands
+from agent_ready_cli_workspaces import register as register_workspace_commands
 from agent_ready_prompts import Cancelled
 
 # ---------------------------------------------------------------------------
@@ -396,6 +397,7 @@ def build_parser():
     preset.add_argument("--layer", choices=WRITABLE_LAYERS, default=LAYER_PROJECT,
                         help="project (.agents/agent-ready.json, versioned) or user (this machine) (default: project)")
     register_selection_commands(subparsers, new_subparser)
+    register_workspace_commands(subparsers, new_subparser)
     register_lifecycle_commands(subparsers, new_subparser)
     register_review_commands(subparsers, new_subparser)
     register_trust_commands(subparsers, new_subparser)

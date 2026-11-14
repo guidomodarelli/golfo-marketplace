@@ -4222,6 +4222,43 @@
           "description": "Aclara que skills, subagentes y comandos valen para todo el repositorio"
         }
       ]
+    },
+    {
+      "id": "monorepo-workspace-suggestions",
+      "description": "Explica qué workspaces sugiere la detección en un monorepo y con qué comando se agregan",
+      "input": "Mi monorepo tiene un package.json raíz con \"workspaces\": [\"apps/*\"], apps/web/package.json con next y react, el archivo apps/web/app/layout.tsx y services/api/go.mod. El manifest .agents/agent-ready.json tiene solo \"profiles\": [\"node\"]. ¿Qué workspaces me sugiere agent-ready plan y con qué comandos los agrego al manifest? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "agent-ready workspaces add apps/web",
+          "description": "Da el comando que agrega el workspace de la web",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "nextjs-app-router",
+          "description": "Dice que apps/web se sugiere con nextjs-app-router",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "agent-ready workspaces add services/api",
+          "description": "Da el comando que agrega el workspace de Go",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "no cambia el manifest",
+            "no escribe",
+            "no modifica el manifest",
+            "solo sugiere",
+            "no se aplica",
+            "no aplica"
+          ],
+          "description": "Aclara que la sugerencia no cambia el manifest"
+        }
+      ]
     }
   ]
 }

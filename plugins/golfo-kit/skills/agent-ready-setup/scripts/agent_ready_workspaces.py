@@ -17,6 +17,9 @@ skills, subagents and commands go to .agents/ once for the whole repository, bec
 not scope them by folder. The contract is in references/profiles-and-lockfile.md ("Workspaces").
 """
 
+import fnmatch
+import glob
+import json
 import os
 import re
 
@@ -43,6 +46,21 @@ PATHS_LINE = re.compile(r"^paths:\s*(.*)$")
 # YAML takes the items of a sequence indented or not ("paths:" then "- src/**").
 LIST_ITEM = re.compile(r"^\s*-\s*(.*)$")
 INLINE_LIST = re.compile(r"^\[(.*)\]$")
+
+
+# Where a monorepo keeps its packages, besides what its package managers declare (declared_patterns).
+CONVENTIONAL_PARENTS = ("apps", "packages", "services")
+PACKAGE_MANIFEST = "package.json"
+PNPM_WORKSPACE_FILE = "pnpm-workspace.yaml"
+GO_WORK_FILE = "go.work"
+# The folders detection looks into at most, besides the workspaces it skips: each one asks Git about the
+# folder and runs the detection.
+MAX_SUGGESTION_CANDIDATES = 50
+# Folders a recursive pattern (modules/**) never goes into: installed dependencies, besides the hidden ones.
+PRUNED_FOLDER_NAMES = ("node_modules",)
+RECURSIVE_WILDCARD = "**"
+PNPM_PACKAGES_LINE = re.compile(r"^packages:\s*(.*)$")
+GO_USE_LINE = re.compile(r"^use\s+(\(|\S+)")
 
 
 def is_linked(project_root, path):
@@ -139,6 +157,176 @@ def differences(configured, locked):
     configured_paths = {entry["path"] for entry in configured}
     lines += [f"workspace {path} left the manifest" for path in sorted(set(locked) - configured_paths)]
     return lines
+
+
+# ---------------------------------------------------------------------------
+# Suggested workspaces
+# ---------------------------------------------------------------------------
+
+def read_text(path):
+    """The text of a file of the repository, or None when it cannot be read."""
+    if is_link(path) or not os.path.isfile(path):
+        return None
+    try:
+        with open(path, encoding="utf-8-sig") as text_file:
+            return text_file.read()
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
+def package_workspaces(text):
+    """The patterns of "workspaces" in a package.json: a list, or {"packages": [...]}."""
+    try:
+        manifest = json.loads(text)
+    except ValueError:
+        return []
+    declared = manifest.get("workspaces") if isinstance(manifest, dict) else None
+    if isinstance(declared, dict):
+        declared = declared.get("packages")
+    return [pattern for pattern in declared if isinstance(pattern, str)] if isinstance(declared, list) else []
+
+
+def pnpm_packages(text):
+    """The patterns of packages: in a pnpm-workspace.yaml, as a list below the key or inline (["libs/*"])."""
+    patterns, inside = [], False
+    for line in text.splitlines():
+        # without_comment keeps a # inside quotes: packages: # the apps, or - "libs/*" # shared.
+        content = without_comment(line)
+        key = PNPM_PACKAGES_LINE.match(content)
+        if key and key.group(1):
+            inline = INLINE_LIST.match(key.group(1))
+            return inline_items(inline.group(1)) if inline else [unquoted(key.group(1))]
+        if key:
+            inside = True
+        elif inside and content:
+            item = LIST_ITEM.match(content)
+            if not item:
+                break
+            patterns.append(unquoted(item.group(1)))
+    return patterns
+
+
+def go_work_uses(text):
+    """The folders a go.work uses: use ./api, or a use ( ... ) block."""
+    folders, block = [], False
+    for line in text.splitlines():
+        stripped = line.split("//", 1)[0].strip()
+        if block:
+            if stripped == ")":
+                block = False
+            elif stripped:
+                folders.append(unquoted(stripped))
+            continue
+        use = GO_USE_LINE.match(stripped)
+        if use and use.group(1) == "(":
+            block = True
+        elif use:
+            folders.append(unquoted(use.group(1)))
+    return folders
+
+
+def declared_patterns(project_root):
+    """The folders, or patterns of folders, the package managers of the repository declare as workspaces."""
+    patterns = []
+    for name, parse in ((PACKAGE_MANIFEST, package_workspaces), (PNPM_WORKSPACE_FILE, pnpm_packages),
+                        (GO_WORK_FILE, go_work_uses)):
+        text = read_text(os.path.join(project_root, name))
+        if text is not None:
+            patterns += parse(text)
+    return patterns
+
+
+def is_pruned_name(name):
+    """True for the name of a folder that is never a workspace: installed dependencies or a hidden folder."""
+    return name in PRUNED_FOLDER_NAMES or name.startswith(".")
+
+
+def relative_folder(project_root, path):
+    return os.path.relpath(path, project_root).replace(os.sep, "/")
+
+
+def matches_segments(parts, pattern):
+    """True when the folders ``parts`` match the segments ``pattern``, where a ** segment stands for any
+    number of folders, none included, and any other segment is matched with fnmatch."""
+    if not pattern:
+        return not parts
+    if pattern[0] == RECURSIVE_WILDCARD:
+        return any(matches_segments(parts[index:], pattern[1:]) for index in range(len(parts) + 1))
+    return bool(parts) and fnmatch.fnmatchcase(parts[0], pattern[0]) and matches_segments(parts[1:], pattern[1:])
+
+
+def recursive_matches(project_root, parts):
+    """The folders a pattern with ** segments matches (modules/**, packages/**/app/**), below its base.
+
+    The tree is walked once and the walk never goes into an is_pruned_name folder or through a link, so
+    the installed dependencies of a monorepo are never read.
+    """
+    index = parts.index(RECURSIVE_WILDCARD)
+    prefix, remainder = parts[:index], [part for part in parts[index:] if part]
+    bases = glob.glob(os.path.join(project_root, *prefix)) if prefix else [project_root]
+    folders = []
+    for base in bases:
+        if not os.path.isdir(base) or is_link(base) or is_pruned_name(os.path.basename(base)):
+            continue
+        for current, names, _ in os.walk(base):
+            names[:] = sorted(name for name in names
+                              if not is_pruned_name(name) and not is_link(os.path.join(current, name)))
+            for name in names:
+                path = os.path.join(current, name)
+                if matches_segments(relative_folder(base, path).split("/"), remainder):
+                    folders.append(relative_folder(project_root, path))
+    return folders
+
+
+def candidate_folders(project_root):
+    """Folders that look like a workspace, sorted: the declared ones (declared_patterns), literal or with
+    wildcards (recursive_matches for **), and those under CONVENTIONAL_PARENTS, without the is_pruned_name
+    ones; suggestions checks that each one can be a workspace."""
+    patterns = [pattern for pattern in declared_patterns(project_root) if not pattern.startswith("!")]
+    patterns += [f"{parent}/*" for parent in CONVENTIONAL_PARENTS]
+    folders = set()
+    for pattern in patterns:
+        pattern = pattern.strip().rstrip("/")
+        while pattern.startswith("./"):
+            pattern = pattern[2:]
+        parts = pattern.split("/")
+        if not pattern or pattern.startswith("/") or ".." in parts:
+            continue
+        if RECURSIVE_WILDCARD in parts:
+            matches = recursive_matches(project_root, parts)
+        else:
+            matches = [relative_folder(project_root, match) for match in glob.glob(os.path.join(project_root, *parts))
+                       if os.path.isdir(match)]
+        folders.update(folder for folder in matches
+                       if not any(is_pruned_name(part) for part in folder.split("/")))
+    return sorted(folders)
+
+
+def suggestions(project_root, profiles, root_resolved, entries, detect):
+    """[{path, profiles, evidence}] of the folders whose own stack the root selection does not have.
+
+    ``detect(profiles, folder)`` is the detection of the repository run on one folder. A folder that is a
+    workspace, or sits inside or around one, is not suggested; nor is one inside another suggestion. Those
+    do not count for MAX_SUGGESTION_CANDIDATES: only the folders detection looks into do.
+    """
+    taken = [entry["path"] for entry in entries]
+    found, inspected = [], 0
+    for folder in candidate_folders(project_root):
+        if inspected == MAX_SUGGESTION_CANDIDATES:
+            break
+        if any(is_inside(folder, path) or is_inside(path, folder) for path in taken):
+            continue
+        if path_problem(project_root, folder) is not None:
+            continue
+        inspected += 1
+        detection = detect(profiles, os.path.join(project_root, *folder.split("/")))
+        stack = detection["primaryStack"]
+        if not stack or stack in root_resolved:
+            continue
+        evidence = [dict(item, file=f"{folder}/{item['file']}") for item in detection["stacks"][stack]]
+        found.append({"path": folder, "profiles": [stack], "evidence": evidence})
+        taken.append(folder)
+    return found
 
 
 # ---------------------------------------------------------------------------

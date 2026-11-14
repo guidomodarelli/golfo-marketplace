@@ -136,6 +136,20 @@ repositorio:
   (también las carpetas que quedan vacías), sus bloques y sus destinos anidados, y los skills, subagentes y
   comandos que ningún otro workspace ni la raíz siguen usando. Un `AGENTS.md` que queda vacío se borra con
   su proxy.
+- **Detección:** `agent-ready plan` y `agent-ready workspaces list` sugieren como workspace cada carpeta con
+  un stack que la raíz no tiene, con la evidencia que lo muestra. Buscan en las carpetas que declaran
+  `package.json` (`workspaces`), `pnpm-workspace.yaml` (`packages`) y `go.work` (`use`), y en las de
+  `apps/`, `packages/` y `services/`. Un patrón recursivo (`modules/**`) baja a las subcarpetas, salvo
+  `node_modules` y las ocultas. Mira hasta 50 carpetas, sin contar las que ya son o contienen un workspace,
+  que saltea. La sugerencia no cambia el manifest. `detection.workspaces: false`, o
+  `detection.enabled: false`, la apaga.
+- **CLI:** `agent-ready workspaces` cambia los workspaces del manifest, siempre validados con las mismas
+  reglas que el plan antes de escribir; después, `apply` los proyecta.
+  - `list [--json]`: cada workspace con lo que suma a la raíz, y las sugerencias de la detección.
+  - `add <path> [profile...]`: agrega el workspace, o esos profiles al que ya existe. Sin profiles toma el
+    stack que la detección encuentra en la carpeta, y falla si no encuentra uno o encuentra varios.
+  - `remove <path> [profile...]`: saca esos profiles del workspace, o el workspace entero; uno que queda
+    sin profiles también sale.
 - **Fuentes:** un pack que solo elige un workspace cuenta como seleccionado: su digest va al lock y su modo
   `pinned` frena al sync como el de un pack de la raíz. Lo que proyecta un profile de golfo-kit que solo
   eligen workspaces entra al `contentDigest` por los archivos de los que sale, no por dónde queda: un
@@ -764,7 +778,6 @@ seleccionado declara `tools: ["browser"]`; `tools.enabled: false` (o
 
 - Los skills, subagentes y comandos de un profile que suma un workspace valen para todo el repositorio:
   los providers no los acotan por carpeta («Workspaces», sección 1).
-- La detección todavía no sugiere workspaces ni hay `agent-ready workspaces`: son la parte 64c2 de #64.
 - En Windows sin symlinks, las vistas son hard links y
   `relink-hard-link-views.sh` las reenlaza en cada prompt y en cada escritura del
   índice, para recuperar las que git separa cuando recrea el asset. Sin historial

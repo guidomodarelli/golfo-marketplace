@@ -69,6 +69,7 @@ Señales estáticas del proyecto que eligen el stack primario de un repositorio 
 | Clave | Tipo | Default | Capas | Variable | Seguridad | Descripción |
 |---|---|---|---|---|---|---|
 | `detection.enabled` | boolean | `true` | todas | `AGENT_READY_SETUP_DETECTION` | — | Apagada, plan no muestra señales ni sugerencias y un repositorio sin selección pide --stack o --profiles. |
+| `detection.workspaces` | boolean | `true` | todas | — | — | Apagada, plan y agent-ready workspaces list no sugieren workspaces: las carpetas de un monorepo con un stack que la raíz no tiene. |
 
 ## `nested`: AGENTS.md anidados
 
