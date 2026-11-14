@@ -921,7 +921,6 @@ EOF
   mkdir -p \
     "$source_dir/assets/common/hooks" \
     "$source_dir/assets/codex" \
-    "$source_dir/assets/stacks/react/hooks" \
     "$source_dir/scripts"
   touch "$source_dir/SKILL.md"
   cp "$skill_dir/assets/common/hooks/sync-marketplace.sh" \
@@ -984,7 +983,6 @@ EOF
   mkdir -p \
     "$source_dir/assets/common/hooks" \
     "$source_dir/assets/codex" \
-    "$source_dir/assets/stacks/node/hooks" \
     "$source_dir/scripts"
   touch "$source_dir/SKILL.md"
   cp "$skill_dir/assets/common/hooks/sync-marketplace.sh" \
