@@ -3,8 +3,9 @@
 # shared checkout through AGENT_READY_SETUP_CONTENT_DIR. A test that changes the content works on its
 # own copy (copy_content_pack), never on the shared one.
 #
-# Load it from setup() with `load content-pack` and call use_content_pack once HOME and the caches
-# of the test are set.
+# Source it from setup() with `source "$BATS_TEST_DIRNAME/content-pack.bash"` (bats `load` rejects the
+# D:/... path BATS_TEST_DIRNAME has on Windows) and call use_content_pack once HOME and the caches of
+# the test are set.
 
 use_content_pack() {
   content_pack="$(bash "$BATS_TEST_DIRNAME/prepare-content-pack.sh")" || return 1

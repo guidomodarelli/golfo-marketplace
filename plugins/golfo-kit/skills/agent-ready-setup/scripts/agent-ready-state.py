@@ -5275,6 +5275,22 @@ def config_removal_entries(project_root):
     return entries
 
 
+def removal_content_dir(skill_dir, lock):
+    """The skill directory with the content that generated this repository, to recognize what it wrote.
+
+    The engine carries no templates: without the content of the lock, the generated AGENTS.md and its
+    blocks look like the project's own and stay.
+    """
+    if not lock or os.path.isfile(os.path.join(skill_dir, PROFILE_CATALOG_RELATIVE_PATH)):
+        return skill_dir
+    try:
+        return content_source.locked_content_dir(skill_dir, lock.get("source"))
+    except ProfileError as content_error:
+        write_line(f"WARNING: agent-ready remove: the content of the lock is not available ({content_error}); "
+                   "the generated AGENTS.md text and managed blocks are kept as the project's own", sys.stderr)
+        return skill_dir
+
+
 def plan_removal(project_root, skill_dir):
     """What `agent-ready remove` deletes, edits and keeps, without writing anything.
 
@@ -5283,6 +5299,7 @@ def plan_removal(project_root, skill_dir):
     """
     lock = read_lock(project_root)
     locked_assets = lock["assets"] if lock else {}
+    content_dir = removal_content_dir(skill_dir, lock)
     entries = (
         pack_mcp_removal_entries(project_root, lock)
         + pack_cli_removal_entries(project_root, lock)
@@ -5290,8 +5307,8 @@ def plan_removal(project_root, skill_dir):
         + local_removal_entries(project_root)
         + view_removal_entries(project_root, locked_assets)
         + asset_removal_entries(project_root, locked_assets)
-        + block_removal_entries(project_root, skill_dir, lock)
-        + instruction_removal_entries(project_root, skill_dir, lock)
+        + block_removal_entries(project_root, content_dir, lock)
+        + instruction_removal_entries(project_root, content_dir, lock)
         + settings_removal_entries(project_root, skill_dir)
         + config_removal_entries(project_root)
     )

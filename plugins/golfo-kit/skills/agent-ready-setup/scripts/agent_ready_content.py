@@ -497,6 +497,25 @@ def content_skill_dir(configuration, engine_dir, locked_source, update=False, to
     return compose(engine_dir, declaration["origin"], commit, requested_ref), resolution_warning
 
 
+def locked_content_dir(engine_dir, locked_source):
+    """The composed skill directory of the content the lock records, without reading the configuration.
+
+    A removal identifies what the setup generated from the content that generated it, even with an
+    invalid manifest. With the development override it is that directory; without a revision to
+    fetch (or when it cannot be fetched) it raises ProfileError.
+    """
+    local_directory = local_content_dir()
+    if local_directory:
+        return compose(engine_dir, LOCAL_ORIGIN, None, None, tree=local_directory)
+    locked = locked_source or {}
+    origin, commit = locked.get("origin"), locked.get("revision")
+    if not origin or not commit:
+        raise ProfileError(f"{CONTENT_SOURCE_NAME}: the lock records no revision of the content to read")
+    if not cached_tree(origin, commit):
+        download_commit(CONTENT_SOURCE_NAME, origin, commit)
+    return compose(engine_dir, origin, commit, locked.get("requestedRef"))
+
+
 def is_pinned(configuration):
     """Whether the content waits for an explicit update in this repository."""
     return effective_update_mode(configuration, declaration_of(configuration)) == UPDATES_PINNED

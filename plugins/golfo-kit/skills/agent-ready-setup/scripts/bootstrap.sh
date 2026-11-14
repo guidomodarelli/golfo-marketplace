@@ -715,6 +715,8 @@ if ! CONTENT_SKILL_DIR="$(python3 "$STATE_SCRIPT" "${content_arguments[@]}")" ||
   exit 1
 fi
 echo "[marketplace-bootstrap] Using the golfo content of $(python3 -c 'import json,sys; m=json.load(open(sys.argv[1], encoding="utf-8")); print(m["origin"] + " " + (m["commit"] or "")[:12])' "$CONTENT_SKILL_DIR/.agent-ready-content.json") with this engine."
+# The installed engine is the source this run reports; everything below reads the composed content.
+ENGINE_SKILL_DIR="$SKILL_DIR"
 SKILL_DIR="$CONTENT_SKILL_DIR"
 STATE_SCRIPT="$SKILL_DIR/scripts/agent-ready-state.py"
 PROFILE_SELECTION=()
@@ -1204,8 +1206,9 @@ fi
 printf '\nStack: %s\n' "${STACK:-none}"
 printf 'Profiles: %s\n' "$RESOLVED_PROFILES"
 printf 'Providers: Claude Code + Codex-compatible shared tree\n'
-# Stable line the agent reads to run follow-up scripts from the resolved source.
-printf 'Resolved %s source: %s\n' "$SKILL_NAME" "$SKILL_DIR"
+# Stable line the agent reads to run follow-up scripts from the resolved source: the engine, which
+# composes the content of the lock again (resolve_content_skill_directory in stack-directory.sh).
+printf 'Resolved %s source: %s\n' "$SKILL_NAME" "$ENGINE_SKILL_DIR"
 # The stack this apply composed, at the revisions it adopted: merge-instructions.sh renders from it
 # (AGENT_READY_SETUP_STACK_DIR) instead of resolving the sources again.
 [[ -n "${AGENT_READY_SETUP_STACK_DIR:-}" ]] && printf 'Resolved stack directory: %s\n' "$AGENT_READY_SETUP_STACK_DIR"

@@ -16,7 +16,7 @@ setup() {
   mkdir -p "$project_dir" "$fake_bin" "$test_root/tmp"
   export TMPDIR="$test_root/tmp"
   export XDG_CACHE_HOME="$test_root/cache"
-  load content-pack
+  source "$BATS_TEST_DIRNAME/content-pack.bash"
   use_content_pack
   # Sync flows run with an empty home: nothing installed on this machine may decide them.
   export HOME="$test_root/home"

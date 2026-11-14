@@ -14,7 +14,7 @@ setup() {
   export TMPDIR="$test_root/tmp"
   # Keeps the SessionStart upgrade window stamp out of the user's real cache.
   export XDG_CACHE_HOME="$test_root/cache"
-  load content-pack
+  source "$BATS_TEST_DIRNAME/content-pack.bash"
   use_content_pack
   git -C "$project_dir" -c init.defaultBranch=main init -q
   cd "$project_dir"

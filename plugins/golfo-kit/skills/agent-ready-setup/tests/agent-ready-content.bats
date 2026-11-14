@@ -18,7 +18,7 @@ setup() {
   mkdir -p "$project_dir" "$fake_bin" "$test_root/tmp"
   export TMPDIR="$test_root/tmp"
   export XDG_CACHE_HOME="$test_root/cache"
-  load content-pack
+  source "$BATS_TEST_DIRNAME/content-pack.bash"
   use_content_pack
   export XDG_CONFIG_HOME="$test_root/config"
   export HOME="$test_root/home"
@@ -362,4 +362,21 @@ PY
   [ "$status" -eq 0 ]
   [[ "$output" != *".github/workflows/agent-ready.yml"* ]]
   [[ "$output" == *"gitlab-ci.yml"* ]]
+}
+
+@test "remove recognizes the AGENTS.md and CLAUDE.md that the content of the lock generated" {
+  publish_content_pack_repository
+  git add -A && git commit -qm initial
+  run_cli apply --stack node
+  [ "$status" -eq 0 ]
+  [ -f AGENTS.md ]
+  [ -f CLAUDE.md ]
+  # Another machine: the cache is empty, and remove downloads the revision of the lock to recognize them.
+  rm -rf "$XDG_CACHE_HOME/agent-ready-setup"
+
+  run_cli remove --yes < /dev/null
+  [ "$status" -eq 0 ]
+  [ ! -e AGENTS.md ]
+  [ ! -e CLAUDE.md ]
+  [ -z "$(git status --porcelain)" ]
 }

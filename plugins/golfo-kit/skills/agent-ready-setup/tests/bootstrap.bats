@@ -13,7 +13,7 @@ setup() {
   export TMPDIR="$test_root/tmp"
   # Keeps the SessionStart upgrade window stamp out of the user's real cache.
   export XDG_CACHE_HOME="$test_root/cache"
-  load content-pack
+  source "$BATS_TEST_DIRNAME/content-pack.bash"
   use_content_pack
   # Asset-projection tests use the documented offline bootstrap option. Browser
   # installation and real MCP registration are exercised in their own suite.
@@ -121,6 +121,8 @@ write_minimal_content_pack() {
   mkdir -p "$minimal_content/base" "$minimal_content/stacks/go/rules" "$minimal_content/stacks/go/agents" \
     "$minimal_content/stacks/go/commands" "$minimal_content/stacks/go/skills/deploy-helper"
   cp "$content_pack/base/agents-template.md" "$minimal_content/base/agents-template.md"
+  # The composition copies files, like a pack in Git: a stack without any would have no assets.
+  printf '%s\n' '# Go coding style' > "$minimal_content/stacks/go/rules/go-coding-style.md"
   printf '%s\n' '{"schemaVersion": 1, "name": "minimal", "version": "1.0.0", "baseAssets": "base", "profiles": {"go": {"kind": "stack", "assets": "stacks/go"}}}' \
     > "$minimal_content/agent-ready-pack.json"
   export AGENT_READY_SETUP_CONTENT_DIR="$(cd "$minimal_content" && (pwd -W 2>/dev/null || pwd))"
@@ -928,7 +930,7 @@ EOF
     grep -Fq -- "- Read and follow \`.agents/rules/${stack}-security.md\`." AGENTS.md
     grep -Fq -- "- Read and follow \`.agents/rules/${stack}-testing.md\`." AGENTS.md
     for common_rule in common/rules/language-consistency.md common/rules/speculative-complexity-approval.md       common/rules/user-actions-first.md common/rules/verify-changes.md       profiles/software-development/rules/established-libraries.md profiles/software-development/rules/lint-gate.md       profiles/software-development/rules/patterns-we-do-not-use.md; do
-      common_source="$skill_dir/assets/$common_rule"
+      common_source="$content_pack/${common_rule/#common\//base/}"
       common_rule="${common_rule##*/}"
       grep -Fq -- "- Read and follow \`.agents/rules/$common_rule\`." AGENTS.md
       cmp -s ".agents/rules/$common_rule" "$common_source"
@@ -2670,7 +2672,7 @@ EOF
   [ -f "$skill_dir/assets/common/settings.json" ]
   [ -f "$skill_dir/assets/common/hooks/sync-marketplace.sh" ]
   for common_rule in common/rules/language-consistency.md common/rules/speculative-complexity-approval.md     common/rules/user-actions-first.md common/rules/verify-changes.md     profiles/software-development/rules/established-libraries.md profiles/software-development/rules/lint-gate.md     profiles/software-development/rules/patterns-we-do-not-use.md; do
-    [ -f "$skill_dir/assets/$common_rule" ]
+    [ -f "$content_pack/${common_rule/#common\//base/}" ]
   done
   [ -f "$skill_dir/scripts/asset-sync-common.sh" ]
   [ -f "$skill_dir/scripts/merge-managed-settings.py" ]
