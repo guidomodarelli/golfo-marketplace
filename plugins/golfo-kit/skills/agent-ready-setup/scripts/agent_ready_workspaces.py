@@ -32,7 +32,6 @@ PATHS_KEY = "paths"
 PATHS_LINE = re.compile(r"^paths:\s*(.*)$")
 LIST_ITEM = re.compile(r"^\s+-\s*(.*)$")
 INLINE_LIST = re.compile(r"^\[(.*)\]$")
-RULE_REFERENCE = "`.agents/rules/{}`"
 
 
 def is_linked(project_root, path):
@@ -157,12 +156,42 @@ def quoted(pattern):
     return '"' + pattern.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
+def inline_items(value):
+    """The items of an inline YAML list, split on the commas outside quotes and braces ({ts,tsx})."""
+    items, current, quote, depth = [], "", None, 0
+    for character in value:
+        if quote:
+            quote = None if character == quote else quote
+        elif character in "\"'":
+            quote = character
+        elif character == "{":
+            depth += 1
+        elif character == "}":
+            depth = max(depth - 1, 0)
+        elif character == "," and depth == 0:
+            items.append(current)
+            current = ""
+            continue
+        current += character
+    items.append(current)
+    return [unquoted(item) for item in items if item.strip()]
+
+
+def selected_profiles(root_resolved, workspaces):
+    """The root selection followed by the profiles each workspace adds: every profile an apply projects,
+    whose sources, digests and pinned mode count as much as those of the root."""
+    names = list(root_resolved)
+    for workspace in workspaces:
+        names += [name for name in workspace["own"] if name not in names]
+    return names
+
+
 def frontmatter_patterns(lines, start, rule):
     """(patterns, end) of the paths: key at lines[start]: its patterns and the first line after them."""
     value = PATHS_LINE.match(lines[start]).group(1).strip()
     if value:
         inline = INLINE_LIST.match(value)
-        patterns = [unquoted(item) for item in inline.group(1).split(",") if item.strip()] if inline else [unquoted(value)]
+        patterns = inline_items(inline.group(1)) if inline else [unquoted(value)]
         return patterns, start + 1
     patterns, end = [], start + 1
     while end < len(lines) and LIST_ITEM.match(lines[end]):
@@ -208,10 +237,3 @@ def index_content(workspace_path, rule_destinations):
     lines += [f"- Read and follow `{destination}`." for destination in sorted(rule_destinations)]
     return "\n".join(lines) + "\n"
 
-
-def with_workspace_references(text, workspace_path, rule_paths):
-    """The section of a stack with its references to a rule moved to the rule of the workspace."""
-    for rule_path in rule_paths:
-        text = text.replace(RULE_REFERENCE.format(rule_path),
-                            RULE_REFERENCE.format(f"{WORKSPACE_RULES_DIRECTORY}/{workspace_path}/{rule_path}"))
-    return text

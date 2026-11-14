@@ -176,8 +176,8 @@ lock_value() {
   ! grep -q '`.agents/rules/react-style.md`' AGENTS.md
   grep -qx '<!-- BEGIN AGENT-READY MANAGED: agent-ready:workspace -->' apps/web/AGENTS.md
   grep -qxF -- '- Read and follow `.agents/rules/workspaces/apps/web/react-style.md`.' apps/web/AGENTS.md
-  grep -qx '<!-- BEGIN AGENT-READY MANAGED: react -->' apps/web/AGENTS.md
-  grep -qF '`.agents/rules/workspaces/apps/web/react-testing.md`' apps/web/AGENTS.md
+  # The section of the stack names commands and skills a workspace does not project yet.
+  ! grep -q 'AGENT-READY MANAGED: react -->' apps/web/AGENTS.md
   [ "$(cat apps/web/CLAUDE.md)" = '@AGENTS.md' ]
   grep -qxF -- '- `apps/web/AGENTS.md`' AGENTS.md
   [ "$(lock_value 'lock["assets"][".agents/rules/workspaces/apps/web/react-style.md"]["workspace"]')" = "apps/web" ]
@@ -213,4 +213,23 @@ lock_value() {
   run_cli plan
   [ "$status" -eq 0 ]
   [[ "$output" == *".agents/rules/workspaces/apps/web/react-testing.md"*"vitest"*"jest"*"apps/web/package.json"* ]]
+}
+
+@test "a pack only a workspace selects counts as selected: its rules keep their patterns and its changes are drift" {
+  mkdir -p packs/acme/profiles/web/rules
+  printf '%s\n' '---' 'paths: ["src/**/*.{ts,tsx}", "lib/*"]' '---' '# Acme web' > packs/acme/profiles/web/rules/acme-web.md
+  printf '%s\n' '{"schemaVersion": 1, "name": "acme", "profiles": {"web": {"kind": "capability", "description": "Acme web.", "assets": "profiles/web"}}}' \
+    > packs/acme/agent-ready-pack.json
+  write_manifest '{"profiles": ["node"], "sources": {"packs": [{"name": "acme", "source": "path:packs/acme"}]}, "workspaces": [{"path": "apps/web", "profiles": ["acme/web"]}]}'
+  run_cli trust add --project .
+  run_cli apply
+  [ "$status" -eq 0 ]
+  grep -qxF '  - "apps/web/src/**/*.{ts,tsx}"' .agents/rules/workspaces/apps/web/acme-web.md
+  grep -qxF '  - "apps/web/lib/*"' .agents/rules/workspaces/apps/web/acme-web.md
+  [ "$(lock_value '"acme/web" in lock["profiles"]')" = "True" ]
+  [ "$(lock_value 'lock["profileSources"]["acme"]["profiles"]')" = "['acme/web']" ]
+
+  printf '# Another rule\n' > packs/acme/profiles/web/rules/acme-other.md
+  run_cli status
+  [[ "$output" == *"acme differs from the lock"* ]]
 }

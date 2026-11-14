@@ -102,8 +102,7 @@ repositorio:
   - **`assumes:`:** se compara con la carpeta del workspace, su `package.json` y sus archivos de
     configuración, no con la raíz.
 - **`AGENTS.md` del workspace:** `<path>/AGENTS.md` lleva el bloque `agent-ready:workspace`, que lista esas
-  rules para Codex, y la sección de cada stack que suma, con sus referencias apuntando a las rules del
-  workspace.
+  rules para Codex.
   - Es un `AGENTS.md` anidado como los de [nested-instructions.md](nested-instructions.md): lleva su
     `CLAUDE.md` con `@AGENTS.md`, el índice para Codex del `AGENTS.md` raíz lo lista, y espera junto a
     un `CLAUDE.md` propio.
@@ -111,8 +110,11 @@ repositorio:
 - **Retiro:** sacar un workspace del manifest, o un profile de su selección, retira sus rules, sus vistas
   (también las carpetas que quedan vacías) y sus bloques. Un `AGENTS.md` que queda vacío se borra con su
   proxy.
-- **Todavía no:** skills, subagentes, comandos, bloques de otros archivos y destinos anidados de los
-  profiles de un workspace son la parte 64c de #64.
+- **Todavía no:** skills, subagentes, comandos, bloques de otros archivos, destinos anidados y la sección de
+  `AGENTS.md` de los profiles de un workspace son la parte 64c de #64. La sección queda afuera hasta
+  entonces porque nombra comandos y skills que el workspace todavía no proyecta.
+- **Fuentes:** un pack que solo elige un workspace cuenta como seleccionado: su digest va al lock y su modo
+  `pinned` frena al sync como el de un pack de la raíz.
 
 **Capas.** Un stack puede extender otro con `requires`: la web va en tres capas,
 `react` ← `nextjs` ← `nextjs-app-router`. Cada capa publica solo sus propios assets, con

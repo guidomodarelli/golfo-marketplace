@@ -939,9 +939,12 @@ def workspace_rule_files(skill_dir, catalog, workspaces):
     return files
 
 
-def workspace_blocks(skill_dir, catalog, workspaces, workspace_rules):
-    """{(destination, id): item} of the AGENTS.md of each workspace: the list of its rules, for Codex, and
-    the section of each stack it adds, with its references moved to the rules of the workspace."""
+def workspace_blocks(workspaces, workspace_rules):
+    """{(destination, id): item} of the AGENTS.md of each workspace: the list of its rules, for Codex.
+
+    The section of a stack the workspace adds stays out: it names commands and skills that a workspace
+    does not project yet.
+    """
     blocks = {}
     for workspace in workspaces:
         destination = nested.destination_in(workspace["path"])
@@ -952,17 +955,6 @@ def workspace_blocks(skill_dir, catalog, workspaces, workspace_rules):
                 "content": workspace_selection.index_content(
                     workspace["path"],
                     [".agents/" + workspace_selection.rule_tree_path(workspace["path"], path) for path in rule_paths])}
-        for name in workspace["own"]:
-            asset_root = profile_asset_root(skill_dir, catalog, name)
-            section = os.path.join(asset_root, managed_blocks.BLOCK_DIRECTORY, managed_blocks.INSTRUCTION_SECTIONS_DESTINATION) \
-                if asset_root else None
-            if catalog["profiles"][name].get("kind") != STACK_PROFILE_KIND or not section or not os.path.isfile(section):
-                continue
-            with open(section, encoding="utf-8", newline="") as section_file:
-                content = managed_blocks.normalized_content(section_file.read())
-            blocks[(destination, name)] = {
-                "profile": name, "source": template_origin(skill_dir, catalog, name, section),
-                "content": workspace_selection.with_workspace_references(content, workspace["path"], rule_paths)}
     return blocks
 
 
@@ -1814,7 +1806,7 @@ def compute_plan(project_root, skill_dir, catalog, profile_names):
     blocks = desired_blocks(skill_dir, catalog, resolved, assets)
     targets = nested_contents(skill_dir, catalog, resolved)
     nested_blocks, nested_report = desired_nested_blocks(project_root, catalog, resolved, targets)
-    nested_blocks.update(workspace_blocks(skill_dir, catalog, workspaces, workspace_rules))
+    nested_blocks.update(workspace_blocks(workspaces, workspace_rules))
     waiting_nested = waiting_instruction_files(project_root, skill_dir, {destination for destination, _ in nested_blocks})
     for target in nested_report:
         target["waiting"] = [folder for folder in target["paths"] if nested.destination_in(folder) in waiting_nested]
@@ -1842,7 +1834,9 @@ def compute_plan(project_root, skill_dir, catalog, profile_names):
             "local": local,
         })
     merged = merged_template_entries(skill_dir, catalog, resolved)
-    digests = profile_digests(skill_dir, catalog, resolved)
+    # A pack only a workspace selects is still projected: its digest and its pinned mode count.
+    selected = workspace_selection.selected_profiles(resolved, workspaces)
+    digests = profile_digests(skill_dir, catalog, selected)
     # The rules of a workspace depend on the folders of this repository: they stay out of the content digest.
     golfo_assets = {destination: entry for destination, entry in assets.items()
                     if not is_pack_profile(entry["profile"]) and not entry.get("workspace")}
@@ -1857,8 +1851,9 @@ def compute_plan(project_root, skill_dir, catalog, profile_names):
         # Packs have their own entries: an update of a pack is not an update of Golfo.
         "source": identity,
         "profileDigests": digests,
-        "profileSources": source_entries(catalog, resolved, digests, (lock or {}).get("profileSources", {})),
-        "sourceReport": source_report(catalog, resolved, digests, lock),
+        "selectedProfiles": selected,
+        "profileSources": source_entries(catalog, selected, digests, (lock or {}).get("profileSources", {})),
+        "sourceReport": source_report(catalog, selected, digests, lock),
         "versionChanges": version_changes(catalog, identity, lock),
         "lockedSource": lock.get("source") if lock else None,
         "hasLock": lock is not None,
@@ -3235,11 +3230,13 @@ def command_resolve(arguments):
     catalog = load_effective_catalog(arguments.project, arguments.skill_dir, read_source_state(arguments))
     requested, selection = resolve_selection(arguments, catalog)
     resolved = resolve_project_profiles(catalog, requested, arguments.project)
-    workspace_rules = workspace_rule_files(arguments.skill_dir, catalog,
-                                           resolve_workspaces(arguments.project, catalog, requested, resolved))
+    workspaces = resolve_workspaces(arguments.project, catalog, requested, resolved)
+    workspace_rules = workspace_rule_files(arguments.skill_dir, catalog, workspaces)
     validate_pack_destinations(arguments.project, desired_assets(arguments.skill_dir, catalog, resolved, workspace_rules))
     if arguments.source_mode == SOURCE_MODE_SYNC:
-        enforce_sync_policy(arguments.project, arguments.skill_dir, catalog, resolved, profile_digests(arguments.skill_dir, catalog, resolved))
+        selected = workspace_selection.selected_profiles(resolved, workspaces)
+        enforce_sync_policy(arguments.project, arguments.skill_dir, catalog, selected,
+                            profile_digests(arguments.skill_dir, catalog, selected))
     stack_dir = compose_stack_directory(arguments.skill_dir, catalog, resolved, arguments.compose_dir, workspace_rules)
     if selection == SELECTION_DETECTION:
         detection = detect_profiles(catalog["profiles"], arguments.project)
@@ -3458,7 +3455,7 @@ def command_plan(arguments):
         print_incomplete_plan(arguments.project, arguments.skill_dir, selection, requested, incomplete_error)
         return INCOMPLETE_EVALUATION_STATUS
     if arguments.source_mode == SOURCE_MODE_SYNC:
-        enforce_sync_policy(arguments.project, arguments.skill_dir, catalog, plan["profiles"], plan["profileDigests"])
+        enforce_sync_policy(arguments.project, arguments.skill_dir, catalog, plan["selectedProfiles"], plan["profileDigests"])
         keep_locked_entries_of_unselected_sources(plan, read_lock(arguments.project))
     tools_report = pack_tools_report(plan, catalog, configuration_of(arguments.project, arguments.offline))
     if tools_report:
