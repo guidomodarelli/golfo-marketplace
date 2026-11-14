@@ -728,6 +728,97 @@
           "description": "El entorno queda a la vista en el resumen"
         }
       ]
+    },
+    {
+      "id": "agent-mode-never-prompts",
+      "description": "Bajo un agente el CLI no pregunta aunque haya pseudoconsola: lo detecta por entorno, tiene una variable para apagarlo, da los faltantes con sus valores y no usa respuestas recordadas.",
+      "input": "Mi CLI en Python pregunta lo que falta cuando hay terminal y recuerda la última región elegida. Quiero que también lo puedan usar Claude Code o Codex sin colgarse. Implementalo.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "AI_AGENT|CLAUDECODE|CODEX_",
+          "description": "Detecta el agente por variables de entorno"
+        },
+        {
+          "type": "regex",
+          "pattern": "(pseudoconsola|pty|isatty|terminal).{0,120}(agente|agent)|(agente|agent).{0,120}(pseudoconsola|pty|isatty)",
+          "description": "No pregunta aunque haya pseudoconsola"
+        },
+        {
+          "type": "regex",
+          "pattern": "_AGENT=0|_AGENT.{0,40}(\"0\"|'0'|false)|override",
+          "description": "Tiene una variable para apagarlo"
+        },
+        {
+          "type": "regex",
+          "pattern": "valores válidos|valid values|values_command|\"values\"",
+          "description": "El error de uso trae los faltantes con sus valores"
+        },
+        {
+          "type": "regex",
+          "pattern": "(recordad|remember|último|last).{0,100}(agente|agent)|(agente|agent).{0,100}(recordad|remember|último usado)",
+          "description": "No usa respuestas recordadas bajo un agente"
+        }
+      ]
+    },
+    {
+      "id": "json-envelope-success-and-error",
+      "description": "Con --json, stdout lleva un solo documento por corrida, también al fallar, con ok, un código de error estable y el comando para reintentar, sin cambiar el exit code.",
+      "input": "Agregá salida JSON a mi CLI en Python para que un agente pueda usar el resultado y también entender los errores. Implementalo.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "un (solo|único) documento|single (JSON )?document|exactamente un|one JSON document|un documento JSON por corrida",
+          "description": "Un solo documento en stdout por corrida"
+        },
+        {
+          "type": "regex",
+          "pattern": "\"ok\"",
+          "description": "Envoltura con ok"
+        },
+        {
+          "type": "regex",
+          "pattern": "error\\.code|\"code\"",
+          "description": "Código de error estable"
+        },
+        {
+          "type": "regex",
+          "pattern": "retry_command|resume_command",
+          "description": "Comando para reintentar o seguir"
+        },
+        {
+          "type": "regex",
+          "pattern": "(exit|código de salida).{0,100}(mismo|igual|no cambia|same|se mantiene)",
+          "description": "El exit code no cambia con --json"
+        }
+      ]
+    },
+    {
+      "id": "agent-mode-no-interactive-login",
+      "description": "Bajo un agente el wrapper no corre un login interactivo: sale con 2 y dice cómo pasar el token.",
+      "input": "Mi wrapper de bash corre `acme login` cuando no encuentra el token y después lanza el programa en Python. Ahora lo va a usar un agente como Codex. Arreglalo.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "(no|nunca|sin) (se )?(corre|correr|ejecuta|ejecutar|lanza|lanzar|hace|hacer|abre|abrir)?.{0,30}login|login.{0,80}(espera para siempre|se cuelga|colgad|hang)",
+          "description": "No corre el login interactivo bajo el agente"
+        },
+        {
+          "type": "regex",
+          "pattern": "--token-file|_TOKEN",
+          "description": "Dice cómo pasar el token"
+        },
+        {
+          "type": "regex",
+          "pattern": "exit 2|EXIT_USAGE|(sale|salir) con 2|código 2",
+          "description": "Sale con el código de uso"
+        },
+        {
+          "type": "regex",
+          "pattern": "AI_AGENT|CLAUDECODE|CODEX_|_AGENT",
+          "description": "Detecta el agente por entorno"
+        }
+      ]
     }
   ]
 }

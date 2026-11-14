@@ -25,13 +25,30 @@ Decidir por stream, stdout y stderr por separado, y en este orden. Con `tool | j
 |---|---|---|
 | 1 | Salida para máquinas (`--json` y similares) | Nunca lleva decoración |
 | 2 | Flag explícito de la herramienta (`--color=never`, `--color=always`) | Manda el flag |
-| 3 | `NO_COLOR` no vacía, o `TERM=dumb` | Texto plano, aunque esté `FORCE_COLOR` |
-| 4 | `FORCE_COLOR=0` o `false` | Texto plano |
-| 5 | Otro `FORCE_COLOR` no vacío | Color aun en CI o sin TTY, pero sin animación si no hay TTY |
-| 6 | `CI` definida (distinta de `0` y `false`), o stream que no es TTY | Texto plano |
-| 7 | Todo lo demás | La mejor profundidad disponible: truecolor, 256, 16 |
+| 3 | Modo agente ([abajo](#modo-agente)) | Texto plano, sin animación, sin tarjeta de encabezado ni emojis decorativos, aunque haya TTY y aunque esté `FORCE_COLOR` |
+| 4 | `NO_COLOR` no vacía, o `TERM=dumb` | Texto plano, aunque esté `FORCE_COLOR` |
+| 5 | `FORCE_COLOR=0` o `false` | Texto plano |
+| 6 | Otro `FORCE_COLOR` no vacío | Color aun en CI o sin TTY, pero sin animación si no hay TTY |
+| 7 | `CI` definida (distinta de `0` y `false`, sin importar mayúsculas), o stream que no es TTY | Texto plano |
+| 8 | Todo lo demás | La mejor profundidad disponible: truecolor, 256, 16 |
 
 Texto plano significa sin ningún escape, sin `\r` suelto y sin animación. El progreso sigue: una línea al empezar cada paso, otra al terminar y un latido cada 20 s en procesos largos.
+
+### Modo agente
+
+Un agente lee la salida como texto y paga cada línea en tokens: lo decorativo no le aporta nada, y algunos corren los comandos en una pseudoconsola, así que el chequeo de TTY dice «persona». Los kits lo detectan por entorno con `isAgentSession`, `Test-AgentSession`, `is_agent_session` (bash) e `is_agent_session` (Python):
+
+- `<TOOL>_AGENT=1` o `true` lo fuerza; `0` o `false` lo apaga, aunque haya señales. Renombrar `TOOL_AGENT` por herramienta (`EMU_AGENT`, `RELEASE_AGENT`).
+- Sin override, alcanza con una de estas señales. Cambian entre versiones de cada agente: verificarlas en una sesión real antes de sumar otra.
+
+| Agente | Señal | Verificación |
+|---|---|---|
+| Convención entre agentes | `AI_AGENT` no vacía | Claude Code la define como `claude-code_<versión>_agent` (visto en una sesión el 2026-11-13). Hermes la definiría como `hermes-agent`: **sin verificar** |
+| Claude Code | `CLAUDECODE=1` | Visto en una sesión el 2026-11-13 |
+| Codex | `CODEX_SESSION_ID` o `CODEX_THREAD_ID` no vacías | Vistas en `codex exec` el 2026-11-13, junto a `CODEX_CI=1` |
+| Hermes | `HERMES_AGENT=true` | **Sin verificar**: tomada del mapa de capacidades entre agentes |
+
+El modo agente es de `interactive-cli-design` (`references/agent-mode.md`): ahí está qué cambia en el CLI (no preguntar, errores autosuficientes, `--json`). Acá solo decide la capacidad: el kit devuelve profundidad 1 y expone `isAgent` para que quien llama saltee la tarjeta, los emojis y los íconos.
 
 Trampas de cada plataforma:
 
@@ -199,12 +216,34 @@ const THEME = {
   heartbeatIntervalMs: 20000,
 };
 
+// Modo agente (§1): renombrar TOOL_AGENT por herramienta. [variable, valor esperado o null si alcanza con no vacía]
+const AGENT_OVERRIDE_VARIABLE = 'TOOL_AGENT';
+const AGENT_ENVIRONMENT_SIGNALS = [
+  ['AI_AGENT', null],
+  ['CLAUDECODE', '1'],
+  ['CODEX_SESSION_ID', null],
+  ['CODEX_THREAD_ID', null],
+  ['HERMES_AGENT', 'true'],
+];
+
+function isAgentSession(env = process.env) {
+  const override = (env[AGENT_OVERRIDE_VARIABLE] ?? '').trim().toLowerCase();
+  if (override === '0' || override === 'false') return false;
+  if (override === '1' || override === 'true') return true;
+  return AGENT_ENVIRONMENT_SIGNALS.some(([name, expected]) => {
+    const value = (env[name] ?? '').trim().toLowerCase();
+    return value !== '' && (expected === null || value === expected);
+  });
+}
+
 /** Devuelve la profundidad de color de un stream: 1 (plano), 4, 8 o 24 bits. */
 function detectColorDepth(stream, env = process.env) {
-  const forceColor = env.FORCE_COLOR;
+  if (isAgentSession(env)) return 1; // aunque haya TTY y FORCE_COLOR
+  const forceColor = env.FORCE_COLOR?.toLowerCase();
   if (env.NO_COLOR || env.TERM === 'dumb' || forceColor === '0' || forceColor === 'false') return 1;
   if (forceColor) return { 1: 4, 2: 8, 3: 24 }[forceColor] ?? 4;
-  const isContinuousIntegration = env.CI && env.CI !== '0' && env.CI !== 'false';
+  const continuousIntegration = env.CI?.toLowerCase();
+  const isContinuousIntegration = continuousIntegration && continuousIntegration !== '0' && continuousIntegration !== 'false';
   if (isContinuousIntegration || !stream.isTTY) return 1;
   return stream.getColorDepth();
 }
@@ -214,6 +253,7 @@ function createOutput(stream) {
   return {
     stream,
     depth,
+    isAgent: isAgentSession(), // sin tarjeta de encabezado, emojis ni íconos
     canAnimate: depth > 1 && Boolean(stream.isTTY),
     get width() {
       return stream.isTTY ? stream.columns : Infinity;
@@ -536,9 +576,26 @@ $script:Theme = @{
   HeartbeatSeconds  = 20
 }
 
+# Modo agente (seccion 1): renombrar TOOL_AGENT por herramienta. Valor esperado, o $null si alcanza con no vacia.
+$script:AgentOverrideVariable = 'TOOL_AGENT'
+$script:AgentEnvironmentSignals = [ordered]@{ AI_AGENT = $null; CLAUDECODE = '1'; CODEX_SESSION_ID = $null; CODEX_THREAD_ID = $null; HERMES_AGENT = 'true' }
+
+function Test-AgentSession {
+  $override = ([string][Environment]::GetEnvironmentVariable($script:AgentOverrideVariable)).Trim().ToLowerInvariant()
+  if ($override -in @('0', 'false')) { return $false }
+  if ($override -in @('1', 'true')) { return $true }
+  foreach ($name in $script:AgentEnvironmentSignals.Keys) {
+    $value = ([string][Environment]::GetEnvironmentVariable($name)).Trim().ToLowerInvariant()
+    $expected = $script:AgentEnvironmentSignals[$name]
+    if ($value -and ($null -eq $expected -or $value -eq $expected)) { return $true }
+  }
+  return $false
+}
+
 function Get-ColorDepth {
   param([Parameter(Mandatory)][bool]$IsRedirected)
 
+  if (Test-AgentSession) { return 1 } # aunque haya consola y FORCE_COLOR
   $forceColor = $env:FORCE_COLOR
   if ($env:NO_COLOR -or $env:TERM -eq 'dumb' -or $forceColor -eq '0' -or $forceColor -eq 'false') { return 1 }
   if ($forceColor) {
@@ -563,6 +620,7 @@ function New-ConsoleOutput {
   return @{
     Role         = $Role
     IsRedirected = $isRedirected
+    IsAgent      = Test-AgentSession
     Depth        = $depth
     CanAnimate   = ($depth -gt 1) -and (-not $isRedirected)
   }
@@ -892,7 +950,18 @@ SPINNER_FRAME_COUNT=10
 SPINNER_INTERVAL_SECONDS=0.09
 HEARTBEAT_SECONDS=20
 
+# Modo agente (§1): renombrar TOOL_AGENT por herramienta.
+is_agent_session() { # 0 si corre bajo un agente
+  case "$(printf '%s' "${TOOL_AGENT:-}" | tr '[:upper:]' '[:lower:]')" in
+    0 | false) return 1 ;;
+    1 | true) return 0 ;;
+  esac
+  [ -n "${AI_AGENT:-}" ] || [ "${CLAUDECODE:-}" = 1 ] || [ -n "${CODEX_SESSION_ID:-}" ] ||
+    [ -n "${CODEX_THREAD_ID:-}" ] || [ "$(printf '%s' "${HERMES_AGENT:-}" | tr '[:upper:]' '[:lower:]')" = true ]
+}
+
 color_depth() { # 1 si el stream es una TTY, 0 si no
+  if is_agent_session; then echo 1; return; fi # aunque haya TTY y FORCE_COLOR
   if [ -n "${NO_COLOR:-}" ] || [ "${TERM:-}" = dumb ]; then echo 1; return; fi
   case "${FORCE_COLOR:-}" in
     0 | false) echo 1; return ;;
@@ -902,7 +971,7 @@ color_depth() { # 1 si el stream es una TTY, 0 si no
     '') ;;
     *) echo 4; return ;;
   esac
-  case "${CI:-}" in
+  case "$(printf '%s' "${CI:-}" | tr '[:upper:]' '[:lower:]')" in
     '' | 0 | false) ;;
     *) echo 1; return ;;
   esac
@@ -1152,6 +1221,8 @@ DATA_DEPTH=$(color_depth "$DATA_IS_TTY")
 UI_DEPTH=$(color_depth "$UI_IS_TTY")
 UI_ANIMATES=0
 if [ "$UI_DEPTH" -gt 1 ] && [ "$UI_IS_TTY" = 1 ]; then UI_ANIMATES=1; fi
+UI_IS_AGENT=0 # 1: sin tarjeta de encabezado, emojis ni íconos
+if is_agent_session; then UI_IS_AGENT=1; fi
 WORK_PID=''
 
 # Matar solo el PID deja corriendo lo que el trabajo lanzó, con sus efectos después de cancelar.
@@ -1246,7 +1317,32 @@ SPINNER_INTERVAL_SECONDS = 0.09
 DONE_GLYPH, ERROR_GLYPH = "✔", "✖"
 
 
+# Modo agente (§1): renombrar TOOL_AGENT por herramienta. (variable, valor esperado o None si alcanza con no vacía)
+AGENT_OVERRIDE_VARIABLE = "TOOL_AGENT"
+AGENT_ENVIRONMENT_SIGNALS = (
+    ("AI_AGENT", None),
+    ("CLAUDECODE", "1"),
+    ("CODEX_SESSION_ID", None),
+    ("CODEX_THREAD_ID", None),
+    ("HERMES_AGENT", "true"),
+)
+
+
+def is_agent_session(environment=os.environ) -> bool:
+    override = environment.get(AGENT_OVERRIDE_VARIABLE, "").strip().lower()
+    if override in ("0", "false"):
+        return False
+    if override in ("1", "true"):
+        return True
+    return any(
+        (value := environment.get(name, "").strip().lower()) and (expected is None or value == expected)
+        for name, expected in AGENT_ENVIRONMENT_SIGNALS
+    )
+
+
 def has_color(stream, environment=os.environ) -> bool:
+    if is_agent_session(environment):          # aunque haya TTY y FORCE_COLOR
+        return False
     if environment.get("NO_COLOR") or environment.get("TERM") == "dumb":
         return False
     force_color = environment.get("FORCE_COLOR", "").lower()
@@ -1568,7 +1664,7 @@ async function main() {
     process.stdout.write(`${JSON.stringify(rows)}\n`);
     return;
   }
-  uiOutput.stream.write(`${renderBox(uiOutput, TOOL_NAME, [TOOL_DESCRIPTION], { version: TOOL_VERSION })}\n`);
+  if (!uiOutput.isAgent) uiOutput.stream.write(`${renderBox(uiOutput, TOOL_NAME, [TOOL_DESCRIPTION], { version: TOOL_VERSION })}\n`);
   for (const [stepIndex, step] of steps.entries()) await runStep(step, stepIndex);
   uiOutput.stream.write('\n');
   dataOutput.stream.write(`${renderTable(dataOutput, columns, rows)}\n`);
