@@ -145,8 +145,10 @@ def declaration_of(configuration, engine_dir, locked_source):
         return dict(declared, layout=LAYOUT_PACK, updates=configuration.value(SOURCES_GOLFO_KIT_UPDATES_KEY))
     if ref is not None and not (FULL_COMMIT.fullmatch(ref) or SAFE_GIT_REF.fullmatch(ref)):
         raise ProfileError(f"sources.golfoKit.ref '{ref}' is not a full commit, a branch or a tag")
-    # Only fetching a revision needs the origin: following the installed engine works without one.
-    origin = (locked_source or {}).get("origin")
+    # Only fetching a revision needs the origin: following the installed engine works without one. The
+    # origin of a lock that came from a content pack is not the marketplace's.
+    locked = locked_source or {}
+    origin = locked.get("origin") if locked.get("layout", LAYOUT_MARKETPLACE) == LAYOUT_MARKETPLACE else None
     if not origin:
         try:
             origin = engine_origin(engine_dir)
@@ -243,10 +245,29 @@ def read_marker(skill_dir):
     return read_json_file(path, "golfo-kit content marker")
 
 
+def engine_catalog_inputs(engine_dir):
+    """What a composition of a content pack takes from the catalog of the engine: its schema and CI profiles."""
+    engine_catalog = read_json_file(os.path.join(engine_dir, *CATALOG_RELATIVE_PATH.split("/")), "profile catalog")
+    ci_profiles = {name: entry for name, entry in sorted(engine_catalog.get("profiles", {}).items())
+                   if entry.get("kind") == ENGINE_PROFILE_KIND}
+    return {"schemaVersion": engine_catalog.get("schemaVersion"), "ciProfiles": ci_profiles}
+
+
 def engine_digest(engine_dir, layout=LAYOUT_MARKETPLACE):
-    """Identity of the engine files a composition copies, so a new engine composes again."""
+    """Identity of the engine files a composition copies, so a new engine composes again.
+
+    A content pack also takes the CI profiles and the schema of the engine catalog, which is not copied,
+    and the manifests of the engine plugin: they count too.
+    """
     digest = hashlib.sha256()
     digest.update(layout.encode("utf-8") + b"\0")
+    if layout == LAYOUT_PACK:
+        digest.update(json.dumps(engine_catalog_inputs(engine_dir), sort_keys=True).encode("utf-8") + b"\0")
+        for manifest in PLUGIN_MANIFESTS:
+            manifest_path = os.path.join(plugin_root_of(engine_dir), *manifest.split("/"))
+            if os.path.isfile(manifest_path):
+                with open(manifest_path, "rb") as file_handle:
+                    digest.update(manifest.encode("utf-8") + b"\0" + hashlib.sha256(file_handle.read()).digest())
     for relative_path in sorted(engine_files(engine_dir, layout)):
         digest.update(relative_path.encode("utf-8") + b"\0")
         with open(os.path.join(engine_dir, *relative_path.split("/")), "rb") as file_handle:
@@ -421,9 +442,9 @@ def compose_pack_content(engine_dir, tree, staged_skill, label):
     profiles = catalog.get("profiles")
     if not isinstance(profiles, dict) or not profiles:
         raise content_pack_error(label, "has no profiles")
-    engine_catalog = read_json_file(os.path.join(engine_dir, *CATALOG_RELATIVE_PATH.split("/")), "profile catalog")
+    engine_inputs = engine_catalog_inputs(engine_dir)
     composed = {key: catalog[key] for key in ("version", "minEngine", "changes") if key in catalog}
-    composed.update({"schemaVersion": engine_catalog.get("schemaVersion"), "baseAssets": COMPOSED_BASE_DIRECTORY,
+    composed.update({"schemaVersion": engine_inputs["schemaVersion"], "baseAssets": COMPOSED_BASE_DIRECTORY,
                      "profiles": {}})
     for name, entry in sorted(profiles.items()):
         if not isinstance(name, str) or not KEBAB_CASE_NAME.fullmatch(name):
@@ -448,9 +469,7 @@ def compose_pack_content(engine_dir, tree, staged_skill, label):
             translated["assets"] = f"{COMPOSED_PROFILES_DIRECTORY}/{entry['assets']}"
             copy_tree(asset_root, os.path.join(staged_skill, *translated["assets"].split("/")))
         composed["profiles"][name] = translated
-    for name, entry in sorted(engine_catalog.get("profiles", {}).items()):
-        if entry.get("kind") != ENGINE_PROFILE_KIND:
-            continue
+    for name, entry in engine_inputs["ciProfiles"].items():
         if name in composed["profiles"]:
             raise content_pack_error(label, f"profile '{name}' takes the name of a CI profile of the engine")
         composed["profiles"][name] = entry

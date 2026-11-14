@@ -919,3 +919,49 @@ PY
   [[ "$stderr" == *"pack 'acme' declares baseAssets, but only the content source (sources.golfoKit.source) publishes the base"* ]]
   [ ! -e .agents/rules ]
 }
+
+
+@test "removing sources.golfoKit.source goes back to the marketplace, not to the origin of the content pack" {
+  publish_content_pack
+  write_manifest "{\"profiles\": [\"node\"], \"sources\": {$content_source}}"
+  run_cli apply
+  [ "$status" -eq 0 ]
+  [ "$(lock_value 'data["source"]["layout"]')" = "pack" ]
+
+  # The ref stays, the source goes: main is resolved in the marketplace, whose main is revision two.
+  write_manifest '{"profiles": ["node"], "sources": {"golfoKit": {"ref": "main"}}}'
+  run_cli apply
+  [ "$status" -eq 0 ]
+  grep -Fq 'Content of revision two.' .agents/rules/verify-changes.md
+  ! grep -Fq 'Rule of the content pack.' .agents/rules/verify-changes.md
+  [ "$(lock_value '[data["source"].get(key) for key in ("revision", "origin", "layout")]')" = \
+    "['$second_revision', 'https://github.com/guidomodarelli/golfo-marketplace', None]" ]
+}
+
+@test "a new engine whose catalog only changes a CI profile composes the content pack again" {
+  publish_content_pack
+  # An installed engine that tests can change: the plugin, with the skill without its tests.
+  engine_plugin="$test_root/engine/golfo-kit"
+  mkdir -p "$engine_plugin/skills"
+  cp -R "$repository_root/plugins/golfo-kit/plugin.json" "$repository_root/plugins/golfo-kit/.claude-plugin" \
+    "$repository_root/plugins/golfo-kit/.codex-plugin" "$engine_plugin/"
+  cp -R "$skill_dir" "$engine_plugin/skills/agent-ready-setup"
+  rm -rf "$engine_plugin/skills/agent-ready-setup/tests" "$engine_plugin/skills/agent-ready-setup/evals"
+  engine_cli="$engine_plugin/skills/agent-ready-setup/scripts/agent-ready"
+  write_manifest "{\"profiles\": [\"node\"], \"ci\": {\"provider\": \"github\"}, \"sources\": {$content_source}}"
+  run --separate-stderr env PATH="$fake_bin:$PATH" python3 "$engine_cli" plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *".github/workflows/agent-ready.yml"* ]]
+
+  # Only the catalog entry changes: ci-github now takes the files of GitLab, which the engine already has.
+  python3 - "$engine_plugin/skills/agent-ready-setup/assets/profiles.json" <<'PY'
+import json, sys
+data = json.load(open(sys.argv[1], encoding="utf-8"))
+data["profiles"]["ci-github"]["assets"] = data["profiles"]["ci-gitlab"]["assets"]
+json.dump(data, open(sys.argv[1], "w", encoding="utf-8"), indent=2)
+PY
+  run --separate-stderr env PATH="$fake_bin:$PATH" python3 "$engine_cli" plan
+  [ "$status" -eq 0 ]
+  [[ "$output" != *".github/workflows/agent-ready.yml"* ]]
+  [[ "$output" == *"gitlab-ci.yml"* ]]
+}
