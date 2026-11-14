@@ -969,7 +969,8 @@ PY
 
 @test "the same commit of a content pack from another origin records that origin" {
   publish_content_pack
-  git config --global "url.file:///$(native_path "$content_pack" | sed 's#^/##').insteadOf" "https://mirror.example.invalid/golfo"
+  # --add: the same repository answers at both URLs, so the key of the first mapping takes a second value.
+  git config --global --add "url.file:///$(native_path "$content_pack" | sed 's#^/##').insteadOf" "https://mirror.example.invalid/golfo"
   write_manifest "{\"profiles\": [\"node\"], \"sources\": {$content_source}}"
   run_cli apply
   [ "$status" -eq 0 ]
