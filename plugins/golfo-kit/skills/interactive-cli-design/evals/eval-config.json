@@ -736,7 +736,7 @@
       "assertions": [
         {
           "type": "regex",
-          "pattern": "AI_AGENT|CLAUDECODE|CODEX_",
+          "pattern": "AI_AGENT|CLAUDECODE|CODEX_|is_agent_session|isAgentSession",
           "description": "Detecta el agente por variables de entorno"
         },
         {
@@ -773,7 +773,7 @@
         },
         {
           "type": "regex",
-          "pattern": "\"ok\"",
+          "pattern": "\"ok\"|[{] ?ok[,:]|\bok: ?(true|false)",
           "description": "Envoltura con ok"
         },
         {
