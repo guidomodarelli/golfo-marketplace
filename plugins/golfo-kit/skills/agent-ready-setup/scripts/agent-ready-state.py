@@ -608,18 +608,10 @@ def engine_requirement(kind, source_name, catalog_path, label, engine_version, s
     requirement.update(version=catalog.get("version"), minEngine=catalog.get("minEngine"))
     try:
         compatibility.require_engine(label, catalog, engine_version, supported_schema)
-    except ProfileError as engine_error:
-        schema = catalog.get("schemaVersion")
-        newer_schema = isinstance(schema, int) and not isinstance(schema, bool) and schema > supported_schema
-        minimum_key = compatibility.semver_key(catalog.get("minEngine"))
-        engine_key = compatibility.semver_key(engine_version)
-        newer_minimum = bool(minimum_key and engine_key and engine_key < minimum_key)
-        if newer_schema or newer_minimum:
-            requirement.update(category=ENGINE_PROBLEM_ENGINE,
-                               requiredVersion=None if newer_schema else catalog.get("minEngine"))
-        else:
-            requirement["category"] = ENGINE_PROBLEM_CATALOG
-        requirement["problem"] = str(engine_error)
+    except compatibility.EngineRequirementError as engine_error:
+        requirement.update(problem=str(engine_error), category=ENGINE_PROBLEM_ENGINE, requiredVersion=engine_error.required_version)
+    except ProfileError as catalog_error:
+        requirement.update(problem=str(catalog_error), category=ENGINE_PROBLEM_CATALOG)
     return requirement
 
 

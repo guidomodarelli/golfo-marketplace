@@ -26,6 +26,7 @@ from agent_ready_cli_common import (
     find_repository_root,
 )
 from agent_ready_common import ProfileError, StateError, bash_executable, plugin_version, read_json_file, serialize_json
+from agent_ready_compatibility import EngineRequirementError
 from agent_ready_config import ConfigurationError, resolve_configuration
 from agent_ready_options import PROVIDERS_KEY
 from agent_ready_packs import SOURCE_TYPE_GIT, SOURCE_TYPE_PATH
@@ -184,17 +185,19 @@ def check_sources(project, configuration, offline):
     return checks
 
 
+def engine_update_fix(required_version):
+    """How to get an engine new enough: that plugin version, or the newest one when none is named."""
+    target = f"the golfo-kit plugin {required_version} or newer" if required_version else "the newest golfo-kit plugin"
+    return f"install {target}: {', or '.join(ENGINE_UPDATE_COMMANDS)}"
+
+
 def engine_requirement_check(requirement, installed_version):
     """One source against this engine: what it declares, or why an apply would stop on it, with what fixes it."""
     name = f"{requirement['kind']} {requirement['source']}"
     label = f"{requirement['source']} {requirement['version'] or '(no version)'}"
     if requirement["problem"]:
-        if requirement["category"] == engine().ENGINE_PROBLEM_ENGINE:
-            target = (f"the golfo-kit plugin {requirement['requiredVersion']} or newer" if requirement["requiredVersion"]
-                      else "the newest golfo-kit plugin")
-            fix = f"install {target}: {', or '.join(ENGINE_UPDATE_COMMANDS)}"
-        else:
-            fix = "fix the catalog it names"
+        fix = (engine_update_fix(requirement["requiredVersion"]) if requirement["category"] == engine().ENGINE_PROBLEM_ENGINE
+               else "fix the catalog it names")
         return check(name, CHECK_MISSING, requirement["problem"], fix)
     if requirement["minEngine"]:
         return check(name, CHECK_OK, f"{label} needs golfo-kit {requirement['minEngine']} or newer; this is {installed_version}")
@@ -214,6 +217,10 @@ def check_engine_requirements(project, configuration, offline):
     except engine().content_source.ContentPendingError:
         checks.append(check("content", CHECK_SKIPPED, "--offline: the content of this repository is not on this machine yet",
                             f"run {CLI_NAME} doctor without --offline to download it"))
+    except EngineRequirementError as engine_error:
+        # The content is written for a newer engine, and cannot even be composed with this one.
+        checks.append(check(f"content {engine().content_source.CONTENT_SOURCE_NAME}", CHECK_MISSING, str(engine_error),
+                            engine_update_fix(engine_error.required_version)))
     except (ProfileError, StateError) as content_error:
         checks.append(check("content", CHECK_MISSING, f"could not prepare the content: {content_error}",
                             f"check the network and your access to sources.golfo ({CLI_NAME} config explain sources.golfo.source)"))

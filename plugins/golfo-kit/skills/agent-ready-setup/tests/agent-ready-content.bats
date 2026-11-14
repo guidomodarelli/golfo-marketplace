@@ -292,7 +292,9 @@ wait_for_background_update() {
   edit_content_catalog 'data["minEngine"] = "99.0.0"'
   run_cli apply --stack node
   [ "$status" -ne 0 ]
-  [[ "$stderr" == *"the golfo catalog needs the agent-ready-setup engine 99.0.0 or newer"* ]]
+  # The content pack asks for its engine before its format is judged, naming where it comes from.
+  grep -Fq -- "golfo: the content pack at revision ${content_revision:0:12} of https://github.com/guidomodarelli/golfo-agent-profiles" <<< "$stderr"
+  grep -Fq -- "needs the agent-ready-setup engine 99.0.0 or newer" <<< "$stderr"
   [ ! -e .agents/rules ]
 }
 

@@ -605,7 +605,7 @@ PY
   printf '%s\n' '{"sources": {"packs": [{"name": "acme", "source": "path:packs/acme"}]}}' > .agents/agent-ready.json
   run_cli doctor --offline
   [ "$status" -eq 1 ]
-  grep -Fq -- "the golfo catalog needs the agent-ready-setup engine 99.0.0 or newer" <<< "$output"
+  grep -Fq -- "(AGENT_READY_SETUP_CONTENT_DIR) needs the agent-ready-setup engine 99.0.0 or newer" <<< "$output"
   grep -Fq -- "pack 'acme' needs the agent-ready-setup engine 98.0.0 or newer" <<< "$output"
   grep -Fq -- "fix: install the golfo-kit plugin 98.0.0 or newer: claude plugin update golfo-kit@golfo-marketplace" <<< "$output"
   grep -Fq -- "2 problems" <<< "$stderr"
@@ -629,6 +629,22 @@ PY
   [ "$status" -eq 1 ]
   grep -Fq -- "minEngine must be a semantic version" <<< "$output"
   grep -Fq -- "fix: fix the catalog it names" <<< "$output"
+
+  # Content written for a newer catalog format cannot even be composed: doctor and the apply both ask for the newest plugin.
+  python3 - "$content_dir/agent-ready-pack.json" <<'PY'
+import json, sys
+catalog = json.load(open(sys.argv[1], encoding="utf-8"))
+catalog.update(schemaVersion=9, fieldOfANewerFormat=True)
+json.dump(catalog, open(sys.argv[1], "w", encoding="utf-8"), indent=2)
+PY
+  export AGENT_READY_SETUP_CONTENT_DIR="$content_dir"
+  run_cli doctor --offline --json
+  [ "$status" -eq 1 ]
+  [ "$(json_value "$output" '[check["fix"] for check in data["checks"] if check["name"] == "content golfo"][0].split(":")[0]')" = "install the newest golfo-kit plugin" ]
+  run_cli apply --stack node
+  [ "$status" -ne 0 ]
+  grep -Fq -- "uses catalog schemaVersion 9, and this engine" <<< "$stderr"
+  export AGENT_READY_SETUP_CONTENT_DIR="$content_pack"
 
   # A source the manifest declares wrong keeps the report: the sources check names it.
   printf '%s\n' '{"sources": {"packs": [{"name": "acme", "source": "path:/absolute"}]}}' > .agents/agent-ready.json

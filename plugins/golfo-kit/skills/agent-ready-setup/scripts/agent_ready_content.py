@@ -21,7 +21,7 @@ import shutil
 import tempfile
 
 from agent_ready_common import KEBAB_CASE_NAME, ProfileError, StateError, plugin_version, read_json_file
-from agent_ready_compatibility import semver_key
+from agent_ready_compatibility import require_engine, semver_key
 from agent_ready_detection import is_contained_pattern
 import agent_ready_nested as nested
 from agent_ready_options import (
@@ -395,6 +395,8 @@ def compose_pack_content(engine_dir, tree, staged_skill, label):
         catalog = read_json_file(os.path.join(tree, PACK_CATALOG_FILE_NAME), "content pack catalog")
     except StateError as catalog_error:
         raise content_pack_error(label, str(catalog_error)) from catalog_error
+    # A catalog for a newer engine (schemaVersion, minEngine) asks for that engine before its format is judged.
+    require_engine(f"{CONTENT_SOURCE_NAME}: the content pack at {label}", catalog, plugin_version(engine_dir), PACK_SCHEMA_VERSION)
     extra_keys = sorted(set(catalog) - set(CONTENT_PACK_TOP_LEVEL_KEYS))
     if extra_keys:
         raise content_pack_error(label, f"has fields a content pack cannot declare: {', '.join(extra_keys)}")
