@@ -802,7 +802,7 @@ seleccionado declara `tools: ["browser"]`; `tools.enabled: false` (o
 
 - Los skills, subagentes y comandos de un profile que suma un workspace valen para todo el repositorio:
   los providers no los acotan por carpeta («Workspaces», sección 1).
-- En Windows sin symlinks, las vistas son hard links y
+- En Windows sin symlinks, o con `core.symlinks=false`, las vistas son hard links y
   `relink-hard-link-views.sh` las reenlaza en cada prompt y en cada escritura del
   índice, para recuperar las que git separa cuando recrea el asset. Sin historial
   por vista no distingue ese caso de una edición guardada como archivo nuevo en la

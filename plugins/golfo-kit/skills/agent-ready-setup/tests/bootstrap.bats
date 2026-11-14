@@ -150,6 +150,10 @@ skip_without_symlinks() {
     skip "requiere symlinks reales (en Windows: Modo de desarrollador o una shell elevada)"
   fi
   rm -f "$probe_target" "$probe_link"
+  # Where git checks symlinks out as files, the engine makes the views hard links (asset-sync-common.sh).
+  if [[ "$(git config --type=bool --get core.symlinks 2>/dev/null)" == "false" ]]; then
+    skip "core.symlinks=false: git saca los symlinks como archivos, así que las vistas son hard links"
+  fi
 }
 
 @test "normalize-instructions entry point normalizes instructions without projecting assets" {
@@ -2816,6 +2820,18 @@ SCRIPT
   [ .claude/rules/react-security.md -ef .agents/rules/react-security.md ]
   grep -Fxq 'rules/react-security.md' .claude/.agent-ready-hard-link-views
   [[ "$output" != *"could not create Claude view"* ]]
+}
+
+@test "a repository whose git checks symlinks out as files gets hard-link views, even where symlinks work" {
+  # With core.symlinks=false a committed symlink comes back as a file holding the link path.
+  git config core.symlinks false
+
+  run_bootstrap react
+
+  [ "$status" -eq 0 ]
+  [ ! -L .claude/rules/react-security.md ]
+  [ .claude/rules/react-security.md -ef .agents/rules/react-security.md ]
+  grep -Fxq 'rules/react-security.md' .claude/.agent-ready-hard-link-views
 }
 
 @test "detached hard-link views are relinked on the next bootstrap" {
