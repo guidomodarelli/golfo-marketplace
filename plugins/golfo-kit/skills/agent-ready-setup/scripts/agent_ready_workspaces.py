@@ -17,6 +17,7 @@ skills, subagents and commands go to .agents/ once for the whole repository, bec
 not scope them by folder. The contract is in references/profiles-and-lockfile.md ("Workspaces").
 """
 
+import fnmatch
 import glob
 import json
 import os
@@ -58,7 +59,6 @@ MAX_SUGGESTION_CANDIDATES = 50
 # Folders a recursive pattern (modules/**) never goes into: installed dependencies, besides the hidden ones.
 PRUNED_FOLDER_NAMES = ("node_modules",)
 RECURSIVE_WILDCARD = "**"
-GLOB_CHARACTERS = "*?["
 PNPM_PACKAGES_LINE = re.compile(r"^packages:\s*$")
 GO_USE_LINE = re.compile(r"^use\s+(\(|\S+)")
 
@@ -230,25 +230,44 @@ def declared_patterns(project_root):
     return patterns
 
 
-def is_pruned(folder):
-    """True for a folder under installed dependencies or a hidden folder, which is never a workspace."""
-    return any(part in PRUNED_FOLDER_NAMES or part.startswith(".") for part in folder.split("/"))
+def is_pruned_name(name):
+    """True for the name of a folder that is never a workspace: installed dependencies or a hidden folder."""
+    return name in PRUNED_FOLDER_NAMES or name.startswith(".")
 
 
-def pattern_base(pattern):
-    """The folders of a pattern before its first wildcard: modules for modules/**."""
-    parts = []
-    for part in pattern.split("/"):
-        if any(character in part for character in GLOB_CHARACTERS):
-            break
-        parts.append(part)
-    return "/".join(parts)
+def relative_folder(project_root, path):
+    return os.path.relpath(path, project_root).replace(os.sep, "/")
+
+
+def recursive_matches(project_root, parts):
+    """The folders a pattern with a ** segment matches (modules/**, packages/**/app), below its base.
+
+    The tree is walked once and the walk never goes into an is_pruned_name folder or through a link, so
+    the installed dependencies of a monorepo are never read.
+    """
+    index = parts.index(RECURSIVE_WILDCARD)
+    prefix, remainder = parts[:index], [part for part in parts[index + 1:] if part]
+    bases = glob.glob(os.path.join(project_root, *prefix)) if prefix else [project_root]
+    folders = []
+    for base in bases:
+        if not os.path.isdir(base) or is_link(base) or is_pruned_name(os.path.basename(base)):
+            continue
+        for current, names, _ in os.walk(base):
+            names[:] = sorted(name for name in names
+                              if not is_pruned_name(name) and not is_link(os.path.join(current, name)))
+            for name in names:
+                folder = relative_folder(project_root, os.path.join(current, name))
+                tail = folder.split("/")
+                if not remainder or (len(tail) >= len(remainder) and all(
+                        fnmatch.fnmatchcase(part, wanted) for part, wanted in zip(tail[-len(remainder):], remainder))):
+                    folders.append(folder)
+    return folders
 
 
 def candidate_folders(project_root):
-    """Folders that look like a workspace, sorted: the declared ones (declared_patterns, ** included) and
-    those under CONVENTIONAL_PARENTS. The base of a pattern (modules for modules/**) and is_pruned folders
-    stay out; suggestions checks that each one can be a workspace."""
+    """Folders that look like a workspace, sorted: the declared ones (declared_patterns), literal or with
+    wildcards (recursive_matches for **), and those under CONVENTIONAL_PARENTS, without the is_pruned_name
+    ones; suggestions checks that each one can be a workspace."""
     patterns = [pattern for pattern in declared_patterns(project_root) if not pattern.startswith("!")]
     patterns += [f"{parent}/*" for parent in CONVENTIONAL_PARENTS]
     folders = set()
@@ -256,13 +275,16 @@ def candidate_folders(project_root):
         pattern = pattern.strip().rstrip("/")
         while pattern.startswith("./"):
             pattern = pattern[2:]
-        if not pattern or pattern.startswith("/") or ".." in pattern.split("/"):
+        parts = pattern.split("/")
+        if not pattern or pattern.startswith("/") or ".." in parts:
             continue
-        base = pattern_base(pattern)
-        for match in glob.glob(os.path.join(project_root, *pattern.split("/")), recursive=RECURSIVE_WILDCARD in pattern):
-            folder = os.path.relpath(match, project_root).replace(os.sep, "/")
-            if os.path.isdir(match) and folder != base and not is_pruned(folder):
-                folders.add(folder)
+        if RECURSIVE_WILDCARD in parts:
+            matches = recursive_matches(project_root, parts)
+        else:
+            matches = [relative_folder(project_root, match) for match in glob.glob(os.path.join(project_root, *parts))
+                       if os.path.isdir(match)]
+        folders.update(folder for folder in matches
+                       if not any(is_pruned_name(part) for part in folder.split("/")))
     return sorted(folders)
 
 

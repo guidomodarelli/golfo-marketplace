@@ -389,7 +389,8 @@ lock_value() {
   printf '{"dependencies": {"react": "19"}}\n' > libs/ui/package.json
   printf '%s\n' 'go 1.22' '' 'use (' '	./tools/gen' ')' > go.work
   printf 'module example.invalid/gen\n' > tools/gen/go.mod
-  # A recursive pattern goes into the subfolders, but never into installed dependencies.
+  # A recursive pattern goes into the subfolders, but never into installed dependencies; a literal
+  # folder (./tools/gen of go.work) counts as it is.
   printf '{"workspaces": ["modules/**"]}\n' > package.json
   mkdir -p modules/team/api modules/team/node_modules/lib
   printf 'module example.invalid/team\n' > modules/team/api/go.mod
