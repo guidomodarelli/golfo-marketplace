@@ -330,10 +330,11 @@ sys.path.insert(0, sys.argv[1])
 spec = importlib.util.spec_from_file_location("state", sys.argv[1] + "/agent-ready-state.py")
 state = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(state)
+import agent_ready_removal as removal
 plan = state.plan_removal(".", sys.argv[2])
 with open(".github/pull_request_template.md", "a", encoding="utf-8") as template:
     template.write("\n## Added while removing\n")
-report = state.apply_removal(".", sys.argv[2], {"entries": [entry for entry in plan["entries"] if entry["kind"] == "block"]})
+report = removal.apply_removal(".", sys.argv[2], {"entries": [entry for entry in plan["entries"] if entry["kind"] == "block"]})
 assert report["edited"] == [".github/pull_request_template.md"], report
 PY
   ! grep -q 'AGENT-READY MANAGED' "$template"

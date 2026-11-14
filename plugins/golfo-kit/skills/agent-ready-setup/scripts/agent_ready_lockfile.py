@@ -26,3 +26,12 @@ def read_lock(project_root):
     if not isinstance(lock.get("assets"), dict):
         raise StateError(f"{path} has no 'assets' inventory")
     return lock
+
+
+def was_applied(lock_entry):
+    """True when an apply wrote this destination, which is what makes it managed.
+
+    A preserved project file stays in the lock without an applied base. A failed
+    write also has no base, but the apply did try to own that destination.
+    """
+    return bool(lock_entry) and (bool(lock_entry.get("sha256")) or lock_entry.get("state") == STATE_FAILED)

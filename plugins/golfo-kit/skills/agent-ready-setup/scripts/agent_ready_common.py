@@ -5,6 +5,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import tempfile
 import time
 
@@ -173,3 +174,26 @@ def has_linked_parent(project_root, destination):
             return True
         parent = os.path.dirname(parent)
     return False
+
+
+def run_quiet(command, cwd=None):
+    """Run a read-only command and return its UTF-8 stdout, or None when it fails."""
+    try:
+        completed = subprocess.run(command, cwd=cwd, capture_output=True, encoding="utf-8", errors="replace", check=False)
+    except OSError:
+        return None
+    if completed.returncode != 0:
+        return None
+    return completed.stdout.strip()
+
+
+def remove_empty_parents(project_root, path):
+    """Remove empty managed directories left by a retired asset."""
+    stop_directories = {os.path.normpath(os.path.join(project_root, root)) for root in (".agents", ".claude", ".github", ".codex")}
+    directory = os.path.dirname(path)
+    while os.path.normpath(directory) not in stop_directories and directory.startswith(project_root):
+        try:
+            os.rmdir(directory)
+        except OSError:
+            return
+        directory = os.path.dirname(directory)
