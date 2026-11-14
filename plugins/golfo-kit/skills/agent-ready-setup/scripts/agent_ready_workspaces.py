@@ -17,6 +17,8 @@ skills, subagents and commands go to .agents/ once for the whole repository, bec
 not scope them by folder. The contract is in references/profiles-and-lockfile.md ("Workspaces").
 """
 
+import glob
+import json
 import os
 import re
 
@@ -43,6 +45,17 @@ PATHS_LINE = re.compile(r"^paths:\s*(.*)$")
 # YAML takes the items of a sequence indented or not ("paths:" then "- src/**").
 LIST_ITEM = re.compile(r"^\s*-\s*(.*)$")
 INLINE_LIST = re.compile(r"^\[(.*)\]$")
+
+
+# Where a monorepo keeps its packages, besides what its package managers declare (declared_patterns).
+CONVENTIONAL_PARENTS = ("apps", "packages", "services")
+PACKAGE_MANIFEST = "package.json"
+PNPM_WORKSPACE_FILE = "pnpm-workspace.yaml"
+GO_WORK_FILE = "go.work"
+# The folders detection looks into at most: each one runs the detection and asks Git about the folder.
+MAX_SUGGESTION_CANDIDATES = 50
+PNPM_PACKAGES_LINE = re.compile(r"^packages:\s*$")
+GO_USE_LINE = re.compile(r"^use\s+(\(|\S+)")
 
 
 def is_linked(project_root, path):
@@ -139,6 +152,122 @@ def differences(configured, locked):
     configured_paths = {entry["path"] for entry in configured}
     lines += [f"workspace {path} left the manifest" for path in sorted(set(locked) - configured_paths)]
     return lines
+
+
+# ---------------------------------------------------------------------------
+# Suggested workspaces
+# ---------------------------------------------------------------------------
+
+def read_text(path):
+    """The text of a file of the repository, or None when it cannot be read."""
+    if is_link(path) or not os.path.isfile(path):
+        return None
+    try:
+        with open(path, encoding="utf-8-sig") as text_file:
+            return text_file.read()
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
+def package_workspaces(text):
+    """The patterns of "workspaces" in a package.json: a list, or {"packages": [...]}."""
+    try:
+        manifest = json.loads(text)
+    except ValueError:
+        return []
+    declared = manifest.get("workspaces") if isinstance(manifest, dict) else None
+    if isinstance(declared, dict):
+        declared = declared.get("packages")
+    return [pattern for pattern in declared if isinstance(pattern, str)] if isinstance(declared, list) else []
+
+
+def pnpm_packages(text):
+    """The patterns under packages: in a pnpm-workspace.yaml."""
+    patterns, inside = [], False
+    for line in text.splitlines():
+        if PNPM_PACKAGES_LINE.match(line):
+            inside = True
+        elif inside and line.strip() and not line.strip().startswith("#"):
+            item = LIST_ITEM.match(line)
+            if not item:
+                break
+            patterns.append(unquoted(item.group(1).split(" #", 1)[0]))
+    return patterns
+
+
+def go_work_uses(text):
+    """The folders a go.work uses: use ./api, or a use ( ... ) block."""
+    folders, block = [], False
+    for line in text.splitlines():
+        stripped = line.split("//", 1)[0].strip()
+        if block:
+            if stripped == ")":
+                block = False
+            elif stripped:
+                folders.append(unquoted(stripped))
+            continue
+        use = GO_USE_LINE.match(stripped)
+        if use and use.group(1) == "(":
+            block = True
+        elif use:
+            folders.append(unquoted(use.group(1)))
+    return folders
+
+
+def declared_patterns(project_root):
+    """The folders, or patterns of folders, the package managers of the repository declare as workspaces."""
+    patterns = []
+    for name, parse in ((PACKAGE_MANIFEST, package_workspaces), (PNPM_WORKSPACE_FILE, pnpm_packages),
+                        (GO_WORK_FILE, go_work_uses)):
+        text = read_text(os.path.join(project_root, name))
+        if text is not None:
+            patterns += parse(text)
+    return patterns
+
+
+def candidate_folders(project_root):
+    """Folders that look like a workspace: the declared ones (declared_patterns) and those under
+    CONVENTIONAL_PARENTS, that can be one (path_problem), sorted, at most MAX_SUGGESTION_CANDIDATES."""
+    patterns = [pattern for pattern in declared_patterns(project_root) if not pattern.startswith("!")]
+    patterns += [f"{parent}/*" for parent in CONVENTIONAL_PARENTS]
+    folders = set()
+    for pattern in patterns:
+        pattern = pattern.strip().rstrip("/")
+        while pattern.startswith("./"):
+            pattern = pattern[2:]
+        if not pattern or pattern.startswith("/") or ".." in pattern.split("/"):
+            continue
+        for match in glob.glob(os.path.join(project_root, *pattern.split("/"))):
+            if os.path.isdir(match):
+                folders.add(os.path.relpath(match, project_root).replace(os.sep, "/"))
+    candidates = []
+    for folder in sorted(folders):
+        if len(candidates) == MAX_SUGGESTION_CANDIDATES:
+            break
+        if path_problem(project_root, folder) is None:
+            candidates.append(folder)
+    return candidates
+
+
+def suggestions(project_root, profiles, root_resolved, entries, detect):
+    """[{path, profiles, evidence}] of the folders whose own stack the root selection does not have.
+
+    ``detect(profiles, folder)`` is the detection of the repository run on one folder. A folder that is a
+    workspace, or sits inside or around one, is not suggested; nor is one inside another suggestion.
+    """
+    taken = [entry["path"] for entry in entries]
+    found = []
+    for folder in candidate_folders(project_root):
+        if any(is_inside(folder, path) or is_inside(path, folder) for path in taken):
+            continue
+        detection = detect(profiles, os.path.join(project_root, *folder.split("/")))
+        stack = detection["primaryStack"]
+        if not stack or stack in root_resolved:
+            continue
+        evidence = [dict(item, file=f"{folder}/{item['file']}") for item in detection["stacks"][stack]]
+        found.append({"path": folder, "profiles": [stack], "evidence": evidence})
+        taken.append(folder)
+    return found
 
 
 # ---------------------------------------------------------------------------

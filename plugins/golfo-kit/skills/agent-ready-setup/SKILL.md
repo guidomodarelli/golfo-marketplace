@@ -16,7 +16,7 @@ description: >-
   descartar un hallazgo de sus revisiones de IA.
 license: MIT
 metadata:
-  version: "1.53.0"
+  version: "1.54.0"
   author: "guponce"
   category: "developer-experience"
   tags: "agent-ready, multi-provider, claude-code, codex, bootstrap, setup, scaffold, context-optimized-v1.20.1"
@@ -130,6 +130,7 @@ explícito fuera del cache conservan prioridad para desarrollo local.
 | `agent-ready preset [delivered\|none]` | elige un preset con una sola clave o los lista; `delivered` deja una solución entregada estable hasta que alguien decida actualizarla ([references/stable-delivery.md](references/stable-delivery.md)) |
 | `agent-ready init [--profiles a,b \| --stack s] [--updates m] [--ci-provider p] [--yes] [--no-input]` | primera configuración: detecta, pregunta lo que falta si hay terminal (también el proveedor de CI) y aplica |
 | `agent-ready profiles list\|add\|remove` | la selección del manifest, validada contra el catálogo; después, `apply` |
+| `agent-ready workspaces list\|add\|remove` | los workspaces de un monorepo, validados antes de escribir; `list` muestra los que sugiere la detección y `add` sin profiles toma el stack que detecta en la carpeta; después, `apply` ([references/profiles-and-lockfile.md](references/profiles-and-lockfile.md), «Workspaces») |
 | `agent-ready sources list\|add\|remove` | las fuentes de packs del manifest; `add` además la trae a la caché |
 | `agent-ready doctor [--offline] [--json]` | revisa Git, Bash, Python, la CLI del provider, la configuración, las fuentes y los hooks, y dice cómo arreglar lo que falta |
 | `agent-ready remove [--dry-run] [--yes]` | saca agent-ready-setup del repo y conserva lo que escribió el proyecto |

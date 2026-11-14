@@ -86,6 +86,7 @@ from agent_ready_options import (  # noqa: E402
     CI_PROVIDER_NONE,
     CI_WARN,
     DETECTION_ENABLED_KEY,
+    DETECTION_WORKSPACES_KEY,
     NESTED_ENABLED_KEY,
     NESTED_TARGETS_KEY,
     NESTED_CODEX_INDEX_KEY,
@@ -1942,13 +1943,15 @@ def detached_views(project_root, assets, locked_assets):
     return edited, preserved
 
 
-def resolve_workspaces(project_root, catalog, profile_names, resolved):
-    """The workspaces of the manifest, validated and resolved together with the root selection.
+def resolve_workspaces(project_root, catalog, profile_names, resolved, entries=None):
+    """The workspaces of the manifest, or ``entries``, validated and resolved together with the root selection.
 
     A path that cannot be a workspace, or a selection that does not resolve with the root one, stops
-    before anything is written (agent_ready_workspaces.py).
+    before anything is written (agent_ready_workspaces.py). agent-ready workspaces add checks its entries
+    here before it writes them.
     """
-    entries = configuration_of(project_root).value(WORKSPACES_KEY) or []
+    if entries is None:
+        entries = configuration_of(project_root).value(WORKSPACES_KEY) or []
     workspace_selection.validate(project_root, entries, MANIFEST_RELATIVE_PATH)
     root_names = [name for name in profile_names if catalog["profiles"].get(name, {}).get("kind") != CI_PROFILE_KIND]
     for entry in entries:
@@ -1959,6 +1962,16 @@ def resolve_workspaces(project_root, catalog, profile_names, resolved):
             raise ProfileError(f"workspace {entry['path']}: {profile_error}") from profile_error
     return workspace_selection.resolve(entries, root_names, resolved,
                                        lambda names: resolve_project_profiles(catalog, names, project_root))
+
+
+def workspace_suggestions(project_root, catalog, resolved, configuration=None):
+    """The folders detection suggests as workspaces (agent_ready_workspaces.suggestions), or [] when
+    detection.enabled or detection.workspaces is off."""
+    configuration = configuration or configuration_of(project_root)
+    if not configuration.value(DETECTION_ENABLED_KEY) or not configuration.value(DETECTION_WORKSPACES_KEY):
+        return []
+    return workspace_selection.suggestions(project_root, catalog["profiles"], resolved,
+                                           configuration.value(WORKSPACES_KEY) or [], detect_profiles)
 
 
 def compute_plan(project_root, skill_dir, catalog, profile_names):
@@ -2337,6 +2350,13 @@ def print_plan_detection(plan):
             write_line(f"  ? {suggestion['profile']}: {format_evidence_list(suggestion['evidence'])}")
         adopted = plan["profiles_requested"] + [suggestion["profile"] for suggestion in plan["suggestions"]]
         write_line(f"  Adopt them with --profiles {','.join(adopted)}")
+        write_line("")
+    if plan.get("workspaceSuggestions"):
+        write_line(paint("Workspaces suggested (not applied: the manifest does not change)", "heading", stream))
+        for suggestion in plan["workspaceSuggestions"]:
+            write_line(f"  ? {suggestion['path']}: {', '.join(suggestion['profiles'])} "
+                       f"({format_evidence_list(suggestion['evidence'])})")
+            write_line(f"    Add it with agent-ready workspaces add {suggestion['path']}")
         write_line("")
 
 
@@ -3708,6 +3728,7 @@ def command_plan(arguments):
         if configuration.value(DETECTION_ENABLED_KEY):
             plan["detection"] = detect_profiles(catalog["profiles"], arguments.project)
             plan["suggestions"] = capability_suggestions(catalog, plan["detection"], plan["profiles"])
+            plan["workspaceSuggestions"] = workspace_suggestions(arguments.project, catalog, plan["profiles"], configuration)
         plan.update(structural_conflicts(arguments.project, arguments.skill_dir, plan, catalog, configuration))
         if arguments.format in (CONFLICTS_FORMAT, CONFLICTS_JSON_FORMAT):
             return report_conflicts(plan, arguments.format == CONFLICTS_JSON_FORMAT)
