@@ -819,6 +819,33 @@
           "description": "Detecta el agente por entorno"
         }
       ]
+    },
+    {
+      "id": "visual-output-always-applies-vivid",
+      "description": "Aunque el pedido diga que para la salida alcanza con NO_COLOR, carga vivid-visual-output y aplica su carácter, su tarjeta y su degradación completa en vez de un piso propio.",
+      "input": "Armá `env-sync`, un CLI nuevo en Node 22 con parseArgs y @clack/prompts: recibe --env (dev|staging) y --dry-run, pregunta el entorno si falta y al final muestra qué sincronizó. Es una herramienta interna, así que para la salida con que respete NO_COLOR alcanza.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "vivid-visual-output",
+          "description": "Carga la skill dueña de cómo se ve la salida"
+        },
+        {
+          "type": "regex",
+          "pattern": "car[aá]cter|paleta|palette|THEME",
+          "description": "Fija el carácter visual del proyecto en constantes"
+        },
+        {
+          "type": "regex",
+          "pattern": "tarjeta|renderBox|recuadro",
+          "description": "Abre con la tarjeta de encabezado"
+        },
+        {
+          "type": "regex",
+          "pattern": "FORCE_COLOR|env\\.CI|TERM.{0,12}dumb|isAgentSession",
+          "description": "Degrada también con CI, TERM=dumb o modo agente, no solo con NO_COLOR"
+        }
+      ]
     }
   ]
 }
