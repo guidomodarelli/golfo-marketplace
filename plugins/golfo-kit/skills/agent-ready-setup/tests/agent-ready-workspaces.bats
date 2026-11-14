@@ -68,8 +68,25 @@ _log.write(f"{time.strftime('%H:%M:%S')} start {os.getpid()} {sys.argv[:4]}\n")
 _log.flush()
 faulthandler.dump_traceback_later(150, exit=True, file=_log)
 PY
+  : > "$test_root/diagnostic/tracebacks.log"
+  (
+    tick=0
+    while sleep 15; do
+      tick=$((tick + 1))
+      if [[ -s "$test_root/diagnostic/tracebacks.log" ]]; then
+        sed 's/^/# log: /' "$test_root/diagnostic/tracebacks.log" >&3
+        : > "$test_root/diagnostic/tracebacks.log"
+      fi
+      if (( tick % 4 == 0 )); then
+        { ps -W 2>/dev/null || ps -ef; } | grep -Ei 'python|bash|git|claude|codex|node|sh\.exe' | sed 's/^/# ps: /' >&3
+      fi
+    done
+  ) &
+  local watcher=$!
   run --separate-stderr env PATH="$fake_bin:$PATH" PYTHONPATH="$test_root/diagnostic" \
     DIAGNOSTIC_TRACEBACKS="$test_root/diagnostic/tracebacks.log" python3 "$skill_dir/scripts/agent-ready" "$@"
+  kill "$watcher" 2>/dev/null || true
+  wait "$watcher" 2>/dev/null || true
   printf '# %s done %s (status %s)\n' "$(date +%T)" "$1" "$status" >&3
   if [[ -s "$test_root/diagnostic/tracebacks.log" ]]; then
     sed 's/^/# /' "$test_root/diagnostic/tracebacks.log" >&3
