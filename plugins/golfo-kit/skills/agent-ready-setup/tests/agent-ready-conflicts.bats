@@ -479,6 +479,47 @@ sys.exit(0)
   [ ! -e .agents/rules/acme-team.md ]
 }
 
+@test "a rule of a workspace is reviewed against the root and a finding names both levels, but two workspaces are not paired" {
+  mkdir -p agent-packs/acme/profiles/team/rules agent-packs/acme/profiles/ops/rules apps/web apps/admin
+  touch apps/web/.keep apps/admin/.keep
+  printf '%s\n' '{"schemaVersion": 1, "name": "acme", "version": "1.0.0", "profiles": {"team": {"kind": "capability", "description": "Team rules.", "assets": "profiles/team"}, "ops": {"kind": "capability", "description": "Ops rules.", "assets": "profiles/ops"}}}' > agent-packs/acme/agent-ready-pack.json
+  printf '# Acme team\nNever verify changes.\n' > agent-packs/acme/profiles/team/rules/acme-team.md
+  printf '# Acme ops\nDeploy on Fridays.\n' > agent-packs/acme/profiles/ops/rules/acme-ops.md
+  write_manifest '{"profiles": ["node"], "sources": {"packs": [{"name": "acme", "source": "path:./agent-packs/acme"}]}, "workspaces": [{"path": "apps/web", "profiles": ["acme/team"]}, {"path": "apps/admin", "profiles": ["acme/ops"]}]}'
+  export FAKE_CONFLICT_SECOND="acme-team.md"
+
+  agent_ready plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *".agents/rules/verify-changes.md <-> .agents/rules/workspaces/apps/web/acme-team.md: One rule verifies every change and the other forbids it. (two levels; root and apps/web/)"* ]]
+  # The rule of a workspace is paired with the root, never with the rules of another workspace.
+  grep -Eq '^[0-9]+\. \.agents/rules/verify-changes\.md <-> \.agents/rules/workspaces/apps/admin/acme-ops\.md$' "$FAKE_INPUT"
+  ! grep -Eq '^[0-9]+\. \.agents/rules/workspaces/apps/admin/acme-ops\.md <-> \.agents/rules/workspaces/apps/web/acme-team\.md$' "$FAKE_INPUT"
+  agent_ready plan --json
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s' "$output" | python3 -c 'import json,sys; print(json.load(sys.stdin)["semanticConflicts"]["findings"][0]["levels"])' | tr -d '\r')" = "['root', 'apps/web']" ]
+
+  # A conflict between levels comes with the apply, so conflicts.block stops it.
+  write_manifest '{"profiles": ["node"], "sources": {"packs": [{"name": "acme", "source": "path:./agent-packs/acme"}]}, "workspaces": [{"path": "apps/web", "profiles": ["acme/team"]}], "conflicts": {"block": true}}'
+  agent_ready apply
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"conflicts.block"* ]]
+  [ ! -e .agents/rules/workspaces/apps/web/acme-team.md ]
+}
+
+@test "what the project wrote in a nested AGENTS.md is reviewed against the root rules the apply changes" {
+  mkdir -p apps/web
+  printf '# Web\n\nNever verify changes.\n' > apps/web/AGENTS.md
+  write_manifest '{"profiles": ["node"], "workspaces": [{"path": "apps/web", "profiles": ["react"]}]}'
+  export FAKE_CONFLICT_SECOND="apps/web/AGENTS.md"
+
+  agent_ready plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *".agents/rules/verify-changes.md <-> apps/web/AGENTS.md: One rule verifies every change and the other forbids it. (two levels; root and apps/web/)"* ]]
+  # The review reads what the project wrote there, not the blocks the apply adds to the file.
+  grep -q 'Never verify changes.' "$FAKE_INPUT"
+  ! grep -q 'AGENT-READY MANAGED: agent-ready:workspace' "$FAKE_INPUT"
+}
+
 @test "a pack skill that competes with another profile's skill is reported, unless it declares complements" {
   mkdir -p agent-packs/acme/profiles/team/skills/team-review
   printf '%s\n' '{"schemaVersion": 1, "name": "acme", "version": "1.0.0", "profiles": {"team": {"kind": "capability", "description": "Team skills.", "assets": "profiles/team"}}}' > agent-packs/acme/agent-ready-pack.json

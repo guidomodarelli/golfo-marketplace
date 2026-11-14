@@ -4,7 +4,13 @@ Two directions, both reported by plan (and by status, from the cache):
 
 - update: a managed rule an apply creates or changes, against each rule of the project
   (``.agents/rules/`` without a managed equivalent) and the project's ``AGENTS.md``;
-- project: a rule of the project against each managed rule already applied.
+- project: a rule of the project against each managed rule already applied;
+- profiles: two managed rules of different profiles, one of them from a pack;
+- levels: a rule of the root against one of a workspace (a pack on either side), or a managed rule of
+  the root the apply changes against what the project wrote in a nested ``AGENTS.md``. They apply to
+  the same files at two levels; two workspaces never load each other's rules, so they are not paired.
+
+Each document also has its level (document_levels), so a finding names both.
 
 The review is harness-review.py's (same prompt and provider call) and its results go to
 review-cache.py under the same check, so a pair the edit hook already reviewed is not paid
@@ -33,8 +39,13 @@ DIRECTION_UPDATE = "update"
 DIRECTION_PROJECT = "project"
 # Two managed rules of different profiles, one of them from a pack.
 DIRECTION_PROFILES = "profiles"
+# A rule of the root against one of a workspace, or against the project's part of a nested AGENTS.md.
+DIRECTION_LEVELS = "levels"
 # Directions whose findings come with the apply: they can stop it and wait for a decision.
-APPLY_DIRECTIONS = (DIRECTION_UPDATE, DIRECTION_PROFILES)
+APPLY_DIRECTIONS = (DIRECTION_UPDATE, DIRECTION_PROFILES, DIRECTION_LEVELS)
+# The level of a document that applies to the whole repository.
+ROOT_LEVEL = "root"
+NESTED_AGENTS_SUFFIX = "/" + "AGENTS.md"
 # The check of harness-review.py, under which the conflicts are cached and decided.
 CONFLICT_CHECK = "harness-consistency"
 HARNESS_REVIEW_RELATIVE_PATH = "assets/common/hooks/harness-review.py"
@@ -119,27 +130,44 @@ def instructions_text(project_owned, text):
     return owned + "\n" if owned else ""
 
 
-def current_hashes(cache_module, project_root, names, project_owned):
-    """The hash of what a conflict review reads of each file now: of AGENTS.md, only the project's part.
+def is_instructions(name):
+    """True for AGENTS.md, at the root or in a folder: the review reads only the project's part of it."""
+    return name == AGENTS_FILE or name.endswith(NESTED_AGENTS_SUFFIX)
 
-    An apply that changes the managed block leaves the conflicts about the rest of AGENTS.md current.
+
+def current_hashes(cache_module, project_root, names, project_owned):
+    """The hash of what a conflict review reads of each file now: of an AGENTS.md, only the project's part.
+
+    An apply that changes the managed blocks leaves the conflicts about the rest of the file current.
     """
     hashes = cache_module.file_hashes(project_root, names)
-    if hashes.get(AGENTS_FILE) is not None:
-        text = cache_module.normalized_text(os.path.join(project_root, AGENTS_FILE))
-        hashes[AGENTS_FILE] = cache_module.text_hash(instructions_text(project_owned, text))
+    for name in names:
+        if is_instructions(name) and hashes.get(name) is not None:
+            text = cache_module.normalized_text(os.path.join(project_root, *name.split("/")))
+            hashes[name] = cache_module.text_hash(instructions_text(project_owned, text))
     return hashes
 
 
+def document_levels(entries, nested_instructions=()):
+    """{document: level} of the documents a review pairs: the workspace of a rule of a workspace, the folder
+    of a nested AGENTS.md, and ROOT_LEVEL for every other one (looked up with .get(name, ROOT_LEVEL))."""
+    levels = {entry["destination"]: entry["workspace"] for entry in entries
+              if entry.get("workspace") and is_rule(entry["destination"])}
+    levels.update({name: name[:-len(NESTED_AGENTS_SUFFIX)] for name in nested_instructions})
+    return levels
+
+
 def conflict_pairs(project_root, entries, locked_assets, read_text, project_owned, engine_dir, is_pack_profile=None,
-                   instructions_with_applied=False):
+                   instructions_with_applied=False, nested_instructions=()):
     """Pairs to review, the text of each document and the direction of each pair.
 
     ``entries`` are the plan entries; a managed rule the apply creates or changes is reviewed
     with the content it would write (its ``sourcePath``), everything else with what is on disk.
     Of AGENTS.md the review reads, and the cache keys, only what the project wrote (the managed
     block is the engine's, and the same apply may replace it). Before the first apply, the root
-    CLAUDE.md that the apply promotes takes its place, under the name AGENTS.md.
+    CLAUDE.md that the apply promotes takes its place, under the name AGENTS.md. ``nested_instructions``
+    are the nested AGENTS.md files the apply writes blocks to: what the project wrote in each one is
+    paired with the managed rules of the root (DIRECTION_LEVELS).
     """
     desired = {entry["destination"]: entry for entry in entries if entry.get("sha256") and is_rule(entry["destination"])}
     managed = set(desired) | {destination for destination in locked_assets if is_rule(destination)}
@@ -172,14 +200,33 @@ def conflict_pairs(project_root, entries, locked_assets, read_text, project_owne
         for managed_rule in applied:
             directions.setdefault(tuple(sorted((own_rule, managed_rule))), DIRECTION_PROJECT)
     # Rules of different profiles: a pack rule against every rule of another profile. golfo-kit's
-    # own profiles are reviewed together when they are written, so only a pack adds pairs.
+    # own profiles are reviewed together when they are written, so only a pack adds pairs. A rule of a
+    # workspace against one of the root is a pair of two levels; two workspaces never load together.
     if is_pack_profile:
         reviewed = changing + applied
         for position, first in enumerate(reviewed):
             for second in reviewed[position + 1:]:
                 first_profile, second_profile = desired[first]["profile"], desired[second]["profile"]
+                first_level, second_level = desired[first].get("workspace"), desired[second].get("workspace")
+                if first_level and second_level and first_level != second_level:
+                    continue
                 if first_profile != second_profile and (is_pack_profile(first_profile) or is_pack_profile(second_profile)):
-                    directions.setdefault(tuple(sorted((first, second))), DIRECTION_PROFILES)
+                    direction = DIRECTION_LEVELS if first_level != second_level else DIRECTION_PROFILES
+                    directions.setdefault(tuple(sorted((first, second))), direction)
+    # What the project wrote in a nested AGENTS.md against the rules of the root the apply changes, or,
+    # for a check of the whole repository, against the ones already applied too.
+    root_rules = [destination for destination in changing + (applied if instructions_with_applied else [])
+                  if not desired[destination].get("workspace")]
+    for name in nested_instructions:
+        path = os.path.join(project_root, *name.split("/"))
+        if not os.path.isfile(path) or os.path.islink(path):
+            continue
+        owned = instructions_text(project_owned, read_text(path))
+        if not owned:
+            continue
+        texts[name] = owned
+        for managed_rule in root_rules:
+            directions.setdefault(tuple(sorted((managed_rule, name))), DIRECTION_LEVELS)
     return directions, texts
 
 

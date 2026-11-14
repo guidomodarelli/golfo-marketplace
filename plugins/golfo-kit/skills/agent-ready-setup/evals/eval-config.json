@@ -4259,6 +4259,46 @@
           "description": "Aclara que la sugerencia no cambia el manifest"
         }
       ]
+    },
+    {
+      "id": "monorepo-level-conflicts",
+      "description": "Explica cómo se informa una contradicción entre una rule de la raíz y una de un workspace",
+      "input": "En mi monorepo la raíz tiene \"profiles\": [\"node\"] y el workspace apps/web elige un profile de mi pack acme cuya rule dice \"Never verify changes.\", mientras la rule verify-changes.md de la raíz pide verificar cada cambio. ¿agent-ready plan me avisa de esa contradicción, cómo la marca y compara también las rules de dos workspaces entre sí? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "two levels",
+          "description": "Dice que el plan la marca como dos niveles",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "root and apps/web/",
+          "description": "Nombra los dos niveles como el plan: la raíz y el workspace",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "nunca se cargan juntas",
+            "no se comparan",
+            "no compara",
+            "no las compara",
+            "no se revisan entre"
+          ],
+          "description": "Aclara que las rules de dos workspaces no se comparan entre sí",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "conflicts.block",
+            "frena el apply",
+            "llega con el apply"
+          ],
+          "description": "Menciona que el conflicto llega con el apply"
+        }
+      ]
     }
   ]
 }
