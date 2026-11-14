@@ -29,8 +29,11 @@ WORKSPACE_RULES_DIRECTORY = "workspaces"
 # The block of the AGENTS.md of a workspace that lists its rules. Its id cannot be a profile name.
 INDEX_BLOCK_ID = "agent-ready:workspace"
 INDEX_SOURCE = "agent-ready:workspace"
-# How a section of AGENTS.md names a rule; with_workspace_references moves it to the rule of the workspace.
+# How a section of AGENTS.md, a skill, a subagent or a command names a rule; scoped_references moves it
+# to the rule of each workspace.
 RULE_REFERENCE = "`.agents/rules/{}`"
+# After the references to the rule of several workspaces, in a skill, subagent or command they share.
+WORKSPACE_CHOICE_HINT = " (the one of the workspace you work in)"
 # Files Git and Docker read for their own folder: the block a workspace profile publishes for one of them
 # goes to the file of the workspace. Every other block goes to the root, once for the repository.
 FOLDER_BLOCK_FILES = (".gitignore", ".gitattributes", ".dockerignore")
@@ -271,13 +274,28 @@ def scoped_rule_text(text, workspace_path, rule):
     return "\n".join([FRONTMATTER_FENCE] + before + paths + after + [FRONTMATTER_FENCE] + body)
 
 
-def with_workspace_references(text, workspace_path, rule_paths):
-    """The section of a stack with its references to a rule of the workspace moved to where that rule goes.
-    A reference to a rule of the root selection stays as it is."""
-    for rule_path in rule_paths:
-        text = text.replace(RULE_REFERENCE.format(rule_path),
-                            RULE_REFERENCE.format(f"{WORKSPACE_RULES_DIRECTORY}/{workspace_path}/{rule_path}"))
+def scoped_references(text, rule_workspaces):
+    """``text`` with each reference to a rule of ``rule_workspaces`` ({rule path: [workspace]}) moved to where
+    the rule of each workspace goes: one reference for one workspace, or the references of every workspace
+    joined with " or " and WORKSPACE_CHOICE_HINT, for a skill, subagent or command they share. A reference
+    to a rule of the root selection stays as it is."""
+    for rule_path, workspace_paths in sorted(rule_workspaces.items()):
+        references = [RULE_REFERENCE.format(f"{WORKSPACE_RULES_DIRECTORY}/{workspace_path}/{rule_path}")
+                      for workspace_path in sorted(workspace_paths)]
+        replacement = references[0] if len(references) == 1 else " or ".join(references) + WORKSPACE_CHOICE_HINT
+        text = text.replace(RULE_REFERENCE.format(rule_path), replacement)
     return text
+
+
+def with_workspace_references(text, workspace_path, rule_paths):
+    """The section of a stack, or a nested target, with its references to the rules of one workspace moved
+    to where those rules go (scoped_references)."""
+    return scoped_references(text, {rule_path: [workspace_path] for rule_path in rule_paths})
+
+
+def is_inside(folder, workspace_path):
+    """True when ``folder`` is the workspace or a folder under it."""
+    return folder == workspace_path or folder.startswith(workspace_path + "/")
 
 
 def index_content(workspace_path, rule_destinations):

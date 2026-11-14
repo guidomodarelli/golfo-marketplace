@@ -98,7 +98,9 @@ repositorio:
   - **Cuándo falla:** dos profiles del mismo workspace que publican la misma rule fallan antes de escribir.
     Dos workspaces no chocan, porque el destino incluye la carpeta. Un profile del workspace solo puede
     hacer `overrides` de los profiles que suma el workspace: reemplazar un asset de la raíz falla, porque
-    la raíz lo proyecta para todo el repositorio y el workspace cargaría los dos.
+    la raíz lo proyecta para todo el repositorio y el workspace cargaría los dos. Dos workspaces pueden
+    reemplazar la misma rule con profiles distintos, cada uno en su carpeta; un skill, subagente o comando,
+    que va una sola vez al repositorio, admite un solo reemplazo.
   - **Raíz:** el `AGENTS.md` raíz no lista esas rules. `rules/workspaces/` es una carpeta del motor: una
     rule propia ahí tampoco se lista en la raíz.
   - **`assumes:`:** se compara con la carpeta del workspace, su `package.json` y sus archivos de
@@ -113,7 +115,9 @@ repositorio:
 - **Skills, subagentes y comandos:** los de un profile que suma un workspace van a `.agents/` una sola vez,
   para todo el repositorio, porque ni Claude Code ni Codex los acotan por carpeta. Dos workspaces que eligen
   el mismo profile comparten esos archivos, y uno que choca con un asset de la raíz falla antes de escribir,
-  como en la raíz. `agent-ready plan` muestra cuántos archivos suma cada workspace. Las herramientas que
+  como en la raíz. Sus referencias a una rule del workspace apuntan a `.agents/rules/workspaces/<path>/`;
+  si varios workspaces los comparten, nombran la rule de cada uno y piden leer la del workspace donde se
+  trabaja. `agent-ready plan` muestra cuántos archivos suma cada workspace. Las herramientas que
   piden esos profiles (por ejemplo, las del navegador) y las que declara un pack también se instalan para el
   repositorio.
 - **Otros archivos con bloques:** el bloque de `.gitignore`, `.gitattributes` o `.dockerignore`, que Git y
@@ -122,8 +126,8 @@ repositorio:
 - **Destinos anidados:** un profile que suma un workspace busca sus candidatas dentro del workspace: el
   destino App Router de `apps/web` es `apps/web/app/AGENTS.md`. Su bloque nombra las rules del workspace, y
   `agent-ready plan` agrega el workspace a la línea del destino. `nested.enabled` y la entrada de
-  `nested.targets` con su id valen igual que en la raíz; los `paths` de esa entrada son carpetas del
-  repositorio.
+  `nested.targets` con su id valen igual que en la raíz. Los `paths` de esa entrada son carpetas del
+  repositorio, y cada una va al workspace que la contiene.
 - **Lo que queda en la raíz:** el template de `AGENTS.md`, el esqueleto y los settings de Claude salen solo de
   la selección raíz; los de un profile que suma un workspace no se usan.
 - **Retiro:** sacar un workspace del manifest, o un profile de su selección, retira sus rules, sus vistas

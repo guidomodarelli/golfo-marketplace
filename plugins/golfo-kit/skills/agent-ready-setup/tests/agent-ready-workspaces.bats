@@ -184,7 +184,10 @@ lock_value() {
   ! grep -qF '`.agents/rules/react-style.md`' apps/web/AGENTS.md
   [ -f .agents/commands/react-review-pr.md ]
   [ -f .agents/skills/react-review-pr/SKILL.md ]
-  missing="$(grep -o '`\.agents/[^`]*`' apps/web/AGENTS.md | tr -d '`' | while read -r reference; do
+  # The subagents go to .agents/ once and name the rules where the workspace has them.
+  grep -qF '`.agents/rules/workspaces/apps/web/react-security.md`' .agents/agents/react-security-scanner.md
+  missing="$(grep -o '`\.agents/rules/[^`]*`' apps/web/AGENTS.md .agents/agents/*.md .agents/commands/*.md | cut -d: -f2- |
+    tr -d '`' | sort -u | while read -r reference; do
     [ -e "$reference" ] || printf '%s\n' "$reference"
   done)"
   [ -z "$missing" ]
@@ -300,4 +303,31 @@ lock_value() {
   [ ! -e apps/site/app/AGENTS.md ]
   [ ! -e apps/web/.gitignore ]
   [ ! -e CONTRIBUTING.md ]
+}
+
+@test "two workspaces keep their own nested folders and their own replacement of the same rule" {
+  mkdir -p apps/a/app apps/b/app packs/acme/profiles/jest/rules packs/acme/profiles/vitest/rules
+  touch apps/a/app/page.tsx apps/b/app/page.tsx
+  printf '# Jest\n' > packs/acme/profiles/jest/rules/react-testing.md
+  printf '# Vitest\n' > packs/acme/profiles/vitest/rules/react-testing.md
+  printf '%s\n' '{"schemaVersion": 1, "name": "acme", "profiles": {"jest": {"kind": "capability", "description": "Jest.", "assets": "profiles/jest", "overrides": ["react:rules/react-testing.md"]}, "vitest": {"kind": "capability", "description": "Vitest.", "assets": "profiles/vitest", "overrides": ["react:rules/react-testing.md"]}}}' \
+    > packs/acme/agent-ready-pack.json
+  write_manifest '{"profiles": ["node"], "sources": {"packs": [{"name": "acme", "source": "path:packs/acme"}]}, "nested": {"targets": [{"id": "nextjs-app-router/app-router", "paths": ["apps/a/app", "apps/b/app"]}]}, "workspaces": [{"path": "apps/a", "profiles": ["nextjs-app-router", "acme/jest"]}, {"path": "apps/b", "profiles": ["nextjs-app-router", "acme/vitest"]}]}'
+  run_cli trust add --project .
+  run_cli apply
+  [ "$status" -eq 0 ]
+  # Each workspace replaces the rule in its own folder.
+  grep -qx '# Jest' .agents/rules/workspaces/apps/a/react-testing.md
+  grep -qx '# Vitest' .agents/rules/workspaces/apps/b/react-testing.md
+  # A folder of nested.targets belongs to the workspace that holds it.
+  grep -qF '`.agents/rules/workspaces/apps/a/nextjs-app-router.md`' apps/a/app/AGENTS.md
+  grep -qF '`.agents/rules/workspaces/apps/b/nextjs-app-router.md`' apps/b/app/AGENTS.md
+  ! grep -q 'workspaces/apps/b' apps/a/app/AGENTS.md
+  # A subagent both workspaces share names the rule of each one.
+  grep -qF '`.agents/rules/workspaces/apps/a/react-security.md` or `.agents/rules/workspaces/apps/b/react-security.md` (the one of the workspace you work in)' \
+    .agents/agents/react-security-scanner.md
+
+  run_cli plan
+  [[ "$output" != *"+ create"* ]]
+  [[ "$output" != *"~ update"* ]]
 }
