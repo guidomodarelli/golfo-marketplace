@@ -560,6 +560,8 @@ PY
   [ -f "$stack_dir/rules/react-style.md" ]
   [ -f "$stack_dir/rules/server-first-data-flow.md" ]
   [ -f "$stack_dir/rules/nextjs-app-router.md" ]
+  # The block of the routes directory goes into its AGENTS.md, never into the projected tree.
+  [ ! -e "$stack_dir/nested" ]
   [ -f "$stack_dir/skills/api-endpoint/SKILL.md" ]
   [ -f "$stack_dir/commands/react-review-pr.md" ]
 }
@@ -571,6 +573,30 @@ PY
   [ "$status" -eq 2 ]
   [[ "$output" == *"stack priorities form a cycle"* ]]
   [ "$(tree_fingerprint)" = "$before" ]
+}
+
+@test "a Next.js App Router repository gets the AGENTS.md of its routes directory without configuring anything" {
+  printf '%s\n' '{"dependencies": {"next": "15.0.0", "react": "19.0.0", "react-dom": "19.0.0"}}' > package.json
+  mkdir -p src/app
+  printf '%s\n' 'export default function RootLayout() {}' > src/app/layout.tsx
+
+  run_bootstrap
+  [ "$status" -eq 0 ]
+  grep -qx '<!-- BEGIN AGENT-READY MANAGED: nextjs-app-router/app-router -->' src/app/AGENTS.md
+  grep -qx '## App Router routes' src/app/AGENTS.md
+  [ "$(cat src/app/CLAUDE.md)" = '@AGENTS.md' ]
+  grep -qxF -- '- `src/app/AGENTS.md`' AGENTS.md
+  ! grep -q '^## The routes directory' .agents/rules/nextjs-app-router.md
+
+  # With app/ at the root, the block goes there.
+  git init -q "$test_root/root-app" && cd "$test_root/root-app"
+  printf '%s\n' '{"dependencies": {"next": "15.0.0", "react": "19.0.0", "react-dom": "19.0.0"}}' > package.json
+  mkdir -p app
+  printf '%s\n' 'export default function RootLayout() {}' > app/layout.tsx
+  run_bootstrap
+  [ "$status" -eq 0 ]
+  grep -qx '<!-- BEGIN AGENT-READY MANAGED: nextjs-app-router/app-router -->' app/AGENTS.md
+  [ ! -e src/app/AGENTS.md ]
 }
 
 @test "an app/layout.tsx without the next dependency is not the App Router" {

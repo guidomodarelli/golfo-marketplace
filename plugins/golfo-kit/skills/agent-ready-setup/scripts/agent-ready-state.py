@@ -457,7 +457,11 @@ def load_profile_catalog(skill_dir):
     for name, profile in sorted(profiles.items()):
         validate_selection_fields(name, profile)
         relative_root = profile.get("assets")
-        nested.validate_published(name, profile, os.path.join(skill_dir, relative_root) if relative_root else None)
+        asset_root = os.path.join(skill_dir, relative_root) if relative_root else None
+        # A profile whose tree this source does not carry is checked when a selection resolves it
+        # (profile_asset_root, nested_contents), not for every catalog load.
+        if asset_root is None or os.path.isdir(asset_root):
+            nested.validate_published(name, profile, asset_root)
     return catalog
 
 
@@ -915,6 +919,9 @@ def nested_contents(skill_dir, catalog, resolved):
     contents = {}
     for identifier, profile, name, _ in nested.declarations(catalog, resolved):
         path = nested.content_path(profile_asset_root(skill_dir, catalog, profile), name)
+        if is_link(path) or not os.path.isfile(path):
+            raise ProfileError(f"profile '{profile}' declares the nested target '{name}' but does not publish "
+                               f"{nested.NESTED_PREFIX}{name}{nested.CONTENT_SUFFIX}")
         with open(path, encoding="utf-8", newline="") as template_file:
             content = managed_blocks.normalized_content(template_file.read())
         contents[identifier] = {"profile": profile, "source": template_origin(skill_dir, catalog, profile, path),
