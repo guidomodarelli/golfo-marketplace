@@ -292,9 +292,14 @@ pnpm install --frozen-lockfile
 # Preparación explícita de tests browser (Python 3.11+, instala tomlkit en venv local)
 pnpm run setup:browser-tests
 
-# Suites aisladas: Agent Ready, create-version y contrato del eval runner
+# Todas las suites: las rápidas, Agent Ready, bootstrap y el resto
 pnpm run test
 ```
+
+`pnpm run test:shell` corre las suites bats rápidas (create-version, check-version-bump, el contrato del
+eval runner, la detección de áreas de la CI y las de otras skills). `pnpm run test:agent-ready` corre las
+suites bats de `agent-ready-setup` y `pnpm run test:bootstrap`, `bootstrap.bats`. La CI usa esos mismos
+scripts, así que la lista de suites vive en un solo lugar: `package.json`.
 
 `pnpm run test:review-fix-loop` corre solo la suite del helper de `review-fix-loop`, que usa
 providers falsos y no llama a Claude ni a Codex reales.
@@ -314,12 +319,31 @@ symlinks reales (Git Bash en Windows), como un lanzador que lo ejecuta: nunca un
 
 Cada test tiene un timeout de 30 segundos: `test:shell` usa `BATS_TEST_TIMEOUT=30` y las suites
 bash de `review-fix-loop` y `sibling-worktree` corren cada test bajo `timeout` (`gtimeout` en macOS).
-La excepción es `pnpm run test:bootstrap` (parte de `test:shell`), con 120 segundos por test: sus
+La excepción es `pnpm run test:bootstrap`, con 120 segundos por test: sus
 tests corren bootstrap y sync completos varias veces, y en Windows algunos tardan más de un minuto.
 Las suites bats corren con `LC_ALL=C.UTF-8`: el shell de `pnpm run` no pasa la configuración
 regional, y sin UTF-8 bats no ejecuta los tests cuyo nombre lleva tildes.
 Un test que se cuelga falla con `timeout` en vez de bloquear la corrida. Para cambiar el límite en las
 suites bash, exportá `TEST_TIMEOUT_SECONDS`.
+
+### Qué corre la CI en cada PR
+
+El workflow `Tests` decide qué correr con `scripts/detect-test-areas.js`, que compara el PR contra el
+merge-base de su base:
+
+| Grupo | Corre cuando |
+|---|---|
+| `Shell suites` (`test:shell`, `compat:validate` y las suites de las demás skills) | Siempre |
+| Agent Ready en Linux, Windows y macOS, los shards de `bootstrap.bats` y `Browser registration` | El PR cambia `plugins/golfo-kit/skills/agent-ready-setup/**`, `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `.nvmrc`, `.gitattributes`, `.github/workflows/tests.yml` o el script de detección y su test. También cuando cambia un manifest de golfo-kit (`plugin.json`, `.claude-plugin/`, `.codex-plugin/`) en algo distinto de `version`, o se agrega o borra un archivo en esas carpetas |
+
+- Un bump de versión solo no dispara Agent Ready: las suites nunca leen la versión real, y
+  `check-version-bump.js` ya la valida en cada PR.
+- Un `push` a `main` y `workflow_dispatch` corren todo, sin filtro. Son la red de seguridad del filtro, así
+  que en `main` una corrida nueva no cancela la anterior.
+- Si la detección no puede comparar, corre todo. El check `Tests` acepta un job salteado solo si la
+  detección terminó bien y dijo que su área no hacía falta.
+- Para sumar un path al filtro, editar `AGENT_READY_TRIGGER_PATHS` en el script y sumar su caso a
+  `tests/detect-test-areas.bats`.
 
 ### Qué suite correr según el cambio
 
