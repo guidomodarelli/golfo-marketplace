@@ -494,9 +494,10 @@ sys.exit(0)
   # The rule of a workspace is paired with the root, never with the rules of another workspace.
   grep -Eq '^[0-9]+\. \.agents/rules/verify-changes\.md <-> \.agents/rules/workspaces/apps/admin/acme-ops\.md$' "$FAKE_INPUT"
   ! grep -Eq '^[0-9]+\. \.agents/rules/workspaces/apps/admin/acme-ops\.md <-> \.agents/rules/workspaces/apps/web/acme-team\.md$' "$FAKE_INPUT"
-  agent_ready plan --json
-  [ "$status" -eq 0 ]
-  [ "$(printf '%s' "$output" | python3 -c 'import json,sys; print(json.load(sys.stdin)["semanticConflicts"]["findings"][0]["levels"])' | tr -d '\r')" = "['root', 'apps/web']" ]
+  # The plan of a monorepo as JSON goes to a file: on the Windows runners, Git Bash can keep waiting for
+  # the end of a large output that a native process wrote to the pipe of $(...).
+  env PATH="$fake_bin:$PATH" python3 "$engine_copy/scripts/agent-ready" plan --json > "$test_root/plan.json"
+  [ "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["semanticConflicts"]["findings"][0]["levels"])' "$test_root/plan.json" | tr -d '\r')" = "['root', 'apps/web']" ]
 
   # A conflict between levels comes with the apply, so conflicts.block stops it.
   write_manifest '{"profiles": ["node"], "sources": {"packs": [{"name": "acme", "source": "path:./agent-packs/acme"}]}, "workspaces": [{"path": "apps/web", "profiles": ["acme/team"]}], "conflicts": {"block": true}}'
