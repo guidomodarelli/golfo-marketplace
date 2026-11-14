@@ -41,12 +41,17 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from agent_ready_common import (  # noqa: E402
+    LOCAL_ABSENT,
+    LOCAL_NOT_A_FILE,
+    LOCAL_SYMLINK,
     IncompleteEvaluationError,
     ProfileError,
     StateError,
     acquire_directory_lock,
     bash_executable,
+    has_linked_parent,
     is_link,
+    local_state,
     plugin_version,
     read_json_file,
     serialize_json,
@@ -57,6 +62,8 @@ from agent_ready_common import (  # noqa: E402
     write_text_if_changed,
     write_text_atomically,
 )
+from agent_ready_lockfile import LOCK_RELATIVE_PATH, read_lock  # noqa: E402
+from agent_ready_output import ANSI_COLORS, paint, write_line  # noqa: E402
 from agent_ready_config import (  # noqa: E402
     ConfigurationError,
     IGNORED_LOCKED,
@@ -179,7 +186,6 @@ REVIEW_CACHE_RELATIVE_PATH = "assets/common/hooks/review-cache.py"
 ENGINE_SKILL_DIRECTORY = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Infers the provider of a run from the environment and the installation path.
 PROVIDER_RESOLVER_RELATIVE_PATH = "scripts/resolve-provider.sh"
-LOCK_RELATIVE_PATH = ".agents/agent-ready.lock.json"
 PROFILE_CATALOG_RELATIVE_PATH = "assets/profiles.json"
 # The CI profiles, part of the engine: their workflows run the CLI of this version.
 ENGINE_CI_CATALOG_RELATIVE_PATH = "assets/ci/profiles.json"
@@ -286,30 +292,12 @@ STATE_CONFLICT = "conflict"
 STATE_FAILED = "failed"
 STATE_RETIRED_PRESERVED = "retired-preserved"
 
-LOCAL_ABSENT = "absent"
-LOCAL_SYMLINK = "symlink"
-LOCAL_NOT_A_FILE = "not-a-file"
-
 LINKED_PARENT_REASON = "a parent directory is a symlink; deleting through it would reach files outside the project"
 DETACHED_VIEW_REASON = "regular file that no apply wrote; it is preserved instead of relinked"
 EDITED_VIEW_REASON = "regular file with local changes; relinking the view overwrites them"
 # Assets under these directories have a view under .claude/; hooks stay canonical in .agents/.
 CLAUDE_VIEW_DIRECTORIES = ("rules", "agents", "commands", "skills")
 
-ANSI_RESET = "\033[0m"
-ANSI_COLORS = {
-    "create": "\033[32m",
-    "update": "\033[36m",
-    "adopt": "\033[36m",
-    "conflict": "\033[31m",
-    "retire": "\033[33m",
-    "retire-conflict": "\033[31m",
-    "heading": "\033[1m",
-    "muted": "\033[2m",
-    "ok": "\033[32m",
-    "warning": "\033[33m",
-    "error": "\033[31m",
-}
 ACTION_SYMBOLS = {
     ACTION_CREATE: "+",
     ACTION_UPDATE: "~",
@@ -320,57 +308,6 @@ ACTION_SYMBOLS = {
     ACTION_DROP: "-",
     ACTION_UNCHANGED: "=",
 }
-
-
-# ---------------------------------------------------------------------------
-# Output helpers
-# ---------------------------------------------------------------------------
-
-def colors_enabled(stream):
-    """Return True when ANSI colors are safe on ``stream``."""
-    if os.environ.get("NO_COLOR") is not None:
-        return False
-    if os.environ.get("TERM") == "dumb":
-        return False
-    return hasattr(stream, "isatty") and stream.isatty()
-
-
-def paint(text, color_key, stream):
-    """Wrap ``text`` in the palette color when the stream supports it."""
-    if not colors_enabled(stream):
-        return text
-    return f"{ANSI_COLORS[color_key]}{text}{ANSI_RESET}"
-
-
-def write_line(text="", stream=None):
-    """Print one line to the given stream (stdout by default)."""
-    target = stream or sys.stdout
-    target.write(text + "\n")
-
-
-# ---------------------------------------------------------------------------
-# Generic file helpers
-# ---------------------------------------------------------------------------
-
-def local_state(path):
-    """Describe a project path: absent, symlink, not-a-file or its sha256."""
-    if os.path.islink(path):
-        return LOCAL_SYMLINK
-    if not os.path.exists(path):
-        return LOCAL_ABSENT
-    if not os.path.isfile(path):
-        return LOCAL_NOT_A_FILE
-    return sha256_of_file(path)
-
-
-def has_linked_parent(project_root, destination):
-    """True when a directory between the project root and a destination is a link."""
-    parent = os.path.dirname(destination)
-    while parent:
-        if is_link(os.path.join(project_root, parent)):
-            return True
-        parent = os.path.dirname(parent)
-    return False
 
 
 # ---------------------------------------------------------------------------
@@ -1800,19 +1737,6 @@ def read_manifest(project_root):
         parse_profile_sources(configuration.project_document.get("sources", {}).get("packs", []),
                               os.path.join(project_root, MANIFEST_RELATIVE_PATH))
     return configuration.project_document
-
-
-def read_lock(project_root):
-    """Read the lockfile, or None when the repository was never locked."""
-    path = os.path.join(project_root, LOCK_RELATIVE_PATH)
-    if not os.path.exists(path) and not os.path.islink(path):
-        return None
-    if os.path.islink(path):
-        raise StateError(f"{path} is a symlink; Agent Ready does not follow it")
-    lock = read_json_file(path, "Agent Ready lockfile")
-    if not isinstance(lock.get("assets"), dict):
-        raise StateError(f"{path} has no 'assets' inventory")
-    return lock
 
 
 _REVIEW_CACHE = None

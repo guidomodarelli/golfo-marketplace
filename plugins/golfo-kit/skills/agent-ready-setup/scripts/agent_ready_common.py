@@ -9,6 +9,10 @@ import tempfile
 import time
 
 LOCK_MAX_AGE_SECONDS = 3600
+# What local_state says of a project path that is not a regular file.
+LOCAL_ABSENT = "absent"
+LOCAL_SYMLINK = "symlink"
+LOCAL_NOT_A_FILE = "not-a-file"
 # The names of packs, of their profiles and of nested targets.
 KEBAB_CASE_NAME = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
@@ -148,3 +152,24 @@ def plugin_version(skill_dir):
 def bash_executable():
     """Bash from PATH; Windows process creation would find the WSL launcher in System32 first."""
     return shutil.which("bash") or "bash"
+
+
+def local_state(path):
+    """Describe a project path: absent, symlink, not-a-file or its sha256."""
+    if os.path.islink(path):
+        return LOCAL_SYMLINK
+    if not os.path.exists(path):
+        return LOCAL_ABSENT
+    if not os.path.isfile(path):
+        return LOCAL_NOT_A_FILE
+    return sha256_of_file(path)
+
+
+def has_linked_parent(project_root, destination):
+    """True when a directory between the project root and a destination is a link."""
+    parent = os.path.dirname(destination)
+    while parent:
+        if is_link(os.path.join(project_root, parent)):
+            return True
+        parent = os.path.dirname(parent)
+    return False
