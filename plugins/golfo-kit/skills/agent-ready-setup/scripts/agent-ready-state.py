@@ -1619,7 +1619,8 @@ def source_revision(skill_dir):
 def golfo_kit_pending(skill_dir):
     """A newer golfo-kit the installed plugin brings while the repository projects pinned content, or None."""
     marker = golfo_kit.read_marker(skill_dir)
-    if not marker:
+    # Content from sources.golfoKit.source does not come with the plugin: its ref says what is new.
+    if not marker or marker.get("layout") == golfo_kit.LAYOUT_PACK:
         return None
     engine_revision, _ = source_revision(marker["engineSkillDir"]) if os.path.isdir(marker["engineSkillDir"]) else (None, None)
     pinned_version, engine_version = plugin_version(skill_dir), marker.get("engineVersion")
@@ -1695,6 +1696,8 @@ def source_identity(skill_dir, assets, merged_templates, blocks, nested_targets,
         identity["origin"] = origin
     if marker and marker.get("requestedRef"):
         identity["requestedRef"] = marker["requestedRef"]
+    if marker and marker.get("layout") == golfo_kit.LAYOUT_PACK:
+        identity["layout"] = golfo_kit.LAYOUT_PACK
     if dirty:
         identity["revisionHasLocalChanges"] = True
     return identity
@@ -2326,6 +2329,8 @@ def describe_source(identity):
     suffix = f", revision {revision[:12]}" if revision else ""
     if identity.get("revisionHasLocalChanges"):
         suffix += " with local changes"
+    if identity.get("layout") == golfo_kit.LAYOUT_PACK and identity.get("origin"):
+        suffix += f", from the content pack {identity['origin']}"
     return f"{identity.get('plugin', PLUGIN_NAME)} {version} ({identity.get('kind', 'unknown')}{suffix}; content {identity.get('contentDigest', '')[:12]})"
 
 

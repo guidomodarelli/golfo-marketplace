@@ -107,6 +107,50 @@ write_manifest() {
   printf '%s\n' "$1" > .agents/agent-ready.json
 }
 
+# The content of the skill as a content pack: agent-ready-pack.json with baseAssets, at a URL of its own.
+publish_content_pack() {
+  content_pack="$test_root/content"
+  python3 - "$skill_dir" "$content_pack" <<'PY'
+import json, os, shutil, sys
+skill_dir, output = sys.argv[1], sys.argv[2]
+catalog = json.load(open(os.path.join(skill_dir, "assets", "profiles.json"), encoding="utf-8"))
+pack = {"schemaVersion": 1, "name": "golfo", "version": "3.0.0", "baseAssets": "base", "profiles": {}}
+for name, entry in catalog["profiles"].items():
+    if entry.get("kind") == "ci":
+        continue
+    translated = dict(entry)
+    if "assets" in entry:
+        translated["assets"] = entry["assets"][len("assets/"):]
+        shutil.copytree(os.path.join(skill_dir, entry["assets"]), os.path.join(output, translated["assets"]))
+    pack["profiles"][name] = translated
+common = os.path.join(skill_dir, "assets", "common")
+for entry in ("rules", "skills", "blocks"):
+    shutil.copytree(os.path.join(common, entry), os.path.join(output, "base", entry))
+shutil.copy2(os.path.join(common, "agents-template.md"), os.path.join(output, "base", "agents-template.md"))
+json.dump(pack, open(os.path.join(output, "agent-ready-pack.json"), "w", encoding="utf-8"), indent=2)
+PY
+  printf '\nRule of the content pack.\n' >> "$content_pack/base/rules/verify-changes.md"
+  printf '\nTemplate of the content pack.\n' >> "$content_pack/base/agents-template.md"
+  git -C "$content_pack" init -q
+  git -C "$content_pack" add -A
+  git -C "$content_pack" commit -qm "content 3.0.0"
+  content_revision="$(git -C "$content_pack" rev-parse HEAD)"
+  git config --global "url.file:///$(native_path "$content_pack" | sed 's#^/##').insteadOf" "https://content.example.invalid/golfo"
+}
+
+# Change the catalog of the content pack and commit it.
+edit_content_catalog() {
+  python3 - "$content_pack/agent-ready-pack.json" "$1" <<'PY'
+import json, sys
+data = json.load(open(sys.argv[1], encoding="utf-8"))
+exec(sys.argv[2])
+json.dump(data, open(sys.argv[1], "w", encoding="utf-8"), indent=2)
+PY
+  git -C "$content_pack" commit -qam "edit the catalog"
+}
+
+content_source='"golfoKit": {"source": "git+https://content.example.invalid/golfo", "ref": "main"}'
+
 @test "without sources.golfoKit an apply projects the golfo-kit of the installed engine" {
   run_cli apply --stack node
   [ "$status" -eq 0 ]
@@ -779,4 +823,99 @@ PY
   run_cli plan
   [ "$status" -eq 0 ]
   [[ "$output" == *"Context at the start of a session"* ]]
+}
+
+
+@test "sources.golfoKit.source takes the base, the AGENTS.md template and the profiles from a content pack" {
+  publish_content_pack
+  write_manifest "{\"profiles\": [\"node\"], \"sources\": {$content_source}}"
+
+  run_cli apply
+  [ "$status" -eq 0 ]
+  grep -Fq 'Rule of the content pack.' .agents/rules/verify-changes.md
+  grep -Fq 'Template of the content pack.' AGENTS.md
+  # The profiles of the pack keep their names without a namespace, and the skeleton of a capability comes too.
+  [ -f .agents/rules/node-security.md ]
+  [ -f .agents/rules/testing-scope.md ]
+  [ "$(lock_value '[data["source"][key] for key in ("kind", "revision", "origin", "requestedRef", "version", "layout")]')" = \
+    "['git', '$content_revision', 'https://content.example.invalid/golfo', 'main', '3.0.0', 'pack']" ]
+  # The engine projected it: its hooks are the engine's.
+  cmp -s .agents/hooks/check-harness-consistency.sh "$skill_dir/assets/common/hooks/check-harness-consistency.sh"
+
+  # The CI profiles come with the engine, whatever the content.
+  write_manifest "{\"profiles\": [\"node\"], \"ci\": {\"provider\": \"github\"}, \"sources\": {$content_source}}"
+  run_cli plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *".github/workflows/agent-ready.yml"* ]]
+  run_cli status
+  [[ "$output" == *"from the content pack https://content.example.invalid/golfo"* ]]
+}
+
+@test "a pinned content pack keeps its revision until agent-ready update golfo-kit adopts the ref" {
+  publish_content_pack
+  write_manifest '{"profiles": ["node"], "sources": {"golfoKit": {"source": "git+https://content.example.invalid/golfo", "ref": "main", "updates": "pinned"}}}'
+  # A content pack has no installed copy: the first apply adopts its ref.
+  run_cli apply
+  [ "$status" -eq 0 ]
+  [ "$(lock_value 'data["source"]["revision"]')" = "$content_revision" ]
+
+  printf 'Second rule text of the content pack.\n' >> "$content_pack/base/rules/verify-changes.md"
+  git -C "$content_pack" commit -qam "content 3.1.0"
+  run_cli apply
+  [ "$status" -eq 0 ]
+  ! grep -Fq 'Second rule text of the content pack.' .agents/rules/verify-changes.md
+  run_cli update golfo-kit
+  [ "$status" -eq 0 ]
+  grep -Fq 'Second rule text of the content pack.' .agents/rules/verify-changes.md
+  [ "$(lock_value 'data["source"]["revision"]')" = "$(git -C "$content_pack" rev-parse HEAD)" ]
+}
+
+@test "a content source that is not a valid content pack stops before writing" {
+  publish_content_pack
+  # The marketplace is not a content pack.
+  write_manifest '{"profiles": ["node"], "sources": {"golfoKit": {"source": "git+https://github.com/guidomodarelli/golfo-marketplace", "ref": "main"}}}'
+  run_cli apply
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"has no agent-ready-pack.json at its root"* ]]
+  [ ! -e .agents/rules ]
+
+  write_manifest '{"profiles": ["node"], "sources": {"golfoKit": {"source": "git+https://content.example.invalid/golfo"}}}'
+  run_cli apply
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"must declare a revision"* ]]
+  write_manifest '{"profiles": ["node"], "sources": {"golfoKit": {"source": "path:./content"}}}'
+  run_cli apply
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"sources.golfoKit.source 'path:./content' must start with git+https:// or git+ssh://"* ]]
+
+  write_manifest "{\"profiles\": [\"node\"], \"sources\": {$content_source}}"
+  edit_content_catalog 'data["profiles"]["ci-own"] = {"kind": "ci"}'
+  run_cli apply
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"declares the CI profile 'ci-own': CI profiles come with the engine"* ]]
+  edit_content_catalog 'del data["profiles"]["ci-own"]; data["profiles"]["node"]["assets"] = "config"'
+  mkdir -p "$content_pack/config/rules"
+  printf '# Config\n' > "$content_pack/config/rules/node-config.md"
+  git -C "$content_pack" add -A
+  git -C "$content_pack" commit -qm "assets where the engine keeps its own"
+  run_cli apply
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"puts the assets of 'node' in config/, a name the engine uses"* ]]
+  edit_content_catalog 'data["profiles"]["node"]["assets"] = "stacks/node"; del data["baseAssets"]'
+  run_cli apply
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"declares no baseAssets"* ]]
+  [ ! -e .agents/rules ]
+}
+
+@test "only the content source publishes the base: a pack with baseAssets stops before writing" {
+  mkdir -p agent-packs/acme/profiles/team/rules agent-packs/acme/base/rules
+  printf '# Team\n' > agent-packs/acme/profiles/team/rules/acme-team.md
+  printf '%s\n' '{"schemaVersion": 1, "name": "acme", "baseAssets": "base", "profiles": {"team": {"kind": "capability", "assets": "profiles/team"}}}' > agent-packs/acme/agent-ready-pack.json
+  write_manifest '{"profiles": ["node", "acme/team"], "sources": {"packs": [{"name": "acme", "source": "path:./agent-packs/acme"}]}}'
+
+  run_cli apply
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"pack 'acme' declares baseAssets, but only the content source (sources.golfoKit.source) publishes the base"* ]]
+  [ ! -e .agents/rules ]
 }

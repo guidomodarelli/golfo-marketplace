@@ -4299,6 +4299,54 @@
           "description": "Menciona que el conflicto llega con el apply"
         }
       ]
+    },
+    {
+      "id": "content-pack-source",
+      "description": "Explica cómo tomar el contenido de golfo-kit de un repositorio propio en formato de pack",
+      "input": "Quiero que mis repos tomen las rules comunes, el template de AGENTS.md y los stacks de un repositorio propio (github.com/acme/agent-content) en vez de los de golfo-kit. ¿Qué declaro en .agents/agent-ready.json, qué tiene que tener ese repositorio y de dónde salen los profiles de CI? ¿Puedo publicar la base desde un pack de sources.packs? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": [
+            "sources.golfoKit.source",
+            "\"source\": \"git+https://github.com/acme/agent-content\""
+          ],
+          "description": "Declara la fuente de contenido en sources.golfoKit.source",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "baseAssets",
+          "description": "Dice que el pack de contenido publica la base en baseAssets",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "agents-template.md",
+          "description": "Menciona el template de AGENTS.md de la base"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "salen del motor",
+            "vienen con el motor",
+            "son del motor",
+            "del motor instalado"
+          ],
+          "description": "Aclara que los profiles de CI salen del motor",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "falla antes de escribir",
+            "no puede declarar baseAssets",
+            "solo la fuente de contenido"
+          ],
+          "description": "Dice que un pack de sources.packs no puede publicar la base",
+          "critical": true
+        }
+      ]
     }
   ]
 }
