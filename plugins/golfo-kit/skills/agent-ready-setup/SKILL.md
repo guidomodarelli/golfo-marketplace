@@ -37,8 +37,8 @@ operación. El bootstrap distribuye assets según responsabilidad:
 - `.claude/`: configuración Claude Code, dimensiones del Agent Ready Score y
   symlinks relativos hacia assets canónicos de `.agents/`; `settings.json` queda
   provider-specific. Donde el sistema no permite symlinks sin privilegios (Windows
-  sin Modo de desarrollador ni shell elevada), las vistas son hard links al mismo
-  archivo y nunca copias; ver `references/sync-and-upgrade.md`.
+  sin Modo de desarrollador ni shell elevada) o el repo tiene `core.symlinks=false`, las
+  vistas son hard links al mismo archivo y nunca copias; ver `references/sync-and-upgrade.md`.
 - `.codex/`: bridge provider-specific para hooks Codex (`hooks.json`, junto a
   configuración de proyecto) y para MCP (`.mcp.json`) cuando el stack publica un
   `mcp.json`; hoy ningún stack lo publica.

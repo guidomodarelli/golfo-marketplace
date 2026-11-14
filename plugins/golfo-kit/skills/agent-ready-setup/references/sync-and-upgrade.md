@@ -93,8 +93,11 @@ La proyección automática de assets:
   path que ningún apply escribió es un conflicto.
 - Elimina symlinks administrados stale bajo `.claude/`.
 - Sin privilegio para crear symlinks (Windows sin Modo de desarrollador ni shell
-  elevada), crea cada vista como hard link al asset de `.agents/`, nunca como
-  copia, y la registra en `.claude/.agent-ready-hard-link-views`. Cada sync
+  elevada), o en un repo con `core.symlinks=false` (el default de Git para Windows), crea
+  cada vista como hard link al asset de `.agents/`, nunca como copia, y la registra en
+  `.claude/.agent-ready-hard-link-views`. Con `core.symlinks=false`, git escribe un symlink
+  commiteado como un archivo con la ruta del link: un clon nuevo tendría vistas que no son
+  la rule. Un hard link se commitea como un archivo común. Cada sync
   reenlaza las vistas que git desconectó al recrear el asset y poda, solo entre
   las registradas, las de assets borrados. Mientras existan vistas por hard link
   registra en la config local de git el hook `hook.agent-ready-relink`

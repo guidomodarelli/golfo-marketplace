@@ -127,6 +127,10 @@ skip_without_symlinks() {
     skip "requiere symlinks reales (en Windows: Modo de desarrollador o una shell elevada)"
   fi
   rm -f "$probe_target" "$probe_link"
+  # Where git checks symlinks out as files, the engine makes the views hard links (asset-sync-common.sh).
+  if [[ "$(git config --type=bool --get core.symlinks 2>/dev/null)" == "false" ]]; then
+    skip "core.symlinks=false: git saca los symlinks como archivos, así que las vistas son hard links"
+  fi
 }
 
 @test "legacy AGENTS receives the verbatim managed block and keeps project content" {
