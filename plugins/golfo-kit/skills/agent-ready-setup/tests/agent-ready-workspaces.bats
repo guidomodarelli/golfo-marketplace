@@ -1,7 +1,8 @@
 #!/usr/bin/env bats
 # Workspaces of a monorepo (agent_ready_workspaces.py): the selection of each folder, resolved against
-# the root selection, shown by plan and status, recorded in the lock, the paths that cannot be one, and
-# the rules a workspace adds: scoped with paths: and listed by its own AGENTS.md.
+# the root selection, shown by plan and status, recorded in the lock, the paths that cannot be one, the
+# rules a workspace adds (scoped with paths: and listed by its own AGENTS.md), and the rest of its assets:
+# skills, subagents and commands once for the repository, blocks and nested targets where they belong.
 
 bats_require_minimum_version 1.5.0
 
@@ -163,6 +164,7 @@ lock_value() {
   run_cli plan
   [ "$status" -eq 0 ]
   [[ "$output" == *"rule(s) in .agents/rules/workspaces/apps/web/, listed in apps/web/AGENTS.md"* ]]
+  [[ "$output" == *"skill, subagent and command file(s) of its profiles in .agents/, for the whole repository"* ]]
   run_cli apply
   [ "$status" -eq 0 ]
   rule=.agents/rules/workspaces/apps/web/react-style.md
@@ -176,8 +178,19 @@ lock_value() {
   ! grep -q '`.agents/rules/react-style.md`' AGENTS.md
   grep -qx '<!-- BEGIN AGENT-READY MANAGED: agent-ready:workspace -->' apps/web/AGENTS.md
   grep -qxF -- '- Read and follow `.agents/rules/workspaces/apps/web/react-style.md`.' apps/web/AGENTS.md
-  # The section of the stack names commands and skills a workspace does not project yet.
-  ! grep -q 'AGENT-READY MANAGED: react -->' apps/web/AGENTS.md
+  # The section of the stack names the rules of the workspace, and its commands and skills are in .agents/.
+  grep -qx '<!-- BEGIN AGENT-READY MANAGED: react -->' apps/web/AGENTS.md
+  grep -qF '`.agents/rules/workspaces/apps/web/react-style.md`' apps/web/AGENTS.md
+  ! grep -qF '`.agents/rules/react-style.md`' apps/web/AGENTS.md
+  [ -f .agents/commands/react-review-pr.md ]
+  [ -f .agents/skills/react-review-pr/SKILL.md ]
+  # The subagents go to .agents/ once and name the rules where the workspace has them.
+  grep -qF '`.agents/rules/workspaces/apps/web/react-security.md`' .agents/agents/react-security-scanner.md
+  missing="$(grep -o '`\.agents/rules/[^`]*`' apps/web/AGENTS.md .agents/agents/*.md .agents/commands/*.md | cut -d: -f2- |
+    tr -d '`' | sort -u | while read -r reference; do
+    [ -e "$reference" ] || printf '%s\n' "$reference"
+  done)"
+  [ -z "$missing" ]
   [ "$(cat apps/web/CLAUDE.md)" = '@AGENTS.md' ]
   grep -qxF -- '- `apps/web/AGENTS.md`' AGENTS.md
   [ "$(lock_value 'lock["assets"][".agents/rules/workspaces/apps/web/react-style.md"]["workspace"]')" = "apps/web" ]
@@ -205,6 +218,8 @@ lock_value() {
   [ ! -e apps/web/CLAUDE.md ]
   ! grep -qF -- '- `apps/web/AGENTS.md`' AGENTS.md
   [ -n "$(ls .agents/rules/workspaces/services/api)" ]
+  # Nothing else selects react: its commands leave with the workspace.
+  [ ! -e .agents/commands/react-review-pr.md ]
 }
 
 @test "a rule of a workspace is checked against the folder of the workspace, not the root" {
@@ -252,4 +267,71 @@ lock_value() {
   [ "$status" -ne 0 ]
   [[ "$stderr" == *"workspace apps/web: profile 'acme/jest' overrides an asset of 'react', which the root selection projects for the whole repository"* ]]
   [ ! -e .agents/agent-ready.lock.json ]
+}
+
+@test "a workspace profile puts its nested targets inside the workspace and its blocks in the files they belong to" {
+  mkdir -p apps/site/app packs/acme/profiles/web/blocks
+  touch apps/site/app/page.tsx
+  printf 'dist/\n' > packs/acme/profiles/web/blocks/.gitignore
+  mkdir -p packs/acme/profiles/web/rules
+  printf '# Acme checklist\n' > packs/acme/profiles/web/rules/acme-checklist.md
+  printf '%s\n' '## Acme web' '' 'Follow `.agents/rules/acme-checklist.md`.' > packs/acme/profiles/web/blocks/CONTRIBUTING.md
+  printf '%s\n' '{"schemaVersion": 1, "name": "acme", "profiles": {"web": {"kind": "capability", "description": "Acme web.", "assets": "profiles/web"}}}' \
+    > packs/acme/agent-ready-pack.json
+  write_manifest '{"profiles": ["node"], "providers": ["claude", "codex"], "sources": {"packs": [{"name": "acme", "source": "path:packs/acme"}]}, "workspaces": [{"path": "apps/web", "profiles": ["acme/web"]}, {"path": "apps/site", "profiles": ["nextjs-app-router"]}]}'
+  run_cli trust add --project .
+  run_cli plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Nested AGENTS.md: nextjs-app-router/app-router -> apps/site/app/AGENTS.md (detected) (workspace apps/site)"* ]]
+  run_cli apply
+  [ "$status" -eq 0 ]
+  # The nested target names the rule of the workspace, and the root index lists it.
+  grep -qx '<!-- BEGIN AGENT-READY MANAGED: nextjs-app-router/app-router -->' apps/site/app/AGENTS.md
+  grep -qF '`.agents/rules/workspaces/apps/site/nextjs-app-router.md`' apps/site/app/AGENTS.md
+  [ -f .agents/rules/workspaces/apps/site/nextjs-app-router.md ]
+  grep -qxF -- '- `apps/site/app/AGENTS.md`' AGENTS.md
+  # Git reads .gitignore by folder; any other file takes its block at the root.
+  grep -qx '# BEGIN AGENT-READY MANAGED: acme/web' apps/web/.gitignore
+  ! grep -q 'acme/web' .gitignore
+  grep -qx '<!-- BEGIN AGENT-READY MANAGED: acme/web -->' CONTRIBUTING.md
+  # The block names the rule where the workspace has it.
+  grep -qF 'Follow `.agents/rules/workspaces/apps/web/acme-checklist.md`.' CONTRIBUTING.md
+
+  run_cli plan
+  [[ "$output" != *"+ create"* ]]
+  [[ "$output" != *"~ update"* ]]
+
+  write_manifest '{"profiles": ["node"], "providers": ["claude", "codex"], "sources": {"packs": [{"name": "acme", "source": "path:packs/acme"}]}}'
+  run_cli apply
+  [ "$status" -eq 0 ]
+  [ ! -e apps/site/app/AGENTS.md ]
+  [ ! -e apps/web/.gitignore ]
+  [ ! -e CONTRIBUTING.md ]
+}
+
+@test "two workspaces keep their own nested folders and their own replacement of the same rule" {
+  mkdir -p apps/a/app apps/b/app packs/acme/profiles/jest/rules packs/acme/profiles/vitest/rules
+  touch apps/a/app/page.tsx apps/b/app/page.tsx
+  printf '# Jest\n' > packs/acme/profiles/jest/rules/react-testing.md
+  printf '# Vitest\n' > packs/acme/profiles/vitest/rules/react-testing.md
+  printf '%s\n' '{"schemaVersion": 1, "name": "acme", "profiles": {"jest": {"kind": "capability", "description": "Jest.", "assets": "profiles/jest", "overrides": ["react:rules/react-testing.md"]}, "vitest": {"kind": "capability", "description": "Vitest.", "assets": "profiles/vitest", "overrides": ["react:rules/react-testing.md"]}}}' \
+    > packs/acme/agent-ready-pack.json
+  write_manifest '{"profiles": ["node"], "sources": {"packs": [{"name": "acme", "source": "path:packs/acme"}]}, "nested": {"targets": [{"id": "nextjs-app-router/app-router", "paths": ["apps/a/app", "apps/b/app"]}]}, "workspaces": [{"path": "apps/a", "profiles": ["nextjs-app-router", "acme/jest"]}, {"path": "apps/b", "profiles": ["nextjs-app-router", "acme/vitest"]}]}'
+  run_cli trust add --project .
+  run_cli apply
+  [ "$status" -eq 0 ]
+  # Each workspace replaces the rule in its own folder.
+  grep -qx '# Jest' .agents/rules/workspaces/apps/a/react-testing.md
+  grep -qx '# Vitest' .agents/rules/workspaces/apps/b/react-testing.md
+  # A folder of nested.targets belongs to the workspace that holds it.
+  grep -qF '`.agents/rules/workspaces/apps/a/nextjs-app-router.md`' apps/a/app/AGENTS.md
+  grep -qF '`.agents/rules/workspaces/apps/b/nextjs-app-router.md`' apps/b/app/AGENTS.md
+  ! grep -q 'workspaces/apps/b' apps/a/app/AGENTS.md
+  # A subagent both workspaces share names the rule of each one.
+  grep -qF '`.agents/rules/workspaces/apps/a/react-security.md` or `.agents/rules/workspaces/apps/b/react-security.md` (the one of the workspace you work in)' \
+    .agents/agents/react-security-scanner.md
+
+  run_cli plan
+  [[ "$output" != *"+ create"* ]]
+  [[ "$output" != *"~ update"* ]]
 }

@@ -402,16 +402,19 @@ def parse_asset_reference(reference, what, directories=None):
     return profile, path
 
 
-def resolved_overrides(skill_dir, catalog, resolved):
+def resolved_overrides(skill_dir, catalog, resolved, skipped=None):
     """{target profile: {path: overriding profile}} of the selection, validated against what it publishes.
 
     A profile replaces an asset of another selected profile on purpose: only its own asset is
     projected. An override of an asset, or a profile, that the selection does not have is an error.
+    ``skipped(name, path)`` leaves out an override that is validated somewhere else.
     """
     overridden = {}
     for name in resolved:
         for reference in catalog["profiles"][name].get(OVERRIDES_KEY, []):
             target, path = parse_asset_reference(reference, f"profile '{name}' {OVERRIDES_KEY}")
+            if skipped and skipped(name, path):
+                continue
             if target == name:
                 raise ProfileError(f"profile '{name}' overrides its own {path}; remove the file instead")
             if target == BASE_PROFILE_NAME:
@@ -733,28 +736,35 @@ def resolved_tools(catalog, resolved):
     return tools
 
 
-def compose_stack_directory(skill_dir, catalog, resolved, compose_root, workspace_rules=None):
+def compose_stack_directory(skill_dir, catalog, resolved, compose_root, workspace_rules=None, workspace_profiles=(),
+                            shared_texts=None):
     """Return the stack tree Bash projects for the selected profiles.
 
     A single stack profile without extra assets uses its own directory, so the
     legacy layout is projected unchanged. Several asset profiles are copied into
     one composed tree; a relative path published by two profiles is an error.
     ``workspace_rules`` (workspace_rule_files) adds the rules of the workspaces under
-    rules/workspaces/, so the projection writes them and links their Claude views.
+    rules/workspaces/, so the projection writes them and links their Claude views, and
+    ``workspace_profiles`` (the profiles only workspaces select) adds the rest of their assets
+    (is_workspace_shared_asset), once for the repository, with the text of ``shared_texts``.
     """
     workspace_rules = workspace_rules or {}
+    shared_texts = shared_texts or {}
     asset_profiles = [name for name in resolved if profile_asset_root(skill_dir, catalog, name)]
+    shared_profiles = [name for name in workspace_profiles if profile_asset_root(skill_dir, catalog, name)]
     primary = primary_stack(catalog, resolved)
-    overridden = resolved_overrides(skill_dir, catalog, resolved)
+    overridden = shared_overrides(skill_dir, catalog, resolved, workspace_profiles)
     # The instruction scripts read rules/ of the tree: a stack without rules of its own (a pack stack
     # that only publishes its section) is composed, which gives the tree an empty rules/.
-    if not overridden and not workspace_rules and primary and asset_profiles == [primary] and \
+    if not overridden and not workspace_rules and not shared_profiles and primary and asset_profiles == [primary] and \
             os.path.isdir(os.path.join(profile_asset_root(skill_dir, catalog, primary), "rules")):
         return profile_asset_root(skill_dir, catalog, primary)
 
     owners = {}
-    for name in asset_profiles:
+    for name in asset_profiles + shared_profiles:
         for relative_path, _ in walk_files(profile_asset_root(skill_dir, catalog, name)):
+            if name in shared_profiles and not is_workspace_shared_asset(relative_path):
+                continue
             if is_overridden(overridden, name, relative_path):
                 # Another profile of the selection replaces it on purpose (overrides).
                 continue
@@ -772,13 +782,15 @@ def compose_stack_directory(skill_dir, catalog, resolved, compose_root, workspac
     if not compose_root:
         raise ProfileError("composing several asset profiles requires --compose-dir")
     # Two repositories can pin different revisions of a pack: they must not share a tree.
-    pack_digests = profile_digests(skill_dir, catalog, [name for name in resolved if is_pack_profile(name)]) if any(
-        is_pack_profile(name) for name in resolved
+    tree_profiles = list(resolved) + list(workspace_profiles)
+    pack_digests = profile_digests(skill_dir, catalog, [name for name in tree_profiles if is_pack_profile(name)]) if any(
+        is_pack_profile(name) for name in tree_profiles
     ) else {}
     workspace_digest = {tree_path: entry["sha256"] for tree_path, entry in workspace_rules.items()}
+    workspace_digest.update({text_path: sha256 for text_path, sha256 in shared_texts.values()})
     selection_key = sha256_of_text(
-        os.path.abspath(skill_dir) + "\n" + ",".join(resolved) + "\n" + json.dumps(pack_digests, sort_keys=True)
-        + "\n" + json.dumps(workspace_digest, sort_keys=True)
+        os.path.abspath(skill_dir) + "\n" + ",".join(resolved) + "\n" + ",".join(workspace_profiles) + "\n"
+        + json.dumps(pack_digests, sort_keys=True) + "\n" + json.dumps(workspace_digest, sort_keys=True)
     )[:16]
     destination = os.path.join(compose_root, selection_key)
     os.makedirs(compose_root, exist_ok=True)
@@ -786,6 +798,7 @@ def compose_stack_directory(skill_dir, catalog, resolved, compose_root, workspac
     try:
         for relative_path, owner in sorted(owners.items()):
             source = os.path.join(profile_asset_root(skill_dir, catalog, owner), relative_path)
+            source = shared_texts.get((owner, relative_path), (source,))[0]
             target = os.path.join(staging, relative_path)
             os.makedirs(os.path.dirname(target), exist_ok=True)
             shutil.copy2(source, target)
@@ -849,32 +862,102 @@ def template_origin(skill_dir, catalog, profile_name, absolute_path):
     return os.path.relpath(absolute_path, skill_dir).replace(os.sep, "/")
 
 
-def desired_assets(skill_dir, catalog, resolved, workspace_rules=None):
+def shared_overrides(skill_dir, catalog, resolved, workspace_profiles=()):
+    """resolved_overrides of what goes to the repository once: the root selection and the shared assets of
+    the profiles only workspaces select. A rule such a profile overrides stays in its workspace, so
+    workspace_rule_files validates it per workspace and two workspaces can replace the same rule."""
+    return resolved_overrides(
+        skill_dir, catalog, list(resolved) + list(workspace_profiles),
+        lambda name, path: name in workspace_profiles and path.startswith(workspace_selection.RULES_DIRECTORY + "/"))
+
+
+def is_workspace_shared_asset(relative_path):
+    """True for an asset of a profile only workspaces select that goes to .agents/ once for the repository:
+    everything but its rules (scoped to each workspace), its blocks, its nested targets and the templates
+    of the root files (AGENTS.md and settings come from the root selection)."""
+    return not relative_path.startswith(workspace_selection.RULES_DIRECTORY + "/") and \
+        managed_blocks.destination_of(relative_path) is None and not relative_path.startswith(nested.NESTED_PREFIX) and \
+        relative_path not in (AGENTS_TEMPLATE_NAME, AGENTS_SKELETON_NAME, CLAUDE_SETTINGS_TEMPLATE_NAME)
+
+
+WORKSPACE_ASSETS_CACHE = "workspace-assets"
+
+
+def rule_workspaces_of(workspace_rules, workspace_paths):
+    """{rule path: [workspace]} of the rules those workspaces have (workspace_rule_files), for
+    agent_ready_workspaces.scoped_references."""
+    rule_workspaces = {}
+    for entry in workspace_rules.values():
+        if entry["workspace"] in workspace_paths:
+            rule_workspaces.setdefault(entry["rulePath"], []).append(entry["workspace"])
+    return rule_workspaces
+
+
+def workspace_shared_texts(skill_dir, catalog, workspaces, workspace_profiles, workspace_rules):
+    """{(profile, relative path): (text path, sha256)} of the shared assets whose text names a rule of a workspace.
+
+    A skill, subagent or command of a profile only workspaces select goes to .agents/ once, but the rules
+    it names went to the workspaces that select it: its references move to the rule of each of them
+    (agent_ready_workspaces.scoped_references). The text is kept in the per-user cache by its sha256, so
+    the plan and the projection read the same bytes. A template without such a reference is not listed.
+    """
+    texts = {}
+    for name in workspace_profiles:
+        asset_root = profile_asset_root(skill_dir, catalog, name)
+        if not asset_root:
+            continue
+        rule_workspaces = rule_workspaces_of(
+            workspace_rules, {workspace["path"] for workspace in workspaces if name in workspace["own"]})
+        if not rule_workspaces:
+            continue
+        for relative_path, absolute_path in walk_files(asset_root):
+            if not relative_path.endswith(".md") or not is_workspace_shared_asset(relative_path):
+                continue
+            with open(absolute_path, encoding="utf-8", newline="") as template_file:
+                text = template_file.read()
+            scoped = workspace_selection.scoped_references(text, rule_workspaces)
+            if scoped == text:
+                continue
+            sha256 = sha256_of_text(scoped)
+            text_path = skill_cache_directory(WORKSPACE_ASSETS_CACHE, f"{sha256}.md")
+            if not os.path.isfile(text_path):
+                write_text_atomically(text_path, scoped)
+            texts[(name, relative_path)] = (text_path, sha256)
+    return texts
+
+
+def desired_assets(skill_dir, catalog, resolved, workspace_rules=None, workspace_profiles=(), shared_texts=None):
     """Map every managed destination to its template, owning profile and hash.
 
     Two templates cannot share a destination, including the skill adapters generated
     for Codex and paths that differ only by case, which collide on Windows and macOS.
     ``workspace_rules`` (workspace_rule_files) adds the rules of the workspaces, each with the
-    workspace it belongs to.
+    workspace it belongs to, and ``workspace_profiles`` the skills, subagents and commands of the
+    profiles only workspaces select, once for the repository (is_workspace_shared_asset), with the text
+    ``shared_texts`` (workspace_shared_texts) gives the ones that name a rule of a workspace.
     """
+    shared_texts = shared_texts or {}
     # Bash projects every profile tree as the stack tree, so only the base
     # assets skip the Codex MCP bridge.
     sources = [(BASE_PROFILE_NAME, os.path.join(skill_dir, catalog.get("baseAssets", "assets/common")), False)]
-    for name in resolved:
+    for name in list(resolved) + list(workspace_profiles):
         root = profile_asset_root(skill_dir, catalog, name)
         if root:
             sources.append((name, root, True))
 
     assets = {}
     destinations_by_folded_name = {}
-    overridden = resolved_overrides(skill_dir, catalog, resolved)
+    overridden = shared_overrides(skill_dir, catalog, resolved, workspace_profiles)
     for profile_name, root, is_stack_root in sources:
         for relative_path, absolute_path in walk_files(root):
+            if profile_name in workspace_profiles and not is_workspace_shared_asset(relative_path):
+                continue
             if is_overridden(overridden, profile_name, relative_path):
                 continue
+            source_path, sha256 = shared_texts.get((profile_name, relative_path)) or (absolute_path, None)
             for destination in destinations_for_template(relative_path, is_stack_root):
                 previous = destinations_by_folded_name.setdefault(destination.casefold(), destination)
-                if previous in assets and assets[previous]["sourcePath"] != absolute_path:
+                if previous in assets and assets[previous]["sourcePath"] != source_path:
                     raise ProfileError(
                         f"profiles '{assets[previous]['profile']}' and '{profile_name}' both write {destination}; "
                         "nothing was written. Rename one of the assets"
@@ -882,8 +965,8 @@ def desired_assets(skill_dir, catalog, resolved, workspace_rules=None):
                 assets[destination] = {
                     "profile": profile_name,
                     "source": template_origin(skill_dir, catalog, profile_name, absolute_path),
-                    "sourcePath": absolute_path,
-                    "sha256": sha256_of_file(absolute_path),
+                    "sourcePath": source_path,
+                    "sha256": sha256 or sha256_of_file(absolute_path),
                 }
     for tree_path, entry in sorted((workspace_rules or {}).items()):
         destination = ".agents/" + tree_path
@@ -944,37 +1027,105 @@ def workspace_rule_files(skill_dir, catalog, workspaces):
                 files[workspace_selection.rule_tree_path(workspace["path"], rule_path)] = {
                     "profile": name, "source": template_origin(skill_dir, catalog, name, absolute_path),
                     "sourcePath": cache_path, "sha256": sha256, "workspace": workspace["path"],
-                    "rulePath": rule_path, "originSha256": sha256_of_file(absolute_path)}
+                    "rulePath": rule_path}
     return files
 
 
-def workspace_rule_origins(workspace_rules):
-    """{"<profile>:rules/<rule>": sha256} of the rules that golfo-kit profiles add to workspaces.
+def workspace_profile_origins(skill_dir, catalog, workspace_profiles):
+    """{"<profile>:<path>": sha256} of every file of the golfo-kit profiles only workspaces select.
 
-    It is the content they come from, without the folder each workspace scopes them to: it counts in
-    the content digest of golfo-kit, so a pinned golfo-kit sees a change of a profile only a workspace
-    selects, and the digest does not depend on the folders of this repository.
+    What those profiles project depends on the folders of this repository (rules with paths:, sections
+    with the references of a workspace, the folders of their nested targets): the content digest of
+    golfo-kit takes the files they come from instead, so a pinned golfo-kit sees their change and the
+    digest does not depend on the folders. Packs have their own digest.
     """
-    return {f"{entry['profile']}:{workspace_selection.RULES_DIRECTORY}/{entry['rulePath']}": entry["originSha256"]
-            for entry in workspace_rules.values() if not is_pack_profile(entry["profile"])}
+    origins = {}
+    for name in workspace_profiles:
+        asset_root = profile_asset_root(skill_dir, catalog, name)
+        if is_pack_profile(name) or not asset_root:
+            continue
+        for relative_path, absolute_path in walk_files(asset_root):
+            origins[f"{name}:{relative_path}"] = sha256_of_file(absolute_path)
+    return origins
 
 
-def workspace_blocks(workspaces, workspace_rules):
-    """{(destination, id): item} of the AGENTS.md of each workspace: the list of its rules, for Codex.
+def block_item(skill_dir, catalog, profile_name, absolute_path):
+    """{profile, source, content} of the block a profile publishes in ``absolute_path``."""
+    with open(absolute_path, encoding="utf-8", newline="") as template_file:
+        content = managed_blocks.normalized_content(template_file.read())
+    return {"profile": profile_name, "source": template_origin(skill_dir, catalog, profile_name, absolute_path),
+            "content": content}
 
-    The section of a stack the workspace adds stays out: it names commands and skills that a workspace
-    does not project yet.
+
+def require_stack_section(catalog, profile_name, destination):
+    """Only a stack profile adds a section to an AGENTS.md."""
+    if profile_name == BASE_PROFILE_NAME or catalog["profiles"].get(profile_name, {}).get("kind") != STACK_PROFILE_KIND:
+        raise ProfileError(f"profile '{profile_name}': only a stack profile adds a section to "
+                           f"{destination}; nothing was written")
+
+
+def workspace_blocks(skill_dir, catalog, workspaces, workspace_rules):
+    """{(destination, id): item} of the AGENTS.md of each workspace, for Codex.
+
+    It lists the rules of the workspace and keeps the section of each stack the workspace adds, with
+    its references to those rules moved to the rules of the workspace: the skills and commands the
+    section names are in .agents/ for the whole repository (is_workspace_shared_asset).
     """
     blocks = {}
     for workspace in workspaces:
         destination = nested.destination_in(workspace["path"])
-        rule_paths = sorted(entry["rulePath"] for entry in workspace_rules.values() if entry["workspace"] == workspace["path"])
+        rule_paths = workspace_rule_paths(workspace_rules, workspace["path"])
         if rule_paths:
             blocks[(destination, workspace_selection.INDEX_BLOCK_ID)] = {
                 "profile": BASE_PROFILE_NAME, "source": workspace_selection.INDEX_SOURCE,
                 "content": workspace_selection.index_content(
                     workspace["path"],
                     [".agents/" + workspace_selection.rule_tree_path(workspace["path"], path) for path in rule_paths])}
+        for name in workspace["own"]:
+            asset_root = profile_asset_root(skill_dir, catalog, name)
+            section = os.path.join(asset_root, managed_blocks.BLOCK_DIRECTORY,
+                                   managed_blocks.INSTRUCTION_SECTIONS_DESTINATION) if asset_root else None
+            if not section or not os.path.isfile(section):
+                continue
+            require_stack_section(catalog, name, destination)
+            item = block_item(skill_dir, catalog, name, section)
+            item["content"] = workspace_selection.with_workspace_references(item["content"], workspace["path"], rule_paths)
+            blocks[(destination, name)] = item
+    return blocks
+
+
+def workspace_file_blocks(skill_dir, catalog, workspaces, assets, root_blocks, workspace_rules):
+    """{(destination, id): item} of the blocks the profiles only workspaces select publish for other files.
+
+    A block of a file Git or Docker reads for its own folder goes to the one of the workspace
+    (agent_ready_workspaces.FOLDER_BLOCK_FILES) and names the rules of that workspace; any other goes to
+    the root file, once for the repository, under the spelling the root selection already uses, and names
+    the rules of every workspace that selects its profile. The section of AGENTS.md is workspace_blocks.
+    """
+    blocks = {}
+    folded_assets = {destination.casefold() for destination in assets}
+    spelling_by_folded = {destination.casefold(): destination for destination, _ in root_blocks}
+    for workspace in workspaces:
+        for name in workspace["own"]:
+            asset_root = profile_asset_root(skill_dir, catalog, name)
+            if not asset_root:
+                continue
+            for relative_path, absolute_path in walk_files(asset_root):
+                destination = managed_blocks.destination_of(relative_path)
+                if destination is None or destination == managed_blocks.INSTRUCTION_SECTIONS_DESTINATION:
+                    continue
+                managed_blocks.validate_destination(destination, name)
+                scoped = workspace_selection.block_destination(workspace["path"], destination)
+                workspace_paths = {workspace["path"]} if scoped != destination else \
+                    {other["path"] for other in workspaces if name in other["own"]}
+                destination = spelling_by_folded.setdefault(scoped.casefold(), scoped)
+                if destination.casefold() in folded_assets:
+                    raise ProfileError(f"profile '{name}' publishes a block for {destination}, which another "
+                                       "profile writes as a whole file; nothing was written")
+                item = block_item(skill_dir, catalog, name, absolute_path)
+                item["content"] = workspace_selection.scoped_references(
+                    item["content"], rule_workspaces_of(workspace_rules, workspace_paths))
+                blocks[(destination, name)] = item
     return blocks
 
 
@@ -999,22 +1150,13 @@ def desired_blocks(skill_dir, catalog, resolved, assets):
             if destination is None:
                 continue
             managed_blocks.validate_destination(destination, profile_name)
-            if destination == managed_blocks.INSTRUCTION_SECTIONS_DESTINATION and (
-                    profile_name == BASE_PROFILE_NAME
-                    or catalog["profiles"].get(profile_name, {}).get("kind") != STACK_PROFILE_KIND):
-                raise ProfileError(f"profile '{profile_name}': only a stack profile adds a section to "
-                                   f"{destination}; nothing was written")
+            if destination == managed_blocks.INSTRUCTION_SECTIONS_DESTINATION:
+                require_stack_section(catalog, profile_name, destination)
             destination = spelling_by_folded.setdefault(destination.casefold(), destination)
             if destination.casefold() in folded_assets:
                 raise ProfileError(f"profile '{profile_name}' publishes a block for {destination}, which another "
                                    "profile writes as a whole file; nothing was written")
-            with open(absolute_path, encoding="utf-8", newline="") as template_file:
-                content = managed_blocks.normalized_content(template_file.read())
-            blocks[(destination, profile_name)] = {
-                "profile": profile_name,
-                "source": template_origin(skill_dir, catalog, profile_name, absolute_path),
-                "content": content,
-            }
+            blocks[(destination, profile_name)] = block_item(skill_dir, catalog, profile_name, absolute_path)
     return blocks
 
 
@@ -1033,20 +1175,53 @@ def nested_contents(skill_dir, catalog, resolved):
     return contents
 
 
-def desired_nested_blocks(project_root, catalog, resolved, contents):
+def workspace_rule_paths(workspace_rules, workspace_path):
+    """The paths under rules/ of the rules of one workspace (workspace_rule_files)."""
+    return sorted(entry["rulePath"] for entry in workspace_rules.values() if entry["workspace"] == workspace_path)
+
+
+def desired_nested_blocks(project_root, catalog, resolved, contents, workspaces=(), workspace_rules=None):
     """({(destination, id): {profile, source, content}}, report) of the nested targets of the selection.
 
     Each target puts its block, with its id, in the AGENTS.md of every folder it resolves to
     (agent_ready_nested.resolve): the folders of nested.targets, or else the first candidate that exists.
+    A profile only a workspace selects looks for its candidates inside the workspace (apps/web/app), its
+    block names the rules of the workspace (with_workspace_references) and its report entries carry the
+    workspace; nested.targets applies by id wherever the profile is selected.
     """
     configuration = configuration_of(project_root)
+    enabled = configuration.value(NESTED_ENABLED_KEY)
     configured = nested.configured_targets(configuration.value(NESTED_TARGETS_KEY), MANIFEST_RELATIVE_PATH)
-    folders, report = nested.resolve(project_root, nested.declarations(catalog, resolved),
-                                     configuration.value(NESTED_ENABLED_KEY), configured, MANIFEST_RELATIVE_PATH)
+    workspace_targets = [(workspace["path"], [
+        (identifier, profile, name, [f"{workspace['path']}/{candidate}" for candidate in candidates])
+        for identifier, profile, name, candidates in nested.declarations(catalog, workspace["own"])])
+        for workspace in workspaces]
+    workspace_ids = {target[0] for _, targets in workspace_targets for target in targets}
+    root_folders, report = nested.resolve(
+        project_root, nested.declarations(catalog, resolved), enabled,
+        {identifier: setting for identifier, setting in configured.items() if identifier not in workspace_ids},
+        MANIFEST_RELATIVE_PATH)
+    folders = [(identifier, target_folders, None) for identifier, target_folders in root_folders.items()]
+    for workspace_path, targets in workspace_targets:
+        if not targets:
+            continue
+        identifiers = {target[0] for target in targets}
+        # A folder of nested.targets goes to the workspace that holds it, so each block names its rules.
+        settings = {identifier: (dict(setting, paths=[folder for folder in setting["paths"]
+                                                      if workspace_selection.is_inside(folder, workspace_path)])
+                                 if "paths" in setting else setting)
+                    for identifier, setting in configured.items() if identifier in identifiers}
+        target_folders, workspace_report = nested.resolve(project_root, targets, enabled, settings, MANIFEST_RELATIVE_PATH)
+        report += [dict(entry, workspace=workspace_path) for entry in workspace_report]
+        folders += [(identifier, paths, workspace_path) for identifier, paths in target_folders.items()]
     blocks = {}
-    for identifier, target_folders in folders.items():
+    for identifier, target_folders, workspace_path in folders:
+        item = dict(contents[identifier])
+        if workspace_path:
+            item["content"] = workspace_selection.with_workspace_references(
+                item["content"], workspace_path, workspace_rule_paths(workspace_rules or {}, workspace_path))
         for folder in target_folders:
-            blocks[(nested.destination_in(folder), identifier)] = dict(contents[identifier])
+            blocks[(nested.destination_in(folder), identifier)] = dict(item)
     return blocks, report
 
 
@@ -1486,8 +1661,8 @@ def source_identity(skill_dir, assets, merged_templates, blocks, nested_targets,
 
     Pinned golfo-kit content records the Git origin and revision it came from, so the next apply
     of a pinned repository fetches exactly that content again. A nested target counts by its id, not
-    by the folders it goes to in this repository, and a rule of a workspace by the rule it comes from
-    (workspace_rule_origins).
+    by the folders it goes to in this repository, and what a profile only workspaces select projects by
+    the files it comes from (workspace_profile_origins).
     """
     digest_lines = [f"{destination}\t{entry['sha256']}" for destination, entry in sorted(assets.items())]
     digest_lines += [f"{destination}\t{entry['templateSha256']}" for destination, entry in sorted(merged_templates.items())]
@@ -1803,10 +1978,14 @@ def compute_plan(project_root, skill_dir, catalog, profile_names):
     """Build the read-only plan for the selected profiles."""
     resolved = resolve_project_profiles(catalog, profile_names, project_root)
     workspaces = resolve_workspaces(project_root, catalog, profile_names, resolved)
+    workspace_profiles = workspace_selection.added_profiles(resolved, workspaces)
     workspace_rules = workspace_rule_files(skill_dir, catalog, workspaces)
+    shared_texts = workspace_shared_texts(skill_dir, catalog, workspaces, workspace_profiles, workspace_rules)
+    assets = desired_assets(skill_dir, catalog, resolved, workspace_rules, workspace_profiles, shared_texts)
     for workspace in workspaces:
         workspace["rules"] = sum(1 for entry in workspace_rules.values() if entry["workspace"] == workspace["path"])
-    assets = desired_assets(skill_dir, catalog, resolved, workspace_rules)
+        workspace["sharedAssets"] = sum(1 for entry in assets.values()
+                                        if entry["profile"] in workspace["own"] and not entry.get("workspace"))
     validate_pack_destinations(project_root, assets)
     lock = read_lock(project_root)
     locked_assets = lock["assets"] if lock else {}
@@ -1827,10 +2006,13 @@ def compute_plan(project_root, skill_dir, catalog, profile_names):
             "local": local,
             "workspace": desired_entry.get("workspace"),
         })
-    blocks = desired_blocks(skill_dir, catalog, resolved, assets)
+    root_blocks = desired_blocks(skill_dir, catalog, resolved, assets)
+    blocks = {**root_blocks, **workspace_file_blocks(skill_dir, catalog, workspaces, assets, root_blocks, workspace_rules)}
     targets = nested_contents(skill_dir, catalog, resolved)
-    nested_blocks, nested_report = desired_nested_blocks(project_root, catalog, resolved, targets)
-    nested_blocks.update(workspace_blocks(workspaces, workspace_rules))
+    nested_blocks, nested_report = desired_nested_blocks(
+        project_root, catalog, resolved, {**targets, **nested_contents(skill_dir, catalog, workspace_profiles)}, workspaces,
+        workspace_rules)
+    nested_blocks.update(workspace_blocks(skill_dir, catalog, workspaces, workspace_rules))
     waiting_nested = waiting_instruction_files(project_root, skill_dir, {destination for destination, _ in nested_blocks})
     for target in nested_report:
         target["waiting"] = [folder for folder in target["paths"] if nested.destination_in(folder) in waiting_nested]
@@ -1859,20 +2041,23 @@ def compute_plan(project_root, skill_dir, catalog, profile_names):
         })
     merged = merged_template_entries(skill_dir, catalog, resolved)
     # A pack only a workspace selects is still projected: its digest and its pinned mode count.
-    selected = workspace_selection.selected_profiles(resolved, workspaces)
+    selected = list(resolved) + workspace_profiles
     digests = profile_digests(skill_dir, catalog, selected)
-    # The text of a rule of a workspace depends on its folder: the digest takes the rule it comes from.
+    # What the root selection projects, plus the files the profiles only workspaces select come from
+    # (workspace_profile_origins): enforce_sync_policy rebuilds the same digest.
     golfo_assets = {destination: entry for destination, entry in assets.items()
-                    if not is_pack_profile(entry["profile"]) and not entry.get("workspace")}
-    workspace_origins = workspace_rule_origins(workspace_rules)
+                    if not is_pack_profile(entry["profile"]) and entry["profile"] not in workspace_profiles}
+    workspace_origins = workspace_profile_origins(skill_dir, catalog, workspace_profiles)
     # Without a lockfile the first apply keeps the previous overwrite contract.
     edited_views, preserved_views = detached_views(project_root, assets, locked_assets) if lock else ([], [])
-    identity = source_identity(skill_dir, golfo_assets, merged, golfo_blocks(blocks), golfo_blocks(targets), workspace_origins)
+    identity = source_identity(skill_dir, golfo_assets, merged, golfo_blocks(root_blocks), golfo_blocks(targets),
+                               workspace_origins)
     return {
         "schemaVersion": SCHEMA_VERSION,
         "profiles": resolved,
         "primaryStack": primary_stack(catalog, resolved),
-        "tools": resolved_tools(catalog, resolved),
+        # A workspace profile that needs a tool installs it for the repository, as its skills.
+        "tools": resolved_tools(catalog, selected),
         # Packs have their own entries: an update of a pack is not an update of Golfo.
         "source": identity,
         "profileDigests": digests,
@@ -1895,9 +2080,9 @@ def compute_plan(project_root, skill_dir, catalog, profile_names):
         "detachedViews": preserved_views,
         "merged": merged,
         # What the selected pack profiles declare besides files; the policy judges them later.
-        "packToolDeclarations": declared_pack_tools(catalog, resolved),
+        "packToolDeclarations": declared_pack_tools(catalog, selected),
         "overrides": [{"profile": by, "replaces": f"{target}{ASSET_REFERENCE_SEPARATOR}{path}"}
-                      for target, paths in sorted(resolved_overrides(skill_dir, catalog, resolved).items())
+                      for target, paths in sorted(shared_overrides(skill_dir, catalog, resolved, workspace_profiles).items())
                       for path, by in sorted(paths.items())],
     }
 
@@ -2349,8 +2534,12 @@ def print_plan(project_root, skill_dir, plan, provider, skip_marketplace_upgrade
         if workspace.get("rules"):
             write_line(f"  {workspace['rules']} rule(s) in .agents/rules/{workspace_selection.WORKSPACE_RULES_DIRECTORY}/"
                        f"{workspace['path']}/, listed in {nested.destination_in(workspace['path'])}")
+        if workspace.get("sharedAssets"):
+            write_line(f"  {workspace['sharedAssets']} skill, subagent and command file(s) of its profiles in .agents/, "
+                       "for the whole repository")
     for target in plan.get("nested", []):
-        write_line(f"Nested AGENTS.md: {nested.describe(target)}")
+        suffix = f" (workspace {target['workspace']})" if target.get("workspace") else ""
+        write_line(f"Nested AGENTS.md: {nested.describe(target)}{suffix}")
     index = plan.get("nestedIndex") or {}
     if index.get("destinations"):
         write_line(f"Nested AGENTS.md index for Codex: {len(index['destinations'])} file(s) listed in AGENTS.md, "
@@ -3257,14 +3446,18 @@ def command_resolve(arguments):
     requested, selection = resolve_selection(arguments, catalog)
     resolved = resolve_project_profiles(catalog, requested, arguments.project)
     workspaces = resolve_workspaces(arguments.project, catalog, requested, resolved)
+    workspace_profiles = workspace_selection.added_profiles(resolved, workspaces)
+    selected = list(resolved) + workspace_profiles
     workspace_rules = workspace_rule_files(arguments.skill_dir, catalog, workspaces)
-    validate_pack_destinations(arguments.project, desired_assets(arguments.skill_dir, catalog, resolved, workspace_rules))
+    shared_texts = workspace_shared_texts(arguments.skill_dir, catalog, workspaces, workspace_profiles, workspace_rules)
+    validate_pack_destinations(arguments.project, desired_assets(arguments.skill_dir, catalog, resolved, workspace_rules,
+                                                                 workspace_profiles, shared_texts))
     if arguments.source_mode == SOURCE_MODE_SYNC:
-        selected = workspace_selection.selected_profiles(resolved, workspaces)
         enforce_sync_policy(arguments.project, arguments.skill_dir, catalog, resolved,
                             profile_digests(arguments.skill_dir, catalog, selected), selected,
-                            workspace_rule_origins(workspace_rules))
-    stack_dir = compose_stack_directory(arguments.skill_dir, catalog, resolved, arguments.compose_dir, workspace_rules)
+                            workspace_profile_origins(arguments.skill_dir, catalog, workspace_profiles))
+    stack_dir = compose_stack_directory(arguments.skill_dir, catalog, resolved, arguments.compose_dir, workspace_rules,
+                                        workspace_profiles, shared_texts)
     if selection == SELECTION_DETECTION:
         detection = detect_profiles(catalog["profiles"], arguments.project)
         primary = detection["primaryStack"]
@@ -3277,7 +3470,7 @@ def command_resolve(arguments):
     write_line(f"selection\t{selection}")
     write_line(f"primary\t{primary_stack(catalog, resolved) or ''}")
     write_line(f"stack_dir\t{stack_dir}")
-    write_line(f"tools\t{','.join(resolved_tools(catalog, resolved))}")
+    write_line(f"tools\t{','.join(resolved_tools(catalog, selected))}")
     return 0
 
 

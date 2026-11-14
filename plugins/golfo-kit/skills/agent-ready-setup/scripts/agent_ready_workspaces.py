@@ -12,7 +12,9 @@ profiles the root does not have.
 
 The rules of those profiles go to ``.agents/rules/workspaces/<path>/`` with ``paths:`` limited to the
 workspace, so Claude Code loads them only for its files, and the AGENTS.md of the workspace lists them
-for Codex (index_content). The contract is in references/profiles-and-lockfile.md ("Workspaces").
+for Codex (index_content) next to the section of each stack it adds (with_workspace_references). Their
+skills, subagents and commands go to .agents/ once for the whole repository, because the providers do
+not scope them by folder. The contract is in references/profiles-and-lockfile.md ("Workspaces").
 """
 
 import os
@@ -27,6 +29,14 @@ WORKSPACE_RULES_DIRECTORY = "workspaces"
 # The block of the AGENTS.md of a workspace that lists its rules. Its id cannot be a profile name.
 INDEX_BLOCK_ID = "agent-ready:workspace"
 INDEX_SOURCE = "agent-ready:workspace"
+# How a section of AGENTS.md, a skill, a subagent or a command names a rule; scoped_references moves it
+# to the rule of each workspace.
+RULE_REFERENCE = "`.agents/rules/{}`"
+# After the references to the rule of several workspaces, in a skill, subagent or command they share.
+WORKSPACE_CHOICE_HINT = " (the one of the workspace you work in)"
+# Files Git and Docker read for their own folder: the block a workspace profile publishes for one of them
+# goes to the file of the workspace. Every other block goes to the root, once for the repository.
+FOLDER_BLOCK_FILES = (".gitignore", ".gitattributes", ".dockerignore")
 FRONTMATTER_FENCE = "---"
 PATHS_KEY = "paths"
 PATHS_LINE = re.compile(r"^paths:\s*(.*)$")
@@ -205,6 +215,18 @@ def selected_profiles(root_resolved, workspaces):
     return names
 
 
+def added_profiles(root_resolved, workspaces):
+    """The profiles only workspaces select, each once, in the order of the manifest."""
+    return selected_profiles(root_resolved, workspaces)[len(root_resolved):]
+
+
+def block_destination(workspace_path, destination):
+    """Where the block a workspace profile publishes for ``destination`` goes (FOLDER_BLOCK_FILES)."""
+    if destination in FOLDER_BLOCK_FILES:
+        return f"{workspace_path}/{destination}"
+    return destination
+
+
 def frontmatter_patterns(lines, start, rule):
     """(patterns, end) of the paths: key at lines[start]: its patterns and the first line after them."""
     value = without_comment(PATHS_LINE.match(lines[start]).group(1))
@@ -250,6 +272,30 @@ def scoped_rule_text(text, workspace_path, rule):
     scoped = [f"{workspace_path}/{pattern[2:] if pattern.startswith('./') else pattern}" for pattern in patterns]
     paths = [f"{PATHS_KEY}:"] + [f"  - {quoted(pattern)}" for pattern in scoped]
     return "\n".join([FRONTMATTER_FENCE] + before + paths + after + [FRONTMATTER_FENCE] + body)
+
+
+def scoped_references(text, rule_workspaces):
+    """``text`` with each reference to a rule of ``rule_workspaces`` ({rule path: [workspace]}) moved to where
+    the rule of each workspace goes: one reference for one workspace, or the references of every workspace
+    joined with " or " and WORKSPACE_CHOICE_HINT, for a skill, subagent or command they share. A reference
+    to a rule of the root selection stays as it is."""
+    for rule_path, workspace_paths in sorted(rule_workspaces.items()):
+        references = [RULE_REFERENCE.format(f"{WORKSPACE_RULES_DIRECTORY}/{workspace_path}/{rule_path}")
+                      for workspace_path in sorted(workspace_paths)]
+        replacement = references[0] if len(references) == 1 else " or ".join(references) + WORKSPACE_CHOICE_HINT
+        text = text.replace(RULE_REFERENCE.format(rule_path), replacement)
+    return text
+
+
+def with_workspace_references(text, workspace_path, rule_paths):
+    """The section of a stack, or a nested target, with its references to the rules of one workspace moved
+    to where those rules go (scoped_references)."""
+    return scoped_references(text, {rule_path: [workspace_path] for rule_path in rule_paths})
+
+
+def is_inside(folder, workspace_path):
+    """True when ``folder`` is the workspace or a folder under it."""
+    return folder == workspace_path or folder.startswith(workspace_path + "/")
 
 
 def index_content(workspace_path, rule_destinations):

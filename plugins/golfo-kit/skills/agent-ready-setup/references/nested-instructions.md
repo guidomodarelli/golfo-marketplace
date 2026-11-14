@@ -75,6 +75,9 @@ bloque en `nested/<nombre>.md` de su árbol de assets:
 2. Si no, la primera candidata que existe como carpeta, a la que se llega sin symlinks y que Git no ignora.
 3. Si no hay ninguna, no se escribe nada, y `agent-ready plan` lo informa con las carpetas que probó.
 
+Un profile que solo elige un workspace de un monorepo busca sus candidatas dentro del workspace
+([profiles-and-lockfile.md](profiles-and-lockfile.md), «Workspaces»).
+
 ```json
 {
   "nested": {
