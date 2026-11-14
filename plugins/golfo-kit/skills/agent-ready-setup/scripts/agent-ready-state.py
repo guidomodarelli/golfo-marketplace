@@ -1221,6 +1221,9 @@ def lock_differences(plan, lock):
     if plan["profiles"] != lock.get("profileOrder"):
         differences.append(f"selection: the manifest resolves to {', '.join(plan['profiles'])} and the lock has "
                            f"{', '.join(lock.get('profileOrder') or []) or 'none'}")
+    # The workspaces are part of the selection: the same lines status shows for them.
+    differences += [f"selection: {line}" for line in workspace_selection.differences(
+        plan.get("workspaces", []), lock.get("workspaces") or {})]
     locked_revision = (lock.get("source") or {}).get("revision")
     if locked_revision and plan["source"].get("revision") != locked_revision:
         differences.append(f"{golfo_kit.GOLFO_KIT_SOURCE_NAME}: revision {(plan['source'].get('revision') or 'none')[:12]} "
@@ -1668,24 +1671,23 @@ def detached_views(project_root, assets, locked_assets):
     return edited, preserved
 
 
-def resolve_workspaces(project_root, catalog, resolved):
-    """The workspaces of the manifest, validated and resolved against the root selection.
+def resolve_workspaces(project_root, catalog, profile_names, resolved):
+    """The workspaces of the manifest, validated and resolved together with the root selection.
 
-    A path that cannot be a workspace, or a selection that does not resolve, stops before anything
-    is written (agent_ready_workspaces.py).
+    A path that cannot be a workspace, or a selection that does not resolve with the root one, stops
+    before anything is written (agent_ready_workspaces.py).
     """
-    configuration = configuration_of(project_root)
-    entries = configuration.value(WORKSPACES_KEY) or []
+    entries = configuration_of(project_root).value(WORKSPACES_KEY) or []
     workspace_selection.validate(project_root, entries, MANIFEST_RELATIVE_PATH)
-    excluded = configuration.value(EXCLUDED_DEFAULTS_KEY) or []
-    return workspace_selection.resolve(entries, resolved,
-                                       lambda names: resolve_profiles(catalog, names, None, excluded))
+    root_names = [name for name in profile_names if catalog["profiles"].get(name, {}).get("kind") != CI_PROFILE_KIND]
+    return workspace_selection.resolve(entries, root_names, resolved,
+                                       lambda names: resolve_project_profiles(catalog, names, project_root))
 
 
 def compute_plan(project_root, skill_dir, catalog, profile_names):
     """Build the read-only plan for the selected profiles."""
     resolved = resolve_project_profiles(catalog, profile_names, project_root)
-    workspaces = resolve_workspaces(project_root, catalog, resolved)
+    workspaces = resolve_workspaces(project_root, catalog, profile_names, resolved)
     assets = desired_assets(skill_dir, catalog, resolved)
     validate_pack_destinations(project_root, assets)
     lock = read_lock(project_root)

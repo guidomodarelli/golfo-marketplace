@@ -67,9 +67,10 @@ repositorio:
 }
 ```
 
-- **Resolución:** cada workspace resuelve sus profiles como la raíz (`requires`, `defaults`,
-  `excludedDefaults`). Lo que la raíz ya resuelve vale para todo el repositorio, así que un workspace solo
-  suma los profiles que la raíz no tiene. En el ejemplo, `apps/web` suma `react`, `nextjs` y
+- **Resolución:** cada workspace resuelve sus profiles junto con los de la raíz (`requires`, `defaults`,
+  `excludedDefaults`), así que un profile suyo que choca con uno de la raíz (`conflicts`) falla como fallaría en
+  la raíz. Lo que la raíz ya resuelve vale para todo el repositorio, así que un workspace solo suma los
+  profiles que la raíz no tiene; dos workspaces no se afectan entre sí. En el ejemplo, `apps/web` suma `react`, `nextjs` y
   `nextjs-app-router`, y `services/api` no suma nada.
 - **Validación:** el plan y el apply frenan antes de escribir si un path no cumple estas condiciones:
   - es una carpeta que existe;
@@ -83,7 +84,8 @@ repositorio:
 - **Lectura:** `agent-ready plan` muestra una línea por workspace con lo que suma
   (`Workspace apps/web: nextjs-app-router (adds react, nextjs, nextjs-app-router to the root selection)`), y
   `--json` deja la lista en `workspaces`.
-- **Lock y drift:** el lock registra en `workspaces` la selección y lo que suma cada uno. `status` muestra
+- **Lock y drift:** el lock registra en `workspaces` la selección y lo que suma cada uno, y
+  `apply --from-lock` falla si un workspace del manifest no es el del lock. `status` muestra
   los workspaces del manifest y marca como drift el que el último apply no adoptó o el que salió del
   manifest; `status --check` falla en esos casos.
 - **Assets:** por ahora la selección de un workspace se resuelve y se registra, pero todavía no proyecta

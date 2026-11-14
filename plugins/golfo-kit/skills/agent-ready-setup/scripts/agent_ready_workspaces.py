@@ -12,22 +12,27 @@ profiles the root does not have. The contract is in references/profiles-and-lock
 ("Workspaces").
 """
 
-import agent_ready_blocks as managed_blocks
-from agent_ready_common import ProfileError
+import os
+
+from agent_ready_common import ProfileError, is_link
 from agent_ready_nested import folder_problem, is_folder, is_ignored
 
-# What a workspace path is checked against Git with: a file inside it, so an ignored folder counts.
-GIT_PROBE_FILE = "AGENTS.md"
+
+def is_linked(project_root, path):
+    """True when the folder, or a folder above it, is a symlink or a Windows junction."""
+    parts = path.split("/")
+    return any(is_link(os.path.join(project_root, *parts[:depth])) for depth in range(1, len(parts) + 1))
 
 
 def path_problem(project_root, path):
-    """Why a folder cannot be a workspace, or None."""
+    """Why a folder cannot be a workspace, or None. Git is asked about the folder itself: whether it
+    ignores one file in it says nothing of the workspace."""
     problem = folder_problem(path)
     if problem is None and not is_folder(project_root, path):
         problem = "does not exist in the repository"
-    if problem is None and managed_blocks.has_linked_directory(project_root, f"{path}/{GIT_PROBE_FILE}"):
+    if problem is None and is_linked(project_root, path):
         problem = "is reached through a symlink, which can leave the repository"
-    if problem is None and is_ignored(project_root, f"{path}/{GIT_PROBE_FILE}"):
+    if problem is None and is_ignored(project_root, path):
         problem = "is ignored by Git"
     return problem
 
@@ -54,16 +59,19 @@ def validate(project_root, entries, manifest_path):
         seen.append(path)
 
 
-def resolve(entries, root_resolved, resolve_selection):
+def resolve(entries, root_names, root_resolved, resolve_selection):
     """[{path, profiles, resolved, own}] of the workspaces, in the order of the manifest.
 
-    ``resolve_selection`` resolves a list of profile names like the root selection. ``own`` keeps the
+    A workspace takes the root selection too, so ``resolve_selection`` resolves the root names
+    followed by its own: a profile of the workspace that conflicts with one of the root fails like
+    it would in the root selection. Different workspaces stay independent. ``own`` keeps the
     resolved profiles the root selection does not have: the ones this workspace adds.
     """
     workspaces = []
     for entry in entries:
+        names = list(root_names) + [name for name in entry["profiles"] if name not in root_names]
         try:
-            resolved = resolve_selection(entry["profiles"])
+            resolved = resolve_selection(names)
         except ProfileError as profile_error:
             raise ProfileError(f"workspace {entry['path']}: {profile_error}") from profile_error
         workspaces.append({"path": entry["path"], "profiles": list(entry["profiles"]), "resolved": resolved,
@@ -85,14 +93,22 @@ def lock_entries(workspaces):
 
 
 def differences(configured, locked):
-    """What the manifest says of the workspaces that the last apply did not adopt, one line each."""
+    """What the manifest says of the workspaces that the lock does not have, one line each.
+
+    ``configured`` holds the entries of the manifest, or the resolved workspaces of a plan: those also
+    carry ``own``, which --from-lock compares too, so a catalog that resolves differently is caught.
+    """
     lines = []
-    configured_by_path = {entry["path"]: list(entry["profiles"]) for entry in configured}
-    for path, profiles in configured_by_path.items():
-        if path not in locked:
+    for entry in configured:
+        path, profiles, locked_entry = entry["path"], list(entry["profiles"]), locked.get(entry["path"])
+        if locked_entry is None:
             lines.append(f"workspace {path} is not applied yet")
-        elif locked[path].get("profiles") != profiles:
+        elif locked_entry.get("profiles") != profiles:
             lines.append(f"workspace {path} selects {', '.join(profiles) or 'none'}, the lock "
-                         f"{', '.join(locked[path].get('profiles') or []) or 'none'}")
-    lines += [f"workspace {path} left the manifest" for path in sorted(set(locked) - set(configured_by_path))]
+                         f"{', '.join(locked_entry.get('profiles') or []) or 'none'}")
+        elif "own" in entry and locked_entry.get("own") != entry["own"]:
+            lines.append(f"workspace {path} adds {', '.join(entry['own']) or 'nothing'}, the lock "
+                         f"{', '.join(locked_entry.get('own') or []) or 'nothing'}")
+    configured_paths = {entry["path"] for entry in configured}
+    lines += [f"workspace {path} left the manifest" for path in sorted(set(locked) - configured_paths)]
     return lines

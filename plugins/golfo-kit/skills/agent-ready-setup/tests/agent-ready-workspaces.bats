@@ -118,3 +118,37 @@ lock_value() {
     [ ! -e .agents/agent-ready.lock.json ]
   done
 }
+
+@test "Git ignoring one file of a workspace does not make the workspace ignored" {
+  printf 'AGENTS.md\n' > .gitignore
+  touch apps/web/package.json
+  write_manifest '{"profiles": ["node"], "workspaces": [{"path": "apps/web", "profiles": ["react"]}]}'
+  run_cli plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Workspace apps/web: react (adds react to the root selection)"* ]]
+}
+
+@test "a workspace resolves with the root selection, so a profile that conflicts with one of the root fails" {
+  mkdir -p packs/acme/profiles/headless/rules
+  printf '# Headless\n' > packs/acme/profiles/headless/rules/acme-headless.md
+  printf '%s\n' '{"schemaVersion": 1, "name": "acme", "profiles": {"headless": {"kind": "capability", "description": "No browser.", "assets": "profiles/headless", "conflicts": ["browser"]}}}' \
+    > packs/acme/agent-ready-pack.json
+  # node brings browser by default, so the workspace cannot take a profile that conflicts with it.
+  write_manifest '{"profiles": ["node"], "sources": {"packs": [{"name": "acme", "source": "path:packs/acme"}]}, "workspaces": [{"path": "apps/web", "profiles": ["acme/headless"]}]}'
+  run_cli trust add --project .
+  run_cli plan
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"workspace apps/web: profiles 'acme/headless' and 'browser' are declared incompatible"* ]]
+}
+
+@test "--from-lock refuses a workspace selection that is not the one of the lock" {
+  write_manifest '{"profiles": ["node"], "workspaces": [{"path": "apps/web", "profiles": ["react"]}]}'
+  run_cli apply
+  [ "$status" -eq 0 ]
+  write_manifest '{"profiles": ["node"], "workspaces": [{"path": "apps/web", "profiles": ["go"]}]}'
+  cp .agents/agent-ready.lock.json "$test_root/lock-before"
+  run_cli apply --from-lock
+  [ "$status" -ne 0 ]
+  [[ "$output$stderr" == *"selection: workspace apps/web selects go, the lock react"* ]]
+  cmp -s .agents/agent-ready.lock.json "$test_root/lock-before"
+}
