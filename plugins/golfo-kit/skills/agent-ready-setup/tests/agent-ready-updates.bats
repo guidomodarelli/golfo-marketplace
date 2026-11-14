@@ -445,12 +445,13 @@ EOF
 (sleep 3; touch "$marker") &
 wait
 EOF
-  run python3 - "$skill_dir/scripts/agent-ready-state.py" "$test_root/slow-sync.sh" <<'PY'
-import importlib.util, os, shutil, sys
-spec = importlib.util.spec_from_file_location("agent_ready_state", sys.argv[1])
-state = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(state)
-output, status = state.run_sync([shutil.which("bash"), sys.argv[2]], os.getcwd(), dict(os.environ), 1)
+  # run_sync lives in the background update module, beside the entry point.
+  run python3 - "$skill_dir/scripts" "$test_root/slow-sync.sh" <<'PY'
+import os, shutil, sys
+sys.dont_write_bytecode = True
+sys.path.insert(0, sys.argv[1])
+import agent_ready_background as background
+output, status = background.run_sync([shutil.which("bash"), sys.argv[2]], os.getcwd(), dict(os.environ), 1)
 print(status, output)
 PY
   [ "$status" -eq 0 ]
