@@ -69,6 +69,21 @@ Si el CLI resuelve secretos en un wrapper, chequea permisos, crea recursos por A
 | aaa | En el menú: Supr, Inicio, un pegado con `\t`; confirm con «x» y con Enter | Con terminal | El filtro no cambia con las teclas especiales; «x» repite la pregunta; Enter toma el default |
 | bbb | `CI=False` y `CI=FALSE` con terminal | Con terminal | Pregunta: no cuenta como CI |
 
+Modo agente ([agent-mode.md](agent-mode.md)):
+
+| # | Caso | Dónde | Pasa si |
+|---|---|---|---|
+| ag1 | Faltan datos, con `CLAUDECODE=1` (o `AI_AGENT=x`) y **con** pseudoconsola | Con terminal | No pregunta. Exit 2, todos los faltantes con sus valores y un comando listo para completar. Con un archivo de respuestas recordadas, no usa esos valores |
+| ag2 | Lo mismo con `<TOOL>_AGENT=0` | Con terminal | Pregunta como siempre |
+| ag3 | Sin agente y `<TOOL>_AGENT=1`, con terminal | Con terminal | Como ag1 |
+| ag4 | Modo agente con pseudoconsola y `FORCE_COLOR=1` | Con terminal | Sin escapes, sin tarjeta, sin spinner ni emojis. Una línea por paso |
+| ag5 | `--json` en éxito, error de uso, falla después del primer efecto, `--dry-run` y `--list` | Sin terminal | stdout es un solo JSON válido (`python3 -m json.tool`) en los cinco, con `ok`, `error.code`, `done` y `resume_command` donde corresponde. El exit code es el mismo que sin `--json` |
+| ag6 | Modo agente sin secreto disponible y con un login interactivo configurado | Sin terminal | No corre el login. Exit 2 con `--token-file` o la variable |
+| ag7 | Acción peligrosa en modo agente sin su flag | Ambos | Exit 2 con el flag exacto y la sugerencia de `--dry-run`. No pregunta |
+| ag8 | `SIGTERM` después del primer efecto, en modo agente | Sin terminal | Lista lo hecho y el comando para seguir. Exit 143. Cursor y terminal restaurados |
+
+Para ag1 a ag4, lanzar el CLI en la pseudoconsola con el entorno del agente (`env CLAUDECODE=1 tool`) o con `<TOOL>_AGENT=1`. La sesión del propio agente ya trae sus variables: para probar ag2 desde ahí, `<TOOL>_AGENT=0`.
+
 Los casos de la salida visual (cortes con color, banderas y ZWJ, tablas con una columna larga, ancho medido en stderr, URLs en un recuadro y emojis sin color) no se repiten acá: están en `vivid-visual-output` (`references/terminal.md`, «Verificar», tabla «Casos que los kits tienen que pasar»).
 
 ## Sin terminal

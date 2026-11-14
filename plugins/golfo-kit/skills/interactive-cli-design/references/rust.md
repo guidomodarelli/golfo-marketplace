@@ -39,6 +39,8 @@ fn can_prompt(no_input: bool) -> bool {
 }
 ```
 
+Bajo un agente no se pregunta aunque haya terminal: sumar `!is_agent_session()` con la misma lógica y la misma tabla de señales que el kit de Node de `vivid-visual-output` (`references/terminal.md`, «Modo agente»). Qué más cambia: [agent-mode.md](agent-mode.md).
+
 ## Widgets
 
 | Widget | `inquire` |

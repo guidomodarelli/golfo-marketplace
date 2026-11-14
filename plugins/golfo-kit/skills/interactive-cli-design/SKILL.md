@@ -1,9 +1,9 @@
 ---
 name: interactive-cli-design
-description: "Diseña e implementa CLIs con flags y modo interactivo: decide el modo según argumentos, TTY y CI, fija las flags mínimas (--help, --version, --no-input y las condicionales), da paridad entre cada flag y su pregunta, elige el widget según el dato (confirm, radio, lista con búsqueda, multiselect, input, secreto) y cierra exit codes, stdout/stderr y Ctrl+C, verificando en una pseudoconsola real. Usar siempre, sin pedido explícito, al crear o modificar un CLI, subcomando, script con argumentos, wizard, instalador o menú que reciba o pregunte datos, en Node, Python, Go, Rust, bash, zsh o PowerShell, aunque el pedido solo diga agregar un flag, «que pregunte si falta un dato» o «hacelo interactivo». Cómo se ve la salida (color, spinner, tablas) es de vivid-visual-output: no usar para retocar solo eso. Tampoco en TUIs de pantalla completa, scripts sin entradas ni slash commands de agentes."
+description: "Diseña e implementa CLIs con flags y modo interactivo: decide el modo según argumentos, TTY y CI, fija las flags mínimas (--help, --version, --no-input y las condicionales), da paridad entre cada flag y su pregunta, elige el widget según el dato (confirm, radio, lista con búsqueda, multiselect, input, secreto) y cierra exit codes, stdout/stderr y Ctrl+C, con modo agente (Claude Code, Codex) y salida --json, verificando en una pseudoconsola real. Usar siempre, sin pedido explícito, al crear o modificar un CLI, subcomando, script con argumentos, wizard, instalador o menú que reciba o pregunte datos, en Node, Python, Go, Rust, bash, zsh o PowerShell, aunque el pedido solo diga agregar un flag, «que pregunte si falta un dato», «hacelo interactivo» o «que lo pueda usar un agente». Cómo se ve la salida (color, spinner, tablas) es de vivid-visual-output: no usar para retocar solo eso. Tampoco en TUIs de pantalla completa, scripts sin entradas ni slash commands de agentes."
 license: MIT
 metadata:
-  version: "1.2.0"
+  version: "1.3.0"
   author: "Guido Modarelli"
   category: "developer-experience"
   tags: "cli, flags, interactive, prompts, wizard, tty, exit-codes, node, python, go, rust, shell"
@@ -41,6 +41,8 @@ Evaluar en orden. Gana la primera fila que aplica.
 
 **Se puede preguntar** solo si stdin y stderr son terminales, no se pasó `--no-input`, `CI` no está definida (o vale `0` o `false`, sin importar mayúsculas) y `TERM` no es `dumb`. Se mira stderr y no stdout porque ahí se dibujan los prompts: `tool > plan.json` sigue siendo interactivo y el archivo queda limpio.
 
+**Modo agente.** Tampoco se puede preguntar bajo un agente (Claude Code, Codex, Hermes), **aunque stdin y stderr sean terminales**: algunos corren los comandos en una pseudoconsola, y ahí el chequeo de TTY dice «persona». Se activa por entorno, sin flag `--agent`: un agente no conoce una flag propia antes de leer la ayuda, y `--no-input` y `--json` ya cubren lo que haría. `<TOOL>_AGENT=1` lo fuerza y `<TOOL>_AGENT=0` lo apaga. Las señales y el helper de cada stack: `vivid-visual-output` (`references/terminal.md`, «Modo agente»); qué cambia: [Modo agente](#modo-agente).
+
 **Puede correr sin flags** el CLI cuyos parámetros tienen todos un default seguro y que, corrido así, no destruye, no publica y no cobra (`git status`, `ls`). Si el default haría algo difícil de deshacer, no es seguro: va por la fila 6.
 
 **Qué preguntar en la fila 6:**
@@ -65,7 +67,8 @@ Evaluar en orden. Gana la primera fila que aplica.
 | Pisa o borra algo | `-f, --force`, en lugar de la confirmación |
 | Hace cambios grandes o remotos, difíciles de revisar después | `-n, --dry-run`. Muestra el plan aunque falle una lectura que no es imprescindible: los pasos que conoce y el error, en vez de no mostrar nada. Si el servidor decide un dato intermedio, una rama por cada valor posible |
 | Lee los valores de un archivo de configuración | `-c, --config <ruta>`. El archivo pasa por la misma validación que los flags, y los flags pisan lo del archivo. Tipos, `null`, errores con línea y columna y el secreto fuera del archivo: [flags-and-config.md](references/flags-and-config.md#archivo-de-configuración) |
-| Da una salida que consume otro programa | `--json` |
+| Da una salida que consume otro programa, o lo puede usar un agente | `--json`: un solo documento JSON en stdout por corrida, también al fallar, con `ok`, `error.code` y el comando para reintentar o seguir. [agent-mode.md](references/agent-mode.md#--json-un-documento-por-corrida) |
+| Tiene esperas de más de un minuto | `--timeout <segundos>`: al pasarlo sale con lo hecho y el comando para seguir, nunca se queda colgado |
 | Escribe un archivo | `-o, --output`, con `-` para stdout |
 | Lee un archivo | Aceptar `-` para stdin |
 | Hace mucho ruido de progreso | `-q, --quiet` |
@@ -132,7 +135,7 @@ run(valores)            → actúa
 - **Tarjeta de encabezado.** Toda corrida abre con un recuadro con el nombre, la versión arriba a la derecha, un divisor dentro de la celda y una descripción breve; el `--help` también, en lugar de su línea de «qué hace». No va con `--version`, `--json` ni `--quiet`. Cómo dibujarla: `vivid-visual-output` (`references/terminal.md`, «Anatomía de una corrida»).
 - **stdout lleva datos. stderr, todo lo demás:** prompts, progreso, avisos y errores. Varias librerías dibujan en stdout por default, y ahí `tool | jq` se rompe. Cada referencia dice si hay que cambiarlo y cómo.
 - **Códigos de salida**, documentados en la ayuda: `0` bien, `1` falló, `2` uso incorrecto (también datos faltantes sin terminal), `130` cancelado. Una falla propia del dominio puede tener su código si un script necesita distinguirla.
-- **Cancelar.** Ctrl+C sale con 130, deja el cursor visible y dice que no se cambió nada. Cada librería avisa distinto, y un aviso sin chequear sigue el wizard con basura: revisar cada prompt. Desde el segundo Ctrl+C, ignorarlo: si no, corta el aviso o muestra un traceback mientras se cierra. Un wrapper de shell que delega en otro programa no se corta con el primero: lo deja manejar al hijo y solo espera su exit code.
+- **Cancelar.** Ctrl+C sale con 130, deja el cursor visible y dice que no se cambió nada. Cada librería avisa distinto, y un aviso sin chequear sigue el wizard con basura: revisar cada prompt. Desde el segundo Ctrl+C, ignorarlo: si no, corta el aviso o muestra un traceback mientras se cierra. Un wrapper de shell que delega en otro programa no se corta con el primero: lo deja manejar al hijo y solo espera su exit code. `SIGTERM`, que es como corta un agente, hace la misma limpieza y sale con 143.
 - **Cancelar o fallar después de actuar.** Si ya hubo efectos, decir «no se cambió nada» es falso. Listar qué quedó hecho (con sus identificadores) y el comando para seguir desde ahí con lo mismo, en vez de empezar de cero. Si el CLI guarda sus altas, la incompleta también se guarda, con los IDs reales.
 - **Pasos opcionales.** Si falla un paso que no es necesario para el resultado, avisar qué no se hizo y cómo completarlo, seguir, marcarlo pendiente y salir con 0. Antes del recurso principal solo se tolera su error esperado; después, cualquiera: [remote-actions.md](references/remote-actions.md#pasos-opcionales).
 - **Releer después de cambiar.** Después de un cambio remoto que el paso siguiente da por hecho, leer el estado real: una API responde 500 y lo aplica, o 200 y no ([remote-actions.md](references/remote-actions.md#releer-después-de-cambiar)).
@@ -141,6 +144,19 @@ run(valores)            → actúa
 - **Errores.** Una línea con qué falló y qué hacer: el flag, los valores válidos y `Corré tool --help`. El stack trace, solo detrás de `--debug`. Sin datos sensibles: ni el cuerpo de una respuesta que trae credenciales generadas ni el mensaje de una excepción HTTP, que puede traer el token ([remote-actions.md](references/remote-actions.md#errores-sin-datos-sensibles)).
 
 Cómo se ve todo esto (paleta, spinner, tablas, tarjeta, emojis, ancho, `NO_COLOR`) es de la skill `vivid-visual-output`: cargarla si está disponible. Si no, respetar al menos `NO_COLOR` y no mandar secuencias de escape a un pipe.
+
+## Modo agente
+
+Un agente usa el CLI sin poder contestar y paga cada línea en tokens. En modo agente ([cuándo se activa](#decisión-de-modo)) el CLI:
+
+- **Nunca se bloquea:** sin prompts, pager, editor, navegador ni login interactivo. Sin secreto, exit 2 con cómo pasarlo.
+- **Da errores que se corrigen en un intento:** exit 2 con todos los flags que faltan, sus valores válidos (o el comando que los lista) y un comando listo para completar.
+- **Es determinista:** no usa respuestas recordadas ni defaults implícitos.
+- **Sale corto y plano**, aunque haya pseudoconsola: sin tarjeta, spinner, color ni emojis; una línea por paso.
+- **Confirma solo por flag:** una acción peligrosa sin su flag es exit 2, con el flag exacto y la sugerencia de `--dry-run`.
+- **Respeta un tope de espera** y sale con lo hecho al pasarlo.
+
+Detalle, forma del JSON, lista cerrada de `error.code` y la sección «Uso desde agentes y scripts» del `--help`: [references/agent-mode.md](references/agent-mode.md).
 
 ## Stacks
 
@@ -160,7 +176,7 @@ En otro stack, aplicar el mismo contrato y leer la documentación actual de sus 
 
 ## Cierre
 
-Sumar al reporte, en pocas líneas: las flags elegidas y por qué, los casos de la matriz que corrieron con su resultado y los que no se pudieron correr con su motivo. Si el proyecto tiene tests, dejar automatizados los casos sin terminal, que no necesitan un PTY. Si el CLI llama a APIs, los flujos se prueban contra un servidor HTTP local, no mockeando el cliente: [references/verification.md](references/verification.md#servidor-de-prueba).
+Sumar al reporte, en pocas líneas: las flags elegidas y por qué, los casos de la matriz que corrieron con su resultado y los que no se pudieron correr con su motivo. Si el proyecto tiene tests, dejar automatizados los casos sin terminal, que no necesitan un PTY. Si el CLI llama a APIs, los flujos se prueban contra un servidor HTTP local, no mockeando el cliente: [references/verification.md](references/verification.md#servidor-de-prueba). El reporte dice también cómo se probó el modo agente (casos `ag1` a `ag8` de la matriz).
 
 ## Fuentes
 

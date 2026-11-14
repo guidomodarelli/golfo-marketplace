@@ -43,16 +43,19 @@ Con `argparse`: `parser.error(mensaje)` sale con 2 y `action="version"` imprime 
 
 ```python
 def can_prompt(no_input: bool, is_terminal=None) -> bool:
-    """`is_terminal` es para tests: reemplaza el chequeo de terminal, pero nunca anula --no-input."""
+    """`is_terminal` es para tests: reemplaza el chequeo de terminal, pero nunca anula --no-input ni el modo agente."""
     continuous_integration = os.environ.get("CI", "").lower() not in ("", "0", "false")   # CI=False no es CI
     has_terminal = is_terminal if is_terminal is not None else sys.stdin.isatty() and sys.stderr.isatty()
     return (
         has_terminal
         and not no_input
+        and not is_agent_session()          # aunque haya pseudoconsola
         and not continuous_integration
         and os.environ.get("TERM") != "dumb"
     )
 ```
+
+`is_agent_session` es la del kit de `vivid-visual-output` (`references/terminal.md`, «Modo agente»): si el proyecto no usa el kit, copiar solo esa función con su tabla de señales. Bajo un agente no se pregunta aunque stdin y stderr sean terminales ([agent-mode.md](agent-mode.md)).
 
 ## Widgets
 

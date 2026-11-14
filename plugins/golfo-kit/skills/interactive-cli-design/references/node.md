@@ -109,11 +109,14 @@ Con `commander` 13 o posterior, `configureHelp` acepta `styleCommandText`, `styl
 
 ```js
 function canPrompt(flags, env = process.env) {
-  const isContinuousIntegration = env.CI && env.CI !== '0' && env.CI !== 'false';
+  const continuousIntegration = env.CI?.toLowerCase();
+  const isContinuousIntegration = continuousIntegration && continuousIntegration !== '0' && continuousIntegration !== 'false';
   return Boolean(process.stdin.isTTY && process.stderr.isTTY)
-    && !flags['no-input'] && !isContinuousIntegration && env.TERM !== 'dumb';
+    && !flags['no-input'] && !isAgentSession(env) && !isContinuousIntegration && env.TERM !== 'dumb';
 }
 ```
+
+`isAgentSession` es la del kit de `vivid-visual-output` (`references/terminal.md`, «Modo agente»): si el proyecto no usa el kit, copiar solo esa función con su tabla de señales. Bajo un agente no se pregunta aunque stdin y stderr sean terminales ([agent-mode.md](agent-mode.md)).
 
 ## Widgets
 
