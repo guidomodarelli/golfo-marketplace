@@ -171,11 +171,12 @@ PY
 
   run_bootstrap
   [ "$status" -ne 0 ]
-  [[ "$output" == *"Stack: ambiguous (go, node)"* ]]
-  [[ "$output" == *"go: go.mod exists"* ]]
-  [[ "$output" == *"could not detect project stack; pass --profiles or --stack"* ]]
+  [[ "$output" == *"could not detect project stack: several stacks match and none has priority: go (go.mod exists), node (package.json exists)"* ]]
+  [[ "$output" == *"select one with --stack"* ]]
   [ "$(tree_fingerprint)" = "$before" ]
-  [ ! -e "$cli_calls" ]
+  # The catalog that settles it comes with the content, prepared after the marketplace upgrade: that
+  # upgrade is the only call to the provider CLI.
+  [ ! -e "$cli_calls" ] || ! grep -Fvq 'plugin marketplace' "$cli_calls"
 
   run_bootstrap --stack go
   [ "$status" -eq 0 ]

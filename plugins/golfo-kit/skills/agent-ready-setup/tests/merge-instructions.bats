@@ -934,6 +934,8 @@ EOF
   cp "$skill_dir/scripts/"agent_ready_*.py "$source_dir/scripts/"
   cp -R "$skill_dir/assets/config" "$source_dir/assets/config"
   cp "$skill_dir/scripts/merge-managed-settings.py" "$source_dir/scripts/merge-managed-settings.py"
+  # The stacks of the content pack publish rules, so the sync renders their Claude views.
+  cp "$skill_dir/scripts/render-instruction-template.sh" "$source_dir/scripts/render-instruction-template.sh"
   printf '%s\n' '#!/bin/bash' > "$source_dir/scripts/normalize-instructions.sh"
   cp "$skill_dir/scripts/run-detached.py" "$source_dir/scripts/run-detached.py"
   printf '%s\n' '{}' > "$source_dir/assets/common/settings.json"
@@ -995,6 +997,8 @@ EOF
   cp "$skill_dir/scripts/"agent_ready_*.py "$source_dir/scripts/"
   cp -R "$skill_dir/assets/config" "$source_dir/assets/config"
   cp "$skill_dir/scripts/merge-managed-settings.py" "$source_dir/scripts/merge-managed-settings.py"
+  # The stacks of the content pack publish rules, so the sync renders their Claude views.
+  cp "$skill_dir/scripts/render-instruction-template.sh" "$source_dir/scripts/render-instruction-template.sh"
   printf '%s\n' '#!/bin/bash' > "$source_dir/scripts/normalize-instructions.sh"
   printf '%s\n' '{}' > "$source_dir/assets/common/settings.json"
   printf '%s\n' '{}' > "$source_dir/assets/codex/hooks.json"

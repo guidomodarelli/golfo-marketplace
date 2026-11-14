@@ -267,15 +267,16 @@ wait_for_background_update() {
   [ "$(lock_value 'data["source"]["revision"]')" = "$content_revision" ]
 }
 
-@test "offline, content this machine never downloaded stops a run before writing" {
+@test "offline, content this machine never downloaded stops the plan before writing" {
   publish_content_pack_repository
   run_cli apply --stack node
   [ "$status" -eq 0 ]
   rm -rf "$XDG_CACHE_HOME/agent-ready-setup"
   before="$(cat .agents/agent-ready.lock.json)"
-  run_cli apply --offline
+  run_cli plan --offline
   [ "$status" -ne 0 ]
-  [[ "$stderr" == *"is not in the cache of this machine"* ]]
+  [[ "$stderr" == *"is not in the cache of this machine yet"* ]]
+  [[ "$stderr" == *"could not prepare the golfo content; no asset was changed"* ]]
   [ "$(cat .agents/agent-ready.lock.json)" = "$before" ]
 
   # The check cannot compare with the locked content: the source is unavailable, nothing is outdated.

@@ -608,7 +608,8 @@ PY
 
   run env PATH="$fake_bin:$PATH" AGENT_READY_SETUP_DETECTION=off bash "$skill_dir/scripts/bootstrap.sh" --skill-dir "$skill_dir" --provider claude
   [ "$status" -ne 0 ]
-  [[ "$output" == *"Detection is off"* ]]
+  # The resolution says it, with the catalog of the content: the engine has none to detect with.
+  [[ "$output" == *"detection is off (detection.enabled: false): select the profiles with --stack or --profiles"* ]]
   [ "$(tree_fingerprint)" = "$before" ]
 
   run env PATH="$fake_bin:$PATH" AGENT_READY_SETUP_DETECTION=off bash "$skill_dir/scripts/bootstrap.sh" --skill-dir "$skill_dir" --provider claude --stack react

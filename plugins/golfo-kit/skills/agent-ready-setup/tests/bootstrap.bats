@@ -2539,6 +2539,8 @@ EOF
   cp "$skill_dir/scripts/"agent_ready_*.py "$source_dir/scripts/"
   cp -R "$skill_dir/assets/config" "$source_dir/assets/config"
   cp "$skill_dir/scripts/merge-managed-settings.py" "$source_dir/scripts/merge-managed-settings.py"
+  # The go stack publishes a rule, so the sync renders its Claude view.
+  cp "$skill_dir/scripts/render-instruction-template.sh" "$source_dir/scripts/render-instruction-template.sh"
   printf '%s\n' '{"settings":"updated"}' > "$source_dir/assets/common/settings.json"
   printf '%s\n' '{"hooks":"updated"}' > "$source_dir/assets/codex/hooks.json"
   cat > "$fake_bin/mv" <<'EOF'

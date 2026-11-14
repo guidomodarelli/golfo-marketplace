@@ -620,6 +620,8 @@ EOF
   [ "$status" -eq 0 ]
   [ -f .agents/rules/security.md ]
 
+  # The released content again: the shared content pack, not the renamed copy.
+  export AGENT_READY_SETUP_CONTENT_DIR="$content_pack"
   run_bootstrap_with "$skill_dir" --stack node
   [ "$status" -eq 0 ]
   [ ! -e .agents/rules/security.md ]
