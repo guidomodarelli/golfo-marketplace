@@ -157,13 +157,19 @@ agent-ready review reset <id>... | --all                               # vuelven
 ## 7. Conflictos semánticos con lo propio del proyecto
 
 `agent-ready plan`, y el plan que corre antes de cada apply, revisan con IA si las rules
-gestionadas contradicen lo que el proyecto escribió, o las de otro profile, en tres direcciones:
+gestionadas contradicen lo que el proyecto escribió, o las de otro profile o de otro nivel, en cuatro
+direcciones:
 
 | Dirección | Qué se compara | Marca en el plan |
 |---|---|---|
 | update | cada rule gestionada que el apply crea, actualiza o adopta, con el contenido que va a escribir, contra cada rule propia (`.agents/rules/` sin equivalente gestionado) y contra lo que el proyecto escribió en su `AGENTS.md`, fuera del bloque gestionado que el mismo apply puede reemplazar | `(this update)` |
 | project | cada rule propia contra cada rule gestionada ya aplicada que no cambia | `(a project rule)` |
-| profiles | cada rule de un pack contra cada rule gestionada de otro profile; las de los profiles de golfo-kit no se revisan entre sí. Como llega con el apply, `conflicts.block` lo frena igual que un update. Para quedarse con una de las dos, `overrides` | `(two profiles)` |
+| profiles | cada rule de un pack contra cada rule gestionada de otro profile del mismo nivel; las de los profiles de golfo-kit no se revisan entre sí. Como llega con el apply, `conflicts.block` lo frena igual que un update. Para quedarse con una de las dos, `overrides` | `(two profiles)` |
+| levels | una rule de la raíz contra una de un workspace de un monorepo, con un pack de alguno de los dos lados, y lo que el proyecto escribió en un `AGENTS.md` anidado (de un workspace o de un destino anidado) contra cada rule gestionada de la raíz que el apply cambia; `agent-ready check` la compara también con las ya aplicadas. Las rules de dos workspaces no se comparan, porque nunca se cargan juntas. Llega con el apply, como profiles | `(two levels; root and apps/web/)` |
+
+- **Los dos niveles.** Cuando los dos archivos de un hallazgo son de niveles distintos (la raíz, un
+  workspace o la carpeta de un `AGENTS.md` anidado), el plan los nombra después de la dirección, en el
+  orden de los archivos, cualquiera sea la dirección. `--json` los deja en `levels` de cada hallazgo.
 
 - **Misma revisión y misma caché.** Usa el prompt, la llamada al provider y la caché de
   `harness-consistency`: un par que el hook ya revisó no se paga de nuevo, `status` muestra sus

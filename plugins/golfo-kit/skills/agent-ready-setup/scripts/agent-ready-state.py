@@ -1817,9 +1817,9 @@ def review_findings(project_root, strict=False):
     stale = 0
     for unit, entry in sorted(entries.items()):
         files = entry.get("files", {}) if isinstance(entry, dict) else {}
-        # A semantic conflict with AGENTS.md is about what the project wrote there, not the managed block.
+        # A semantic conflict with an AGENTS.md is about what the project wrote there, not the managed blocks.
         semantic = (isinstance(entry, dict) and entry.get("check") == conflicts_review.CONFLICT_CHECK
-                    and conflicts_review.AGENTS_FILE in files)
+                    and any(conflicts_review.is_instructions(name) for name in files))
         current = (conflicts_review.current_hashes(module, project_root, files, project_owned_instructions)
                    if semantic else module.file_hashes(project_root, files))
         if files and current == files:
@@ -2438,9 +2438,10 @@ def semantic_conflicts(arguments, plan, instructions_with_applied=False):
         return None
     module = review_cache_module()
     lock = read_lock(arguments.project)
+    nested_files = nested_instruction_files(plan)
     directions, texts = conflicts_review.conflict_pairs(
         arguments.project, plan["entries"], (lock or {}).get("assets", {}), module.normalized_text,
-        project_owned_instructions, ENGINE_SKILL_DIRECTORY, is_pack_profile, instructions_with_applied)
+        project_owned_instructions, ENGINE_SKILL_DIRECTORY, is_pack_profile, instructions_with_applied, nested_files)
     # Offline runs and automated reviews answer from the cache only.
     use_provider = not arguments.offline and os.environ.get("AGENT_READY_SETUP_REVIEW_MODE") != "1"
     # The options of this run: the hooks' copy of them only changes when an apply finishes.
@@ -2451,7 +2452,17 @@ def semantic_conflicts(arguments, plan, instructions_with_applied=False):
                                                publish=arguments.format == "protected")
     conflicts_review.record_pending(arguments.project, report.pop("pending", []), check=conflicts_review.CONFLICT_CHECK)
     report["block"] = configuration.value(CONFLICTS_BLOCK_KEY)
+    levels = conflicts_review.document_levels(plan["entries"], nested_files)
+    for finding in report["findings"]:
+        finding["levels"] = [levels.get(name, conflicts_review.ROOT_LEVEL) for name in finding.get("files", [])]
     return report
+
+
+def nested_instruction_files(plan):
+    """The nested AGENTS.md files the apply writes blocks to: the ones of the workspaces and of the nested
+    targets."""
+    return sorted({entry["destination"] for entry in plan.get("blocks", [])
+                   if entry["destination"].endswith(conflicts_review.NESTED_AGENTS_SUFFIX)})
 
 
 def project_owned_instructions(text):
@@ -2468,7 +2479,13 @@ def project_owned_instructions(text):
 
 def describe_conflict(finding):
     direction = {conflicts_review.DIRECTION_UPDATE: "this update",
-                 conflicts_review.DIRECTION_PROFILES: "two profiles"}.get(finding["direction"], "a project rule")
+                 conflicts_review.DIRECTION_PROFILES: "two profiles",
+                 conflicts_review.DIRECTION_LEVELS: "two levels"}.get(finding["direction"], "a project rule")
+    levels = finding.get("levels") or []
+    if len(set(levels)) > 1:
+        # Each file with its level: the root, a workspace, or the folder of a nested AGENTS.md.
+        direction += "; " + " and ".join(level if level == conflicts_review.ROOT_LEVEL else f"{level}/"
+                                         for level in levels)
     return f"{review_cache_module().finding_line(finding)} ({direction})"
 
 
@@ -4432,7 +4449,7 @@ def has_review_pairs(project_root, plan, catalog):
         lock = read_lock(project_root)
         directions, _ = conflicts_review.conflict_pairs(
             project_root, plan["entries"], (lock or {}).get("assets", {}), module.normalized_text,
-            project_owned_instructions, ENGINE_SKILL_DIRECTORY, is_pack_profile, True)
+            project_owned_instructions, ENGINE_SKILL_DIRECTORY, is_pack_profile, True, nested_instruction_files(plan))
         if directions:
             return True
     if configuration.value(COMPETING_SKILLS_ENABLED_KEY):
