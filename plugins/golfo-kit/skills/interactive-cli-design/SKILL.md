@@ -1,9 +1,9 @@
 ---
 name: interactive-cli-design
-description: "Diseña e implementa CLIs con flags y modo interactivo: decide el modo según argumentos, TTY y CI, fija las flags mínimas (--help, --version, --no-input y las condicionales), da paridad entre cada flag y su pregunta, elige el widget según el dato (confirm, radio, lista con búsqueda, multiselect, input, secreto) y cierra exit codes, stdout/stderr y Ctrl+C, con modo agente (Claude Code, Codex) y salida --json, verificando en una pseudoconsola real. Usar siempre, sin pedido explícito, al crear o modificar un CLI, subcomando, script con argumentos, wizard, instalador o menú que reciba o pregunte datos, en Node, Python, Go, Rust, bash, zsh o PowerShell, aunque el pedido solo diga agregar un flag, «que pregunte si falta un dato», «hacelo interactivo» o «que lo pueda usar un agente». Cómo se ve la salida (color, spinner, tablas) es de vivid-visual-output: no usar para retocar solo eso. Tampoco en TUIs de pantalla completa, scripts sin entradas ni slash commands de agentes."
+description: "Diseña e implementa CLIs con flags y modo interactivo: decide el modo según argumentos, TTY y CI, fija las flags mínimas (--help, --version, --no-input y las condicionales), da paridad entre cada flag y su pregunta, elige el widget según el dato (confirm, radio, lista con búsqueda, multiselect, input, secreto) y cierra exit codes, stdout/stderr y Ctrl+C, con modo agente (Claude Code, Codex) y salida --json, verificando en una pseudoconsola real. Usar siempre, sin pedido explícito, al crear o modificar un CLI, subcomando, script con argumentos, wizard, instalador o menú que reciba o pregunte datos, en Node, Python, Go, Rust, bash, zsh o PowerShell, aunque el pedido solo diga agregar un flag, «que pregunte si falta un dato», «hacelo interactivo» o «que lo pueda usar un agente». Siempre carga vivid-visual-output, dueña de cómo se ve la salida (color, spinner, tablas): retocar solo eso no dispara esta skill. Tampoco en TUIs de pantalla completa, scripts sin entradas ni slash commands de agentes."
 license: MIT
 metadata:
-  version: "1.3.0"
+  version: "1.4.0"
   author: "Guido Modarelli"
   category: "developer-experience"
   tags: "cli, flags, interactive, prompts, wizard, tty, exit-codes, node, python, go, rust, shell"
@@ -20,9 +20,10 @@ Un CLI increíble sirve a dos públicos con el mismo comando: a una persona le p
 2. **Inventariar los parámetros.** Por cada uno: nombre, tipo, valores válidos, en qué acciones es obligatorio, su default (fijo o generado) y si es secreto o destructivo. De esa tabla salen las flags, los widgets, la validación y la ayuda.
 3. **Decidir el modo** con la tabla de la sección siguiente.
 4. **Cargar la referencia del stack** de la sección [Stacks](#stacks).
-5. **Implementar en tres capas** ([Paridad](#paridad)).
-6. **Verificar ejecutando** con [references/verification.md](references/verification.md). Lo que no se corrió no está verificado.
-7. **Cerrar** con el reporte de la sección [Cierre](#cierre).
+5. **Cargar y aplicar `vivid-visual-output`, siempre.** Todo CLI que pasa por esta skill tiene salida que mira una persona: como mínimo la ayuda, los prompts y los errores. Esta skill decide qué sale, cuándo y por qué stream; aquella decide cómo se ve, y viene en el mismo plugin. No reemplazarla por un piso propio («con `NO_COLOR` alcanza»), aunque el pedido hable solo de flags o dé lo visual por resuelto: sin ella la ayuda queda sin el carácter del proyecto y la degradación sin CI, pipes ni modo agente. Una restricción explícita del usuario o del proyecto (sin color, solo ASCII) se aplica dentro de aquella, que la hace prevalecer, no salteándola. Lo que solo consume otro programa (`--json`) queda sin decoración, y eso también lo decide aquella.
+6. **Implementar en tres capas** ([Paridad](#paridad)).
+7. **Verificar ejecutando** con [references/verification.md](references/verification.md). Lo que no se corrió no está verificado.
+8. **Cerrar** con el reporte de la sección [Cierre](#cierre).
 
 ## Decisión de modo
 
@@ -91,7 +92,7 @@ Evaluar en orden. Gana la primera fila que aplica.
 **Ayuda.** Va a stdout y tiene, en este orden: qué hace en una línea, uno o dos ejemplos, las flags con su default y valores válidos, qué pasa sin flags y los códigos de salida. Cada subcomando tiene la suya. Siempre con este formato, aunque el parser traiga otro:
 
 - **Todo lo que tiene descripción va en una tabla de dos columnas**: subcomandos, flags, argumentos, variables de entorno y códigos de salida. A la izquierda el nombre (`-n, --name <valor>`), a la derecha la descripción con su default y valores válidos. La izquierda se alinea a la más ancha de su sección. La tabla mide como máximo 80 columnas, o el ancho de la terminal si es menor. La descripción larga se parte dentro de su columna; si la terminal es tan angosta que no entra, se apila (el nombre en una línea y la descripción sangrada debajo), nunca se trunca.
-- **Comandos y flags con colores distintos**, en la tabla, en la línea de uso y en los ejemplos: el programa y sus subcomandos en un color, las flags en otro, los `<valores>` atenuados y los títulos de sección en negrita. Los colores salen de las constantes del proyecto (de `vivid-visual-output` si está disponible).
+- **Comandos y flags con colores distintos**, en la tabla, en la línea de uso y en los ejemplos: el programa y sus subcomandos en un color, las flags en otro, los `<valores>` atenuados y los títulos de sección en negrita. Los colores salen de las constantes del carácter del proyecto, que fija `vivid-visual-output` (paso 5 del [Flujo](#flujo)).
 - **Sin color, el mismo formato.** Si stdout no es una terminal, hay `NO_COLOR` o `TERM=dumb`, la ayuda sale sin secuencias de escape y con las mismas dos columnas: `tool --help | less` y `tool --help > ayuda.txt` se leen igual.
 
 Cada referencia de stack dice cómo lograrlo con su parser.
@@ -143,7 +144,7 @@ run(valores)            → actúa
 - **Reintentos.** Solo lo pasajero (sin respuesta, 429, 5xx), con esperas crecientes y tope, y solo requests idempotentes: un POST, únicamente si el error prueba que no llegó. Las esperas se inyectan para testearlas: [remote-actions.md](references/remote-actions.md#reintentos).
 - **Errores.** Una línea con qué falló y qué hacer: el flag, los valores válidos y `Corré tool --help`. El stack trace, solo detrás de `--debug`. Sin datos sensibles: ni el cuerpo de una respuesta que trae credenciales generadas ni el mensaje de una excepción HTTP, que puede traer el token ([remote-actions.md](references/remote-actions.md#errores-sin-datos-sensibles)).
 
-Cómo se ve todo esto (paleta, spinner, tablas, tarjeta, emojis, ancho, `NO_COLOR`) es de la skill `vivid-visual-output`: cargarla si está disponible. Si no, respetar al menos `NO_COLOR` y no mandar secuencias de escape a un pipe.
+Cómo se ve todo esto (paleta, spinner, tablas, tarjeta, emojis, ancho, `NO_COLOR`) es de la skill `vivid-visual-output`, que el paso 5 del [Flujo](#flujo) carga siempre. Su procedimiento no se repite acá: se sigue el de ella.
 
 ## Modo agente
 
@@ -176,7 +177,7 @@ En otro stack, aplicar el mismo contrato y leer la documentación actual de sus 
 
 ## Cierre
 
-Sumar al reporte, en pocas líneas: las flags elegidas y por qué, los casos de la matriz que corrieron con su resultado y los que no se pudieron correr con su motivo. Si el proyecto tiene tests, dejar automatizados los casos sin terminal, que no necesitan un PTY. Si el CLI llama a APIs, los flujos se prueban contra un servidor HTTP local, no mockeando el cliente: [references/verification.md](references/verification.md#servidor-de-prueba). El reporte dice también cómo se probó el modo agente (casos `ag1` a `ag8` de la matriz).
+Sumar al reporte, en pocas líneas: las flags elegidas y por qué, los casos de la matriz que corrieron con su resultado y los que no se pudieron correr con su motivo. Si el proyecto tiene tests, dejar automatizados los casos sin terminal, que no necesitan un PTY. Si el CLI llama a APIs, los flujos se prueban contra un servidor HTTP local, no mockeando el cliente: [references/verification.md](references/verification.md#servidor-de-prueba). El reporte dice también cómo se probó el modo agente (casos `ag1` a `ag8` de la matriz) y suma el cierre de `vivid-visual-output`: el carácter usado o reusado y sus chequeos.
 
 ## Fuentes
 

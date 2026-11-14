@@ -116,7 +116,7 @@ function canPrompt(flags, env = process.env) {
 }
 ```
 
-`isAgentSession` es la del kit de `vivid-visual-output` (`references/terminal.md`, «Modo agente»): si el proyecto no usa el kit, copiar solo esa función con su tabla de señales. Bajo un agente no se pregunta aunque stdin y stderr sean terminales ([agent-mode.md](agent-mode.md)).
+`isAgentSession` es la del kit de `vivid-visual-output` (`references/terminal.md`, «Modo agente»). Si el proyecto conserva helpers de consola propios en lugar del kit (`vivid-visual-output` reusa lo que ya existe), sumarles solo esa función con su tabla de señales. Bajo un agente no se pregunta aunque stdin y stderr sean terminales ([agent-mode.md](agent-mode.md)).
 
 ## Widgets
 

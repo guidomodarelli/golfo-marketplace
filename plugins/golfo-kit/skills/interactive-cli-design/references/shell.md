@@ -48,7 +48,7 @@ can_prompt() {
 }
 ```
 
-`is_agent_session` es la del kit de `vivid-visual-output` (`references/terminal.md`, «Modo agente»): si el proyecto no usa el kit, copiar solo esa función con su tabla de señales. Bajo un agente no se pregunta aunque stdin y stderr sean terminales ([agent-mode.md](agent-mode.md)).
+`is_agent_session` es la del kit de `vivid-visual-output` (`references/terminal.md`, «Modo agente»). Si el proyecto conserva helpers de consola propios en lugar del kit (`vivid-visual-output` reusa lo que ya existe), sumarles solo esa función con su tabla de señales. Bajo un agente no se pregunta aunque stdin y stderr sean terminales ([agent-mode.md](agent-mode.md)).
 
 ### Ayuda en dos columnas y con color
 
@@ -154,7 +154,7 @@ $isContinuousIntegration = $env:CI -and $env:CI -ne '0' -and $env:CI -ne 'false'
 $canPrompt = -not [Console]::IsInputRedirected -and -not [Console]::IsErrorRedirected -and -not $NoInput -and -not $isContinuousIntegration -and -not (Test-AgentSession)
 ```
 
-`Test-AgentSession` es la del kit de `vivid-visual-output` (`references/terminal.md`, «Modo agente»): si el proyecto no usa el kit, copiar solo esa función con su tabla de señales. Bajo un agente no se pregunta aunque stdin y stderr sean terminales ([agent-mode.md](agent-mode.md)).
+`Test-AgentSession` es la del kit de `vivid-visual-output` (`references/terminal.md`, «Modo agente»). Si el proyecto conserva helpers de consola propios en lugar del kit (`vivid-visual-output` reusa lo que ya existe), sumarles solo esa función con su tabla de señales. Bajo un agente no se pregunta aunque stdin y stderr sean terminales ([agent-mode.md](agent-mode.md)).
 
 | Widget | Nativo |
 |---|---|
