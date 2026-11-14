@@ -57,7 +57,10 @@ write_manifest() {
 }
 
 run_cli() {
+  # DIAGNOSTIC (to remove): which command does not return on the Windows runners.
+  printf '# %s run_cli %s\n' "$(date +%T)" "$*" >&3
   run --separate-stderr env PATH="$fake_bin:$PATH" python3 "$skill_dir/scripts/agent-ready" "$@"
+  printf '# %s done %s (status %s)\n' "$(date +%T)" "$1" "$status" >&3
 }
 
 manifest_value() {

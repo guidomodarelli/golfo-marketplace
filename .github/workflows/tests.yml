@@ -134,7 +134,7 @@ jobs:
           - os: windows-latest
             python: "3.13"
             shard: 5/5
-            suites: agent-ready-cli.bats agent-ready-workspaces.bats agent-ready-pack-scripts.bats
+            suites: agent-ready-workspaces.bats agent-ready-cli.bats agent-ready-pack-scripts.bats
           - os: macos-latest
             python: "3.13"
             suites: agent-ready-state.bats agent-ready-detection.bats agent-ready-packs.bats agent-ready-updates.bats agent-ready-config.bats agent-ready-cli.bats agent-ready-reviews.bats agent-ready-golfo-kit.bats agent-ready-conflicts.bats agent-ready-pack-tools.bats agent-ready-pack-clis.bats agent-ready-pack-scripts.bats agent-ready-pack-examples.bats agent-ready-blocks.bats agent-ready-workspaces.bats agent-ready-ci.bats merge-instructions.bats bootstrap.bats
