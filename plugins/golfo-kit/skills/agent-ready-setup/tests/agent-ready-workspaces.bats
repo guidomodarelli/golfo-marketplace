@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
 # Workspaces of a monorepo (agent_ready_workspaces.py): the selection of each folder, resolved against
-# the root selection, shown by plan and status, recorded in the lock, and the paths that cannot be one.
+# the root selection, shown by plan and status, recorded in the lock, the paths that cannot be one, and
+# the rules a workspace adds: scoped with paths: and listed by its own AGENTS.md.
 
 bats_require_minimum_version 1.5.0
 
@@ -155,4 +156,61 @@ lock_value() {
   [ "$status" -ne 0 ]
   [[ "$output$stderr" == *"selection: workspace apps/web selects go, the lock react"* ]]
   cmp -s .agents/agent-ready.lock.json "$test_root/lock-before"
+}
+
+@test "the rules a workspace adds go to its folder with paths:, its AGENTS.md lists them and the root one does not" {
+  write_manifest '{"profiles": ["node"], "workspaces": [{"path": "apps/web", "profiles": ["react"]}]}'
+  run_cli plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"rule(s) in .agents/rules/workspaces/apps/web/, listed in apps/web/AGENTS.md"* ]]
+  run_cli apply
+  [ "$status" -eq 0 ]
+  rule=.agents/rules/workspaces/apps/web/react-style.md
+  [ -f "$rule" ]
+  [ "$(sed -n '1,3p' "$rule" | tr '\n' '|')" = '---|paths:|  - "apps/web/**"|' ]
+  [ -e .claude/rules/workspaces/apps/web/react-style.md ]
+  # A rule with a frontmatter keeps it and gains paths:.
+  grep -qx '  testRunner: vitest' .agents/rules/workspaces/apps/web/react-testing.md
+  grep -qx '  - "apps/web/\*\*"' .agents/rules/workspaces/apps/web/react-testing.md
+  ! grep -q 'rules/workspaces' AGENTS.md
+  ! grep -q '`.agents/rules/react-style.md`' AGENTS.md
+  grep -qx '<!-- BEGIN AGENT-READY MANAGED: agent-ready:workspace -->' apps/web/AGENTS.md
+  grep -qxF -- '- Read and follow `.agents/rules/workspaces/apps/web/react-style.md`.' apps/web/AGENTS.md
+  grep -qx '<!-- BEGIN AGENT-READY MANAGED: react -->' apps/web/AGENTS.md
+  grep -qF '`.agents/rules/workspaces/apps/web/react-testing.md`' apps/web/AGENTS.md
+  [ "$(cat apps/web/CLAUDE.md)" = '@AGENTS.md' ]
+  grep -qxF -- '- `apps/web/AGENTS.md`' AGENTS.md
+  [ "$(lock_value 'lock["assets"][".agents/rules/workspaces/apps/web/react-style.md"]["workspace"]')" = "apps/web" ]
+
+  run_cli apply
+  run_cli plan
+  [[ "$output" != *"+ create"* ]]
+  [[ "$output" != *"~ update"* ]]
+}
+
+@test "two workspaces with different stacks do not collide, and one that leaves takes its rules, views and blocks" {
+  write_manifest '{"profiles": ["node"], "workspaces": [{"path": "apps/web", "profiles": ["react"]}, {"path": "services/api", "profiles": ["go"]}]}'
+  run_cli apply
+  [ "$status" -eq 0 ]
+  [ -f .agents/rules/workspaces/apps/web/react-style.md ]
+  [ -n "$(ls .agents/rules/workspaces/services/api)" ]
+  grep -q 'agent-ready:workspace' services/api/AGENTS.md
+
+  write_manifest '{"profiles": ["node"], "workspaces": [{"path": "services/api", "profiles": ["go"]}]}'
+  run_cli apply
+  [ "$status" -eq 0 ]
+  [ ! -e .agents/rules/workspaces/apps ]
+  [ ! -e .claude/rules/workspaces/apps ]
+  [ ! -e apps/web/AGENTS.md ]
+  [ ! -e apps/web/CLAUDE.md ]
+  ! grep -qF -- '- `apps/web/AGENTS.md`' AGENTS.md
+  [ -n "$(ls .agents/rules/workspaces/services/api)" ]
+}
+
+@test "a rule of a workspace is checked against the folder of the workspace, not the root" {
+  printf '{"devDependencies": {"jest": "29"}}\n' > apps/web/package.json
+  write_manifest '{"profiles": ["node"], "workspaces": [{"path": "apps/web", "profiles": ["react"]}]}'
+  run_cli plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *".agents/rules/workspaces/apps/web/react-testing.md"*"vitest"*"jest"*"apps/web/package.json"* ]]
 }

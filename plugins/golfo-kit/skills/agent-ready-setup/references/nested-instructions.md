@@ -142,8 +142,9 @@ Before you read or change files under one of these folders, read and follow its 
 - `src/app/AGENTS.md`
 ```
 
-- **Qué lista:** cada `AGENTS.md` anidado al que el apply escribe un bloque. Deja afuera los que esperan
-  por un `CLAUDE.md` propio y los que están detrás de un symlink.
+- **Qué lista:** cada `AGENTS.md` anidado al que el apply escribe un bloque, también el de un workspace de
+  un monorepo ([profiles-and-lockfile.md](profiles-and-lockfile.md), «Workspaces»). Deja afuera los que
+  esperan por un `CLAUDE.md` propio y los que están detrás de un symlink.
 - **Cuándo se escribe:** es una sección más del `AGENTS.md` raíz, como la de cada stack
   ([managed-agents-block.md](managed-agents-block.md), «Secciones de los stacks»). Tiene el mismo lock, la
   misma espera mientras la raíz no adoptó el bloque y la misma revisión de IA, que la trata como de solo

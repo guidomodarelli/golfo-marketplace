@@ -52,6 +52,7 @@ from agent_ready_common import (  # noqa: E402
     serialize_json,
     sha256_of_file,
     sha256_of_text,
+    skill_cache_directory,
     walk_files,
     write_text_if_changed,
     write_text_atomically,
@@ -732,19 +733,23 @@ def resolved_tools(catalog, resolved):
     return tools
 
 
-def compose_stack_directory(skill_dir, catalog, resolved, compose_root):
+def compose_stack_directory(skill_dir, catalog, resolved, compose_root, workspace_rules=None):
     """Return the stack tree Bash projects for the selected profiles.
 
     A single stack profile without extra assets uses its own directory, so the
     legacy layout is projected unchanged. Several asset profiles are copied into
     one composed tree; a relative path published by two profiles is an error.
+    ``workspace_rules`` (workspace_rule_files) adds the rules of the workspaces under
+    rules/workspaces/, so the projection writes them and links their Claude views.
     """
+    workspace_rules = workspace_rules or {}
     asset_profiles = [name for name in resolved if profile_asset_root(skill_dir, catalog, name)]
     primary = primary_stack(catalog, resolved)
     overridden = resolved_overrides(skill_dir, catalog, resolved)
     # The instruction scripts read rules/ of the tree: a stack without rules of its own (a pack stack
     # that only publishes its section) is composed, which gives the tree an empty rules/.
-    if not overridden and primary and asset_profiles == [primary] and os.path.isdir(os.path.join(profile_asset_root(skill_dir, catalog, primary), "rules")):
+    if not overridden and not workspace_rules and primary and asset_profiles == [primary] and \
+            os.path.isdir(os.path.join(profile_asset_root(skill_dir, catalog, primary), "rules")):
         return profile_asset_root(skill_dir, catalog, primary)
 
     owners = {}
@@ -770,8 +775,10 @@ def compose_stack_directory(skill_dir, catalog, resolved, compose_root):
     pack_digests = profile_digests(skill_dir, catalog, [name for name in resolved if is_pack_profile(name)]) if any(
         is_pack_profile(name) for name in resolved
     ) else {}
+    workspace_digest = {tree_path: entry["sha256"] for tree_path, entry in workspace_rules.items()}
     selection_key = sha256_of_text(
         os.path.abspath(skill_dir) + "\n" + ",".join(resolved) + "\n" + json.dumps(pack_digests, sort_keys=True)
+        + "\n" + json.dumps(workspace_digest, sort_keys=True)
     )[:16]
     destination = os.path.join(compose_root, selection_key)
     os.makedirs(compose_root, exist_ok=True)
@@ -782,6 +789,10 @@ def compose_stack_directory(skill_dir, catalog, resolved, compose_root):
             target = os.path.join(staging, relative_path)
             os.makedirs(os.path.dirname(target), exist_ok=True)
             shutil.copy2(source, target)
+        for tree_path, entry in sorted(workspace_rules.items()):
+            target = os.path.join(staging, *tree_path.split("/"))
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            shutil.copy2(entry["sourcePath"], target)
         os.makedirs(os.path.join(staging, "rules"), exist_ok=True)
         previous = None
         if os.path.exists(destination):
@@ -838,11 +849,13 @@ def template_origin(skill_dir, catalog, profile_name, absolute_path):
     return os.path.relpath(absolute_path, skill_dir).replace(os.sep, "/")
 
 
-def desired_assets(skill_dir, catalog, resolved):
+def desired_assets(skill_dir, catalog, resolved, workspace_rules=None):
     """Map every managed destination to its template, owning profile and hash.
 
     Two templates cannot share a destination, including the skill adapters generated
     for Codex and paths that differ only by case, which collide on Windows and macOS.
+    ``workspace_rules`` (workspace_rule_files) adds the rules of the workspaces, each with the
+    workspace it belongs to.
     """
     # Bash projects every profile tree as the stack tree, so only the base
     # assets skip the Codex MCP bridge.
@@ -872,8 +885,85 @@ def desired_assets(skill_dir, catalog, resolved):
                     "sourcePath": absolute_path,
                     "sha256": sha256_of_file(absolute_path),
                 }
+    for tree_path, entry in sorted((workspace_rules or {}).items()):
+        destination = ".agents/" + tree_path
+        previous = destinations_by_folded_name.setdefault(destination.casefold(), destination)
+        if previous in assets:
+            raise ProfileError(f"workspace {entry['workspace']}: {destination} is also written by profile "
+                               f"'{assets[previous]['profile']}'; nothing was written")
+        assets[destination] = {key: entry[key] for key in ("profile", "source", "sourcePath", "sha256", "workspace")}
     reject_destinations_inside_files(assets, destinations_by_folded_name)
     return assets
+
+
+WORKSPACE_RULES_CACHE = "workspace-rules"
+
+
+def workspace_rule_files(skill_dir, catalog, workspaces):
+    """{tree path: entry} of the rules the profiles of each workspace add, scoped to its folder.
+
+    Each rule of a profile a workspace adds goes to rules/workspaces/<path>/, with paths: limited to
+    the workspace (agent_ready_workspaces.scoped_rule_text). Its text is kept in the per-user cache by
+    its sha256, so the plan, the projection and the reviews read the same bytes. Two profiles of one
+    workspace that publish the same rule fail, as in the root selection; overrides of the workspace
+    selection are honored.
+    """
+    files = {}
+    for workspace in workspaces:
+        overridden = resolved_overrides(skill_dir, catalog, workspace["resolved"])
+        owners = {}
+        for name in workspace["own"]:
+            asset_root = profile_asset_root(skill_dir, catalog, name)
+            if not asset_root:
+                continue
+            for relative_path, absolute_path in walk_files(asset_root):
+                if not relative_path.startswith(workspace_selection.RULES_DIRECTORY + "/") or \
+                        is_overridden(overridden, name, relative_path):
+                    continue
+                rule_path = relative_path[len(workspace_selection.RULES_DIRECTORY) + 1:]
+                if rule_path in owners:
+                    raise ProfileError(f"workspace {workspace['path']}: profiles '{owners[rule_path]}' and '{name}' "
+                                       f"both publish {relative_path}; nothing was written")
+                owners[rule_path] = name
+                with open(absolute_path, encoding="utf-8", newline="") as rule_file:
+                    text = workspace_selection.scoped_rule_text(rule_file.read(), workspace["path"],
+                                                               f"{name}:{relative_path}")
+                sha256 = sha256_of_text(text)
+                cache_path = skill_cache_directory(WORKSPACE_RULES_CACHE, f"{sha256}.md")
+                if not os.path.isfile(cache_path):
+                    write_text_atomically(cache_path, text)
+                files[workspace_selection.rule_tree_path(workspace["path"], rule_path)] = {
+                    "profile": name, "source": template_origin(skill_dir, catalog, name, absolute_path),
+                    "sourcePath": cache_path, "sha256": sha256, "workspace": workspace["path"],
+                    "rulePath": rule_path}
+    return files
+
+
+def workspace_blocks(skill_dir, catalog, workspaces, workspace_rules):
+    """{(destination, id): item} of the AGENTS.md of each workspace: the list of its rules, for Codex, and
+    the section of each stack it adds, with its references moved to the rules of the workspace."""
+    blocks = {}
+    for workspace in workspaces:
+        destination = nested.destination_in(workspace["path"])
+        rule_paths = sorted(entry["rulePath"] for entry in workspace_rules.values() if entry["workspace"] == workspace["path"])
+        if rule_paths:
+            blocks[(destination, workspace_selection.INDEX_BLOCK_ID)] = {
+                "profile": BASE_PROFILE_NAME, "source": workspace_selection.INDEX_SOURCE,
+                "content": workspace_selection.index_content(
+                    workspace["path"],
+                    [".agents/" + workspace_selection.rule_tree_path(workspace["path"], path) for path in rule_paths])}
+        for name in workspace["own"]:
+            asset_root = profile_asset_root(skill_dir, catalog, name)
+            section = os.path.join(asset_root, managed_blocks.BLOCK_DIRECTORY, managed_blocks.INSTRUCTION_SECTIONS_DESTINATION) \
+                if asset_root else None
+            if catalog["profiles"][name].get("kind") != STACK_PROFILE_KIND or not section or not os.path.isfile(section):
+                continue
+            with open(section, encoding="utf-8", newline="") as section_file:
+                content = managed_blocks.normalized_content(section_file.read())
+            blocks[(destination, name)] = {
+                "profile": name, "source": template_origin(skill_dir, catalog, name, section),
+                "content": workspace_selection.with_workspace_references(content, workspace["path"], rule_paths)}
+    return blocks
 
 
 def desired_blocks(skill_dir, catalog, resolved, assets):
@@ -1640,7 +1730,10 @@ def classify_retired(local, lock_entry):
 def claude_view_of(destination, source):
     """Project path of the .claude view of a managed asset, or None when it has none."""
     relative = destination[len(".agents/"):] if destination.startswith(".agents/") else ""
-    if relative.split("/", 1)[0] not in CLAUDE_VIEW_DIRECTORIES or not source.endswith("/" + relative):
+    # A rule of a workspace keeps its view at the same path: its source is the rule of the profile.
+    is_workspace_rule = relative.startswith(workspace_selection.RULES_DIRECTORY + "/") and \
+        workspace_selection.is_workspace_rule(relative[len(workspace_selection.RULES_DIRECTORY) + 1:])
+    if relative.split("/", 1)[0] not in CLAUDE_VIEW_DIRECTORIES or not (is_workspace_rule or source.endswith("/" + relative)):
         return None
     return ".claude/" + relative
 
@@ -1694,7 +1787,10 @@ def compute_plan(project_root, skill_dir, catalog, profile_names):
     """Build the read-only plan for the selected profiles."""
     resolved = resolve_project_profiles(catalog, profile_names, project_root)
     workspaces = resolve_workspaces(project_root, catalog, profile_names, resolved)
-    assets = desired_assets(skill_dir, catalog, resolved)
+    workspace_rules = workspace_rule_files(skill_dir, catalog, workspaces)
+    for workspace in workspaces:
+        workspace["rules"] = sum(1 for entry in workspace_rules.values() if entry["workspace"] == workspace["path"])
+    assets = desired_assets(skill_dir, catalog, resolved, workspace_rules)
     validate_pack_destinations(project_root, assets)
     lock = read_lock(project_root)
     locked_assets = lock["assets"] if lock else {}
@@ -1713,10 +1809,12 @@ def compute_plan(project_root, skill_dir, catalog, profile_names):
             "sha256": desired_entry["sha256"],
             "baseSha256": lock_entry.get("sha256") if lock_entry else None,
             "local": local,
+            "workspace": desired_entry.get("workspace"),
         })
     blocks = desired_blocks(skill_dir, catalog, resolved, assets)
     targets = nested_contents(skill_dir, catalog, resolved)
     nested_blocks, nested_report = desired_nested_blocks(project_root, catalog, resolved, targets)
+    nested_blocks.update(workspace_blocks(skill_dir, catalog, workspaces, workspace_rules))
     waiting_nested = waiting_instruction_files(project_root, skill_dir, {destination for destination, _ in nested_blocks})
     for target in nested_report:
         target["waiting"] = [folder for folder in target["paths"] if nested.destination_in(folder) in waiting_nested]
@@ -1745,7 +1843,9 @@ def compute_plan(project_root, skill_dir, catalog, profile_names):
         })
     merged = merged_template_entries(skill_dir, catalog, resolved)
     digests = profile_digests(skill_dir, catalog, resolved)
-    golfo_assets = {destination: entry for destination, entry in assets.items() if not is_pack_profile(entry["profile"])}
+    # The rules of a workspace depend on the folders of this repository: they stay out of the content digest.
+    golfo_assets = {destination: entry for destination, entry in assets.items()
+                    if not is_pack_profile(entry["profile"]) and not entry.get("workspace")}
     # Without a lockfile the first apply keeps the previous overwrite contract.
     edited_views, preserved_views = detached_views(project_root, assets, locked_assets) if lock else ([], [])
     identity = source_identity(skill_dir, golfo_assets, merged, golfo_blocks(blocks), golfo_blocks(targets))
@@ -2225,6 +2325,9 @@ def print_plan(project_root, skill_dir, plan, provider, skip_marketplace_upgrade
         write_line(f"Overridden: {override['replaces']} by {override['profile']} (only its own asset is projected)")
     for workspace in plan.get("workspaces", []):
         write_line(f"Workspace {workspace_selection.describe(workspace)}")
+        if workspace.get("rules"):
+            write_line(f"  {workspace['rules']} rule(s) in .agents/rules/{workspace_selection.WORKSPACE_RULES_DIRECTORY}/"
+                       f"{workspace['path']}/, listed in {nested.destination_in(workspace['path'])}")
     for target in plan.get("nested", []):
         write_line(f"Nested AGENTS.md: {nested.describe(target)}")
     index = plan.get("nestedIndex") or {}
@@ -2473,6 +2576,8 @@ def finalize(project_root, skill_dir, plan, updates):
             view = remove_claude_view_of(project_root, destination)
             if view:
                 removed.append(os.path.relpath(view, project_root).replace(os.sep, "/"))
+                # A view in a folder of its own (the rules of a workspace) leaves no empty folder behind.
+                remove_empty_parents(project_root, view)
             os.unlink(absolute_path)
             remove_empty_parents(project_root, absolute_path)
             removed.append(destination)
@@ -2508,6 +2613,10 @@ def finalize(project_root, skill_dir, plan, updates):
                 "desiredSha256": entry["sha256"],
                 "state": STATE_FAILED,
             }
+
+    for entry in plan["entries"]:
+        if entry.get("workspace") and entry["destination"] in lock_assets:
+            lock_assets[entry["destination"]]["workspace"] = entry["workspace"]
 
     # Whatever happened to the asset, a project file in its view stays the project's.
     for entry in plan["entries"]:
@@ -3126,10 +3235,12 @@ def command_resolve(arguments):
     catalog = load_effective_catalog(arguments.project, arguments.skill_dir, read_source_state(arguments))
     requested, selection = resolve_selection(arguments, catalog)
     resolved = resolve_project_profiles(catalog, requested, arguments.project)
-    validate_pack_destinations(arguments.project, desired_assets(arguments.skill_dir, catalog, resolved))
+    workspace_rules = workspace_rule_files(arguments.skill_dir, catalog,
+                                           resolve_workspaces(arguments.project, catalog, requested, resolved))
+    validate_pack_destinations(arguments.project, desired_assets(arguments.skill_dir, catalog, resolved, workspace_rules))
     if arguments.source_mode == SOURCE_MODE_SYNC:
         enforce_sync_policy(arguments.project, arguments.skill_dir, catalog, resolved, profile_digests(arguments.skill_dir, catalog, resolved))
-    stack_dir = compose_stack_directory(arguments.skill_dir, catalog, resolved, arguments.compose_dir)
+    stack_dir = compose_stack_directory(arguments.skill_dir, catalog, resolved, arguments.compose_dir, workspace_rules)
     if selection == SELECTION_DETECTION:
         detection = detect_profiles(catalog["profiles"], arguments.project)
         primary = detection["primaryStack"]
@@ -3520,7 +3631,8 @@ def projected_rules(project_root, plan):
         local_path = os.path.join(project_root, destination)
         kept_local = entry["action"] == ACTION_CONFLICT and os.path.isfile(local_path) and not is_link(local_path)
         with open(local_path if kept_local else entry["sourcePath"], encoding="utf-8", errors="replace") as rule_file:
-            rules.append({"path": destination, "profile": entry["profile"], "text": rule_file.read()})
+            rules.append({"path": destination, "profile": entry["profile"], "text": rule_file.read(),
+                          "workspace": entry.get("workspace")})
     project_rules = project_owned_rules(project_root, managed_destinations)
     rules += [{"path": RULES_DESTINATION_PREFIX + path, "profile": PROJECT_RULES_PROFILE, "text": text}
               for path, text in sorted(project_rules.items())]
@@ -3530,7 +3642,16 @@ def projected_rules(project_root, plan):
 def repo_reality_report(project_root, skill_dir, plan):
     """The assumptions of the rules that the repository contradicts. Read-only."""
     rules, _ = projected_rules(project_root, plan)
-    return repo_facts.contradictions(project_root, repo_facts.load_facts(skill_dir), rules)
+    facts = repo_facts.load_facts(skill_dir)
+    findings = repo_facts.contradictions(project_root, facts, [rule for rule in rules if not rule.get("workspace")])
+    # A rule of a workspace is checked against that folder: its package.json, its configuration files.
+    for path in sorted({rule["workspace"] for rule in rules if rule.get("workspace")}):
+        workspace_rules = [rule for rule in rules if rule.get("workspace") == path]
+        for finding in repo_facts.contradictions(os.path.join(project_root, *path.split("/")), facts, workspace_rules):
+            if "evidence" in finding:
+                finding["evidence"] = [f"{path}/{evidence}" for evidence in finding["evidence"]]
+            findings.append(finding)
+    return findings
 
 
 def repo_reality_lines(findings):

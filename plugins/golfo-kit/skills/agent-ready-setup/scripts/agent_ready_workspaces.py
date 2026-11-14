@@ -8,14 +8,31 @@ profiles of each folder that needs its own:
 
 Each workspace resolves its profiles like the root does (requires, defaults, excludedDefaults). What
 the root selection already resolves applies to the whole repository, so a workspace only owns the
-profiles the root does not have. The contract is in references/profiles-and-lockfile.md
-("Workspaces").
+profiles the root does not have.
+
+The rules of those profiles go to ``.agents/rules/workspaces/<path>/`` with ``paths:`` limited to the
+workspace, so Claude Code loads them only for its files, and the AGENTS.md of the workspace lists them
+for Codex (index_content). The contract is in references/profiles-and-lockfile.md ("Workspaces").
 """
 
 import os
+import re
 
 from agent_ready_common import ProfileError, is_link
 from agent_ready_nested import folder_problem, is_folder, is_ignored
+
+RULES_DIRECTORY = "rules"
+# Under .agents/rules/: the rules of each workspace, which the root AGENTS.md does not list.
+WORKSPACE_RULES_DIRECTORY = "workspaces"
+# The block of the AGENTS.md of a workspace that lists its rules. Its id cannot be a profile name.
+INDEX_BLOCK_ID = "agent-ready:workspace"
+INDEX_SOURCE = "agent-ready:workspace"
+FRONTMATTER_FENCE = "---"
+PATHS_KEY = "paths"
+PATHS_LINE = re.compile(r"^paths:\s*(.*)$")
+LIST_ITEM = re.compile(r"^\s+-\s*(.*)$")
+INLINE_LIST = re.compile(r"^\[(.*)\]$")
+RULE_REFERENCE = "`.agents/rules/{}`"
 
 
 def is_linked(project_root, path):
@@ -112,3 +129,89 @@ def differences(configured, locked):
     configured_paths = {entry["path"] for entry in configured}
     lines += [f"workspace {path} left the manifest" for path in sorted(set(locked) - configured_paths)]
     return lines
+
+
+# ---------------------------------------------------------------------------
+# Rules of a workspace
+# ---------------------------------------------------------------------------
+
+def rule_tree_path(workspace_path, rule_path):
+    """Where a rule of a workspace goes, under the composed tree and under .agents/:
+    rules/workspaces/<workspace>/<path of the rule under rules/>."""
+    return f"{RULES_DIRECTORY}/{WORKSPACE_RULES_DIRECTORY}/{workspace_path}/{rule_path}"
+
+
+def is_workspace_rule(rule_path):
+    """True for a path under rules/ that belongs to a workspace (rules/workspaces/...)."""
+    return rule_path.startswith(WORKSPACE_RULES_DIRECTORY + "/")
+
+
+def unquoted(value):
+    value = value.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+        return value[1:-1]
+    return value
+
+
+def quoted(pattern):
+    return '"' + pattern.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def frontmatter_patterns(lines, start, rule):
+    """(patterns, end) of the paths: key at lines[start]: its patterns and the first line after them."""
+    value = PATHS_LINE.match(lines[start]).group(1).strip()
+    if value:
+        inline = INLINE_LIST.match(value)
+        patterns = [unquoted(item) for item in inline.group(1).split(",") if item.strip()] if inline else [unquoted(value)]
+        return patterns, start + 1
+    patterns, end = [], start + 1
+    while end < len(lines) and LIST_ITEM.match(lines[end]):
+        patterns.append(unquoted(LIST_ITEM.match(lines[end]).group(1)))
+        end += 1
+    if not patterns:
+        raise ProfileError(f"rule {rule}: paths: in its frontmatter is not a list of patterns")
+    return patterns, end
+
+
+def scoped_rule_text(text, workspace_path, rule):
+    """The rule with paths: limited to the workspace, so Claude Code loads it only for its files.
+
+    A rule without frontmatter gets one with paths: <workspace>/**, a frontmatter without paths: gets
+    the key, and the patterns a rule already has stay, under the workspace. The rest of the
+    frontmatter and the body stay as they are.
+    """
+    lines = text.replace("\r\n", "\n").split("\n")
+    if lines and lines[0].strip() == FRONTMATTER_FENCE and FRONTMATTER_FENCE in [line.strip() for line in lines[1:]]:
+        close = 1 + [line.strip() for line in lines[1:]].index(FRONTMATTER_FENCE)
+        header = lines[1:close]
+        body = lines[close + 1:]
+    else:
+        header, body = [], lines
+    start = next((index for index, line in enumerate(header) if PATHS_LINE.match(line)), None)
+    if start is None:
+        patterns, before, after = ["**"], header, []
+    else:
+        patterns, end = frontmatter_patterns(header, start, rule)
+        before, after = header[:start], header[end:]
+    for pattern in patterns:
+        if not pattern or pattern.startswith("/") or ".." in pattern.split("/"):
+            raise ProfileError(f"rule {rule}: the pattern {pattern!r} of paths: does not stay inside the repository")
+    scoped = [f"{workspace_path}/{pattern[2:] if pattern.startswith('./') else pattern}" for pattern in patterns]
+    paths = [f"{PATHS_KEY}:"] + [f"  - {quoted(pattern)}" for pattern in scoped]
+    return "\n".join([FRONTMATTER_FENCE] + before + paths + after + [FRONTMATTER_FENCE] + body)
+
+
+def index_content(workspace_path, rule_destinations):
+    """The block of the AGENTS.md of a workspace: the rules of its own profiles, to read before working there."""
+    lines = [f"## Workspace `{workspace_path}`", "",
+             "This folder has profiles of its own. Read and follow these rules before you change its files:", ""]
+    lines += [f"- Read and follow `{destination}`." for destination in sorted(rule_destinations)]
+    return "\n".join(lines) + "\n"
+
+
+def with_workspace_references(text, workspace_path, rule_paths):
+    """The section of a stack with its references to a rule moved to the rule of the workspace."""
+    for rule_path in rule_paths:
+        text = text.replace(RULE_REFERENCE.format(rule_path),
+                            RULE_REFERENCE.format(f"{WORKSPACE_RULES_DIRECTORY}/{workspace_path}/{rule_path}"))
+    return text

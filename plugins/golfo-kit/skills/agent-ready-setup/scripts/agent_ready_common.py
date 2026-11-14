@@ -37,6 +37,12 @@ def sha256_of_file(path):
     return hashlib.sha256(content.replace(b"\r\n", b"\n")).hexdigest()
 
 
+def skill_cache_directory(*parts):
+    """A directory of agent-ready-setup in the per-user cache (XDG_CACHE_HOME, else ~/.cache)."""
+    base = os.environ.get("XDG_CACHE_HOME") or os.path.join(os.environ.get("HOME") or os.path.expanduser("~"), ".cache")
+    return os.path.join(base, "agent-ready-setup", *parts)
+
+
 def sha256_of_text(text):
     """Return the hex sha256 of UTF-8 text."""
     return hashlib.sha256(text.encode("utf-8")).hexdigest()

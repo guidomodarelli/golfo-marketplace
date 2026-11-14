@@ -20,6 +20,8 @@ SKELETON_FILE=""
 VALIDATE_FILE=""
 MANAGED_BLOCK_ONLY=0
 LIST_RULES=0
+# Under .agents/rules/: the rules of each workspace of a monorepo (agent_ready_workspaces.py).
+WORKSPACE_RULES_DIRECTORY="workspaces"
 
 usage() {
   cat >&2 <<'EOF'
@@ -164,6 +166,8 @@ list_template_rules() {
           return 1
           ;;
       esac
+      # The rules of a workspace are listed by its own AGENTS.md, never by the root one.
+      [[ "$relative_path" == "$WORKSPACE_RULES_DIRECTORY"/* ]] && continue
       printf '%s\t%s\n' "$relative_path" "$rule_file"
     done < <(find "$template_rules_directory" -type f -print)
   done | LC_ALL=C sort -t $'\t' -k1,1 | while IFS=$'\t' read -r relative_path rule_file; do
@@ -220,6 +224,7 @@ list_project_rule_paths() {
         ;;
     esac
     is_template_rule "$relative_path" && continue
+    [[ "$relative_path" == "$WORKSPACE_RULES_DIRECTORY"/* ]] && continue
     printf '%s\n' "$relative_path"
   done < <(find "$PROJECT_RULES_DIRECTORY" -type f -name '*.md' -print | LC_ALL=C sort)
 }
