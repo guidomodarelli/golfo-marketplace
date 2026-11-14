@@ -8,6 +8,11 @@ import os
 from agent_ready_common import StateError, read_json_file
 
 LOCK_RELATIVE_PATH = ".agents/agent-ready.lock.json"
+# The state of an asset or a block in the lock.
+STATE_APPLIED = "applied"
+STATE_CONFLICT = "conflict"
+STATE_FAILED = "failed"
+STATE_RETIRED_PRESERVED = "retired-preserved"
 
 
 def read_lock(project_root):

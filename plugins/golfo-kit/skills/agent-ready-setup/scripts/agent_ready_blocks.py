@@ -19,6 +19,7 @@ import re
 import stat
 
 from agent_ready_common import ProfileError, is_link, sha256_of_text
+from agent_ready_lockfile import STATE_APPLIED, STATE_CONFLICT, STATE_FAILED
 from agent_ready_detection import is_contained_pattern
 
 BLOCK_DIRECTORY = "blocks"
@@ -46,9 +47,6 @@ ACTION_CONFLICT = "conflict"
 ACTION_RETIRE = "retire"
 ACTION_RETIRE_CONFLICT = "retire-conflict"
 ACTION_DROP = "drop"
-STATE_APPLIED = "applied"
-STATE_CONFLICT = "conflict"
-STATE_FAILED = "failed"
 
 
 class MarkerError(ValueError):
