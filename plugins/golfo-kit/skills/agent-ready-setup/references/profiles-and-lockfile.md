@@ -139,8 +139,10 @@ repositorio:
 - **Detección:** `agent-ready plan` y `agent-ready workspaces list` sugieren como workspace cada carpeta con
   un stack que la raíz no tiene, con la evidencia que lo muestra. Buscan en las carpetas que declaran
   `package.json` (`workspaces`), `pnpm-workspace.yaml` (`packages`) y `go.work` (`use`), y en las de
-  `apps/`, `packages/` y `services/`, hasta 50, salteando las que ya son o contienen un workspace. La
-  sugerencia no cambia el manifest. `detection.workspaces: false`, o `detection.enabled: false`, la apaga.
+  `apps/`, `packages/` y `services/`. Un patrón recursivo (`modules/**`) baja a las subcarpetas, salvo
+  `node_modules` y las ocultas. Mira hasta 50 carpetas, sin contar las que ya son o contienen un workspace,
+  que saltea. La sugerencia no cambia el manifest. `detection.workspaces: false`, o
+  `detection.enabled: false`, la apaga.
 - **CLI:** `agent-ready workspaces` cambia los workspaces del manifest, siempre validados con las mismas
   reglas que el plan antes de escribir; después, `apply` los proyecta.
   - `list [--json]`: cada workspace con lo que suma a la raíz, y las sugerencias de la detección.

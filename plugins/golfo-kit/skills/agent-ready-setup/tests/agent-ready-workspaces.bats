@@ -389,6 +389,11 @@ lock_value() {
   printf '{"dependencies": {"react": "19"}}\n' > libs/ui/package.json
   printf '%s\n' 'go 1.22' '' 'use (' '	./tools/gen' ')' > go.work
   printf 'module example.invalid/gen\n' > tools/gen/go.mod
+  # A recursive pattern goes into the subfolders, but never into installed dependencies.
+  printf '{"workspaces": ["modules/**"]}\n' > package.json
+  mkdir -p modules/team/api modules/team/node_modules/lib
+  printf 'module example.invalid/team\n' > modules/team/api/go.mod
+  printf 'module example.invalid/lib\n' > modules/team/node_modules/lib/go.mod
   write_manifest '{"profiles": ["node"]}'
   run_cli plan
   [ "$status" -eq 0 ]
@@ -396,6 +401,8 @@ lock_value() {
   [[ "$output" == *"Add it with agent-ready workspaces add services/api"* ]]
   [[ "$output" == *"? libs/ui: react"* ]]
   [[ "$output" == *"? tools/gen: go"* ]]
+  [[ "$output" == *"? modules/team/api: go"* ]]
+  [[ "$output" != *"node_modules"* ]]
   [[ "$output" != *"? packages/docs"* ]]
 
   run_cli workspaces add apps/web

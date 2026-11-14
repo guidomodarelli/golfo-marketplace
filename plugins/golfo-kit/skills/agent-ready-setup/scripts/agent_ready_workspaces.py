@@ -52,8 +52,13 @@ CONVENTIONAL_PARENTS = ("apps", "packages", "services")
 PACKAGE_MANIFEST = "package.json"
 PNPM_WORKSPACE_FILE = "pnpm-workspace.yaml"
 GO_WORK_FILE = "go.work"
-# The folders detection looks into at most: each one runs the detection and asks Git about the folder.
+# The folders detection looks into at most, besides the workspaces it skips: each one asks Git about the
+# folder and runs the detection.
 MAX_SUGGESTION_CANDIDATES = 50
+# Folders a recursive pattern (modules/**) never goes into: installed dependencies, besides the hidden ones.
+PRUNED_FOLDER_NAMES = ("node_modules",)
+RECURSIVE_WILDCARD = "**"
+GLOB_CHARACTERS = "*?["
 PNPM_PACKAGES_LINE = re.compile(r"^packages:\s*$")
 GO_USE_LINE = re.compile(r"^use\s+(\(|\S+)")
 
@@ -225,9 +230,25 @@ def declared_patterns(project_root):
     return patterns
 
 
+def is_pruned(folder):
+    """True for a folder under installed dependencies or a hidden folder, which is never a workspace."""
+    return any(part in PRUNED_FOLDER_NAMES or part.startswith(".") for part in folder.split("/"))
+
+
+def pattern_base(pattern):
+    """The folders of a pattern before its first wildcard: modules for modules/**."""
+    parts = []
+    for part in pattern.split("/"):
+        if any(character in part for character in GLOB_CHARACTERS):
+            break
+        parts.append(part)
+    return "/".join(parts)
+
+
 def candidate_folders(project_root):
-    """Folders that look like a workspace: the declared ones (declared_patterns) and those under
-    CONVENTIONAL_PARENTS, that can be one (path_problem), sorted, at most MAX_SUGGESTION_CANDIDATES."""
+    """Folders that look like a workspace, sorted: the declared ones (declared_patterns, ** included) and
+    those under CONVENTIONAL_PARENTS. The base of a pattern (modules for modules/**) and is_pruned folders
+    stay out; suggestions checks that each one can be a workspace."""
     patterns = [pattern for pattern in declared_patterns(project_root) if not pattern.startswith("!")]
     patterns += [f"{parent}/*" for parent in CONVENTIONAL_PARENTS]
     folders = set()
@@ -237,29 +258,31 @@ def candidate_folders(project_root):
             pattern = pattern[2:]
         if not pattern or pattern.startswith("/") or ".." in pattern.split("/"):
             continue
-        for match in glob.glob(os.path.join(project_root, *pattern.split("/"))):
-            if os.path.isdir(match):
-                folders.add(os.path.relpath(match, project_root).replace(os.sep, "/"))
-    candidates = []
-    for folder in sorted(folders):
-        if len(candidates) == MAX_SUGGESTION_CANDIDATES:
-            break
-        if path_problem(project_root, folder) is None:
-            candidates.append(folder)
-    return candidates
+        base = pattern_base(pattern)
+        for match in glob.glob(os.path.join(project_root, *pattern.split("/")), recursive=RECURSIVE_WILDCARD in pattern):
+            folder = os.path.relpath(match, project_root).replace(os.sep, "/")
+            if os.path.isdir(match) and folder != base and not is_pruned(folder):
+                folders.add(folder)
+    return sorted(folders)
 
 
 def suggestions(project_root, profiles, root_resolved, entries, detect):
     """[{path, profiles, evidence}] of the folders whose own stack the root selection does not have.
 
     ``detect(profiles, folder)`` is the detection of the repository run on one folder. A folder that is a
-    workspace, or sits inside or around one, is not suggested; nor is one inside another suggestion.
+    workspace, or sits inside or around one, is not suggested; nor is one inside another suggestion. Those
+    do not count for MAX_SUGGESTION_CANDIDATES: only the folders detection looks into do.
     """
     taken = [entry["path"] for entry in entries]
-    found = []
+    found, inspected = [], 0
     for folder in candidate_folders(project_root):
+        if inspected == MAX_SUGGESTION_CANDIDATES:
+            break
         if any(is_inside(folder, path) or is_inside(path, folder) for path in taken):
             continue
+        if path_problem(project_root, folder) is not None:
+            continue
+        inspected += 1
         detection = detect(profiles, os.path.join(project_root, *folder.split("/")))
         stack = detection["primaryStack"]
         if not stack or stack in root_resolved:
