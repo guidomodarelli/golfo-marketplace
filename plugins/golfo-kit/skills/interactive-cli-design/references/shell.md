@@ -120,7 +120,7 @@ printf 'Nombre: ' >&2
 IFS= read -r name || exit "$EXIT_CANCELLED"
 ```
 
-Un secreto se lee de `/dev/tty` con el eco apagado antes de la pregunta, y un wrapper que lanza otro programa deja que el hijo maneje Ctrl+C: [native-prompts.md](native-prompts.md#secretos).
+Un secreto se lee de `/dev/tty` con el eco apagado antes de la pregunta, y un wrapper que lanza otro programa deja que el hijo maneje Ctrl+C: [native-prompts.md](native-prompts.md#secretos). Si el wrapper consigue el secreto para ese programa, se lo da por FIFO cuando lo pide, nunca por argv ni por variable de entorno: [Del wrapper al programa](native-prompts.md#del-wrapper-al-programa).
 
 ## PowerShell
 

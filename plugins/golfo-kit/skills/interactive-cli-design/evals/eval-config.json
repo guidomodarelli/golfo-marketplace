@@ -372,6 +372,11 @@
           "type": "regex",
           "pattern": "stderr",
           "description": "Dibuja el menú en stderr"
+        },
+        {
+          "type": "regex",
+          "pattern": "strip_?ansi|ANSI",
+          "description": "Quita los escapes ANSI antes de filtrar"
         }
       ]
     },
@@ -539,6 +544,188 @@
           "type": "regex",
           "pattern": "(sin preguntas|sin entrar|repetir|non.interactive|without prompts|--name)",
           "description": "El comando reproduce la corrida sin preguntar"
+        }
+      ]
+    },
+    {
+      "id": "secret-via-fifo-from-wrapper",
+      "description": "Un wrapper de bash que resuelve el token y lanza un programa en Python se lo pasa por FIFO bajo demanda, no por argv ni por variable de entorno, y no decide qué comandos lo necesitan.",
+      "input": "Tengo `tool`, un wrapper de bash que consigue un token (llavero de macOS o `acme get-token`) y después corre `python3 main.py \"$@\"`. Hoy lo exporta en ACME_TOKEN antes de lanzar Python y lo pide aunque sea `--help`. Arreglalo.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "mkfifo",
+          "description": "Usa una FIFO"
+        },
+        {
+          "type": "regex",
+          "pattern": "mktemp -d|chmod 700|-m 600",
+          "description": "En un directorio privado con permisos restringidos"
+        },
+        {
+          "type": "regex",
+          "pattern": "trap .*EXIT|rm -rf",
+          "description": "Borra las FIFOs al salir"
+        },
+        {
+          "type": "regex",
+          "pattern": "(cuando (lo )?(necesit|hace falta|pide|usa)|bajo demanda|on demand|lazy|perezos|recién (cuando|al)|primer pedido)",
+          "description": "El programa lo pide solo cuando lo necesita"
+        },
+        {
+          "type": "regex",
+          "pattern": "(no (se )?(exporta|pasa|va|viaja|aparece).{0,40}(entorno|environment|argv|variable|ps|environ))|(nunca.{0,40}(argv|variable))|(en (lugar|vez) de (argv|env|una variable|la variable))",
+          "description": "Dice que el valor no va por argv ni por variable"
+        }
+      ]
+    },
+    {
+      "id": "check-access-probes-without-effects",
+      "description": "Un --check-access sondea cada permiso con requests sin efectos, separa lo que falta de lo que no respondió, no escribe en prod y sale distinto de 0 si algo falta.",
+      "input": "Mi CLI en Python llama a 5 APIs detrás de un gateway que, si falta un permiso, responde 403 con la lista de grupos a pedir. La gente se entera en el paso 4 con medio alta hecha. Quiero un `--check-access` que diga qué permisos faltan. Implementalo.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "\\b0\\b|inexistente|vac[ií]o|empty|nonexistent|non-existent",
+          "description": "Sondea con IDs inexistentes o cuerpo vacío, sin efectos"
+        },
+        {
+          "type": "regex",
+          "pattern": "unverified|sin verificar|no se sabe|sin respuesta|no respondi",
+          "description": "Lo que no respondió no cuenta como permitido"
+        },
+        {
+          "type": "regex",
+          "pattern": "(prod|producción|production).{0,80}(lectura|read|GET|solo lee)",
+          "description": "En prod solo sondea lecturas"
+        },
+        {
+          "type": "regex",
+          "pattern": "(exit|salida|sale|sys\\.exit|return).{0,60}(1|2|distinto|non.?zero)",
+          "description": "Sale distinto de 0 si falta algo"
+        },
+        {
+          "type": "regex",
+          "pattern": "ThreadPoolExecutor|paralel|parallel|concurren",
+          "description": "Sondea en paralelo"
+        }
+      ]
+    },
+    {
+      "id": "history-saves-incomplete-runs",
+      "description": "Cada alta se guarda en un archivo propio más un índice, con escritura atómica, lock entre procesos y permisos 600, incluidas las incompletas con el comando para seguir, y --history las lista.",
+      "input": "Mi CLI en Python crea usuarios de prueba (con su contraseña) y el resumen se pierde al limpiar la terminal. A veces el alta se corta a la mitad y hay que empezar de cero con otro usuario. Quiero que quede registro. Implementalo.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "índice|indice|index",
+          "description": "Un índice además del archivo por alta"
+        },
+        {
+          "type": "regex",
+          "pattern": "0o600|\\b600\\b",
+          "description": "Permisos 600 porque trae la contraseña"
+        },
+        {
+          "type": "regex",
+          "pattern": "os\\.replace|rename|atómic|atomic",
+          "description": "Escritura atómica"
+        },
+        {
+          "type": "regex",
+          "pattern": "flock|lock",
+          "description": "Lock entre procesos"
+        },
+        {
+          "type": "regex",
+          "pattern": "incomplet",
+          "description": "Guarda también las altas incompletas"
+        },
+        {
+          "type": "regex",
+          "pattern": "--history",
+          "description": "Un flag para listar lo guardado"
+        }
+      ]
+    },
+    {
+      "id": "optional-step-warns-and-continues",
+      "description": "Un paso opcional que da 403 avisa y sigue, marcado como pendiente y con exit 0; cualquier otro error se propaga.",
+      "input": "Mi CLI en Python crea un usuario de prueba en 5 pasos. El paso 3 (cargarle un dato secundario que no es necesario para usarlo) a veces responde 403 y corta todo el alta. Arreglalo.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "opcional|optional",
+          "description": "Distingue pasos obligatorios y opcionales"
+        },
+        {
+          "type": "regex",
+          "pattern": "!= ?(403|FORBIDDEN)|raise|propag|re-?lanz",
+          "description": "Solo tolera el 403: otro error se propaga"
+        },
+        {
+          "type": "regex",
+          "pattern": "pendiente|pending",
+          "description": "Lo marca pendiente en el resumen"
+        },
+        {
+          "type": "regex",
+          "pattern": "(exit|salida|código).{0,40}\\b0\\b|sale con 0",
+          "description": "El exit sigue siendo 0"
+        }
+      ]
+    },
+    {
+      "id": "reread-state-after-change",
+      "description": "Después de un cambio remoto relee el estado real: sigue con aviso si quedó aplicado aunque haya fallado, y falla diciendo qué se pidió y en qué quedó si no.",
+      "input": "En mi CLI en Python, el PUT que cambia el estado de un recurso a veces responde 500 pero el cambio queda hecho, y otras responde 200 y el recurso queda en otro estado. El CLI confía en el código de respuesta. Arreglalo.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "(relee|re-?read|vuelv\\w* a leer|leer el estado|get_status|GET).{0,80}(estado|status)",
+          "description": "Relee el estado después del cambio"
+        },
+        {
+          "type": "regex",
+          "pattern": "aplicad|applied",
+          "description": "Si quedó aplicado aunque falló, sigue con aviso"
+        },
+        {
+          "type": "regex",
+          "pattern": "(pedid|request|esperad|expected|target).{0,120}(qued|actual|real)",
+          "description": "El error dice qué se pidió y en qué quedó"
+        }
+      ]
+    },
+    {
+      "id": "prod-banner-and-typed-confirmation",
+      "description": "Elegir producción muestra un cartel y pide escribir el nombre; sin terminal y sin --confirm-prod sale con 2 antes de llamar a una API, y el resumen muestra el entorno.",
+      "input": "Mi CLI en Python tiene `--env test|prod` y crea usuarios de prueba. Alguien creó uno en producción sin darse cuenta. Quiero que prod no se elija sin querer. Implementalo.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "escrib\\w*.{0,40}(prod|nombre)|type.{0,30}(prod|name)|== ?['\"]prod['\"]",
+          "description": "Pide escribir el nombre para confirmar"
+        },
+        {
+          "type": "regex",
+          "pattern": "--confirm-prod|--confirm=|--confirm ",
+          "description": "Un flag explícito para scripts"
+        },
+        {
+          "type": "regex",
+          "pattern": "exit.{0,20}\\b2\\b|EXIT_USAGE|sys\\.exit\\(2\\)",
+          "description": "Sin terminal y sin el flag, exit 2"
+        },
+        {
+          "type": "regex",
+          "pattern": "rojo|\\bred\\b|41m|background|fondo|cartel|banner",
+          "description": "Un cartel que se ve"
+        },
+        {
+          "type": "regex",
+          "pattern": "(resumen|summary|encabezado|header).{0,120}(prod|entorno|environment)",
+          "description": "El entorno queda a la vista en el resumen"
         }
       ]
     }

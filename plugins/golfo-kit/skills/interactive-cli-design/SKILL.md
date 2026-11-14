@@ -3,7 +3,7 @@ name: interactive-cli-design
 description: "Diseña e implementa CLIs con flags y modo interactivo: decide el modo según argumentos, TTY y CI, fija las flags mínimas (--help, --version, --no-input y las condicionales), da paridad entre cada flag y su pregunta, elige el widget según el dato (confirm, radio, lista con búsqueda, multiselect, input, secreto) y cierra exit codes, stdout/stderr y Ctrl+C, verificando en una pseudoconsola real. Usar siempre, sin pedido explícito, al crear o modificar un CLI, subcomando, script con argumentos, wizard, instalador o menú que reciba o pregunte datos, en Node, Python, Go, Rust, bash, zsh o PowerShell, aunque el pedido solo diga agregar un flag, «que pregunte si falta un dato» o «hacelo interactivo». Cómo se ve la salida (color, spinner, tablas) es de vivid-visual-output: no usar para retocar solo eso. Tampoco en TUIs de pantalla completa, scripts sin entradas ni slash commands de agentes."
 license: MIT
 metadata:
-  version: "1.1.0"
+  version: "1.2.0"
   author: "Guido Modarelli"
   category: "developer-experience"
   tags: "cli, flags, interactive, prompts, wizard, tty, exit-codes, node, python, go, rust, shell"
@@ -17,7 +17,7 @@ Un CLI increíble sirve a dos públicos con el mismo comando: a una persona le p
 ## Flujo
 
 1. **Leer lo que existe.** Parser de argumentos, librería de prompts, helpers de consola, carpeta de constantes y reglas de `AGENTS.md` o `CLAUDE.md`. Usar primero lo que el proyecto ya tiene, después lo nativo del lenguaje. Una dependencia nueva es una decisión explícita y se dice en el reporte. En un cambio puntual, aplicar estas reglas a lo que el cambio toca y sugerir el resto al final.
-2. **Inventariar los parámetros.** Por cada uno: nombre, tipo, valores válidos, si es obligatorio, su default y si es secreto o destructivo. De esa tabla salen las flags, los widgets, la validación y la ayuda.
+2. **Inventariar los parámetros.** Por cada uno: nombre, tipo, valores válidos, en qué acciones es obligatorio, su default (fijo o generado) y si es secreto o destructivo. De esa tabla salen las flags, los widgets, la validación y la ayuda.
 3. **Decidir el modo** con la tabla de la sección siguiente.
 4. **Cargar la referencia del stack** de la sección [Stacks](#stacks).
 5. **Implementar en tres capas** ([Paridad](#paridad)).
@@ -37,9 +37,9 @@ Evaluar en orden. Gana la primera fila que aplica.
 | 5 | Falta algo y no se puede preguntar | Falla enseguida, sin colgarse, y nombra en una línea **todos** los flags faltantes | 2 |
 | 6 | Falta algo y hay terminal | Pregunta y al final imprime el comando equivalente | 0, 1 o 130 |
 
-**Valores que se validan contra datos vivos** (una lista que trae una API, los AVDs instalados, los estados de un entorno) solo se conocen después de consultar. Si el valor tiene la forma correcta pero no existe ahí: con terminal, avisar y preguntarlo de la lista real; sin terminal, exit 2 con los valores válidos. Un valor con forma inválida sigue siendo la fila 2.
+**Valores que se validan contra datos vivos** (una lista que trae una API, los AVDs instalados, los estados de un entorno) solo se conocen después de consultar. Si el valor tiene la forma correcta pero no existe ahí: con terminal, avisar y preguntarlo de la lista real; sin terminal, exit 2 con los parecidos («¿Quisiste decir `inactive`?») y el comando `--list` para verlos todos. Se valida antes del primer efecto y la lista no se copia en el código: [references/remote-actions.md](references/remote-actions.md#valores-de-una-fuente-viva). Un valor con forma inválida sigue siendo la fila 2.
 
-**Se puede preguntar** solo si stdin y stderr son terminales, no se pasó `--no-input`, `CI` no está definida (o vale `0` o `false`) y `TERM` no es `dumb`. Se mira stderr y no stdout porque ahí se dibujan los prompts: `tool > plan.json` sigue siendo interactivo y el archivo queda limpio.
+**Se puede preguntar** solo si stdin y stderr son terminales, no se pasó `--no-input`, `CI` no está definida (o vale `0` o `false`, sin importar mayúsculas) y `TERM` no es `dumb`. Se mira stderr y no stdout porque ahí se dibujan los prompts: `tool > plan.json` sigue siendo interactivo y el archivo queda limpio.
 
 **Puede correr sin flags** el CLI cuyos parámetros tienen todos un default seguro y que, corrido así, no destruye, no publica y no cobra (`git status`, `ls`). Si el default haría algo difícil de deshacer, no es seguro: va por la fila 6.
 
@@ -55,7 +55,7 @@ Evaluar en orden. Gana la primera fila que aplica.
 
 ## Flags
 
-**Universales.** Todo CLI lleva `-h, --help` y `--version`. Si puede preguntar, también `--no-input`. El corto de versión es opcional y conviene `-V`, porque `-v` es ambiguo entre verbose y versión.
+**Universales.** Todo CLI lleva `-h, --help` y `--version`. Si puede preguntar, también `--no-input`. El corto de versión es opcional y conviene `-V`, porque `-v` es ambiguo entre verbose y versión. La versión sube cada vez que cambian flags, preguntas o salida: es lo que cita quien reporta un problema.
 
 **Condicionales.** Solo si el CLI hace eso. Cada flag se mantiene para siempre, así que lo que no se necesita no se agrega.
 
@@ -63,22 +63,27 @@ Evaluar en orden. Gana la primera fila que aplica.
 |---|---|
 | Tiene defaults o confirmaciones que un script quiera aceptar | `-y, --yes`. Lo obligatorio sin default sigue fallando |
 | Pisa o borra algo | `-f, --force`, en lugar de la confirmación |
-| Hace cambios grandes o remotos, difíciles de revisar después | `-n, --dry-run`. Muestra el plan aunque falle una lectura que no es imprescindible: los pasos que conoce y el error, en vez de no mostrar nada |
-| Lee los valores de un archivo de configuración | `-c, --config <ruta>`. El archivo pasa por la misma validación que los flags, y los flags pisan lo del archivo |
+| Hace cambios grandes o remotos, difíciles de revisar después | `-n, --dry-run`. Muestra el plan aunque falle una lectura que no es imprescindible: los pasos que conoce y el error, en vez de no mostrar nada. Si el servidor decide un dato intermedio, una rama por cada valor posible |
+| Lee los valores de un archivo de configuración | `-c, --config <ruta>`. El archivo pasa por la misma validación que los flags, y los flags pisan lo del archivo. Tipos, `null`, errores con línea y columna y el secreto fuera del archivo: [flags-and-config.md](references/flags-and-config.md#archivo-de-configuración) |
 | Da una salida que consume otro programa | `--json` |
 | Escribe un archivo | `-o, --output`, con `-` para stdout |
 | Lee un archivo | Aceptar `-` para stdin |
 | Hace mucho ruido de progreso | `-q, --quiet` |
 | Recibe un secreto | `--<dato>-file <ruta>` o stdin |
 | Tiene un multiselect | `--<dato> a,b`, repetible, con `none` para la lista vacía |
+| Acepta valores que salen de una fuente viva (estados, regiones, versiones) | `--list`: los muestra y termina, sin efectos ni secretos |
+| Depende de permisos de servicios externos que el usuario pide por separado | `--check-access` (o el subcomando `doctor`): lista lo que falta, con el link para pedirlo, sin efectos. [references/preflight.md](references/preflight.md) |
+| Crea recursos que después hay que volver a encontrar (usuarios de prueba, entornos, IDs) | Guardar cada alta, `--history [N]` para listarlas, `--output-dir <ruta>` y `--no-save`. [remote-actions.md](references/remote-actions.md#registro-de-lo-creado) |
+| Crea o modifica recursos con estado | `--status <id>`: el estado de cualquier recurso del entorno, sin efectos |
 
 **Forma:**
 
 - Usar un parser de verdad. A mano se pierden `--x=valor`, `--`, los errores y los flags en cualquier orden.
-- Toda flag tiene nombre largo. Los cortos, solo para las frecuentes.
+- Toda flag tiene nombre largo. Los cortos, solo para las frecuentes, y de una sola letra: `-ss` choca con el valor pegado de `-s`.
 - Preferir flags a posicionales, salvo el operando principal (`cp origen destino`).
 - **Sin abreviaturas de flags.** Varios parsers aceptan `--tok` por `--token` (`argparse` por default; desactivarlo con `allow_abbrev=False`). Una abreviatura que hoy es única deja de serlo al sumar un flag, y un secreto pasado como `--tok=x` se escapa del filtro que lo saca del comando guardado.
 - Usar los nombres de la lista estándar de [clig.dev](https://clig.dev/#arguments-and-flags) antes de inventar uno.
+- Alias de un mismo dato, combinaciones sin sentido, obligatorios según la acción e IDs numéricos: [references/flags-and-config.md](references/flags-and-config.md).
 
 **Ayuda.** Va a stdout y tiene, en este orden: qué hace en una línea, uno o dos ejemplos, las flags con su default y valores válidos, qué pasa sin flags y los códigos de salida. Cada subcomando tiene la suya. Siempre con este formato, aunque el parser traiga otro:
 
@@ -99,15 +104,15 @@ run(valores)            → actúa
 ```
 
 - **Cada pregunta tiene su flag, y cada flag de dato su pregunta.** El prompt nunca es la única entrada.
-- **Una sola validación.** La misma función valida el flag, el prompt y el archivo de configuración, con los valores válidos en constantes.
-- **Preguntar todo antes de actuar.** Sin efectos hasta la última respuesta. Así Ctrl+C no deja nada a medias. Escribir archivos a un temporal y renombrar. Decidir también, antes del primer efecto, lo que puede hacer fallar un paso posterior: si el tercer paso no se va a poder hacer con lo elegido, preguntarlo o fallar antes de crear el primero.
-- **Imprimir el comando equivalente** en stderr al final de la corrida, cuando se preguntó algo, para repetirla sin entrar al modo interactivo. Va en dos líneas: un título con el ícono de terminal de Nerd Fonts (`nf-fa-terminal`, U+F120, con su respaldo `$`, según `vivid-visual-output` → «Íconos de Nerd Fonts») y debajo el comando solo, sangrado, para copiarlo sin el ícono. Tiene que reproducir el resultado sin una sola pregunta, con `none` si un multiselect quedó vacío y con las comillas de la plataforma: simples en POSIX, que dejan el valor literal, y dobles en Windows, donde `cmd.exe` no entiende las simples. Las referencias de Node y Python traen el helper y sus límites. Un secreto se muestra como `--token-file <ruta>`, nunca su valor, en ninguna de sus formas (`--token x`, `--token=x`, `-tx`, la variable de entorno) ni en el comando que se guarda en un archivo. Si no entra en el ancho de la terminal, partirlo entre argumentos con ` \` (POSIX), nunca a mitad de un valor.
+- **Una sola validación.** La misma función valida el flag, el prompt, el archivo de configuración y lo recordado, con los valores válidos en constantes. Un dato que el CLI genera por default pasa por ella también ([remote-actions.md](references/remote-actions.md#datos-generados-por-default)).
+- **Preguntar todo antes de actuar.** Sin efectos hasta la última respuesta. Así Ctrl+C no deja nada a medias. Escribir archivos a un temporal y renombrar. Decidir también, antes del primer efecto, lo que puede hacer fallar un paso posterior: si el tercer paso no se va a poder hacer con lo elegido, preguntarlo o fallar antes de crear el primero. Si la acción crea algo: plan y confirmación en el wizard, buscar si ya existe, ordenar los pasos para no dejar huérfanos y nunca sustituir lo pedido en silencio ([remote-actions.md](references/remote-actions.md#antes-del-primer-efecto)).
+- **Imprimir el comando equivalente** en stderr al final de la corrida, cuando se preguntó algo, para repetirla sin entrar al modo interactivo. Va en dos líneas: un título con el ícono de terminal de Nerd Fonts (`nf-fa-terminal`, U+F120, con su respaldo `$`, según `vivid-visual-output` → «Íconos de Nerd Fonts») y debajo el comando solo, sangrado, para copiarlo sin el ícono. Tiene que reproducir el resultado sin una sola pregunta, con `none` si un multiselect quedó vacío y con las comillas de la plataforma: simples en POSIX, que dejan el valor literal, y dobles en Windows, donde `cmd.exe` no entiende las simples. Las referencias de Node y Python traen el helper y sus límites. Un secreto se muestra como `--token-file <ruta>`, nunca su valor, en ninguna de sus formas (`--token x`, `--token=x`, `-tx`, la variable de entorno) ni en el comando que se guarda en un archivo. Si no entra en el ancho de la terminal, partirlo entre argumentos con ` \` (POSIX), nunca a mitad de un valor. Lleva escritos también los defaults (`--scope release`), y un valor que no puede traer metacaracteres (mail, ID) pasa además una allow-list ([flags-and-config.md](references/flags-and-config.md#valores-que-vuelven-al-comando-equivalente)).
 
 ## Widget según el dato
 
 | Dato | Widget | Flag | Cuidado |
 |---|---|---|---|
-| Sí o no | Confirm | `--x`, `--no-x` | Default: la opción segura |
+| Sí o no | Confirm | `--x`, `--no-x` | Default: la opción segura, en mayúscula (`[s/N]`). Acepta `s`/`y` y `n`; otra respuesta repite la pregunta |
 | Pocas opciones exclusivas | Radio (select) | `--x <valor>` | Con hasta 7 opciones se leen de un vistazo |
 | Muchas opciones o dinámicas | Lista con búsqueda | `--x <valor>` | Sin filtro, 20 opciones son 20 flechazos. Escribir filtra sin importar mayúsculas ni acentos, así que las letras no son atajos (`j`/`k`). Sin librería: flechas con `termios` y respaldo numerado, según [native-prompts.md](references/native-prompts.md) |
 | Varias opciones | Multiselect | `--x a,b` | Decir qué tecla marca. Decidir si vacío vale: varias librerías lo prohíben por default |
@@ -115,12 +120,12 @@ run(valores)            → actúa
 | Texto o número | Input con validación | `--x <valor>` | El error va junto al prompt y no lo cierra |
 | Ruta | Input con autocompletado, si la librería lo tiene | `--x <ruta>` | Validar que exista si se va a leer |
 | Secreto | Input enmascarado | `--x-file <ruta>` o stdin | Nunca por argv: queda en `ps` y en el historial. Por variable de entorno también se filtra |
-| Acción peligrosa | Confirm con default «no». Si es grave, escribir el nombre | `--force` o `--confirm=<nombre>` | Sin terminal y sin el flag: exit 2, nunca seguir |
+| Acción peligrosa | Confirm con default «no». Si es grave, escribir el nombre | `--force` o `--confirm=<nombre>` | Sin terminal y sin el flag: exit 2, nunca seguir. Producción, con cartel y escribiendo el nombre: [remote-actions.md](references/remote-actions.md#antes-del-primer-efecto) |
 
-- **Emojis en las opciones, solo si son obvios.** Cuando cada opción del grupo tiene un emoji que cualquiera asociaría (🐧 Linux, 🚀 producción), va antes de la palabra, el mismo en el menú, en la tabla y en el resumen. Si no es obvio para todas, ninguna lleva: regla en `vivid-visual-output` (`references/terminal.md`, «Emojis»).
+- **Emojis en las opciones, solo si son obvios.** Cuando cada opción del grupo tiene un emoji que cualquiera asociaría (🐧 Linux, 🚨 producción), va antes de la palabra, el mismo en el menú, en la tabla y en el resumen. Si no es obvio para todas, ninguna lleva: regla en `vivid-visual-output` (`references/terminal.md`, «Emojis»).
 - **Cada respuesta queda a la vista.** Al elegir, borrar el menú y dejar una línea `✔ pregunta › respuesta`, con la respuesta sin las marcas de la etiqueta («último usado», «por defecto»). Así se lee qué se eligió sin que el menú ocupe la pantalla.
 - **Sin librería de prompts** (o cuando la del proyecto no filtra ni dibuja en stderr): menú propio con flechas, filtro y respaldo numerado en [references/native-prompts.md](references/native-prompts.md).
-- **Un secreto se pide recién cuando hace falta**, no al arrancar: un comando que no lo usa no lo pide. Se lee de la terminal (no de stdin, que puede ser un pipe), con el eco apagado **antes** de mostrar la pregunta, para que un valor pegado enseguida tampoco se vea. Si se cachea, va al llavero del sistema y con margen de vencimiento: [references/native-prompts.md](references/native-prompts.md#secretos).
+- **Un secreto se pide recién cuando hace falta**, no al arrancar: un comando que no lo usa no lo pide. Se lee de la terminal (no de stdin, que puede ser un pipe), con el eco apagado **antes** de mostrar la pregunta, para que un valor pegado enseguida tampoco se vea. Si se cachea, va al llavero del sistema y con margen de vencimiento: [references/native-prompts.md](references/native-prompts.md#secretos). Si lo resuelve un wrapper de shell para otro programa, va por FIFO bajo demanda, nunca por argv ni variable de entorno: [Del wrapper al programa](references/native-prompts.md#del-wrapper-al-programa).
 
 ## Contrato de salida
 
@@ -128,9 +133,12 @@ run(valores)            → actúa
 - **stdout lleva datos. stderr, todo lo demás:** prompts, progreso, avisos y errores. Varias librerías dibujan en stdout por default, y ahí `tool | jq` se rompe. Cada referencia dice si hay que cambiarlo y cómo.
 - **Códigos de salida**, documentados en la ayuda: `0` bien, `1` falló, `2` uso incorrecto (también datos faltantes sin terminal), `130` cancelado. Una falla propia del dominio puede tener su código si un script necesita distinguirla.
 - **Cancelar.** Ctrl+C sale con 130, deja el cursor visible y dice que no se cambió nada. Cada librería avisa distinto, y un aviso sin chequear sigue el wizard con basura: revisar cada prompt. Desde el segundo Ctrl+C, ignorarlo: si no, corta el aviso o muestra un traceback mientras se cierra. Un wrapper de shell que delega en otro programa no se corta con el primero: lo deja manejar al hijo y solo espera su exit code.
-- **Cancelar o fallar después de actuar.** Si ya hubo efectos, decir «no se cambió nada» es falso. Listar qué quedó hecho (con sus identificadores) y el comando para seguir desde ahí con lo mismo, en vez de empezar de cero.
-- **Esperas largas.** Si un servicio tarda en responder porque está levantando (escalado a cero, 503 transitorio), reintentar con intervalo y tope, decir en el paso qué se espera y hasta cuándo, y que Ctrl+C siga cortando. Un chequeo que no respondió no es un «ok»: se informa aparte y no sale con 0.
-- **Errores.** Una línea con qué falló y qué hacer: el flag, los valores válidos y `Corré tool --help`. El stack trace, solo detrás de `--debug`.
+- **Cancelar o fallar después de actuar.** Si ya hubo efectos, decir «no se cambió nada» es falso. Listar qué quedó hecho (con sus identificadores) y el comando para seguir desde ahí con lo mismo, en vez de empezar de cero. Si el CLI guarda sus altas, la incompleta también se guarda, con los IDs reales.
+- **Pasos opcionales.** Si falla un paso que no es necesario para el resultado, avisar qué no se hizo y cómo completarlo, seguir, marcarlo pendiente y salir con 0. Antes del recurso principal solo se tolera su error esperado; después, cualquiera: [remote-actions.md](references/remote-actions.md#pasos-opcionales).
+- **Releer después de cambiar.** Después de un cambio remoto que el paso siguiente da por hecho, leer el estado real: una API responde 500 y lo aplica, o 200 y no ([remote-actions.md](references/remote-actions.md#releer-después-de-cambiar)).
+- **Esperas largas.** Si un servicio tarda en responder porque está levantando (escalado a cero, 503 transitorio), reintentar con intervalo y tope, decir en el paso qué se espera y hasta cuándo, y que Ctrl+C siga cortando. El error final dice cuántos intentos hizo y cuánto esperó. Un chequeo que no respondió no es un «ok»: se informa aparte y no sale con 0.
+- **Reintentos.** Solo lo pasajero (sin respuesta, 429, 5xx), con esperas crecientes y tope, y solo requests idempotentes: un POST, únicamente si el error prueba que no llegó. Las esperas se inyectan para testearlas: [remote-actions.md](references/remote-actions.md#reintentos).
+- **Errores.** Una línea con qué falló y qué hacer: el flag, los valores válidos y `Corré tool --help`. El stack trace, solo detrás de `--debug`. Sin datos sensibles: ni el cuerpo de una respuesta que trae credenciales generadas ni el mensaje de una excepción HTTP, que puede traer el token ([remote-actions.md](references/remote-actions.md#errores-sin-datos-sensibles)).
 
 Cómo se ve todo esto (paleta, spinner, tablas, tarjeta, emojis, ancho, `NO_COLOR`) es de la skill `vivid-visual-output`: cargarla si está disponible. Si no, respetar al menos `NO_COLOR` y no mandar secuencias de escape a un pipe.
 
@@ -146,12 +154,13 @@ Cargar solo la referencia del stack en uso. Cada una tiene parser, detección de
 | Rust | `clap` | `inquire` | [references/rust.md](references/rust.md) |
 | bash, zsh, PowerShell | `case` o `param` | `gum` o lo nativo | [references/shell.md](references/shell.md) |
 | Cualquiera, sin librería de prompts | El del stack | Menú propio con filtro, memoria de respuestas, secretos y Ctrl+C | [references/native-prompts.md](references/native-prompts.md) |
+| Cualquiera que crea o cambia recursos por API | El del stack | Permisos, pasos opcionales, reintentos, registro de lo creado | [references/remote-actions.md](references/remote-actions.md) y [references/preflight.md](references/preflight.md) |
 
 En otro stack, aplicar el mismo contrato y leer la documentación actual de sus librerías antes de usar su API.
 
 ## Cierre
 
-Sumar al reporte, en pocas líneas: las flags elegidas y por qué, los casos de la matriz que corrieron con su resultado y los que no se pudieron correr con su motivo. Si el proyecto tiene tests, dejar automatizados los casos sin terminal, que no necesitan un PTY.
+Sumar al reporte, en pocas líneas: las flags elegidas y por qué, los casos de la matriz que corrieron con su resultado y los que no se pudieron correr con su motivo. Si el proyecto tiene tests, dejar automatizados los casos sin terminal, que no necesitan un PTY. Si el CLI llama a APIs, los flujos se prueban contra un servidor HTTP local, no mockeando el cliente: [references/verification.md](references/verification.md#servidor-de-prueba).
 
 ## Fuentes
 
