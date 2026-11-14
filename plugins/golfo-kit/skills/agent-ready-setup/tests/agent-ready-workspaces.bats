@@ -419,6 +419,12 @@ lock_value() {
   [ "$status" -eq 2 ]
   [[ "$stderr" == *"no stack detected in packages/docs"* ]]
 
+  # pnpm also takes the list inline.
+  printf '%s\n' 'packages: ["libs/*"] # inline' > pnpm-workspace.yaml
+  run_cli workspaces list
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"Suggested: libs/ui: react"* ]]
+
   write_manifest '{"profiles": ["node"], "detection": {"workspaces": false}}'
   run_cli plan
   [ "$status" -eq 0 ]
@@ -436,4 +442,12 @@ lock_value() {
   [ "$status" -eq 2 ]
   [[ "$stderr" == *"overrides an asset of 'react', which the root selection projects for the whole repository"* ]]
   [ "$(manifest_value '"workspaces" in data')" = "False" ]
+
+  # Removing some profiles checks the ones that stay: acme/jest needs react in the workspace.
+  write_manifest '{"profiles": ["node"], "sources": {"packs": [{"name": "acme", "source": "path:packs/acme"}]}, "workspaces": [{"path": "apps/web", "profiles": ["react", "acme/jest"]}]}'
+  before="$(cat .agents/agent-ready.json)"
+  run_cli workspaces remove apps/web react
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"the selection does not have 'react'"* ]]
+  [ "$(cat .agents/agent-ready.json)" = "$before" ]
 }

@@ -149,6 +149,11 @@ def command_workspaces_remove(arguments):
     if not arguments.names or not entry["profiles"]:
         entries.remove(entry)
         return write_and_report(arguments.project_root, entries, f"Workspace {path} removed")
+    # The profiles that stay have to resolve and compose without the removed ones, as an add checks.
+    try:
+        resolution(arguments.project_root, entries)
+    except ProfileError as profile_error:
+        raise UsageError(str(profile_error)) from profile_error
     return write_and_report(arguments.project_root, entries, f"Workspace {path}: {', '.join(entry['profiles'])}")
 
 

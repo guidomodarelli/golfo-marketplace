@@ -59,7 +59,7 @@ MAX_SUGGESTION_CANDIDATES = 50
 # Folders a recursive pattern (modules/**) never goes into: installed dependencies, besides the hidden ones.
 PRUNED_FOLDER_NAMES = ("node_modules",)
 RECURSIVE_WILDCARD = "**"
-PNPM_PACKAGES_LINE = re.compile(r"^packages:\s*$")
+PNPM_PACKAGES_LINE = re.compile(r"^packages:\s*(.*)$")
 GO_USE_LINE = re.compile(r"^use\s+(\(|\S+)")
 
 
@@ -187,12 +187,16 @@ def package_workspaces(text):
 
 
 def pnpm_packages(text):
-    """The patterns under packages: in a pnpm-workspace.yaml."""
+    """The patterns of packages: in a pnpm-workspace.yaml, as a list below the key or inline (["libs/*"])."""
     patterns, inside = [], False
     for line in text.splitlines():
         # without_comment keeps a # inside quotes: packages: # the apps, or - "libs/*" # shared.
         content = without_comment(line)
-        if PNPM_PACKAGES_LINE.match(content):
+        key = PNPM_PACKAGES_LINE.match(content)
+        if key and key.group(1):
+            inline = INLINE_LIST.match(key.group(1))
+            return inline_items(inline.group(1)) if inline else [unquoted(key.group(1))]
+        if key:
             inside = True
         elif inside and content:
             item = LIST_ITEM.match(content)
