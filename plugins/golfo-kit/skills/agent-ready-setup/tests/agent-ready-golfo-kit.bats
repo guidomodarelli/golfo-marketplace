@@ -1012,3 +1012,23 @@ PY
   [[ "$stderr" == *"declares a profile named 'common', the name the engine gives the base"* ]]
   [ ! -e .agents/rules ]
 }
+
+
+@test "init downloads a content pack this machine does not have to choose its profiles" {
+  publish_content_pack
+  write_manifest "{\"sources\": {$content_source}}"
+  run_cli init --profiles node --yes
+  [ "$status" -eq 0 ]
+  grep -Fq 'Rule of the content pack.' .agents/rules/verify-changes.md
+}
+
+@test "without a selection, detection uses the catalog of the content pack" {
+  publish_content_pack
+  # package.json and build.gradle are node and java for the engine catalog; a stack of the pack supersedes both.
+  edit_content_catalog 'data["profiles"]["fullstack"] = {"kind": "stack", "requires": ["software-development"], "detect": {"supersedes": ["node", "java"], "signals": [{"type": "file", "paths": ["build.gradle"]}]}}'
+  printf 'plugins {}\n' > build.gradle
+  write_manifest "{\"sources\": {$content_source}}"
+  run_cli apply
+  [ "$status" -eq 0 ]
+  [ "$(lock_value '"fullstack" in data["profileOrder"]')" = "True" ]
+}

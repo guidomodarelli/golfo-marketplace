@@ -213,12 +213,20 @@ def version_text():
 _ENGINE = None
 
 
-def content_root(project_root):
+def content_root(project_root, offline=False):
     """Skill directory whose catalog the repository selects from: its pinned golfo-kit revision, or this installation.
 
-    It reads only the cache, so choosing profiles never needs the network.
+    It reads the cache first, so choosing profiles needs no network. A content pack this machine has not
+    downloaded yet (sources.golfoKit.source) is downloaded, unless ``offline``: there is no other catalog
+    to choose from.
     """
-    return engine().golfo_kit_content_dir(project_root, SKILL_ROOT, offline=True)
+    state = engine()
+    try:
+        return state.golfo_kit_content_dir(project_root, SKILL_ROOT, offline=True)
+    except state.golfo_kit.ContentPendingError:
+        if offline:
+            raise
+        return state.golfo_kit_content_dir(project_root, SKILL_ROOT, offline=False)
 
 
 def engine():
