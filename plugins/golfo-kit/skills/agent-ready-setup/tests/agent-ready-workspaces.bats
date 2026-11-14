@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
 # Workspaces of a monorepo (agent_ready_workspaces.py): the selection of each folder, resolved against
-# the root selection, shown by plan and status, recorded in the lock, and the paths that cannot be one.
+# the root selection, shown by plan and status, recorded in the lock, the paths that cannot be one, and
+# the rules a workspace adds: scoped with paths: and listed by its own AGENTS.md.
 
 bats_require_minimum_version 1.5.0
 
@@ -155,4 +156,100 @@ lock_value() {
   [ "$status" -ne 0 ]
   [[ "$output$stderr" == *"selection: workspace apps/web selects go, the lock react"* ]]
   cmp -s .agents/agent-ready.lock.json "$test_root/lock-before"
+}
+
+@test "the rules a workspace adds go to its folder with paths:, its AGENTS.md lists them and the root one does not" {
+  write_manifest '{"profiles": ["node"], "workspaces": [{"path": "apps/web", "profiles": ["react"]}]}'
+  run_cli plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"rule(s) in .agents/rules/workspaces/apps/web/, listed in apps/web/AGENTS.md"* ]]
+  run_cli apply
+  [ "$status" -eq 0 ]
+  rule=.agents/rules/workspaces/apps/web/react-style.md
+  [ -f "$rule" ]
+  [ "$(sed -n '1,3p' "$rule" | tr '\n' '|')" = '---|paths:|  - "apps/web/**"|' ]
+  [ -e .claude/rules/workspaces/apps/web/react-style.md ]
+  # A rule with a frontmatter keeps it and gains paths:.
+  grep -qx '  testRunner: vitest' .agents/rules/workspaces/apps/web/react-testing.md
+  grep -qx '  - "apps/web/\*\*"' .agents/rules/workspaces/apps/web/react-testing.md
+  ! grep -q 'rules/workspaces' AGENTS.md
+  ! grep -q '`.agents/rules/react-style.md`' AGENTS.md
+  grep -qx '<!-- BEGIN AGENT-READY MANAGED: agent-ready:workspace -->' apps/web/AGENTS.md
+  grep -qxF -- '- Read and follow `.agents/rules/workspaces/apps/web/react-style.md`.' apps/web/AGENTS.md
+  # The section of the stack names commands and skills a workspace does not project yet.
+  ! grep -q 'AGENT-READY MANAGED: react -->' apps/web/AGENTS.md
+  [ "$(cat apps/web/CLAUDE.md)" = '@AGENTS.md' ]
+  grep -qxF -- '- `apps/web/AGENTS.md`' AGENTS.md
+  [ "$(lock_value 'lock["assets"][".agents/rules/workspaces/apps/web/react-style.md"]["workspace"]')" = "apps/web" ]
+
+  run_cli apply
+  run_cli plan
+  [[ "$output" != *"+ create"* ]]
+  [[ "$output" != *"~ update"* ]]
+}
+
+@test "two workspaces with different stacks do not collide, and one that leaves takes its rules, views and blocks" {
+  write_manifest '{"profiles": ["node"], "workspaces": [{"path": "apps/web", "profiles": ["react"]}, {"path": "services/api", "profiles": ["go"]}]}'
+  run_cli apply
+  [ "$status" -eq 0 ]
+  [ -f .agents/rules/workspaces/apps/web/react-style.md ]
+  [ -n "$(ls .agents/rules/workspaces/services/api)" ]
+  grep -q 'agent-ready:workspace' services/api/AGENTS.md
+
+  write_manifest '{"profiles": ["node"], "workspaces": [{"path": "services/api", "profiles": ["go"]}]}'
+  run_cli apply
+  [ "$status" -eq 0 ]
+  [ ! -e .agents/rules/workspaces/apps ]
+  [ ! -e .claude/rules/workspaces/apps ]
+  [ ! -e apps/web/AGENTS.md ]
+  [ ! -e apps/web/CLAUDE.md ]
+  ! grep -qF -- '- `apps/web/AGENTS.md`' AGENTS.md
+  [ -n "$(ls .agents/rules/workspaces/services/api)" ]
+}
+
+@test "a rule of a workspace is checked against the folder of the workspace, not the root" {
+  printf '{"devDependencies": {"jest": "29"}}\n' > apps/web/package.json
+  write_manifest '{"profiles": ["node"], "workspaces": [{"path": "apps/web", "profiles": ["react"]}]}'
+  run_cli plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *".agents/rules/workspaces/apps/web/react-testing.md"*"vitest"*"jest"*"apps/web/package.json"* ]]
+}
+
+@test "a pack only a workspace selects counts as selected: its rules keep their patterns and its changes are drift" {
+  mkdir -p packs/acme/profiles/web/rules
+  printf '%s\n' '---' 'paths: ["src/**/*.{ts,tsx}", "lib/*"]' '---' '# Acme web' > packs/acme/profiles/web/rules/acme-web.md
+  printf '%s\n' '---' 'paths:' '# the docs' '- "docs/**" # markdown' '' '- "guides/**"' '---' '# Acme docs' > packs/acme/profiles/web/rules/acme-docs.md
+  printf '%s\n' '---' 'paths: ["api/**"] # handlers' '---' '# Acme api' > packs/acme/profiles/web/rules/acme-api.md
+  printf '%s\n' '{"schemaVersion": 1, "name": "acme", "profiles": {"web": {"kind": "capability", "description": "Acme web.", "assets": "profiles/web"}}}' \
+    > packs/acme/agent-ready-pack.json
+  write_manifest '{"profiles": ["node"], "sources": {"packs": [{"name": "acme", "source": "path:packs/acme"}]}, "workspaces": [{"path": "apps/web", "profiles": ["acme/web"]}]}'
+  run_cli trust add --project .
+  run_cli apply
+  [ "$status" -eq 0 ]
+  grep -qxF '  - "apps/web/src/**/*.{ts,tsx}"' .agents/rules/workspaces/apps/web/acme-web.md
+  grep -qxF '  - "apps/web/lib/*"' .agents/rules/workspaces/apps/web/acme-web.md
+  # A YAML sequence without indentation is a list too, and a comment is not part of a pattern.
+  grep -qxF '  - "apps/web/docs/**"' .agents/rules/workspaces/apps/web/acme-docs.md
+  grep -qxF '  - "apps/web/guides/**"' .agents/rules/workspaces/apps/web/acme-docs.md
+  [ "$(grep -c '^  - ' .agents/rules/workspaces/apps/web/acme-docs.md)" -eq 2 ]
+  grep -qxF '  - "apps/web/api/**"' .agents/rules/workspaces/apps/web/acme-api.md
+  [ "$(lock_value '"acme/web" in lock["profiles"]')" = "True" ]
+  [ "$(lock_value 'lock["profileSources"]["acme"]["profiles"]')" = "['acme/web']" ]
+
+  printf '# Another rule\n' > packs/acme/profiles/web/rules/acme-other.md
+  run_cli status
+  [[ "$output" == *"acme differs from the lock"* ]]
+}
+
+@test "a workspace cannot override an asset the root selection projects for the whole repository" {
+  mkdir -p packs/acme/profiles/jest/rules
+  printf '# Jest\n' > packs/acme/profiles/jest/rules/react-testing.md
+  printf '%s\n' '{"schemaVersion": 1, "name": "acme", "profiles": {"jest": {"kind": "capability", "description": "Jest.", "assets": "profiles/jest", "overrides": ["react:rules/react-testing.md"]}}}' \
+    > packs/acme/agent-ready-pack.json
+  write_manifest '{"profiles": ["react"], "sources": {"packs": [{"name": "acme", "source": "path:packs/acme"}]}, "workspaces": [{"path": "apps/web", "profiles": ["acme/jest"]}]}'
+  run_cli trust add --project .
+  run_cli plan
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"workspace apps/web: profile 'acme/jest' overrides an asset of 'react', which the root selection projects for the whole repository"* ]]
+  [ ! -e .agents/agent-ready.lock.json ]
 }

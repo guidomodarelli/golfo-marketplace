@@ -89,9 +89,36 @@ repositorio:
   `apply --from-lock` falla si un workspace del manifest no es el del lock. `status` muestra
   los workspaces del manifest y marca como drift el que el último apply no adoptó o el que salió del
   manifest; `agent-ready check` lo cuenta como un problema del CI.
-- **Assets:** por ahora la selección de un workspace se resuelve y se registra, pero todavía no proyecta
-  assets. Las rules con `paths:` para Claude Code y el `AGENTS.md` del workspace para Codex son la parte
-  64b de #64.
+- **Rules del workspace:** cada rule de un profile que suma el workspace va a
+  `.agents/rules/workspaces/<path>/`, con su vista en `.claude/rules/workspaces/<path>/`.
+  - **`paths:`:** la rule lleva `paths:` limitado a la carpeta, así que Claude Code la carga solo al leer,
+    escribir o editar un archivo de ahí. Una rule sin frontmatter recibe `paths: ["<path>/**"]`. Una que
+    ya tenía `paths:` conserva sus patrones, dentro del workspace. El resto del frontmatter, como
+    `assumes:`, queda igual.
+  - **Cuándo falla:** dos profiles del mismo workspace que publican la misma rule fallan antes de escribir.
+    Dos workspaces no chocan, porque el destino incluye la carpeta. Un profile del workspace solo puede
+    hacer `overrides` de los profiles que suma el workspace: reemplazar un asset de la raíz falla, porque
+    la raíz lo proyecta para todo el repositorio y el workspace cargaría los dos.
+  - **Raíz:** el `AGENTS.md` raíz no lista esas rules. `rules/workspaces/` es una carpeta del motor: una
+    rule propia ahí tampoco se lista en la raíz.
+  - **`assumes:`:** se compara con la carpeta del workspace, su `package.json` y sus archivos de
+    configuración, no con la raíz.
+- **`AGENTS.md` del workspace:** `<path>/AGENTS.md` lleva el bloque `agent-ready:workspace`, que lista esas
+  rules para Codex.
+  - Es un `AGENTS.md` anidado como los de [nested-instructions.md](nested-instructions.md): lleva su
+    `CLAUDE.md` con `@AGENTS.md`, el índice para Codex del `AGENTS.md` raíz lo lista, y espera junto a
+    un `CLAUDE.md` propio.
+  - El contenido propio del archivo, fuera de los bloques, es del proyecto.
+- **Retiro:** sacar un workspace del manifest, o un profile de su selección, retira sus rules, sus vistas
+  (también las carpetas que quedan vacías) y sus bloques. Un `AGENTS.md` que queda vacío se borra con su
+  proxy.
+- **Todavía no:** skills, subagentes, comandos, bloques de otros archivos, destinos anidados y la sección de
+  `AGENTS.md` de los profiles de un workspace son la parte 64c de #64. La sección queda afuera hasta
+  entonces porque nombra comandos y skills que el workspace todavía no proyecta.
+- **Fuentes:** un pack que solo elige un workspace cuenta como seleccionado: su digest va al lock y su modo
+  `pinned` frena al sync como el de un pack de la raíz. Las rules que un profile de golfo-kit suma a un
+  workspace entran al `contentDigest` por el archivo del que salen, no por la carpeta: un golfo-kit
+  fijado ve su cambio y el digest no depende de las carpetas del repositorio.
 
 **Capas.** Un stack puede extender otro con `requires`: la web va en tres capas,
 `react` ← `nextjs` ← `nextjs-app-router`. Cada capa publica solo sus propios assets, con
@@ -714,8 +741,8 @@ seleccionado declara `tools: ["browser"]`; `tools.enabled: false` (o
 
 ## 10. Límites conocidos
 
-- Los profiles de un workspace todavía no proyectan assets: `plan`, `status` y el lock registran su
-  selección («Workspaces», sección 1).
+- Los profiles de un workspace proyectan sus rules y su `AGENTS.md`, pero todavía no sus skills,
+  subagentes, comandos ni destinos anidados («Workspaces», sección 1).
 - En Windows sin symlinks, las vistas son hard links y
   `relink-hard-link-views.sh` las reenlaza en cada prompt y en cada escritura del
   índice, para recuperar las que git separa cuando recrea el asset. Sin historial

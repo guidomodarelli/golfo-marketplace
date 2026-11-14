@@ -4147,6 +4147,42 @@
           "description": "Aclara que por ahora un workspace no proyecta assets"
         }
       ]
+    },
+    {
+      "id": "monorepo-workspace-rules",
+      "description": "Un monorepo pregunta cómo le llegan a cada provider las rules de un workspace.",
+      "input": "En mi monorepo .agents/agent-ready.json tiene profiles [\"node\"] y workspaces [{\"path\": \"apps/web\", \"profiles\": [\"react\"]}]. Después del apply, ¿dónde quedan las rules de react, cómo hace Claude Code para cargarlas solo en apps/web y cómo se entera Codex de ellas? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": ".agents/rules/workspaces/apps/web",
+          "description": "Dice dónde quedan las rules del workspace",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "paths:",
+          "description": "Explica que llevan paths: limitado al workspace",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "apps/web/AGENTS.md",
+          "description": "Dice que el AGENTS.md del workspace las lista para Codex",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "no las lista",
+            "no lista",
+            "no aparecen en el AGENTS.md raíz",
+            "solo el AGENTS.md del workspace",
+            "fuera del AGENTS.md raíz"
+          ],
+          "description": "Aclara que el AGENTS.md raíz no las lista"
+        }
+      ]
     }
   ]
 }

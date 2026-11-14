@@ -18,7 +18,9 @@ que reemplaza al del template (`--skeleton` del renderer). El esqueleto solo se 
   `- Read and follow \`.agents/rules/<relative-path>\`.` por cada rule del
   template (del núcleo en `assets/common/rules/`, de `software-development` y del stack, en orden
   alfabético)
-  y, bajo `### Project rules`, por cada rule propia del proyecto.
+  y, bajo `### Project rules`, por cada rule propia del proyecto. Las rules de
+  `rules/workspaces/` son de un workspace de un monorepo: las lista el `AGENTS.md` de su carpeta, no
+  este bloque ([profiles-and-lockfile.md](profiles-and-lockfile.md), «Workspaces»).
 
 Una rule propia es cualquier archivo `.md` regular bajo `.agents/rules/` (incluidos
 subdirectorios) sin equivalente en las rules del template; los symlinks se

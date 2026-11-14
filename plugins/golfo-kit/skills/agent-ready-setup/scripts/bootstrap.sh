@@ -801,7 +801,10 @@ if [[ "$RUN_MODE" == plan && "$resolution_status" -eq 5 ]]; then
   exit 0
 fi
 cat -- "$resolve_errors" >&2
-if [[ "$resolution_status" -ne 0 ]]; then
+# A configuration error (a selection or a workspace that cannot be) keeps its status 2, as the config check above.
+if [[ "$resolution_status" -eq 2 ]]; then
+  exit 2
+elif [[ "$resolution_status" -ne 0 ]]; then
   exit 1
 fi
 while IFS=$'\t' read -r resolution_key resolution_value; do
