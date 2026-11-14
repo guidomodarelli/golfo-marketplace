@@ -16,7 +16,7 @@ description: >-
   descartar un hallazgo de sus revisiones de IA.
 license: MIT
 metadata:
-  version: "1.60.0"
+  version: "1.61.0"
   author: "guponce"
   category: "developer-experience"
   tags: "agent-ready, multi-provider, claude-code, codex, bootstrap, setup, scaffold, context-optimized-v1.20.1"
@@ -37,8 +37,8 @@ operación. El bootstrap distribuye assets según responsabilidad:
 - `.claude/`: configuración Claude Code, dimensiones del Agent Ready Score y
   symlinks relativos hacia assets canónicos de `.agents/`; `settings.json` queda
   provider-specific. Donde el sistema no permite symlinks sin privilegios (Windows
-  sin Modo de desarrollador ni shell elevada), las vistas son hard links al mismo
-  archivo y nunca copias; ver `references/sync-and-upgrade.md`.
+  sin Modo de desarrollador ni shell elevada) o el repo tiene `core.symlinks=false`, las
+  vistas son hard links al mismo archivo y nunca copias; ver `references/sync-and-upgrade.md`.
 - `.codex/`: bridge provider-specific para hooks Codex (`hooks.json`, junto a
   configuración de proyecto) y para MCP (`.mcp.json`) cuando el stack publica un
   `mcp.json`; hoy ningún stack lo publica.

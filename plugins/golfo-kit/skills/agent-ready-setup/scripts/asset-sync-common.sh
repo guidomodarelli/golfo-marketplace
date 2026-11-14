@@ -279,6 +279,18 @@ is_current_claude_view() {
   [[ -n "$source" && -f "$path" && -f "$source" && ! -L "$source" && "$path" -ef "$source" ]]
 }
 
+# True when the git of this repository writes symlinks out as plain files (core.symlinks=false,
+# the default of Git for Windows without Developer Mode). There a view committed as a symlink
+# becomes a file holding the link path in every fresh checkout, so the views are hard links,
+# which git commits as regular files. Probed once per run.
+git_checks_out_symlinks_as_files() {
+  if [[ -z "${GIT_SYMLINKS_AS_FILES:-}" ]]; then
+    GIT_SYMLINKS_AS_FILES=0
+    [[ "$(git config --type=bool --get core.symlinks 2>/dev/null)" == "false" ]] && GIT_SYMLINKS_AS_FILES=1
+  fi
+  [[ "$GIT_SYMLINKS_AS_FILES" == "1" ]]
+}
+
 # Creates link_path as the Claude view of the shared asset. Git Bash copies on `ln -s`
 # by default; nativestrict makes it create a real Windows symlink or fail instead.
 create_claude_view_link() {
@@ -287,7 +299,8 @@ create_claude_view_link() {
   local link_path="$3"
   local relative="${4:-}"
 
-  if MSYS="${MSYS:+$MSYS }winsymlinks:nativestrict" ln -s -- "$target" "$link_path" 2>/dev/null &&
+  if ! git_checks_out_symlinks_as_files &&
+    MSYS="${MSYS:+$MSYS }winsymlinks:nativestrict" ln -s -- "$target" "$link_path" 2>/dev/null &&
     [[ -L "$link_path" ]]; then
     return 0
   fi
