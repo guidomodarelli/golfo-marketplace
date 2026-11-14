@@ -38,12 +38,17 @@ def normalized_path(path):
 
 
 def resolution(project_root, entries):
-    """(catalog, resolved root selection, resolved workspaces) of ``entries``; ProfileError when they cannot be."""
+    """(catalog, resolved root selection, resolved workspaces) of ``entries``; ProfileError when an apply
+    could not project them: the folders, the profiles, their resolution with the root selection and the
+    composition of their assets (check_workspace_composition)."""
     state = engine()
-    catalog = state.load_effective_catalog(project_root, content_root(project_root))
+    skill_dir = content_root(project_root)
+    catalog = state.load_effective_catalog(project_root, skill_dir)
     names = selected_profiles(project_root) or []
     resolved = state.resolve_project_profiles(catalog, names, project_root)
-    return catalog, resolved, state.resolve_workspaces(project_root, catalog, names, resolved, entries)
+    workspaces = state.resolve_workspaces(project_root, catalog, names, resolved, entries)
+    state.check_workspace_composition(project_root, skill_dir, catalog, resolved, workspaces)
+    return catalog, resolved, workspaces
 
 
 def require_selection(project_root):

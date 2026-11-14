@@ -190,13 +190,15 @@ def pnpm_packages(text):
     """The patterns under packages: in a pnpm-workspace.yaml."""
     patterns, inside = [], False
     for line in text.splitlines():
-        if PNPM_PACKAGES_LINE.match(line):
+        # without_comment keeps a # inside quotes: packages: # the apps, or - "libs/*" # shared.
+        content = without_comment(line)
+        if PNPM_PACKAGES_LINE.match(content):
             inside = True
-        elif inside and line.strip() and not line.strip().startswith("#"):
-            item = LIST_ITEM.match(line)
+        elif inside and content:
+            item = LIST_ITEM.match(content)
             if not item:
                 break
-            patterns.append(unquoted(item.group(1).split(" #", 1)[0]))
+            patterns.append(unquoted(item.group(1)))
     return patterns
 
 
@@ -239,14 +241,24 @@ def relative_folder(project_root, path):
     return os.path.relpath(path, project_root).replace(os.sep, "/")
 
 
+def matches_segments(parts, pattern):
+    """True when the folders ``parts`` match the segments ``pattern``, where a ** segment stands for any
+    number of folders, none included, and any other segment is matched with fnmatch."""
+    if not pattern:
+        return not parts
+    if pattern[0] == RECURSIVE_WILDCARD:
+        return any(matches_segments(parts[index:], pattern[1:]) for index in range(len(parts) + 1))
+    return bool(parts) and fnmatch.fnmatchcase(parts[0], pattern[0]) and matches_segments(parts[1:], pattern[1:])
+
+
 def recursive_matches(project_root, parts):
-    """The folders a pattern with a ** segment matches (modules/**, packages/**/app), below its base.
+    """The folders a pattern with ** segments matches (modules/**, packages/**/app/**), below its base.
 
     The tree is walked once and the walk never goes into an is_pruned_name folder or through a link, so
     the installed dependencies of a monorepo are never read.
     """
     index = parts.index(RECURSIVE_WILDCARD)
-    prefix, remainder = parts[:index], [part for part in parts[index + 1:] if part]
+    prefix, remainder = parts[:index], [part for part in parts[index:] if part]
     bases = glob.glob(os.path.join(project_root, *prefix)) if prefix else [project_root]
     folders = []
     for base in bases:
@@ -256,11 +268,9 @@ def recursive_matches(project_root, parts):
             names[:] = sorted(name for name in names
                               if not is_pruned_name(name) and not is_link(os.path.join(current, name)))
             for name in names:
-                folder = relative_folder(project_root, os.path.join(current, name))
-                tail = folder.split("/")
-                if not remainder or (len(tail) >= len(remainder) and all(
-                        fnmatch.fnmatchcase(part, wanted) for part, wanted in zip(tail[-len(remainder):], remainder))):
-                    folders.append(folder)
+                path = os.path.join(current, name)
+                if matches_segments(relative_folder(base, path).split("/"), remainder):
+                    folders.append(relative_folder(project_root, path))
     return folders
 
 

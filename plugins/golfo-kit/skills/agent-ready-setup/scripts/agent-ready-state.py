@@ -1977,6 +1977,30 @@ def resolve_workspaces(project_root, catalog, profile_names, resolved, entries=N
                                        lambda names: resolve_project_profiles(catalog, names, project_root))
 
 
+def composed_workspace_assets(skill_dir, catalog, resolved, workspaces):
+    """(profiles only workspaces select, workspace rules, shared texts, desired assets) of a selection.
+
+    It raises ProfileError for what an apply cannot compose: an override of a root asset, two profiles of
+    a workspace that publish one rule, two assets with one destination.
+    """
+    workspace_profiles = workspace_selection.added_profiles(resolved, workspaces)
+    workspace_rules = workspace_rule_files(skill_dir, catalog, workspaces)
+    shared_texts = workspace_shared_texts(skill_dir, catalog, workspaces, workspace_profiles, workspace_rules)
+    assets = desired_assets(skill_dir, catalog, resolved, workspace_rules, workspace_profiles, shared_texts)
+    return workspace_profiles, workspace_rules, shared_texts, assets
+
+
+def check_workspace_composition(project_root, skill_dir, catalog, resolved, workspaces):
+    """Raise ProfileError when an apply could not project these workspaces: their assets
+    (composed_workspace_assets), the destinations of their packs and their blocks. agent-ready workspaces
+    add runs it before it writes the manifest."""
+    _, workspace_rules, _, assets = composed_workspace_assets(skill_dir, catalog, resolved, workspaces)
+    validate_pack_destinations(project_root, assets)
+    root_blocks = desired_blocks(skill_dir, catalog, resolved, assets)
+    workspace_file_blocks(skill_dir, catalog, workspaces, assets, root_blocks, workspace_rules)
+    workspace_blocks(skill_dir, catalog, workspaces, workspace_rules)
+
+
 def workspace_suggestions(project_root, catalog, resolved, configuration=None):
     """The folders detection suggests as workspaces (agent_ready_workspaces.suggestions), or [] when
     detection.enabled or detection.workspaces is off."""
@@ -1991,10 +2015,7 @@ def compute_plan(project_root, skill_dir, catalog, profile_names):
     """Build the read-only plan for the selected profiles."""
     resolved = resolve_project_profiles(catalog, profile_names, project_root)
     workspaces = resolve_workspaces(project_root, catalog, profile_names, resolved)
-    workspace_profiles = workspace_selection.added_profiles(resolved, workspaces)
-    workspace_rules = workspace_rule_files(skill_dir, catalog, workspaces)
-    shared_texts = workspace_shared_texts(skill_dir, catalog, workspaces, workspace_profiles, workspace_rules)
-    assets = desired_assets(skill_dir, catalog, resolved, workspace_rules, workspace_profiles, shared_texts)
+    workspace_profiles, workspace_rules, _, assets = composed_workspace_assets(skill_dir, catalog, resolved, workspaces)
     for workspace in workspaces:
         workspace["rules"] = sum(1 for entry in workspace_rules.values() if entry["workspace"] == workspace["path"])
         workspace["sharedAssets"] = sum(1 for entry in assets.values()
@@ -3466,12 +3487,10 @@ def command_resolve(arguments):
     requested, selection = resolve_selection(arguments, catalog)
     resolved = resolve_project_profiles(catalog, requested, arguments.project)
     workspaces = resolve_workspaces(arguments.project, catalog, requested, resolved)
-    workspace_profiles = workspace_selection.added_profiles(resolved, workspaces)
+    workspace_profiles, workspace_rules, shared_texts, assets = composed_workspace_assets(
+        arguments.skill_dir, catalog, resolved, workspaces)
     selected = list(resolved) + workspace_profiles
-    workspace_rules = workspace_rule_files(arguments.skill_dir, catalog, workspaces)
-    shared_texts = workspace_shared_texts(arguments.skill_dir, catalog, workspaces, workspace_profiles, workspace_rules)
-    validate_pack_destinations(arguments.project, desired_assets(arguments.skill_dir, catalog, resolved, workspace_rules,
-                                                                 workspace_profiles, shared_texts))
+    validate_pack_destinations(arguments.project, assets)
     if arguments.source_mode == SOURCE_MODE_SYNC:
         enforce_sync_policy(arguments.project, arguments.skill_dir, catalog, resolved,
                             profile_digests(arguments.skill_dir, catalog, selected), selected,

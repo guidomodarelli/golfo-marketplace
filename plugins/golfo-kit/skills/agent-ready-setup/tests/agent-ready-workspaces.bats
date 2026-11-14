@@ -385,16 +385,16 @@ lock_value() {
   touch apps/web/app/layout.tsx packages/docs/README.md
   printf 'module example.invalid/api\n' > services/api/go.mod
   # Folders the package managers declare count too, besides apps/, packages/ and services/.
-  printf '%s\n' 'packages:' '  - "libs/*"' > pnpm-workspace.yaml
+  printf '%s\n' 'packages: # the shared packages' '  - "libs/*" # ui' > pnpm-workspace.yaml
   printf '{"dependencies": {"react": "19"}}\n' > libs/ui/package.json
   printf '%s\n' 'go 1.22' '' 'use (' '	./tools/gen' ')' > go.work
   printf 'module example.invalid/gen\n' > tools/gen/go.mod
-  # A recursive pattern goes into the subfolders, but never into installed dependencies; a literal
+  # Every ** of a pattern goes into the subfolders, but never into installed dependencies; a literal
   # folder (./tools/gen of go.work) counts as it is.
-  printf '{"workspaces": ["modules/**"]}\n' > package.json
-  mkdir -p modules/team/api modules/team/node_modules/lib
-  printf 'module example.invalid/team\n' > modules/team/api/go.mod
-  printf 'module example.invalid/lib\n' > modules/team/node_modules/lib/go.mod
+  printf '{"workspaces": ["modules/**/api/**"]}\n' > package.json
+  mkdir -p modules/team/api/server/v2 modules/team/api/node_modules/lib
+  printf 'module example.invalid/team\n' > modules/team/api/server/v2/go.mod
+  printf 'module example.invalid/lib\n' > modules/team/api/node_modules/lib/go.mod
   write_manifest '{"profiles": ["node"]}'
   run_cli plan
   [ "$status" -eq 0 ]
@@ -402,7 +402,7 @@ lock_value() {
   [[ "$output" == *"Add it with agent-ready workspaces add services/api"* ]]
   [[ "$output" == *"? libs/ui: react"* ]]
   [[ "$output" == *"? tools/gen: go"* ]]
-  [[ "$output" == *"? modules/team/api: go"* ]]
+  [[ "$output" == *"? modules/team/api/server/v2: go"* ]]
   [[ "$output" != *"node_modules"* ]]
   [[ "$output" != *"? packages/docs"* ]]
 
@@ -423,4 +423,17 @@ lock_value() {
   run_cli plan
   [ "$status" -eq 0 ]
   [[ "$output" != *"Workspaces suggested"* ]]
+}
+
+@test "agent-ready workspaces add refuses a workspace an apply could not project" {
+  mkdir -p packs/acme/profiles/jest/rules
+  printf '# Jest\n' > packs/acme/profiles/jest/rules/react-testing.md
+  printf '%s\n' '{"schemaVersion": 1, "name": "acme", "profiles": {"jest": {"kind": "capability", "description": "Jest.", "assets": "profiles/jest", "overrides": ["react:rules/react-testing.md"]}}}' \
+    > packs/acme/agent-ready-pack.json
+  write_manifest '{"profiles": ["react"], "sources": {"packs": [{"name": "acme", "source": "path:packs/acme"}]}}'
+  run_cli trust add --project .
+  run_cli workspaces add apps/web acme/jest
+  [ "$status" -eq 2 ]
+  [[ "$stderr" == *"overrides an asset of 'react', which the root selection projects for the whole repository"* ]]
+  [ "$(manifest_value '"workspaces" in data')" = "False" ]
 }
