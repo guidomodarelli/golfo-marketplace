@@ -410,3 +410,5 @@ run-evals plugins/<plugin-name>/skills/<skill-name> --baseline
 # Override persistente de proveedor
 export GOLFO_MARKETPLACE_EVAL_PROVIDER=codex
 ```
+
+<!-- prueba del filtro de CI (#135): no mergear -->
