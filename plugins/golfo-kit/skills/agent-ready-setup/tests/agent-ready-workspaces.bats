@@ -74,8 +74,10 @@ lock_value() {
   [ "$status" -eq 0 ]
   [[ "$output" == *"Workspace apps/web: nextjs-app-router (adds react, nextjs, nextjs-app-router to the root selection)"* ]]
   [[ "$output" == *"Workspace services/api: node (nothing of its own: the root selection already has it)"* ]]
-  run_cli plan --json
-  [ "$(printf '%s' "$output" | python3 -c 'import json, sys; print([(item["path"], item["own"]) for item in json.load(sys.stdin)["workspaces"]])')" = "[('apps/web', ['react', 'nextjs', 'nextjs-app-router']), ('services/api', [])]" ]
+  # The plan as JSON goes to a file: on the Windows runners, Git Bash can keep waiting for the end of a
+  # large output that a native process wrote to the pipe of $(...).
+  env PATH="$fake_bin:$PATH" python3 "$skill_dir/scripts/agent-ready" plan --json > "$test_root/plan.json"
+  [ "$(python3 -c 'import json, sys; print([(item["path"], item["own"]) for item in json.load(open(sys.argv[1], encoding="utf-8"))["workspaces"]])' "$test_root/plan.json")" = "[('apps/web', ['react', 'nextjs', 'nextjs-app-router']), ('services/api', [])]" ]
 
   run_cli apply
   [ "$status" -eq 0 ]
