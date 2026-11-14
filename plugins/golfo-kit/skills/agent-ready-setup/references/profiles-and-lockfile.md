@@ -96,7 +96,9 @@ repositorio:
     ya tenía `paths:` conserva sus patrones, dentro del workspace. El resto del frontmatter, como
     `assumes:`, queda igual.
   - **Cuándo falla:** dos profiles del mismo workspace que publican la misma rule fallan antes de escribir.
-    Dos workspaces no chocan, porque el destino incluye la carpeta.
+    Dos workspaces no chocan, porque el destino incluye la carpeta. Un profile del workspace solo puede
+    hacer `overrides` de los profiles que suma el workspace: reemplazar un asset de la raíz falla, porque
+    la raíz lo proyecta para todo el repositorio y el workspace cargaría los dos.
   - **Raíz:** el `AGENTS.md` raíz no lista esas rules. `rules/workspaces/` es una carpeta del motor: una
     rule propia ahí tampoco se lista en la raíz.
   - **`assumes:`:** se compara con la carpeta del workspace, su `package.json` y sus archivos de

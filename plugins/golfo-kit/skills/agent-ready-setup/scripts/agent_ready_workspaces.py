@@ -30,7 +30,8 @@ INDEX_SOURCE = "agent-ready:workspace"
 FRONTMATTER_FENCE = "---"
 PATHS_KEY = "paths"
 PATHS_LINE = re.compile(r"^paths:\s*(.*)$")
-LIST_ITEM = re.compile(r"^\s+-\s*(.*)$")
+# YAML takes the items of a sequence indented or not ("paths:" then "- src/**").
+LIST_ITEM = re.compile(r"^\s*-\s*(.*)$")
 INLINE_LIST = re.compile(r"^\[(.*)\]$")
 
 

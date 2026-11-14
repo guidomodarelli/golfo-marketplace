@@ -218,6 +218,7 @@ lock_value() {
 @test "a pack only a workspace selects counts as selected: its rules keep their patterns and its changes are drift" {
   mkdir -p packs/acme/profiles/web/rules
   printf '%s\n' '---' 'paths: ["src/**/*.{ts,tsx}", "lib/*"]' '---' '# Acme web' > packs/acme/profiles/web/rules/acme-web.md
+  printf '%s\n' '---' 'paths:' '- "docs/**"' '---' '# Acme docs' > packs/acme/profiles/web/rules/acme-docs.md
   printf '%s\n' '{"schemaVersion": 1, "name": "acme", "profiles": {"web": {"kind": "capability", "description": "Acme web.", "assets": "profiles/web"}}}' \
     > packs/acme/agent-ready-pack.json
   write_manifest '{"profiles": ["node"], "sources": {"packs": [{"name": "acme", "source": "path:packs/acme"}]}, "workspaces": [{"path": "apps/web", "profiles": ["acme/web"]}]}'
@@ -226,10 +227,25 @@ lock_value() {
   [ "$status" -eq 0 ]
   grep -qxF '  - "apps/web/src/**/*.{ts,tsx}"' .agents/rules/workspaces/apps/web/acme-web.md
   grep -qxF '  - "apps/web/lib/*"' .agents/rules/workspaces/apps/web/acme-web.md
+  # A YAML sequence without indentation is a list too.
+  grep -qxF '  - "apps/web/docs/**"' .agents/rules/workspaces/apps/web/acme-docs.md
   [ "$(lock_value '"acme/web" in lock["profiles"]')" = "True" ]
   [ "$(lock_value 'lock["profileSources"]["acme"]["profiles"]')" = "['acme/web']" ]
 
   printf '# Another rule\n' > packs/acme/profiles/web/rules/acme-other.md
   run_cli status
   [[ "$output" == *"acme differs from the lock"* ]]
+}
+
+@test "a workspace cannot override an asset the root selection projects for the whole repository" {
+  mkdir -p packs/acme/profiles/jest/rules
+  printf '# Jest\n' > packs/acme/profiles/jest/rules/react-testing.md
+  printf '%s\n' '{"schemaVersion": 1, "name": "acme", "profiles": {"jest": {"kind": "capability", "description": "Jest.", "assets": "profiles/jest", "overrides": ["react:rules/react-testing.md"]}}}' \
+    > packs/acme/agent-ready-pack.json
+  write_manifest '{"profiles": ["react"], "sources": {"packs": [{"name": "acme", "source": "path:packs/acme"}]}, "workspaces": [{"path": "apps/web", "profiles": ["acme/jest"]}]}'
+  run_cli trust add --project .
+  run_cli plan
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"workspace apps/web: profile 'acme/jest' overrides an asset of 'react', which the root selection projects for the whole repository"* ]]
+  [ ! -e .agents/agent-ready.lock.json ]
 }

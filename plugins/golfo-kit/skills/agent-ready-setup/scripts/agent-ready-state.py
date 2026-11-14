@@ -911,6 +911,13 @@ def workspace_rule_files(skill_dir, catalog, workspaces):
     files = {}
     for workspace in workspaces:
         overridden = resolved_overrides(skill_dir, catalog, workspace["resolved"])
+        for target in overridden:
+            replaced_by = {by for by in overridden[target].values() if by in workspace["own"]}
+            if target not in workspace["own"] and replaced_by:
+                # The root projects that asset for the whole repository: the workspace would load both.
+                raise ProfileError(f"workspace {workspace['path']}: profile '{sorted(replaced_by)[0]}' overrides an asset of "
+                                   f"'{target}', which the root selection projects for the whole repository; a workspace "
+                                   "can only override the profiles it adds")
         owners = {}
         for name in workspace["own"]:
             asset_root = profile_asset_root(skill_dir, catalog, name)
@@ -1238,7 +1245,7 @@ def describe_source_item(name, item):
     return f"{name} ({item['type']} {item['origin']}): " + "; ".join(details)
 
 
-def enforce_sync_policy(project_root, skill_dir, catalog, resolved, digests):
+def enforce_sync_policy(project_root, skill_dir, catalog, resolved, digests, selected=None):
     """An unattended sync only adopts what is in ``auto``.
 
     A pinned source that differs from the lock stops it, golfo-kit included: its mode is
@@ -1246,9 +1253,11 @@ def enforce_sync_policy(project_root, skill_dir, catalog, resolved, digests):
     revision of the lock, so its content only differs when that revision cannot be fetched
     (a local source without Git); then a pack in ``auto`` waits too, because an apply writes
     the whole selection and cannot update a pack without updating golfo-kit.
+    ``selected`` adds the profiles of the workspaces to the sources checked; the content digest of
+    golfo-kit is the one of the root selection, as compute_plan records it.
     """
     lock = read_lock(project_root)
-    report = source_report(catalog, resolved, digests, lock)
+    report = source_report(catalog, selected or resolved, digests, lock)
     for name, item in report.items():
         if item["selected"] and item["differences"] and item["updates"] != UPDATES_AUTO:
             raise IncompleteEvaluationError(
@@ -3235,8 +3244,8 @@ def command_resolve(arguments):
     validate_pack_destinations(arguments.project, desired_assets(arguments.skill_dir, catalog, resolved, workspace_rules))
     if arguments.source_mode == SOURCE_MODE_SYNC:
         selected = workspace_selection.selected_profiles(resolved, workspaces)
-        enforce_sync_policy(arguments.project, arguments.skill_dir, catalog, selected,
-                            profile_digests(arguments.skill_dir, catalog, selected))
+        enforce_sync_policy(arguments.project, arguments.skill_dir, catalog, resolved,
+                            profile_digests(arguments.skill_dir, catalog, selected), selected)
     stack_dir = compose_stack_directory(arguments.skill_dir, catalog, resolved, arguments.compose_dir, workspace_rules)
     if selection == SELECTION_DETECTION:
         detection = detect_profiles(catalog["profiles"], arguments.project)
@@ -3455,7 +3464,8 @@ def command_plan(arguments):
         print_incomplete_plan(arguments.project, arguments.skill_dir, selection, requested, incomplete_error)
         return INCOMPLETE_EVALUATION_STATUS
     if arguments.source_mode == SOURCE_MODE_SYNC:
-        enforce_sync_policy(arguments.project, arguments.skill_dir, catalog, plan["selectedProfiles"], plan["profileDigests"])
+        enforce_sync_policy(arguments.project, arguments.skill_dir, catalog, plan["profiles"], plan["profileDigests"],
+                            plan["selectedProfiles"])
         keep_locked_entries_of_unselected_sources(plan, read_lock(arguments.project))
     tools_report = pack_tools_report(plan, catalog, configuration_of(arguments.project, arguments.offline))
     if tools_report:
