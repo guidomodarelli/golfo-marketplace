@@ -1,7 +1,8 @@
 #!/usr/bin/env bats
 # Workspaces of a monorepo (agent_ready_workspaces.py): the selection of each folder, resolved against
-# the root selection, shown by plan and status, recorded in the lock, the paths that cannot be one, and
-# the rules a workspace adds: scoped with paths: and listed by its own AGENTS.md.
+# the root selection, shown by plan and status, recorded in the lock, the paths that cannot be one, the
+# rules a workspace adds (scoped with paths: and listed by its own AGENTS.md), and the rest of its assets:
+# skills, subagents and commands once for the repository, blocks and nested targets where they belong.
 
 bats_require_minimum_version 1.5.0
 
@@ -163,6 +164,7 @@ lock_value() {
   run_cli plan
   [ "$status" -eq 0 ]
   [[ "$output" == *"rule(s) in .agents/rules/workspaces/apps/web/, listed in apps/web/AGENTS.md"* ]]
+  [[ "$output" == *"skill, subagent and command file(s) of its profiles in .agents/, for the whole repository"* ]]
   run_cli apply
   [ "$status" -eq 0 ]
   rule=.agents/rules/workspaces/apps/web/react-style.md
@@ -176,8 +178,16 @@ lock_value() {
   ! grep -q '`.agents/rules/react-style.md`' AGENTS.md
   grep -qx '<!-- BEGIN AGENT-READY MANAGED: agent-ready:workspace -->' apps/web/AGENTS.md
   grep -qxF -- '- Read and follow `.agents/rules/workspaces/apps/web/react-style.md`.' apps/web/AGENTS.md
-  # The section of the stack names commands and skills a workspace does not project yet.
-  ! grep -q 'AGENT-READY MANAGED: react -->' apps/web/AGENTS.md
+  # The section of the stack names the rules of the workspace, and its commands and skills are in .agents/.
+  grep -qx '<!-- BEGIN AGENT-READY MANAGED: react -->' apps/web/AGENTS.md
+  grep -qF '`.agents/rules/workspaces/apps/web/react-style.md`' apps/web/AGENTS.md
+  ! grep -qF '`.agents/rules/react-style.md`' apps/web/AGENTS.md
+  [ -f .agents/commands/react-review-pr.md ]
+  [ -f .agents/skills/react-review-pr/SKILL.md ]
+  missing="$(grep -o '`\.agents/[^`]*`' apps/web/AGENTS.md | tr -d '`' | while read -r reference; do
+    [ -e "$reference" ] || printf '%s\n' "$reference"
+  done)"
+  [ -z "$missing" ]
   [ "$(cat apps/web/CLAUDE.md)" = '@AGENTS.md' ]
   grep -qxF -- '- `apps/web/AGENTS.md`' AGENTS.md
   [ "$(lock_value 'lock["assets"][".agents/rules/workspaces/apps/web/react-style.md"]["workspace"]')" = "apps/web" ]
@@ -205,6 +215,8 @@ lock_value() {
   [ ! -e apps/web/CLAUDE.md ]
   ! grep -qF -- '- `apps/web/AGENTS.md`' AGENTS.md
   [ -n "$(ls .agents/rules/workspaces/services/api)" ]
+  # Nothing else selects react: its commands leave with the workspace.
+  [ ! -e .agents/commands/react-review-pr.md ]
 }
 
 @test "a rule of a workspace is checked against the folder of the workspace, not the root" {
@@ -252,4 +264,40 @@ lock_value() {
   [ "$status" -ne 0 ]
   [[ "$stderr" == *"workspace apps/web: profile 'acme/jest' overrides an asset of 'react', which the root selection projects for the whole repository"* ]]
   [ ! -e .agents/agent-ready.lock.json ]
+}
+
+@test "a workspace profile puts its nested targets inside the workspace and its blocks in the files they belong to" {
+  mkdir -p apps/site/app packs/acme/profiles/web/blocks
+  touch apps/site/app/page.tsx
+  printf 'dist/\n' > packs/acme/profiles/web/blocks/.gitignore
+  printf '## Acme web\n' > packs/acme/profiles/web/blocks/CONTRIBUTING.md
+  printf '%s\n' '{"schemaVersion": 1, "name": "acme", "profiles": {"web": {"kind": "capability", "description": "Acme web.", "assets": "profiles/web"}}}' \
+    > packs/acme/agent-ready-pack.json
+  write_manifest '{"profiles": ["node"], "providers": ["claude", "codex"], "sources": {"packs": [{"name": "acme", "source": "path:packs/acme"}]}, "workspaces": [{"path": "apps/web", "profiles": ["acme/web"]}, {"path": "apps/site", "profiles": ["nextjs-app-router"]}]}'
+  run_cli trust add --project .
+  run_cli plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Nested AGENTS.md: nextjs-app-router/app-router -> apps/site/app/AGENTS.md (detected) (workspace apps/site)"* ]]
+  run_cli apply
+  [ "$status" -eq 0 ]
+  # The nested target names the rule of the workspace, and the root index lists it.
+  grep -qx '<!-- BEGIN AGENT-READY MANAGED: nextjs-app-router/app-router -->' apps/site/app/AGENTS.md
+  grep -qF '`.agents/rules/workspaces/apps/site/nextjs-app-router.md`' apps/site/app/AGENTS.md
+  [ -f .agents/rules/workspaces/apps/site/nextjs-app-router.md ]
+  grep -qxF -- '- `apps/site/app/AGENTS.md`' AGENTS.md
+  # Git reads .gitignore by folder; any other file takes its block at the root.
+  grep -qx '# BEGIN AGENT-READY MANAGED: acme/web' apps/web/.gitignore
+  ! grep -q 'acme/web' .gitignore
+  grep -qx '<!-- BEGIN AGENT-READY MANAGED: acme/web -->' CONTRIBUTING.md
+
+  run_cli plan
+  [[ "$output" != *"+ create"* ]]
+  [[ "$output" != *"~ update"* ]]
+
+  write_manifest '{"profiles": ["node"], "providers": ["claude", "codex"], "sources": {"packs": [{"name": "acme", "source": "path:packs/acme"}]}}'
+  run_cli apply
+  [ "$status" -eq 0 ]
+  [ ! -e apps/site/app/AGENTS.md ]
+  [ ! -e apps/web/.gitignore ]
+  [ ! -e CONTRIBUTING.md ]
 }

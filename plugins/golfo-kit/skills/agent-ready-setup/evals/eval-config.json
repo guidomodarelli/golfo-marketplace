@@ -4183,6 +4183,45 @@
           "description": "Aclara que el AGENTS.md raíz no las lista"
         }
       ]
+    },
+    {
+      "id": "monorepo-workspace-assets",
+      "description": "Explica dónde quedan los comandos, la sección de stack y el destino App Router de un workspace",
+      "input": "Mi monorepo tiene .agents/agent-ready.json con \"profiles\": [\"node\"] y \"workspaces\": [{\"path\": \"apps/web\", \"profiles\": [\"nextjs-app-router\"]}], y existe la carpeta apps/web/app. Después del apply, ¿dónde queda el comando /react-review-pr, qué lleva apps/web/AGENTS.md además de la lista de rules y a qué AGENTS.md va el bloque del App Router? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": ".agents/commands/react-review-pr.md",
+          "description": "Dice que el comando queda en .agents/ para todo el repo",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "apps/web/app/AGENTS.md",
+          "description": "Ubica el destino App Router dentro del workspace",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "sección",
+            "seccion",
+            "section"
+          ],
+          "description": "Menciona la sección de cada stack en el AGENTS.md del workspace",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "todo el repositorio",
+            "todo el repo",
+            "una sola vez",
+            "una vez para"
+          ],
+          "description": "Aclara que skills, subagentes y comandos valen para todo el repositorio"
+        }
+      ]
     }
   ]
 }

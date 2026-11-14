@@ -331,7 +331,7 @@ EOF
   grep -Fq 'changed locally' .agents/rules/acme-kafka.md
 }
 
-@test "a pinned golfo-kit counts the rules of a profile only a workspace selects" {
+@test "a pinned golfo-kit counts what a profile only a workspace selects projects" {
   copy_skill
   publish_pack_repository
   mkdir -p apps/web
@@ -348,11 +348,13 @@ EOF
   [[ "$output" != *"has a release pending"* ]]
   [[ "$output" == *"projection completed"* ]]
 
-  printf '\nA workspace sentence.\n' >> "$source_copy/assets/stacks/react/rules/react-style.md"
+  # A command goes to .agents/ for the whole repository; the digest still counts it by its file.
+  [ -f .agents/commands/react-review-pr.md ]
+  printf '\nA workspace sentence.\n' >> "$source_copy/assets/stacks/react/commands/react-review-pr.md"
   run_session_start AGENT_READY_SETUP_SYNC_FOREGROUND=1 AGENT_READY_SETUP_MARKETPLACE_UPGRADED=1
   [ "$status" -eq 0 ]
   [[ "$output" == *"pins golfo-kit and has a release pending"* ]]
-  ! grep -Fq 'A workspace sentence' .agents/rules/workspaces/apps/web/react-style.md
+  ! grep -Fq 'A workspace sentence' .agents/commands/react-review-pr.md
 }
 
 @test "a source in auto updates a pinned repository, unless golfo-kit has a release pending" {
