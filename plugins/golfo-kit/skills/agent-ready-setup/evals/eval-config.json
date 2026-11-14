@@ -4112,6 +4112,41 @@
           "critical": true
         }
       ]
+    },
+    {
+      "id": "monorepo-workspaces-selection",
+      "description": "Un monorepo pide una selección por carpeta para la web y la API.",
+      "input": "Tengo un monorepo con apps/web (Next.js con App Router) y services/api (Node). Quiero que agent-ready sepa que apps/web usa nextjs-app-router y services/api usa node. ¿Qué pongo en .agents/agent-ready.json y cómo veo qué resolvió para cada carpeta? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "workspaces",
+          "description": "Usa el campo workspaces del manifest",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "apps/web",
+          "description": "Declara el workspace apps/web",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "agent-ready plan",
+          "description": "Dice que agent-ready plan muestra la selección de cada workspace",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "todavía no proyecta",
+            "no proyecta assets",
+            "64b",
+            "por ahora"
+          ],
+          "description": "Aclara que por ahora un workspace no proyecta assets"
+        }
+      ]
     }
   ]
 }

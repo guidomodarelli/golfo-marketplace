@@ -106,6 +106,7 @@ from agent_ready_options import (  # noqa: E402
     USER_SERVERS_ENABLED_KEY,
     USER_SERVERS_REGISTER_KEY,
     EXCLUDED_DEFAULTS_KEY,
+    WORKSPACES_KEY,
     PROFILES_KEY,
     PROVIDERS_KEY,
     REVIEWS_CACHE_KEY,
@@ -149,6 +150,7 @@ import agent_ready_pack_scripts as pack_scripts  # noqa: E402
 import agent_ready_pack_signatures as pack_signatures  # noqa: E402
 import agent_ready_blocks as managed_blocks  # noqa: E402
 import agent_ready_nested as nested  # noqa: E402
+import agent_ready_workspaces as workspace_selection  # noqa: E402
 import agent_ready_pack_tools as pack_tools  # noqa: E402
 import agent_ready_golfo_kit as golfo_kit  # noqa: E402
 from agent_ready_packs import (  # noqa: E402
@@ -1666,9 +1668,24 @@ def detached_views(project_root, assets, locked_assets):
     return edited, preserved
 
 
+def resolve_workspaces(project_root, catalog, resolved):
+    """The workspaces of the manifest, validated and resolved against the root selection.
+
+    A path that cannot be a workspace, or a selection that does not resolve, stops before anything
+    is written (agent_ready_workspaces.py).
+    """
+    configuration = configuration_of(project_root)
+    entries = configuration.value(WORKSPACES_KEY) or []
+    workspace_selection.validate(project_root, entries, MANIFEST_RELATIVE_PATH)
+    excluded = configuration.value(EXCLUDED_DEFAULTS_KEY) or []
+    return workspace_selection.resolve(entries, resolved,
+                                       lambda names: resolve_profiles(catalog, names, None, excluded))
+
+
 def compute_plan(project_root, skill_dir, catalog, profile_names):
     """Build the read-only plan for the selected profiles."""
     resolved = resolve_project_profiles(catalog, profile_names, project_root)
+    workspaces = resolve_workspaces(project_root, catalog, resolved)
     assets = desired_assets(skill_dir, catalog, resolved)
     validate_pack_destinations(project_root, assets)
     lock = read_lock(project_root)
@@ -1743,6 +1760,7 @@ def compute_plan(project_root, skill_dir, catalog, profile_names):
                                                                                     (lock or {}).get("blocks", {})),
                                           retiring_block_files),
         "nested": nested_report,
+        "workspaces": workspaces,
         "nestedIndex": nested_index_report,
         "editedViews": edited_views,
         "detachedViews": preserved_views,
@@ -2197,6 +2215,8 @@ def print_plan(project_root, skill_dir, plan, provider, skip_marketplace_upgrade
         write_line(f"Defaults left out: {', '.join(excluded)} ({EXCLUDED_DEFAULTS_KEY})")
     for override in plan.get("overrides", []):
         write_line(f"Overridden: {override['replaces']} by {override['profile']} (only its own asset is projected)")
+    for workspace in plan.get("workspaces", []):
+        write_line(f"Workspace {workspace_selection.describe(workspace)}")
     for target in plan.get("nested", []):
         write_line(f"Nested AGENTS.md: {nested.describe(target)}")
     index = plan.get("nestedIndex") or {}
@@ -2508,6 +2528,8 @@ def finalize(project_root, skill_dir, plan, updates):
         "assets": lock_assets,
         "merged": plan["merged"],
     }
+    if plan.get("workspaces"):
+        lock["workspaces"] = workspace_selection.lock_entries(plan["workspaces"])
     previous_blocks = (previous_lock or {}).get("blocks") or {}
     for destination in waiting_instruction_files(project_root, skill_dir, previous_blocks):
         # Its blocks were left out of this apply: the lock keeps what it knew of them.
@@ -2791,6 +2813,8 @@ def compute_status(project_root, skill_dir, conflicts_key=None):
         "reviews": review_summary(project_root),
         "packTools": None,
         "golfoKit": golfo_kit_pending(skill_dir) if skill_dir else None,
+        "workspaceDifferences": workspace_selection.differences(configuration.value(WORKSPACES_KEY) or [],
+                                                                (lock or {}).get("workspaces") or {}) if lock else [],
     }
     if lock:
         for destination, entry in sorted(lock["assets"].items()):
@@ -2886,6 +2910,9 @@ def status_has_drift(status):
     checkout = status["checkout"]
     if any(checkout[key] for key in ("modified", "missing", "conflict", "failed", "retiredPreserved")):
         return True
+    if status.get("workspaceDifferences"):
+        # A workspace of the manifest that the last apply did not adopt, or one that left it.
+        return True
     return bool(status["update"] and status["update"]["available"]) or not status["hasLock"]
 
 
@@ -2959,6 +2986,10 @@ def print_status(status, brief):
         write_line(paint(f"Agent Ready: no profiles selected in {MANIFEST_RELATIVE_PATH}.{hint}", "warning", stream))
     else:
         write_line(f"Agent Ready profiles: {', '.join(profiles)} (updates: {configuration.value(UPDATES_MODE_KEY)})")
+    for entry in configuration.value(WORKSPACES_KEY) or []:
+        write_line(f"Workspace {entry['path']}: {', '.join(entry['profiles']) or 'none'}")
+    for difference in status.get("workspaceDifferences", []):
+        write_line(paint(f"  ! {difference}: run agent-ready apply to adopt it", "warning", stream))
     # SessionStart already reported what was ignored when it read the configuration.
     if not brief:
         print_ignored_configuration(configuration, stream)

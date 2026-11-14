@@ -17,7 +17,13 @@ Qué profiles y providers usa el repositorio. No es una funcionalidad que se apa
 |---|---|---|---|---|---|---|
 | `profiles` | lista de string | — | project | — | — | Profiles elegidos, en orden, sin los que traen por defaults ni por requires: esos los resuelve cada apply y los registra el lock. Cada stack suma su sección a AGENTS.md y el más específico es el primario. Una lista vacía (--profiles none) es solo el núcleo, para un repo sin código. Sin valor, la detección inicial elige y el apply lo guarda: sin señales de stack, la lista vacía. |
 | `excludedDefaults` | lista de string | — | project | — | — | Profiles que no se traen por defaults (por ejemplo browser, que traen react, node, java y go). Un profile que la selección requiere o nombra no se puede excluir. |
+| `workspaces` | lista de objetos | `[]` | project | — | — | Selección de profiles por carpeta en un monorepo: cada elemento nombra una carpeta y sus profiles, que se resuelven como los de la raíz (requires, defaults, excludedDefaults). Lo que la raíz ya selecciona vale para todo el repositorio. La carpeta tiene que existir, no estar ignorada por Git ni dentro de otro workspace. agent-ready plan y status muestran la selección de cada uno. |
 | `providers` | lista de string (`claude`, `codex`) | `["claude", "codex"]` | project | — | — | Providers para los que el repositorio declara su configuración; el lockfile los registra. |
+
+Campos de cada elemento de `workspaces`:
+
+- `path` (string, obligatorio): Carpeta del workspace, relativa a la raíz (apps/web).
+- `profiles` (lista de string, obligatorio): Profiles de esa carpeta, como en profiles.
 
 ## `ci`: Chequeo de CI
 
