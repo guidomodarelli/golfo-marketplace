@@ -953,8 +953,8 @@ PY
   [ "$status" -eq 0 ]
   [[ "$output" == *".github/workflows/agent-ready.yml"* ]]
 
-  # Only the catalog entry changes: ci-github now takes the files of GitLab, which the engine already has.
-  python3 - "$engine_plugin/skills/agent-ready-setup/assets/profiles.json" <<'PY'
+  # Only the CI catalog of the engine changes: ci-github now takes the files of GitLab, which the engine already has.
+  python3 - "$engine_plugin/skills/agent-ready-setup/assets/ci/profiles.json" <<'PY'
 import json, sys
 data = json.load(open(sys.argv[1], encoding="utf-8"))
 data["profiles"]["ci-github"]["assets"] = data["profiles"]["ci-gitlab"]["assets"]
@@ -1032,4 +1032,23 @@ PY
   run_cli apply
   [ "$status" -eq 0 ]
   [ "$(lock_value '"fullstack" in data["profileOrder"]')" = "True" ]
+}
+
+@test "the CI profiles come with the engine, also for a revision whose catalog still declares them" {
+  # An older golfo-kit declared its CI profiles in its catalog; this one points ci-github to the GitLab files.
+  python3 - "$marketplace/plugins/golfo-kit/skills/agent-ready-setup/assets/profiles.json" <<'PY'
+import json, sys
+data = json.load(open(sys.argv[1], encoding="utf-8"))
+data["profiles"]["ci-github"] = {"kind": "ci", "assets": "assets/ci/gitlab", "requires": ["ci"]}
+json.dump(data, open(sys.argv[1], "w", encoding="utf-8"), indent=2)
+PY
+  git -C "$marketplace" commit -qam "golfo-kit with CI profiles in its catalog"
+  old_catalog_revision="$(git -C "$marketplace" rev-parse HEAD)"
+  write_manifest '{"profiles": ["node"], "ci": {"provider": "github"}, "sources": {"golfoKit": {"updates": "pinned"}}}'
+
+  run_cli update golfo-kit --to "$old_catalog_revision"
+  [ "$status" -eq 0 ]
+  # The workflow of the engine's ci-github, not the GitLab files the old catalog named.
+  cmp -s .github/workflows/agent-ready.yml "$skill_dir/assets/ci/github/github/workflows/agent-ready.yml"
+  [ ! -e .agents/ci/gitlab-ci.yml ]
 }

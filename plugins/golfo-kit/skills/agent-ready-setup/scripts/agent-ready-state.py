@@ -180,6 +180,8 @@ ENGINE_SKILL_DIRECTORY = os.path.dirname(os.path.dirname(os.path.abspath(__file_
 PROVIDER_RESOLVER_RELATIVE_PATH = "scripts/resolve-provider.sh"
 LOCK_RELATIVE_PATH = ".agents/agent-ready.lock.json"
 PROFILE_CATALOG_RELATIVE_PATH = "assets/profiles.json"
+# The CI profiles, part of the engine: their workflows run the CLI of this version.
+ENGINE_CI_CATALOG_RELATIVE_PATH = "assets/ci/profiles.json"
 PROVIDER_CATALOG_RELATIVE_PATH = "assets/providers.json"
 CODEX_HOOKS_TEMPLATE_RELATIVE_PATH = "assets/codex/hooks.json"
 CLAUDE_SETTINGS_TEMPLATE_NAME = "settings.json"
@@ -442,6 +444,25 @@ def is_overridden(overridden, profile, relative_path):
                for path in overridden.get(profile, {}))
 
 
+def engine_ci_profiles(skill_dir):
+    """The CI profiles of the engine (assets/ci/profiles.json): their files run the CLI of this engine.
+
+    A skill directory without that catalog (a trimmed copy of the skill) has no CI profiles.
+    """
+    path = os.path.join(skill_dir, ENGINE_CI_CATALOG_RELATIVE_PATH)
+    if not os.path.isfile(path):
+        return {}
+    try:
+        catalog = read_json_file(path, "CI profile catalog")
+    except StateError as caught_error:
+        raise ProfileError(str(caught_error)) from caught_error
+    profiles = catalog.get("profiles")
+    if not isinstance(profiles, dict) or any(not isinstance(entry, dict) or entry.get("kind") != CI_PROFILE_KIND
+                                             for entry in profiles.values()):
+        raise ProfileError(f"{path} must list profiles of kind {CI_PROFILE_KIND} only")
+    return profiles
+
+
 def load_profile_catalog(skill_dir):
     """Load and validate the profile catalog of the skill source.
 
@@ -459,6 +480,14 @@ def load_profile_catalog(skill_dir):
     profiles = catalog.get("profiles")
     if not isinstance(profiles, dict) or not profiles:
         raise ProfileError(f"profile catalog {catalog_path} has no profiles")
+    # The CI profiles come with the engine: a CI profile of the content (an older revision) gives way to them.
+    ci_profiles = engine_ci_profiles(skill_dir)
+    for name in list(profiles):
+        if isinstance(profiles[name], dict) and profiles[name].get("kind") == CI_PROFILE_KIND:
+            del profiles[name]
+        elif name in ci_profiles:
+            raise ProfileError(f"profile catalog {catalog_path}: profile '{name}' takes the name of a CI profile of the engine")
+    profiles.update(ci_profiles)
     try:
         validate_catalog_detection(profiles)
     except DetectionSchemaError as caught_error:
