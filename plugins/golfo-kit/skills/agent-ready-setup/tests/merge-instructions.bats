@@ -133,6 +133,7 @@ skip_without_symlinks() {
   fi
 }
 
+# bats test_tags=area:managed-block
 @test "legacy AGENTS receives the verbatim managed block and keeps project content" {
   cat > AGENTS.md <<'EOF'
 # Existing project instructions
@@ -165,6 +166,7 @@ EOF
   [[ "$output" == *"already reviewed; AI review not required."* ]]
 }
 
+# bats test_tags=area:managed-block
 @test "managed block is replaced verbatim and content outside markers is preserved" {
   cat > AGENTS.md <<'EOF'
 # Project
@@ -197,6 +199,7 @@ EOF
     --common-rules-dir "$content_pack/base/rules"
 }
 
+# bats test_tags=area:managed-block
 @test "managed block omits skill lists because providers discover skills natively" {
   printf '%s\n' '# Project' > AGENTS.md
   write_review_response $'# Project\n\n'"$managed_placeholder"
@@ -212,6 +215,7 @@ EOF
   [ "$(grep -c '^<!-- BEGIN AGENT-READY MANAGED -->$' AGENTS.md)" -eq 1 ]
 }
 
+# bats test_tags=area:review
 @test "Claude review defaults to Sonnet 5 with medium effort" {
   unset AGENT_READY_SETUP_MERGE_MODEL AGENT_READY_SETUP_MERGE_REASONING_EFFORT
   printf '%s\n' '# Existing project instructions' > AGENTS.md
@@ -223,6 +227,7 @@ EOF
   grep -Fq -- '--model claude-sonnet-5-5 --effort medium' "$test_root/provider-prompt.log"
 }
 
+# bats test_tags=area:review
 @test "review deletes project lines already covered by rules" {
   cat > AGENTS.md <<'EOF'
 # Project
@@ -241,6 +246,7 @@ EOF
   [[ "$output" == *"covered by .agents/rules/testing.md"* ]]
 }
 
+# bats test_tags=area:review
 @test "review reports inconsistencies and keeps the conflicting content" {
   cat > AGENTS.md <<'EOF'
 # Project
@@ -270,6 +276,7 @@ EOF
   [[ "$output" == *"conflicts with .agents/rules/testing.md"* ]]
 }
 
+# bats test_tags=area:review
 @test "the cached review of AGENTS.md stays until the model changes or --recheck asks for a new one" {
   printf '%s\n' '# Existing project instructions' > AGENTS.md
   write_review_response $'# Existing project instructions\n\n'"$managed_placeholder"
@@ -290,6 +297,7 @@ EOF
   [ "$(provider_call_count)" -eq 3 ]
 }
 
+# bats test_tags=area:review
 @test "an AGENTS.md created from the template needs no review from any provider" {
   run_merge node
 
@@ -303,6 +311,7 @@ EOF
   [ "$(provider_call_count)" -eq 0 ]
 }
 
+# bats test_tags=area:review
 @test "review that adds or rewrites lines is rejected and only the managed block is applied" {
   printf '%s\n' '# Keep this file' > AGENTS.md
   write_review_response $'# Keep this file, reworded\n\n'"$managed_placeholder"
@@ -315,6 +324,7 @@ EOF
   ! instructions_review_entry
 }
 
+# bats test_tags=area:review
 @test "review output without the placeholder or with fences is rejected" {
   printf '%s\n' '# Keep this file' > AGENTS.md
   write_review_response '# Keep this file'
@@ -348,6 +358,7 @@ marker_count() {
   grep -Fxc -- "$1" AGENTS.md || true
 }
 
+# bats test_tags=area:review
 @test "the review never sees a stack section as project content, and the section stays verbatim" {
   write_agents_with_section
   section_placeholder='<!-- AGENT-READY MANAGED SECTION: node -->'
@@ -372,6 +383,7 @@ marker_count() {
     --common-rules-dir "$content_pack/base/rules"
 }
 
+# bats test_tags=area:review
 @test "a review that drops, repeats or rewrites a stack section is rejected and the file keeps it" {
   write_agents_with_section
   cp AGENTS.md "$test_root/before"
@@ -408,6 +420,7 @@ marker_count() {
   cmp -s AGENTS.md "$test_root/before"
 }
 
+# bats test_tags=area:review
 @test "markers of a stack section that do not pair up keep the review from deleting them" {
   write_agents_with_section
   # A second start of the node section, as a bad hand edit leaves it.
@@ -423,6 +436,7 @@ marker_count() {
   cmp -s AGENTS.md "$test_root/before"
 }
 
+# bats test_tags=area:managed-block
 @test "apply-managed-block keeps each stack section once and verbatim, run after run" {
   write_agents_with_section
   awk '/^<!-- BEGIN AGENT-READY MANAGED: node -->$/,/^<!-- END AGENT-READY MANAGED: node -->$/' AGENTS.md \
@@ -440,6 +454,7 @@ marker_count() {
   done
 }
 
+# bats test_tags=area:review
 @test "provider failure applies the managed block and retries the review next sync" {
   printf '%s\n' '# Keep this file' > AGENTS.md
   cat > "$fake_bin/claude" <<EOF
@@ -460,6 +475,7 @@ EOF
   [ "$(provider_call_count)" -eq 2 ]
 }
 
+# bats test_tags=area:review
 @test "invalid structured output keeps project content and applies the managed block" {
   printf '%s\n' '# Keep this file' > AGENTS.md
   cat > "$fake_bin/claude" <<'EOF'
@@ -476,6 +492,7 @@ EOF
   grep -Fxq '<!-- BEGIN AGENT-READY MANAGED -->' AGENTS.md
 }
 
+# bats test_tags=area:managed-block
 @test "malformed managed markers require human review without invoking the provider" {
   cat > AGENTS.md <<'EOF'
 <!-- BEGIN AGENT-READY MANAGED -->
@@ -493,6 +510,7 @@ EOF
   [[ "$output" == *"Human confirmation required"* ]]
 }
 
+# bats test_tags=area:review
 @test "provider prompt includes managed block, rule contents, and project content" {
   printf '%s\n' '# Existing project instructions' > AGENTS.md
   write_review_response $'# Existing project instructions\n\n'"$managed_placeholder"
@@ -509,6 +527,7 @@ EOF
   ! grep -Fq '# Existing project instructions' "$test_root/provider-args.log"
 }
 
+# bats test_tags=area:managed-block
 @test "new rule files enter the managed block and rule changes trigger a new review" {
   copy_content_pack
   printf '%s\n' '# Runtime-specific rules' > "$content_dir/stacks/node/rules/runtime.md"
@@ -530,6 +549,7 @@ EOF
   [ "$(provider_call_count)" -eq 2 ]
 }
 
+# bats test_tags=area:managed-block
 @test "common rules are template rules for every stack and never project rules" {
   mkdir -p .agents/rules
   cp "$content_pack/base/rules/verify-changes.md" .agents/rules/verify-changes.md
@@ -546,6 +566,7 @@ EOF
   grep -Fq '<rule path=".agents/rules/language-consistency.md">' "$test_root/provider-prompt.log"
 }
 
+# bats test_tags=area:managed-block
 @test "a rule defined in both common and stack rules is rejected" {
   copy_content_pack
   cp "$content_dir/base/rules/verify-changes.md" "$content_dir/stacks/node/rules/verify-changes.md"
@@ -558,6 +579,7 @@ EOF
   [[ "$output" == *"rule is defined in both common and stack rules: verify-changes.md"* ]]
 }
 
+# bats test_tags=area:managed-block
 @test "project rules are listed in the managed block and reviewed with template rules" {
   skip_without_symlinks
   mkdir -p .agents/rules/area
@@ -595,6 +617,7 @@ EOF
   ! grep -Fq 'team-conventions.md' AGENTS.md
 }
 
+# bats test_tags=area:review
 @test "linked worktrees share the review cache of the repository" {
   git config user.email "agent-ready-tests@example.com"
   git config user.name "Agent Ready Tests"
@@ -620,6 +643,7 @@ EOF
   [ ! -e "$(git rev-parse --absolute-git-dir)/info/agent-ready/reviews.json" ]
 }
 
+# bats test_tags=area:merge-safety
 @test "successful merge replaces AGENTS atomically without temporary residue" {
   printf '%s\n' '# Existing project instructions' > AGENTS.md
   write_review_response $'# Existing project instructions\n\n'"$managed_placeholder"
@@ -633,6 +657,7 @@ EOF
   [ ! -e "${temporary_files[0]}" ]
 }
 
+# bats test_tags=area:merge-safety
 @test "concurrent AGENTS changes are not overwritten by a stale merge" {
   printf '%s\n' '# Original instructions' > AGENTS.md
   write_review_response $'# Original instructions\n\n'"$managed_placeholder"
@@ -650,6 +675,7 @@ EOF
   [[ "$output" == *"changed before descriptor write"* ]]
 }
 
+# bats test_tags=area:merge-safety
 @test "atomic replacement rejects stale descriptor write" {
   printf '%s\n' '# Original instructions' > AGENTS.md
   write_review_response $'# Original instructions\n\n'"$managed_placeholder"
@@ -672,6 +698,7 @@ EOF
   [[ "$output" == *"changed before descriptor write"* ]]
 }
 
+# bats test_tags=area:merge-safety
 @test "directory lock protects against pathname replacement during atomic update" {
   printf '%s\n' '# Original instructions' '' 'Project line' > AGENTS.md
   # Keeps the merge inside its locked section long enough for the writer to see the
@@ -791,6 +818,7 @@ PY
   [ ! -e .concurrent-agents.md ]
 }
 
+# bats test_tags=area:review
 @test "review works with Codex structured output" {
   printf '%s\n' '# Existing project instructions' > AGENTS.md
   write_review_response $'# Existing project instructions\n\n'"$managed_placeholder"
@@ -820,6 +848,7 @@ EOF
   [ "$(instructions_review_entry | jq -r '[.provider, .model] | join(" ")')" = "codex gpt-6-luna" ]
 }
 
+# bats test_tags=area:merge-safety
 @test "existing merge lock prevents a second provider invocation" {
   printf '%s\n' '# Keep this file' > AGENTS.md
   mkdir -p .agents/.agent-ready-instructions.lock
@@ -838,6 +867,7 @@ EOF
   [[ "$output" == *"another instruction merge is running"* ]]
 }
 
+# bats test_tags=area:managed-block
 @test "missing AGENTS is created from template without invoking provider" {
   cat > "$fake_bin/claude" <<'EOF'
 #!/bin/bash
@@ -869,6 +899,7 @@ EOF
   PATH="$fake_bin:$PATH" run bash "$skill_dir/scripts/apply-managed-block.sh" --stack "$stack" --skill-dir "$skill_dir"
 }
 
+# bats test_tags=area:managed-block
 @test "apply-managed-block replaces the verbatim block without invoking the provider" {
   cat > AGENTS.md <<'EOF'
 # Project
@@ -898,6 +929,7 @@ EOF
   [[ "$output" == *"managed block is current"* ]]
 }
 
+# bats test_tags=area:managed-block
 @test "apply-managed-block leaves legacy AGENTS for the background review" {
   printf '%s\n' '# Legacy project' '' '## Rules' '' '- Legacy rule list.' > AGENTS.md
   cp AGENTS.md "$test_root/original-agents.md"
@@ -910,6 +942,7 @@ EOF
   [[ "$output" == *"no managed markers yet"* ]]
 }
 
+# bats test_tags=area:managed-block
 @test "apply-managed-block creates missing AGENTS from the template" {
   run_apply_managed_block react
 
@@ -918,6 +951,7 @@ EOF
   [ "$(grep -c '^<!-- BEGIN AGENT-READY MANAGED -->$' AGENTS.md)" -eq 1 ]
 }
 
+# bats test_tags=area:merge-safety
 @test "automatic sync hook runs upgrade, projection, and merge in order" {
   source_dir="$test_root/agent-ready-setup"
   event_log="$test_root/hook-events.log"
@@ -982,6 +1016,7 @@ EOF
   grep -Eq -- '--skill-dir .*/agent-ready-setup/content/[0-9a-f]+/plugins/golfo-kit/skills/agent-ready-setup$' "$merge_log"
 }
 
+# bats test_tags=area:merge-safety
 @test "automatic sync hook preserves session when the managed block needs human review" {
   source_dir="$test_root/agent-ready-setup"
   mkdir -p \

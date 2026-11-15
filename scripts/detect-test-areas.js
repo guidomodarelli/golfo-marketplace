@@ -39,6 +39,7 @@ const AGENT_READY_TRIGGER_PATHS = [
   '.github/workflows/tests.yml',
   'scripts/detect-test-areas.js',
   'tests/detect-test-areas.bats',
+  'scripts/run-bats.sh',
 ];
 
 /** golfo-kit manifests that agent-ready-setup reads or copies; a pure version bump does not count. */
