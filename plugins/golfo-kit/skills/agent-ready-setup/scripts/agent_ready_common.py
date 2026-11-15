@@ -202,3 +202,15 @@ def remove_empty_parents(project_root, path):
 def text_bytes(text):
     """Size of a text in UTF-8, the encoding every instruction file is written in."""
     return len(text.encode("utf-8"))
+
+
+def find_repository_root(start):
+    """Root of the repository that holds a directory, without running anything: ci off runs nothing."""
+    current = os.path.abspath(start)
+    while True:
+        if os.path.exists(os.path.join(current, ".git")):
+            return current
+        parent = os.path.dirname(current)
+        if parent == current:
+            return os.path.abspath(start)
+        current = parent
