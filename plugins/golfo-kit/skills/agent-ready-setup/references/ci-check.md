@@ -33,7 +33,7 @@ con `--offline`. `--format json` imprime un objeto con `status`, `ci` (`enabled`
 ### Conflictos entre perfiles (`ci.conflicts`)
 
 El chequeo también corre los chequeos de conflictos de `agent-ready conflicts`
-([ai-reviews.md](ai-reviews.md), secciones 9 a 14), en dos grupos con su propio modo:
+([structural-conflicts.md](structural-conflicts.md), secciones 2 a 7), en dos grupos con su propio modo:
 
 | Clave | Default | Qué cubre |
 |---|---|---|
