@@ -60,7 +60,7 @@ Sin el preset, el repositorio sigue en `auto`, como siempre: es opt-in por repos
    - archivos que se agregan, actualizan o retiran, con diff;
    - conflictos estructurales y semánticos con lo propio del proyecto.
 
-   Ver «Version changes» en [profiles-and-lockfile.md](profiles-and-lockfile.md).
+   Ver «Version changes» en [profile-packs.md](profile-packs.md).
 2. Si está bien, el mismo comando sin `--dry-run` lo aplica, solo para esa fuente: las demás
    quedan como estaban. La granularidad es por fuente, nunca por archivo.
 3. Commitear el lock nuevo. Desde ahí, cada apply reproduce esa versión.

@@ -5,7 +5,7 @@ A pack is a Git repository or a local directory with a catalog
 declares in ``sources.packs``, downloads revisions into a per-user cache and validates catalogs. Only
 ``download_declared_sources`` and ``refresh_declared_sources`` use the network.
 Loading a pack reads files and nothing else: no script of a pack ever runs. The
-contract is documented in ``references/profiles-and-lockfile.md``.
+contract is documented in ``references/profile-packs.md``.
 """
 
 import json

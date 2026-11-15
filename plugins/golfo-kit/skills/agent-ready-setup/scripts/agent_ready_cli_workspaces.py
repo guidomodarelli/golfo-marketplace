@@ -1,7 +1,7 @@
 """agent-ready workspaces list|add|remove: the workspaces of a monorepo in the manifest.
 
 A workspace gives a folder a selection of its own next to the one of the repository
-(references/profiles-and-lockfile.md, «Workspaces»). These subcommands edit the ``workspaces`` of the
+(references/profiles.md, «Workspaces»). These subcommands edit the ``workspaces`` of the
 project layer, validate every change with the engine before writing (the folder, the profiles and their
 resolution with the root selection) and leave the projection to ``apply``. Data goes to stdout; hints
 and progress to stderr.

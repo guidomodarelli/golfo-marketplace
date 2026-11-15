@@ -76,7 +76,7 @@ bloque en `nested/<nombre>.md` de su árbol de assets:
 3. Si no hay ninguna, no se escribe nada, y `agent-ready plan` lo informa con las carpetas que probó.
 
 Un profile que solo elige un workspace de un monorepo busca sus candidatas dentro del workspace
-([profiles-and-lockfile.md](profiles-and-lockfile.md), «Workspaces»).
+([profiles.md](profiles.md), «Workspaces»).
 
 ```json
 {
@@ -146,7 +146,7 @@ Before you read or change files under one of these folders, read and follow its 
 ```
 
 - **Qué lista:** cada `AGENTS.md` anidado al que el apply escribe un bloque, también el de un workspace de
-  un monorepo ([profiles-and-lockfile.md](profiles-and-lockfile.md), «Workspaces»). Deja afuera los que
+  un monorepo ([profiles.md](profiles.md), «Workspaces»). Deja afuera los que
   esperan por un `CLAUDE.md` propio y los que están detrás de un symlink.
 - **Cuándo se escribe:** es una sección más del `AGENTS.md` raíz, como la de cada stack
   ([managed-agents-block.md](managed-agents-block.md), «Secciones de los stacks»). Tiene el mismo lock, la

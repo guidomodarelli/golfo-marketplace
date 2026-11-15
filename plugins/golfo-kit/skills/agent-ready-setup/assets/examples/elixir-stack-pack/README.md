@@ -1,7 +1,7 @@
 # Ejemplo de pack con un stack primario propio
 
 Pack mínimo que agrega un stack que golfo-kit no tiene: `beam/elixir`. El contrato completo está en
-`references/profiles-and-lockfile.md`, sección «Profile packs». Para usarlo, copiá esta carpeta a un
+`references/profile-packs.md`. Para usarlo, copiá esta carpeta a un
 repositorio propio y declarala en `.agents/agent-ready.json`:
 
 ```json

@@ -300,7 +300,7 @@ Las rules del contenido que solo valen con una herramienta lo declaran, como las
 `react` con Vitest. Un dato o un valor que el catálogo (`assets/repo-facts.json`) no conoce se
 informa como no chequeado. Una contradicción escrita en prosa, sin `assumes`, la busca la revisión
 semántica. Para reemplazar la rule del contenido por la del proyecto, `overrides`
-(`profiles-and-lockfile.md`).
+([profiles.md](profiles.md)).
 
 | Clave | Default | Efecto |
 |---|---|---|

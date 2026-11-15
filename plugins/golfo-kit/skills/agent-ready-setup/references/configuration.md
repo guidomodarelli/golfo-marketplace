@@ -4,7 +4,7 @@ Fuente única de cómo se configura agent-ready-setup. Leer al cambiar una opci�
 valor, cuando un valor del manifest aparece como ignorado o al agregar una funcionalidad con opciones nuevas.
 La lista de claves, con su tipo, default, variable y dirección de seguridad, se genera desde los schemas en
 [configuration-keys.md](configuration-keys.md). Qué hace cada mecanismo (actualizaciones, refresco, chequeo de
-CI, packs): sección 4 de [profiles-and-lockfile.md](profiles-and-lockfile.md).
+CI, packs): [updates.md](updates.md).
 
 ## Contenido
 

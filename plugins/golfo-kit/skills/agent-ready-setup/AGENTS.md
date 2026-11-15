@@ -4,7 +4,7 @@
 
 Esta skill es el motor: no tiene rules, skills de stack, agents, commands, catálogo de profiles ni el template de `AGENTS.md`. Ese contenido vive en el pack oficial, [guidomodarelli/golfo-agent-profiles](https://github.com/guidomodarelli/golfo-agent-profiles), con su propio `AGENTS.md` de mantenimiento, su CI y sus releases por tag. Un cambio de contenido se hace ahí, nunca copiándolo a `assets/`.
 
-1. Para probar un cambio del motor con un checkout local del pack, usar `AGENT_READY_SETUP_CONTENT_DIR=<carpeta absoluta del checkout>` ([references/profiles-and-lockfile.md](references/profiles-and-lockfile.md), «El contenido»).
+1. Para probar un cambio del motor con un checkout local del pack, usar `AGENT_READY_SETUP_CONTENT_DIR=<carpeta absoluta del checkout>` ([references/updates.md](references/updates.md), «El contenido»).
 2. Los tests del motor proyectan el pack oficial en el tag de `tests/content-pack.ref`, que clona `tests/prepare-content-pack.sh`. Un cambio del motor que necesita contenido nuevo se publica primero en el pack, con su tag, y después sube esa ref.
 3. El catálogo de «Step 4 — Report» en `SKILL.md` describe el pack oficial en la versión de `tests/content-pack.ref`: actualizarlo cuando sube la ref.
 

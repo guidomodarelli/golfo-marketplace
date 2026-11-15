@@ -5,7 +5,7 @@ tree. This is the only evaluator: the commands of ``agent-ready-state.py`` share
 it. It only reads files inside the project, and it never runs a build, a package
 manager or anything a catalog names. Gradle scripts are scanned as text: Groovy
 and Kotlin are not interpreted. The contract is documented in
-``references/profiles-and-lockfile.md``.
+``references/detection.md``.
 """
 
 import fnmatch

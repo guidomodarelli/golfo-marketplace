@@ -14,7 +14,7 @@ The rules of those profiles go to ``.agents/rules/workspaces/<path>/`` with ``pa
 workspace, so Claude Code loads them only for its files, and the AGENTS.md of the workspace lists them
 for Codex (index_content) next to the section of each stack it adds (with_workspace_references). Their
 skills, subagents and commands go to .agents/ once for the whole repository, because the providers do
-not scope them by folder. The contract is in references/profiles-and-lockfile.md ("Workspaces").
+not scope them by folder. The contract is in references/profiles.md ("Workspaces").
 """
 
 import fnmatch
