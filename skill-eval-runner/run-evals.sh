@@ -9,7 +9,7 @@
 #   run-evals --all                   Run evals for all skills with eval-config.json
 #   run-evals --jobs N [...]          Run N cases in parallel (default: 4, env: EVAL_JOBS)
 #   run-evals --provider codex [...]    Run evals with Codex instead of auto-detecting
-#   run-evals --baseline [...]        Also run a no-skill baseline per case (env: EVAL_BASELINE=1)
+#   run-evals --baseline [...]        Also run and grade each case without the skill (env: EVAL_BASELINE=1)
 #   run-evals --repeat N [...]        Run every case N times and report flaky cases (env: EVAL_REPEAT)
 #   run-evals --config FILE [...]     Use an eval-config.json outside the skill tree (env: EVAL_CONFIG)
 #
@@ -29,9 +29,17 @@ NC='\033[0m'
 # Each job fires 1 agent call (with-skill), or 2 concurrent calls when the
 # baseline is enabled. Lower EVAL_JOBS if rate-limited.
 EVAL_JOBS="${EVAL_JOBS:-4}"
-# The no-skill baseline is opt-in: assertions only score the with-skill
-# response, so the baseline is a manual comparison artifact that doubles cost.
+# The no-skill baseline is opt-in and doubles cost. Its response is graded with the same assertions,
+# so the report tells which cases pass without the skill: those do not discriminate. Only the
+# with-skill response decides whether a case passes.
 EVAL_BASELINE="${EVAL_BASELINE:-0}"
+# Grades of the no-skill response in one run: it passes the case's assertions, it fails them, or the
+# provider failed and nothing was graded. Across --repeat runs, a case that passes without the skill in
+# some graded runs only is flaky.
+BASELINE_PASSED="passed"
+BASELINE_FAILED="failed"
+BASELINE_INFRASTRUCTURE="infrastructure"
+BASELINE_FLAKY="flaky"
 # Runs per case: with more than one, a case passes only when every run passes, and one that
 # passes some runs is reported as flaky, so a variable eval is not mistaken for a broken one. The case
 # line then shows the first failing run and lists every run in run_results, each with its own artifacts.
@@ -90,9 +98,12 @@ usage() {
     echo "                               the default and can also be set with EVAL_JSONL=1."
     echo "  --pretty, -P                 Emit the human-readable colored report instead"
     echo "                               of JSONL. Equivalent to EVAL_JSONL=0."
-    echo "  --baseline, -B               Also run each case without the skill for manual"
-    echo "                               comparison. Not scored; doubles agent calls."
-    echo "                               Equivalent to EVAL_BASELINE=1."
+    echo "  --baseline, -B               Also run each case without the skill and grade that"
+    echo "                               response with the same assertions: the report lists"
+    echo "                               the cases that pass without the skill (they do not"
+    echo "                               discriminate). Only the with-skill run decides pass"
+    echo "                               or fail. Doubles agent calls. Equivalent to"
+    echo "                               EVAL_BASELINE=1."
     echo "  --repeat N, -r N             Run every case N times (default: 1). A case passes"
     echo "                               only when every run passes; mixed runs are reported"
     echo "                               as flaky. Equivalent to EVAL_REPEAT=N."
@@ -213,6 +224,9 @@ run_agent_prompt() {
                 reasoning_effort_flag=(-c "model_reasoning_effort=\"$GOLFO_MARKETPLACE_EVAL_REASONING_EFFORT\"")
             fi
 
+            # The status of codex exec is the status of the call: kept apart from the extraction below, so
+            # a failed request stays an infrastructure failure even where errexit is off (run-evals --all).
+            local codex_status=0
             CODEX_HOME="$codex_home" codex exec \
                 --model "$GOLFO_MARKETPLACE_EVAL_MODEL" \
                 "${reasoning_effort_flag[@]}" \
@@ -225,7 +239,7 @@ run_agent_prompt() {
                 --json \
                 "$input" \
                 < /dev/null \
-                > "$event_stream_file" 2> "$stderr_file"
+                > "$event_stream_file" 2> "$stderr_file" || codex_status=$?
 
             jq -Rsr '
                 split("\n")
@@ -242,6 +256,7 @@ run_agent_prompt() {
             fi
 
             rm -f "$event_stream_file"
+            return "$codex_status"
             ;;
     esac
 }
@@ -622,7 +637,17 @@ write_case_result_jsonl() {
     local workspace="${11}"
 
     local baseline_artifact=""
-    [ "$EVAL_BASELINE" = "1" ] && baseline_artifact="$workspace/without-skill/$id.txt"
+    # The grade of the no-skill response (score_baseline_response); null without --baseline. A case
+    # that never reached the baseline call (a setup failure, a worker that died) counts as infrastructure.
+    local baseline_json="null"
+    if [ "$EVAL_BASELINE" = "1" ]; then
+        baseline_artifact="$workspace/without-skill/$id.txt"
+        local baseline_status
+        baseline_status=$(cat "$result_dir/$case_idx.baseline-status" 2>/dev/null || echo "$BASELINE_INFRASTRUCTURE")
+        baseline_json=$(jq -nc --arg status "$baseline_status" \
+            --argjson failed "$(read_failures_json "$result_dir/$case_idx.baseline-failures")" \
+            '{status: $status, failed_assertions: $failed}')
+    fi
     # Provider usage (Claude only) for the with-skill call; null when unavailable.
     local usage_json="null"
     local usage_file="$workspace/with-skill/$id.txt.usage.json"
@@ -644,8 +669,50 @@ write_case_result_jsonl() {
         --arg with_skill "$workspace/with-skill/$id.txt" \
         --arg baseline "$baseline_artifact" \
         --argjson usage "$usage_json" \
-        '{event: "case", provider: $provider, skill: $skill, id: $id, description: $description, input: $input, index: $index, total: $total, status: $status, duration_seconds: $duration, failed_assertions: $failed, usage: $usage, artifacts: {with_skill: $with_skill, baseline: (if $baseline == "" then null else $baseline end)}}' \
+        --argjson baseline_grade "$baseline_json" \
+        '{event: "case", provider: $provider, skill: $skill, id: $id, description: $description, input: $input, index: $index, total: $total, status: $status, duration_seconds: $duration, failed_assertions: $failed, usage: $usage, baseline: $baseline_grade, artifacts: {with_skill: $with_skill, baseline: (if $baseline == "" then null else $baseline end)}}' \
         > "$result_dir/$case_idx.jsonl"
+}
+
+# Grades the no-skill response with the case's own assertions and writes <case>.baseline-status (passed,
+# failed or infrastructure) and <case>.baseline-failures next to the case result, outside the *.txt
+# results that count finished cases. A case whose assertions pass without the skill does not
+# discriminate: it would pass whether the skill helps or not.
+score_baseline_response() {
+    local response_file="$1"
+    local config_file="$2"
+    local case_idx="$3"
+    local result_dir="$4"
+    local provider_status="$5"
+    local failures_file="$result_dir/$case_idx.baseline-failures"
+    local response
+
+    : > "$failures_file"
+    response=$(cat "$response_file" 2>/dev/null || true)
+    if [ "$provider_status" -ne 0 ] || [ -z "${response//[[:space:]]/}" ]; then
+        local provider_error
+        provider_error=$(head -40 "$response_file.stderr" 2>/dev/null || true)
+        record_failure "$failures_file" "infrastructure" "baseline provider execution failed" "${provider_error:-exit status $provider_status}"
+        echo "$BASELINE_INFRASTRUCTURE" > "$result_dir/$case_idx.baseline-status"
+        echo -e "  ${YELLOW}BASELINE: ⚠ the provider failed, so the response was not graded${NC}"
+    elif run_assertions "$response" "$config_file" "$case_idx" "$failures_file" > /dev/null; then
+        echo "$BASELINE_PASSED" > "$result_dir/$case_idx.baseline-status"
+        echo -e "  ${YELLOW}BASELINE: passes without the skill (the case does not discriminate)${NC}"
+    else
+        echo "$BASELINE_FAILED" > "$result_dir/$case_idx.baseline-status"
+        echo -e "  ${GREEN}BASELINE: fails without the skill${NC}"
+    fi
+}
+
+# The path an agent reads from the prompt text. A native agent CLI on Windows cannot open a POSIX path
+# such as /tmp/tmp.X, and Git Bash converts arguments but never a path inside one, so with cygpath
+# (Git Bash, MSYS2, Cygwin) the prompt names the mixed form, C:/...; elsewhere the path stays as it is.
+prompt_path() {
+    if command -v cygpath > /dev/null 2>&1; then
+        cygpath -m "$1"
+    else
+        printf '%s\n' "$1"
+    fi
 }
 
 # Every repetition writes the same response files, so with --repeat each run's responses are copied to
@@ -844,10 +911,10 @@ run_single_case() {
             pid_base=$!
         fi
 
-        local with_status=0
+        local with_status=0 base_status=0
         wait "$pid_with" || with_status=$?
         if [ -n "$pid_base" ]; then
-            wait "$pid_base" || true
+            wait "$pid_base" || base_status=$?
         fi
 
         local response_with
@@ -885,6 +952,9 @@ run_single_case() {
             echo ""
             echo -e "  ${RED}RESULT: ❌ FAILED${NC}"
             echo "1" > "$result_dir/$i.txt"
+        fi
+        if [ "$EVAL_BASELINE" = "1" ]; then
+            score_baseline_response "$workspace/without-skill/$id.txt" "$config_file" "$i" "$result_dir" "$base_status"
         fi
         echo ""
     } > "$output_dir/$i.txt" 2>&1
@@ -962,11 +1032,12 @@ run_skill_evals() {
 
     # Shared temp dirs: with-skill has the skill symlinked for all supported
     # providers; baseline is a plain empty dir with no project-local skills.
-    local skill_cwd baseline_cwd skill_codex_home baseline_codex_home skill_view_root skill_view_path
+    local skill_cwd baseline_cwd skill_codex_home baseline_codex_home skill_view_root skill_view_path skill_view_prompt_path
     skill_cwd=$(mktemp -d)
     baseline_cwd=$(mktemp -d)
     skill_view_root=$(mktemp -d)
     skill_view_path=$(create_isolated_skill_view "$canonical_skill_path" "$skill_view_root" "$config_file")
+    skill_view_prompt_path=$(prompt_path "$skill_view_path")
     mkdir -p "$skill_cwd/.claude/skills"
     ln -s "$skill_view_path" "$skill_cwd/.claude/skills/$skill_name"
     mkdir -p "$skill_cwd/.codex/skills"
@@ -1031,7 +1102,7 @@ run_skill_evals() {
                 [ ${#pids[@]} -ge "$EVAL_JOBS" ] && sleep 0.2
             done
 
-            run_single_case "$i" "$config_file" "$workspace" "$total" "$run_output_dir" "$run_result_dir" "$skill_cwd" "$baseline_cwd" "$skill_codex_home" "$baseline_codex_home" "$skill_view_path" &
+            run_single_case "$i" "$config_file" "$workspace" "$total" "$run_output_dir" "$run_result_dir" "$skill_cwd" "$baseline_cwd" "$skill_codex_home" "$baseline_codex_home" "$skill_view_prompt_path" &
             pids+=($!)
         done
 
@@ -1051,6 +1122,11 @@ run_skill_evals() {
     local passed=0
     local failed=0
     local flaky=0
+    # With --baseline: cases that pass without the skill in every graded run (they do not discriminate),
+    # and cases that pass without it in some graded runs only.
+    local baseline_passed=0
+    local baseline_flaky=0
+    local baseline_passed_ids=()
     for i in $(seq 0 $((total - 1))); do
         # Every run whose worker died before writing its result gets an infrastructure failure, so the
         # run picked for the report below always has a case line.
@@ -1089,20 +1165,54 @@ run_skill_evals() {
                 flaky=$((flaky + 1))
             fi
         fi
+        # Without the skill, a run whose provider failed is not graded; the case does not discriminate
+        # when it passes in every graded run.
+        local baseline_aggregate_json="null" baseline_passes=0 baseline_graded=0 baseline_case_status="" baseline_run_status
+        if [ "$EVAL_BASELINE" = "1" ]; then
+            for run in $(seq 1 "$EVAL_REPEAT"); do
+                baseline_run_status=$(cat "$result_dir/run-$run/$i.baseline-status" 2>/dev/null || echo "$BASELINE_INFRASTRUCTURE")
+                case "$baseline_run_status" in
+                    "$BASELINE_PASSED") baseline_passes=$((baseline_passes + 1)); baseline_graded=$((baseline_graded + 1)) ;;
+                    "$BASELINE_FAILED") baseline_graded=$((baseline_graded + 1)) ;;
+                esac
+            done
+            if [ "$baseline_graded" -eq 0 ]; then
+                baseline_case_status="$BASELINE_INFRASTRUCTURE"
+            elif [ "$baseline_passes" -eq "$baseline_graded" ]; then
+                baseline_case_status="$BASELINE_PASSED"
+                baseline_passed=$((baseline_passed + 1))
+                baseline_passed_ids+=("$(jq -r ".test_cases[$i].id" "$config_file")")
+            elif [ "$baseline_passes" -gt 0 ]; then
+                baseline_case_status="$BASELINE_FLAKY"
+                baseline_flaky=$((baseline_flaky + 1))
+            else
+                baseline_case_status="$BASELINE_FAILED"
+            fi
+            baseline_aggregate_json=$(jq -nc --arg status "$baseline_case_status" --argjson runs "$EVAL_REPEAT" \
+                --argjson graded "$baseline_graded" --argjson passes "$baseline_passes" \
+                '{status: $status, runs: $runs, graded: $graded, passes: $passes}')
+        fi
         if [ "$EVAL_JSONL" = "1" ]; then
             local run_results="[]"
             if [ "$EVAL_REPEAT" -gt 1 ]; then
                 run_results=$(for run in $(seq 1 "$EVAL_REPEAT"); do
-                    jq -c --argjson run "$run" '{run: $run, status, failed_assertions, artifacts}' "$result_dir/run-$run/$i.jsonl" 2>/dev/null \
-                        || jq -nc --argjson run "$run" '{run: $run, status: "failed", failed_assertions: [{type: "infrastructure", description: "Eval runner did not write a case result"}], artifacts: null}'
+                    jq -c --argjson run "$run" '{run: $run, status, failed_assertions, baseline, artifacts}' "$result_dir/run-$run/$i.jsonl" 2>/dev/null \
+                        || jq -nc --argjson run "$run" '{run: $run, status: "failed", failed_assertions: [{type: "infrastructure", description: "Eval runner did not write a case result"}], baseline: null, artifacts: null}'
                 done | jq -cs '.')
             fi
+            # With one run the case keeps the failed assertions of its baseline; with more, each run has them.
             jq -c --argjson runs "$EVAL_REPEAT" --argjson passes "$passes" --arg status "$case_status" --argjson run_results "$run_results" \
-                '. + {status: $status, runs: $runs, passes: $passes} + (if $runs > 1 then {run_results: $run_results} else {} end)' \
+                --argjson baseline_aggregate "$baseline_aggregate_json" \
+                '. + {status: $status, runs: $runs, passes: $passes} + (if $runs > 1 then {run_results: $run_results} else {} end)
+                   + (if $baseline_aggregate == null then {} else {baseline: ((if $runs == 1 then (.baseline // {}) else {} end) + $baseline_aggregate)} end)' \
                 "$result_dir/run-$report_run/$i.jsonl" 2>/dev/null || true
         else
             cat "$output_dir/run-$report_run/$i.txt" 2>/dev/null || cat "$last_output_dir/$i.txt"
             [ "$EVAL_REPEAT" -gt 1 ] && echo -e "  Runs: $passes/$EVAL_REPEAT passed ($case_status)" && echo ""
+            if [ "$EVAL_BASELINE" = "1" ] && [ "$EVAL_REPEAT" -gt 1 ]; then
+                echo -e "  Without the skill: $baseline_passes/$baseline_graded graded runs passed ($baseline_case_status)"
+                echo ""
+            fi
         fi
     done
 
@@ -1115,6 +1225,8 @@ run_skill_evals() {
         suite_duration="${suite_elapsed}s"
     fi
 
+    local baseline_on=false
+    [ "$EVAL_BASELINE" = "1" ] && baseline_on=true
     if [ "$EVAL_JSONL" = "1" ]; then
         jq -nc \
             --arg skill "$skill_name" \
@@ -1125,7 +1237,11 @@ run_skill_evals() {
             --argjson duration "$suite_elapsed" \
             --argjson runs "$EVAL_REPEAT" \
             --argjson flaky "$flaky" \
-            '{event: "summary", provider: $provider, skill: $skill, total: $total, passed: $passed, failed: $failed, flaky: $flaky, runs: $runs, duration_seconds: $duration}'
+            --argjson baseline_on "$baseline_on" \
+            --argjson baseline_passed "$baseline_passed" \
+            --argjson baseline_flaky "$baseline_flaky" \
+            '{event: "summary", provider: $provider, skill: $skill, total: $total, passed: $passed, failed: $failed, flaky: $flaky, runs: $runs, duration_seconds: $duration}
+             + (if $baseline_on then {baseline_passed: $baseline_passed, baseline_flaky: $baseline_flaky} else {} end)'
     else
         echo -e "${BLUE}════════════════════════════════════════${NC}"
         echo -e "${BLUE}  Summary: ${BOLD}$skill_name${NC}"
@@ -1136,6 +1252,16 @@ run_skill_evals() {
         echo -e "  Failed:  ${RED}$failed ❌${NC}"
         if [ "$EVAL_REPEAT" -gt 1 ]; then
             echo -e "  Flaky:   ${YELLOW}$flaky${NC} (of the failed: passed some of the $EVAL_REPEAT runs)"
+        fi
+        if [ "$baseline_on" = true ]; then
+            echo -e "  Without the skill: ${YELLOW}$baseline_passed${NC} pass, so they do not discriminate"
+            local baseline_passed_id
+            for baseline_passed_id in "${baseline_passed_ids[@]}"; do
+                echo -e "    - $baseline_passed_id"
+            done
+            if [ "$EVAL_REPEAT" -gt 1 ]; then
+                echo -e "  Without the skill, in some runs only: ${YELLOW}$baseline_flaky${NC}"
+            fi
         fi
         echo -e "  Time:    $suite_duration"
         echo ""

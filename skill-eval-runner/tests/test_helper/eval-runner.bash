@@ -70,7 +70,23 @@ case "$*" in
     ;;
   *)
     printf '%s\n' "$*" >> "$CLAUDE_ARGS_LOG"
-    if [[ -n "${CLAUDE_RESPONSE_FILE:-}" ]]; then
+    if [[ -n "${CLAUDE_BASELINE_RESPONSE_FILE:-}" && "$*" != *"This is a contract evaluation."* ]]; then
+      # The no-skill baseline gets the raw input, without the contract preamble. Its call N answers with
+      # "$CLAUDE_BASELINE_RESPONSE_FILE.N" when that file exists, so each --repeat run can differ;
+      # CLAUDE_BASELINE_FAIL=1 makes the baseline provider fail.
+      if [[ "${CLAUDE_BASELINE_FAIL:-}" == 1 ]]; then
+        printf 'baseline provider failed\n' >&2
+        exit 1
+      fi
+      calls_file="${CLAUDE_BASELINE_RESPONSE_FILE}.calls"
+      call_number=$(( $(cat "$calls_file" 2>/dev/null || echo 0) + 1 ))
+      printf '%s\n' "$call_number" > "$calls_file"
+      if [[ -f "${CLAUDE_BASELINE_RESPONSE_FILE}.${call_number}" ]]; then
+        response_text="$(cat "${CLAUDE_BASELINE_RESPONSE_FILE}.${call_number}")"
+      else
+        response_text="$(cat "$CLAUDE_BASELINE_RESPONSE_FILE")"
+      fi
+    elif [[ -n "${CLAUDE_RESPONSE_FILE:-}" ]]; then
       # Repeated runs: call N answers with "$CLAUDE_RESPONSE_FILE.N" when that file exists.
       calls_file="${CLAUDE_RESPONSE_FILE}.calls"
       call_number=$(( $(cat "$calls_file" 2>/dev/null || echo 0) + 1 ))
@@ -103,6 +119,21 @@ case "$*" in
 esac
 CLAUDE_STUB
     chmod +x "${STUB_BIN}/claude"
+}
+
+# A cygpath like the one of Git Bash, MSYS2 and Cygwin: `cygpath -m <path>` prints the path with a
+# drive letter, here X:<path>, so a test sees which path the runner hands to a native agent CLI.
+install_cygpath_stub() {
+    cat > "${STUB_BIN}/cygpath" <<'CYGPATH_STUB'
+#!/bin/bash
+
+if [[ "$1" == "-m" ]]; then
+  printf 'X:%s\n' "$2"
+else
+  printf '%s\n' "$2"
+fi
+CYGPATH_STUB
+    chmod +x "${STUB_BIN}/cygpath"
 }
 
 install_failures_touch_stub() {
@@ -139,6 +170,12 @@ run_eval_runner() {
     fi
     if [[ -n "${CLAUDE_KILL_CASE_ON_CALL:-}" ]]; then
         environment+=("CLAUDE_KILL_CASE_ON_CALL=${CLAUDE_KILL_CASE_ON_CALL}")
+    fi
+    if [[ -n "${CLAUDE_BASELINE_RESPONSE_FILE:-}" ]]; then
+        environment+=("CLAUDE_BASELINE_RESPONSE_FILE=${CLAUDE_BASELINE_RESPONSE_FILE}")
+    fi
+    if [[ -n "${CLAUDE_BASELINE_FAIL:-}" ]]; then
+        environment+=("CLAUDE_BASELINE_FAIL=${CLAUDE_BASELINE_FAIL}")
     fi
 
     run --separate-stderr env "${environment[@]}" \
