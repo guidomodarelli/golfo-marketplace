@@ -42,10 +42,10 @@ JSON
 #!/bin/bash
 
 # Mirrors `claude -p --output-format json`: the response text lives in
-# `.result` next to usage metadata.
+# `.result` next to usage metadata. CLAUDE_PERMISSION_DENIALS=N lists N reads that claude denied.
 emit_response() {
   if [[ "$*" == *"--output-format json"* ]]; then
-    jq -n --arg result "$response_text" '{
+    jq -n --arg result "$response_text" --argjson denials "${CLAUDE_PERMISSION_DENIALS:-0}" '{
       type: "result",
       is_error: false,
       result: $result,
@@ -56,7 +56,8 @@ emit_response() {
         cache_creation_input_tokens: 200,
         cache_read_input_tokens: 3000,
         output_tokens: 40
-      }
+      },
+      permission_denials: [range($denials) | {tool_name: "Read", tool_use_id: "toolu_\(.)", tool_input: {file_path: "/outside/SKILL.md"}}]
     }'
   else
     printf '%s\n' "$response_text"
@@ -176,6 +177,9 @@ run_eval_runner() {
     fi
     if [[ -n "${CLAUDE_BASELINE_FAIL:-}" ]]; then
         environment+=("CLAUDE_BASELINE_FAIL=${CLAUDE_BASELINE_FAIL}")
+    fi
+    if [[ -n "${CLAUDE_PERMISSION_DENIALS:-}" ]]; then
+        environment+=("CLAUDE_PERMISSION_DENIALS=${CLAUDE_PERMISSION_DENIALS}")
     fi
 
     run --separate-stderr env "${environment[@]}" \

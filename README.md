@@ -485,3 +485,15 @@ Solo la corrida con la skill decide si un caso pasa.
 
 En Windows (Git Bash, MSYS2 o Cygwin), el prompt nombra la copia de la skill con su ruta de Windows
 (`cygpath -m`), porque el CLI nativo del agente no abre una ruta como `/tmp/tmp.X`.
+
+**Qué puede leer el agente con Claude:**
+
+- **Con la skill:** su directorio de trabajo y la copia de la skill, sin `evals/` (`--add-dir`).
+- **Sin la skill:** solo su directorio vacío.
+
+`Read`, `Glob` y `Grep` no van en `--allowedTools`, porque ahí permiten cualquier ruta. Con esa libertad, la corrida sin
+la skill leía las copias instaladas de la skill, con sus `evals/`: los cachés de plugins y el clon del marketplace
+(#93). Cada lectura que Claude rechaza suma en `usage.permission_denials`, con la skill y en `baseline.usage` sin
+ella. Con `--repeat`, cada elemento de `run_results` trae su propio `usage`.
+
+Con Codex, `codex exec --sandbox read-only` puede leer todo el disco: ahí la baseline no tiene este aislamiento.

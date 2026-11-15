@@ -6,7 +6,9 @@ load 'test_helper/eval-runner'
 
 # The agent under evaluation must not be able to read the assertions it is graded against:
 # the runner exposes a copy of the skill without its evals/ directory, keeps relative
-# references working, and accepts an eval-config.json kept outside the skill tree.
+# references working, and accepts an eval-config.json kept outside the skill tree. Claude may
+# read only its working directory and that copy, so installed copies of the skill elsewhere on
+# disk (plugin caches, a marketplace clone) stay out of reach, with the skill and without it.
 
 setup() {
     unset EVAL_CONFIG
@@ -27,6 +29,19 @@ case "$prompt" in
   *)
     printf '%s\n' "$prompt" >> "$CLAUDE_ARGS_LOG"
     view=$(printf '%s\n' "$prompt" | sed -n 's/.*Read and apply \(.*\)\/SKILL\.md and every reference.*/\1/p' | head -1)
+    # What claude -p may read besides its cwd: the --add-dir directories, plus any path at all when
+    # Read is in --allowedTools.
+    readable="none" allowed_tools="none" previous=""
+    for argument in "$@"; do
+      [ "$previous" = "--add-dir" ] && readable="$argument"
+      [ "$previous" = "--allowedTools" ] && allowed_tools="$argument"
+      previous="$argument"
+    done
+    kind="baseline" view_in_readable="no"
+    [ -n "$view" ] && kind="contract"
+    case "$view" in "$readable"/*) view_in_readable="yes" ;; esac
+    echo "call kind=$kind readable=$([ "$readable" = none ] && echo none || echo dir) view_in_readable=$view_in_readable allowed_tools=$allowed_tools" >> "$VIEW_LOG"
+    [ "$readable" != none ] && echo "evals_dirs_under_readable=$(find "$readable" -type d -name evals | wc -l | tr -d ' ')" >> "$VIEW_LOG"
     {
       echo "view=$view"
       [ -f "$view/SKILL.md" ] && echo "skill_md=yes" || echo "skill_md=no"
@@ -95,6 +110,28 @@ run_with_view_log_env() {
     grep -q '^own_reference=yes$' "${VIEW_LOG}"
     grep -q '^parent_reference=yes$' "${VIEW_LOG}"
     grep -q '^sibling_skill=yes$' "${VIEW_LOG}"
+}
+
+@test "with the skill, Claude may read only its working directory and the copy of the skill" {
+    nest_skill_in_plugin_layout
+
+    run_with_view_log_env "${SKILL_DIR}"
+
+    [ "$status" -eq 0 ]
+    grep -q '^call kind=contract readable=dir view_in_readable=yes allowed_tools=none$' "${VIEW_LOG}"
+    grep -q '^evals_dirs_under_readable=0$' "${VIEW_LOG}"
+    grep -q '^parent_reference=yes$' "${VIEW_LOG}"
+    grep -q '^sibling_skill=yes$' "${VIEW_LOG}"
+}
+
+@test "without the skill, Claude may read only its own empty directory" {
+    nest_skill_in_plugin_layout
+
+    run_with_view_log_env --baseline "${SKILL_DIR}"
+
+    [ "$status" -eq 0 ]
+    grep -q '^call kind=baseline readable=none view_in_readable=no allowed_tools=none$' "${VIEW_LOG}"
+    [ "$(grep -c '^call ' "${VIEW_LOG}")" -eq 2 ]
 }
 
 @test "sibling and parent folders do not lead back to the original evals directory" {

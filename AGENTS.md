@@ -206,7 +206,7 @@ run-evals plugins/<plugin-name>/skills/<skill-name> --config /path/to/held-out/e
 export GOLFO_MARKETPLACE_EVAL_PROVIDER=codex
 ```
 
-The agent under evaluation reads a copy of the skill without its `evals/` directory (sibling skills and the plugin folders two levels up stay reachable through symlinks), so it cannot see the assertions it is graded against. Unknown assertion types make the config invalid instead of passing unchecked.
+The agent under evaluation reads a copy of the skill without its `evals/` directory (sibling skills and the plugin folders two levels up are copied with it), so it cannot see the assertions it is graded against. With Claude, the agent may read only its working directory and that copy, and the no-skill baseline only its empty directory, so installed copies of the skill (plugin caches, the marketplace clone) stay out of reach; each read Claude denies counts in `usage.permission_denials`. Codex runs with `--sandbox read-only`, which can read any path. Unknown assertion types make the config invalid instead of passing unchecked.
 
 ## Bumping a plugin version
 
