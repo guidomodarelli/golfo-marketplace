@@ -28,6 +28,7 @@ from agent_ready_cli_common import (
 from agent_ready_common import ProfileError, StateError, bash_executable, plugin_version, read_json_file, serialize_json
 from agent_ready_compatibility import EngineRequirementError
 from agent_ready_config import ConfigurationError, resolve_configuration
+from agent_ready_layout import settings_templates
 from agent_ready_options import PROVIDERS_KEY
 from agent_ready_packs import SOURCE_TYPE_GIT, SOURCE_TYPE_PATH
 from agent_ready_prompts import ask_confirmation, can_prompt, equivalent_command
@@ -262,7 +263,7 @@ def check_hooks(project, providers):
     if lock is None:
         return [check("hooks", CHECK_SKIPPED, "agent-ready-setup is not applied in this repository",
                       f"{CLI_NAME} init sets it up")]
-    templates = dict(engine().settings_templates(SKILL_ROOT))
+    templates = dict(settings_templates(SKILL_ROOT))
     checks = []
     for provider in providers:
         destination = PROVIDER_HOOK_FILES[provider]
@@ -345,6 +346,9 @@ def print_removal_report(report, stream):
 
 def command_remove(arguments):
     """Remove agent-ready-setup from the repository; what the project wrote stays."""
+    # Imported here: the removal pulls most of the engine, which the other commands of this module do not need.
+    from agent_ready_removal import print_removal_plan
+
     plan = engine().plan_removal(arguments.project_root, SKILL_ROOT)
     if not plan["changes"]:
         if arguments.json:
@@ -356,7 +360,7 @@ def command_remove(arguments):
             sys.stdout.write(serialize_json(plan))
         else:
             sys.stdout.write(f"{CLI_NAME} remove would change these paths:\n")
-            engine().print_removal_plan(plan, sys.stdout)
+            print_removal_plan(plan, sys.stdout)
         return EXIT_OK
     asked = False
     if not arguments.yes:
@@ -364,7 +368,7 @@ def command_remove(arguments):
             raise UsageError("missing --yes: removing agent-ready-setup needs a confirmation and there is no terminal to ask "
                              f"({CLI_NAME} remove --dry-run shows what it changes)")
         sys.stderr.write("This removes agent-ready-setup from the repository:\n")
-        engine().print_removal_plan(plan, sys.stderr)
+        print_removal_plan(plan, sys.stderr)
         if not ask_confirmation("Remove agent-ready-setup from this repository?", False):
             sys.stderr.write("Nothing was changed.\n")
             return EXIT_OK

@@ -644,7 +644,8 @@ PY
 spec = importlib.util.spec_from_file_location("state", os.path.join(sys.argv[1], "scripts/agent-ready-state.py"))
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
-entries = module.local_removal_entries(os.path.abspath("."))
+import agent_ready_removal
+entries = agent_ready_removal.local_removal_entries(os.path.abspath("."))
 print([(entry["path"], entry["action"]) for entry in entries if "review-cache" in entry["path"]])' "$skill_dir"
   [ "$status" -eq 0 ]
   [ "$(printf '%s' "$output" | tr -d '\r')" = "[('.agents/agent-ready.review-cache.json', 'remove')]" ]
