@@ -183,7 +183,7 @@ Un apply registra cada servidor MCP permitido para los providers del repo (`prov
   falla antes de escribir (sección 1).
 - **Si el usuario ya lo tiene** para todos los proyectos (`~/.claude.json`, `config.toml` de Codex),
   idéntico (endpoint, argumentos y configuración), no se registra la copia del proyecto en ese provider y se
-  informa (`references/ai-reviews.md`, «Choques con la máquina»).
+  informa (`references/structural-conflicts.md`, «Choques con la máquina»).
 - **El `command` se busca en el PATH del provider.** Claude Code y Codex lanzan el comando tal cual.
   Un CLI que instala un pack queda en el caché del usuario (sección 6), fuera de ese PATH, así que un
   servidor no puede lanzarse con él. La entrada no lleva la ruta del caché porque `.mcp.json` y
