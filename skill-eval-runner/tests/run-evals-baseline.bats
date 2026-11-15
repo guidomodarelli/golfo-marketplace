@@ -92,6 +92,48 @@ summary_line() {
     jq -e '.baseline_passed == 0' <<< "$(summary_line)"
 }
 
+# A codex that answers the preflight and the with-skill prompt, and fails the no-skill prompt after
+# printing an error event, the way `codex exec --json` reports a failed request.
+install_codex_stub_failing_without_skill() {
+    cat > "${STUB_BIN}/codex" <<'CODEX_STUB'
+#!/bin/bash
+prompt="${*: -1}"
+agent_message() {
+  jq -nc --arg text "$1" '{type: "item.completed", item: {type: "agent_message", text: $text}}'
+}
+case "$prompt" in
+  *eval-provider-ready*) agent_message "eval-provider-ready" ;;
+  *"This is a contract evaluation."*) agent_message "fine" ;;
+  *)
+    jq -nc '{type: "error", message: "stream disconnected before completion"}'
+    exit 1
+    ;;
+esac
+CODEX_STUB
+    chmod +x "${STUB_BIN}/codex"
+}
+
+@test "with --all and Codex, a failed no-skill request is not graded as an answer" {
+    # --all runs each skill inside an `if`, where a failed command does not stop the runner: the
+    # runner must still tell the failed request apart from a response.
+    local repository="${TEST_ROOT}/repository"
+    mkdir -p "$repository/skill-eval-runner" "$repository/skills" "${TEST_ROOT}/home"
+    cp "$EVAL_RUNNER" "$repository/skill-eval-runner/run-evals.sh"
+    cp -R "$SKILL_DIR" "$repository/skills/$SKILL_NAME"
+    # Only a negative assertion: the error event stream would pass it.
+    jq '.test_cases[0].assertions = [{type: "not_contains_any", values: ["forbidden"], description: "Avoids the forbidden word"}]' \
+        "$SKILL_DIR/evals/eval-config.json" > "$repository/skills/$SKILL_NAME/evals/eval-config.json"
+    install_codex_stub_failing_without_skill
+
+    run --separate-stderr env -u CODEX_HOME "PATH=${STUB_BIN}:${PATH}" "HOME=${TEST_ROOT}/home" \
+        "GOLFO_MARKETPLACE_EVAL_PROVIDER=codex" \
+        "$repository/skill-eval-runner/run-evals.sh" --jobs 1 --baseline --all
+
+    [ "$status" -eq 0 ]
+    jq -e '.status == "passed" and .baseline.status == "infrastructure" and .baseline.graded == 0' <<< "$(case_line)"
+    jq -e '.baseline_passed == 0' <<< "$(summary_line)"
+}
+
 @test "without --baseline nothing is graded without the skill" {
     answer_without_skill "ok"
 

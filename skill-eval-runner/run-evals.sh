@@ -224,6 +224,9 @@ run_agent_prompt() {
                 reasoning_effort_flag=(-c "model_reasoning_effort=\"$GOLFO_MARKETPLACE_EVAL_REASONING_EFFORT\"")
             fi
 
+            # The status of codex exec is the status of the call: kept apart from the extraction below, so
+            # a failed request stays an infrastructure failure even where errexit is off (run-evals --all).
+            local codex_status=0
             CODEX_HOME="$codex_home" codex exec \
                 --model "$GOLFO_MARKETPLACE_EVAL_MODEL" \
                 "${reasoning_effort_flag[@]}" \
@@ -236,7 +239,7 @@ run_agent_prompt() {
                 --json \
                 "$input" \
                 < /dev/null \
-                > "$event_stream_file" 2> "$stderr_file"
+                > "$event_stream_file" 2> "$stderr_file" || codex_status=$?
 
             jq -Rsr '
                 split("\n")
@@ -253,6 +256,7 @@ run_agent_prompt() {
             fi
 
             rm -f "$event_stream_file"
+            return "$codex_status"
             ;;
     esac
 }
