@@ -24,6 +24,12 @@ MANAGED_BLOCK_END = "<!-- END AGENT-READY MANAGED -->"
 # Assets under these directories have a view under .claude/; hooks stay canonical in .agents/.
 CLAUDE_VIEW_DIRECTORIES = ("rules", "agents", "commands", "skills")
 
+CLAUDE_SETTINGS_TEMPLATE_NAME = "settings.json"
+AGENTS_TEMPLATE_NAME = "agents-template.md"
+CENTRALIZATION_RELATIVE_PATH = "assets/instruction-centralization.md"
+RENDERER_RELATIVE_PATH = "scripts/render-instruction-template.sh"
+# Inputs of the rendered instructions that no asset or merged template covers.
+RENDERED_INSTRUCTION_INPUTS = (CLAUDE_PROXY_RELATIVE_PATH, CENTRALIZATION_RELATIVE_PATH, RENDERER_RELATIVE_PATH)
 PROVIDER_CATALOG_RELATIVE_PATH = "assets/providers.json"
 SKILL_NAME = "agent-ready-setup"
 

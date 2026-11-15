@@ -40,6 +40,7 @@ from agent_ready_options import (
 from agent_ready_cli_ci import ask_ci_provider, ci_providers, report_ci_next_steps, write_ci_provider
 from agent_ready_cli_trust import change_trusted_sources
 from agent_ready_packs import NAMESPACE_SEPARATOR, SOURCE_TYPE_GIT, parse_profile_sources
+from agent_ready_profiles import EMPTY_SELECTION_TOKEN, selectable_profile_names
 from agent_ready_prompts import ask_confirmation, ask_text, can_prompt, equivalent_command
 
 GOLFO_SOURCE_LABEL = "golfo"
@@ -85,7 +86,7 @@ def command_profiles_list(arguments):
     selected = set(selected_profiles(arguments.project_root) or [])
     rows = []
     # The CI profiles are not selectable: agent-ready ci setup picks them through ci.provider.
-    for name in engine().selectable_profile_names(catalog):
+    for name in selectable_profile_names(catalog):
         profile = catalog["profiles"][name]
         source = name.split(NAMESPACE_SEPARATOR, 1)[0] if NAMESPACE_SEPARATOR in name else GOLFO_SOURCE_LABEL
         rows.append({"name": name, "kind": profile.get("kind"), "source": source,
@@ -121,7 +122,7 @@ def apply_command_for(project_root, selection):
     reproduces_lock = (state.configuration_of(project_root).value(UPDATES_FROM_LOCK_KEY)
                        and os.path.isfile(os.path.join(project_root, state.LOCK_RELATIVE_PATH)))
     # An empty selection (the core only) is "none" on the command line.
-    return command + (f" --profiles {','.join(selection) or state.EMPTY_SELECTION_TOKEN}" if reproduces_lock else "")
+    return command + (f" --profiles {','.join(selection) or EMPTY_SELECTION_TOKEN}" if reproduces_lock else "")
 
 
 def change_selection(arguments, compute, removing=False):
@@ -364,7 +365,7 @@ def command_init(arguments):
                            else f"answer one of {', '.join(REPOSITORY_PURPOSES)}")
         if purpose == PURPOSE_OTHER:
             sys.stderr.write("Without code the core applies; add capabilities or a pack profile, or none.\n")
-            defaults = [engine().EMPTY_SELECTION_TOKEN]
+            defaults = [EMPTY_SELECTION_TOKEN]
         asked = True
     if not arguments.profiles:
         if suggestions:
@@ -385,7 +386,7 @@ def command_init(arguments):
         if ci_provider is None and not configuration.value(CI_PROVIDER_KEY):
             ci_provider = ask_ci_provider(arguments.project_root)
         asked = True
-    profiles = ",".join(profile_names(arguments.profiles)) or engine().EMPTY_SELECTION_TOKEN
+    profiles = ",".join(profile_names(arguments.profiles)) or EMPTY_SELECTION_TOKEN
     if not arguments.yes:
         if not ask_confirmation(f"Apply {profiles} now? Managed assets are overwritten with the templates", True):
             sys.stderr.write("Nothing was changed.\n")

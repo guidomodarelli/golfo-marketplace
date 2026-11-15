@@ -29,6 +29,7 @@ from agent_ready_common import ProfileError, StateError, bash_executable, plugin
 from agent_ready_compatibility import EngineRequirementError
 from agent_ready_config import ConfigurationError, resolve_configuration
 from agent_ready_layout import settings_templates
+from agent_ready_profiles import ENGINE_PROBLEM_ENGINE, engine_requirements
 from agent_ready_options import PROVIDERS_KEY
 from agent_ready_packs import SOURCE_TYPE_GIT, SOURCE_TYPE_PATH
 from agent_ready_prompts import ask_confirmation, can_prompt, equivalent_command
@@ -197,7 +198,7 @@ def engine_requirement_check(requirement, installed_version):
     name = f"{requirement['kind']} {requirement['source']}"
     label = f"{requirement['source']} {requirement['version'] or '(no version)'}"
     if requirement["problem"]:
-        fix = (engine_update_fix(requirement["requiredVersion"]) if requirement["category"] == engine().ENGINE_PROBLEM_ENGINE
+        fix = (engine_update_fix(requirement["requiredVersion"]) if requirement["category"] == ENGINE_PROBLEM_ENGINE
                else "fix the catalog it names")
         return check(name, CHECK_MISSING, requirement["problem"], fix)
     if requirement["minEngine"]:
@@ -226,7 +227,7 @@ def check_engine_requirements(project, configuration, offline):
         checks.append(check("content", CHECK_MISSING, f"could not prepare the content: {content_error}",
                             f"check the network and your access to sources.golfo ({CLI_NAME} config explain sources.golfo.source)"))
     installed_version = plugin_version(SKILL_ROOT) or "unknown"
-    requirements = engine().engine_requirements(project, SKILL_ROOT, content_dir)
+    requirements = engine_requirements(project, SKILL_ROOT, content_dir)
     return checks + [engine_requirement_check(requirement, installed_version) for requirement in requirements]
 
 

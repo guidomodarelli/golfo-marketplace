@@ -197,3 +197,8 @@ def remove_empty_parents(project_root, path):
         except OSError:
             return
         directory = os.path.dirname(directory)
+
+
+def text_bytes(text):
+    """Size of a text in UTF-8, the encoding every instruction file is written in."""
+    return len(text.encode("utf-8"))
