@@ -30,6 +30,11 @@ from agent_ready_packs import parse_profile_sources, source_update_mode_is_ignor
 STATE_SCRIPT_NAME = "agent-ready-state.py"
 
 
+def state_script_path():
+    """Path of the entry point, which lives beside this module."""
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), STATE_SCRIPT_NAME)
+
+
 def configuration_of(project_root, offline=False):
     """Effective configuration of a repository; ``offline`` is the --offline flag of this run."""
     return resolve_configuration(project_root, flags={UPDATES_REFRESH_KEY: False} if offline else None)
@@ -72,8 +77,7 @@ def build_manifest(previous, profiles, updates):
 
 def approval_hint(project_root):
     """The exact command that approves a repository on this machine."""
-    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), STATE_SCRIPT_NAME)
-    return f'approve it with: python3 "{script}" trust --project "{project_root}"'
+    return f'approve it with: python3 "{state_script_path()}" trust --project "{project_root}"'
 
 
 def print_ignored_configuration(configuration, stream):

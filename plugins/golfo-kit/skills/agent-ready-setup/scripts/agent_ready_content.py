@@ -14,6 +14,12 @@ common assets, each profile under ``assets/``, and the catalog to ``assets/profi
 compose_pack_content). Its profiles keep their names without a namespace.
 """
 
+import sys
+
+from agent_ready_lockfile import read_lock
+from agent_ready_manifest import configuration_of
+from agent_ready_output import write_line
+
 import hashlib
 import json
 import os
@@ -527,3 +533,18 @@ def engine_version_of(skill_dir):
     """Version of the engine that projects ``skill_dir``: the installed one, whatever the content."""
     marker = read_marker(skill_dir)
     return marker["engineVersion"] if marker else plugin_version(skill_dir)
+
+
+def content_dir_of(project_root, skill_dir, offline=False, read_only=True):
+    """Skill directory with the content this repository uses, composed with the engine ``skill_dir``.
+
+    Offline, a revision missing from the cache raises ContentPendingError for a run that writes nothing.
+    """
+    lock = read_lock(project_root)
+    content_dir, warning = content_skill_dir(
+        configuration_of(project_root, offline), skill_dir, (lock or {}).get("source"),
+        offline=offline, read_only=read_only,
+    )
+    if warning:
+        write_line(f"WARNING: {warning}", sys.stderr)
+    return content_dir

@@ -31,6 +31,8 @@ RENDERER_RELATIVE_PATH = "scripts/render-instruction-template.sh"
 # Inputs of the rendered instructions that no asset or merged template covers.
 RENDERED_INSTRUCTION_INPUTS = (CLAUDE_PROXY_RELATIVE_PATH, CENTRALIZATION_RELATIVE_PATH, RENDERER_RELATIVE_PATH)
 BROWSER_TOOL_NAME = "browser"
+# Infers the provider of a run from the environment and the installation path.
+PROVIDER_RESOLVER_RELATIVE_PATH = "scripts/resolve-provider.sh"
 PROVIDER_CATALOG_RELATIVE_PATH = "assets/providers.json"
 SKILL_NAME = "agent-ready-setup"
 
