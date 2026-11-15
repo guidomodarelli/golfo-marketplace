@@ -183,6 +183,24 @@ setup() {
         and .usage.num_turns == 2
         and .usage.cache_read_input_tokens == 3000
         and .usage.output_tokens == 40
+        and .usage.permission_denials == 0
     )' <<< "$output"
+    [ "$status" -eq 0 ]
+}
+
+@test "reports the reads Claude denied, with the skill and without it" {
+    CLAUDE_PERMISSION_DENIALS=2 run_eval_runner --baseline
+
+    [ "$status" -eq 0 ]
+    run jq -e 'select(.event == "case" and .usage.permission_denials == 2 and .baseline.usage.permission_denials == 2)' <<< "$output"
+    [ "$status" -eq 0 ]
+}
+
+@test "with --repeat, every run reports its own usage, with the skill and without it" {
+    CLAUDE_PERMISSION_DENIALS=1 run_eval_runner --baseline --repeat 2
+
+    [ "$status" -eq 0 ]
+    run jq -e 'select(.event == "case" and (.run_results | length) == 2
+        and all(.run_results[]; .usage.permission_denials == 1 and .baseline.usage.cost_usd == 0.0123))' <<< "$output"
     [ "$status" -eq 0 ]
 }

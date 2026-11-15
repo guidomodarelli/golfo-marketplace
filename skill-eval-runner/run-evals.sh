@@ -113,7 +113,9 @@ usage() {
     echo "                               Equivalent to EVAL_CONFIG=FILE."
     echo ""
     echo "The agent under evaluation always reads a copy of the skill without its evals/"
-    echo "directory, so it cannot see the assertions it is graded against."
+    echo "directory, so it cannot see the assertions it is graded against. With Claude it"
+    echo "may read only its working directory and that copy (the baseline, only its empty"
+    echo "directory); each denied read counts in usage.permission_denials."
     echo ""
 }
 
@@ -171,19 +173,28 @@ resolve_eval_provider() {
     fi
 }
 
+# Sends one prompt to the provider from <cwd> and writes the response to <output_file>, with Claude's
+# usage in <output_file>.usage.json. <readable_dir>, when given, is the one directory outside <cwd>
+# that a Claude agent may read (the isolated copy of the skill); see the claude branch.
 run_agent_prompt() {
     local cwd="$1"
     local input="$2"
     local output_file="$3"
     local codex_home="${4:-}"
+    local readable_dir="${5:-}"
     local stderr_file="${output_file}.stderr"
     # Drop usage left by a previous run so it is never reported for this one.
     rm -f "${output_file}.usage.json"
 
     case "$RESOLVED_EVAL_PROVIDER" in
         claude)
-            # Restricting --tools (not only --allowedTools) and skipping user MCP
-            # servers keeps unused tool schemas out of every eval prompt.
+            # Restricting --tools and skipping user MCP servers keeps unused tool schemas out of every
+            # eval prompt. Read, Glob and Grep are not in --allowedTools on purpose: allowed there they
+            # read any path, and the agent found installed copies of the skill (plugin caches, the
+            # marketplace clone, with their evals/). Without it, claude -p denies them outside <cwd> and
+            # --add-dir, and lists each attempt in permission_denials.
+            local add_dir_flag=()
+            [ -n "$readable_dir" ] && add_dir_flag=(--add-dir "$readable_dir")
             local claude_json_file="${output_file}.json"
             local claude_status=0
             (cd "$cwd" && env -u CLAUDECODE claude -p "$input" \
@@ -191,7 +202,7 @@ run_agent_prompt() {
                 --effort "$GOLFO_MARKETPLACE_EVAL_REASONING_EFFORT" \
                 --setting-sources project \
                 --tools "Read,Glob,Grep" \
-                --allowedTools "Read,Glob,Grep" \
+                "${add_dir_flag[@]}" \
                 --strict-mcp-config \
                 --no-session-persistence \
                 --output-format json) \
@@ -207,7 +218,8 @@ run_agent_prompt() {
                     input_tokens: (.usage.input_tokens // null),
                     cache_creation_input_tokens: (.usage.cache_creation_input_tokens // null),
                     cache_read_input_tokens: (.usage.cache_read_input_tokens // null),
-                    output_tokens: (.usage.output_tokens // null)
+                    output_tokens: (.usage.output_tokens // null),
+                    permission_denials: ((.permission_denials // []) | length)
                 }' "$claude_json_file" > "${output_file}.usage.json"
             else
                 cp "$claude_json_file" "$output_file"
@@ -623,6 +635,19 @@ read_failures_json() {
     printf '[]'
 }
 
+# Prints the provider usage of one call (<response>.usage.json, Claude only) as JSON, or null when
+# the provider wrote none or it is not valid JSON.
+read_usage_json() {
+    local usage_file="$1"
+
+    if [ -s "$usage_file" ] && jq -e . "$usage_file" > /dev/null 2>&1; then
+        jq -c . "$usage_file"
+        return 0
+    fi
+
+    printf 'null'
+}
+
 write_case_result_jsonl() {
     local result_dir="$1"
     local case_idx="$2"
@@ -646,14 +671,12 @@ write_case_result_jsonl() {
         baseline_status=$(cat "$result_dir/$case_idx.baseline-status" 2>/dev/null || echo "$BASELINE_INFRASTRUCTURE")
         baseline_json=$(jq -nc --arg status "$baseline_status" \
             --argjson failed "$(read_failures_json "$result_dir/$case_idx.baseline-failures")" \
-            '{status: $status, failed_assertions: $failed}')
+            --argjson usage "$(read_usage_json "$workspace/without-skill/$id.txt.usage.json")" \
+            '{status: $status, failed_assertions: $failed, usage: $usage}')
     fi
     # Provider usage (Claude only) for the with-skill call; null when unavailable.
-    local usage_json="null"
-    local usage_file="$workspace/with-skill/$id.txt.usage.json"
-    if [ -s "$usage_file" ] && jq -e . "$usage_file" > /dev/null 2>&1; then
-        usage_json=$(jq -c . "$usage_file")
-    fi
+    local usage_json
+    usage_json=$(read_usage_json "$workspace/with-skill/$id.txt.usage.json")
 
     jq -nc \
         --arg skill "$skill_name" \
@@ -865,6 +888,7 @@ run_single_case() {
     local skill_codex_home="$9"
     local baseline_codex_home="${10}"
     local canonical_skill_path="${11}"
+    local skill_view_root="${12}"
 
     local id input description skill_name
     id=$(jq -r ".test_cases[$i].id" "$config_file")
@@ -902,7 +926,7 @@ run_single_case() {
         contract_input=$(printf '%s\n\n%s\n' \
             "This is a contract evaluation. Read and apply $canonical_skill_path/SKILL.md and every reference it directs you to for this task. Do not use external services or Bash; answer only from those bundled contracts." \
             "$input")
-        run_agent_prompt "$skill_cwd" "$contract_input" "$workspace/with-skill/$id.txt" "$skill_codex_home" &
+        run_agent_prompt "$skill_cwd" "$contract_input" "$workspace/with-skill/$id.txt" "$skill_codex_home" "$skill_view_root" &
         local pid_with=$!
 
         local pid_base=""
@@ -1032,12 +1056,16 @@ run_skill_evals() {
 
     # Shared temp dirs: with-skill has the skill symlinked for all supported
     # providers; baseline is a plain empty dir with no project-local skills.
+    # A Claude agent reads only its cwd and, with the skill, the copy of the skill (its view root,
+    # resolved like the paths inside it); the baseline reads only its empty dir.
     local skill_cwd baseline_cwd skill_codex_home baseline_codex_home skill_view_root skill_view_path skill_view_prompt_path
+    local skill_view_root_prompt_path
     skill_cwd=$(mktemp -d)
     baseline_cwd=$(mktemp -d)
     skill_view_root=$(mktemp -d)
     skill_view_path=$(create_isolated_skill_view "$canonical_skill_path" "$skill_view_root" "$config_file")
     skill_view_prompt_path=$(prompt_path "$skill_view_path")
+    skill_view_root_prompt_path=$(prompt_path "$(cd "$skill_view_root" && pwd -P)")
     mkdir -p "$skill_cwd/.claude/skills"
     ln -s "$skill_view_path" "$skill_cwd/.claude/skills/$skill_name"
     mkdir -p "$skill_cwd/.codex/skills"
@@ -1102,7 +1130,7 @@ run_skill_evals() {
                 [ ${#pids[@]} -ge "$EVAL_JOBS" ] && sleep 0.2
             done
 
-            run_single_case "$i" "$config_file" "$workspace" "$total" "$run_output_dir" "$run_result_dir" "$skill_cwd" "$baseline_cwd" "$skill_codex_home" "$baseline_codex_home" "$skill_view_prompt_path" &
+            run_single_case "$i" "$config_file" "$workspace" "$total" "$run_output_dir" "$run_result_dir" "$skill_cwd" "$baseline_cwd" "$skill_codex_home" "$baseline_codex_home" "$skill_view_prompt_path" "$skill_view_root_prompt_path" &
             pids+=($!)
         done
 
@@ -1196,8 +1224,8 @@ run_skill_evals() {
             local run_results="[]"
             if [ "$EVAL_REPEAT" -gt 1 ]; then
                 run_results=$(for run in $(seq 1 "$EVAL_REPEAT"); do
-                    jq -c --argjson run "$run" '{run: $run, status, failed_assertions, baseline, artifacts}' "$result_dir/run-$run/$i.jsonl" 2>/dev/null \
-                        || jq -nc --argjson run "$run" '{run: $run, status: "failed", failed_assertions: [{type: "infrastructure", description: "Eval runner did not write a case result"}], baseline: null, artifacts: null}'
+                    jq -c --argjson run "$run" '{run: $run, status, failed_assertions, usage, baseline, artifacts}' "$result_dir/run-$run/$i.jsonl" 2>/dev/null \
+                        || jq -nc --argjson run "$run" '{run: $run, status: "failed", failed_assertions: [{type: "infrastructure", description: "Eval runner did not write a case result"}], usage: null, baseline: null, artifacts: null}'
                 done | jq -cs '.')
             fi
             # With one run the case keeps the failed assertions of its baseline; with more, each run has them.
