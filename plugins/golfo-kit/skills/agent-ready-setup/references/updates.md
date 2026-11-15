@@ -88,6 +88,7 @@ Sin declararla, es el pack oficial,
   y, si hace falta, `minEngine` y `changes` («Compatibilidad declarada», en [profile-packs.md](profile-packs.md)), sus `profiles` y `baseAssets`:
   - **Base:** `baseAssets` es la carpeta de la base que recibe todo repositorio. Lleva `rules/`, `skills/`, `blocks/`
     y `agents-template.md`, el template de `AGENTS.md`, que es obligatorio. Los hooks y los settings son del motor.
+    La base y cada profile pueden traer también `evals/`, los evals de sus rules: el motor los acepta y nunca los proyecta.
   - **Profiles:** se nombran sin prefijo (`node`, no `acme/node`), con los campos de [profiles.md](profiles.md), y ninguno se
     llama `common`, el nombre que el motor le da a la base. Sus `assets` publican lo mismo que un pack (`rules/`,
     `skills/`, `agents/`, `commands/`, `blocks/`, `nested/`) y, en una capability, `agents-skeleton.md`, el

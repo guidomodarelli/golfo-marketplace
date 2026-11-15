@@ -225,6 +225,23 @@ wait_for_background_update() {
   [ ! -e .agents/rules ]
 }
 
+@test "the evals next to the rules of the content are never projected" {
+  publish_content_pack_repository
+  mkdir -p "$content_repository/base/evals" "$content_repository/stacks/node/evals"
+  printf '{"marker": "base-evals-marker"}\n' > "$content_repository/base/evals/eval-config.json"
+  printf '{"marker": "node-evals-marker"}\n' > "$content_repository/stacks/node/evals/eval-config.json"
+  git -C "$content_repository" add -A
+  git -C "$content_repository" commit -qm "evals of the rules"
+
+  run_cli apply --stack node
+  [ "$status" -eq 0 ]
+  [ -f .agents/rules/node-security.md ]
+  run grep -rqs -e base-evals-marker -e node-evals-marker .agents .claude AGENTS.md CLAUDE.md
+  [ "$status" -ne 0 ]
+  # A skill keeps its own evals: they are part of it.
+  [ -f .agents/skills/agent-browser/evals/eval-config.json ]
+}
+
 @test "only the content source publishes the base, and no pack takes its name" {
   mkdir -p agent-packs/acme/profiles/team/rules agent-packs/acme/base/rules
   printf '# Team\n' > agent-packs/acme/profiles/team/rules/acme-team.md

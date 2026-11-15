@@ -26,7 +26,14 @@ import os
 import shutil
 import tempfile
 
-from agent_ready_common import KEBAB_CASE_NAME, ProfileError, StateError, plugin_version, read_json_file
+from agent_ready_common import (
+    CONTENT_UNPROJECTED_DIRECTORIES,
+    KEBAB_CASE_NAME,
+    ProfileError,
+    StateError,
+    plugin_version,
+    read_json_file,
+)
 from agent_ready_compatibility import require_engine, semver_key
 from agent_ready_detection import is_contained_pattern
 import agent_ready_nested as nested
@@ -262,7 +269,10 @@ def copy_file(source, destination):
 
 
 def copy_tree(source_root, destination_root):
-    for directory, _, names in os.walk(long_path(source_root)):
+    """Copy a root of the content into the composition, without the evals of its rules (never projected)."""
+    for directory, directories, names in os.walk(long_path(source_root)):
+        if os.path.normcase(directory) == os.path.normcase(long_path(source_root)):
+            directories[:] = [name for name in directories if name not in CONTENT_UNPROJECTED_DIRECTORIES]
         for name in names:
             source = os.path.join(directory, name)
             relative_path = os.path.relpath(source, long_path(source_root))
@@ -379,6 +389,9 @@ def require_tree(label, tree, relative_root, what, directories, files):
         raise content_pack_error(label, f"has no directory {relative_root} for {what}")
     for entry in sorted(os.listdir(root)):
         is_directory = os.path.isdir(os.path.join(root, entry))
+        if is_directory and entry in CONTENT_UNPROJECTED_DIRECTORIES:
+            # Evals of the rules, next to them: accepted and never projected (walk_content_files).
+            continue
         if (is_directory and entry not in directories) or (not is_directory and entry not in files):
             allowed = ", ".join([f"{name}/" for name in directories] + list(files))
             raise content_pack_error(label, f"publishes {relative_root}/{entry} in {what}, which can only have {allowed}")

@@ -97,6 +97,24 @@ def walk_files(root):
     return sorted(collected)
 
 
+# Top-level directories of a root of content (the base, or the assets of a profile of the official
+# content or of a pack) that only check that content: the evals of its rules, which run-evals reads
+# from <root>/evals/. The engine accepts them and never projects them. A skill keeps its own evals/:
+# those are part of the skill and are projected with it.
+CONTENT_UNPROJECTED_DIRECTORIES = ("evals",)
+
+
+def is_unprojected_content(relative_path):
+    """Whether a path relative to a root of content lies in one of its CONTENT_UNPROJECTED_DIRECTORIES."""
+    return "/" in relative_path and relative_path.split("/", 1)[0] in CONTENT_UNPROJECTED_DIRECTORIES
+
+
+def walk_content_files(root):
+    """Like walk_files, for a root of content: without its top-level CONTENT_UNPROJECTED_DIRECTORIES."""
+    return [(relative_path, absolute_path) for relative_path, absolute_path in walk_files(root)
+            if not is_unprojected_content(relative_path)]
+
+
 def serialize_json(content):
     """Deterministic JSON so the same resolution produces the same bytes."""
     return json.dumps(content, indent=2, sort_keys=True, ensure_ascii=False) + "\n"

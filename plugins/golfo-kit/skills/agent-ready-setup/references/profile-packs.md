@@ -60,7 +60,8 @@ estos límites:
 - `assets` publica solo `rules/`, `skills/`, `agents/`, `commands/`, `blocks/`, los bloques gestionados
   de archivos compartidos con el proyecto ([managed-agents-block.md](managed-agents-block.md), sección
   «Bloques en otros archivos»), y `nested/`, el bloque de cada destino anidado que declara
-  ([nested-instructions.md](nested-instructions.md)). No puede traer hooks, settings, el template de
+  ([nested-instructions.md](nested-instructions.md)). Puede traer además `evals/`, los evals de sus rules, que
+  `run-evals <carpeta>` corre y el motor nunca proyecta (los `evals/` de una skill sí viajan con ella). No puede traer hooks, settings, el template de
   `AGENTS.md` ni archivos `AGENTS.md` o `CLAUDE.md`; solo un profile `stack` publica su sección de `AGENTS.md`
   (`blocks/AGENTS.md`).
 - Las rules de un pack entran en la lista del bloque gestionado de `AGENTS.md`, como las de cualquier
