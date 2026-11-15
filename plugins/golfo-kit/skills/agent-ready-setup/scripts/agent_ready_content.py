@@ -521,3 +521,9 @@ def locked_content_dir(engine_dir, locked_source):
 def is_pinned(configuration):
     """Whether the content waits for an explicit update in this repository."""
     return effective_update_mode(configuration, declaration_of(configuration)) == UPDATES_PINNED
+
+
+def engine_version_of(skill_dir):
+    """Version of the engine that projects ``skill_dir``: the installed one, whatever the content."""
+    marker = read_marker(skill_dir)
+    return marker["engineVersion"] if marker else plugin_version(skill_dir)

@@ -7,6 +7,8 @@ import os
 
 from agent_ready_common import StateError, read_json_file
 
+# The schemaVersion of the lock and of the plan, and the stateSchemaVersion of the engine that wrote them.
+SCHEMA_VERSION = 1
 LOCK_RELATIVE_PATH = ".agents/agent-ready.lock.json"
 # The state of an asset or a block in the lock.
 STATE_APPLIED = "applied"

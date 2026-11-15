@@ -5,6 +5,7 @@ and the review cache of the hooks).
 
 import os
 
+import agent_ready_workspaces as workspace_selection
 from agent_ready_config import PROJECT_CONFIG_RELATIVE_PATH
 
 MANIFEST_RELATIVE_PATH = PROJECT_CONFIG_RELATIVE_PATH
@@ -22,6 +23,9 @@ MANAGED_BLOCK_START = "<!-- BEGIN AGENT-READY MANAGED -->"
 MANAGED_BLOCK_END = "<!-- END AGENT-READY MANAGED -->"
 # Assets under these directories have a view under .claude/; hooks stay canonical in .agents/.
 CLAUDE_VIEW_DIRECTORIES = ("rules", "agents", "commands", "skills")
+
+PROVIDER_CATALOG_RELATIVE_PATH = "assets/providers.json"
+SKILL_NAME = "agent-ready-setup"
 
 _REVIEW_CACHE = None
 
@@ -52,3 +56,14 @@ def settings_templates(skill_dir):
         (".claude/settings.json", os.path.join(skill_dir, *CLAUDE_SETTINGS_TEMPLATE_RELATIVE_PATH.split("/"))),
         (".codex/hooks.json", os.path.join(skill_dir, CODEX_HOOKS_TEMPLATE_RELATIVE_PATH)),
     )
+
+
+def claude_view_of(destination, source):
+    """Project path of the .claude view of a managed asset, or None when it has none."""
+    relative = destination[len(".agents/"):] if destination.startswith(".agents/") else ""
+    # A rule of a workspace keeps its view at the same path: its source is the rule of the profile.
+    is_workspace_rule = relative.startswith(workspace_selection.RULES_DIRECTORY + "/") and \
+        workspace_selection.is_workspace_rule(relative[len(workspace_selection.RULES_DIRECTORY) + 1:])
+    if relative.split("/", 1)[0] not in CLAUDE_VIEW_DIRECTORIES or not (is_workspace_rule or source.endswith("/" + relative)):
+        return None
+    return ".claude/" + relative
