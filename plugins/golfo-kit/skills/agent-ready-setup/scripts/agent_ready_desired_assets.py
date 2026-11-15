@@ -45,7 +45,7 @@ PROFILE_DIGEST_EXCLUDED_FIELDS = ("detect",)
 def destinations_for_template(relative_path, is_stack_root):
     """Managed destinations that the Bash projection writes for one template file.
 
-    Mirrors project_asset_tree in bootstrap.sh and project_assets in
+    Mirrors project_asset_tree in bootstrap-asset-projection.sh and project_assets in
     sync-marketplace.sh. Merged files (settings.json) and the AGENTS.md
     template are handled separately and return no verbatim destination.
     """
