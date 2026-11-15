@@ -2,6 +2,8 @@
 the manifest an apply writes, the profile sources it declares and the warnings about values a layer could not set.
 """
 
+from agent_ready_config import format_value
+
 import json
 import os
 
@@ -90,3 +92,12 @@ def print_ignored_configuration(configuration, stream):
         else:
             message = f"{item['key']}={declaration['updates']} was ignored: {reason}"
         write_line(paint(f"WARNING: {message}", "warning", stream), stream)
+
+
+def print_configuration_values(configuration, indent="  "):
+    """Every option with its effective value and the layer it comes from."""
+    values = {key: format_value(configuration.value(key)) or "-" for key in configuration.schema.leaves}
+    key_width = max(len(key) for key in values)
+    value_width = max(len(value) for value in values.values())
+    for key in sorted(values):
+        write_line(f"{indent}{key:<{key_width}}  {values[key]:<{value_width}}  ({configuration.origin(key)})")

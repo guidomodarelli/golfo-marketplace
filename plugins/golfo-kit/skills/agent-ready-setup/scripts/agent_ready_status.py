@@ -208,3 +208,14 @@ def print_status(status, brief):
             write_line(f"  {provider}: {details}")
     for error in status["errors"]:
         write_line(paint(f"ERROR: {error}", "error", stream))
+
+
+def source_report_without_selection(catalog):
+    """Readable state of each declared source when no selection could be evaluated."""
+    report = {}
+    for name, source in sorted(catalog.get("sources", {}).items()):
+        if source["state"] == SOURCE_AVAILABLE:
+            report[name] = f"available ({source['type']} {source['origin']})"
+        else:
+            report[name] = f"not available ({source['type']} {source['origin']}): {source['reason']}"
+    return report

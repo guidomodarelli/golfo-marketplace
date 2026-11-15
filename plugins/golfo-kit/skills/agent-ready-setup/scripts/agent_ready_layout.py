@@ -30,6 +30,7 @@ CENTRALIZATION_RELATIVE_PATH = "assets/instruction-centralization.md"
 RENDERER_RELATIVE_PATH = "scripts/render-instruction-template.sh"
 # Inputs of the rendered instructions that no asset or merged template covers.
 RENDERED_INSTRUCTION_INPUTS = (CLAUDE_PROXY_RELATIVE_PATH, CENTRALIZATION_RELATIVE_PATH, RENDERER_RELATIVE_PATH)
+BROWSER_TOOL_NAME = "browser"
 PROVIDER_CATALOG_RELATIVE_PATH = "assets/providers.json"
 SKILL_NAME = "agent-ready-setup"
 

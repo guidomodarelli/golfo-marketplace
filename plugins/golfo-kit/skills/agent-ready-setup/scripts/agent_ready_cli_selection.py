@@ -40,7 +40,7 @@ from agent_ready_options import (
 from agent_ready_cli_ci import ask_ci_provider, ci_providers, report_ci_next_steps, write_ci_provider
 from agent_ready_cli_trust import change_trusted_sources
 from agent_ready_packs import NAMESPACE_SEPARATOR, SOURCE_TYPE_GIT, parse_profile_sources
-from agent_ready_profiles import EMPTY_SELECTION_TOKEN, selectable_profile_names
+from agent_ready_profiles import EMPTY_SELECTION_TOKEN, resolve_profiles, selectable_profile_names
 from agent_ready_prompts import ask_confirmation, ask_text, can_prompt, equivalent_command
 
 GOLFO_SOURCE_LABEL = "golfo"
@@ -65,7 +65,7 @@ def validate_selection(catalog, names, project_root):
     # An empty selection (none) is the core only.
     excluded = engine().configuration_of(project_root).value(EXCLUDED_DEFAULTS_KEY) or []
     try:
-        engine().resolve_profiles(catalog, names, excluded_defaults=excluded)
+        resolve_profiles(catalog, names, excluded_defaults=excluded)
     except ProfileError as profile_error:
         return str(profile_error)
     return None
