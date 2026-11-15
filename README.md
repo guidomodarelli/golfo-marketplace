@@ -470,9 +470,18 @@ run-evals plugins/<plugin-name>/skills/<skill-name> --repeat 3
 # Override de proveedor (por defecto: auto-detecta Codex o Claude)
 run-evals plugins/<plugin-name>/skills/<skill-name> --provider codex
 
-# Comparar contra una corrida sin skill (opcional; no se evalúa y duplica llamadas)
-run-evals plugins/<plugin-name>/skills/<skill-name> --baseline
+# Correr cada caso también sin la skill y calificar esa respuesta con las mismas aserciones (duplica llamadas)
+run-evals plugins/<plugin-name>/skills/<skill-name> --baseline --repeat 3
 
 # Override persistente de proveedor
 export GOLFO_MARKETPLACE_EVAL_PROVIDER=codex
 ```
+
+Con `--baseline`, el JSONL de cada caso suma `baseline`. Su `status` es `passed` si el caso pasa sin la skill en
+todas las corridas calificadas, y entonces no discrimina: pasaría aunque la skill no aportara nada. Vale `flaky` si
+pasa solo en algunas, `failed` si falla en todas, e `infrastructure` si el provider falló en todas y no hubo nada que
+calificar. El resumen suma `baseline_passed` y `baseline_flaky`, y `--pretty` lista los casos que pasan sin la skill.
+Solo la corrida con la skill decide si un caso pasa.
+
+En Windows (Git Bash, MSYS2 o Cygwin), el prompt nombra la copia de la skill con su ruta de Windows
+(`cygpath -m`), porque el CLI nativo del agente no abre una ruta como `/tmp/tmp.X`.
