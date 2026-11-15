@@ -2,7 +2,7 @@
 
 Pack para un repositorio sin código: escritos y actas de infracción en Markdown. Muestra que
 agent-ready-setup sirve también fuera del software. El contrato completo está en
-`references/profiles-and-lockfile.md`, sección «Profile packs». Para usarlo, copiá esta carpeta a un
+`references/profile-packs.md`. Para usarlo, copiá esta carpeta a un
 repositorio propio y declarala en `.agents/agent-ready.json`:
 
 ```json

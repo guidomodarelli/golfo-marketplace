@@ -20,7 +20,7 @@ que reemplaza al del template (`--skeleton` del renderer). El esqueleto solo se 
   alfabético)
   y, bajo `### Project rules`, por cada rule propia del proyecto. Las rules de
   `rules/workspaces/` son de un workspace de un monorepo: las lista el `AGENTS.md` de su carpeta, no
-  este bloque ([profiles-and-lockfile.md](profiles-and-lockfile.md), «Workspaces»).
+  este bloque ([profiles.md](profiles.md), «Workspaces»).
 
 Una rule propia es cualquier archivo `.md` regular bajo `.agents/rules/` (incluidos
 subdirectorios) sin equivalente en las rules del template; los symlinks se

@@ -16,7 +16,7 @@ description: >-
   descartar un hallazgo de sus revisiones de IA.
 license: MIT
 metadata:
-  version: "1.68.0"
+  version: "1.69.0"
   author: "guponce"
   category: "developer-experience"
   tags: "agent-ready, multi-provider, claude-code, codex, bootstrap, setup, scaffold, context-optimized-v1.20.1"
@@ -73,7 +73,7 @@ el `AGENTS.md` hermano.
 template de `AGENTS.md` salen de un pack de contenido (`sources.golfo`): por defecto el oficial,
 [guidomodarelli/golfo-agent-profiles](https://github.com/guidomodarelli/golfo-agent-profiles), siguiendo `main`,
 que se descarga en la caché del usuario y se compone con este motor
-([references/profiles-and-lockfile.md](references/profiles-and-lockfile.md), «El contenido»). La skill es el
+([references/updates.md](references/updates.md), «El contenido»). La skill es el
 motor: scripts, hooks (`assets/common/hooks/`), los templates de settings, los schemas de configuración, los
 profiles de CI (`assets/ci/`) y las capacidades de los providers.
 
@@ -132,12 +132,12 @@ explícito fuera del cache conservan prioridad para desarrollo local.
 | `agent-ready check [--offline] [--json]` | el chequeo de CI, con sus códigos `0`, `4`, `5`, `6` (conflictos con `ci.conflicts`) y `2` |
 | `agent-ready apply [--profiles a,b \| --stack s] [--updates auto\|pinned] [--recheck] [--dry-run]` | el Step 3 completo; `--recheck` vuelve a revisar `AGENTS.md` con IA aunque la caché tenga la revisión |
 | `agent-ready apply --from-lock [--dry-run]` | aplica exactamente el lock (selección, revisiones y sha256) o falla antes de escribir nombrando la fuente; ver «Apply reproducible» en [profiles-and-lockfile.md](references/profiles-and-lockfile.md) |
-| `agent-ready update [<fuente>...] [--to <ref>] [--dry-run]` | adopta la última revisión de esas fuentes (o de todas) y del contenido (`golfo`); `--to` elige la revisión de una sola, `golfo` incluido ([references/profiles-and-lockfile.md](references/profiles-and-lockfile.md), «El contenido»). `--dry-run` muestra además la versión actual y la nueva, el changelog y los cambios `breaking` («Compatibilidad declarada») |
+| `agent-ready update [<fuente>...] [--to <ref>] [--dry-run]` | adopta la última revisión de esas fuentes (o de todas) y del contenido (`golfo`); `--to` elige la revisión de una sola, `golfo` incluido ([references/updates.md](references/updates.md), «El contenido»). `--dry-run` muestra además la versión actual y la nueva, el changelog y los cambios `breaking` («Compatibilidad declarada» en [references/profile-packs.md](references/profile-packs.md)) |
 | `agent-ready config explain\|get\|set\|unset` | la configuración efectiva por capas ([references/configuration.md](references/configuration.md)) |
 | `agent-ready preset [delivered\|none]` | elige un preset con una sola clave o los lista; `delivered` deja una solución entregada estable hasta que alguien decida actualizarla ([references/stable-delivery.md](references/stable-delivery.md)) |
 | `agent-ready init [--profiles a,b \| --stack s] [--updates m] [--ci-provider p] [--yes] [--no-input]` | primera configuración: detecta, pregunta lo que falta si hay terminal (también el proveedor de CI) y aplica |
 | `agent-ready profiles list\|add\|remove` | la selección del manifest, validada contra el catálogo; después, `apply` |
-| `agent-ready workspaces list\|add\|remove` | los workspaces de un monorepo, validados antes de escribir; `list` muestra los que sugiere la detección y `add` sin profiles toma el stack que detecta en la carpeta; después, `apply` ([references/profiles-and-lockfile.md](references/profiles-and-lockfile.md), «Workspaces») |
+| `agent-ready workspaces list\|add\|remove` | los workspaces de un monorepo, validados antes de escribir; `list` muestra los que sugiere la detección y `add` sin profiles toma el stack que detecta en la carpeta; después, `apply` ([references/profiles.md](references/profiles.md), «Workspaces») |
 | `agent-ready sources list\|add\|remove` | las fuentes de packs del manifest; `add` además la trae a la caché |
 | `agent-ready doctor [--offline] [--json]` | revisa Git, Bash, Python, la CLI del provider, la configuración, las fuentes, el motor que piden el contenido y cada pack (`minEngine`) y los hooks, y dice cómo arreglar lo que falta |
 | `agent-ready remove [--dry-run] [--yes]` | saca agent-ready-setup del repo y conserva lo que escribió el proyecto |
@@ -151,7 +151,7 @@ Ante «los hooks no corren», «el sync no hace nada» o una máquina nueva, cor
 reinstalar. Para sacar agent-ready-setup, mostrar `agent-ready remove --dry-run` y, con la
 confirmación del usuario, correr `agent-ready remove --yes`. Nunca borrar `.agents/`, `.claude/`
 o el `AGENTS.md` a mano: ahí también viven las rules propias, el contenido del proyecto fuera del
-bloque gestionado y los cambios locales, que `remove` conserva (sección 7 de
+bloque gestionado y los cambios locales, que `remove` conserva («Operaciones» en
 [references/profiles-and-lockfile.md](references/profiles-and-lockfile.md)).
 
 `/agent-ready-setup status`, `/agent-ready-setup plan` y `/agent-ready-setup config` corren
@@ -208,8 +208,7 @@ cualquier stack.
 
 Las señales y sus prioridades viven en el catálogo del pack de contenido (`agent-ready-pack.json`); el evaluador, en
 `scripts/agent_ready_detection.py`. Leer
-[references/profiles-and-lockfile.md](references/profiles-and-lockfile.md) (sección
-«Detección») para explicar un resultado o los formatos de Gradle reconocidos.
+[references/detection.md](references/detection.md) para explicar un resultado o los formatos de Gradle reconocidos.
 
 Si detección tiene éxito, confirmar:
 
@@ -233,7 +232,7 @@ tecnologías que golfo-kit no tiene (`beam/elixir` en `assets/examples/elixir-st
 y su sección de `AGENTS.md`. Un repo sin código usa el mismo mecanismo: `assets/examples/estudio-juridico-pack/`
 publica un stack de dominio que se detecta por carpetas (`actas/**`) y una capability con rules y una
 skill para redactar actas, sin `software-development`.
-Leer [references/profiles-and-lockfile.md](references/profiles-and-lockfile.md) (sección «Profile packs»)
+Leer [references/profile-packs.md](references/profile-packs.md)
 para declarar una fuente, explicar una colisión o un `Evaluation incomplete`;
 `assets/examples/acme-profile-pack/` es un pack mínimo. Para publicar un pack con CLIs, servidores MCP o
 scripts, personal o corporativo firmado, leer

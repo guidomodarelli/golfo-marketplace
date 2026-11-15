@@ -4,7 +4,7 @@ Cómo publicar un profile pack que, además de rules y skills, trae CLIs, servid
 cómo lo adopta un proyecto personal o una empresa. Leer al armar un pack así o al explicar cómo
 adoptarlo. El formato de las declaraciones y la política que decide si cada herramienta corre están en
 [pack-tools.md](pack-tools.md); el contrato de los packs, en
-[profiles-and-lockfile.md](profiles-and-lockfile.md) (sección «Profile packs»).
+[profile-packs.md](profile-packs.md).
 
 ## Contenido
 

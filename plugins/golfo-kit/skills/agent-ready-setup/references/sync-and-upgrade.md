@@ -4,8 +4,8 @@ Antes de cualquier escritura, el hook valida la configuración efectiva (todas l
 [configuration.md](configuration.md)). Con `updates.mode: pinned` o `AGENT_READY_SETUP_REVIEW_MODE=1`
 solo informa el estado y termina sin escribir; con `updates.enabled: false` no hace nada. Con
 `updates.mode: auto` (el default), SessionStart lanza lo de abajo desacoplado y no hace esperar a la
-sesión; lo de abajo describe un apply (bootstrap, o esa sincronización). Manifest, lockfile, profiles y
-ownership: [profiles-and-lockfile.md](profiles-and-lockfile.md).
+sesión; lo de abajo describe un apply (bootstrap, o esa sincronización). Manifest, lockfile y
+ownership: [profiles-and-lockfile.md](profiles-and-lockfile.md); profiles: [profiles.md](profiles.md).
 
 El upgrade del marketplace usa la CLI del provider activo
 (`claude plugin marketplace update golfo-marketplace` o
@@ -137,7 +137,7 @@ conserva el upgrade global y muestra cómo indicar `AGENT_READY_SETUP_SKILL_DIR`
 `--stack react|nextjs|nextjs-app-router|node|java|go|android` o `--profiles <a,b>`. Sin flags, el hook usa los
 profiles del manifest y solo detecta el stack cuando no hay manifest, con el mismo
 evaluador que bootstrap: si la detección es ambigua, lista las coincidencias y omite la
-proyección (ver «Detección» en [profiles-and-lockfile.md](profiles-and-lockfile.md)).
+proyección (ver [detection.md](detection.md)).
 `AGENT_READY_SETUP_STACK=<stack>` y `AGENT_READY_SETUP_PROFILES=<a,b>` equivalen a
 las flags (las flags tienen precedencia). En un repositorio `pinned`, solo las
 flags `--stack` o `--profiles` en la línea de comandos convierten el chequeo en
