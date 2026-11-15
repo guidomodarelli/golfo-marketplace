@@ -156,6 +156,7 @@ skip_without_symlinks() {
   fi
 }
 
+# bats test_tags=area:instructions-root
 @test "normalize-instructions entry point normalizes instructions without projecting assets" {
   printf '%s\n' '# Project instructions' > CLAUDE.md
   mkdir -p docs
@@ -178,6 +179,7 @@ skip_without_symlinks() {
   [[ "$output" == *"Unknown argument: --normalize-only"* ]]
 }
 
+# bats test_tags=area:session-start
 @test "SessionStart sync migrates browser MCP registrations from the existing installation" {
   source_dir="$test_root/browser-skill"
   cp -R "$skill_dir" "$source_dir"
@@ -217,6 +219,7 @@ EOF
   [[ "$output" != *"install pinned browser packages"* ]]
 }
 
+# bats test_tags=area:session-start
 @test "SessionStart sync starts the background browser install when no installation exists" {
   source_dir="$test_root/background-skill"
   cp -R "$skill_dir" "$source_dir"
@@ -260,6 +263,7 @@ EOF
   [[ "$output" == *"no complete browser installation"* ]]
 }
 
+# bats test_tags=area:session-start
 @test "SessionStart sync skips browser registration when browser setup is disabled" {
   run_bootstrap react
   [ "$status" -eq 0 ]
@@ -272,6 +276,7 @@ EOF
   [[ "$output" != *"Browser registration"* ]]
 }
 
+# bats test_tags=area:session-start
 @test "SessionStart sync keeps stdout empty and reports progress on stderr for both providers" {
   bats_require_minimum_version 1.5.0
   source_dir="$test_root/dynamic-skill"
@@ -305,6 +310,7 @@ EOF
   done
 }
 
+# bats test_tags=area:session-start
 @test "SessionStart sync preserves upgrade failures without writing stdout" {
   bats_require_minimum_version 1.5.0
   cat > "$fake_bin/codex" <<'EOF'
@@ -323,6 +329,7 @@ EOF
   [ ! -f "$XDG_CACHE_HOME/agent-ready-setup/marketplace-upgrade-codex.stamp" ]
 }
 
+# bats test_tags=area:cli
 @test "bootstrap keeps stdout empty and reports installed assets on stderr for both providers" {
   bats_require_minimum_version 1.5.0
   for provider in claude codex; do
@@ -337,6 +344,7 @@ EOF
   done
 }
 
+# bats test_tags=area:cli
 @test "bootstrap reports invalid arguments on stderr without writing stdout" {
   bats_require_minimum_version 1.5.0
   run --separate-stderr bash "$skill_dir/scripts/bootstrap.sh" --stack
@@ -358,6 +366,7 @@ sys.exit(0 if "\n".join(lines[start + 1:end]) + "\n" == template else 1)
 PY
 }
 
+# bats test_tags=area:pr-template
 @test "bootstrap installs shared GitHub PR template for every stack" {
   for stack in react node java go android; do
     run_bootstrap "$stack"
@@ -369,6 +378,7 @@ PY
   done
 }
 
+# bats test_tags=area:pr-template
 @test "bootstrap adds its block to an existing PR template and preserves other GitHub files" {
   mkdir -p .github
   printf '%s\n' 'Existing template' > .github/pull_request_template.md
@@ -383,6 +393,7 @@ PY
   cmp -s .github/CODEOWNERS "$test_root/expected-owners"
 }
 
+# bats test_tags=area:pr-template
 @test "marketplace sync restores PR template and hook progress for both providers" {
   run_bootstrap react
   [ "$status" -eq 0 ]
@@ -407,6 +418,7 @@ PY
   done
 }
 
+# bats test_tags=area:pr-template
 @test "PR template projection preserves symlinked GitHub directory" {
   skip_without_symlinks
   mkdir "$test_root/external-github"
@@ -424,6 +436,7 @@ PY
   cmp -s .github/pull_request_template.md "$test_root/expected-template"
 }
 
+# bats test_tags=area:pr-template
 @test "PR template block leaves a symlinked template and its target alone" {
   skip_without_symlinks
   mkdir .github
@@ -444,6 +457,7 @@ PY
   done
 }
 
+# bats test_tags=area:projection
 @test "bootstrap projects Claude, shared, and Codex trees" {
   run_bootstrap react
 
@@ -497,6 +511,7 @@ PY
   [[ "$output" == *"Providers: Claude Code + Codex-compatible shared tree"* ]]
 }
 
+# bats test_tags=area:projection
 @test "sync removes stale Claude symlink views" {
   skip_without_symlinks
   run_bootstrap react
@@ -513,6 +528,7 @@ PY
   [[ "$output" == *"Removed stale managed assets:"* ]]
 }
 
+# bats test_tags=area:settings
 @test "sync preserves custom Claude settings" {
   run_bootstrap react
   [ "$status" -eq 0 ]
@@ -530,6 +546,7 @@ PY
   jq -e '.hooks.PostToolUse[0].hooks | index({"type":"command","command":"bash .agents/hooks/custom-project-hook.sh"})' .claude/settings.json >/dev/null
 }
 
+# bats test_tags=area:settings
 @test "sync preserves custom settings array entries without other custom keys" {
   run_bootstrap react
   [ "$status" -eq 0 ]
@@ -545,6 +562,7 @@ PY
   jq -e '.permissions.allow | index("Bash(.agents/hooks/sync-marketplace.sh --provider claude)")' .claude/settings.json >/dev/null
 }
 
+# bats test_tags=area:settings
 @test "sync preserves custom settings array entries inserted before managed entries" {
   run_bootstrap react
   [ "$status" -eq 0 ]
@@ -564,6 +582,7 @@ PY
   jq -e '.hooks.PostToolUse[0].hooks | map(select(.type == "command" and .command == "bash .agents/hooks/check-harness-consistency.sh")) | length == 1' .claude/settings.json >/dev/null
 }
 
+# bats test_tags=area:settings
 @test "sync preserves replaced custom settings entries with equal length" {
   run_bootstrap react
   [ "$status" -eq 0 ]
@@ -586,6 +605,7 @@ PY
   jq -e '[.hooks.PostToolUse[].hooks[]] | map(select(.type == "command" and .command == "bash .agents/hooks/check-harness-consistency.sh")) | length == 1' .claude/settings.json >/dev/null
 }
 
+# bats test_tags=area:autonomous-sync
 @test "autonomous sync merges custom Claude settings before instruction merge" {
   dynamic_skill_dir="$test_root/dynamic-skill"
   cp -R "$skill_dir" "$dynamic_skill_dir"
@@ -617,6 +637,7 @@ PY
   jq -e '.hooks.PostToolUse[0].hooks | map(select(.type == "command" and .command == "bash .agents/hooks/check-harness-consistency.sh")) | length == 1' .claude/settings.json >/dev/null
 }
 
+# bats test_tags=area:autonomous-sync
 @test "autonomous sync replaces identical and edited Claude copies with managed views" {
   dynamic_skill_dir="$test_root/dynamic-skill"
   cp -R "$skill_dir" "$dynamic_skill_dir"
@@ -644,6 +665,7 @@ PY
   [[ "$output" == *".claude/rules/react-security.md -> managed view"* ]]
 }
 
+# bats test_tags=area:instructions-nested
 @test "autonomous sync normalizes CLAUDE.md under .claude and is idempotent" {
   dynamic_skill_dir="$test_root/dynamic-skill"
   cp -R "$skill_dir" "$dynamic_skill_dir"
@@ -675,6 +697,7 @@ EOF
   [ "$(shasum .claude/AGENTS.md | cut -d ' ' -f 1)" = "$agents_hash_before" ]
 }
 
+# bats test_tags=area:instructions-nested
 @test "sync hook discovers provider CLAUDE.md from nested cwd" {
   dynamic_skill_dir="$test_root/dynamic-skill"
   cp -R "$skill_dir" "$dynamic_skill_dir"
@@ -698,6 +721,7 @@ EOF
   [ "$(cat .claude/CLAUDE.md)" = '@AGENTS.md' ]
 }
 
+# bats test_tags=area:claude-views
 @test "identical legacy Claude copies become canonical symlinks" {
   run_bootstrap react
   [ "$status" -eq 0 ]
@@ -713,6 +737,7 @@ EOF
   [[ "$output" == *".claude/rules/react-security.md -> managed view"* ]]
 }
 
+# bats test_tags=area:claude-views
 @test "edited Claude copies of managed rules are replaced with managed views" {
   run_bootstrap react
   [ "$status" -eq 0 ]
@@ -728,6 +753,7 @@ EOF
   [[ "$output" == *".claude/rules/react-security.md -> managed view"* ]]
 }
 
+# bats test_tags=area:adapters
 @test "nested skills receive valid Codex adapters with their directory names" {
   # nextjs requires react: the skills of both layers are projected.
   run_bootstrap nextjs
@@ -752,6 +778,7 @@ EOF
   [ ! -e .agents/skills/EXAMPLES/SKILL.md ]
 }
 
+# bats test_tags=area:browser-rule
 @test "browser rule is discoverable through both providers for every stack" {
   for provider in claude codex; do
     for stack in react go java node android; do
@@ -773,6 +800,7 @@ EOF
   done
 }
 
+# bats test_tags=area:stacks
 @test "common rules and skill adapters are projected verbatim for every stack" {
   for stack in react go java node android; do
     stack_project="$test_root/$stack-adapters"
@@ -809,6 +837,7 @@ EOF
   done
 }
 
+# bats test_tags=area:projection
 @test "skill, agent, and command templates declare provider frontmatter" {
   while IFS= read -r template; do
     case "$template" in
@@ -822,6 +851,7 @@ EOF
   done < <(find "$content_pack/stacks" -type f \( -path '*/skills/*/SKILL.md' -o -path '*/agents/*.md' -o -path '*/commands/*.md' \))
 }
 
+# bats test_tags=area:adapters
 @test "Claude registers each agent and command once while Codex keeps its adapter" {
   source_dir="$test_root/dynamic-skill"
   cp -R "$skill_dir" "$source_dir"
@@ -844,6 +874,7 @@ EOF
   assert_claude_view .claude/skills/component-creation/SKILL.md
 }
 
+# bats test_tags=area:adapters
 @test "sync removes duplicate Claude skill views of agents and commands, even when edited" {
   skip_without_symlinks
   source_dir="$test_root/dynamic-skill"
@@ -867,6 +898,7 @@ EOF
   [[ "$output" == *"  - .claude/skills/lint-reviewer/SKILL.md"* ]]
 }
 
+# bats test_tags=area:claude-views
 @test "sync links project rules for Claude and prunes views of deleted ones" {
   source_dir="$test_root/dynamic-skill"
   cp -R "$skill_dir" "$source_dir"
@@ -896,6 +928,7 @@ EOF
   assert_claude_view .claude/rules/react-security.md
 }
 
+# bats test_tags=area:adapters
 @test "sync hook replaces placeholder adapter descriptions from older projections" {
   source_dir="$test_root/dynamic-skill"
   cp -R "$skill_dir" "$source_dir"
@@ -919,6 +952,7 @@ EOF
   [[ "$output" == *"↻ .agents/skills/karpathy-guidelines/SKILL.md"* ]]
 }
 
+# bats test_tags=area:stacks
 @test "stacks without react assets project common rules, hooks, and settings for every provider" {
   for stack in go java node android; do
     stack_project="$test_root/$stack-project"
@@ -951,6 +985,7 @@ EOF
   done
 }
 
+# bats test_tags=area:projection
 @test "second bootstrap is idempotent and preserves generated files" {
   run_bootstrap node
   [ "$status" -eq 0 ]
@@ -966,6 +1001,7 @@ EOF
   [[ "$output" == *"Already existed (skipped):"* ]]
 }
 
+# bats test_tags=area:instructions-root
 @test "existing CLAUDE instructions migrate to AGENTS and become proxy" {
   cat > CLAUDE.md <<'EOF'
 # Existing project instructions
@@ -981,6 +1017,7 @@ EOF
   [[ "$output" == *"Normalized instructions:"* ]]
 }
 
+# bats test_tags=area:instructions-root
 @test "proxy CLAUDE leaves existing AGENTS unchanged" {
   cat > AGENTS.md <<'EOF'
 # Canonical instructions
@@ -996,6 +1033,7 @@ EOF
   cmp -s CLAUDE.md "$skill_dir/assets/claude-proxy.md"
 }
 
+# bats test_tags=area:instructions-root
 @test "normalized root CLAUDE proxy and existing AGENTS are preserved" {
   cat > AGENTS.md <<'EOF'
 # Canonical instructions
@@ -1010,6 +1048,7 @@ EOF
   [ "$(cat AGENTS.md)" = '# Canonical instructions' ]
 }
 
+# bats test_tags=area:instructions-root
 @test "orphaned normalized root CLAUDE proxy recreates canonical AGENTS" {
   cp "$skill_dir/assets/claude-proxy.md" CLAUDE.md
 
@@ -1022,6 +1061,7 @@ EOF
   cmp -s CLAUDE.md "$skill_dir/assets/claude-proxy.md"
 }
 
+# bats test_tags=area:instructions-nested
 @test "nested instruction pairs normalize recursively" {
   mkdir -p service packages/api
   cat > service/CLAUDE.md <<'EOF'
@@ -1046,6 +1086,7 @@ EOF
   grep -Fq 'Keep API changes backwards compatible.' packages/api/AGENTS.md
 }
 
+# bats test_tags=area:instructions-nested
 @test "a nested CLAUDE.md that only imports its AGENTS.md is the nested proxy and stays as it is" {
   mkdir -p service
   printf '%s\n' '@AGENTS.md' > service/CLAUDE.md
@@ -1058,6 +1099,7 @@ EOF
   grep -Fq '# Canonical service instructions' service/AGENTS.md
 }
 
+# bats test_tags=area:instructions-nested
 @test "a nested copy of the root proxy becomes the import alone and gets an empty canonical sibling" {
   mkdir -p service
   cp "$skill_dir/assets/claude-proxy.md" service/CLAUDE.md
@@ -1070,6 +1112,7 @@ EOF
   [ "$(cat service/CLAUDE.md)" = '@AGENTS.md' ]
 }
 
+# bats test_tags=area:instructions-root
 @test "provider configuration CLAUDE.md gets a sibling AGENTS.md and exact proxy" {
   mkdir -p .claude
   cat > .claude/CLAUDE.md <<'EOF'
@@ -1088,6 +1131,7 @@ EOF
   [[ "$output" == *".claude/CLAUDE.md -> .claude/AGENTS.md"* ]]
 }
 
+# bats test_tags=area:instructions-root
 @test "instruction normalization uses Git root when invoked from nested directory" {
   mkdir -p .claude
   cat > .claude/CLAUDE.md <<'EOF'
@@ -1104,6 +1148,7 @@ EOF
   [ "$(cat .claude/CLAUDE.md)" = '@AGENTS.md' ]
 }
 
+# bats test_tags=area:instructions-edge
 @test "case-variant instruction filenames normalize recursively" {
   cat > Claude.md <<'EOF'
 # Root instructions
@@ -1135,6 +1180,7 @@ EOF
   [[ "$output" == *"services/api/v1/claude.MD -> services/api/v1/CLAUDE.md"* ]]
 }
 
+# bats test_tags=area:instructions-edge
 @test "case-variant rename preserves a concurrent canonical destination" {
   mkdir -p service
   printf '%s\n' '# Original instructions' > service/Claude.md
@@ -1168,6 +1214,7 @@ EOF
   fi
 }
 
+# bats test_tags=area:instructions-edge
 @test "ignored case-variant instruction filenames remain untouched" {
   printf '%s\n' 'node_modules/' > .gitignore
   mkdir -p node_modules/example-package
@@ -1183,6 +1230,7 @@ EOF
   [ ! -e node_modules/example-package/AGENTS.md ]
 }
 
+# bats test_tags=area:cli
 @test "rejects bootstrap outside a Git worktree" {
   non_git_project="$test_root/non-git-project"
   mkdir -p "$non_git_project"
@@ -1194,6 +1242,7 @@ EOF
   [[ "$output" == *"bootstrap must run inside a Git worktree"* ]]
 }
 
+# bats test_tags=area:instructions-edge
 @test "ignored node_modules instructions remain untouched" {
   printf '%s\n' 'node_modules/' > .gitignore
   mkdir -p node_modules/example-package
@@ -1206,6 +1255,7 @@ EOF
   [ "$(cat node_modules/example-package/CLAUDE.md)" = '# Dependency instructions' ]
 }
 
+# bats test_tags=area:instructions-edge
 @test "gitignored nested instruction pairs remain untouched" {
   mkdir -p generated/api
   printf '%s\n' 'generated/' > .gitignore
@@ -1219,6 +1269,7 @@ EOF
   [ "$(cat generated/api/CLAUDE.md)" = '# Generated instructions' ]
 }
 
+# bats test_tags=area:instructions-edge
 @test "tracked instructions under ignored directories remain normalizable" {
   mkdir -p node_modules/tracked-package
   printf '%s\n' 'node_modules/' > .gitignore
@@ -1233,6 +1284,7 @@ EOF
   [ "$(cat node_modules/tracked-package/AGENTS.md)" = '# Tracked instructions' ]
 }
 
+# bats test_tags=area:instructions-edge
 @test "provider destinations are created when ignored by Git" {
   printf '%s\n' '.claude/' '.agents/' '.codex/' > .gitignore
   git -c init.defaultBranch=main init -q .
@@ -1245,6 +1297,7 @@ EOF
   [ -f .codex/hooks.json ]
 }
 
+# bats test_tags=area:instructions-root
 @test "identical instruction files collapse to canonical AGENTS" {
   cat > AGENTS.md <<'EOF'
 # Shared instructions
@@ -1262,6 +1315,7 @@ EOF
   [[ "$output" == *"Normalized instructions:"* ]]
 }
 
+# bats test_tags=area:instructions-root
 @test "different instruction files report conflict without overwriting" {
   cat > AGENTS.md <<'EOF'
 # Canonical instructions
@@ -1279,6 +1333,7 @@ EOF
   [[ "$output" == *"agent must merge compatible instructions before normalizing"* ]]
 }
 
+# bats test_tags=area:instructions-edge
 @test "rejects symlinked provider roots before writing assets" {
   skip_without_symlinks
   for provider_root in .claude .agents .codex; do
@@ -1297,6 +1352,7 @@ EOF
   done
 }
 
+# bats test_tags=area:instructions-edge
 @test "rejects symlinked provider subdirectories before writing assets" {
   skip_without_symlinks
   outside_root="$test_root/outside-rules"
@@ -1327,6 +1383,7 @@ EOF
   export PROVIDER_INPUT_LOG="$test_root/provider-input.log"
 }
 
+# bats test_tags=area:harness-hooks
 @test "harness hooks review the pairs of an edited rule in Claude and shared-agent paths" {
   write_logging_claude
   hook="$skill_dir/assets/common/hooks/check-harness-consistency.sh"
@@ -1355,6 +1412,7 @@ EOF
   [[ "$output" == *".claude modified"*"reviewing 2 of 2 pairs with claude"* ]]
 }
 
+# bats test_tags=area:harness-hooks
 @test "harness hooks build the prompt from the files on disk, never from payload paths" {
   write_logging_claude
   mkdir -p .agents/rules
@@ -1374,6 +1432,7 @@ EOF
   ! grep -Fq 'INJECTED' "$PROVIDER_INVOCATION_LOG"
 }
 
+# bats test_tags=area:harness-hooks
 @test "harness hooks ignore unrelated paths" {
   write_logging_claude
 
@@ -1384,6 +1443,7 @@ EOF
 }
 
 
+# bats test_tags=area:codex-hooks
 @test "Codex hooks install at discoverable project path on bootstrap and sync" {
   for stack in react node java go android; do
     rm -f .codex/hooks.json
@@ -1419,6 +1479,7 @@ EOF
   export CODEX_INVOCATION_LOG="$test_root/codex-invocation.log"
 }
 
+# bats test_tags=area:harness-hooks
 @test "Codex patches review the installed hook once per root with edited documents" {
   write_logging_codex
   patch='*** Begin Patch
@@ -1458,6 +1519,7 @@ EOF
   done
 }
 
+# bats test_tags=area:harness-hooks
 @test "Codex patches detect move destinations without reading hunk content as paths" {
   run_bootstrap node
   [ "$status" -eq 0 ]
@@ -1478,6 +1540,7 @@ EOF
   grep -Eq '/project/\.agents$' "$CODEX_INVOCATION_LOG"
 }
 
+# bats test_tags=area:harness-hooks
 @test "harness hooks ignore malformed payloads and unrelated Codex patches" {
   run_bootstrap go
   [ "$status" -eq 0 ]
@@ -1498,6 +1561,7 @@ EOF
   done
 }
 
+# bats test_tags=area:cli
 @test "rejects unsupported stack and missing arguments" {
   run bash "$skill_dir/scripts/bootstrap.sh" --stack 'Not A Stack' --skill-dir "$skill_dir" --provider claude
   [ "$status" -ne 0 ]
@@ -1513,6 +1577,7 @@ EOF
   # Without a selection or a stack signal there is no error: the core applies (agent-ready-detection.bats).
 }
 
+# bats test_tags=area:cli
 @test "bootstrap infers Codex from installed skill path without provider override" {
   codex_home="$test_root/codex-home"
   codex_skill_dir="$codex_home/.codex/skills/agent-ready-setup"
@@ -1536,6 +1601,7 @@ EOF
   [ -f .codex/hooks.json ]
 }
 
+# bats test_tags=area:cli
 @test "bootstrap rejects ambiguous skill path without provider override" {
   run env -u AGENT_READY_SETUP_ACTIVE_PROVIDER PATH="$test_root/bin:$PATH" \
     bash "$skill_dir/scripts/bootstrap.sh" \
@@ -1546,6 +1612,7 @@ EOF
   [ ! -e AGENTS.md ]
 }
 
+# bats test_tags=area:marketplace-upgrade
 @test "bootstrap upgrades marketplace before projecting all provider trees" {
   invocation_log="$test_root/marketplace-invocation.log"
   cat > "$test_root/bin/claude" <<'EOF'
@@ -1568,6 +1635,7 @@ EOF
   [[ "$output" == *"[marketplace-bootstrap] Upgrade del marketplace completado."* ]]
 }
 
+# bats test_tags=area:marketplace-upgrade
 @test "bootstrap upgrades marketplace for Codex when provider is explicit" {
   invocation_log="$test_root/marketplace-invocation.log"
   cat > "$test_root/bin/codex" <<'EOF'
@@ -1586,6 +1654,7 @@ EOF
   [ -f .codex/hooks.json ]
 }
 
+# bats test_tags=area:marketplace-upgrade
 @test "sync hook reuses a marketplace upgrade from the last hour unless forced" {
   source_dir="$test_root/dynamic-skill"
   cp -R "$skill_dir" "$source_dir"
@@ -1621,6 +1690,7 @@ EOF
   [ "$(wc -l < "$upgrade_log" | tr -d ' ')" -eq 3 ]
 }
 
+# bats test_tags=area:marketplace-upgrade
 @test "failed marketplace upgrade does not open the upgrade window" {
   cat > "$fake_bin/claude" <<'EOF'
 #!/bin/bash
@@ -1634,6 +1704,7 @@ EOF
   [ ! -e "$XDG_CACHE_HOME/agent-ready-setup/marketplace-upgrade-claude.stamp" ]
 }
 
+# bats test_tags=area:marketplace-upgrade
 @test "bootstrap stops before projection when marketplace upgrade fails" {
   cat > "$test_root/bin/claude" <<'EOF'
 #!/bin/bash
@@ -1653,6 +1724,7 @@ EOF
   [ -z "$(find .agents -type f -print -quit 2>/dev/null)" ]
 }
 
+# bats test_tags=area:sync-hook-cache
 @test "common sync hook passes provider and infers Codex from canonical path" {
   fake_bin="$test_root/bin"
   invocation_log="$test_root/marketplace-invocation.log"
@@ -1696,6 +1768,7 @@ EOF
   [ "$status" -eq 0 ]
 }
 
+# bats test_tags=area:cli
 @test "sync hook rejects removed phase flags" {
   for removed_flag in --sync --update --sync-instructions --merge-instructions --yes; do
     run bash "$skill_dir/assets/common/hooks/sync-marketplace.sh" \
@@ -1706,6 +1779,7 @@ EOF
   done
 }
 
+# bats test_tags=area:cli
 @test "sync hook rejects invalid reexecution guards" {
   for guard in AGENT_READY_SETUP_MARKETPLACE_UPGRADED AGENT_READY_SETUP_SYNC_LOCK_HELD; do
     run env "$guard=invalid" PATH="$test_root/bin:$PATH" \
@@ -1716,6 +1790,7 @@ EOF
   done
 }
 
+# bats test_tags=area:managed-assets
 @test "bootstrap shows diffs and updates changed managed assets without prompting" {
   run_bootstrap react
   [ "$status" -eq 0 ]
@@ -1731,6 +1806,7 @@ EOF
   [[ "$output" != *"Replace .agents/rules/react-security.md with the template?"* ]]
 }
 
+# bats test_tags=area:managed-assets
 @test "bootstrap updates managed assets and preserves root instructions" {
   run_bootstrap react
   [ "$status" -eq 0 ]
@@ -1748,6 +1824,7 @@ EOF
   [[ "$output" == *"Updated from templates:"* ]]
 }
 
+# bats test_tags=area:managed-assets
 @test "sync updates managed provider assets" {
   run_bootstrap react
   [ "$status" -eq 0 ]
@@ -1778,6 +1855,7 @@ EOF
   jq -e '[.hooks.SessionStart[].hooks[].command] | index("bash .agents/hooks/updated-sync.sh") != null' .codex/hooks.json >/dev/null
 }
 
+# bats test_tags=area:managed-assets
 @test "bootstrap detects managed destination changes before atomic rename" {
   run_bootstrap react
   [ "$status" -eq 0 ]
@@ -1805,6 +1883,7 @@ EOF
   [[ "$output" == *".agents/rules/react-security.md changed during synchronization; neither was changed"* ]]
 }
 
+# bats test_tags=area:cli
 @test "bootstrap rejects removed sync and confirmation flags" {
   for removed_flag in --sync --update --yes; do
     run bash "$skill_dir/scripts/bootstrap.sh" --stack node --skill-dir "$skill_dir" --provider claude "$removed_flag"
@@ -1814,6 +1893,7 @@ EOF
   done
 }
 
+# bats test_tags=area:managed-assets
 @test "symlinked managed assets are replaced without touching their target" {
   skip_without_symlinks
   outside_file="$test_root/outside-security.md"
@@ -1833,6 +1913,7 @@ EOF
   [[ "$output" == *".agents/rules/node-security.md (symlink replaced with template)"* ]]
 }
 
+# bats test_tags=area:managed-assets
 @test "a symlink to a directory at a managed path cannot redirect the write" {
   skip_without_symlinks
   outside_directory="$test_root/outside-directory"
@@ -1851,6 +1932,7 @@ EOF
   [ -z "$(ls -A "$outside_directory")" ]
 }
 
+# bats test_tags=area:managed-assets
 @test "a directory at a managed path is preserved and reported" {
   run_bootstrap node
   [ "$status" -eq 0 ]
@@ -1865,6 +1947,7 @@ EOF
   [[ "$output" == *".agents/rules/node-security.md is not a regular file"* ]]
 }
 
+# bats test_tags=area:skill-source
 @test "bootstrap re-resolves replaced versioned marketplace cache after upgrade" {
   fake_bin="$test_root/bin"
   cache_root="$test_root/.claude/plugins/cache/golfo-marketplace/golfo-kit"
@@ -1890,6 +1973,7 @@ EOF
   grep -Fq '# Updated marketplace template' .agents/hooks/check-harness-consistency.sh
 }
 
+# bats test_tags=area:skill-source
 @test "bootstrap ignores higher versions from another plugin cache" {
   cache_root="$test_root/.claude/plugins/cache/golfo-marketplace"
   target_source="$cache_root/golfo-kit/1.9.0/skills/agent-ready-setup"
@@ -1916,6 +2000,7 @@ EOF
   ! grep -Fxq '# unrelated template' .agents/hooks/check-harness-consistency.sh
 }
 
+# bats test_tags=area:skill-source
 @test "resolvers select highest semantic cache version for Claude and Codex" {
   for provider in claude codex; do
     cache_root="$test_root/.$provider/plugins/cache/golfo-marketplace/golfo-kit"
@@ -1959,6 +2044,7 @@ EOF
   done
 }
 
+# bats test_tags=area:sync-hook-cache
 @test "sync hook prefers newest semantic cache over active old source" {
   for provider in claude codex; do
     provider_root="$test_root/.$provider"
@@ -2030,6 +2116,7 @@ EOF
   printf '%s\n' "$cache_source"
 }
 
+# bats test_tags=area:sync-hook-cache
 @test "sync hook projects upgraded marketplace snapshot before plugin cache update" {
   claude_snapshot="$test_root/claude-marketplace"
   codex_snapshot="$test_root/.codex/.tmp/marketplaces/golfo-marketplace"
@@ -2054,6 +2141,7 @@ EOF
   done
 }
 
+# bats test_tags=area:sync-hook-codex
 @test "sync hook reads Codex local marketplace source from config" {
   local_snapshot="$test_root/local-marketplace"
   mkdir -p "$test_root/.codex"
@@ -2104,6 +2192,7 @@ FAKE
   chmod +x "$test_root/bin/codex"
 }
 
+# bats test_tags=area:marketplace-upgrade
 @test "bootstrap skips Codex upgrade for a local marketplace and projects its source" {
   invocation_log="$test_root/marketplace-invocation.log"
   local_snapshot="$test_root/local-marketplace"
@@ -2123,6 +2212,7 @@ FAKE
   grep -Fxq '# local snapshot template' .agents/hooks/check-harness-consistency.sh
 }
 
+# bats test_tags=area:marketplace-upgrade
 @test "bootstrap upgrades a Codex Git marketplace" {
   invocation_log="$test_root/marketplace-invocation.log"
   write_codex_marketplace_config git 'source = "https://example.invalid/golfo-marketplace.git"'
@@ -2137,6 +2227,7 @@ FAKE
   [[ "$output" == *"[marketplace-bootstrap] Upgrade del marketplace completado."* ]]
 }
 
+# bats test_tags=area:sync-hook-codex
 @test "sync hook skips Codex upgrade for a local marketplace with a literal source" {
   invocation_log="$test_root/marketplace-invocation.log"
   local_snapshot="$test_root/local-marketplace"
@@ -2159,6 +2250,7 @@ FAKE
 
 # CODEX_HOME outside $HOME/.codex is the home Codex uses; a local marketplace
 # configured there must skip the Git-only upgrade.
+# bats test_tags=area:sync-hook-codex
 @test "sync hook honors CODEX_HOME for a local marketplace" {
   invocation_log="$test_root/marketplace-invocation.log"
   custom_codex_home="$test_root/custom-codex-home"
@@ -2181,6 +2273,7 @@ CONFIG
   grep -Fxq '# local snapshot template' .agents/hooks/check-harness-consistency.sh
 }
 
+# bats test_tags=area:marketplace-upgrade
 @test "bootstrap honors CODEX_HOME for a local marketplace" {
   invocation_log="$test_root/marketplace-invocation.log"
   custom_codex_home="$test_root/custom-codex-home"
@@ -2203,6 +2296,7 @@ CONFIG
   grep -Fxq '# local snapshot template' .agents/hooks/check-harness-consistency.sh
 }
 
+# bats test_tags=area:sync-hook-codex
 @test "sync hook upgrades a Codex Git marketplace" {
   invocation_log="$test_root/marketplace-invocation.log"
   write_codex_marketplace_config git 'source = "https://example.invalid/golfo-marketplace.git"'
@@ -2220,6 +2314,7 @@ CONFIG
   [[ "$output" == *"[marketplace-sync] Upgrade del marketplace completado."* ]]
 }
 
+# bats test_tags=area:sync-hook-cache
 @test "sync hook keeps newer plugin cache over older marketplace snapshot" {
   create_marketplace_snapshot "$test_root/.claude/plugins/marketplaces/golfo-marketplace" \
     "1.9.0" "# older snapshot template"
@@ -2235,6 +2330,7 @@ CONFIG
   [[ "$output" == *"[marketplace-sync] Using agent-ready-setup cache version 1.10.2."* ]]
 }
 
+# bats test_tags=area:skill-snapshot
 @test "bootstrap projects upgraded marketplace snapshot before plugin cache update" {
   for provider in claude codex; do
     if [[ "$provider" == "claude" ]]; then
@@ -2259,6 +2355,7 @@ CONFIG
   done
 }
 
+# bats test_tags=area:skill-snapshot
 @test "bootstrap keeps newer plugin cache over older marketplace snapshot" {
   create_marketplace_snapshot "$test_root/.claude/plugins/marketplaces/golfo-marketplace" \
     "1.9.0" "# older snapshot template"
@@ -2276,6 +2373,7 @@ CONFIG
   [[ "$output" == *"Resolved agent-ready-setup source: $new_source"* ]]
 }
 
+# bats test_tags=area:skill-snapshot
 @test "bootstrap reports an explicit source outside the cache for local development" {
   create_marketplace_snapshot "$test_root/.claude/plugins/marketplaces/golfo-marketplace" \
     "9.0.0" "# snapshot template"
@@ -2291,6 +2389,7 @@ CONFIG
   cmp -s "$content_pack/stacks/node/rules/node-security.md" .agents/rules/node-security.md
 }
 
+# bats test_tags=area:skill-source
 @test "bootstrap keeps requested newest cache version instead of downgrading" {
   cache_root="$test_root/.claude/plugins/cache/golfo-marketplace/golfo-kit"
   old_source="$cache_root/1.9.0/skills/agent-ready-setup"
@@ -2313,6 +2412,7 @@ CONFIG
   [[ "$output" != *"cache version 1.9.0"* ]]
 }
 
+# bats test_tags=area:sync-hook
 @test "sync hook refreshes missing shared helper before projecting assets" {
   cache_root="$test_root/.claude/plugins/cache/golfo-marketplace/golfo-kit"
   source_dir="$cache_root/1.0.0/skills/agent-ready-setup"
@@ -2346,6 +2446,7 @@ EOF
   [[ "$output" == *"Falta el helper compartido de sincronización; refrescando"* ]]
 }
 
+# bats test_tags=area:sync-hook
 @test "sync hook preserves local hook when helper remains unavailable after refresh" {
   cache_root="$test_root/.claude/plugins/cache/golfo-marketplace/golfo-kit"
   source_dir="$cache_root/1.0.0/skills/agent-ready-setup"
@@ -2376,6 +2477,7 @@ EOF
   [[ "$output" == *"no está disponible después del refresh del marketplace; se omite la proyección local."* ]]
 }
 
+# bats test_tags=area:settings
 @test "sync hook preserves custom Claude array entries with equal length" {
   run_bootstrap react
   [ "$status" -eq 0 ]
@@ -2407,6 +2509,7 @@ EOF
   grep -Fq 'Bash(custom-command)' "${backup_files[0]}"
 }
 
+# bats test_tags=area:sync-hook
 @test "sync hook projects managed assets without bootstrap" {
   fake_bin="$test_root/bin"
   source_dir="$test_root/agent-ready-setup"
@@ -2507,6 +2610,7 @@ EOF
   assert_claude_view .claude/skills/deploy-helper/SKILL.md
 }
 
+# bats test_tags=area:sync-hook
 @test "bootstrap creates new managed assets through atomic rename" {
   mv_log="$test_root/mv.log"
   cat > "$fake_bin/mv" <<'EOF'
@@ -2523,6 +2627,7 @@ EOF
   grep -Eq 'agent-ready-sync\.[^ ]+ \.agents/hooks/sync-marketplace\.sh$' "$mv_log"
 }
 
+# bats test_tags=area:sync-hook
 @test "sync hook creates new managed assets through atomic rename" {
   source_dir="$test_root/agent-ready-setup"
   mv_log="$test_root/mv.log"
@@ -2562,6 +2667,7 @@ EOF
   grep -Eq 'agent-ready-sync\.[^ ]+ \.agents/hooks/sync-marketplace\.sh$' "$mv_log"
 }
 
+# bats test_tags=area:sync-hook
 @test "sync hook replaces its own running file atomically" {
   source_dir="$test_root/agent-ready-setup"
   mkdir -p .agents/hooks
@@ -2581,6 +2687,7 @@ EOF
   cmp -s .agents/hooks/sync-marketplace.sh "$source_dir/assets/common/hooks/sync-marketplace.sh"
 }
 
+# bats test_tags=area:sync-hook
 @test "sync hook reclaims lock left by terminated process" {
   source_dir="$test_root/agent-ready-setup"
   cp -R "$skill_dir"/. "$source_dir"/
@@ -2600,6 +2707,7 @@ EOF
   cmp -s .agents/hooks/sync-marketplace.sh "$source_dir/assets/common/hooks/sync-marketplace.sh"
 }
 
+# bats test_tags=area:sync-hook
 @test "sync hook preserves lock held by live process" {
   source_dir="$test_root/agent-ready-setup"
   cp -R "$skill_dir"/. "$source_dir"/
@@ -2616,6 +2724,7 @@ EOF
   [[ "$output" == *"active/ambiguous lock"* ]]
 }
 
+# bats test_tags=area:sync-hook
 @test "sync hook preserves old lock without owner metadata" {
   source_dir="$test_root/agent-ready-setup"
   cp -R "$skill_dir"/. "$source_dir"/
@@ -2631,6 +2740,7 @@ EOF
   [[ "$output" == *"active/ambiguous lock"* ]]
 }
 
+# bats test_tags=area:sync-hook
 @test "bootstrap reclaims asset lock left by terminated process" {
   mkdir -p .agents/.agent-ready-assets.lock
   (sleep 30) 3>&- &
@@ -2646,6 +2756,7 @@ EOF
   [ -f .agents/hooks/sync-marketplace.sh ]
 }
 
+# bats test_tags=area:sync-hook
 @test "sync hooks do not project content when marketplace upgrade fails" {
   fake_bin="$test_root/bin"
   source_dir="$test_root/agent-ready-setup"
@@ -2674,6 +2785,7 @@ EOF
   [ ! -e "$bootstrap_log" ]
 }
 
+# bats test_tags=area:projection
 @test "common marketplace assets have no stack duplicates" {
   [ -f "$skill_dir/assets/common/settings.json" ]
   [ -f "$skill_dir/assets/common/hooks/sync-marketplace.sh" ]
@@ -2697,6 +2809,7 @@ EOF
 }
 
 
+# bats test_tags=area:codex-hooks-merge
 @test "Codex hooks merge keeps custom hooks and handler options and remains idempotent" {
   mkdir -p .codex
   jq 'del(.hooks.SessionStart[].hooks[].statusMessage) | .hooks.SessionStart[0].hooks[0].timeout = 123 | .hooks.Stop = [{"hooks":[{"type":"command","command":"echo current"}]}]' \
@@ -2714,6 +2827,7 @@ EOF
   cmp -s .codex/hooks.json "$test_root/expected-hooks.json"
 }
 
+# bats test_tags=area:codex-hooks-merge
 @test "Codex sync leaves files under .codex/hooks untouched" {
   run_bootstrap node
   [ "$status" -eq 0 ]
@@ -2727,6 +2841,7 @@ EOF
   cmp -s .codex/hooks.json "$skill_dir/assets/codex/hooks.json"
 }
 
+# bats test_tags=area:codex-hooks-merge
 @test "Codex hooks merge preserves malformed or symlinked destination" {
   skip_without_symlinks
   mkdir -p .codex
@@ -2747,6 +2862,7 @@ EOF
 }
 
 
+# bats test_tags=area:codex-hooks-merge
 @test "Codex hooks merge preserves distinct custom handler options for the same command" {
   mkdir -p .codex
   printf '%s\n' '{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"echo custom","timeout":10}]},{"matcher":"other","hooks":[{"type":"command","command":"echo custom","timeout":20}]}]}}' \
@@ -2760,6 +2876,7 @@ EOF
   cmp -s .codex/hooks.json "$test_root/expected-hooks.json"
 }
 
+# bats test_tags=area:codex-hooks-merge
 @test "Codex hooks merge keeps original snapshot through the final replacement" {
   for provider in bootstrap sync; do
     mkdir -p .codex
@@ -2785,6 +2902,7 @@ SCRIPT
   done
 }
 
+# bats test_tags=area:codex-hooks-merge
 @test "Codex hooks sync preserves a destination created concurrently during staging" {
   for provider in bootstrap sync; do
     mkdir -p .codex
@@ -2810,6 +2928,7 @@ SCRIPT
   done
 }
 
+# bats test_tags=area:hard-links
 @test "Claude views fall back to hard links when symlinks are unavailable" {
   disable_symlinks
 
@@ -2822,6 +2941,7 @@ SCRIPT
   [[ "$output" != *"could not create Claude view"* ]]
 }
 
+# bats test_tags=area:hard-links
 @test "a repository whose git checks symlinks out as files gets hard-link views, even where symlinks work" {
   # With core.symlinks=false a committed symlink comes back as a file holding the link path.
   git config core.symlinks false
@@ -2834,6 +2954,7 @@ SCRIPT
   grep -Fxq 'rules/react-security.md' .claude/.agent-ready-hard-link-views
 }
 
+# bats test_tags=area:hard-links
 @test "detached hard-link views are relinked on the next bootstrap" {
   disable_symlinks
   run_bootstrap react
@@ -2850,6 +2971,7 @@ SCRIPT
   [ .claude/rules/react-security.md -ef .agents/rules/react-security.md ]
 }
 
+# bats test_tags=area:hard-links
 @test "hard-link views of deleted project rules are pruned" {
   disable_symlinks
   mkdir -p .agents/rules
@@ -2866,6 +2988,7 @@ SCRIPT
   ! grep -Fxq 'rules/team-conventions.md' .claude/.agent-ready-hard-link-views
 }
 
+# bats test_tags=area:hard-links
 @test "hard-link pruning keeps Claude files that agent-ready did not create" {
   disable_symlinks
   mkdir -p .claude/rules
@@ -2905,6 +3028,7 @@ commit_agents_and_detach_security_rule() {
   git reset -q --hard HEAD~1
 }
 
+# bats test_tags=area:relink-hook
 @test "hard-link views register a config-based git hook that relinks them after git reset" {
   disable_symlinks
   run_bootstrap react
@@ -2919,6 +3043,7 @@ commit_agents_and_detach_security_rule() {
   ! grep -Fxq 'Project addition.' .claude/rules/react-security.md
 }
 
+# bats test_tags=area:relink-hook
 @test "config-based relink hook coexists with a project hook manager" {
   disable_symlinks
   git config core.hooksPath .husky
@@ -2934,6 +3059,7 @@ commit_agents_and_detach_security_rule() {
   [ .claude/rules/react-security.md -ef .agents/rules/react-security.md ]
 }
 
+# bats test_tags=area:relink-hook
 @test "relink hook falls back to a hooks-directory file when git lacks config-based hooks" {
   disable_symlinks
   disable_config_hooks
@@ -2947,6 +3073,7 @@ commit_agents_and_detach_security_rule() {
   [ -z "$(git config --get hook.agent-ready-relink.event)" ]
 }
 
+# bats test_tags=area:relink-hook
 @test "relink hook fallback is not installed over a project hook manager" {
   disable_symlinks
   disable_config_hooks
@@ -2960,6 +3087,7 @@ commit_agents_and_detach_security_rule() {
   [[ "$output" == *"core.hooksPath is set"* ]]
 }
 
+# bats test_tags=area:relink-hook
 @test "Claude prompt hook relinks views detached without any git hook" {
   disable_symlinks
   run_bootstrap react
@@ -2978,6 +3106,7 @@ commit_agents_and_detach_security_rule() {
   [ .claude/rules/react-security.md -ef .agents/rules/react-security.md ]
 }
 
+# bats test_tags=area:hard-links
 @test "relink hook is not registered when views are symlinks" {
   skip_without_symlinks
 
@@ -3000,6 +3129,7 @@ provider_cli_path() {
   printf '%s:/usr/bin:/bin\n' "$isolated_bin"
 }
 
+# bats test_tags=area:cli
 @test "resolve-provider infers the only provider CLI for a Hermes installation" {
   hermes_home="$test_root/hermes-home"
   hermes_skill_dir="$hermes_home/plugins/golfo-kit/skills/agent-ready-setup"
@@ -3013,6 +3143,7 @@ provider_cli_path() {
   [ "$output" = "codex" ]
 }
 
+# bats test_tags=area:cli
 @test "resolve-provider asks for a choice when a Hermes installation sees both provider CLIs" {
   hermes_home="$test_root/hermes-home"
   hermes_skill_dir="$hermes_home/skills/agent-ready-setup"
@@ -3026,6 +3157,7 @@ provider_cli_path() {
   [[ "$output" == *"belongs to Hermes and both claude and codex are in PATH"* ]]
 }
 
+# bats test_tags=area:cli
 @test "resolve-provider rejects a Hermes installation without provider CLIs" {
   hermes_skill_dir="$HOME/.hermes/plugins/golfo-kit/skills/agent-ready-setup"
 
@@ -3037,6 +3169,7 @@ provider_cli_path() {
   [[ "$output" == *"belongs to Hermes, which is not a target provider, and neither claude nor codex is in PATH"* ]]
 }
 
+# bats test_tags=area:cli
 @test "resolve-provider matches a Windows-style HERMES_HOME" {
   command -v cygpath >/dev/null 2>&1 || skip "cygpath is only available on Windows"
   hermes_home="$test_root/hermes-home"

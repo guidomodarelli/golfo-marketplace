@@ -210,9 +210,11 @@ jobs:
         # 45-minute limit of the job: no test takes more than a few minutes, even on a slow Windows runner.
         env:
           BATS_TEST_TIMEOUT: "600"
+        # scripts/run-bats.sh starts bats by its /d/ path: through the pnpm shim, bats pays a process per
+        # command of its own library in Git Bash.
         run: |
           bash --version | head -n 1
-          LC_ALL=C.UTF-8 pnpm exec bats --timing ${{ matrix.suites }}
+          LC_ALL=C.UTF-8 bash "$GITHUB_WORKSPACE/scripts/run-bats.sh" --timing ${{ matrix.suites }}
 
   bootstrap:
     name: Agent Ready bootstrap (shard ${{ matrix.shard }}/3)
@@ -253,7 +255,7 @@ jobs:
             | awk -v shard="$SHARD" -v count="$SHARD_COUNT" '(NR - 1) % count == shard - 1' \
             | sed -e 's/[][\.*^$+?(){}|]/\\&/g' -e 's/.*/^&$/' \
             | paste -sd '|')
-          LC_ALL=C.UTF-8 BATS_TEST_TIMEOUT=120 node_modules/.bin/bats \
+          LC_ALL=C.UTF-8 BATS_TEST_TIMEOUT=120 bash scripts/run-bats.sh \
             --jobs "$(nproc)" --filter "$pattern" "$suite"
 
   browser:

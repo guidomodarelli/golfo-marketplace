@@ -78,6 +78,16 @@ run_detect() {
   [[ "$output" == *"agent_ready=true"* ]]
 }
 
+@test "a change to the bats launcher runs the agent_ready area" {
+  printf '%s\n' 'exec bash bats "$@"' > scripts/run-bats.sh
+  commit_all "Change the bats launcher"
+
+  run_detect
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"agent_ready=true"* ]]
+  [[ "$output" == *"scripts/run-bats.sh changed"* ]]
+}
+
 @test "a pure version bump of the golfo-kit manifests skips the agent_ready area" {
   for manifest in plugin.json .claude-plugin/plugin.json .codex-plugin/plugin.json; do
     write_manifest "$manifest" 1.1.0 "https://github.com/example/repo"

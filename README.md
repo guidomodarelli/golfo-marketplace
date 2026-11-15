@@ -297,9 +297,15 @@ pnpm run test
 ```
 
 `pnpm run test:shell` corre las suites bats rápidas (create-version, check-version-bump, el contrato del
-eval runner, la detección de áreas de la CI y las de otras skills). `pnpm run test:agent-ready` corre las
+eval runner, la detección de áreas de la CI, el lanzador de bats y las de otras skills). `pnpm run test:agent-ready` corre las
 suites bats de `agent-ready-setup` y `pnpm run test:bootstrap`, `bootstrap.bats`. La CI usa esos mismos
 scripts, así que la lista de suites vive en un solo lugar: `package.json`.
+
+Esos scripts y la CI corren bats con `scripts/run-bats.sh`, que arranca el bats de las devDependencies.
+Para correr bats a mano, usá el mismo script (`bash scripts/run-bats.sh <opciones> <archivos>`) y no
+`pnpm exec bats`. En Windows, el shim de pnpm arranca bats por su ruta `C:\`, y con esa ruta bats abre un
+proceso por cada comando de su propia librería. Antes del primer test de `bootstrap.bats`, eso cuesta algo más
+de 1 minuto, o casi 3 con un filtro de tags, y después algunos segundos por test (#95).
 
 Las suites de `agent-ready-setup` proyectan el pack oficial de contenido
 ([golfo-agent-profiles](https://github.com/guidomodarelli/golfo-agent-profiles)) en el tag de
@@ -340,7 +346,7 @@ merge-base de su base:
 | Grupo | Corre cuando |
 |---|---|
 | `Shell suites` (`test:shell`, `compat:validate` y las suites de las demás skills) | Siempre |
-| Agent Ready en Linux, Windows y macOS, los shards de `bootstrap.bats` y `Browser registration` | El PR cambia `plugins/golfo-kit/skills/agent-ready-setup/**`, `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `.nvmrc`, `.gitattributes`, `.github/workflows/tests.yml` o el script de detección y su test. También cuando cambia un manifest de golfo-kit (`plugin.json`, `.claude-plugin/`, `.codex-plugin/`) en algo distinto de `version`, o se agrega o borra un archivo en esas carpetas |
+| Agent Ready en Linux, Windows y macOS, los shards de `bootstrap.bats` y `Browser registration` | El PR cambia `plugins/golfo-kit/skills/agent-ready-setup/**`, `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `.nvmrc`, `.gitattributes`, `.github/workflows/tests.yml`, el lanzador de bats (`scripts/run-bats.sh`) o el script de detección y su test. También cuando cambia un manifest de golfo-kit (`plugin.json`, `.claude-plugin/`, `.codex-plugin/`) en algo distinto de `version`, o se agrega o borra un archivo en esas carpetas |
 
 - Un bump de versión solo no dispara Agent Ready: las suites nunca leen la versión real, y
   `check-version-bump.js` ya la valida en cada PR.
@@ -353,30 +359,39 @@ merge-base de su base:
 
 ### Qué suite correr según el cambio
 
-`pnpm run test` completo tarda cerca de una hora en Windows, porque `bootstrap.bats` corre sus
-128 tests en serie y cada uno ejecuta bootstrap y sync completos. Durante una tarea, corré solo
-lo que cubre el cambio y dejá la suite completa a la CI:
+En local en Windows, las suites de agent-ready-setup tardan mucho. Cada test ejecuta bootstrap y sync
+completos, y en Git Bash cada proceso cuesta unos 40 ms. Corridas en serie en una máquina de 8 núcleos, con
+`pnpm exec bats` (#95); con `scripts/run-bats.sh` se ahorra además lo que cuesta bats:
+
+| Suite | Tests | En serie |
+|---|---|---|
+| `bootstrap.bats` | 133 | ~88 min |
+| `agent-ready-state.bats` | 52 | ~41 min |
+| `merge-instructions.bats` | 35 | ~9 min |
+
+Correrlas en paralelo no ayuda: con 8 procesos de bats, `merge-instructions.bats` baja solo ×1,5, porque cada test
+se vuelve más lento. Durante una tarea, corré solo lo que cubre el cambio y dejá la suite completa a la CI:
 
 | Cambio | Comando local |
 |---|---|
-| La ref del pack de contenido de los tests (`tests/content-pack.ref`) o el bloque gestionado de `AGENTS.md` | `pnpm exec bats plugins/golfo-kit/skills/agent-ready-setup/tests/merge-instructions.bats` y `pnpm exec bats --filter 'rules' plugins/golfo-kit/skills/agent-ready-setup/tests/bootstrap.bats` (las rules y el template viven en [golfo-agent-profiles](https://github.com/guidomodarelli/golfo-agent-profiles)) |
-| Un flujo puntual de `agent-ready-setup` | `pnpm exec bats --filter '<parte del nombre del test>' plugins/golfo-kit/skills/agent-ready-setup/tests/bootstrap.bats` |
-| Scripts compartidos de `agent-ready-setup` (`scripts/*.sh`, `sync-marketplace.sh`) | `pnpm run test:bootstrap` completo |
-| Profiles, manifest, lockfile u ownership de `agent-ready-setup` (`scripts/agent-ready-state.py`, `assets/providers.json`) | `pnpm exec bats plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-state.bats` y `pnpm run test:bootstrap` completo |
-| Configuración por capas de `agent-ready-setup` (`assets/config/*.schema.json`, `scripts/agent_ready_config.py`) | `pnpm exec bats plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-config.bats` |
-| CLI `agent-ready` (`scripts/agent-ready`, `scripts/agent_ready_cli.py`) | `pnpm exec bats plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-cli.bats` |
-| Caché de las revisiones de IA de `agent-ready-setup` (`assets/common/hooks/review-cache.py`, `harness-review.py`, `check-harness-consistency.sh`) | `pnpm exec bats plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-reviews.bats`, y para la revisión de `AGENTS.md` también `merge-instructions.bats` |
-| El contenido de `agent-ready-setup` (`sources.golfo`, `scripts/agent_ready_content.py`) | `pnpm exec bats plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-content.bats` |
-| Conflictos semánticos entre rules gestionadas y propias de `agent-ready-setup` (`scripts/agent_ready_conflicts.py`) | `pnpm exec bats plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-conflicts.bats` |
-| Archivos de CI por proveedor de `agent-ready-setup` (`assets/ci/`, `ci.provider`, `agent-ready ci setup`) | `pnpm exec bats plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-ci.bats` |
-| Herramientas de un pack y política de seguridad de `agent-ready-setup` (`scripts/agent_ready_pack_tools.py`, `agent-ready trust`) | `pnpm exec bats plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-pack-tools.bats` |
-| `review-fix-loop`, `sibling-worktree`, `create-version`, `check-version-bump`, `validate-portable-plugins` o el eval runner | Su suite (`pnpm run test:review-fix-loop`, `pnpm run test:sibling-worktree`, `pnpm exec bats tests/create-version.bats tests/check-version-bump.bats tests/validate-portable-plugins.bats`, `pnpm exec bats skill-eval-runner/tests/*.bats`) |
+| La ref del pack de contenido de los tests (`tests/content-pack.ref`) o el bloque gestionado de `AGENTS.md` | `bash scripts/run-bats.sh plugins/golfo-kit/skills/agent-ready-setup/tests/merge-instructions.bats` y `bash scripts/run-bats.sh --filter 'rules' plugins/golfo-kit/skills/agent-ready-setup/tests/bootstrap.bats` (las rules y el template viven en [golfo-agent-profiles](https://github.com/guidomodarelli/golfo-agent-profiles)) |
+| Un flujo puntual de `agent-ready-setup` | `bash scripts/run-bats.sh --filter '<parte del nombre del test>' plugins/golfo-kit/skills/agent-ready-setup/tests/bootstrap.bats` |
+| Scripts de bash de `agent-ready-setup` (`scripts/*.sh`, `assets/common/hooks/*.sh`) | el área de `bootstrap.bats` o de `merge-instructions.bats` que cubre el script ([Áreas](#áreas-de-bootstrapbats-y-merge-instructionsbats)); la suite entera, en la CI |
+| Profiles, manifest, lockfile u ownership de `agent-ready-setup` (`scripts/agent-ready-state.py`, `scripts/agent_ready_*.py`, `assets/providers.json`) | `bash scripts/run-bats.sh plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-state.bats` y las áreas `area:projection` y `area:managed-assets` de `bootstrap.bats` |
+| Configuración por capas de `agent-ready-setup` (`assets/config/*.schema.json`, `scripts/agent_ready_config.py`) | `bash scripts/run-bats.sh plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-config.bats` |
+| CLI `agent-ready` (`scripts/agent-ready`, `scripts/agent_ready_cli.py`) | `bash scripts/run-bats.sh plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-cli.bats` |
+| Caché de las revisiones de IA de `agent-ready-setup` (`assets/common/hooks/review-cache.py`, `harness-review.py`, `check-harness-consistency.sh`) | `bash scripts/run-bats.sh plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-reviews.bats`, y para la revisión de `AGENTS.md` también `merge-instructions.bats` |
+| El contenido de `agent-ready-setup` (`sources.golfo`, `scripts/agent_ready_content.py`) | `bash scripts/run-bats.sh plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-content.bats` |
+| Conflictos semánticos entre rules gestionadas y propias de `agent-ready-setup` (`scripts/agent_ready_conflicts.py`) | `bash scripts/run-bats.sh plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-conflicts.bats` |
+| Archivos de CI por proveedor de `agent-ready-setup` (`assets/ci/`, `ci.provider`, `agent-ready ci setup`) | `bash scripts/run-bats.sh plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-ci.bats` |
+| Herramientas de un pack y política de seguridad de `agent-ready-setup` (`scripts/agent_ready_pack_tools.py`, `agent-ready trust`) | `bash scripts/run-bats.sh plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-pack-tools.bats` |
+| `review-fix-loop`, `sibling-worktree`, `create-version`, `check-version-bump`, `validate-portable-plugins` o el eval runner | Su suite (`pnpm run test:review-fix-loop`, `pnpm run test:sibling-worktree`, `bash scripts/run-bats.sh tests/create-version.bats tests/check-version-bump.bats tests/validate-portable-plugins.bats`, `bash scripts/run-bats.sh skill-eval-runner/tests/*.bats`) |
 | Motor de cobertura de skills (`plugins/golfo-kit/tools/skill-coverage/**`) | `pnpm run test:skill-coverage` |
-| `user-manual`: navegación de `DESIGN.md`, `scripts/check-*`, `build-manual.mjs` o `assets/` | `pnpm run test:user-manual` (con Playwright para la suite de navegador) y, si se tocó la paleta, `pnpm exec bats plugins/golfo-kit/skills/user-manual/tests/check-design-tokens.bats` |
+| `user-manual`: navegación de `DESIGN.md`, `scripts/check-*`, `build-manual.mjs` o `assets/` | `pnpm run test:user-manual` (con Playwright para la suite de navegador) y, si se tocó la paleta, `bash scripts/run-bats.sh plugins/golfo-kit/skills/user-manual/tests/check-design-tokens.bats` |
 | Helper de `jira-ticket` (`scripts/jira-ticket.py`) | `pnpm run test:jira-ticket` (necesita `pytest`: `python3 -m pip install pytest`) |
 | Frontmatter de una skill o `plugin.json` de un plugin | `pnpm validate-portable-plugins` |
 
-Anteponé `LC_ALL=C.UTF-8` a cada `bats` (ver más abajo). En Windows, `bats --jobs` no funciona:
+Anteponé `LC_ALL=C.UTF-8` a cada `bats` (ver más arriba). En Windows, `bats --jobs` no funciona:
 Git Bash no trae `flock` ni GNU `parallel`.
 
 La CI (`.github/workflows/tests.yml`) corre todas las suites en cada pull request y en cada push a
@@ -389,6 +404,51 @@ sin descargar dependencias. La prueba de lanzamiento real es opt-in mediante
 y `AGENT_READY_SETUP_BROWSER_SMOKE_EXECUTABLE` (path de Chromium instalado).
 Los tests comunes usan parser TOML real; instalación de paquetes y browsers queda
 fuera de la suite aislada.
+
+### Áreas de `bootstrap.bats` y `merge-instructions.bats`
+
+Cada test de esas dos suites lleva un tag de área (`# bats test_tags=area:<área>`). Corré la del cambio con
+`--filter-tags`, y una más si el cambio toca dos áreas. En local en Windows, los tests de cada área suman menos de
+5 minutos (la columna «En Windows» sale de las corridas en serie de #95), y correr un área sola suma unos 10
+segundos de bats.
+
+```bash
+LC_ALL=C.UTF-8 bash scripts/run-bats.sh --filter-tags area:skill-source plugins/golfo-kit/skills/agent-ready-setup/tests/bootstrap.bats
+```
+
+| Suite | Área | Qué cubre | Archivos | Tests | En Windows |
+|---|---|---|---|---|---|
+| `bootstrap.bats` | `area:session-start` | SessionStart y el registro de los servidores MCP del browser | `assets/common/hooks/sync-marketplace.sh`, `scripts/setup-browser-tools.py` | 5 | ~4 min |
+| `bootstrap.bats` | `area:cli` | argumentos, flags y salidas de bootstrap y del hook, y qué provider se usa | `scripts/bootstrap.sh`, `scripts/resolve-provider.sh` | 13 | ~2 min |
+| `bootstrap.bats` | `area:pr-template` | el template de PR de GitHub y su bloque gestionado | `scripts/managed-block.sh` | 5 | ~4 min |
+| `bootstrap.bats` | `area:projection` | los árboles de Claude, `.agents` y Codex, y que un segundo apply no cambie nada | `scripts/bootstrap-asset-projection.sh` | 5 | ~2 min |
+| `bootstrap.bats` | `area:stacks` | las rules y los adaptadores de cada stack | `scripts/bootstrap-asset-projection.sh`, el pack de contenido | 2 | ~5 min |
+| `bootstrap.bats` | `area:browser-rule` | la rule del browser en cada stack, con los dos providers | `scripts/bootstrap-asset-projection.sh` | 1 | ~5 min |
+| `bootstrap.bats` | `area:adapters` | los adaptadores de skills y el registro de agents y commands en Claude | `scripts/bootstrap-asset-projection.sh` | 4 | ~3 min |
+| `bootstrap.bats` | `area:settings` | el merge de los settings de Claude con lo propio del proyecto | `scripts/merge-managed-settings.py` | 5 | ~5 min |
+| `bootstrap.bats` | `area:autonomous-sync` | la sync en segundo plano: settings y copias de Claude | `assets/common/hooks/sync-marketplace.sh` | 2 | ~3 min |
+| `bootstrap.bats` | `area:claude-views` | las vistas de `.claude/` de las rules gestionadas y propias | `scripts/asset-sync-common.sh` | 3 | ~4 min |
+| `bootstrap.bats` | `area:instructions-root` | `AGENTS.md` y el proxy `CLAUDE.md` de la raíz | `scripts/instruction-normalization.sh`, `scripts/normalize-instructions.sh` | 9 | ~5 min |
+| `bootstrap.bats` | `area:instructions-nested` | los pares anidados y el `CLAUDE.md` de `.claude/` | `scripts/instruction-normalization.sh` | 5 | ~5 min |
+| `bootstrap.bats` | `area:instructions-edge` | mayúsculas distintas, archivos ignorados por Git y raíces symlink | `scripts/instruction-normalization.sh` | 9 | ~4 min |
+| `bootstrap.bats` | `area:harness-hooks` | el hook que revisa una rule editada, en Claude y en Codex | `assets/common/hooks/harness-review.py`, `check-harness-consistency.sh` | 6 | ~4 min |
+| `bootstrap.bats` | `area:codex-hooks` | la instalación de los hooks de Codex | `scripts/asset-sync-common.sh` (`sync_codex_hooks`) | 1 | ~4 min |
+| `bootstrap.bats` | `area:codex-hooks-merge` | el merge de `.codex/hooks.json` con lo propio del proyecto | `scripts/merge-codex-hooks.py` | 6 | ~5 min |
+| `bootstrap.bats` | `area:marketplace-upgrade` | el upgrade del marketplace y su ventana de una hora | `scripts/bootstrap.sh` (`upgrade_marketplace`), `sync-marketplace.sh` | 8 | ~4 min |
+| `bootstrap.bats` | `area:skill-source` | qué versión de la caché de plugins usa bootstrap | `scripts/bootstrap-skill-source.sh` | 4 | ~3 min |
+| `bootstrap.bats` | `area:skill-snapshot` | el snapshot del marketplace contra la caché de plugins, y `--skill-dir` | `scripts/bootstrap-skill-source.sh` | 3 | ~2 min |
+| `bootstrap.bats` | `area:sync-hook-cache` | qué versión usa el hook de sync: caché o snapshot | `assets/common/hooks/agent-ready-skill-source.sh`, `sync-marketplace.sh` | 4 | ~4 min |
+| `bootstrap.bats` | `area:sync-hook-codex` | los marketplaces locales y Git de Codex en el hook de sync | `assets/common/hooks/agent-ready-skill-source.sh` | 4 | ~3 min |
+| `bootstrap.bats` | `area:sync-hook` | el hook de sync sin bootstrap: helpers, escrituras atómicas y locks | `assets/common/hooks/sync-marketplace.sh`, `scripts/asset-sync-common.sh` | 11 | ~4 min |
+| `bootstrap.bats` | `area:managed-assets` | las actualizaciones de assets gestionados, sus diffs y los destinos inseguros | `scripts/bootstrap-asset-projection.sh` (`sync_file`) | 7 | ~4 min |
+| `bootstrap.bats` | `area:hard-links` | las vistas como hard links: cuándo se usan, se relinkean y se podan | `scripts/asset-sync-common.sh` | 6 | ~4 min |
+| `bootstrap.bats` | `area:relink-hook` | el hook de git que relinkea las vistas después de un `git reset` | `scripts/asset-sync-common.sh` (`install_hard_link_git_hook`) | 5 | ~4 min |
+| `merge-instructions.bats` | `area:managed-block` | el bloque gestionado de `AGENTS.md`, sus rules y las secciones de los stacks | `scripts/managed-block.sh`, `scripts/merge-instructions.sh` | 13 | ~3 min |
+| `merge-instructions.bats` | `area:review` | la revisión de IA de `AGENTS.md`, su caché y sus rechazos | `scripts/merge-instructions.sh` | 15 | ~5 min |
+| `merge-instructions.bats` | `area:merge-safety` | el reemplazo atómico, los locks y el orden del hook de sync | `scripts/merge-instructions.sh`, `sync-marketplace.sh` | 7 | ~2 min |
+
+Un test nuevo lleva el tag del área que cubre. Si un área pasa de 5 minutos, partila en dos que tengan sentido por sí
+solas.
 
 ---
 
