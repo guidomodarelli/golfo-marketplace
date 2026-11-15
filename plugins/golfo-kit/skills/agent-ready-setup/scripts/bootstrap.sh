@@ -45,11 +45,17 @@ exec 3>&1 1>&2
 
 # The libraries of bootstrap.sh load from this script's own directory, so they all stay on its version:
 # the shared normalization, the skill source (bootstrap-skill-source.sh) and the asset projection
-# (bootstrap-asset-projection.sh).
+# (bootstrap-asset-projection.sh). They all load here, before the marketplace upgrade, which can replace
+# this directory with a newer version while this script still runs. Their function names do not repeat
+# those of asset-sync-common.sh, which loads later from the resolved source.
 BOOTSTRAP_SCRIPTS_DIRECTORY="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 readonly BOOTSTRAP_SCRIPTS_DIRECTORY
 # shellcheck source=instruction-normalization.sh
 source "$BOOTSTRAP_SCRIPTS_DIRECTORY/instruction-normalization.sh"
+# shellcheck source=bootstrap-skill-source.sh
+source "$BOOTSTRAP_SCRIPTS_DIRECTORY/bootstrap-skill-source.sh"
+# shellcheck source=bootstrap-asset-projection.sh
+source "$BOOTSTRAP_SCRIPTS_DIRECTORY/bootstrap-asset-projection.sh"
 
 # shellcheck disable=SC2034
 readonly MARKETPLACE_NAME="golfo-marketplace"
@@ -207,9 +213,6 @@ if [[ -n "$STACK" && ! "$STACK" =~ ^[a-z0-9]+(-[a-z0-9]+)*(/[a-z0-9]+(-[a-z0-9]+
   echo "ERROR: Unsupported stack '$STACK'. A stack is a name such as node or acme/cobol." >&2
   exit 1
 fi
-
-# shellcheck source=bootstrap-skill-source.sh
-source "$BOOTSTRAP_SCRIPTS_DIRECTORY/bootstrap-skill-source.sh"
 
 if [[ ! -d "$REQUESTED_SKILL_DIR" ]]; then
   echo "ERROR: --skill-dir must point to an existing directory: $REQUESTED_SKILL_DIR" >&2
@@ -546,9 +549,6 @@ if ! protected_destinations="$(python3 "$STATE_SCRIPT" plan --project . --skill-
   exit 1
 fi
 load_protected_destinations "$protected_destinations"
-
-# shellcheck source=bootstrap-asset-projection.sh
-source "$BOOTSTRAP_SCRIPTS_DIRECTORY/bootstrap-asset-projection.sh"
 
 # The centralization rule is part of the managed AGENTS.md block, which
 # merge-instructions.sh copies verbatim from the template on every sync.
