@@ -3,7 +3,7 @@ name: async-operation-error-handling
 description: Diseña, implementa y revisa manejo de errores para operaciones asíncronas distribuidas en cualquier dominio y stack —batch/chunks, mutations parciales, jobs, polling, reanudación, retries, estados terminales, cancelación y fallos upstream— atravesando service/adapter, API/BFF, client y UI o worker. Usar siempre cuando una operación pueda aceptar solo parte del trabajo, crear runs/jobs, terminar con resultados mixtos, fallar después de una respuesta parcial, reintentarse o necesitar preservar progreso; también cuando se deba evitar duplicación, clasificar upstream, sanitizar DTOs o traducir errores a copy localizado. Aplicar incluso si la solicitud menciona solo timeout, partial success, polling, retry, chunk failure, terminal status o error mapping.
 license: MIT
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
   author: "Guido Modarelli"
   category: "error-handling"
   tags: "errors, async, batch, retries, polling, partial-success"
@@ -107,7 +107,7 @@ Un error parcial debe distinguir “no sabemos si inició” de “inició y ten
 
 Consumir cada respuesta backend/upstream según el contrato del adapter sin validarla ni revalidarla como input. Para el DTO público emitido por el middleend, aplicar validación de contrato en el client/consumer antes de usarlo. Definir explícitamente:
 
-- estados de progreso;
+- estados de progreso y si el avance es medible (contadores, etapas): sin avance informado por el upstream, el contrato no deriva porcentajes ni tiempos restantes;
 - estados terminales, incluidos terminal con fallas por item;
 - condiciones de DTO público del middleend inválido o fallo de contrato upstream ya observado por el adapter;
 - deadline global y límites de polling;
@@ -139,6 +139,7 @@ El client debe:
 - separar error de inicio, polling, partial result y item failure;
 - conservar partial result y unresolved runs en el error typed/client contract;
 - ofrecer resume para trabajo unresolved y retry solo para fallas terminales o unidades unresolved explícitamente elegibles según contrato;
+- exponer al consumer el estado del reintento y los límites de la política como datos: intento actual, máximo de intentos y deadline o próximo intento, tomados de la misma constante o configuración que ejecuta el retry, nunca copiados en otra capa ni en el copy. Si la política no define un máximo o un deadline, el contrato lo omite (o lo manda `null`) para que la UI no invente uno. Si el retry corre dentro de un request síncrono, el consumer no puede verlo: exponerlo exige un recurso consultable (job con estado, polling o stream). Qué muestra la UI de esos datos es de `ui-ux-flow-patterns` (`references/system-status.md`);
 - mapear copy por código/razón estable, no por mensaje upstream;
 - para rechazos upstream 4xx, orientar a corregir causa/datos y no sugerir espera por recuperación ni retry automático;
 - usar i18n para todo copy visible y mantener catálogos fuente según convención del repositorio;
@@ -162,6 +163,7 @@ Cubrir como mínimo:
 - deadline/timeout sin afirmar que mutation no ocurrió;
 - retry/resume solo de unidades unresolved o fallas terminales elegibles, sin crear duplicados;
 - abort antes/durante polling y cleanup de timers/listeners;
+- intento y máximo expuestos iguales a los de la política que ejecuta el retry, y ausentes cuando la política no los define;
 - UI loading, partial, terminal failure, fallback y copy localizado;
 - unknown throw (`null`, string, objeto, `Error`) sin crash ni exposición raw.
 

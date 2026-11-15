@@ -846,6 +846,65 @@
           "description": "Degrada también con CI, TERM=dumb o modo agente, no solo con NO_COLOR"
         }
       ]
+    },
+    {
+      "id": "cli-retry-wait-shows-attempts",
+      "description": "Mientras reintenta, la espera dice el intento y el máximo de la constante de esperas y el tope, sin repetir líneas sin terminal, y Ctrl+C sigue cortando.",
+      "input": "Mi CLI en Python (`deploy-preview`) espera a que la API de previews levante: hace `GET /health` con `request_with_retries(client, RETRY_DELAYS_SECONDS, ...)` (la tupla vale `(2, 4, 8, 16)`) y mientras tanto muestra el `Spinner` del kit con «Esperando la API…». Cuando la API está dormida se queda 30 s girando sin decir nada y la gente lo corta con Ctrl+C. No quiero llenar la terminal de logs. Arreglalo.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "len\\((RETRY_DELAYS_SECONDS|delays_seconds|delays)\\)|len [+] 1|on_retry\\(",
+          "description": "Calcula el máximo de intentos desde la constante de esperas"
+        },
+        {
+          "type": "regex",
+          "pattern": "set_note|on_retry|reintentando",
+          "description": "Muestra la nota de reintento en la línea del spinner"
+        },
+        {
+          "type": "regex",
+          "pattern": "sum\\(|tope|hasta (un m(a|á)ximo|[0-9{])|/ ?00:|m(a|á)ximo de [0-9{]",
+          "description": "Comunica el tope de tiempo de la espera"
+        },
+        {
+          "type": "regex",
+          "pattern": "cuando (la nota |el estado )?cambia|cada vez que (la nota |el estado )?cambia|al cambiar|no se repite|sin repetir|una l(i|í)nea por (cambio|nota nueva)|una (sola )?vez por valor|no una por (cada )?intento",
+          "description": "Sin terminal, escribe una línea solo cuando cambia el estado"
+        },
+        {
+          "type": "regex",
+          "pattern": "130|KeyboardInterrupt|SIGINT",
+          "description": "Ctrl+C sigue cortando la espera"
+        }
+      ]
+    },
+    {
+      "id": "agent-wait-without-limit-no-invented-max",
+      "description": "Bajo un agente, una espera sin tope propio no inventa una duración máxima: lo dice, respeta --timeout, da un latido y sale con lo hecho y el comando para seguir.",
+      "input": "Mi CLI en Node `build-wait` espera a que termine un build remoto consultando `GET /builds/:id` cada 15 s. El servicio no tiene timeout y la API no informa avance; hay builds de 3 minutos y de 50. Lo van a correr Claude Code y Codex. Ajustá la salida y las flags para que sirva bien bajo un agente. Implementalo.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "--timeout",
+          "description": "Ofrece --timeout para cortar la espera"
+        },
+        {
+          "type": "regex",
+          "pattern": "sin tope|no (tiene|hay) (un )?tope|sin (un )?m(a|á)ximo (propio|definido|conocido)|no (invent|promet)[a-z]* (un|una|el|la) (tope|m(a|á)ximo|duraci(o|ó)n)",
+          "description": "Dice que la espera no tiene tope propio en vez de inventar una duración máxima"
+        },
+        {
+          "type": "regex",
+          "pattern": "latido|heartbeat|cada 20",
+          "description": "Da un latido periódico con qué espera, sin animación"
+        },
+        {
+          "type": "regex",
+          "pattern": "resume_command|--status|para seguir|retomar",
+          "description": "Al pasar el tope sale con el comando para seguir"
+        }
+      ]
     }
   ]
 }

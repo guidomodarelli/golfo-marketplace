@@ -124,7 +124,7 @@ Reglas:
 - **Nunca perder input**: tras un error, el formulario conserva lo escrito y el botón vuelve a estar habilitado.
 - Clasificar antes de mostrar: error de red (reintentar), del usuario (corregir), de permisos (pedir acceso), del servidor (reintentar más tarde). Cada clase tiene un copy y una acción distintos.
 - No mostrar mensajes crudos del proveedor, stack traces ni ids internos; sí un código o id de referencia corto que soporte pueda buscar.
-- Reintentos automáticos solo para operaciones idempotentes y con límite; mostrar que se está reintentando ([recuperación de operaciones](#recuperación-de-operaciones)).
+- Reintentos automáticos solo para operaciones idempotentes y con límite; mostrar que se está reintentando, con el intento y el máximo solo si la política los define ([reintentos visibles](system-status.md#reintentos-visibles)).
 - **Nunca un callejón**: si una acción queda deshabilitada por una restricción legítima (límite de intentos, cooldown, permiso, plan), el motivo y la forma de seguir están a la vista ("Podés pedir otro código en 0:45", "Pedile acceso a un administrador"), no solo el control gris.
 
 ### Errores HTTP
@@ -150,6 +150,8 @@ Ciclo de vida de guardar, enviar, eliminar, subir, importar, exportar o lanzar u
 |---|---|---|---|
 | `idle` | Habilitado (o deshabilitado con el motivo visible) | Nada extra | — |
 | `pending` | [Pending en el control](#carga); nombre accesible conservado o cambiado al gerundio, con `aria-disabled` para que siga enfocable | Progreso real si es medible; el resto de la pantalla sigue usable salvo lo que la operación invalida | El error anterior de esta operación se quita **al empezar** el intento |
+| `retrying` (reintento automático) | Igual que `pending`, sin aceptar un segundo envío; cancelar habilitado si la operación lo permite | El mismo indicador pasa a «Reintentando», con el intento y el máximo solo si la política los define ([reintentos visibles](system-status.md#reintentos-visibles)) | Todo lo ingresado; el error del intento fallido no se muestra mientras se reintenta |
+| En cola o en segundo plano | Vuelve a `idle` si la operación sigue en el servidor | Chip o fila «En cola» o «Procesando», con la etapa si el backend la informa; el resultado llega por su canal al terminar ([en segundo plano](flow-catalog.md#guardado-manual-autosave-y-en-segundo-plano)) | El id de la operación, para consultar su estado |
 | `success` | Vuelve a `idle` (o desaparece si la acción ya no aplica) | El resultado por su canal ([tabla de decisión](feedback-channels.md#tabla-de-decisión)) | Inputs que ya se guardaron; marca de "sin guardar" |
 | `error` | Vuelve a habilitarse | Qué no se hizo y cómo seguir, junto a la acción o en la región | **Todo lo ingresado** se conserva |
 | `cancelled` | Vuelve a `idle` en lecturas o si el servidor confirmó la cancelación; si una mutación pudo llegar y no hay confirmación, pasa a `unknown` | Estado anterior a la operación, con un aviso breve solo si hubo efectos parciales ("Se importaron 40 filas antes de cancelar") | Lo que el usuario tenía antes; en mutaciones, el id de la operación hasta confirmar su estado |
@@ -160,7 +162,7 @@ Reglas:
 
 - **Doble envío**: el control deshabilitado no alcanza (Enter, doble toque, otra pestaña); el handler ignora un segundo disparo mientras haya una operación en curso y las mutaciones críticas mandan una clave de idempotencia si el backend la acepta.
 - **El control se libera siempre** al terminar, fallar o cancelar. Si queda deshabilitado por una restricción real (cooldown, permiso), lo dice.
-- **Progreso real o ninguno**: barra determinada solo con progreso medible (bytes, filas, pasos), junto al archivo o proceso; si no se puede medir, indicador indeterminado con texto del paso actual. Nada de barras que avanzan por tiempo ni spinners infinitos: toda espera tiene un timeout que la lleva a error o a resultado incierto.
+- **Progreso real o ninguno**: barra determinada solo con progreso medible (bytes, filas, pasos), junto al archivo o proceso; si no se puede medir, indicador indeterminado con texto del paso actual. Nada de barras que avanzan por tiempo ni spinners infinitos: toda espera de un request tiene un timeout que la lleva a error o a resultado incierto. Ese timeout no es el tope de la operación, y un tiempo restante solo se muestra como estimación medida ([límites de tiempo](system-status.md#límites-de-tiempo), [progreso real o estimación](system-status.md#progreso-real-o-estimación)).
 - **Procesos largos** (más de ~10 s): cancelar visible, permitir seguir usando la app y avisar al terminar por el canal que corresponda ([tabla de decisión](feedback-channels.md#tabla-de-decisión), paso 8).
 
 ### Recuperación de operaciones
@@ -170,7 +172,7 @@ Reglas:
 | Timeout de lectura | Error de la región con "Reintentar"; conservar los datos previos si los había |
 | Timeout o corte en una mutación | Tratarlo como **resultado incierto**: consultar el estado (por id de operación o clave de idempotencia) antes de ofrecer repetir; si no se puede consultar, decir que no se sabe y cómo verificarlo ("Revisá tus pagos antes de intentar de nuevo") |
 | Error de red puntual | Error junto a la acción con "Reintentar"; banner solo si la conexión sigue caída ([offline](#offline-y-datos-desactualizados)) |
-| Error del servidor | "Reintentar" manual; reintento automático solo para operaciones idempotentes, con límite (2–3 intentos) y espera creciente con jitter, mostrando "Reintentando…" |
+| Error del servidor | "Reintentar" manual; reintento automático solo para operaciones idempotentes, con límite (2–3 intentos) y espera creciente con jitter, mostrando el reintento ([reintentos visibles](system-status.md#reintentos-visibles)) |
 | Cancelación | En lecturas, abortar la petición (`AbortController` o equivalente), volver a `idle` y descartar la respuesta abortada. En una mutación que pudo llegar al servidor, abortar en el cliente no prueba que el servidor se detuvo: volver a `idle` solo si el servidor confirma la cancelación (endpoint de cancelación o estado del job); si no, conservar el id de la operación y pasar a **resultado incierto** con "Comprobar estado" antes de permitir otra ejecución, sin ocultar un resultado que sí se completó |
 | Respuestas duplicadas o desordenadas | Cada intento lleva un id; solo la respuesta del intento vigente actualiza la UI. Una respuesta tardía de un intento viejo, de otro recurso o de otro desafío se descarta sin feedback |
 | Navegación durante la operación | Si la operación sigue en el servidor, dejarla terminar y avisar del resultado por toast; si se perdería trabajo sin guardar, avisar antes de salir; al volver, mostrar el estado real, no el de antes |
@@ -208,4 +210,5 @@ Reglas:
 - Input bloqueado con un mensaje rojo fijo y ninguna acción para salir (un código vencido sin "Pedir otro código").
 - Un toast de "Guardando…" y otro de "Guardado" para la misma operación, o toasts apilados del mismo error.
 - Barra de progreso que avanza por tiempo, o spinner sin timeout.
+- Spinner mudo mientras el sistema reintenta, o un «intento 2 de 10», un porcentaje o un tiempo restante que el código no conoce ([visibilidad del estado](system-status.md)).
 - Reintentar automáticamente un pago, un envío o un alta que puede haberse completado.

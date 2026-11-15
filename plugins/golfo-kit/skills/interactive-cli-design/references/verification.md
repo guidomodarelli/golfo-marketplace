@@ -68,6 +68,8 @@ Si el CLI resuelve secretos en un wrapper, chequea permisos, crea recursos por A
 | ww | Dato generado por default con semilla fija | Sin terminal | Pasa la validación, no es degenerado y es el mismo en cada corrida del test |
 | aaa | En el menú: Supr, Inicio, un pegado con `\t`; confirm con «x» y con Enter | Con terminal | El filtro no cambia con las teclas especiales; «x» repite la pregunta; Enter toma el default |
 | bbb | `CI=False` y `CI=FALSE` con terminal | Con terminal | Pregunta: no cuenta como CI |
+| ccc | Servidor de prueba que responde 503 dos veces y después 200; otra espera sin tope ni máximo | Ambos | Con terminal, la nota del spinner dice `reintentando, 2/N` y `3/N`, con N de la constante de esperas (otra constante en el test, otro N), y el tope si lo hay; sin terminal, una línea por cambio. La espera sin tope no muestra `/N` ni un tope. Ctrl+C sigue cortando con 130 |
+| ddd | Consulta sin resultados | Sin terminal | Exit 0, stdout vacío (con `--json`, la lista vacía) y stderr dice qué se buscó y cómo ampliarlo |
 
 Modo agente ([agent-mode.md](agent-mode.md)):
 

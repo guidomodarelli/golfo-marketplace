@@ -3,7 +3,7 @@ name: ui-ux-flow-patterns
 description: 'UI/UX por flujo: qué componente usar y qué mostrar en cada estado (loading y skeletons, vacío, con datos, error, parcial, sin permiso), cuándo usar toast, banner, inline o diálogo, confirmar o deshacer, validación previa con error junto al campo, limpieza de errores viejos (stale errors), pending, reintento y recuperación de operaciones async, feedback de reporte a soporte y copy de cada estado. Usar siempre, sin pedido explícito, al crear o modificar código visible o interactivo en cualquier stack: pantallas, rediseños, pasos de wizard, listas, tablas, formularios, búsquedas, uploads, códigos SMS u OTP, confirmaciones, acciones destructivas, copy, toasts o avisos, aunque el pedido solo diga mejorar la UX o hable de un solo botón. En un proyecto Next.js con App Router, cargarla junto con nextjs-route-ui-boundaries: esta decide qué muestra cada estado; aquella, boundaries y qué es server o cliente. No en código sin interfaz.'
 license: MIT
 metadata:
-  version: "1.5.0"
+  version: "1.6.0"
   author: "Guido Modarelli"
   category: "frontend"
   tags: "ux, ui, empty-state, loading, error-state, toast, feedback, components, flows"
@@ -26,7 +26,7 @@ Elegir el modo según el alcance:
 
 - **Modo liviano** (cambio puntual: un botón, una columna, un campo, copy). Revisar solo lo que el cambio toca con este checklist y corregir en el mismo trabajo lo que el cambio introduzca:
   1. Si el cambio **trae datos**: ¿tiene estado de carga con la forma del contenido (un [skeleton](references/state-matrix.md#skeleton) si el layout se conoce y la espera supera ~300 ms; nunca en recargas ni acciones), estado vacío y estado de error con reintento? ([state-matrix.md](references/state-matrix.md))
-  2. Si el cambio **ejecuta una acción**: ¿el control muestra pending sin cambiar de ancho, evita el doble envío y el resultado llega por el canal correcto, con la duración, el cierre y la salida de su [ficha](references/feedback-channels.md#ficha-por-canal)? ¿Timeout, error, cancelación y resultado incierto tienen salida, sin reintentar a ciegas una mutación no idempotente? ([operaciones asíncronas](references/state-matrix.md#operaciones-asíncronas))
+  2. Si el cambio **ejecuta una acción**: ¿el control muestra pending sin cambiar de ancho, evita el doble envío y el resultado llega por el canal correcto, con la duración, el cierre y la salida de su [ficha](references/feedback-channels.md#ficha-por-canal)? ¿Timeout, error, cancelación y resultado incierto tienen salida, sin reintentar a ciegas una mutación no idempotente? ([operaciones asíncronas](references/state-matrix.md#operaciones-asíncronas)) Si la operación espera, reintenta o sigue en segundo plano, ¿el usuario ve en qué está, el intento y el tope solo si el código los define (leídos de la política, no escritos en el copy) y cómo salir? ([visibilidad del estado](references/system-status.md))
   3. Si la acción **destruye o es irreversible**: ¿se eligió entre deshacer y confirmar según [la regla](references/feedback-channels.md#confirmar-o-deshacer)? Si el proyecto confirma con una casilla junto al botón, aplicar la [confirmación inline](references/feedback-channels.md#confirmación-inline): etiqueta con recurso e impacto, consentimiento que se desmarca al cambiar de selección y aviso fijo si afecta al recurso en uso.
   4. Si el cambio **valida input o muestra errores**: ¿la acción se bloquea antes del request, el error queda junto al campo y el error viejo se limpia al cambiar de recurso o reintentar? Si lo que falla es una condición del proceso (código vencido, límite, sesión) y no el valor, ¿se muestra en el paso con su acción de salida en lugar de bloquear el campo? ([validation-feedback.md](references/validation-feedback.md))
   5. ¿El feedback nuevo es accesible (live region, foco, no solo color)? ([accesibilidad](references/feedback-channels.md#accesibilidad-del-feedback))
@@ -55,7 +55,9 @@ Clasificar la pantalla o acción en uno o más tipos de [flow-catalog.md](refere
 
 ## 2. Armar la matriz de estados
 
-Para cada región que trae datos o ejecuta acciones, completar la matriz con los estados de [state-matrix.md](references/state-matrix.md#estados): carga inicial, recarga o refetch, vacío (primera vez, sin resultados por filtro o búsqueda, vaciado por el usuario, sin permiso), con datos (incluido uno solo y muchísimos), parcial, error (total, parcial, de acción), offline o desactualizado. Por cada estado decidir **qué se ve**, **qué puede hacer el usuario** y **cómo sale de ese estado**. Un estado sin salida (un error sin reintento, un vacío sin acción, un control deshabilitado sin motivo) es un callejón y se corrige. Cada acción async recorre además el [ciclo de vida de operaciones](references/state-matrix.md#operaciones-asíncronas) (`idle`, `pending`, `success`, `error` y, si aplican, `cancelled`, `partial_success` o resultado incierto).
+Para cada región que trae datos o ejecuta acciones, completar la matriz con los estados de [state-matrix.md](references/state-matrix.md#estados): carga inicial, recarga o refetch, vacío (primera vez, sin resultados por filtro o búsqueda, vaciado por el usuario, sin permiso), con datos (incluido uno solo y muchísimos), parcial, error (total, parcial, de acción), offline o desactualizado. Por cada estado decidir **qué se ve**, **qué puede hacer el usuario** y **cómo sale de ese estado**. Un estado sin salida (un error sin reintento, un vacío sin acción, un control deshabilitado sin motivo) es un callejón y se corrige. Cada acción async recorre además el [ciclo de vida de operaciones](references/state-matrix.md#operaciones-asíncronas) (`idle`, `pending`, `success`, `error` y, si aplican, `retrying`, en cola, `cancelled`, `partial_success` o resultado incierto).
+
+Antes de cerrar la matriz, hacer el [inventario de estado](references/system-status.md#inventario-por-operación) de cada operación que tarda, espera, reintenta o corre en segundo plano, aunque el pedido no hable de feedback: qué estados puede atravesar, si reintenta y hasta cuántos intentos, si tiene tope de tiempo, si el avance es medible, si se puede cancelar y quién la recupera, todo leído del código. Ese inventario decide qué estados entran a la matriz y qué números puede mostrar el copy: ninguna operación relevante deja al usuario sin saber qué está pasando, y ninguna muestra un número que el sistema no sabe.
 
 ## 3. Elegir el canal de feedback de cada evento
 
@@ -68,7 +70,7 @@ Cada estado vacío, error y confirmación responde: **qué pasó**, **por qué**
 ## 5. Aplicar y verificar
 
 1. Presentar primero la matriz de estados y el canal elegido por evento; después implementar.
-2. Verificar cada estado de verdad, no solo el feliz: simular la red lenta (throttling o un delay temporal), una respuesta vacía, un error del servidor, un timeout, una respuesta tardía que llega después de cambiar de contexto y un doble clic en cada acción. Si hay dev server, recorrer los estados en el browser con el teclado y con el lector de pantalla o las herramientas de accesibilidad disponibles.
+2. Verificar cada estado de verdad, no solo el feliz: simular la red lenta (throttling o un delay temporal), una respuesta vacía, un error del servidor, un fallo pasajero que dispare los reintentos, un timeout, una respuesta tardía que llega después de cambiar de contexto y un doble clic en cada acción. Si hay dev server, recorrer los estados en el browser con el teclado y con el lector de pantalla o las herramientas de accesibilidad disponibles.
 3. Agregar o actualizar tests de comportamiento para los estados nuevos (render del vacío con su acción, error con reintento que recupera, botón en pending que no envía dos veces), siguiendo la estrategia de testing del proyecto.
 
 ## Compatibilidad entre agentes
@@ -110,7 +112,7 @@ Solo en modo completo:
 
 - `nextjs-route-ui-boundaries`: en Next.js, **dónde** van `loading.tsx`, `error.tsx` y los `<Suspense>` y qué parte renderiza el server; esta skill decide **qué muestran**. En un proyecto Next.js con App Router, cargar las dos juntas.
 - `optimistic-action-mutations`: complementaria en todo cambio de UI; decide si cada acción es optimistic, pending-first o confirmada por el servidor, y su concurrencia, rollback y reconciliación. Esta skill decide qué ve el usuario en cada uno de esos estados.
-- `async-operation-error-handling`: errores de jobs, batches, polling y éxito parcial a través de las capas (service, API, client); esta skill decide qué ve y puede hacer el usuario en cada estado de la operación.
+- `async-operation-error-handling`: errores de jobs, batches, polling y éxito parcial a través de las capas (service, API, client), y la política de reintentos y tiempos con los datos que el contrato expone; esta skill decide qué ve y puede hacer el usuario en cada estado de la operación y qué muestra de esa política.
 - `semantic-html-a11y`: semántica, roles y foco de los controles.
 - `mobile-first-responsive-layout`: cómo se adapta cada estado a pantallas chicas.
 - `widget-ui-proposals`: mostrar variantes visuales de un estado antes de implementarlo.
