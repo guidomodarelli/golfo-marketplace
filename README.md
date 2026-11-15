@@ -470,6 +470,9 @@ run-evals plugins/<plugin-name>/skills/<skill-name> --repeat 3
 # Override de proveedor (por defecto: auto-detecta Codex o Claude)
 run-evals plugins/<plugin-name>/skills/<skill-name> --provider codex
 
+# Correr los evals de un directorio de rules (rules/*.md sin SKILL.md, por ejemplo un stack de un pack de contenido)
+run-evals ../golfo-agent-profiles/stacks/nextjs
+
 # Correr cada caso también sin la skill y calificar esa respuesta con las mismas aserciones (duplica llamadas)
 run-evals plugins/<plugin-name>/skills/<skill-name> --baseline --repeat 3
 
@@ -485,6 +488,13 @@ Solo la corrida con la skill decide si un caso pasa.
 
 En Windows (Git Bash, MSYS2 o Cygwin), el prompt nombra la copia de la skill con su ruta de Windows
 (`cygpath -m`), porque el CLI nativo del agente no abre una ruta como `/tmp/tmp.X`.
+
+**Directorios de rules:** una rule no es una skill, así que un directorio con `rules/*.md` y sin `SKILL.md` es un
+destino propio. Puede ser un stack, un profile o `base/` de un pack como golfo-agent-profiles. Sus evals van al lado,
+en `<dir>/evals/eval-config.json`, y el prompt le pide al agente que aplique las rules de `<dir>/rules/` que cubren el
+pedido. Ese directorio no se instala como skill. La copia aislada incluye las otras carpetas del pack, sin los
+`evals/` del directorio, así que una rule que nombra a otra por su archivo (por ejemplo, una de `base/rules/`) la
+encuentra. Si el directorio tiene `SKILL.md`, es una skill aunque traiga `rules/`.
 
 **Qué puede leer el agente con Claude:**
 
