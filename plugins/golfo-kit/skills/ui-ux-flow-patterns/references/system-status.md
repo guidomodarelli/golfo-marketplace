@@ -24,7 +24,7 @@ Para cada operación que tarda, espera, reintenta o corre en segundo plano, resp
 |---|---|---|
 | ¿Por qué estados puede pasar? (pendiente, en cola, reintentando, en segundo plano, completada, error, parcial, incierta, cancelada) | El cliente, el hook o la máquina de la operación; el enum de estado del backend | Diseñar solo los que existen y anotar los descartados |
 | ¿Reintenta sola? ¿Hasta cuántos intentos? | La política de reintentos: constante, opción de la librería (`retry` de TanStack Query, `maxAttempts`), configuración del cliente HTTP | Sin máximo: no se muestra un total |
-| ¿Tiene un tiempo máximo? | Timeout o deadline de la política, del job o del backend (`expiresAt`, `Retry-After`) | Sin tope: no se promete un final |
+| ¿Tiene un tiempo máximo? | Timeout o deadline explícito de la política, del job o del backend (`expiresAt`, deadline del job). `Retry-After` no es un tope: dice cuánto esperar antes del próximo intento | Sin tope: no se promete un final |
 | ¿El avance es medible? | Eventos de progreso, contadores o etapas que informa el backend | Indicador indeterminado con la etapa o el tiempo transcurrido |
 | ¿Se puede cancelar y qué deja hecho? | `AbortController`, endpoint de cancelación, estado del job | Si la espera es larga, decir que no se puede cancelar |
 | ¿Sigue si el usuario se va? | Si corre en el servidor o en un worker | Avisar antes de salir si se perdería |
@@ -38,7 +38,7 @@ Las respuestas deciden qué estados entran a la matriz y qué números puede ten
 |---|---|---|
 | Primer intento | El pending normal ([Carga](state-matrix.md#carga)) | Las del pending |
 | Reintento automático con máximo conocido | El mismo indicador de la operación pasa a «Reintentando (intento 2 de 3)…», en su lugar, sin sumar otro mensaje | Cancelar, si la operación lo permite; «Reintentar ahora» solo si la espera entre intentos se nota y repetir es seguro |
-| Reintento automático sin máximo (reconexión, cola que insiste hasta lograrlo) | «Reintentando…» o «Reconectando…», con el tiempo transcurrido o el próximo intento si el código lo sabe («Próximo intento en 0:08») | Cancelar o dejarlo seguir en segundo plano |
+| Reintento automático sin máximo (reconexión, cola que insiste hasta lograrlo) | «Reintentando…» o «Reconectando…», con el tiempo transcurrido o el próximo intento si el código lo sabe (la espera de la política o el `Retry-After`: «Próximo intento en 0:08») | Cancelar o dejarlo seguir en segundo plano |
 | Intentos agotados | Pasa a `error`: qué no se hizo, que ya se reintentó («No pudimos sincronizar después de 3 intentos») y qué hacer ahora | «Reintentar» manual, que arranca el ciclo de nuevo con la misma clave de idempotencia |
 | Mutación no idempotente | No se reintenta sola: pasa a [resultado incierto](state-matrix.md#recuperación-de-operaciones) | «Comprobar estado» |
 
@@ -48,7 +48,7 @@ Las respuestas deciden qué estados entran a la matriz y qué números puede ten
 
 ## Límites de tiempo
 
-- **Con tope conocido** y una espera que puede pasar los ~10 s, decirlo al empezar a esperar o al pasar a reintentar: «Seguimos intentando hasta 3 minutos». Una cuenta regresiva solo si sale del vencimiento real (deadline del job, `Retry-After`, `expiresAt`), no de un contador local que se desincroniza al recargar o cambiar de pestaña.
+- **Con tope conocido** y una espera que puede pasar los ~10 s, decirlo al empezar a esperar o al pasar a reintentar: «Seguimos intentando hasta 3 minutos». Una cuenta regresiva solo si sale del vencimiento real (deadline del job, `expiresAt`), no de un contador local que se desincroniza al recargar o cambiar de pestaña. `Retry-After` alimenta solo la cuenta del próximo intento, nunca el tope: un 503 con `Retry-After: 60` pide esperar 60 s antes de reintentar, no rendirse a los 60 s.
 - **Sin tope definido**, no inventar uno. Mostrar en qué está («En cola», «Procesando el archivo»), el tiempo transcurrido si ayuda y cómo seguir sin esperar («Podés seguir usando la app; te avisamos al terminar»).
 - **El timeout de un request no es el tope de la operación.** Cada request o consulta de polling tiene su timeout ([Operaciones asíncronas](state-matrix.md#operaciones-asíncronas)) y al vencer lleva a error o a resultado incierto; ese número no se presenta como la duración máxima de un job que sigue en el servidor.
 - Al vencer el tope, la UI pasa a error o a resultado incierto con su salida: nunca queda «reintentando» para siempre.
