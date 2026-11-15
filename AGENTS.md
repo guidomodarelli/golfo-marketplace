@@ -183,6 +183,10 @@ ln -sfn "$SKILL_SRC" ~/.codex/skills/<skill-name>    # Codex
 # Run evals for a specific skill (JSONL by default)
 run-evals plugins/<plugin-name>/skills/<skill-name>
 
+# Run the evals of a directory of rules (rules/*.md and no SKILL.md, such as a stack of a content pack);
+# its evals live in <dir>/evals/eval-config.json
+run-evals ../golfo-agent-profiles/stacks/nextjs
+
 # Run evals for all skills (JSONL by default)
 run-evals --all
 

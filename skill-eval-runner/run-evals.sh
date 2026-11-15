@@ -5,6 +5,7 @@
 #
 # Usage:
 #   run-evals [path/to/skill]        Run evals for a specific skill
+#   run-evals path/to/rules-dir      Run evals for a directory of rules (rules/*.md, no SKILL.md)
 #   run-evals                         Run evals for skill in current directory
 #   run-evals --all                   Run evals for all skills with eval-config.json
 #   run-evals --jobs N [...]          Run N cases in parallel (default: 4, env: EVAL_JOBS)
@@ -56,6 +57,12 @@ VIEW_EXCLUDED_ENTRY_NAMES=(".git" "node_modules" ".eval-results")
 # Markers of the plugin or repository root that bounds the isolated skill view: the skill's
 # siblings and its parent's siblings are copied only when they sit inside that root.
 VIEW_BOUNDARY_MARKERS=(".claude-plugin" ".codex-plugin" ".git")
+# What an eval target is: a skill (a SKILL.md) or a directory of rules (rules/*.md and no SKILL.md),
+# such as a stack, a profile or base/ of a content pack. Rules are not skills, so their evals live
+# next to them, in <dir>/evals/eval-config.json, and the agent is told to apply the rules.
+TARGET_KIND_SKILL="skill"
+TARGET_KIND_RULES="rules"
+RULES_DIRECTORY_NAME="rules"
 GOLFO_MARKETPLACE_EVAL_MODEL="${GOLFO_MARKETPLACE_EVAL_MODEL:-}"
 GOLFO_MARKETPLACE_EVAL_REASONING_EFFORT="${GOLFO_MARKETPLACE_EVAL_REASONING_EFFORT:-}"
 # Machine-readable JSONL is the default so CI, tests, and real eval runs are
@@ -77,6 +84,9 @@ usage() {
     echo ""
     echo "Usage:"
     echo "  run-evals [path/to/skill]    Run evals for a specific skill"
+    echo "  run-evals path/to/dir        Run evals for a directory of rules (rules/*.md and"
+    echo "                               no SKILL.md, such as a stack of a content pack),"
+    echo "                               with its evals in <dir>/evals/eval-config.json"
     echo "  run-evals                    Run evals for skill in current directory"
     echo "  run-evals --all              Run evals for all skills with evals/"
     echo ""
@@ -413,6 +423,39 @@ is_within_view_boundary() {
 # symlinked: a link would resolve `..` inside the original tree and expose the skill's evals/
 # again (for example $view/../sibling-skill/../<skill>/evals). An explicit eval config that
 # lives inside the copied tree is removed from the view too. Prints the view path.
+# Prints the kind of eval target <dir> is (TARGET_KIND_SKILL or TARGET_KIND_RULES), or fails when
+# it is neither: a SKILL.md wins, so a skill that bundles its own rules/ stays a skill.
+eval_target_kind() {
+    local target_dir="$1"
+    local rule_file
+
+    if [ -f "$target_dir/SKILL.md" ]; then
+        echo "$TARGET_KIND_SKILL"
+        return 0
+    fi
+    for rule_file in "$target_dir/$RULES_DIRECTORY_NAME"/*.md; do
+        if [ -f "$rule_file" ]; then
+            echo "$TARGET_KIND_RULES"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Prints the instruction that opens every with-skill prompt: read the skill, or the rules, from the
+# isolated view at <view_prompt_path> before answering.
+contract_preamble_for() {
+    local target_kind="$1"
+    local view_prompt_path="$2"
+    local closing="Do not use external services or Bash; answer only from those bundled contracts."
+
+    if [ "$target_kind" = "$TARGET_KIND_RULES" ]; then
+        printf '%s' "This is a contract evaluation. Read the rules in $view_prompt_path/$RULES_DIRECTORY_NAME/, apply every rule that covers this task and every file those rules direct you to. $closing"
+    else
+        printf '%s' "This is a contract evaluation. Read and apply $view_prompt_path/SKILL.md and every reference it directs you to for this task. $closing"
+    fi
+}
+
 create_isolated_skill_view() {
     local source_path="$1"
     local view_root="$2"
@@ -887,7 +930,7 @@ run_single_case() {
     local baseline_cwd="$8"
     local skill_codex_home="$9"
     local baseline_codex_home="${10}"
-    local canonical_skill_path="${11}"
+    local contract_preamble="${11}"
     local skill_view_root="${12}"
 
     local id input description skill_name
@@ -920,12 +963,10 @@ run_single_case() {
 
         # Fire agent calls in parallel (baseline only when enabled); responses
         # land in workspace files.
-        # Contract evals must read the full skill before answering so behavior does
+        # Contract evals must read the full skill (or the rules) before answering so behavior does
         # not depend on provider-specific lazy skill activation.
         local contract_input
-        contract_input=$(printf '%s\n\n%s\n' \
-            "This is a contract evaluation. Read and apply $canonical_skill_path/SKILL.md and every reference it directs you to for this task. Do not use external services or Bash; answer only from those bundled contracts." \
-            "$input")
+        contract_input=$(printf '%s\n\n%s\n' "$contract_preamble" "$input")
         run_agent_prompt "$skill_cwd" "$contract_input" "$workspace/with-skill/$id.txt" "$skill_codex_home" "$skill_view_root" &
         local pid_with=$!
 
@@ -1039,8 +1080,12 @@ run_skill_evals() {
 
     local skill_name
     skill_name=$(jq -r '.skill' "$config_file")
-    local canonical_skill_path
+    local canonical_skill_path target_kind
     canonical_skill_path=$(cd "$skill_path" && pwd -P)
+    if ! target_kind=$(eval_target_kind "$canonical_skill_path"); then
+        echo -e "${RED}ERROR: $skill_path has neither a SKILL.md nor rules in $RULES_DIRECTORY_NAME/*.md: nothing to evaluate${NC}" >&2
+        return 1
+    fi
     local total
     total=$(jq '.test_cases | length' "$config_file")
 
@@ -1066,10 +1111,15 @@ run_skill_evals() {
     skill_view_path=$(create_isolated_skill_view "$canonical_skill_path" "$skill_view_root" "$config_file")
     skill_view_prompt_path=$(prompt_path "$skill_view_path")
     skill_view_root_prompt_path=$(prompt_path "$(cd "$skill_view_root" && pwd -P)")
-    mkdir -p "$skill_cwd/.claude/skills"
-    ln -s "$skill_view_path" "$skill_cwd/.claude/skills/$skill_name"
-    mkdir -p "$skill_cwd/.codex/skills"
-    ln -s "$skill_view_path" "$skill_cwd/.codex/skills/$skill_name"
+    local contract_preamble
+    contract_preamble=$(contract_preamble_for "$target_kind" "$skill_view_prompt_path")
+    # Only a skill is installed as one; rules are named in the prompt and read from the view.
+    if [ "$target_kind" = "$TARGET_KIND_SKILL" ]; then
+        mkdir -p "$skill_cwd/.claude/skills"
+        ln -s "$skill_view_path" "$skill_cwd/.claude/skills/$skill_name"
+        mkdir -p "$skill_cwd/.codex/skills"
+        ln -s "$skill_view_path" "$skill_cwd/.codex/skills/$skill_name"
+    fi
     skill_codex_home=""
     baseline_codex_home=""
     if [ "$RESOLVED_EVAL_PROVIDER" = "codex" ]; then
@@ -1077,7 +1127,7 @@ run_skill_evals() {
         baseline_codex_home=$(mktemp -d)
         create_codex_eval_home "$skill_codex_home"
         create_codex_eval_home "$baseline_codex_home"
-        ln -s "$skill_view_path" "$skill_codex_home/skills/$skill_name"
+        [ "$target_kind" = "$TARGET_KIND_SKILL" ] && ln -s "$skill_view_path" "$skill_codex_home/skills/$skill_name"
     fi
     trap "rm -rf '$skill_cwd' '$baseline_cwd' '$skill_codex_home' '$baseline_codex_home' '$skill_view_root'" RETURN
 
@@ -1130,7 +1180,7 @@ run_skill_evals() {
                 [ ${#pids[@]} -ge "$EVAL_JOBS" ] && sleep 0.2
             done
 
-            run_single_case "$i" "$config_file" "$workspace" "$total" "$run_output_dir" "$run_result_dir" "$skill_cwd" "$baseline_cwd" "$skill_codex_home" "$baseline_codex_home" "$skill_view_prompt_path" "$skill_view_root_prompt_path" &
+            run_single_case "$i" "$config_file" "$workspace" "$total" "$run_output_dir" "$run_result_dir" "$skill_cwd" "$baseline_cwd" "$skill_codex_home" "$baseline_codex_home" "$contract_preamble" "$skill_view_root_prompt_path" &
             pids+=($!)
         done
 
