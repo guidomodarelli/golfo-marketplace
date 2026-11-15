@@ -22,11 +22,9 @@ network; plan and status read what the cache already has.
 
 import argparse
 import difflib
-import fnmatch
 import importlib.util
 import json
 import os
-import re
 import shutil
 import subprocess
 import sys
@@ -49,9 +47,7 @@ from agent_ready_common import (  # noqa: E402
     has_linked_parent,
     is_link,
     local_state,
-    remove_empty_parents,
     run_quiet,
-    plugin_version,
     read_json_file,
     serialize_json,
     sha256_of_file,
@@ -63,6 +59,7 @@ from agent_ready_common import (  # noqa: E402
 )
 from agent_ready_lockfile import (  # noqa: E402
     LOCK_RELATIVE_PATH,
+    SCHEMA_VERSION,
     STATE_APPLIED,
     STATE_CONFLICT,
     STATE_FAILED,
@@ -91,31 +88,54 @@ from agent_ready_layout import (  # noqa: E402
     AGENTS_SKELETON_NAME,
     CLAUDE_PROXY_RELATIVE_PATH,
     CLAUDE_SETTINGS_TEMPLATE_RELATIVE_PATH,
-    CLAUDE_VIEW_DIRECTORIES,
     CODEX_HOOKS_TEMPLATE_RELATIVE_PATH,
     ENGINE_SKILL_DIRECTORY,
     MANAGED_BLOCK_END,
     MANAGED_BLOCK_START,
     MANIFEST_RELATIVE_PATH,
     PROFILE_CATALOG_RELATIVE_PATH,
-    claude_proxy_text,
+    PROVIDER_CATALOG_RELATIVE_PATH,
+    claude_view_of,
     review_cache_module,
 )
-from agent_ready_removal import without_instruction_blocks  # noqa: E402
+from agent_ready_content import engine_version_of  # noqa: E402
+from agent_ready_finalize import (  # noqa: E402
+    finalize,
+    machine_report,
+    machine_report_lines,
+    print_finalize_report,
+    print_machine_report,
+    waiting_instruction_files,
+    without_waiting_sections,
+)
+from agent_ready_manifest import (  # noqa: E402
+    configuration_of,
+    declared_sources,
+    print_ignored_configuration,
+    read_manifest,
+)
+from agent_ready_review_findings import project_owned_instructions, review_summary  # noqa: E402
+from agent_ready_status import (  # noqa: E402
+    conflict_inputs_changed,
+    describe_source,
+    describe_source_item,
+    pack_tools_report,
+    print_pack_tools,
+    print_review_summary,
+    print_status,
+    selection_differences,
+    status_has_drift,
+)
 from agent_ready_output import ANSI_COLORS, paint, write_line  # noqa: E402
 from agent_ready_config import (  # noqa: E402
     ConfigurationError,
-    IGNORED_LOCKED,
-    IGNORED_LOOSENS,
     LAYER_USER,
-    describe_ignored,
     describe_layer,
     format_value,
     load_schema,
     normalized_project_path,
     read_layer_file,
     render_reference,
-    resolve_configuration,
     set_sparse,
     user_config_path,
     validate_layer,
@@ -139,7 +159,6 @@ from agent_ready_options import (  # noqa: E402
     CONTEXT_BUDGET_BYTES_KEY,
     CONTEXT_BUDGET_ENABLED_KEY,
     CONTEXT_BUDGET_RULES_BYTES_KEY,
-    SHADOWING_ENABLED_KEY,
     REPO_REALITY_ENABLED_KEY,
     HOOK_CONFLICTS_ENABLED_KEY,
     PERMISSION_CONFLICTS_ENABLED_KEY,
@@ -150,8 +169,6 @@ from agent_ready_options import (  # noqa: E402
     COMPETING_SKILLS_ENABLED_KEY,
     EDIT_CONFLICTS_ENABLED_KEY,
     SESSION_START_CONFLICTS_ENABLED_KEY,
-    USER_SERVERS_ENABLED_KEY,
-    USER_SERVERS_REGISTER_KEY,
     EXCLUDED_DEFAULTS_KEY,
     WORKSPACES_KEY,
     PROFILES_KEY,
@@ -163,15 +180,12 @@ from agent_ready_options import (  # noqa: E402
     REVIEWS_COMMIT_KEY,
     REVIEWS_TTL_KEY,
     SOURCES_ENABLED_KEY,
-    SOURCES_PACKS_KEY,
     SUPPORTED_PROVIDERS,
     TOOLS_ENABLED_KEY,
     UPDATE_MODES,
     UPDATES_AUTO,
-    UPDATES_MODE_KEY,
     UPDATES_PINNED,
     TRUSTED_PROJECTS_KEY,
-    UPDATES_REFRESH_KEY,
 )
 from agent_ready_detection import (  # noqa: E402
     STACK_PROFILE_KIND,
@@ -186,15 +200,12 @@ from agent_ready_detection import (  # noqa: E402
 )
 import agent_ready_compatibility as compatibility  # noqa: E402
 import agent_ready_conflicts as conflicts_review  # noqa: E402
-import agent_ready_pack_clis as pack_clis  # noqa: E402
-import agent_ready_machine as machine  # noqa: E402
 import agent_ready_repo_facts as repo_facts  # noqa: E402
 import agent_ready_settings_conflicts as settings_conflicts  # noqa: E402
 import agent_ready_skill_overlap as skill_overlap  # noqa: E402
 import agent_ready_pack_mcp as pack_mcp  # noqa: E402
 import agent_ready_parity as parity  # noqa: E402
 import agent_ready_pack_scripts as pack_scripts  # noqa: E402
-import agent_ready_pack_signatures as pack_signatures  # noqa: E402
 import agent_ready_blocks as managed_blocks  # noqa: E402
 import agent_ready_nested as nested  # noqa: E402
 import agent_ready_workspaces as workspace_selection  # noqa: E402
@@ -212,17 +223,14 @@ from agent_ready_packs import (  # noqa: E402
     load_pack_catalog,
     locate_source,
     pack_cache_root,
-    parse_profile_sources,
     refresh_declared_sources,
     source_of_profile,
-    source_update_mode_is_ignored,
 )
 
 # Infers the provider of a run from the environment and the installation path.
 PROVIDER_RESOLVER_RELATIVE_PATH = "scripts/resolve-provider.sh"
 # The CI profiles, part of the engine: their workflows run the CLI of this version.
 ENGINE_CI_CATALOG_RELATIVE_PATH = "assets/ci/profiles.json"
-PROVIDER_CATALOG_RELATIVE_PATH = "assets/providers.json"
 CLAUDE_SETTINGS_TEMPLATE_NAME = "settings.json"
 AGENTS_TEMPLATE_NAME = "agents-template.md"
 CENTRALIZATION_RELATIVE_PATH = "assets/instruction-centralization.md"
@@ -231,13 +239,11 @@ SETTINGS_MERGER_RELATIVE_PATH = "scripts/merge-managed-settings.py"
 CODEX_HOOKS_MERGER_RELATIVE_PATH = "scripts/merge-codex-hooks.py"
 # Inputs of the rendered instructions that no asset or merged template covers.
 RENDERED_INSTRUCTION_INPUTS = (CLAUDE_PROXY_RELATIVE_PATH, CENTRALIZATION_RELATIVE_PATH, RENDERER_RELATIVE_PATH)
-SKILL_NAME = "agent-ready-setup"
 PLUGIN_NAME = "golfo-kit"
 BASE_PROFILE_NAME = "common"
 # Profiles of the CI files: ci.provider picks one (ci-<provider>), never the profile selection.
 CI_PROFILE_KIND = "ci"
 CI_PROFILE_PREFIX = "ci-"
-SCHEMA_VERSION = 1
 # The schemaVersion of the content catalog this engine reads; a newer one asks for a newer plugin.
 GOLFO_CATALOG_SCHEMA_VERSION = 1
 SETTINGS_TEMPLATE_FALLBACK_STATUS = 10
@@ -267,9 +273,6 @@ CONTENT_COMMANDS = ("resolve", "detect", "plan", "finalize", "pack-scripts", "st
 CONFLICTS_MOMENT_SESSION_START = "session-start"
 CONFLICTS_MOMENT_EDIT = "edit"
 CONFLICTS_HOOK_PREFIX = "[conflicts]"
-# Besides the files of the repository facts and of the parity checks (CI and .env examples), what the
-# structural checks read: the instructions, the harness directories (rules, skills, settings, hooks) and MCP.
-CONFLICT_INPUT_PATTERN = re.compile(r"^(AGENTS\.md|CLAUDE\.md|\.mcp\.json|(\.agents|\.claude|\.codex)/.+)$")
 # plan formats that print only the conflicts, for agent-ready conflicts.
 CONFLICTS_FORMAT = "conflicts"
 CONFLICTS_JSON_FORMAT = "conflicts-json"
@@ -452,19 +455,6 @@ def validate_selection_fields(name, profile):
     requires = profile.get("requires")
     if not isinstance(requires, list) or not requires:
         raise ProfileError(f"bundle '{name}' needs 'requires' with the profiles it groups")
-
-
-def configuration_of(project_root, offline=False):
-    """Effective configuration of a repository; ``offline`` is the --offline flag of this run."""
-    return resolve_configuration(project_root, flags={UPDATES_REFRESH_KEY: False} if offline else None)
-
-
-def declared_sources(project_root):
-    """Profile sources of the manifest, in a stable order; none while sources are off."""
-    configuration = configuration_of(project_root)
-    if not configuration.value(SOURCES_ENABLED_KEY):
-        return []
-    return parse_profile_sources(configuration.value(SOURCES_PACKS_KEY), os.path.join(project_root, MANIFEST_RELATIVE_PATH))
 
 
 def locked_sources_of(project_root):
@@ -1435,19 +1425,6 @@ def source_report(catalog, resolved, digests, lock):
     return report
 
 
-def describe_source_item(name, item):
-    """One line about a declared source. Origins never carry credentials: the manifest rejects them."""
-    if item["state"] != SOURCE_AVAILABLE:
-        need = "needed by the selection" if item["selected"] else "not needed by this selection"
-        return f"{name} ({item['type']} {item['origin']}): not available: {item['reason']} ({need})"
-    details = []
-    if item["type"] == SOURCE_TYPE_GIT:
-        details.append(f"requested {item['requestedRef']}, commit {item['resolvedCommit'][:12]}")
-    details.append(f"catalog {item['catalogDigest'][:12]}, content {item['contentDigest'][:12]}")
-    details.append(f"profiles: {', '.join(item['selected']) or 'none selected'}")
-    return f"{name} ({item['type']} {item['origin']}): " + "; ".join(details)
-
-
 def enforce_sync_policy(project_root, skill_dir, catalog, resolved, digests, selected=None, workspace_origins=None):
     """An unattended sync only adopts what is in ``auto``.
 
@@ -1611,12 +1588,6 @@ def content_version(skill_dir):
     return declared if isinstance(declared, str) and compatibility.semver_key(declared) else None
 
 
-def engine_version_of(skill_dir):
-    """Version of the engine that projects ``skill_dir``: the installed one, whatever the content."""
-    marker = content_source.read_marker(skill_dir)
-    return marker["engineVersion"] if marker else plugin_version(skill_dir)
-
-
 def golfo_blocks(blocks):
     """The managed blocks, or nested targets, the content publishes: packs have their own digest."""
     return {key: item for key, item in blocks.items() if not is_pack_profile(item["profile"])}
@@ -1698,100 +1669,6 @@ def rendered_inputs_digest(skill_dir):
 
 
 # ---------------------------------------------------------------------------
-# Manifest and lockfile
-# ---------------------------------------------------------------------------
-
-def read_manifest(project_root):
-    """The repository manifest (the project layer), validated, or None when there is none.
-
-    Reading it resolves every layer, so an invalid organization, user or project file
-    stops here, before anything is written.
-    """
-    configuration = configuration_of(project_root)
-    if configuration.project_document is not None:
-        parse_profile_sources(configuration.project_document.get("sources", {}).get("packs", []),
-                              os.path.join(project_root, MANIFEST_RELATIVE_PATH))
-    return configuration.project_document
-
-
-def review_findings(project_root, strict=False):
-    """Every finding of the current reviews with its id and status, read without calling the provider.
-
-    Returns (findings, decisions, units, stale). An entry whose files changed since its review is
-    out of date: it is counted in stale, not shown, and runs again on the next edit or apply.
-    ``strict`` refuses a decisions file that cannot be read instead of ignoring it.
-    """
-    module = review_cache_module()
-    # The effective configuration, not the options of the last apply: a fresh clone shows the
-    # committed reviews before anyone applies.
-    try:
-        commit = configuration_of(project_root).value(REVIEWS_COMMIT_KEY)
-    except ConfigurationError:
-        commit = None
-    entries = module.ReviewCache(project_root).entries(commit=commit)
-    decisions = module.Decisions(project_root)
-    recorded = decisions.read(strict=strict)
-    findings = []
-    units = 0
-    stale = 0
-    for unit, entry in sorted(entries.items()):
-        files = entry.get("files", {}) if isinstance(entry, dict) else {}
-        # A semantic conflict with an AGENTS.md is about what the project wrote there, not the managed blocks.
-        semantic = (isinstance(entry, dict) and entry.get("check") == conflicts_review.CONFLICT_CHECK
-                    and any(conflicts_review.is_instructions(name) for name in files))
-        current = (conflicts_review.current_hashes(module, project_root, files, project_owned_instructions)
-                   if semantic else module.file_hashes(project_root, files))
-        if files and current == files:
-            units += 1
-            annotated = decisions.annotate(unit, entry.get("findings", []), recorded)
-            if semantic:
-                for finding in annotated:
-                    finding["reviewedFiles"] = current
-                    if finding["decision"]:
-                        finding["status"] = conflicts_review.decision_status(module, finding["decision"], current)
-            findings += [dict(finding, check=entry.get("check")) for finding in annotated]
-        else:
-            stale += 1
-    return findings, recorded, units, stale
-
-
-def review_summary(project_root):
-    """What status and plan show of the AI reviews: open findings and decisions to confirm."""
-    module = review_cache_module()
-    findings, decisions, units, stale = review_findings(project_root)
-    shown = module.visible(findings)
-    return {"units": units, "stale": stale, "findings": shown, "quiet": len(findings) - len(shown),
-            "decisions": len(decisions)}
-
-
-def record_review_settings(project_root):
-    """Leave the reviews options where the hooks read them, so they follow the configuration."""
-    configuration = configuration_of(project_root)
-    module = review_cache_module()
-    try:
-        module.ReviewCache(project_root).write_settings(configuration.value(REVIEWS_ENABLED_KEY),
-                                                        configuration.value(REVIEWS_CACHE_KEY),
-                                                        configuration.value(REVIEWS_TTL_KEY),
-                                                        configuration.value(REVIEWS_COMMIT_KEY))
-    except (OSError, module.CacheLockTimeout) as caught_error:
-        sys.stderr.write(f"WARNING: the review settings were not recorded: {caught_error}\n")
-
-
-def build_manifest(previous, profiles, updates):
-    """Manifest after an apply: the profiles it applied and, with --updates, the new mode.
-
-    The apply never writes a default: --updates with the default value removes the key, so
-    the repository follows whatever the lower layers say. What people wrote stays as is,
-    because a value equal to the default may override the organization or the user.
-    """
-    manifest = json.loads(json.dumps(previous or {}))
-    manifest[PROFILES_KEY] = list(profiles)
-    if updates:
-        set_sparse(manifest, UPDATES_MODE_KEY, updates, load_schema())
-    return manifest
-
-
-# ---------------------------------------------------------------------------
 # Plan
 # ---------------------------------------------------------------------------
 
@@ -1815,17 +1692,6 @@ def classify_asset(destination, desired_entry, local, lock_entry, has_lock):
     if local == LOCAL_SYMLINK:
         return ACTION_UPDATE, "managed file was replaced by a symlink; the template replaces the link without following it"
     return ACTION_UPDATE, "overwrites local changes since the last apply"
-
-
-def claude_view_of(destination, source):
-    """Project path of the .claude view of a managed asset, or None when it has none."""
-    relative = destination[len(".agents/"):] if destination.startswith(".agents/") else ""
-    # A rule of a workspace keeps its view at the same path: its source is the rule of the profile.
-    is_workspace_rule = relative.startswith(workspace_selection.RULES_DIRECTORY + "/") and \
-        workspace_selection.is_workspace_rule(relative[len(workspace_selection.RULES_DIRECTORY) + 1:])
-    if relative.split("/", 1)[0] not in CLAUDE_VIEW_DIRECTORIES or not (is_workspace_rule or source.endswith("/" + relative)):
-        return None
-    return ".claude/" + relative
 
 
 def detached_views(project_root, assets, locked_assets):
@@ -2215,19 +2081,6 @@ def render_diff(project_root, entry):
     ))
 
 
-def describe_source(identity):
-    """One-line description of a source identity."""
-    if not identity:
-        return "none"
-    version = identity.get("version") or "unknown version"
-    revision = identity.get("revision")
-    suffix = f", revision {revision[:12]}" if revision else ""
-    if identity.get("origin"):
-        suffix += f", from {identity['origin']}"
-    name = identity.get("name", content_source.CONTENT_SOURCE_NAME)
-    return f"{name} {version} ({identity.get('kind', 'unknown')}{suffix}; content {identity.get('contentDigest', '')[:12]})"
-
-
 def print_detection_matches(detection):
     """List each stack that matched with its evidence, and the limits of the evaluation."""
     for name, evidence in sorted(detection["stacks"].items()):
@@ -2362,18 +2215,6 @@ def nested_instruction_files(plan):
     targets."""
     return sorted({entry["destination"] for entry in plan.get("blocks", [])
                    if entry["destination"].endswith(conflicts_review.NESTED_AGENTS_SUFFIX)})
-
-
-def project_owned_instructions(text):
-    """What the project wrote in AGENTS.md: the managed block and the stack sections are the engine's,
-    and an update replaces them."""
-    destination = managed_blocks.INSTRUCTION_SECTIONS_DESTINATION
-    try:
-        remaining = without_instruction_blocks(text, sorted(managed_blocks.parse(text, destination)))
-    except (ValueError, managed_blocks.MarkerError):
-        # Markers that are not one pair: nothing can tell the block apart, so all of it is reviewed.
-        return text
-    return text if remaining is None else remaining
 
 
 def describe_conflict(finding):
@@ -2573,397 +2414,6 @@ def print_plan(project_root, skill_dir, plan, provider, skip_marketplace_upgrade
     write_line(paint(f"Summary: {summary}", "heading", stream))
 
 
-# ---------------------------------------------------------------------------
-# Finalize (after Bash projection)
-# ---------------------------------------------------------------------------
-
-def remove_claude_view_of(project_root, destination):
-    """Remove the .claude view of a retired .agents asset when it is a managed view."""
-    if not destination.startswith(".agents/"):
-        return None
-    relative_view = ".claude/" + destination[len(".agents/"):]
-    if has_linked_parent(project_root, relative_view):
-        return None
-    view = os.path.join(project_root, relative_view)
-    asset = os.path.join(project_root, destination)
-    if os.path.islink(view):
-        target = os.path.normpath(os.path.join(os.path.dirname(view), os.readlink(view)))
-        if target == os.path.normpath(asset):
-            os.unlink(view)
-            return view
-        return None
-    if os.path.isfile(view) and os.path.isfile(asset) and os.path.samefile(view, asset):
-        os.unlink(view)
-        return view
-    return None
-
-
-def is_instruction_destination(destination):
-    """True for an AGENTS.md that takes blocks: the root one (stack sections) or a nested target's."""
-    return destination == managed_blocks.INSTRUCTION_SECTIONS_DESTINATION or nested.is_nested_destination(destination)
-
-
-def instructions_conflict(project_root, skill_dir, folder=""):
-    """True when the CLAUDE.md of a folder (the root by default) holds instructions of its own besides AGENTS.md.
-
-    Mirrors normalize_root_instructions and normalize_nested_instruction_pair in
-    instruction-normalization.sh: a CLAUDE.md that is the proxy, the bare "@AGENTS.md" or the same bytes
-    as AGENTS.md is normalized, and one without an AGENTS.md is moved there; any other one is a conflict
-    the agent resolves by hand, and so is a symlink or something that is not a file. The normalization
-    skips the files Git ignores, so in a nested folder an ignored CLAUDE.md that is not the proxy stays as
-    it is and is a conflict too, with or without an AGENTS.md: the block would never reach Claude Code.
-    """
-    claude_path = os.path.join(project_root, *folder.split("/"), "CLAUDE.md") if folder else \
-        os.path.join(project_root, "CLAUDE.md")
-    if not os.path.lexists(claude_path):
-        return False
-    agents_path = os.path.join(os.path.dirname(claude_path), managed_blocks.INSTRUCTION_SECTIONS_DESTINATION)
-    if is_link(claude_path) or not os.path.isfile(claude_path) or is_link(agents_path):
-        return True
-    with open(claude_path, "rb") as file_handle:
-        claude = file_handle.read()
-    with open(os.path.join(skill_dir, CLAUDE_PROXY_RELATIVE_PATH), "rb") as file_handle:
-        proxy = file_handle.read()
-    if claude == proxy or claude.strip() == b"@AGENTS.md":
-        return False
-    if folder and managed_blocks.has_linked_directory(project_root, nested.destination_in(folder)):
-        # Beyond a symlink nothing is written: the block reports the link as its conflict.
-        return False
-    if folder and nested.is_ignored(project_root, f"{folder}/{nested.PROXY_FILE}"):
-        # The normalization never turns it into the proxy, whatever its AGENTS.md holds.
-        return True
-    if os.path.isfile(agents_path):
-        with open(agents_path, "rb") as file_handle:
-            return file_handle.read() != claude
-    return False
-
-
-def instructions_wait(project_root, skill_dir, destination):
-    """True when the apply must leave the blocks of this AGENTS.md as they are.
-
-    The two instruction files of a folder are the agent's to merge while CLAUDE.md conflicts with
-    AGENTS.md, and the root AGENTS.md is the project's own file until the instruction review places the
-    managed block (a legacy file). In both cases the apply adds, updates and removes no block there:
-    they catch up on the next apply after that, so it never writes into instructions it has not adopted.
-    A nested AGENTS.md without the managed block is not legacy: the block of its target goes at the end.
-    """
-    if instructions_conflict(project_root, skill_dir, os.path.dirname(destination)):
-        return True
-    if destination != managed_blocks.INSTRUCTION_SECTIONS_DESTINATION:
-        return False
-    path = os.path.join(project_root, managed_blocks.INSTRUCTION_SECTIONS_DESTINATION)
-    if is_link(path) or not os.path.isfile(path):
-        return False
-    with open(path, encoding="utf-8", errors="replace") as file_handle:
-        return MANAGED_BLOCK_START not in file_handle.read().splitlines()
-
-
-def waiting_instruction_files(project_root, skill_dir, destinations):
-    """The AGENTS.md files among these destinations whose blocks wait (instructions_wait)."""
-    return {destination for destination in destinations
-            if is_instruction_destination(destination) and instructions_wait(project_root, skill_dir, destination)}
-
-
-def without_waiting_sections(project_root, skill_dir, desired, locked):
-    """(desired, locked) of the blocks to classify, without those of an AGENTS.md whose blocks wait."""
-    waiting = waiting_instruction_files(project_root, skill_dir, {destination for destination, _ in desired} | set(locked))
-    if not waiting:
-        return desired, locked
-    return ({key: item for key, item in desired.items() if key[0] not in waiting},
-            {target: blocks for target, blocks in locked.items() if target not in waiting})
-
-
-def instruction_sections_now(project_root, skill_dir, entries):
-    """The block entries of a plan, with those of each AGENTS.md classified again against the file as it is.
-
-    Between the plan and finalize the apply itself writes the instructions: it creates the root
-    AGENTS.md from the template or renders the managed block again, and the normalization moves the
-    instructions of a CLAUDE.md to its AGENTS.md. Without this, the blocks would see a file that
-    changed during synchronization and stay out of it.
-    """
-    kept = [entry for entry in entries if not is_instruction_destination(entry["destination"])]
-    destinations = sorted({entry["destination"] for entry in entries if is_instruction_destination(entry["destination"])})
-    waiting = waiting_instruction_files(project_root, skill_dir, destinations)
-    for destination in destinations:
-        if destination in waiting:
-            continue
-        sections = [entry for entry in entries if entry["destination"] == destination]
-        desired = {(destination, entry["id"]): {"profile": entry["profile"], "source": entry["source"],
-                                                "content": entry["content"]}
-                   for entry in sections if entry.get("content") is not None}
-        # Every block the lock records stays in it: one that only comes from the lock (to retire) may
-        # have no applied base yet, when its first write was a conflict.
-        locked = {destination: {entry["id"]: {"profile": entry["profile"], "source": entry["source"],
-                                              "sha256": entry["baseSha256"]}
-                                for entry in sections if entry["baseSha256"] or entry.get("content") is None}}
-        kept += managed_blocks.classify(project_root, desired, locked)
-    return kept
-
-
-def finalize(project_root, skill_dir, plan, updates):
-    """Retire assets, then write the lockfile and the manifest."""
-    lock_assets = {}
-    removed = []
-    retire_conflicts = []
-    failed = []
-    conflicts = []
-    preserved_views = set(plan["detachedViews"])
-    previous_lock = read_lock(project_root)
-    previous_assets = previous_lock["assets"] if previous_lock else {}
-
-    for entry in plan["entries"]:
-        destination = entry["destination"]
-        absolute_path = os.path.join(project_root, destination)
-        previous_entry = previous_assets.get(destination, {})
-        if entry["action"] == ACTION_DROP:
-            continue
-        if entry["action"] == ACTION_RETIRE:
-            if local_state(absolute_path) != entry["local"] or has_linked_parent(project_root, destination):
-                retire_conflicts.append(f"{destination} changed during synchronization; preserved")
-                lock_assets[destination] = dict(previous_entry, state=STATE_RETIRED_PRESERVED)
-                continue
-            view = remove_claude_view_of(project_root, destination)
-            if view:
-                removed.append(os.path.relpath(view, project_root).replace(os.sep, "/"))
-                # A view in a folder of its own (the rules of a workspace) leaves no empty folder behind.
-                remove_empty_parents(project_root, view)
-            os.unlink(absolute_path)
-            remove_empty_parents(project_root, absolute_path)
-            removed.append(destination)
-            continue
-        if entry["action"] == ACTION_RETIRE_CONFLICT:
-            retire_conflicts.append(f"{destination}: {entry['reason']}")
-            lock_assets[destination] = dict(previous_entry, state=STATE_RETIRED_PRESERVED)
-            continue
-        if entry["action"] == ACTION_CONFLICT:
-            conflicts.append(f"{destination}: {entry['reason']}")
-            lock_assets[destination] = {
-                "profile": entry["profile"],
-                "source": entry["source"],
-                "sha256": entry["baseSha256"],
-                # What the source wanted to write: --from-lock verifies the content against it.
-                "desiredSha256": entry["sha256"],
-                "state": STATE_CONFLICT,
-            }
-            continue
-        if local_state(absolute_path) == entry["sha256"]:
-            lock_assets[destination] = {
-                "profile": entry["profile"],
-                "source": entry["source"],
-                "sha256": entry["sha256"],
-                "state": STATE_APPLIED,
-            }
-        else:
-            failed.append(destination)
-            lock_assets[destination] = {
-                "profile": entry["profile"],
-                "source": entry["source"],
-                "sha256": entry["baseSha256"],
-                "desiredSha256": entry["sha256"],
-                "state": STATE_FAILED,
-            }
-
-    for entry in plan["entries"]:
-        if entry.get("workspace") and entry["destination"] in lock_assets:
-            lock_assets[entry["destination"]]["workspace"] = entry["workspace"]
-
-    # Whatever happened to the asset, a project file in its view stays the project's.
-    for entry in plan["entries"]:
-        if entry["sha256"] and entry["destination"] in lock_assets and                 claude_view_of(entry["destination"], entry["source"]) in preserved_views:
-            lock_assets[entry["destination"]]["viewPreserved"] = True
-
-    conflicts += [f"{view}: {DETACHED_VIEW_REASON}" for view in plan["detachedViews"]]
-    block_report = managed_blocks.apply(project_root, instruction_sections_now(project_root, skill_dir, plan.get("blocks", [])))
-    conflicts += block_report["conflicts"]
-    failed += [f"managed blocks of {problem}" for problem in block_report["failed"]]
-    # Claude Code loads a nested AGENTS.md only through the CLAUDE.md next to it.
-    block_report["proxiesWritten"], block_report["proxiesRemoved"], proxy_failures = nested.place_proxies(
-        project_root, block_report["changed"], block_report["removed"], claude_proxy_text(skill_dir))
-    failed += [f"proxy {problem}" for problem in proxy_failures]
-
-    lock = {
-        "schemaVersion": SCHEMA_VERSION,
-        "generator": {"name": SKILL_NAME, "version": engine_version_of(skill_dir), "stateSchemaVersion": SCHEMA_VERSION},
-        "source": plan["source"],
-        "profiles": plan["profileDigests"],
-        # The digests map is keyed by name; profileOrder keeps the resolution order.
-        "profileOrder": plan["profiles"],
-        "primaryStack": plan["primaryStack"],
-        "providers": configuration_of(project_root).value(PROVIDERS_KEY),
-        "requires": {"bash": "3.2+", "git": "any", "python3": "3.8+"},
-        "assets": lock_assets,
-        "merged": plan["merged"],
-    }
-    if plan.get("workspaces"):
-        lock["workspaces"] = workspace_selection.lock_entries(plan["workspaces"])
-    previous_blocks = (previous_lock or {}).get("blocks") or {}
-    for destination in waiting_instruction_files(project_root, skill_dir, previous_blocks):
-        # Its blocks were left out of this apply: the lock keeps what it knew of them.
-        block_report["lock"][destination] = previous_blocks[destination]
-    if block_report["lock"]:
-        lock["blocks"] = block_report["lock"]
-    if plan["profileSources"]:
-        lock["profileSources"] = plan["profileSources"]
-    mcp_report = register_pack_mcp_servers(project_root, plan, previous_lock)
-    if mcp_report["lock"]:
-        lock["mcpServers"] = mcp_report["lock"]
-    cli_report = install_pack_clis(project_root, plan, previous_lock)
-    if cli_report["lock"]:
-        lock["clis"] = cli_report["lock"]
-    # Last: a script finds the files of this apply and the CLIs on its PATH.
-    script_report = run_pack_scripts(project_root, plan, previous_lock)
-    if script_report["lock"]:
-        lock["scripts"] = script_report["lock"]
-    write_text_if_changed(os.path.join(project_root, LOCK_RELATIVE_PATH), serialize_json(lock))
-
-    manifest = read_manifest(project_root)
-    desired_manifest = build_manifest(manifest, plan["profiles_requested"], updates)
-    if manifest != desired_manifest:
-        write_text_atomically(os.path.join(project_root, MANIFEST_RELATIVE_PATH), serialize_json(desired_manifest))
-    record_review_settings(project_root)
-    # The update the last plan reviewed is on disk now: its conflicts are the current ones.
-    conflicts_review.record_pending(project_root, [])
-
-    return {"removed": removed, "retireConflicts": retire_conflicts, "failed": failed, "conflicts": conflicts,
-            "blocks": block_report, "mcpServers": mcp_report, "clis": cli_report, "scripts": script_report}
-
-
-def run_pack_scripts(project_root, plan, previous_lock):
-    """Run the install and post-apply scripts of the packs that the policy allows; automated reviews run none."""
-    previous = (previous_lock or {}).get("scripts", {})
-    if os.environ.get("AGENT_READY_SETUP_REVIEW_MODE") == "1":
-        return {"ran": [], "failed": [], "lock": previous, "skipped": "automated reviews never run the scripts of the packs"}
-    return pack_scripts.run_apply_events(project_root, plan.get("packTools"), previous)
-
-
-def print_pack_script_report(report, stream):
-    """What ran among the scripts of the packs, and which ones failed."""
-    if not report:
-        return
-    if report.get("skipped"):
-        write_line(f"Scripts of profile packs: none ran ({report['skipped']}).", stream)
-        return
-    for line in report["ran"]:
-        write_line(paint(f"Script of a profile pack ran: {line}", "ok", stream), stream)
-    for problem in report["failed"]:
-        # ERROR: at the start of the line: the background update reports it in the next session and
-        # counts it among the consecutive failures.
-        write_line(paint(f"ERROR: script of a profile pack failed: {problem}", "error", stream), stream)
-
-
-def install_pack_clis(project_root, plan, previous_lock):
-    """Install the CLIs of the packs that the policy allows, in the cache of the user; automated reviews install none."""
-    previous = (previous_lock or {}).get("clis", {})
-    if os.environ.get("AGENT_READY_SETUP_REVIEW_MODE") == "1":
-        return {"installed": [], "reused": [], "removed": [], "manual": [], "conflicts": [], "failed": [],
-                "lock": previous, "path": [], "skipped": "automated reviews never install the CLIs of the packs"}
-    return pack_clis.install(project_root, plan.get("packTools"), previous)
-
-
-def print_pack_cli_report(report, stream):
-    """What an apply installed, reused or dropped among the CLIs of the packs."""
-    if not report:
-        return
-    if report.get("skipped"):
-        write_line(f"CLIs of profile packs: unchanged ({report['skipped']}).", stream)
-        return
-    if report["installed"]:
-        write_line(paint(f"CLIs of profile packs installed in {pack_clis.installs_root()}: {', '.join(report['installed'])}",
-                         "ok", stream), stream)
-    if report["reused"]:
-        write_line(f"CLIs of profile packs already in the cache: {', '.join(report['reused'])}", stream)
-    if report["removed"]:
-        write_line(f"CLIs this repository no longer uses: {', '.join(report['removed'])}", stream)
-    for note in report["manual"] + report["conflicts"]:
-        write_line(paint(f"  ! {note}", "warning", stream), stream)
-    for problem in report["failed"]:
-        write_line(paint(f"  ! CLI not installed: {problem}", "error", stream), stream)
-
-
-def register_pack_mcp_servers(project_root, plan, previous_lock):
-    """Register the MCP servers of the packs that the policy allows; automated reviews change none."""
-    previous = (previous_lock or {}).get("mcpServers", {})
-    if os.environ.get("AGENT_READY_SETUP_REVIEW_MODE") == "1":
-        return {"registered": {}, "removed": {}, "conflicts": [], "failed": [], "lock": previous,
-                "skipped": "automated reviews never change the MCP servers the providers start"}
-    configuration = configuration_of(project_root)
-    providers = configuration.value(PROVIDERS_KEY)
-    return pack_mcp.register(project_root, plan.get("packTools"), previous, providers,
-                             user_duplicates_to_skip(plan, configuration, providers))
-
-
-def user_duplicates_to_skip(plan, configuration, providers):
-    """{provider: {name: user name}} of the pack servers the apply leaves to the user's configuration."""
-    if not configuration.value(USER_SERVERS_ENABLED_KEY) or configuration.value(USER_SERVERS_REGISTER_KEY):
-        return {}
-    desired, _ = pack_mcp.desired_servers(plan.get("packTools"))
-    return machine.duplicated_servers(desired, providers)
-
-
-def machine_report(project_root, plan, configuration):
-    """What the selection collides with on this machine: skills, subagents and commands of the same
-    name, and pack MCP servers the user already has. Read-only."""
-    report = {}
-    if configuration.value(SHADOWING_ENABLED_KEY):
-        report["shadowed"] = machine.shadowed_assets(project_root, plan["entries"])
-    if configuration.value(USER_SERVERS_ENABLED_KEY):
-        desired, _ = pack_mcp.desired_servers(plan.get("packTools"))
-        providers = configuration.value(PROVIDERS_KEY)
-        files = machine.user_server_paths()
-        registered = configuration.value(USER_SERVERS_REGISTER_KEY)
-        report["userServers"] = [
-            {"name": name, "profile": desired[name]["profile"], "provider": provider, "userName": user_name,
-             "userFile": files[provider], "registered": bool(registered)}
-            for provider, names in sorted(machine.duplicated_servers(desired, providers).items())
-            for name, user_name in sorted(names.items())
-        ]
-    return report
-
-
-def machine_report_lines(report):
-    """The collisions with the machine, one line each."""
-    lines = []
-    if not report:
-        return lines
-    for finding in report.get("shadowed", []):
-        lines.append(f"  ~ {finding['kind']} {finding['name']} ({finding['profile']}) has the same name as "
-                     f"{finding['machine']}: {finding['winner']}")
-    for server in report.get("userServers", []):
-        action = ("registered anyway" if server["registered"]
-                  else f"not registered for {server['provider']} ({USER_SERVERS_REGISTER_KEY}: true registers it)")
-        lines.append(f"  ~ MCP server {server['name']} ({server['profile']}) is the user's {server['userName']} "
-                     f"in {server['userFile']}: {action}")
-    return lines
-
-
-def print_machine_report(report):
-    """Print the lines of machine_report_lines."""
-    for line in machine_report_lines(report):
-        write_line(paint(line, "warning", sys.stdout) if line.lstrip().startswith(("!", "~")) else line)
-
-
-def print_pack_mcp_report(report, stream):
-    """What an apply registered, unregistered or left alone among the MCP servers of the packs."""
-    if not report:
-        return
-    if report.get("skipped"):
-        write_line(f"MCP servers of profile packs: unchanged ({report['skipped']}).", stream)
-        return
-    for path, names in sorted(report["registered"].items()):
-        if names:
-            write_line(paint(f"MCP servers of profile packs in {path}: {', '.join(names)}", "ok", stream), stream)
-    for path, names in sorted(report["removed"].items()):
-        if names:
-            write_line(f"Unregistered from {path}: {', '.join(names)}", stream)
-    for conflict in report["conflicts"]:
-        write_line(paint(f"  ! MCP server kept as the project has it: {conflict}", "warning", stream), stream)
-    for path, names in sorted(report.get("userDuplicates", {}).items()):
-        for name, user_name in sorted(names.items()):
-            write_line(f"Not registered in {path}: {name}, the user already has it as {user_name}", stream)
-    for problem in report["failed"]:
-        write_line(paint(f"  ! {problem}", "error", stream), stream)
-
-
 def print_incomplete_plan(project_root, skill_dir, selection, requested, incomplete_error):
     """Say what could not be evaluated. This is not a plan, so it lists no asset decision."""
     stream = sys.stdout
@@ -2980,79 +2430,9 @@ def print_incomplete_plan(project_root, skill_dir, selection, requested, incompl
     write_line("This is not a validated plan. Run it without --offline, or an apply, to download what is missing.")
 
 
-def print_block_report(report, stream):
-    """Which files an apply changed through their managed blocks, and which it kept."""
-    if not report:
-        return
-    for path in report["changed"]:
-        write_line(f"Managed blocks written: {path}", stream)
-    for path in report["removed"]:
-        write_line(f"Removed, only held managed blocks: {path}", stream)
-    for path in report.get("proxiesWritten", []):
-        write_line(f"Proxy written next to a nested AGENTS.md: {path}", stream)
-    for path in report.get("proxiesRemoved", []):
-        write_line(f"Removed, proxy of a removed AGENTS.md: {path}", stream)
-    for conflict in report["conflicts"]:
-        # WARNING: at the start of the line: the background update reports it in the next session.
-        write_line(paint(f"WARNING: managed block kept: {conflict}", "warning", stream), stream)
-
-
-def print_finalize_report(report):
-    """Report retirement, preserved conflicts and the overall result."""
-    stream = sys.stdout
-    if report["removed"]:
-        write_line("Retired managed assets:")
-        for path in report["removed"]:
-            write_line(f"  - {path}")
-    # The projection already reported each preserved conflict with its path.
-    if report["retireConflicts"]:
-        write_line(paint("Retired assets kept because they changed locally:", "warning", stream))
-        for conflict in report["retireConflicts"]:
-            write_line(f"  ! {conflict}")
-    if report["failed"]:
-        write_line(paint("Managed assets that could not be applied (see conflicts above):", "error", stream))
-        for path in report["failed"]:
-            write_line(f"  ! {path}")
-    print_block_report(report.get("blocks"), stream)
-    print_pack_mcp_report(report.get("mcpServers"), stream)
-    print_pack_cli_report(report.get("clis"), stream)
-    print_pack_script_report(report.get("scripts"), stream)
-    if report["failed"]:
-        result = "partial: some managed assets could not be applied"
-    elif (report.get("scripts") or {}).get("failed"):
-        result = "partial: a script of a profile pack failed"
-    elif report["conflicts"] or report["retireConflicts"]:
-        preserved = len(report["conflicts"]) + len(report["retireConflicts"])
-        result = f"applied with {preserved} preserved conflict(s)"
-    else:
-        result = "complete"
-    write_line(f"Lockfile: {LOCK_RELATIVE_PATH} ({result})")
-
-
 # ---------------------------------------------------------------------------
 # Status
 # ---------------------------------------------------------------------------
-
-def selection_differences(lock, plan):
-    """How the selected profiles differ from the lock, in words."""
-    differences = []
-    locked_order = lock.get("profileOrder")
-    if locked_order != plan["profiles"]:
-        differences.append(f"the lock has the profiles {', '.join(locked_order or []) or 'none'}; the selection resolves to {', '.join(plan['profiles'])}")
-    locked_profiles = lock.get("profiles") or {}
-    for name, entry in sorted(plan["profileDigests"].items()):
-        if name in locked_profiles and locked_profiles[name] != entry:
-            differences.append(f"profile {name} changed since the lock")
-    return differences
-
-
-def conflict_inputs_changed(changed, skill_dir):
-    """True when an edited path, relative to the project, is one the structural checks read."""
-    facts = repo_facts.load_facts(skill_dir) if skill_dir else {}
-    parity_patterns = parity.REPOSITORY_CI_FILES + parity.EXAMPLE_ENVIRONMENT_FILES
-    return any(CONFLICT_INPUT_PATTERN.match(path) or repo_facts.is_signal_file(path, facts)
-               or any(fnmatch.fnmatchcase(path, pattern) for pattern in parity_patterns)
-               for path in (changed_path.replace(os.sep, "/") for changed_path in changed))
 
 
 def compute_status(project_root, skill_dir, conflicts_key=None):
@@ -3168,143 +2548,6 @@ def compute_status(project_root, skill_dir, conflicts_key=None):
     return status
 
 
-def status_has_drift(status):
-    """True when the checkout or the source differs from the lock, or the selection cannot resolve."""
-    if status["errors"] or status["incomplete"]:
-        return True
-    checkout = status["checkout"]
-    if any(checkout[key] for key in ("modified", "missing", "conflict", "failed", "retiredPreserved")):
-        return True
-    if status.get("workspaceDifferences"):
-        # A workspace of the manifest that the last apply did not adopt, or one that left it.
-        return True
-    return bool(status["update"] and status["update"]["available"]) or not status["hasLock"]
-
-
-def pack_tools_report(plan, catalog, configuration):
-    """The verdict of every tool the selected profiles declare, with the signature of each source checked locally."""
-    return pack_tools.report(plan["packToolDeclarations"], catalog, configuration,
-                             verify_signature=pack_signatures.verifier(configuration))
-
-
-def print_pack_tools(report, stream, brief=False):
-    """What the selected packs declare besides files, and what the security policy decides about each one."""
-    if not report:
-        return
-    blocked = sum(tool["decision"] == pack_tools.DECISION_BLOCKED for tool in report["tools"])
-    write_line(paint("Pack tools (what the security policy allows; an apply registers the allowed MCP servers, "
-                     "installs the allowed CLIs and runs the allowed scripts)", "heading", stream), stream)
-    for tool in report["tools"]:
-        label = f"{pack_tools.describe_tool(tool)} [{tool['profile']}]"
-        if tool["decision"] == pack_tools.DECISION_ALLOWED:
-            effect = "" if tool["type"] in report.get("applies", []) else " (not installed or run yet)"
-            write_line(paint(f"  + allowed: {label}{effect}", "ok", stream), stream)
-        else:
-            write_line(paint(f"  - blocked: {label}: {tool['reason']}", "warning", stream), stream)
-    if not brief:
-        write_line("  Policy:", stream)
-        for key, item in report["policy"].items():
-            write_line(f"    {key}: {format_value(item['value'])} ({item['origin']})", stream)
-    elif blocked:
-        write_line(f"  {blocked} blocked; agent-ready plan shows the policy and the layer of each value.", stream)
-    write_line("", stream)
-
-
-def print_review_summary(reviews, brief, stream):
-    """Open findings of the AI reviews and decisions to confirm, from the cache; nothing when there is no review yet."""
-    if not reviews or not (reviews["units"] or reviews["stale"]):
-        return
-    module = review_cache_module()
-    quiet = f"; {reviews['quiet']} accepted or dismissed" if reviews.get("quiet") else ""
-    if reviews["findings"]:
-        write_line(paint(f"AI reviews: {len(reviews['findings'])} known finding(s) in {reviews['units']} reviewed unit(s), "
-                         f"from the cache{quiet}:", "warning", stream), stream)
-        if not brief:
-            for finding in reviews["findings"]:
-                write_line(paint(f"  {module.finding_line(finding)}", "warning", stream), stream)
-            write_line(f"  Accept or dismiss one with: agent-ready review accept <id> --reason \"...\"", stream)
-    else:
-        write_line(paint(f"AI reviews: no known finding in {reviews['units']} reviewed unit(s){quiet}.", "ok", stream), stream)
-    if reviews["stale"] and not brief:
-        write_line(f"  {reviews['stale']} review(s) are out of date and run again on the next edit or apply.", stream)
-
-
-def print_status_conflicts(lines, stream):
-    """The structural conflicts status knows about, one per line; nothing when there is none."""
-    if not lines:
-        return
-    write_line(paint(f"Conflicts between the profiles: {len(lines)} structural, "
-                     f"listed with their fix by `agent-ready conflicts`:", "warning", stream))
-    for line in lines:
-        write_line(paint(line, "warning", stream))
-
-
-def print_status(status, brief):
-    """Human readable status."""
-    stream = sys.stdout
-    configuration = status["configuration"]
-    profiles = configuration.value(PROFILES_KEY)
-    if profiles == []:
-        write_line(f"Agent Ready profiles: none, the core only (updates: {configuration.value(UPDATES_MODE_KEY)})")
-    elif not profiles:
-        hint = "" if brief else " Run /agent-ready-setup to pin this repository."
-        write_line(paint(f"Agent Ready: no profiles selected in {MANIFEST_RELATIVE_PATH}.{hint}", "warning", stream))
-    else:
-        write_line(f"Agent Ready profiles: {', '.join(profiles)} (updates: {configuration.value(UPDATES_MODE_KEY)})")
-    for entry in configuration.value(WORKSPACES_KEY) or []:
-        write_line(f"Workspace {entry['path']}: {', '.join(entry['profiles']) or 'none'}")
-    for difference in status.get("workspaceDifferences", []):
-        write_line(paint(f"  ! {difference}: run agent-ready apply to adopt it", "warning", stream))
-    # SessionStart already reported what was ignored when it read the configuration.
-    if not brief:
-        print_ignored_configuration(configuration, stream)
-    if not status["hasLock"]:
-        write_line(paint("No lockfile: applied assets are not pinned yet.", "warning", stream))
-    else:
-        write_line(f"Locked source: {describe_source(status['lockedSource'])}")
-        checkout = status["checkout"]
-        write_line(
-            "Checkout: "
-            f"{len(checkout['applied'])} applied, {len(checkout['modified'])} modified, "
-            f"{len(checkout['missing'])} missing, {len(checkout['conflict'])} preserved conflicts, "
-            f"{len(checkout['failed'])} failed, {len(checkout['retiredPreserved'])} retired but preserved"
-        )
-        if not brief:
-            for key, label in (("modified", "modified"), ("missing", "missing"), ("conflict", "conflict"),
-                               ("failed", "failed"), ("retiredPreserved", "retired but preserved")):
-                for destination in checkout[key]:
-                    write_line(f"  ! {label}: {destination}")
-    for name, item in status["sources"].items():
-        if item["differences"] or item["pendingUpdate"] or item["state"] != SOURCE_AVAILABLE or not brief:
-            write_line(f"Profile source {describe_source_item(name, item)}")
-        if item["differences"]:
-            write_line(paint(f"  ! {name} differs from the lock: {'; '.join(item['differences'])}", "warning", stream))
-        if item["pendingUpdate"]:
-            write_line(paint(f"  ! {name}: {item['pendingUpdate']}", "warning", stream))
-    if status["incomplete"]:
-        write_line(paint(f"Evaluation incomplete, nothing was validated: {status['incomplete']}", "warning", stream))
-    update = status["update"]
-    if update:
-        if update["available"]:
-            hint = "" if brief else " Review it with `/agent-ready-setup plan` and apply it with `/agent-ready-setup`."
-            write_line(paint(
-                f"Update available: {describe_source(update['source'])}; {len(update['changedDestinations'])} asset(s) would change.{hint}",
-                "warning", stream,
-            ))
-        else:
-            write_line(paint("Source matches the lock: no update pending.", "ok", stream))
-    print_status_conflicts(status.get("conflicts"), stream)
-    print_review_summary(status.get("reviews"), brief, stream)
-    print_pack_tools(status.get("packTools"), stream, brief=True)
-    if not brief and status["capabilities"]:
-        write_line("Provider capabilities:")
-        for provider, capabilities in status["capabilities"].items():
-            details = ", ".join(f"{name}={value['support']}" for name, value in capabilities.items())
-            write_line(f"  {provider}: {details}")
-    for error in status["errors"]:
-        write_line(paint(f"ERROR: {error}", "error", stream))
-
-
 # ---------------------------------------------------------------------------
 # Command line
 # ---------------------------------------------------------------------------
@@ -3406,30 +2649,6 @@ def command_resolve(arguments):
     write_line(f"stack_dir\t{stack_dir}")
     write_line(f"tools\t{','.join(resolved_tools(catalog, selected))}")
     return 0
-
-
-def approval_hint(project_root):
-    """The exact command that approves a repository on this machine."""
-    script = os.path.abspath(__file__)
-    return f'approve it with: python3 "{script}" trust --project "{project_root}"'
-
-
-def print_ignored_configuration(configuration, stream):
-    """Warn about every value a layer could not set, and about ignored source update modes."""
-    hint = approval_hint(configuration.project_root)
-    for item in configuration.ignored:
-        write_line(paint(f"WARNING: {describe_ignored(item, hint)}", "warning", stream), stream)
-    for declaration in declared_sources(configuration.project_root):
-        reason = source_update_mode_is_ignored(configuration, declaration)
-        if reason is None:
-            continue
-        item = {"key": f"{SOURCES_PACKS_KEY}[{declaration['name']}].updates", "value": declaration["updates"],
-                "layer": "project", "reason": reason}
-        if reason in (IGNORED_LOCKED, IGNORED_LOOSENS):
-            message = describe_ignored(item, hint)
-        else:
-            message = f"{item['key']}={declaration['updates']} was ignored: {reason}"
-        write_line(paint(f"WARNING: {message}", "warning", stream), stream)
 
 
 def automatic_sources(configuration):

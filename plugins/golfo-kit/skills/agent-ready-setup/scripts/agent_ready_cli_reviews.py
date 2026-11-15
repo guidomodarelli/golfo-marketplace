@@ -28,8 +28,11 @@ def current_review(project_root):
     Besides the findings of what is on disk, the update conflicts of the last plan, so the team can
     decide on one before the apply writes the rule.
     """
+    # Imported here: the findings read the removal's view of AGENTS.md, which the other commands do not need.
+    from agent_ready_review_findings import review_findings
+
     try:
-        findings, decisions, _, _ = engine().review_findings(project_root, strict=True)
+        findings, decisions, _, _ = review_findings(project_root, strict=True)
     except review_module().DecisionsError as decisions_error:
         raise StateError(f"{decisions_error}; fix it or remove it before deciding on findings") from decisions_error
     # The same id can be on disk and in a pending update when the hook reviewed the applied rule
