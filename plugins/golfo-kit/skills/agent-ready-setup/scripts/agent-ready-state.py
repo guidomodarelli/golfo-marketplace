@@ -23,7 +23,6 @@ network; plan and status read what the cache already has.
 import argparse
 import difflib
 import importlib.util
-import json
 import os
 import shutil
 import subprocess
@@ -47,15 +46,14 @@ from agent_ready_common import (  # noqa: E402
     has_linked_parent,
     is_link,
     local_state,
-    run_quiet,
     read_json_file,
+    run_quiet,
     serialize_json,
     sha256_of_file,
-    sha256_of_text,
-    skill_cache_directory,
+    text_bytes,
     walk_files,
-    write_text_if_changed,
     write_text_atomically,
+    write_text_if_changed,
 )
 from agent_ready_lockfile import (  # noqa: E402
     LOCK_RELATIVE_PATH,
@@ -69,6 +67,62 @@ from agent_ready_lockfile import (  # noqa: E402
 )
 from agent_ready_background import command_background_update, command_update_report  # noqa: E402
 import agent_ready_removal as removal  # noqa: E402
+from agent_ready_desired_assets import (  # noqa: E402
+    compose_stack_directory,
+    desired_assets,
+    desired_blocks,
+    desired_nested_blocks,
+    nested_contents,
+    nested_index_block,
+    profile_digests,
+    shared_overrides,
+    workspace_blocks,
+    workspace_file_blocks,
+    workspace_profile_origins,
+    workspace_rule_files,
+    workspace_shared_texts,
+)
+from agent_ready_layout import (  # noqa: E402
+    AGENTS_SKELETON_NAME,
+    CENTRALIZATION_RELATIVE_PATH,
+    CLAUDE_PROXY_RELATIVE_PATH,
+    ENGINE_SKILL_DIRECTORY,
+    MANAGED_BLOCK_END,
+    MANAGED_BLOCK_START,
+    MANIFEST_RELATIVE_PATH,
+    PROFILE_CATALOG_RELATIVE_PATH,
+    PROVIDER_CATALOG_RELATIVE_PATH,
+    RENDERER_RELATIVE_PATH,
+    claude_view_of,
+    review_cache_module,
+)
+from agent_ready_profiles import (  # noqa: E402
+    ASSET_REFERENCE_SEPARATOR,
+    CI_PROFILE_KIND,
+    DEFAULTS_KEY,
+    load_effective_catalog,
+    load_profile_catalog,
+    locked_sources_of,
+    primary_stack,
+    profiles_for_stack,
+    resolve_profiles,
+    resolve_project_profiles,
+    resolved_tools,
+    split_profile_names,
+)
+from agent_ready_source_identity import (  # noqa: E402
+    agents_template_path,
+    enforce_lock_reproduction,
+    enforce_sync_policy,
+    golfo_blocks,
+    keep_locked_entries_of_unselected_sources,
+    merged_template_entries,
+    source_entries,
+    source_identity,
+    source_report,
+    validate_pack_destinations,
+    version_changes,
+)
 from agent_ready_actions import (  # noqa: E402
     ACTION_ADOPT,
     ACTION_CONFLICT,
@@ -84,21 +138,6 @@ from agent_ready_actions import (  # noqa: E402
     LINKED_PARENT_REASON,
     classify_retired,
 )
-from agent_ready_layout import (  # noqa: E402
-    AGENTS_SKELETON_NAME,
-    CLAUDE_PROXY_RELATIVE_PATH,
-    CLAUDE_SETTINGS_TEMPLATE_RELATIVE_PATH,
-    CODEX_HOOKS_TEMPLATE_RELATIVE_PATH,
-    ENGINE_SKILL_DIRECTORY,
-    MANAGED_BLOCK_END,
-    MANAGED_BLOCK_START,
-    MANIFEST_RELATIVE_PATH,
-    PROFILE_CATALOG_RELATIVE_PATH,
-    PROVIDER_CATALOG_RELATIVE_PATH,
-    claude_view_of,
-    review_cache_module,
-)
-from agent_ready_content import engine_version_of  # noqa: E402
 from agent_ready_finalize import (  # noqa: E402
     finalize,
     machine_report,
@@ -128,7 +167,6 @@ from agent_ready_status import (  # noqa: E402
 )
 from agent_ready_output import ANSI_COLORS, paint, write_line  # noqa: E402
 from agent_ready_config import (  # noqa: E402
-    ConfigurationError,
     LAYER_USER,
     describe_layer,
     format_value,
@@ -147,15 +185,9 @@ from agent_ready_options import (  # noqa: E402
     CI_CONFLICTS_SEMANTIC_KEY,
     CI_CONFLICTS_OFF,
     CI_CONFLICTS_FAIL,
-    CI_PROVIDER_KEY,
-    CI_PROVIDER_NONE,
     CI_WARN,
     DETECTION_ENABLED_KEY,
     DETECTION_WORKSPACES_KEY,
-    NESTED_ENABLED_KEY,
-    NESTED_TARGETS_KEY,
-    NESTED_CODEX_INDEX_KEY,
-    CODEX_PROVIDER,
     CONTEXT_BUDGET_BYTES_KEY,
     CONTEXT_BUDGET_ENABLED_KEY,
     CONTEXT_BUDGET_RULES_BYTES_KEY,
@@ -179,12 +211,10 @@ from agent_ready_options import (  # noqa: E402
     REVIEWS_ENABLED_KEY,
     REVIEWS_COMMIT_KEY,
     REVIEWS_TTL_KEY,
-    SOURCES_ENABLED_KEY,
     SUPPORTED_PROVIDERS,
     TOOLS_ENABLED_KEY,
     UPDATE_MODES,
     UPDATES_AUTO,
-    UPDATES_PINNED,
     TRUSTED_PROJECTS_KEY,
 )
 from agent_ready_detection import (  # noqa: E402
@@ -192,13 +222,9 @@ from agent_ready_detection import (  # noqa: E402
     STATUS_AMBIGUOUS,
     STATUS_NONE,
     STATUS_RESOLVED,
-    DetectionSchemaError,
     detect_profiles,
     format_evidence_list,
-    required_layers,
-    validate_catalog_detection,
 )
-import agent_ready_compatibility as compatibility  # noqa: E402
 import agent_ready_conflicts as conflicts_review  # noqa: E402
 import agent_ready_repo_facts as repo_facts  # noqa: E402
 import agent_ready_settings_conflicts as settings_conflicts  # noqa: E402
@@ -214,14 +240,11 @@ import agent_ready_content as content_source  # noqa: E402
 from agent_ready_packs import (  # noqa: E402
     KEBAB_CASE_NAME,
     PACK_CATALOG_FILE_NAME,
-    PACK_SCHEMA_VERSION,
     SOURCE_AVAILABLE,
     SOURCE_TYPE_GIT,
     download_declared_sources,
     effective_update_mode,
     is_pack_profile,
-    load_pack_catalog,
-    locate_source,
     pack_cache_root,
     refresh_declared_sources,
     source_of_profile,
@@ -229,23 +252,9 @@ from agent_ready_packs import (  # noqa: E402
 
 # Infers the provider of a run from the environment and the installation path.
 PROVIDER_RESOLVER_RELATIVE_PATH = "scripts/resolve-provider.sh"
-# The CI profiles, part of the engine: their workflows run the CLI of this version.
-ENGINE_CI_CATALOG_RELATIVE_PATH = "assets/ci/profiles.json"
-CLAUDE_SETTINGS_TEMPLATE_NAME = "settings.json"
-AGENTS_TEMPLATE_NAME = "agents-template.md"
-CENTRALIZATION_RELATIVE_PATH = "assets/instruction-centralization.md"
-RENDERER_RELATIVE_PATH = "scripts/render-instruction-template.sh"
 SETTINGS_MERGER_RELATIVE_PATH = "scripts/merge-managed-settings.py"
 CODEX_HOOKS_MERGER_RELATIVE_PATH = "scripts/merge-codex-hooks.py"
-# Inputs of the rendered instructions that no asset or merged template covers.
-RENDERED_INSTRUCTION_INPUTS = (CLAUDE_PROXY_RELATIVE_PATH, CENTRALIZATION_RELATIVE_PATH, RENDERER_RELATIVE_PATH)
 PLUGIN_NAME = "golfo-kit"
-BASE_PROFILE_NAME = "common"
-# Profiles of the CI files: ci.provider picks one (ci-<provider>), never the profile selection.
-CI_PROFILE_KIND = "ci"
-CI_PROFILE_PREFIX = "ci-"
-# The schemaVersion of the content catalog this engine reads; a newer one asks for a newer plugin.
-GOLFO_CATALOG_SCHEMA_VERSION = 1
 SETTINGS_TEMPLATE_FALLBACK_STATUS = 10
 # Results of `check` and their exit statuses: the stable contract of a CI pipeline.
 CHECK_UP_TO_DATE = "up-to-date"
@@ -295,1377 +304,6 @@ SELECTION_PROFILES_FLAG = "--profiles"
 SELECTION_STACK_FLAG = "--stack"
 SELECTION_MANIFEST = "manifest"
 SELECTION_DETECTION = "detection"
-# Catalog fields that do not change what a profile projects, so they stay out of its digest.
-PROFILE_DIGEST_EXCLUDED_FIELDS = ("detect",)
-
-
-# ---------------------------------------------------------------------------
-# Profiles
-# ---------------------------------------------------------------------------
-
-# A profile's ``defaults``: the profiles it brings unless excludedDefaults leaves them out.
-DEFAULTS_KEY = "defaults"
-# An asset of another profile of the selection that a profile replaces, as "<profile>:<path>":
-# "react:rules/react-testing.md", or "software-development:skills/pr-review-workflow" for a skill.
-OVERRIDES_KEY = "overrides"
-# Skills of other profiles a skill goes together with, as "<profile>:skills/<name>" (read in #72c).
-COMPLEMENTS_KEY = "complements"
-ASSET_REFERENCE_SEPARATOR = ":"
-OVERRIDABLE_DIRECTORIES = ("rules", "skills", "agents", "commands")
-# What complements may name besides assets: the tools of a profile, by kind and name.
-COMPLEMENTABLE_DIRECTORIES = OVERRIDABLE_DIRECTORIES + ("mcpServers", "clis")
-# A bundle publishes nothing and only groups other profiles through ``requires``.
-BUNDLE_PROFILE_KIND = "bundle"
-BUNDLE_FORBIDDEN_KEYS = ("assets", "tools", "detect", DEFAULTS_KEY, OVERRIDES_KEY, COMPLEMENTS_KEY, "clis",
-                         "mcpServers", "scripts", nested.NESTED_KEY)
-
-
-def parse_asset_reference(reference, what, directories=None):
-    """(profile, path) of "<profile>:<path>", where path is a rule, agent or command file or a skill directory.
-
-    ``directories`` are the first parts the reference may use: what an override can replace by
-    default; complements also name the tools of a profile (mcpServers/<name>, clis/<name>).
-    """
-    directories = directories or OVERRIDABLE_DIRECTORIES
-    if not isinstance(reference, str) or reference.count(ASSET_REFERENCE_SEPARATOR) != 1:
-        raise ProfileError(f"{what}: '{reference}' must be <profile>:<path>, such as react:rules/react-testing.md")
-    profile, path = reference.split(ASSET_REFERENCE_SEPARATOR)
-    parts = path.split("/")
-    if (not profile or len(parts) < 2 or parts[0] not in directories
-            or any(part in ("", ".", "..") for part in parts)):
-        raise ProfileError(f"{what}: '{reference}' must name a path under {', '.join(directories)}, "
-                           "such as react:rules/react-testing.md or software-development:skills/pr-review-workflow")
-    return profile, path
-
-
-def resolved_overrides(skill_dir, catalog, resolved, skipped=None):
-    """{target profile: {path: overriding profile}} of the selection, validated against what it publishes.
-
-    A profile replaces an asset of another selected profile on purpose: only its own asset is
-    projected. An override of an asset, or a profile, that the selection does not have is an error.
-    ``skipped(name, path)`` leaves out an override that is validated somewhere else.
-    """
-    overridden = {}
-    for name in resolved:
-        for reference in catalog["profiles"][name].get(OVERRIDES_KEY, []):
-            target, path = parse_asset_reference(reference, f"profile '{name}' {OVERRIDES_KEY}")
-            if skipped and skipped(name, path):
-                continue
-            if target == name:
-                raise ProfileError(f"profile '{name}' overrides its own {path}; remove the file instead")
-            if target == BASE_PROFILE_NAME:
-                raise ProfileError(f"profile '{name}' overrides {reference}: the core cannot be overridden yet; "
-                                   f"add a rule of your own next to it")
-            if target not in resolved:
-                raise ProfileError(f"profile '{name}' overrides {reference}, but the selection does not have "
-                                   f"'{target}'; nothing was written")
-            target_root = profile_asset_root(skill_dir, catalog, target)
-            if not target_root or not os.path.exists(os.path.join(target_root, *path.split("/"))):
-                raise ProfileError(f"profile '{name}' overrides {reference}, which '{target}' does not publish; "
-                                   f"nothing was written")
-            previous = overridden.setdefault(target, {}).setdefault(path, name)
-            if previous != name:
-                raise ProfileError(f"profiles '{previous}' and '{name}' both override {reference}; keep one")
-    return overridden
-
-
-def is_overridden(overridden, profile, relative_path):
-    """True when another profile of the selection replaces this asset (a file, or a file of a skill directory)."""
-    return any(relative_path == path or relative_path.startswith(path + "/")
-               for path in overridden.get(profile, {}))
-
-
-def engine_ci_profiles(skill_dir):
-    """The CI profiles of the engine (assets/ci/profiles.json): their files run the CLI of this engine.
-
-    A skill directory without that catalog (a trimmed copy of the skill) has no CI profiles.
-    """
-    path = os.path.join(skill_dir, ENGINE_CI_CATALOG_RELATIVE_PATH)
-    if not os.path.isfile(path):
-        return {}
-    try:
-        catalog = read_json_file(path, "CI profile catalog")
-    except StateError as caught_error:
-        raise ProfileError(str(caught_error)) from caught_error
-    profiles = catalog.get("profiles")
-    if not isinstance(profiles, dict) or any(not isinstance(entry, dict) or entry.get("kind") != CI_PROFILE_KIND
-                                             for entry in profiles.values()):
-        raise ProfileError(f"{path} must list profiles of kind {CI_PROFILE_KIND} only")
-    return profiles
-
-
-def load_profile_catalog(skill_dir):
-    """Load and validate the profile catalog of the skill source.
-
-    Content that needs a newer engine than the installed one (``minEngine``, ``schemaVersion``)
-    stops here, before anything is written.
-    """
-    catalog_path = os.path.join(skill_dir, PROFILE_CATALOG_RELATIVE_PATH)
-    try:
-        catalog = read_json_file(catalog_path, "profile catalog")
-    except StateError as caught_error:
-        raise ProfileError(str(caught_error)) from caught_error
-    label = f"the {content_source.CONTENT_SOURCE_NAME} catalog"
-    compatibility.require_engine(label, catalog, engine_version_of(skill_dir), GOLFO_CATALOG_SCHEMA_VERSION)
-    compatibility.validate_compatibility(label, catalog)
-    profiles = catalog.get("profiles")
-    if not isinstance(profiles, dict) or not profiles:
-        raise ProfileError(f"profile catalog {catalog_path} has no profiles")
-    # The CI profiles come with the engine (assets/ci/profiles.json): the content declares none.
-    ci_profiles = engine_ci_profiles(skill_dir)
-    taken_names = sorted(set(profiles) & set(ci_profiles))
-    if taken_names:
-        raise ProfileError(f"profile catalog {catalog_path}: profile '{taken_names[0]}' takes the name of a CI profile of the engine")
-    profiles.update(ci_profiles)
-    try:
-        validate_catalog_detection(profiles)
-    except DetectionSchemaError as caught_error:
-        raise ProfileError(f"profile catalog {catalog_path}: {caught_error}") from caught_error
-    for name, profile in sorted(profiles.items()):
-        validate_selection_fields(name, profile)
-        relative_root = profile.get("assets")
-        asset_root = os.path.join(skill_dir, relative_root) if relative_root else None
-        # A profile whose tree this source does not carry is checked when a selection resolves it
-        # (profile_asset_root, nested_contents), not for every catalog load.
-        if asset_root is None or os.path.isdir(asset_root):
-            nested.validate_published(name, profile, asset_root)
-    return catalog
-
-
-def validate_selection_fields(name, profile):
-    """``defaults`` is a list of other profiles, and a bundle only groups profiles through ``requires``.
-
-    A bundle publishes nothing: no assets, tools, detection or defaults of its own, so what it brings
-    is exactly the profiles it requires, each with its own defaults.
-    """
-    nested.validate_declaration(name, profile)
-    for field, directories in ((OVERRIDES_KEY, OVERRIDABLE_DIRECTORIES), (COMPLEMENTS_KEY, COMPLEMENTABLE_DIRECTORIES)):
-        for reference in profile.get(field, []) if isinstance(profile.get(field, []), list) else [None]:
-            parse_asset_reference(reference, f"profile '{name}' {field}", directories)
-    defaults = profile.get(DEFAULTS_KEY, [])
-    if not isinstance(defaults, list) or not all(isinstance(item, str) and item for item in defaults):
-        raise ProfileError(f"profile '{name}': '{DEFAULTS_KEY}' must be a list of profile names")
-    if name in defaults:
-        raise ProfileError(f"profile '{name}' cannot list itself in '{DEFAULTS_KEY}'")
-    if profile.get("kind") != BUNDLE_PROFILE_KIND:
-        return
-    published = sorted(key for key in BUNDLE_FORBIDDEN_KEYS if key in profile)
-    if published:
-        raise ProfileError(f"bundle '{name}' only groups profiles through 'requires'; it cannot declare: {', '.join(published)}")
-    requires = profile.get("requires")
-    if not isinstance(requires, list) or not requires:
-        raise ProfileError(f"bundle '{name}' needs 'requires' with the profiles it groups")
-
-
-def locked_sources_of(project_root):
-    """Profile sources recorded by the last apply."""
-    lock = read_lock(project_root)
-    return (lock or {}).get("profileSources", {})
-
-
-def load_effective_catalog(project_root, skill_dir, source_state=None):
-    """Golfo's catalog plus the profiles of every source available on this machine.
-
-    Pack profiles are namespaced, so they never replace a Golfo profile, and the global
-    fields of Golfo's catalog stay as they are. Nothing here uses the network or runs
-    anything from a pack. ``source_state`` holds the commits an apply just adopted.
-    """
-    catalog = load_profile_catalog(skill_dir)
-    golfo_profile_names = set(catalog["profiles"])
-    locked_sources = locked_sources_of(project_root)
-    configuration = configuration_of(project_root)
-    catalog["sources"] = {}
-    catalog["packAssetRoots"] = {}
-    catalog["sourcesEnabled"] = configuration.value(SOURCES_ENABLED_KEY)
-    for declaration in declared_sources(project_root):
-        name = declaration["name"]
-        update_mode = effective_update_mode(configuration, declaration)
-        source = locate_source(declaration, locked_sources.get(name), project_root, update_mode, (source_state or {}).get(name))
-        if source["state"] == SOURCE_AVAILABLE:
-            pack = load_pack_catalog(source, golfo_profile_names, engine_version_of(skill_dir))
-            source["catalogDigest"] = pack["digest"]
-            source["version"] = pack["version"]
-            source["changes"] = pack["changes"]
-            source["availableProfiles"] = sorted(pack["profiles"])
-            for profile_name, profile in sorted(pack["profiles"].items()):
-                validate_selection_fields(profile_name, profile)
-            catalog["profiles"].update(pack["profiles"])
-            catalog["packAssetRoots"].update(pack["assetRoots"])
-        catalog["sources"][name] = source
-    if catalog["sources"]:
-        # Stacks of several sources compete in one detection: their priorities cannot form a cycle.
-        try:
-            validate_catalog_detection(catalog["profiles"])
-        except DetectionSchemaError as caught_error:
-            raise ProfileError(f"profile sources: {caught_error}") from caught_error
-    return catalog
-
-
-# What a source asks of the engine: an engine this one is not (update the plugin), or a catalog it cannot read.
-ENGINE_PROBLEM_ENGINE = "engine"
-ENGINE_PROBLEM_CATALOG = "catalog"
-
-
-def engine_requirement(kind, source_name, catalog_path, label, engine_version, supported_schema):
-    """What one catalog asks of the engine: the check an apply runs before writing (minEngine, schemaVersion).
-
-    ``problem`` says why an apply would stop on it (None if it would not); ``category`` tells an engine to
-    update (``requiredVersion``: the plugin version to install, None for the newest) from a catalog to fix.
-    """
-    requirement = {"kind": kind, "source": source_name, "version": None, "minEngine": None, "problem": None,
-                   "category": None, "requiredVersion": None}
-    try:
-        catalog = read_json_file(catalog_path, f"{kind} catalog")
-    except StateError as catalog_error:
-        return dict(requirement, problem=str(catalog_error), category=ENGINE_PROBLEM_CATALOG)
-    requirement.update(version=catalog.get("version"), minEngine=catalog.get("minEngine"))
-    try:
-        compatibility.require_engine(label, catalog, engine_version, supported_schema)
-    except compatibility.EngineRequirementError as engine_error:
-        requirement.update(problem=str(engine_error), category=ENGINE_PROBLEM_ENGINE, requiredVersion=engine_error.required_version)
-    except ProfileError as catalog_error:
-        requirement.update(problem=str(catalog_error), category=ENGINE_PROBLEM_CATALOG)
-    return requirement
-
-
-def engine_requirements(project_root, engine_dir, content_dir=None):
-    """What the content (when ``content_dir`` has it) and every pack this machine has ask of this engine.
-
-    Only the engine check an apply runs before writing (minEngine, schemaVersion), done ahead of it: the
-    rest of a catalog is checked by the apply. A pack this machine has not fetched yet, or a declaration
-    that is not valid, is left out: the source checks of doctor report them. No network.
-    """
-    engine_version = engine_version_of(content_dir or engine_dir)
-    requirements = []
-    if content_dir:
-        requirements.append(engine_requirement(
-            "content", content_source.CONTENT_SOURCE_NAME, os.path.join(content_dir, PROFILE_CATALOG_RELATIVE_PATH),
-            f"the {content_source.CONTENT_SOURCE_NAME} catalog", engine_version, GOLFO_CATALOG_SCHEMA_VERSION))
-    try:
-        declarations = declared_sources(project_root) or []
-        locked_sources = locked_sources_of(project_root)
-        configuration = configuration_of(project_root)
-    except (StateError, ConfigurationError):
-        return requirements
-    for declaration in declarations:
-        update_mode = effective_update_mode(configuration, declaration)
-        source = locate_source(declaration, locked_sources.get(declaration["name"]), project_root, update_mode)
-        if source["state"] != SOURCE_AVAILABLE:
-            continue
-        requirements.append(engine_requirement(
-            "pack", declaration["name"], os.path.join(source["root"], PACK_CATALOG_FILE_NAME),
-            f"pack '{declaration['name']}'", engine_version, PACK_SCHEMA_VERSION))
-    return requirements
-
-
-def raise_unknown_profile(catalog, name, requested_by):
-    """Explain a profile that is not in the catalog, naming the source when it has one."""
-    origin = f" (required by {requested_by})" if requested_by else ""
-    if is_pack_profile(name):
-        source_name = source_of_profile(name)
-        source = catalog.get("sources", {}).get(source_name)
-        if source is None and not catalog.get("sourcesEnabled", True):
-            raise ProfileError(f"profile '{name}'{origin} comes from the source '{source_name}', and profile sources are off ({SOURCES_ENABLED_KEY}: false)")
-        if source is None:
-            raise ProfileError(f"profile '{name}'{origin} needs the source '{source_name}', which the manifest does not declare; packs cannot bring sources of their own")
-        if source["state"] != SOURCE_AVAILABLE:
-            raise IncompleteEvaluationError(f"profile '{name}'{origin} needs the source '{source_name}': {source['reason']}")
-    known = ", ".join(selectable_profile_names(catalog))
-    raise ProfileError(f"unknown profile '{name}'{origin}; available profiles: {known}")
-
-
-def selectable_profile_names(catalog):
-    """Profiles a selection can name: every one but the CI profiles, which ci.provider picks."""
-    return sorted(name for name, profile in catalog["profiles"].items() if profile.get("kind") != CI_PROFILE_KIND)
-
-
-# The selection with no profile at all: the core only, for a repository without code.
-EMPTY_SELECTION_TOKEN = "none"
-
-
-def split_profile_names(raw_profiles):
-    """Split a comma separated profile list, keeping order and dropping blanks; "none" is no profile."""
-    if (raw_profiles or "").strip() == EMPTY_SELECTION_TOKEN:
-        return []
-    names = []
-    for name in (raw_profiles or "").split(","):
-        name = name.strip()
-        if name and name not in names:
-            names.append(name)
-    return names
-
-
-def profiles_for_stack(catalog, stack):
-    """The --stack alias: the selection with only that stack; its ``defaults`` come at resolution."""
-    if catalog["profiles"].get(stack, {}).get("kind") != STACK_PROFILE_KIND:
-        known = ", ".join(sorted(name for name, profile in catalog["profiles"].items()
-                                 if profile.get("kind") == STACK_PROFILE_KIND))
-        raise ProfileError(f"unknown stack '{stack}'; expected one of: {known}")
-    return [stack]
-
-
-def resolve_profiles(catalog, requested_names, ci_profile=None, excluded_defaults=()):
-    """Expand requires and defaults in declaration order and validate conflicts.
-
-    Returns the ordered list of profile names, each one after the layers it requires and
-    before the profiles it brings by default. ``defaults`` are the profiles a profile brings
-    unless the repository leaves them out (``excluded_defaults``, from excludedDefaults);
-    ``requires`` always come. The
-    primary stack is the most specific layer (primary_stack); every stack adds its section to
-    AGENTS.md. ``ci_profile`` is the CI profile
-    that ci.provider picks (ci_profile_of); a selection cannot name one itself.
-    """
-    profiles = catalog["profiles"]
-    resolved = []
-    visiting = []
-
-    pending_defaults = []
-
-    def visit(name, requested_by):
-        if name in resolved:
-            return
-        if name in visiting:
-            cycle = " -> ".join(visiting + [name])
-            raise ProfileError(f"profile dependency cycle: {cycle}")
-        if name not in profiles:
-            raise_unknown_profile(catalog, name, requested_by)
-        visiting.append(name)
-        for dependency in profiles[name].get("requires", []):
-            visit(dependency, name)
-        visiting.pop()
-        resolved.append(name)
-        pending_defaults.extend((default, name) for default in profiles[name].get(DEFAULTS_KEY, []))
-
-    def visit_defaults():
-        # Defaults come after every requested profile, so a requested profile keeps its place.
-        while pending_defaults:
-            default, brought_by = pending_defaults.pop(0)
-            if default in excluded_defaults or default in resolved:
-                continue
-            if profiles.get(default, {}).get("kind") == CI_PROFILE_KIND:
-                raise ProfileError(f"profile '{brought_by}' lists the CI profile '{default}' in '{DEFAULTS_KEY}'; "
-                                   f"CI profiles come from {CI_PROVIDER_KEY}")
-            visit(default, brought_by)
-
-    # An empty selection is valid: the core only, for a repository without code.
-    for requested_name in requested_names:
-        if profiles.get(requested_name, {}).get("kind") == CI_PROFILE_KIND:
-            provider = requested_name[len(CI_PROFILE_PREFIX):] if requested_name.startswith(CI_PROFILE_PREFIX) else "generic"
-            raise ProfileError(f"profile '{requested_name}' comes from {CI_PROVIDER_KEY}, not from the selection; "
-                               f"drop it and run: agent-ready ci setup --provider {provider}")
-        visit(requested_name, None)
-    visit_defaults()
-    if ci_profile:
-        visit(ci_profile, None)
-
-    for name in excluded_defaults:
-        if name in resolved:
-            requirers = sorted(other for other in resolved if name in profiles[other].get("requires", []))
-            reason = f"required by {', '.join(requirers)}" if requirers else "selected"
-            raise ProfileError(f"{EXCLUDED_DEFAULTS_KEY} lists '{name}', but the selection needs it ({reason}); "
-                               f"only a profile that comes by default can be left out")
-
-    for name in resolved:
-        for conflicting_name in profiles[name].get("conflicts", []):
-            if conflicting_name in resolved:
-                raise ProfileError(
-                    f"profiles '{name}' and '{conflicting_name}' are declared incompatible; select only one"
-                )
-
-    # A stack is optional: a repository without code (documents, research) selects capabilities only,
-    # and gets the base assets with the neutral AGENTS.md template.
-    return resolved
-
-
-def ci_profile_of(catalog, project_root):
-    """The CI profile that ci.provider picks, or None without a provider or with none."""
-    provider = configuration_of(project_root).value(CI_PROVIDER_KEY)
-    if not provider or provider == CI_PROVIDER_NONE:
-        return None
-    name = CI_PROFILE_PREFIX + provider
-    if catalog["profiles"].get(name, {}).get("kind") != CI_PROFILE_KIND:
-        raise ProfileError(f"{CI_PROVIDER_KEY}: {provider} needs the profile '{name}', which this engine does not "
-                           "have; update the golfo-kit plugin or choose another provider")
-    return name
-
-
-def resolve_project_profiles(catalog, names, project_root):
-    """resolve_profiles of a repository: its selection plus the CI profile of ci.provider.
-
-    ``names`` may come from the lock, whose profileOrder already lists the CI profiles of the
-    last apply: they are dropped and taken again from ci.provider, which can have changed.
-    """
-    selection = [name for name in names if catalog["profiles"].get(name, {}).get("kind") != CI_PROFILE_KIND]
-    excluded = configuration_of(project_root).value(EXCLUDED_DEFAULTS_KEY) or []
-    return resolve_profiles(catalog, selection, ci_profile_of(catalog, project_root), excluded)
-
-
-def primary_stack(catalog, resolved):
-    """Return the first stack in resolution order that no other resolved profile requires.
-
-    That is the most specific layer, the one detection settles on: with ``nextjs-app-router``
-    selected, ``react`` and ``nextjs`` come first only because it requires them.
-    """
-    profiles = catalog["profiles"]
-    # Only another stack makes a stack less specific: a capability or a pack profile that requires
-    # one does not replace it.
-    required = {layer for name in resolved if profiles[name].get("kind") == STACK_PROFILE_KIND
-                for layer in required_layers(profiles, name)}
-    for name in resolved:
-        if profiles[name].get("kind") == STACK_PROFILE_KIND and name not in required:
-            return name
-    # A selection without a stack has no primary one.
-    return None
-
-
-def profile_asset_root(skill_dir, catalog, name):
-    """Absolute asset directory of a profile, or None when it has no assets."""
-    if is_pack_profile(name):
-        return catalog["packAssetRoots"].get(name)
-    relative_root = catalog["profiles"][name].get("assets")
-    if not relative_root:
-        return None
-    root = os.path.join(skill_dir, relative_root)
-    if not os.path.isdir(root):
-        raise ProfileError(f"profile '{name}' assets directory is missing: {root}")
-    return root
-
-
-def resolved_tools(catalog, resolved):
-    """Tools that the selected profiles need installed."""
-    tools = []
-    for name in resolved:
-        for tool in catalog["profiles"][name].get("tools", []):
-            if tool not in tools:
-                tools.append(tool)
-    return tools
-
-
-def compose_stack_directory(skill_dir, catalog, resolved, compose_root, workspace_rules=None, workspace_profiles=(),
-                            shared_texts=None):
-    """Return the stack tree Bash projects for the selected profiles.
-
-    A single stack profile without extra assets uses its own directory, so the
-    legacy layout is projected unchanged. Several asset profiles are copied into
-    one composed tree; a relative path published by two profiles is an error.
-    ``workspace_rules`` (workspace_rule_files) adds the rules of the workspaces under
-    rules/workspaces/, so the projection writes them and links their Claude views, and
-    ``workspace_profiles`` (the profiles only workspaces select) adds the rest of their assets
-    (is_workspace_shared_asset), once for the repository, with the text of ``shared_texts``.
-    """
-    workspace_rules = workspace_rules or {}
-    shared_texts = shared_texts or {}
-    asset_profiles = [name for name in resolved if profile_asset_root(skill_dir, catalog, name)]
-    shared_profiles = [name for name in workspace_profiles if profile_asset_root(skill_dir, catalog, name)]
-    primary = primary_stack(catalog, resolved)
-    overridden = shared_overrides(skill_dir, catalog, resolved, workspace_profiles)
-    # The instruction scripts read rules/ of the tree: a stack without rules of its own (a pack stack
-    # that only publishes its section) is composed, which gives the tree an empty rules/.
-    if not overridden and not workspace_rules and not shared_profiles and primary and asset_profiles == [primary] and \
-            os.path.isdir(os.path.join(profile_asset_root(skill_dir, catalog, primary), "rules")):
-        return profile_asset_root(skill_dir, catalog, primary)
-
-    owners = {}
-    for name in asset_profiles + shared_profiles:
-        for relative_path, _ in walk_files(profile_asset_root(skill_dir, catalog, name)):
-            if name in shared_profiles and not is_workspace_shared_asset(relative_path):
-                continue
-            if is_overridden(overridden, name, relative_path):
-                # Another profile of the selection replaces it on purpose (overrides).
-                continue
-            if managed_blocks.destination_of(relative_path) is not None or relative_path.startswith(nested.NESTED_PREFIX):
-                # Each profile keeps its own block of a shared file (desired_blocks) or of the AGENTS.md
-                # of a folder (desired_nested_blocks).
-                continue
-            if relative_path in owners:
-                raise ProfileError(
-                    f"profiles '{owners[relative_path]}' and '{name}' both publish {relative_path}; "
-                    "remove one of them or split the asset into a profile they both require"
-                )
-            owners[relative_path] = name
-
-    if not compose_root:
-        raise ProfileError("composing several asset profiles requires --compose-dir")
-    # Two repositories can pin different revisions of a pack: they must not share a tree.
-    tree_profiles = list(resolved) + list(workspace_profiles)
-    pack_digests = profile_digests(skill_dir, catalog, [name for name in tree_profiles if is_pack_profile(name)]) if any(
-        is_pack_profile(name) for name in tree_profiles
-    ) else {}
-    workspace_digest = {tree_path: entry["sha256"] for tree_path, entry in workspace_rules.items()}
-    workspace_digest.update({text_path: sha256 for text_path, sha256 in shared_texts.values()})
-    selection_key = sha256_of_text(
-        os.path.abspath(skill_dir) + "\n" + ",".join(resolved) + "\n" + ",".join(workspace_profiles) + "\n"
-        + json.dumps(pack_digests, sort_keys=True) + "\n" + json.dumps(workspace_digest, sort_keys=True)
-    )[:16]
-    destination = os.path.join(compose_root, selection_key)
-    os.makedirs(compose_root, exist_ok=True)
-    staging = tempfile.mkdtemp(prefix=".compose.", dir=compose_root)
-    try:
-        for relative_path, owner in sorted(owners.items()):
-            source = os.path.join(profile_asset_root(skill_dir, catalog, owner), relative_path)
-            source = shared_texts.get((owner, relative_path), (source,))[0]
-            target = os.path.join(staging, relative_path)
-            os.makedirs(os.path.dirname(target), exist_ok=True)
-            shutil.copy2(source, target)
-        for tree_path, entry in sorted(workspace_rules.items()):
-            target = os.path.join(staging, *tree_path.split("/"))
-            os.makedirs(os.path.dirname(target), exist_ok=True)
-            shutil.copy2(entry["sourcePath"], target)
-        os.makedirs(os.path.join(staging, "rules"), exist_ok=True)
-        previous = None
-        if os.path.exists(destination):
-            previous = tempfile.mkdtemp(prefix=".previous.", dir=compose_root)
-            os.rmdir(previous)
-            os.replace(destination, previous)
-        os.replace(staging, destination)
-        if previous:
-            shutil.rmtree(previous, ignore_errors=True)
-    except BaseException:
-        shutil.rmtree(staging, ignore_errors=True)
-        raise
-    return destination
-
-
-# ---------------------------------------------------------------------------
-# Desired assets
-# ---------------------------------------------------------------------------
-
-def destinations_for_template(relative_path, is_stack_root):
-    """Managed destinations that the Bash projection writes for one template file.
-
-    Mirrors project_asset_tree in bootstrap.sh and project_assets in
-    sync-marketplace.sh. Merged files (settings.json) and the AGENTS.md
-    template are handled separately and return no verbatim destination.
-    """
-    if relative_path in (AGENTS_TEMPLATE_NAME, AGENTS_SKELETON_NAME, CLAUDE_SETTINGS_TEMPLATE_NAME):
-        return []
-    if managed_blocks.destination_of(relative_path) is not None or relative_path.startswith(nested.NESTED_PREFIX):
-        # A block goes inside a file shared with the project (desired_blocks) or the AGENTS.md of a
-        # folder (desired_nested_blocks), never as a whole file.
-        return []
-    if relative_path.startswith("github/"):
-        return [".github/" + relative_path[len("github/"):]]
-    destinations = [".agents/" + relative_path]
-    if relative_path == "mcp.json" and is_stack_root:
-        destinations.append(".codex/.mcp.json")
-    top_directory = relative_path.split("/", 1)[0]
-    if relative_path.endswith(".md") and "/" in relative_path:
-        if top_directory in ("agents", "commands") or (
-            top_directory == "skills" and relative_path.count("/") == 1
-        ):
-            skill_name = os.path.basename(relative_path)[: -len(".md")]
-            destinations.append(f".agents/skills/{skill_name}/SKILL.md")
-    return destinations
-
-
-def template_origin(skill_dir, catalog, profile_name, absolute_path):
-    """Where a template comes from, without any path of this machine."""
-    if is_pack_profile(profile_name):
-        source_name = source_of_profile(profile_name)
-        pack_relative = os.path.relpath(absolute_path, catalog["sources"][source_name]["root"]).replace(os.sep, "/")
-        return f"{source_name}:{pack_relative}"
-    return os.path.relpath(absolute_path, skill_dir).replace(os.sep, "/")
-
-
-def shared_overrides(skill_dir, catalog, resolved, workspace_profiles=()):
-    """resolved_overrides of what goes to the repository once: the root selection and the shared assets of
-    the profiles only workspaces select. A rule such a profile overrides stays in its workspace, so
-    workspace_rule_files validates it per workspace and two workspaces can replace the same rule."""
-    return resolved_overrides(
-        skill_dir, catalog, list(resolved) + list(workspace_profiles),
-        lambda name, path: name in workspace_profiles and path.startswith(workspace_selection.RULES_DIRECTORY + "/"))
-
-
-def is_workspace_shared_asset(relative_path):
-    """True for an asset of a profile only workspaces select that goes to .agents/ once for the repository:
-    everything but its rules (scoped to each workspace), its blocks, its nested targets and the templates
-    of the root files (AGENTS.md and settings come from the root selection)."""
-    return not relative_path.startswith(workspace_selection.RULES_DIRECTORY + "/") and \
-        managed_blocks.destination_of(relative_path) is None and not relative_path.startswith(nested.NESTED_PREFIX) and \
-        relative_path not in (AGENTS_TEMPLATE_NAME, AGENTS_SKELETON_NAME, CLAUDE_SETTINGS_TEMPLATE_NAME)
-
-
-WORKSPACE_ASSETS_CACHE = "workspace-assets"
-
-
-def rule_workspaces_of(workspace_rules, workspace_paths):
-    """{rule path: [workspace]} of the rules those workspaces have (workspace_rule_files), for
-    agent_ready_workspaces.scoped_references."""
-    rule_workspaces = {}
-    for entry in workspace_rules.values():
-        if entry["workspace"] in workspace_paths:
-            rule_workspaces.setdefault(entry["rulePath"], []).append(entry["workspace"])
-    return rule_workspaces
-
-
-def workspace_shared_texts(skill_dir, catalog, workspaces, workspace_profiles, workspace_rules):
-    """{(profile, relative path): (text path, sha256)} of the shared assets whose text names a rule of a workspace.
-
-    A skill, subagent or command of a profile only workspaces select goes to .agents/ once, but the rules
-    it names went to the workspaces that select it: its references move to the rule of each of them
-    (agent_ready_workspaces.scoped_references). The text is kept in the per-user cache by its sha256, so
-    the plan and the projection read the same bytes. A template without such a reference is not listed.
-    """
-    texts = {}
-    for name in workspace_profiles:
-        asset_root = profile_asset_root(skill_dir, catalog, name)
-        if not asset_root:
-            continue
-        rule_workspaces = rule_workspaces_of(
-            workspace_rules, {workspace["path"] for workspace in workspaces if name in workspace["own"]})
-        if not rule_workspaces:
-            continue
-        for relative_path, absolute_path in walk_files(asset_root):
-            if not relative_path.endswith(".md") or not is_workspace_shared_asset(relative_path):
-                continue
-            with open(absolute_path, encoding="utf-8", newline="") as template_file:
-                text = template_file.read()
-            scoped = workspace_selection.scoped_references(text, rule_workspaces)
-            if scoped == text:
-                continue
-            sha256 = sha256_of_text(scoped)
-            text_path = skill_cache_directory(WORKSPACE_ASSETS_CACHE, f"{sha256}.md")
-            if not os.path.isfile(text_path):
-                write_text_atomically(text_path, scoped)
-            texts[(name, relative_path)] = (text_path, sha256)
-    return texts
-
-
-def desired_assets(skill_dir, catalog, resolved, workspace_rules=None, workspace_profiles=(), shared_texts=None):
-    """Map every managed destination to its template, owning profile and hash.
-
-    Two templates cannot share a destination, including the skill adapters generated
-    for Codex and paths that differ only by case, which collide on Windows and macOS.
-    ``workspace_rules`` (workspace_rule_files) adds the rules of the workspaces, each with the
-    workspace it belongs to, and ``workspace_profiles`` the skills, subagents and commands of the
-    profiles only workspaces select, once for the repository (is_workspace_shared_asset), with the text
-    ``shared_texts`` (workspace_shared_texts) gives the ones that name a rule of a workspace.
-    """
-    shared_texts = shared_texts or {}
-    # Bash projects every profile tree as the stack tree, so only the base
-    # assets skip the Codex MCP bridge.
-    sources = [(BASE_PROFILE_NAME, os.path.join(skill_dir, catalog.get("baseAssets", "assets/common")), False)]
-    for name in list(resolved) + list(workspace_profiles):
-        root = profile_asset_root(skill_dir, catalog, name)
-        if root:
-            sources.append((name, root, True))
-
-    assets = {}
-    destinations_by_folded_name = {}
-    overridden = shared_overrides(skill_dir, catalog, resolved, workspace_profiles)
-    for profile_name, root, is_stack_root in sources:
-        for relative_path, absolute_path in walk_files(root):
-            if profile_name in workspace_profiles and not is_workspace_shared_asset(relative_path):
-                continue
-            if is_overridden(overridden, profile_name, relative_path):
-                continue
-            source_path, sha256 = shared_texts.get((profile_name, relative_path)) or (absolute_path, None)
-            for destination in destinations_for_template(relative_path, is_stack_root):
-                previous = destinations_by_folded_name.setdefault(destination.casefold(), destination)
-                if previous in assets and assets[previous]["sourcePath"] != source_path:
-                    raise ProfileError(
-                        f"profiles '{assets[previous]['profile']}' and '{profile_name}' both write {destination}; "
-                        "nothing was written. Rename one of the assets"
-                    )
-                assets[destination] = {
-                    "profile": profile_name,
-                    "source": template_origin(skill_dir, catalog, profile_name, absolute_path),
-                    "sourcePath": source_path,
-                    "sha256": sha256 or sha256_of_file(absolute_path),
-                }
-    for tree_path, entry in sorted((workspace_rules or {}).items()):
-        destination = ".agents/" + tree_path
-        previous = destinations_by_folded_name.setdefault(destination.casefold(), destination)
-        if previous in assets:
-            raise ProfileError(f"workspace {entry['workspace']}: {destination} is also written by profile "
-                               f"'{assets[previous]['profile']}'; nothing was written")
-        assets[destination] = {key: entry[key] for key in ("profile", "source", "sourcePath", "sha256", "workspace")}
-    reject_destinations_inside_files(assets, destinations_by_folded_name)
-    return assets
-
-
-WORKSPACE_RULES_CACHE = "workspace-rules"
-# Prefix of the lines of the content digest for the rules the profiles of the content add to workspaces.
-WORKSPACE_ORIGIN_PREFIX = "workspace:"
-
-
-def workspace_rule_files(skill_dir, catalog, workspaces):
-    """{tree path: entry} of the rules the profiles of each workspace add, scoped to its folder.
-
-    Each rule of a profile a workspace adds goes to rules/workspaces/<path>/, with paths: limited to
-    the workspace (agent_ready_workspaces.scoped_rule_text). Its text is kept in the per-user cache by
-    its sha256, so the plan, the projection and the reviews read the same bytes. Two profiles of one
-    workspace that publish the same rule fail, as in the root selection; overrides of the workspace
-    selection are honored.
-    """
-    files = {}
-    for workspace in workspaces:
-        overridden = resolved_overrides(skill_dir, catalog, workspace["resolved"])
-        for target in overridden:
-            replaced_by = {by for by in overridden[target].values() if by in workspace["own"]}
-            if target not in workspace["own"] and replaced_by:
-                # The root projects that asset for the whole repository: the workspace would load both.
-                raise ProfileError(f"workspace {workspace['path']}: profile '{sorted(replaced_by)[0]}' overrides an asset of "
-                                   f"'{target}', which the root selection projects for the whole repository; a workspace "
-                                   "can only override the profiles it adds")
-        owners = {}
-        for name in workspace["own"]:
-            asset_root = profile_asset_root(skill_dir, catalog, name)
-            if not asset_root:
-                continue
-            for relative_path, absolute_path in walk_files(asset_root):
-                if not relative_path.startswith(workspace_selection.RULES_DIRECTORY + "/") or \
-                        is_overridden(overridden, name, relative_path):
-                    continue
-                rule_path = relative_path[len(workspace_selection.RULES_DIRECTORY) + 1:]
-                if rule_path in owners:
-                    raise ProfileError(f"workspace {workspace['path']}: profiles '{owners[rule_path]}' and '{name}' "
-                                       f"both publish {relative_path}; nothing was written")
-                owners[rule_path] = name
-                with open(absolute_path, encoding="utf-8", newline="") as rule_file:
-                    text = workspace_selection.scoped_rule_text(rule_file.read(), workspace["path"],
-                                                               f"{name}:{relative_path}")
-                sha256 = sha256_of_text(text)
-                cache_path = skill_cache_directory(WORKSPACE_RULES_CACHE, f"{sha256}.md")
-                if not os.path.isfile(cache_path):
-                    write_text_atomically(cache_path, text)
-                files[workspace_selection.rule_tree_path(workspace["path"], rule_path)] = {
-                    "profile": name, "source": template_origin(skill_dir, catalog, name, absolute_path),
-                    "sourcePath": cache_path, "sha256": sha256, "workspace": workspace["path"],
-                    "rulePath": rule_path}
-    return files
-
-
-def workspace_profile_origins(skill_dir, catalog, workspace_profiles):
-    """{"<profile>:<path>": sha256} of every file of the profiles of the content only workspaces select.
-
-    What those profiles project depends on the folders of this repository (rules with paths:, sections
-    with the references of a workspace, the folders of their nested targets): the content digest takes
-    the files they come from instead, so pinned content sees their change and the digest does not depend
-    on the folders. Packs have their own digest.
-    """
-    origins = {}
-    for name in workspace_profiles:
-        asset_root = profile_asset_root(skill_dir, catalog, name)
-        if is_pack_profile(name) or not asset_root:
-            continue
-        for relative_path, absolute_path in walk_files(asset_root):
-            origins[f"{name}:{relative_path}"] = sha256_of_file(absolute_path)
-    return origins
-
-
-def block_item(skill_dir, catalog, profile_name, absolute_path):
-    """{profile, source, content} of the block a profile publishes in ``absolute_path``."""
-    with open(absolute_path, encoding="utf-8", newline="") as template_file:
-        content = managed_blocks.normalized_content(template_file.read())
-    return {"profile": profile_name, "source": template_origin(skill_dir, catalog, profile_name, absolute_path),
-            "content": content}
-
-
-def require_stack_section(catalog, profile_name, destination):
-    """Only a stack profile adds a section to an AGENTS.md."""
-    if profile_name == BASE_PROFILE_NAME or catalog["profiles"].get(profile_name, {}).get("kind") != STACK_PROFILE_KIND:
-        raise ProfileError(f"profile '{profile_name}': only a stack profile adds a section to "
-                           f"{destination}; nothing was written")
-
-
-def workspace_blocks(skill_dir, catalog, workspaces, workspace_rules):
-    """{(destination, id): item} of the AGENTS.md of each workspace, for Codex.
-
-    It lists the rules of the workspace and keeps the section of each stack the workspace adds, with
-    its references to those rules moved to the rules of the workspace: the skills and commands the
-    section names are in .agents/ for the whole repository (is_workspace_shared_asset).
-    """
-    blocks = {}
-    for workspace in workspaces:
-        destination = nested.destination_in(workspace["path"])
-        rule_paths = workspace_rule_paths(workspace_rules, workspace["path"])
-        if rule_paths:
-            blocks[(destination, workspace_selection.INDEX_BLOCK_ID)] = {
-                "profile": BASE_PROFILE_NAME, "source": workspace_selection.INDEX_SOURCE,
-                "content": workspace_selection.index_content(
-                    workspace["path"],
-                    [".agents/" + workspace_selection.rule_tree_path(workspace["path"], path) for path in rule_paths])}
-        for name in workspace["own"]:
-            asset_root = profile_asset_root(skill_dir, catalog, name)
-            section = os.path.join(asset_root, managed_blocks.BLOCK_DIRECTORY,
-                                   managed_blocks.INSTRUCTION_SECTIONS_DESTINATION) if asset_root else None
-            if not section or not os.path.isfile(section):
-                continue
-            require_stack_section(catalog, name, destination)
-            item = block_item(skill_dir, catalog, name, section)
-            item["content"] = workspace_selection.with_workspace_references(item["content"], workspace["path"], rule_paths)
-            blocks[(destination, name)] = item
-    return blocks
-
-
-def workspace_file_blocks(skill_dir, catalog, workspaces, assets, root_blocks, workspace_rules):
-    """{(destination, id): item} of the blocks the profiles only workspaces select publish for other files.
-
-    A block of a file Git or Docker reads for its own folder goes to the one of the workspace
-    (agent_ready_workspaces.FOLDER_BLOCK_FILES) and names the rules of that workspace; any other goes to
-    the root file, once for the repository, under the spelling the root selection already uses, and names
-    the rules of every workspace that selects its profile. The section of AGENTS.md is workspace_blocks.
-    """
-    blocks = {}
-    folded_assets = {destination.casefold() for destination in assets}
-    spelling_by_folded = {destination.casefold(): destination for destination, _ in root_blocks}
-    for workspace in workspaces:
-        for name in workspace["own"]:
-            asset_root = profile_asset_root(skill_dir, catalog, name)
-            if not asset_root:
-                continue
-            for relative_path, absolute_path in walk_files(asset_root):
-                destination = managed_blocks.destination_of(relative_path)
-                if destination is None or destination == managed_blocks.INSTRUCTION_SECTIONS_DESTINATION:
-                    continue
-                managed_blocks.validate_destination(destination, name)
-                scoped = workspace_selection.block_destination(workspace["path"], destination)
-                workspace_paths = {workspace["path"]} if scoped != destination else \
-                    {other["path"] for other in workspaces if name in other["own"]}
-                destination = spelling_by_folded.setdefault(scoped.casefold(), scoped)
-                if destination.casefold() in folded_assets:
-                    raise ProfileError(f"profile '{name}' publishes a block for {destination}, which another "
-                                       "profile writes as a whole file; nothing was written")
-                item = block_item(skill_dir, catalog, name, absolute_path)
-                item["content"] = workspace_selection.scoped_references(
-                    item["content"], rule_workspaces_of(workspace_rules, workspace_paths))
-                blocks[(destination, name)] = item
-    return blocks
-
-
-def desired_blocks(skill_dir, catalog, resolved, assets):
-    """{(destination, id): {profile, source, content}} of every block the selection publishes.
-
-    The id of a block is the name of its profile, so two profiles keep two blocks in one file.
-    A file cannot be a whole managed asset and hold blocks at the same time.
-    """
-    sources = [(BASE_PROFILE_NAME, os.path.join(skill_dir, catalog.get("baseAssets", "assets/common")))]
-    sources += [(name, profile_asset_root(skill_dir, catalog, name)) for name in resolved]
-    blocks = {}
-    folded_assets = {destination.casefold() for destination in assets}
-    # On a case-insensitive filesystem PULL_REQUEST_TEMPLATE.md and pull_request_template.md are one
-    # file: every block of it goes under the first spelling, so they are applied together.
-    spelling_by_folded = {}
-    for profile_name, root in sources:
-        if not root:
-            continue
-        for relative_path, absolute_path in walk_files(root):
-            destination = managed_blocks.destination_of(relative_path)
-            if destination is None:
-                continue
-            managed_blocks.validate_destination(destination, profile_name)
-            if destination == managed_blocks.INSTRUCTION_SECTIONS_DESTINATION:
-                require_stack_section(catalog, profile_name, destination)
-            destination = spelling_by_folded.setdefault(destination.casefold(), destination)
-            if destination.casefold() in folded_assets:
-                raise ProfileError(f"profile '{profile_name}' publishes a block for {destination}, which another "
-                                   "profile writes as a whole file; nothing was written")
-            blocks[(destination, profile_name)] = block_item(skill_dir, catalog, profile_name, absolute_path)
-    return blocks
-
-
-def nested_contents(skill_dir, catalog, resolved):
-    """{id: {profile, source, content}} of every nested target the selection publishes, wherever it goes."""
-    contents = {}
-    for identifier, profile, name, _ in nested.declarations(catalog, resolved):
-        path = nested.content_path(profile_asset_root(skill_dir, catalog, profile), name)
-        if is_link(path) or not os.path.isfile(path):
-            raise ProfileError(f"profile '{profile}' declares the nested target '{name}' but does not publish "
-                               f"{nested.NESTED_PREFIX}{name}{nested.CONTENT_SUFFIX}")
-        with open(path, encoding="utf-8", newline="") as template_file:
-            content = managed_blocks.normalized_content(template_file.read())
-        contents[identifier] = {"profile": profile, "source": template_origin(skill_dir, catalog, profile, path),
-                                "content": content}
-    return contents
-
-
-def workspace_rule_paths(workspace_rules, workspace_path):
-    """The paths under rules/ of the rules of one workspace (workspace_rule_files)."""
-    return sorted(entry["rulePath"] for entry in workspace_rules.values() if entry["workspace"] == workspace_path)
-
-
-def desired_nested_blocks(project_root, catalog, resolved, contents, workspaces=(), workspace_rules=None):
-    """({(destination, id): {profile, source, content}}, report) of the nested targets of the selection.
-
-    Each target puts its block, with its id, in the AGENTS.md of every folder it resolves to
-    (agent_ready_nested.resolve): the folders of nested.targets, or else the first candidate that exists.
-    A profile only a workspace selects looks for its candidates inside the workspace (apps/web/app), its
-    block names the rules of the workspace (with_workspace_references) and its report entries carry the
-    workspace; nested.targets applies by id wherever the profile is selected.
-    """
-    configuration = configuration_of(project_root)
-    enabled = configuration.value(NESTED_ENABLED_KEY)
-    configured = nested.configured_targets(configuration.value(NESTED_TARGETS_KEY), MANIFEST_RELATIVE_PATH)
-    workspace_targets = [(workspace["path"], [
-        (identifier, profile, name, [f"{workspace['path']}/{candidate}" for candidate in candidates])
-        for identifier, profile, name, candidates in nested.declarations(catalog, workspace["own"])])
-        for workspace in workspaces]
-    workspace_ids = {target[0] for _, targets in workspace_targets for target in targets}
-    root_folders, report = nested.resolve(
-        project_root, nested.declarations(catalog, resolved), enabled,
-        {identifier: setting for identifier, setting in configured.items() if identifier not in workspace_ids},
-        MANIFEST_RELATIVE_PATH)
-    folders = [(identifier, target_folders, None) for identifier, target_folders in root_folders.items()]
-    for workspace_path, targets in workspace_targets:
-        if not targets:
-            continue
-        identifiers = {target[0] for target in targets}
-        # A folder of nested.targets goes to the workspace that holds it, so each block names its rules.
-        settings = {identifier: (dict(setting, paths=[folder for folder in setting["paths"]
-                                                      if workspace_selection.is_inside(folder, workspace_path)])
-                                 if "paths" in setting else setting)
-                    for identifier, setting in configured.items() if identifier in identifiers}
-        target_folders, workspace_report = nested.resolve(project_root, targets, enabled, settings, MANIFEST_RELATIVE_PATH)
-        report += [dict(entry, workspace=workspace_path) for entry in workspace_report]
-        folders += [(identifier, paths, workspace_path) for identifier, paths in target_folders.items()]
-    blocks = {}
-    for identifier, target_folders, workspace_path in folders:
-        item = dict(contents[identifier])
-        if workspace_path:
-            item["content"] = workspace_selection.with_workspace_references(
-                item["content"], workspace_path, workspace_rule_paths(workspace_rules or {}, workspace_path))
-        for folder in target_folders:
-            blocks[(nested.destination_in(folder), identifier)] = dict(item)
-    return blocks, report
-
-
-def nested_index_block(project_root, nested_blocks, waiting):
-    """({(AGENTS.md, id): item}, report) of the index of the nested AGENTS.md files in the root AGENTS.md.
-
-    Codex reads the AGENTS.md files from the root down to the folder it starts in, once: the index tells
-    it which nested ones to read before working in their folders. It lists every nested AGENTS.md the
-    apply writes a block to (not one that waits, or sits beyond a symlink), and only when Codex is a
-    provider of the repository and nested.codexIndex is on. The report has the files it lists and the
-    bytes it adds to the root AGENTS.md, markers included.
-    """
-    configuration = configuration_of(project_root)
-    destinations = sorted({destination for destination, _ in nested_blocks
-                           if destination not in waiting and not managed_blocks.has_linked_directory(project_root, destination)})
-    if not destinations or CODEX_PROVIDER not in configuration.value(PROVIDERS_KEY) \
-            or not configuration.value(NESTED_CODEX_INDEX_KEY):
-        return {}, {"destinations": [], "bytes": 0}
-    destination, content = managed_blocks.INSTRUCTION_SECTIONS_DESTINATION, nested.index_content(destinations)
-    index = {(destination, nested.INDEX_BLOCK_ID): {"profile": BASE_PROFILE_NAME, "source": nested.INDEX_SOURCE,
-                                                    "content": content}}
-    return index, {"destinations": destinations,
-                   "bytes": text_bytes(managed_blocks.with_block("", destination, nested.INDEX_BLOCK_ID, content))}
-
-
-def reject_destinations_inside_files(assets, destinations_by_folded_name):
-    """A destination cannot sit under another one: one of the two could not be written."""
-    for destination, entry in sorted(assets.items()):
-        parent = os.path.dirname(destination)
-        while parent:
-            blocking = destinations_by_folded_name.get(parent.casefold())
-            if blocking in assets:
-                raise ProfileError(
-                    f"profile '{assets[blocking]['profile']}' writes the file {blocking}, but profile "
-                    f"'{entry['profile']}' needs it as a directory for {destination}; nothing was written. Rename one of the assets"
-                )
-            parent = os.path.dirname(parent)
-
-
-def profile_digests(skill_dir, catalog, resolved):
-    """Digest of each resolved profile: its asset bytes or its catalog entry."""
-    digests = {}
-    for name in [BASE_PROFILE_NAME] + resolved:
-        if name == BASE_PROFILE_NAME:
-            root = os.path.join(skill_dir, catalog.get("baseAssets", "assets/common"))
-            entry = {"kind": "base"}
-        else:
-            root = profile_asset_root(skill_dir, catalog, name)
-            entry = {
-                field: value for field, value in catalog["profiles"][name].items()
-                if field not in PROFILE_DIGEST_EXCLUDED_FIELDS
-            }
-        lines = [json.dumps(entry, sort_keys=True)]
-        if root:
-            lines += [f"{relative_path}\t{sha256_of_file(absolute_path)}" for relative_path, absolute_path in walk_files(root)]
-        digests[name] = {"kind": entry.get("kind", "base"), "digest": sha256_of_text("\n".join(lines))}
-    return digests
-
-
-# ---------------------------------------------------------------------------
-# Source identity
-# ---------------------------------------------------------------------------
-
-def validate_pack_destinations(project_root, assets):
-    """A pack asset cannot reach outside the project through a symlink in its path."""
-    for destination, entry in sorted(assets.items()):
-        if not is_pack_profile(entry["profile"]):
-            continue
-        for path in (destination, claude_view_of(destination, entry["source"])):
-            if path and has_linked_parent(project_root, path):
-                raise ProfileError(
-                    f"profile '{entry['profile']}' would write {path} through a symlink, "
-                    "which can leave the project; nothing was written"
-                )
-
-
-def source_entries(catalog, resolved, digests, locked_sources):
-    """Lockfile entry of each declared source; a source without selected profiles has none."""
-    entries = {}
-    for name, source in sorted(catalog.get("sources", {}).items()):
-        if source["state"] != SOURCE_AVAILABLE:
-            # Unused by this selection and not on this machine: its last record stays.
-            if name in locked_sources:
-                entries[name] = locked_sources[name]
-            continue
-        selected = sorted(profile for profile in resolved if is_pack_profile(profile) and source_of_profile(profile) == name)
-        entries[name] = {
-            "type": source["type"],
-            "origin": source["origin"],
-            "requestedRef": source["requestedRef"],
-            "resolvedCommit": source["resolvedCommit"],
-            "catalogDigest": source["catalogDigest"],
-            "contentDigest": sha256_of_text("\n".join(f"{profile}\t{digests[profile]['digest']}" for profile in selected)),
-            "profiles": selected,
-        }
-        if source.get("version"):
-            entries[name]["version"] = source["version"]
-    return entries
-
-
-def version_changes(catalog, plan_source, lock):
-    """Each source whose version moves from the lock, with its declared changelog, newest first."""
-    if not lock:
-        return []
-    changes = []
-    golfo_change = compatibility.version_change(content_source.CONTENT_SOURCE_NAME, (lock.get("source") or {}).get("version"),
-                                                plan_source.get("version"), catalog.get("changes", []))
-    if golfo_change:
-        changes.append(golfo_change)
-    locked_sources = lock.get("profileSources", {})
-    for name, source in sorted(catalog.get("sources", {}).items()):
-        if source["state"] != SOURCE_AVAILABLE:
-            continue
-        change = compatibility.version_change(name, (locked_sources.get(name) or {}).get("version"),
-                                              source.get("version"), source.get("changes", []))
-        if change:
-            changes.append(change)
-    return changes
-
-
-def declaration_differences(declaration, locked_entry):
-    """What the manifest changed in a source; it needs neither the network nor its content."""
-    if not locked_entry:
-        return ["not adopted yet"]
-    differences = []
-    if declaration.get("origin") != locked_entry.get("origin"):
-        differences.append(f"origin changed to {declaration.get('origin')}")
-    if declaration.get("requestedRef") != locked_entry.get("requestedRef"):
-        differences.append(f"requested revision changed to {declaration.get('requestedRef')}")
-    return differences
-
-
-def source_differences(name, entry, lock):
-    """What changed in a source since the last apply, in words.
-
-    A digest of a selected profile counts only if the lock has that profile too, so
-    selecting one more profile of the same revision is a selection change, not an update.
-    """
-    locked_sources = (lock or {}).get("profileSources", {})
-    locked_entry = locked_sources.get(name)
-    if not locked_entry:
-        return ["not adopted yet"]
-    differences = declaration_differences(entry, locked_entry)
-    if entry.get("resolvedCommit") != locked_entry.get("resolvedCommit"):
-        locked_commit = (locked_entry.get("resolvedCommit") or "none")[:12]
-        differences.append(f"revision {locked_commit} -> {(entry.get('resolvedCommit') or 'none')[:12]}")
-    if entry.get("catalogDigest") != locked_entry.get("catalogDigest"):
-        differences.append("catalog changed")
-    return differences
-
-
-def changed_selected_profiles(digests, lock):
-    """Selected pack profiles whose content differs from the digest in the lock."""
-    locked_profiles = (lock or {}).get("profiles", {})
-    return sorted(
-        profile for profile, entry in digests.items()
-        if is_pack_profile(profile) and profile in locked_profiles and locked_profiles[profile].get("digest") != entry["digest"]
-    )
-
-
-def source_report(catalog, resolved, digests, lock):
-    """State of each declared source for plan and status, with its differences from the lock."""
-    locked_sources = (lock or {}).get("profileSources", {})
-    entries = source_entries(catalog, resolved, digests, locked_sources)
-    changed_profiles = changed_selected_profiles(digests, lock)
-    report = {}
-    for name, source in sorted(catalog.get("sources", {}).items()):
-        selected = sorted(profile for profile in resolved if is_pack_profile(profile) and source_of_profile(profile) == name)
-        item = {
-            "type": source["type"],
-            "origin": source["origin"],
-            "requestedRef": source["requestedRef"],
-            "resolvedCommit": source["resolvedCommit"],
-            "state": source["state"],
-            "reason": source["reason"],
-            "selected": selected,
-            "updates": source["updates"],
-            "differences": [],
-            "pendingUpdate": None,
-        }
-        latest = source.get("latestCommit")
-        if latest and source["resolvedCommit"] and latest != source["resolvedCommit"]:
-            item["pendingUpdate"] = (
-                f"ref {source['requestedRef']} is at {latest[:12]} and this source is pinned at "
-                f"{source['resolvedCommit'][:12]}; adopt it with --update-source {name}"
-            )
-        if source["state"] == SOURCE_AVAILABLE:
-            entry = entries[name]
-            item["catalogDigest"] = entry["catalogDigest"]
-            item["contentDigest"] = entry["contentDigest"]
-            item["differences"] = source_differences(name, entry, lock)
-            item["differences"] += [f"content of {profile} changed" for profile in changed_profiles if source_of_profile(profile) == name]
-        else:
-            item["differences"] = declaration_differences(source, locked_sources.get(name))
-        report[name] = item
-    return report
-
-
-def enforce_sync_policy(project_root, skill_dir, catalog, resolved, digests, selected=None, workspace_origins=None):
-    """An unattended sync only adopts what is in ``auto``.
-
-    A pinned source that differs from the lock stops it, the content included: its mode is
-    ``sources.golfo.updates``, then ``updates.mode``. Pinned content projects the revision of the lock,
-    so it only differs when the composition does (a new engine with other engine files does not count);
-    then a pack in ``auto`` waits too, because an apply writes the whole selection and cannot update a
-    pack without updating the content.
-    ``selected`` adds the profiles of the workspaces to the sources checked; the content digest is the
-    one of the root selection plus ``workspace_origins``, as compute_plan records it.
-    """
-    lock = read_lock(project_root)
-    report = source_report(catalog, selected or resolved, digests, lock)
-    for name, item in report.items():
-        if item["selected"] and item["differences"] and item["updates"] != UPDATES_AUTO:
-            raise IncompleteEvaluationError(
-                f"profile source '{name}' is pinned and differs from the lock ({'; '.join(item['differences'])}); "
-                "SessionStart does not adopt it, so this repository keeps its committed assets until someone adopts the change"
-            )
-    marker = content_source.read_marker(skill_dir)
-    # A local content directory (AGENT_READY_SETUP_CONTENT_DIR) has no revision: its digest decides.
-    locked_revision = (lock or {}).get("source", {}).get("revision")
-    projects_locked_revision = bool(marker and marker.get("commit")) and marker["commit"] == locked_revision
-    # The content digest covers engine-owned files too (hooks, settings templates): with the revision
-    # of the lock projected, a new engine is not a release of the content and the sync goes on.
-    if lock and not projects_locked_revision and content_source.update_mode(configuration_of(project_root)) == UPDATES_PINNED:
-        assets = desired_assets(skill_dir, catalog, resolved)
-        golfo_assets = {destination: entry for destination, entry in assets.items() if not is_pack_profile(entry["profile"])}
-        identity = source_identity(skill_dir, golfo_assets, merged_template_entries(skill_dir, catalog, resolved),
-                                   golfo_blocks(desired_blocks(skill_dir, catalog, resolved, assets)),
-                                   golfo_blocks(nested_contents(skill_dir, catalog, resolved)), workspace_origins)
-        if lock.get("source", {}).get("contentDigest") != identity["contentDigest"]:
-            raise IncompleteEvaluationError(
-                "this repository pins its golfo content and has a release pending, and SessionStart cannot update a pack alone; "
-                "the repository keeps its committed assets until someone adopts both"
-            )
-
-
-def asset_owner(entry):
-    """The source an asset of a plan or a lock comes from: a pack, or the content (golfo)."""
-    profile = entry.get("profile") or ""
-    return source_of_profile(profile) if is_pack_profile(profile) else content_source.CONTENT_SOURCE_NAME
-
-
-def is_engine_asset(entry):
-    """An asset the installed engine projects (hooks and what connects them): never pinned, so never compared."""
-    return asset_owner(entry) == content_source.CONTENT_SOURCE_NAME and content_source.is_engine_owned(entry.get("source") or "")
-
-
-def locked_desired_sha256(locked_entry):
-    """The content a source published for an asset of the lock: applied, or wanted when it ended in conflict."""
-    if locked_entry.get("state") == STATE_APPLIED:
-        return locked_entry.get("sha256")
-    return locked_entry.get("desiredSha256")
-
-
-def lock_differences(plan, lock):
-    """Why a plan does not reproduce the lock, one line per source, and how many engine files differ.
-
-    Content is compared byte for byte: the selection, the revision of the content and of each
-    pack, the digest of each pack and the sha256 of every asset and merged template. The files
-    of the engine follow the installed one, so they are only counted.
-    """
-    if not lock:
-        return ["there is no lockfile to apply from; run an apply first"], 0
-    differences = []
-    if plan["profiles"] != lock.get("profileOrder"):
-        differences.append(f"selection: the manifest resolves to {', '.join(plan['profiles'])} and the lock has "
-                           f"{', '.join(lock.get('profileOrder') or []) or 'none'}")
-    # The workspaces are part of the selection: the same lines status shows for them.
-    differences += [f"selection: {line}" for line in workspace_selection.differences(
-        plan.get("workspaces", []), lock.get("workspaces") or {})]
-    locked_revision = (lock.get("source") or {}).get("revision")
-    if locked_revision and plan["source"].get("revision") != locked_revision:
-        differences.append(f"{content_source.CONTENT_SOURCE_NAME}: revision {(plan['source'].get('revision') or 'none')[:12]} "
-                           f"instead of {locked_revision[:12]}")
-    locked_sources = lock.get("profileSources", {})
-    for name in sorted(set(locked_sources) | set(plan["profileSources"])):
-        locked_entry, current = locked_sources.get(name), plan["profileSources"].get(name)
-        if not current:
-            differences.append(f"{name}: in the lock, but this repository no longer selects it")
-        elif not locked_entry:
-            differences.append(f"{name}: not in the lock")
-        elif current.get("resolvedCommit") != locked_entry.get("resolvedCommit"):
-            differences.append(f"{name}: revision {(current.get('resolvedCommit') or 'none')[:12]} instead of "
-                               f"{(locked_entry.get('resolvedCommit') or 'none')[:12]}")
-        elif current.get("contentDigest") != locked_entry.get("contentDigest"):
-            differences.append(f"{name}: its content does not match the digest of the lock")
-    locked_assets = lock.get("assets", {})
-    desired = {entry["destination"]: entry for entry in plan["entries"] if entry["sha256"]}
-    engine_changes = 0
-    for destination, entry in sorted(desired.items()):
-        locked_entry = locked_assets.get(destination)
-        if is_engine_asset(entry):
-            engine_changes += bool(locked_entry) and locked_entry.get("sha256") != entry["sha256"]
-        elif not locked_entry:
-            differences.append(f"{asset_owner(entry)}: {destination} is not in the lock")
-        elif locked_desired_sha256(locked_entry) != entry["sha256"]:
-            differences.append(f"{asset_owner(entry)}: {destination} does not match the sha256 of the lock")
-    for destination, locked_entry in sorted(locked_assets.items()):
-        # A retired asset the project kept (retired-preserved) is no longer published by any source.
-        if destination not in desired and locked_entry.get("state") != STATE_RETIRED_PRESERVED and not is_engine_asset(locked_entry):
-            differences.append(f"{asset_owner(locked_entry)}: {destination} is in the lock but not in this resolution")
-    locked_blocks = lock.get("blocks") or {}
-    desired_blocks_by_key = {(entry["destination"], entry["id"]): entry for entry in plan.get("blocks", []) if entry["sha256"]}
-    for (destination, block_id), entry in sorted(desired_blocks_by_key.items()):
-        locked_entry = (locked_blocks.get(destination) or {}).get(block_id)
-        if not locked_entry:
-            differences.append(f"{entry['profile']}: the block {block_id} of {destination} is not in the lock")
-        elif locked_desired_sha256(locked_entry) != entry["sha256"]:
-            differences.append(f"{entry['profile']}: the block {block_id} of {destination} does not match the sha256 of the lock")
-    for destination, file_blocks in sorted(locked_blocks.items()):
-        for block_id, locked_entry in sorted(file_blocks.items()):
-            if (destination, block_id) not in desired_blocks_by_key:
-                differences.append(f"{locked_entry.get('profile')}: the block {block_id} of {destination} is in the lock "
-                                   "but not in this resolution")
-    for destination, entry in sorted(plan["merged"].items()):
-        if content_source.is_engine_owned(entry["template"]):
-            continue
-        locked_entry = lock.get("merged", {}).get(destination)
-        if not locked_entry or locked_entry.get("templateSha256") != entry["templateSha256"]:
-            differences.append(f"{content_source.CONTENT_SOURCE_NAME}: the template of {destination} does not match the lock")
-        elif locked_entry.get("inputsSha256") != entry.get("inputsSha256"):
-            differences.append(f"{content_source.CONTENT_SOURCE_NAME}: what {destination} is rendered with (the centralization "
-                               "and proxy texts) does not match the lock")
-    return differences, engine_changes
-
-
-def enforce_lock_reproduction(plan, lock):
-    """--from-lock projects exactly the lock or nothing: stop before writing and name what differs."""
-    differences, engine_changes = lock_differences(plan, lock)
-    if differences:
-        raise ProfileError("--from-lock cannot reproduce the lock, so nothing was changed:\n  - " + "\n  - ".join(differences))
-    if engine_changes:
-        write_line(f"--from-lock: {engine_changes} file(s) of the engine (hooks and their settings) follow the installed "
-                   "plugin and differ from the lock; the content is the lock's.", sys.stderr)
-
-
-def keep_locked_entries_of_unselected_sources(plan, lock):
-    """SessionStart does not adopt a pinned source without selected profiles either: its drift stays visible."""
-    locked_sources = (lock or {}).get("profileSources", {})
-    for name, item in plan["sourceReport"].items():
-        if item["selected"] or not item["differences"] or item["updates"] == UPDATES_AUTO:
-            continue
-        if name in locked_sources:
-            plan["profileSources"][name] = locked_sources[name]
-        else:
-            plan["profileSources"].pop(name, None)
-
-
-SOURCE_KIND_GIT = "git"
-SOURCE_KIND_LOCAL = "local"
-
-
-def content_version(skill_dir):
-    """Version of the content: the ``version`` its catalog declares (a content pack must declare one)."""
-    try:
-        declared = read_json_file(os.path.join(skill_dir, PROFILE_CATALOG_RELATIVE_PATH), "profile catalog").get("version")
-    except StateError:
-        declared = None
-    return declared if isinstance(declared, str) and compatibility.semver_key(declared) else None
-
-
-def golfo_blocks(blocks):
-    """The managed blocks, or nested targets, the content publishes: packs have their own digest."""
-    return {key: item for key, item in blocks.items() if not is_pack_profile(item["profile"])}
-
-
-def source_identity(skill_dir, assets, merged_templates, blocks, nested_targets, workspace_origins=None):
-    """Identity of the resolved source; contentDigest is the immutable part.
-
-    The content records the Git origin, ref and revision it came from, so the next apply of a
-    pinned repository fetches exactly that content again. A nested target counts by its id, not
-    by the folders it goes to in this repository, and what a profile only workspaces select projects by
-    the files it comes from (workspace_profile_origins).
-    """
-    digest_lines = [f"{destination}\t{entry['sha256']}" for destination, entry in sorted(assets.items())]
-    digest_lines += [f"{destination}\t{entry['templateSha256']}" for destination, entry in sorted(merged_templates.items())]
-    digest_lines += [f"{destination}\t{block_id}\t{sha256_of_text(item['content'])}"
-                     for (destination, block_id), item in sorted(blocks.items())]
-    digest_lines += [f"{nested.NESTED_PREFIX}{identifier}\t{sha256_of_text(item['content'])}"
-                     for identifier, item in sorted(nested_targets.items())]
-    digest_lines += [f"{WORKSPACE_ORIGIN_PREFIX}{origin}\t{sha256}" for origin, sha256 in sorted((workspace_origins or {}).items())]
-    digest_lines += [
-        f"{relative_path}\t{sha256_of_file(os.path.join(skill_dir, relative_path))}"
-        for relative_path in RENDERED_INSTRUCTION_INPUTS
-        if os.path.isfile(os.path.join(skill_dir, relative_path))
-    ]
-    marker = content_source.read_marker(skill_dir) or {}
-    identity = {
-        "name": content_source.CONTENT_SOURCE_NAME,
-        "version": content_version(skill_dir),
-        # The development override (a local directory) has no revision: its files identify it.
-        "kind": SOURCE_KIND_GIT if marker.get("commit") else SOURCE_KIND_LOCAL,
-        "revision": marker.get("commit"),
-        "contentDigest": sha256_of_text("\n".join(digest_lines)),
-    }
-    for key, field in (("origin", "origin"), ("requestedRef", "requestedRef")):
-        if marker.get(field):
-            identity[key] = marker[field]
-    return identity
-
-
-def agents_template_path(skill_dir, catalog):
-    """The one AGENTS.md template: its managed block is the same for every repository.
-
-    Each stack adds its section as a block, and a profile can publish only the skeleton of a new
-    AGENTS.md (software-development: Stack, Commands, Architecture) in place of the neutral one.
-    """
-    return os.path.join(skill_dir, catalog.get("baseAssets", "assets/common"), AGENTS_TEMPLATE_NAME)
-
-
-def merged_template_entries(skill_dir, catalog, resolved):
-    """Files merged with project content instead of copied verbatim."""
-    agents_template = agents_template_path(skill_dir, catalog)
-    settings_template = os.path.join(skill_dir, *CLAUDE_SETTINGS_TEMPLATE_RELATIVE_PATH.split("/"))
-    codex_template = os.path.join(skill_dir, CODEX_HOOKS_TEMPLATE_RELATIVE_PATH)
-    entries = {}
-    for destination, template, kind in (
-        ("AGENTS.md", agents_template, "managed-block"),
-        (".claude/settings.json", settings_template, "merged-json"),
-        (".codex/hooks.json", codex_template, "merged-json"),
-    ):
-        if os.path.isfile(template):
-            entries[destination] = {
-                "kind": kind,
-                "template": os.path.relpath(template, skill_dir).replace(os.sep, "/"),
-                "templateSha256": sha256_of_file(template),
-            }
-    if "AGENTS.md" in entries:
-        entries["AGENTS.md"]["inputsSha256"] = rendered_inputs_digest(skill_dir)
-    return entries
-
-
-def rendered_inputs_digest(skill_dir):
-    """Content the managed block of AGENTS.md is rendered with besides its template; the renderer is the engine's."""
-    lines = [f"{relative_path}\t{sha256_of_file(os.path.join(skill_dir, relative_path))}"
-             for relative_path in RENDERED_INSTRUCTION_INPUTS
-             if not content_source.is_engine_owned(relative_path) and relative_path != RENDERER_RELATIVE_PATH
-             and os.path.isfile(os.path.join(skill_dir, relative_path))]
-    return sha256_of_text("\n".join(lines))
 
 
 # ---------------------------------------------------------------------------
@@ -2924,11 +1562,6 @@ def loaded_at_start(text):
         if line.startswith("paths:"):
             return False
     return True
-
-
-def text_bytes(text):
-    """Size of a text in UTF-8, the encoding every instruction file is written in."""
-    return len(text.encode("utf-8"))
 
 
 def context_budget(project_root, skill_dir, catalog, plan, configuration):

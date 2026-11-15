@@ -26,6 +26,7 @@ from agent_ready_cli_common import (
 from agent_ready_common import serialize_json
 from agent_ready_config import LAYER_PROJECT, load_schema
 from agent_ready_options import CI_PROVIDER_KEY, CI_PROVIDER_NONE, PROFILES_KEY, UPDATES_FROM_LOCK_KEY
+from agent_ready_profiles import EMPTY_SELECTION_TOKEN
 from agent_ready_prompts import ask_text, can_prompt, equivalent_command
 
 CI_SCRIPT_PATH = ".agents/ci/agent-ready-check.sh"
@@ -120,7 +121,7 @@ def apply_arguments(project_root):
             os.path.join(project_root, state.LOCK_RELATIVE_PATH)):
         # The lock holds the CI profile of the previous provider: an apply from it could not change it.
         # An empty selection (the core only) goes as "none", the value --profiles has for it.
-        return ["--profiles", ",".join(selection) or state.EMPTY_SELECTION_TOKEN]
+        return ["--profiles", ",".join(selection) or EMPTY_SELECTION_TOKEN]
     return []
 
 
