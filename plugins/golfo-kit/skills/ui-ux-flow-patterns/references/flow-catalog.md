@@ -158,7 +158,7 @@ Caso de referencia: en un flujo de solicitud de acceso, al vencer el código SMS
 - **Estados críticos**: procesando ([Carga](state-matrix.md#carga)) con aviso de no cerrar; rechazo con el motivo accionable (fondos, datos, otro medio) según [Error](state-matrix.md#error); resultado pendiente o asíncrono (transferencia, revisión) con qué esperar; éxito con página de confirmación y comprobante.
 - **Feedback**: la confirmación es una página dedicada (y email) según [Tabla de decisión](feedback-channels.md#tabla-de-decisión).
 - **Rechazado**: mensaje en el formulario de pago con el motivo accionable, datos conservados (salvo el código de seguridad si el proveedor lo exige) y "Usar otro medio".
-- **Pendiente**: página o estado que dice qué se espera (acreditación, revisión), cuánto suele tardar y cómo se avisará; sin botón de pagar de nuevo.
+- **Pendiente**: página o estado que dice qué se espera (acreditación, revisión), cuánto suele tardar (como [estimación](system-status.md#progreso-real-o-estimación), nunca como plazo exacto) y cómo se avisará; sin botón de pagar de nuevo.
 - **Resultado incierto** (timeout, cierre de la ventana, respuesta perdida): "No pudimos confirmar el pago" con "Comprobar estado"; nunca reintentar el cobro automáticamente ni ofrecer "Pagar de nuevo" sin consultar el estado de la operación (id o clave de idempotencia) ([recuperación de operaciones](state-matrix.md#recuperación-de-operaciones)).
 - **Referencias**: Stripe Checkout, Mercado Pago Checkout, Shopify checkout (total visible, validación al salir del campo, estados de pago pendiente).
 
@@ -200,7 +200,8 @@ Caso de referencia: en un flujo de solicitud de acceso, al vencer el código SMS
 | [Upload de un archivo o varios](#upload-de-archivos) | [Operaciones asíncronas](state-matrix.md#operaciones-asíncronas) |
 | [Descarga, importación y exportación](#importación-exportación-y-descargas) | [Operaciones asíncronas](state-matrix.md#operaciones-asíncronas), [Recuperación de operaciones](state-matrix.md#recuperación-de-operaciones) |
 | [Proceso largo](state-matrix.md#operaciones-asíncronas) | [Recuperación de operaciones](state-matrix.md#recuperación-de-operaciones), [Tabla de decisión](feedback-channels.md#tabla-de-decisión) |
-| [Reintento con backoff](state-matrix.md#recuperación-de-operaciones) | [Error](state-matrix.md#error), [Errores HTTP](state-matrix.md#errores-http) |
+| [Reintento con backoff](state-matrix.md#recuperación-de-operaciones) | [Reintentos visibles](system-status.md#reintentos-visibles), [Error](state-matrix.md#error), [Errores HTTP](state-matrix.md#errores-http) |
+| [Espera con tope o sin límite](system-status.md#límites-de-tiempo) | [Progreso real o estimación](system-status.md#progreso-real-o-estimación), [Recuperación automática o intervención del usuario](system-status.md#recuperación-automática-o-intervención-del-usuario) |
 | [Sesión expirada (401)](state-matrix.md#errores-http) | [Error](state-matrix.md#error), [Ficha por canal](feedback-channels.md#ficha-por-canal) |
 | [Permisos insuficientes (403) y límites del plan](#permisos-y-límites-del-plan) | [Errores HTTP](state-matrix.md#errores-http), [Error](state-matrix.md#error) |
 | [No encontrado (404)](state-matrix.md#errores-http) | [Ficha por canal](feedback-channels.md#ficha-por-canal) |

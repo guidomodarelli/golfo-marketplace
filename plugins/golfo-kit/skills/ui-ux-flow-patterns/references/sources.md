@@ -54,6 +54,8 @@ Investigación usada para los criterios de esta skill (octubre 2026). Las guías
 
 ## Operaciones asíncronas y recuperación
 
+- [NN/g: Visibility of system status](https://www.nngroup.com/articles/visibility-system-status/): la primera heurística de Nielsen; el sistema informa siempre qué está pasando, con feedback oportuno.
+- [NN/g: Progress indicators](https://www.nngroup.com/articles/progress-indicators/): indicador según la duración; porcentaje solo con avance medible.
 - [Carbon: Inline loading](https://carbondesignsystem.com/components/inline-loading/usage/) y [Progress bar](https://carbondesignsystem.com/components/progress-bar/usage/): pending → éxito o error en el lugar de la acción; barra determinada solo con progreso medible.
 - [Material 3: Progress indicators](https://m3.material.io/components/progress-indicators/guidelines): determinado frente a indeterminado.
 - [Stripe: Idempotent requests](https://docs.stripe.com/api/idempotent_requests): claves de idempotencia para reintentar mutaciones sin duplicarlas.

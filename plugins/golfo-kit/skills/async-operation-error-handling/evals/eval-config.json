@@ -162,6 +162,38 @@
           "description": "Propone contrato y tests aplicables al nuevo flujo"
         }
       ]
+    },
+    {
+      "id": "retry-policy-exposed-to-consumer",
+      "description": "Expone intento, máximo y deadline como datos del contrato tomados de la misma política que ejecuta el retry, los omite cuando la política no los define y explica que un retry dentro de un request síncrono no se ve sin un recurso consultable.",
+      "input": "Backend Node + front React. El BFF concilia movimientos con un proveedor de pagos usando `pRetry(fn, { retries: 4, minTimeout: 1000, factor: 2 })` dentro del request, y si todo falla responde 503. El front, mientras tanto, solo muestra «Procesando…». Producto quiere que la pantalla diga en qué intento va y hasta cuándo va a seguir intentando. Diseñá el contrato entre el BFF y el front y los tests. No ejecutes nada ni edites archivos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "(mism[ao]|compart|single source|(u|ú)nica fuente|fuente (u|ú)nica|shared).{0,80}(constante|config|pol(i|í)tica|policy)|(constante|config|pol(i|í)tica|policy).{0,80}(mism[ao]|compart|shared|(u|ú)nica fuente)",
+          "description": "Toma los números de la misma política que ejecuta el retry"
+        },
+        {
+          "type": "regex",
+          "pattern": "maxAttempts|max_attempts|totalAttempts|(attempt|intento).{0,40}(max|m(a|á)ximo|total)",
+          "description": "Expone el intento actual y el máximo en el contrato"
+        },
+        {
+          "type": "regex",
+          "pattern": "deadline|nextRetryAt|next_retry|retryUntil|retry_until|expiresAt|giveUpAt",
+          "description": "Expone hasta cuándo sigue intentando"
+        },
+        {
+          "type": "regex",
+          "pattern": "(null|omit|ausente|undefined|opcional).{0,100}(l(i|í)mite|m(a|á)ximo|tope|deadline|max)|(sin|no hay|no define) (l(i|í)mite|m(a|á)ximo|tope|deadline)",
+          "description": "Omite el dato cuando la política no define un límite, sin inventarlo"
+        },
+        {
+          "type": "regex",
+          "pattern": "(s(i|í)ncron|dentro del request|mismo request|un solo request|single request).{0,160}(job|polling|SSE|stream|202|websocket)|(job|polling|SSE|202).{0,160}(s(i|í)ncron|dentro del request)",
+          "description": "Explica que un retry dentro de un request síncrono necesita un job, polling o stream para verse"
+        }
+      ]
     }
   ]
 }

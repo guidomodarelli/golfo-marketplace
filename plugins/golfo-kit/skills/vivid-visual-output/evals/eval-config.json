@@ -187,6 +187,38 @@
         { "type": "regex", "pattern": "(estrategia|rebase|squash|merge).{0,160}(sin emoji|ningún emoji|no (lleva|llevan|agrego|agregar|sumo|sumar|conviene|tiene|tienen))|(sin emoji|ningún emoji).{0,160}(estrategia|rebase|squash|merge)", "description": "Deja sin emoji el grupo abstracto" },
         { "type": "regex", "pattern": "(emoji|🐧).{0,120}(dos celdas|2 celdas|two cells|double.width|ancho|visibleWidth|width)|(dos celdas|2 celdas|two cells).{0,80}emoji", "description": "Mide el emoji como dos celdas al alinear" }
       ]
+    },
+    {
+      "id": "wait-without-limit-no-invented-progress",
+      "description": "Sin total ni tope conocidos, usa un spinner con el tiempo transcurrido y la etapa en vez de una barra con porcentaje o tiempo restante inventados, y sin terminal sigue mostrando progreso.",
+      "input": "Script en Node que dispara un build remoto y espera a que termine consultando `GET /builds/:id` cada 10 s. El servicio solo devuelve `status: queued | running | succeeded | failed`, sin porcentaje ni duración estimada, y no hay timeout: algunos builds tardan 2 minutos y otros 40. Quiero una salida linda en la terminal mientras espera: barra de progreso con porcentaje y tiempo restante, onda npm. Implementalo.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "spinner|indeterminad|SPINNER_FRAMES",
+          "description": "Usa un spinner o un indicador indeterminado"
+        },
+        {
+          "type": "regex",
+          "pattern": "(invent|simul|fals|fing|mentir|miente|no (sabe|sabemos|conoce|hay forma|podemos)).{0,100}(porcentaje|%|tiempo restante|ETA|barra)|(barra|porcentaje|tiempo restante).{0,100}(invent|fals|fing|mentir|miente|avanza por tiempo)",
+          "description": "Explica por qué no muestra porcentaje ni tiempo restante"
+        },
+        {
+          "type": "regex",
+          "pattern": "transcurrid|elapsed|[0-9]{2}:[0-9]{2}",
+          "description": "Muestra el tiempo transcurrido"
+        },
+        {
+          "type": "regex",
+          "pattern": "en cola|esperando turno|corriendo|compilando|ejecut(a|á)ndose",
+          "description": "Muestra la etapa que informa el servicio"
+        },
+        {
+          "type": "regex",
+          "pattern": "latido|heartbeat|cada 20 ?s|20_?000",
+          "description": "Sin terminal sigue mostrando progreso con un latido, sin animación"
+        }
+      ]
     }
   ]
 }

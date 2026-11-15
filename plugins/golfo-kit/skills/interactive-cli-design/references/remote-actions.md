@@ -104,6 +104,8 @@ Se reintenta solo lo pasajero: sin respuesta (red, timeout), 429 o 5xx, con espe
 
 Las esperas se inyectan (`sleep`) para que los tests verifiquen la secuencia sin esperar. El error guarda cuántas veces se mandó (`attempts`) y lo conserva al envolverse en otro (`cause`), así el mensaje lo dice: «la API no levantó en 120 s (8 intentos). Probá de nuevo en un rato».
 
+Durante la espera, `on_retry` avisa antes de cada reintento con el intento que viene y el máximo, y quien llama lo pasa a la nota del spinner (`spinner.set_note(f"reintentando, {attempt}/{maximum}")`, del kit de Python de `vivid-visual-output`). El máximo es `len(delays_seconds) + 1`, el mismo dato que corta el ciclo: el texto no se desincroniza si cambia la constante.
+
 ```python
 import time
 
@@ -120,8 +122,9 @@ def is_transient(error) -> bool:
         or error.status_code >= SERVER_ERROR_STATUS_CODE
     )
 
-def request_with_retries(client, delays_seconds, *request_arguments, sleep=time.sleep):
-    """Solo para requests idempotentes."""
+def request_with_retries(client, delays_seconds, *request_arguments, sleep=time.sleep, on_retry=None):
+    """Solo para requests idempotentes. `on_retry(intento, máximo)` avisa antes de cada reintento."""
+    maximum_attempts = len(delays_seconds) + 1
     attempt = 0
     while True:
         attempt += 1
@@ -131,6 +134,8 @@ def request_with_retries(client, delays_seconds, *request_arguments, sleep=time.
             request_error.attempts = attempt
             if attempt > len(delays_seconds) or not is_transient(request_error):
                 raise
+        if on_retry:
+            on_retry(attempt + 1, maximum_attempts)
         sleep(delays_seconds[attempt - 1])
 ```
 

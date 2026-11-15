@@ -17,6 +17,7 @@ Los tests deben demostrar comportamiento observable por boundary. Adaptar nombre
 | Polling incompleto | client | resultados completados + unresolved; resume sin nuevo job |
 | Deadline | client/UI | error recuperable, acción de reconcile/resume, no afirmar no-mutación |
 | Abort antes/durante | async/UI | no toast/error visible, listeners/timers limpios, sin estado stale |
+| Reintento visible | client/UI | intento, máximo y deadline del DTO salen de la política que ejecuta el retry (configurada con un máximo distinto del default); sin máximo o sin deadline, el campo no viene; al agotarse, error recuperable |
 | DTO/log sensible | API/log | ausencia de stack, cause, headers, tokens, cookies, PII y payload raw |
 | Unknown throw | normalizer | `null`, string, objeto y `Error` no rompen ni se exponen |
 | i18n | UI | copy derivado de código/razón y catálogos fuente consistentes |

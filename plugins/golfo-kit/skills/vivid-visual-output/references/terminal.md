@@ -158,12 +158,13 @@ Para roles fijos de la interfaz, no para valores: el comando para repetir la cor
 
 ## 5. Esperas
 
-- **Total conocido:** barra o contador con porcentaje. **Total desconocido:** spinner.
-- Mostrar el tiempo transcurrido siempre que la espera pueda superar unos segundos.
+- **Total conocido:** barra o contador con porcentaje. **Total desconocido:** spinner, aunque pidan una barra: una barra sin total avanza por tiempo y miente.
+- **Tiempo restante, solo medido.** Si sale de una tasa real (bytes por segundo, ítems por minuto), va marcado como estimación (`~2 min`). Sin medición, no hay tiempo restante ni cuenta regresiva.
+- Mostrar el tiempo transcurrido siempre que la espera pueda superar unos segundos. Con tope conocido, el tope va al lado (`00:14 / 02:00`); sin tope, solo el transcurrido.
 - Un cuadro cada 80 a 120 ms, solo con TTY. Antes de escribir cualquier otra línea, parar el spinner y limpiar la suya.
 - El trabajo síncrono congela los timers: correrlo en async, en un proceso hijo o en un job.
 - La pausa entre cuadros existe solo mientras hay trabajo pendiente. Medir: con trabajo de 0 ms, el script no tarda más que su arranque.
-- **Notas durante una espera.** Un estado («reintentando, 2/3») va al final de la línea del spinner. Sin animación, se escribe como línea propia **solo cuando cambia**: no se repite en cada intento.
+- **Notas durante una espera.** Un estado («reintentando, 2/3») va al final de la línea del spinner: `⠹ Esperando la API… 00:14 / 02:00 · reintentando, 2/4`. El intento y el máximo los pasa quien llama, de la constante que ejecuta los reintentos (`interactive-cli-design`, «Contrato de salida»); sin máximo, la nota dice «reintentando» sin `/N`. Sin animación, se escribe como línea propia **solo cuando cambia**: no se repite en cada intento.
 - **Spinner en un hilo (Python):** esperar con `stop_event.wait(intervalo)` y no con `time.sleep`, para cortar enseguida; hilo `daemon=True`; `stop()` idempotente, con `join()` antes de limpiar la línea y mostrar el cursor; un paso que termina con cualquier excepción (también Ctrl+C) se marca con ✖ y la excepción se relanza. `Spinner` y `step` del kit de Python.
 
 ## 6. Salida limpia

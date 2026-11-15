@@ -1068,6 +1068,70 @@
           "description": "No da la tarea por completa"
         }
       ]
+    },
+    {
+      "id": "retry-visible-attempts-from-policy",
+      "description": "Durante los reintentos automáticos muestra que reintenta, con el intento y el máximo de la política, pasa a error con salida manual al agotarse y no le muestra al usuario el error crudo del proveedor.",
+      "input": "En nuestro dashboard (React + TanStack Query) el botón «Sincronizar cuentas» llama a `useMutation` con `retry: SYNC_MAX_RETRIES` (vale 3, en `constants/sync.ts`) y `retryDelay` exponencial; el endpoint es idempotente. Mientras dura, el botón muestra un spinner. Cuando el proveedor falla y se reintenta puede tardar 20 segundos, y la gente cree que se colgó. El PM dice que el spinner está bien así y que alcanza con un toast al final que muestre el error del proveedor tal cual (`ECONNRESET`, `502 Bad Gateway`) para que soporte lo vea. Implementalo.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "reintentando|retrying",
+          "description": "Hace visible el reintento en vez de un spinner mudo"
+        },
+        {
+          "type": "regex",
+          "pattern": "(intento|attempt|failureCount).{0,120}(SYNC_MAX_RETRIES|maxAttempts|MAX_ATTEMPTS|max_attempts|totalAttempts)",
+          "description": "Muestra el intento actual y el máximo tomados de la política, no escritos a mano"
+        },
+        {
+          "type": "regex",
+          "pattern": "reintentar[^a-z]|(despu(e|é)s de|tras) .{0,40}intentos",
+          "description": "Al agotarse los intentos pasa a error con un Reintentar manual"
+        },
+        {
+          "type": "regex",
+          "pattern": "(^|[^a-z])(no|nunca|sin) .{0,80}(crud|tal cual|ECONNRESET|502|t(e|é)cnic)|(c(o|ó)digo|id) de referencia",
+          "description": "No le muestra al usuario el error crudo del proveedor"
+        },
+        {
+          "type": "regex",
+          "pattern": "role=.?status|aria-live",
+          "description": "Anuncia el cambio de fase a lectores de pantalla"
+        }
+      ]
+    },
+    {
+      "id": "no-invented-limit-or-progress",
+      "description": "Sin avance ni tope informados, no inventa porcentaje, tiempo restante ni un máximo de intentos: muestra la etapa o el tiempo transcurrido y deja seguir usando la app.",
+      "input": "Tenemos un import de CSV que crea un job en el backend; el front hace polling a `GET /imports/:id` cada 5 s hasta que `status` sea `done` o `failed` (los otros valores son `queued` y `processing`). La API no informa avance ni cantidad de filas, y el job no tiene timeout: a veces tarda 1 minuto y a veces 30. Diseño pide una barra con porcentaje, un «tiempo restante» y, cuando un poll falla, el texto «Reintentando, intento N de 10». Implementá en React el componente del estado del import.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "indeterminad|indeterminate",
+          "description": "Usa un indicador indeterminado en vez de una barra con porcentaje"
+        },
+        {
+          "type": "regex",
+          "pattern": "(invent|simul|fals|fing|mentir|miente|no (sabemos|sabe|conoce|conocemos|hay forma)).{0,100}(porcentaje|%|tiempo restante|ETA|cu(a|á)nto falta)|(porcentaje|tiempo restante|ETA).{0,100}(invent|fals|fing|mentir|miente)",
+          "description": "Explica que no muestra un porcentaje ni un tiempo restante que la API no informa"
+        },
+        {
+          "type": "regex",
+          "pattern": "max[a-z_]*(retr|attempt|poll|intent)|sin (mostrar )?(un |el )?total|no (se )?muestr[a-z]* (un |el )?total",
+          "description": "El máximo de intentos que muestra sale de una constante que el código aplica, o no muestra un total"
+        },
+        {
+          "type": "regex",
+          "pattern": "transcurrid|elapsed|hace [0-9]|En cola|Procesando",
+          "description": "Muestra la etapa o el tiempo transcurrido"
+        },
+        {
+          "type": "regex",
+          "pattern": "seguir usando|segundo plano|te avis|avisar.{0,30}termin|notific",
+          "description": "Deja seguir usando la app y avisa al terminar"
+        }
+      ]
     }
   ]
 }
