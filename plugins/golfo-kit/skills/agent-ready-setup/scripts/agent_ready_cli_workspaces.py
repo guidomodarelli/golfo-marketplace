@@ -41,13 +41,16 @@ def resolution(project_root, entries):
     """(catalog, resolved root selection, resolved workspaces) of ``entries``; ProfileError when an apply
     could not project them: the folders, the profiles, their resolution with the root selection and the
     composition of their assets (check_workspace_composition)."""
+    # Imported here: the plan pulls most of the engine, which engine() loads below anyway.
+    from agent_ready_plan import check_workspace_composition
+
     state = engine()
     skill_dir = content_root(project_root)
     catalog = state.load_effective_catalog(project_root, skill_dir)
     names = selected_profiles(project_root) or []
     resolved = state.resolve_project_profiles(catalog, names, project_root)
     workspaces = state.resolve_workspaces(project_root, catalog, names, resolved, entries)
-    state.check_workspace_composition(project_root, skill_dir, catalog, resolved, workspaces)
+    check_workspace_composition(project_root, skill_dir, catalog, resolved, workspaces)
     return catalog, resolved, workspaces
 
 

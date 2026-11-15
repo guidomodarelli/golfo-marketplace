@@ -467,3 +467,11 @@ def resolved_tools(catalog, resolved):
             if tool not in tools:
                 tools.append(tool)
     return tools
+
+
+def rejecting_ci_profiles(catalog, names):
+    """A selection, or the error of resolve_profiles when it names a CI profile."""
+    for name in names:
+        if catalog["profiles"].get(name, {}).get("kind") == CI_PROFILE_KIND:
+            resolve_profiles(catalog, [name])
+    return names
