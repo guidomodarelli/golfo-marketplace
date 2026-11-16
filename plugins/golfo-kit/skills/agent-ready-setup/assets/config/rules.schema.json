@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Rules atómicas",
+  "description": "agent-ready rules lint revisa que cada rule de .agents/rules/ (o de un pack, con --path) tenga una sola instrucción corta y que el conjunto no se contradiga. El formato está en references/atomic-rules.md.",
+  "x-module": "rules",
+  "x-mount": "rules",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "enabled": {
+      "description": "Apagado, agent-ready rules lint no revisa nada y sale con 0. list y show siguen leyendo las rules.",
+      "type": "boolean",
+      "default": true
+    },
+    "statementWarnChars": {
+      "description": "Largo del statement, en caracteres, desde el que el lint avisa sin fallar. Cuenta solo el statement, no las excepciones ni los detalles.",
+      "type": "integer",
+      "minimum": 1,
+      "default": 200
+    },
+    "maxStatementChars": {
+      "description": "Largo del statement, en caracteres, desde el que el lint falla. Tiene que ser mayor o igual que rules.statementWarnChars.",
+      "type": "integer",
+      "minimum": 1,
+      "default": 300
+    }
+  }
+}

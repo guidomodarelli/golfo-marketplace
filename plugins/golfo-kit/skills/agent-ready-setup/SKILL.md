@@ -144,6 +144,7 @@ explícito fuera del cache conservan prioridad para desarrollo local.
 | `agent-ready ci detect [--json]` | el proveedor de CI cuyos archivos tiene el repo y el archivo que lo muestra, o `none`; solo lee |
 | `agent-ready ci setup [--provider github\|gitlab\|jenkins\|generic\|none] [--no-apply] [--no-input]` | elige el proveedor de CI (`ci.provider`) y aplica: crea el script `.agents/ci/agent-ready-check.sh` y el workflow, el job de GitLab con su `include` o el stage de Jenkins para copiar; cambiarlo retira los archivos del anterior ([references/ci-check.md](references/ci-check.md)) |
 | `agent-ready trust list\|add\|remove` | confía en una fuente o aprueba el repo en esta máquina; las herramientas de un pack pasan por la política de seguridad ([references/pack-tools.md](references/pack-tools.md)) |
+| `agent-ready rules list\|show\|lint [--path <dir>]` | las rules atómicas de `.agents/rules/` (o de un pack, con `--path`) con su id, `key` y hash, y el lint de atomicidad, largo y `key` repetidas ([references/atomic-rules.md](references/atomic-rules.md)) |
 | `agent-ready review list\|accept\|dismiss\|reset` | los hallazgos de las revisiones de IA con su id, y las decisiones del equipo sobre ellos ([references/ai-reviews.md](references/ai-reviews.md)) |
 
 Ante «los hooks no corren», «el sync no hace nada» o una máquina nueva, correr primero
