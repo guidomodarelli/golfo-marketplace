@@ -85,6 +85,41 @@ run_dash_prefixed_assertions() {
     run_eval_runner
 }
 
+write_accented_config() {
+    cat > "${SKILL_DIR}/evals/eval-config.json" <<JSON
+{
+  "skill": "${SKILL_NAME}",
+  "test_cases": [
+    {
+      "id": "accented-values",
+      "input": "Explain where the examples live",
+      "assertions": [
+        { "type": "regex", "pattern": "<component-name>.*documentaci[oó]n", "description": "A bracket with an accented letter" },
+        { "type": "contains", "value": "migración nueva", "description": "Folds an accented capital letter" },
+        { "type": "not_contains_any", "values": ["edité la migración"], "description": "Folds an accented capital letter too" }
+      ]
+    }
+  ]
+}
+JSON
+}
+
+@test "grades accented Spanish text the same under the C locale" {
+    write_accented_config
+    printf '%s\n' '`<component-name>` aparece solo en la documentación. Hace falta una MIGRACIÓN NUEVA.' > "${TEST_ROOT}/response.txt"
+    CLAUDE_RESPONSE_FILE="${TEST_ROOT}/response.txt"
+    LC_ALL=C run_eval_runner
+
+    [ "$status" -eq 0 ]
+    run jq -e 'select(.event == "summary" and .passed == 1 and .failed == 0)' <<< "$output"
+    [ "$status" -eq 0 ]
+
+    printf '%s\n' 'EDITÉ LA MIGRACIÓN aplicada y agregué la migración nueva; ver `<component-name>` en la documentación.' > "${TEST_ROOT}/response.txt"
+    LC_ALL=C run_eval_runner
+
+    [ "$status" -eq 1 ]
+}
+
 @test "matches contains, contains_any and regex values that start with dashes" {
     run_dash_prefixed_assertions 'gh pr merge 42 --squash --delete-branch --match-head-commit abc1234'
 
