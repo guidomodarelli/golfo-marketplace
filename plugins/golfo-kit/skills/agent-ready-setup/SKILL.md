@@ -5,12 +5,12 @@ description: >-
   android, browser, business-flows y packs externos fijados por commit) y prepara
   configuración multi-provider para Claude Code y Codex: genera
   .claude/, .agents/, .codex/, AGENTS.md y proxy CLAUDE.md, fija la versión
-  adoptada en un manifest y un lockfile por repo, sobrescribe en cada apply los
-  assets gestionados aunque se hayan editado, retira los que salen del profile y
-  ofrece status y plan sin escrituras. Usar cuando usuario diga "configurar agent ready", "setup
+  adoptada en un manifest y un lockfile por repo, sobrescribe los assets gestionados
+  en cada apply y ofrece status y plan sin escrituras. Usar cuando usuario diga "configurar agent ready", "setup
   agent ready", "bootstrap claude", "bootstrap codex", "inicializar configuración
   de agentes", "quiero ser agent ready", "make this repo agent ready", pida pasar
-  Agent Ready Score, o pregunte qué versión de las rules usa el repo, qué cambiaría
+  Agent Ready Score, o pregunte qué versión de las rules usa el repo, si la golfo-kit
+  instalada alcanza para el contenido o un pack, qué cambiaría
   una actualización de agent-ready-setup o por qué un asset quedó en conflicto, o pida
   sacar agent-ready-setup del repo, saber por qué sus hooks no sincronizan o aceptar o
   descartar un hallazgo de sus revisiones de IA.
