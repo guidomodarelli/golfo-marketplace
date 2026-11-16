@@ -112,7 +112,7 @@ def command_resolve(arguments):
     resolved = resolve_project_profiles(catalog, requested, arguments.project)
     workspaces = resolve_workspaces(arguments.project, catalog, requested, resolved)
     workspace_profiles, workspace_rules, shared_texts, assets = composed_workspace_assets(
-        arguments.skill_dir, catalog, resolved, workspaces)
+        arguments.skill_dir, catalog, resolved, workspaces, arguments.project)
     selected = list(resolved) + workspace_profiles
     validate_pack_destinations(arguments.project, assets)
     if arguments.source_mode == SOURCE_MODE_SYNC:
