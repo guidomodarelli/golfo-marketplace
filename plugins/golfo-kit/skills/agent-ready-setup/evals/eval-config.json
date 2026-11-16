@@ -236,6 +236,7 @@
     },
     {
       "id": "multi-provider-codex-assets",
+      "control": "El rol de AGENTS.md, el proxy CLAUDE.md y .agents/skills se deduce de los nombres de esos archivos: el modelo lo explica bien sin la skill. Cuida que la skill no lo contradiga.",
       "description": "Explica salida neutral compartida y bridge Codex sin duplicar instrucciones.",
       "input": "Explicá qué genera agent-ready-setup para que el mismo proyecto funcione con Claude Code, Codex y futuros providers. Incluí el rol de AGENTS.md, CLAUDE.md, .agents/skills, .codex/hooks.json y .codex/.mcp.json. No ejecutes Bash ni escribas archivos.",
       "assertions": [
