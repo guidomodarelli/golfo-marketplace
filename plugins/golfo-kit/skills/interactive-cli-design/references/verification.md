@@ -84,7 +84,7 @@ Modo agente ([agent-mode.md](agent-mode.md)):
 | ag7 | Acción peligrosa en modo agente sin su flag | Ambos | Exit 2 con el flag exacto y la sugerencia de `--dry-run`. No pregunta |
 | ag8 | `SIGTERM` después del primer efecto, en modo agente | Sin terminal | Lista lo hecho y el comando para seguir. Exit 143. Cursor y terminal restaurados |
 
-Para ag1 a ag4, lanzar el CLI en la pseudoconsola con el entorno del agente (`env CLAUDECODE=1 tool`) o con `<TOOL>_AGENT=1`. La sesión del propio agente ya trae sus variables: para probar ag2 desde ahí, `<TOOL>_AGENT=0`.
+Para ag1 a ag4, lanzar el CLI en la pseudoconsola con el entorno del agente (`env CLAUDECODE=1 tool`) o con `<TOOL>_AGENT=1`. La sesión del propio agente ya trae sus variables: para probar ag2 desde ahí, `<TOOL>_AGENT=0`. Por lo mismo, un test que corre bajo un agente y usa el entorno del proceso (un `Terminal()` sin entorno explícito) entra en modo agente y cambia la salida esperada: sacar las señales al empezar el módulo de tests (`setUpModule` con `mock.patch.dict(os.environ)`) o pasar siempre un entorno explícito.
 
 Los casos de la salida visual (cortes con color, banderas y ZWJ, tablas con una columna larga, ancho medido en stderr, URLs en un recuadro y emojis sin color) no se repiten acá: están en `vivid-visual-output` (`references/terminal.md`, «Verificar», tabla «Casos que los kits tienen que pasar»).
 
@@ -104,7 +104,7 @@ tool --name demo --runtime go </dev/null | LC_ALL=C grep -c "$(printf '\033')"  
 
 ## Con terminal
 
-`node-pty` abre una pseudoconsola real en Windows, macOS y Linux. Instalarlo en un directorio temporal, nunca como dependencia del proyecto, salvo que los tests ya lo usen. Trae binarios para Windows y macOS: un aviso de pnpm sobre scripts de build ignorados no impide usarlo ahí. En Linux se compila al instalarlo: hacen falta `build-essential` y `python3`, y usar `npm install`, porque pnpm no corre el build. Sin compilador, el módulo `pty` de Python o `script -qec` cumplen el mismo papel.
+`node-pty` abre una pseudoconsola real en Windows, macOS y Linux. Instalarlo en un directorio temporal, nunca como dependencia del proyecto, salvo que los tests ya lo usen. Desde la 1.1.0 trae binarios para Windows y macOS (la 1.0.0 compila con node-gyp): un aviso de pnpm o npm sobre scripts de install bloqueados no impide usarlo ahí. Para leer la pantalla como la ve una persona, sumar `@xterm/headless`. En Linux se compila al instalarlo: hacen falta `build-essential` y `python3`, y usar `npm install`, porque pnpm no corre el build. Sin compilador, el módulo `pty` de Python o `script -qec` cumplen el mismo papel.
 
 ```js
 // pty-check.cjs: espera un texto en pantalla y recién entonces manda las teclas.
@@ -299,5 +299,7 @@ Checklist de tests de un wrapper con broker (caso s): sesión activa usa el CLI 
 - **`node-pty` mantiene vivo al proceso.** Terminar con `process.exit()`. En Windows, llamar a `kill()` sobre un hijo que ya salió imprime `AttachConsole failed`.
 - **Comando con un `.cmd` o sin extensión.** `pty.spawn` necesita un ejecutable real. Para `pnpm`, `npm` o un script, pasar por `cmd.exe /d /s /c`.
 - **mintty.** Bajo `git-bash.exe`, un programa nativo puede no ver una terminal y comportarse como en el caso c. No es una falla del CLI.
+- **Dobles de binarios en Windows.** Un script falso (bash, Python) sin extensión no se ejecuta como programa (`WinError 193`). Si el CLI llama binarios por ruta fija (un SDK, `adb`), compilar el doble (por ejemplo, un solo binario de Go que elige qué imitar por el nombre con que lo llamaron) y copiarlo sin extensión: con una ruta completa, Windows no le agrega `.exe`. Así corren en Windows la pseudoconsola y los flujos que en macOS y Linux usan scripts.
+- **Entorno armado a mano en Windows.** Un test que lanza el CLI con un entorno mínimo tiene que copiar `SYSTEMROOT` (sin ella Python 3.9 no arranca: `_Py_HashRandomization_Init`) y `SYSTEMDRIVE` (sin ella Windows escribe sus caches en una carpeta literal `%SystemDrive%` dentro del directorio actual), y solo si existen: un `None` en el entorno rompe `subprocess` en macOS y Linux.
 
 Si algo de esto no se puede correr, decirlo en el reporte.

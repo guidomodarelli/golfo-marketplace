@@ -107,6 +107,25 @@ Cinco estados, siempre con símbolo y palabra:
 
 Glifos y colores pueden cambiar por proyecto, siempre que los cinco sigan distinguiéndose por texto.
 
+### Un color por papel
+
+La salida de un CLI, y sobre todo su `--help`, mezcla papeles distintos. Cada papel lleva su color y dos papeles no comparten color. Lo que se suele romper es usar el color de la marca para todo: si títulos de sección, programa, subcomandos y flags salen del mismo tono, la ayuda se lee como un bloque monocromo y nada se encuentra de un vistazo.
+
+| Papel | Dónde aparece | Color |
+|---|---|---|
+| Marca | Nombre en la tarjeta de encabezado, contador de pasos `[2/4]` | El color o degradado del carácter del proyecto, y solo acá |
+| Títulos de sección | `Uso:`, `Opciones:`, `Variables de entorno:` | Uno propio, en negrita |
+| Programa y subcomandos | Línea de uso, ejemplos, tabla de subcomandos | Otro, en negrita |
+| Flags | Línea de uso, tabla de opciones, texto | Otro, en negrita |
+| Variables de entorno | Su tabla y el texto | Otro |
+| Comandos citados | `` `tool --stop` `` dentro de una descripción | Otro |
+| Datos secundarios | `<valores>`, `[ ]`, `\|`, `(default …)`, versión, bordes | Atenuado |
+| Estados | Los cinco de arriba, los códigos de salida (`0`, `1`, `2`) y lo destructivo (`BORRA`) | Los de los estados: lo destructivo y el `1`, con el de error |
+
+- **Tonos medios**, que se lean sobre fondo oscuro y claro: el Terminal de macOS arranca con fondo claro, y un amarillo o un cian muy claros ahí desaparecen. Renderizar la salida sobre los dos fondos antes de darla por buena.
+- Los temas de los kits traen pocos colores de ejemplo (`accent`, `muted` y los estados): al fijar el carácter, sumar los papeles que use la salida en vez de repartir todo en `accent`.
+- Fijar la regla con un test: los colores de los papeles de la paleta son todos distintos.
+
 - **Tablas:** alinear por ancho visible, con los escapes ya quitados. Números y duraciones a la derecha. Títulos en negrita o atenuados, sin grilla completa.
 - **Listas:** la jerarquía va con sangría, no solo con color. Viñetas de una celda.
 - **Columnas alineadas:** usar glifos de una celda. Un emoji ocupa dos en casi todas las terminales, pero no en todas.
@@ -164,7 +183,7 @@ Para roles fijos de la interfaz, no para valores: el comando para repetir la cor
 - Un cuadro cada 80 a 120 ms, solo con TTY. Antes de escribir cualquier otra línea, parar el spinner y limpiar la suya.
 - El trabajo síncrono congela los timers: correrlo en async, en un proceso hijo o en un job.
 - La pausa entre cuadros existe solo mientras hay trabajo pendiente. Medir: con trabajo de 0 ms, el script no tarda más que su arranque.
-- **Notas durante una espera.** Un estado («reintentando, 2/3») va al final de la línea del spinner: `⠹ Esperando la API… 00:14 / 02:00 · reintentando, 2/4`. El intento y el máximo los pasa quien llama, de la constante que ejecuta los reintentos (`interactive-cli-design`, «Contrato de salida»); sin máximo, la nota dice «reintentando» sin `/N`. Sin animación, se escribe como línea propia **solo cuando cambia**: no se repite en cada intento.
+- **Notas durante una espera.** Un estado («reintentando, 2/3») va al final de la línea del spinner: `⠹ Esperando la API… 00:14 / 02:00 · reintentando, 2/4`. El intento y el máximo los pasa quien llama, de la constante que ejecuta los reintentos (`interactive-cli-design`, «Contrato de salida»); sin máximo, la nota dice «reintentando» sin `/N`. Sin animación, se escribe como línea propia **solo cuando cambia**: no se repite en cada intento. La línea del spinner se recorta al ancho con `…`, así que la nota va corta (`reintentando, 2/3: reinicio el servidor`): una larga pierde justo su final a 100 columnas.
 - **Spinner en un hilo (Python):** esperar con `stop_event.wait(intervalo)` y no con `time.sleep`, para cortar enseguida; hilo `daemon=True`; `stop()` idempotente, con `join()` antes de limpiar la línea y mostrar el cursor; un paso que termina con cualquier excepción (también Ctrl+C) se marca con ✖ y la excepción se relanza. `Spinner` y `step` del kit de Python.
 
 ## 6. Salida limpia
