@@ -523,6 +523,7 @@ validate_eval_config() {
         and (.test_cases | type == "array" and length > 0)
         and ([.test_cases[].id] | all(type == "string" and length > 0) and length == (unique | length))
         and all(.test_cases[]; .input | type == "string")
+        and all(.test_cases[]; (has("control") | not) or (.control | type == "string" and length > 0))
         and all(.test_cases[];
             (.assertions | type == "array")
             and all(.assertions[]; .type | type == "string" and IN($supported_types[]))
@@ -787,7 +788,13 @@ score_baseline_response() {
         echo -e "  ${YELLOW}BASELINE: ⚠ the provider failed, so the response was not graded${NC}"
     elif run_assertions "$response" "$config_file" "$case_idx" "$failures_file" > /dev/null; then
         echo "$BASELINE_PASSED" > "$result_dir/$case_idx.baseline-status"
-        echo -e "  ${YELLOW}BASELINE: passes without the skill (the case does not discriminate)${NC}"
+        local control_reason
+        control_reason=$(jq -r ".test_cases[$case_idx].control // empty" "$config_file" | tr -d '\r')
+        if [ -n "$control_reason" ]; then
+            echo -e "  BASELINE: passes without the skill, as a control case: $control_reason"
+        else
+            echo -e "  ${YELLOW}BASELINE: passes without the skill (the case does not discriminate)${NC}"
+        fi
     else
         echo "$BASELINE_FAILED" > "$result_dir/$case_idx.baseline-status"
         echo -e "  ${GREEN}BASELINE: fails without the skill${NC}"
@@ -1229,6 +1236,8 @@ run_skill_evals() {
     local baseline_passed=0
     local baseline_flaky=0
     local baseline_passed_ids=()
+    local baseline_control=0
+    local baseline_control_ids=()
     for i in $(seq 0 $((total - 1))); do
         # Every run whose worker died before writing its result gets an infrastructure failure, so the
         # run picked for the report below always has a case line.
@@ -1270,6 +1279,8 @@ run_skill_evals() {
         # Without the skill, a run whose provider failed is not graded; the case does not discriminate
         # when it passes in every graded run.
         local baseline_aggregate_json="null" baseline_passes=0 baseline_graded=0 baseline_case_status="" baseline_run_status
+        local control_reason
+        control_reason=$(jq -r ".test_cases[$i].control // empty" "$config_file" | tr -d '\r')
         if [ "$EVAL_BASELINE" = "1" ]; then
             for run in $(seq 1 "$EVAL_REPEAT"); do
                 baseline_run_status=$(cat "$result_dir/run-$run/$i.baseline-status" 2>/dev/null || echo "$BASELINE_INFRASTRUCTURE")
@@ -1282,8 +1293,15 @@ run_skill_evals() {
                 baseline_case_status="$BASELINE_INFRASTRUCTURE"
             elif [ "$baseline_passes" -eq "$baseline_graded" ]; then
                 baseline_case_status="$BASELINE_PASSED"
-                baseline_passed=$((baseline_passed + 1))
-                baseline_passed_ids+=("$(jq -r ".test_cases[$i].id" "$config_file")")
+                # A control case passes without the skill on purpose (its reason is in "control"): it is
+                # reported apart and is not counted among the cases that fail to discriminate.
+                if [ -n "$control_reason" ]; then
+                    baseline_control=$((baseline_control + 1))
+                    baseline_control_ids+=("$(jq -r ".test_cases[$i].id" "$config_file"): $control_reason")
+                else
+                    baseline_passed=$((baseline_passed + 1))
+                    baseline_passed_ids+=("$(jq -r ".test_cases[$i].id" "$config_file")")
+                fi
             elif [ "$baseline_passes" -gt 0 ]; then
                 baseline_case_status="$BASELINE_FLAKY"
                 baseline_flaky=$((baseline_flaky + 1))
@@ -1291,8 +1309,8 @@ run_skill_evals() {
                 baseline_case_status="$BASELINE_FAILED"
             fi
             baseline_aggregate_json=$(jq -nc --arg status "$baseline_case_status" --argjson runs "$EVAL_REPEAT" \
-                --argjson graded "$baseline_graded" --argjson passes "$baseline_passes" \
-                '{status: $status, runs: $runs, graded: $graded, passes: $passes}')
+                --argjson graded "$baseline_graded" --argjson passes "$baseline_passes" --arg control "$control_reason" \
+                '{status: $status, runs: $runs, graded: $graded, passes: $passes} + (if $control == "" then {} else {control: $control} end)')
         fi
         if [ "$EVAL_JSONL" = "1" ]; then
             local run_results="[]"
@@ -1342,8 +1360,9 @@ run_skill_evals() {
             --argjson baseline_on "$baseline_on" \
             --argjson baseline_passed "$baseline_passed" \
             --argjson baseline_flaky "$baseline_flaky" \
+            --argjson baseline_control "$baseline_control" \
             '{event: "summary", provider: $provider, skill: $skill, total: $total, passed: $passed, failed: $failed, flaky: $flaky, runs: $runs, duration_seconds: $duration}
-             + (if $baseline_on then {baseline_passed: $baseline_passed, baseline_flaky: $baseline_flaky} else {} end)'
+             + (if $baseline_on then {baseline_passed: $baseline_passed, baseline_flaky: $baseline_flaky, baseline_control: $baseline_control} else {} end)'
     else
         echo -e "${BLUE}════════════════════════════════════════${NC}"
         echo -e "${BLUE}  Summary: ${BOLD}$skill_name${NC}"
@@ -1363,6 +1382,13 @@ run_skill_evals() {
             done
             if [ "$EVAL_REPEAT" -gt 1 ]; then
                 echo -e "  Without the skill, in some runs only: ${YELLOW}$baseline_flaky${NC}"
+            fi
+            if [ "$baseline_control" -gt 0 ]; then
+                echo -e "  Control cases that pass without the skill on purpose: $baseline_control"
+                local baseline_control_id
+                for baseline_control_id in "${baseline_control_ids[@]}"; do
+                    echo -e "    - $baseline_control_id"
+                done
             fi
         fi
         echo -e "  Time:    $suite_duration"

@@ -486,6 +486,10 @@ pasa solo en algunas, `failed` si falla en todas, e `infrastructure` si el provi
 calificar. El resumen suma `baseline_passed` y `baseline_flaky`, y `--pretty` lista los casos que pasan sin la skill.
 Solo la corrida con la skill decide si un caso pasa.
 
+Un caso que pasa sin la skill a propósito, porque mide algo que el modelo ya hace bien por defecto, se marca como caso
+de control con `"control": "<motivo>"`. El motivo no puede estar vacío. Si pasa sin la skill, no cuenta en
+`baseline_passed`: suma en `baseline_control`, `baseline.control` lleva el motivo y `--pretty` lo lista aparte.
+
 En Windows (Git Bash, MSYS2 o Cygwin), el prompt nombra la copia de la skill con su ruta de Windows
 (`cygpath -m`), porque el CLI nativo del agente no abre una ruta como `/tmp/tmp.X`.
 

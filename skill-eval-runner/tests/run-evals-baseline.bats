@@ -57,6 +57,45 @@ summary_line() {
     jq -e '.passed == 1 and .baseline_passed == 1' <<< "$(summary_line)"
 }
 
+# Marks the fixture case as a control case with this reason.
+mark_as_control() {
+    local config_file="${SKILL_DIR}/evals/eval-config.json"
+    jq --arg reason "$1" '.test_cases[0].control = $reason' "$config_file" > "$config_file.tmp" && mv "$config_file.tmp" "$config_file"
+}
+
+@test "a control case that passes without the skill is reported apart, with its reason" {
+    mark_as_control "the model already does this by default"
+    answer_without_skill "ok"
+
+    run_eval_runner --baseline
+
+    [ "$status" -eq 0 ]
+    jq -e '.baseline.status == "passed" and .baseline.control == "the model already does this by default"' <<< "$(case_line)"
+    jq -e '.baseline_passed == 0 and .baseline_control == 1' <<< "$(summary_line)"
+}
+
+@test "the pretty report lists control cases apart from the ones that do not discriminate" {
+    mark_as_control "the model already does this by default"
+    answer_without_skill "ok"
+
+    run_eval_runner --baseline --pretty
+
+    [ "$status" -eq 0 ]
+    plain_output=$(sed 's/\x1b\[[0-9;]*m//g' <<< "$output")
+    [[ "$plain_output" == *"BASELINE: passes without the skill, as a control case: the model already does this by default"* ]]
+    [[ "$plain_output" == *"Without the skill: 0 pass, so they do not discriminate"* ]]
+    [[ "$plain_output" == *"    - contract: the model already does this by default"* ]]
+}
+
+@test "a control field must name its reason" {
+    mark_as_control ""
+
+    run_eval_runner --baseline
+
+    [ "$status" -ne 0 ]
+    [[ "$stderr" == *"Invalid eval-config.json"* ]]
+}
+
 @test "the pretty report says which cases pass without the skill" {
     answer_without_skill "ok"
 
