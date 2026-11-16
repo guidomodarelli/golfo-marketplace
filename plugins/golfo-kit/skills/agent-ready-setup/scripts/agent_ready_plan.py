@@ -11,6 +11,7 @@ import agent_ready_blocks as managed_blocks
 import agent_ready_conflicts as conflicts_review
 import agent_ready_nested as nested
 import agent_ready_pack_tools as pack_tools
+import agent_ready_rule_changes as rule_changes
 import agent_ready_workspaces as workspace_selection
 from agent_ready_actions import (
     ACTION_ADOPT,
@@ -316,6 +317,8 @@ def compute_plan(project_root, skill_dir, catalog, profile_names):
             "baseSha256": lock_entry.get("sha256"),
             "local": local,
         })
+    # Which atomic rules each written or retired rule file changes, and what depends on them now.
+    rule_changes.annotate_entries(project_root, entries, (ACTION_UPDATE, ACTION_ADOPT, ACTION_CONFLICT, ACTION_RETIRE))
     merged = merged_template_entries(skill_dir, catalog, resolved)
     # A pack only a workspace selects is still projected: its digest and its pinned mode count.
     selected = list(resolved) + workspace_profiles
@@ -716,6 +719,8 @@ def print_plan(project_root, skill_dir, plan, provider, skip_marketplace_upgrade
         label = f"{symbol} {entry['action']:<15} {entry['destination']}"
         write_line("  " + paint(label, entry["action"] if entry["action"] in ANSI_COLORS else "muted", stream)
                    + f"  [{entry['profile']}] {entry['reason']}")
+        for line in rule_changes.rule_change_lines(entry):
+            write_line(paint(line, "warning", stream) if line.lstrip().startswith("!") else line)
     view_groups = (
         (plan["editedViews"], ACTION_UPDATE, EDITED_VIEW_REASON),
         (plan["detachedViews"], ACTION_CONFLICT, DETACHED_VIEW_REASON),

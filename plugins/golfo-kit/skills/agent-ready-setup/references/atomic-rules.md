@@ -75,6 +75,19 @@ Por eso no cambian el hash:
 
 Cambiar el texto de la rule o sus metadatos, sí. `agent-ready rules show <id>` imprime el hash.
 
+### En el lock y en el plan
+
+- **El lock:** cada archivo gestionado de `.agents/rules/` con rules atómicas guarda, además del hash del
+  archivo, el hash de cada rule en `assets.<archivo>.rules` (`{"<id>": "sha256:…"}`). Un archivo solo de prosa
+  no tiene ese campo.
+- **El plan** (`agent-ready plan`, y también `apply --dry-run` y `update --dry-run`): debajo de cada archivo de rules que se actualiza, adopta, queda en conflicto o se retira,
+  `plan` dice qué rules cambian: `~ rule changed: <ids>`, `+ rule added: <ids>` y `- rule removed: <ids>`.
+  Para cada rule que cambia o se va, también dice qué depende hoy de ella en el repo, con las mismas
+  relaciones que `rules impact` (sección 4):
+  `! <id> is required by|replaced by|cited by …`.
+  En `plan --json`, cada entrada lleva `ruleChanges` y `ruleImpact`. El archivo se sigue escribiendo
+  entero, y el diff del archivo sigue al final del plan.
+
 ## 3. Qué revisa el lint
 
 `agent-ready rules lint` sale con `1` cuando hay algún error y con `0` cuando solo hay avisos. Cada hallazgo
@@ -131,8 +144,9 @@ reemplazan con `overrides` y qué skills la citan. `rules graph` lista todas esa
 - **Una rule reemplazada:** el apply la saca del archivo proyectado, pero `impact` la sigue mostrando
   porque las referencias a ella quedan, y aclara que no está en el conjunto.
 - **Un id que nadie usa:** si ninguna rule tiene ese id y nada lo nombra, sale con 1.
-- **Pendiente:** cuántos repos de clientes reemplazan la rule (el `harvest` de #156) y el impacto por rule
-  en `plan`.
+- **En `plan`:** las mismas relaciones aparecen debajo de cada rule que una actualización cambia o saca
+  (sección 2, «En el lock y en el plan»).
+- **Pendiente:** cuántos repos de clientes reemplazan la rule (el `harvest` de #156).
 
 ## 5. Reemplazar una sola rule
 
