@@ -238,7 +238,7 @@ Sin repositorio, usar resumen conciso sin prefijo. Para tareas planificadas, des
 
 ### Description padre
 
-Usar la variante `Story` de [`ticket-templates.md`](references/ticket-templates.md) (y `Épica` cuando se crea una). `## Pull requests` se agrega solo cuando hay asociaciones y sigue contrato de `pr-traceability.md`. En una edición, una descripción existente con otra estructura se preserva: solo se mantiene su sección de seguimiento.
+Usar la variante `Story` de [`ticket-templates.md`](references/ticket-templates.md) (y `Épica` cuando se crea una). `## Pull requests` se agrega solo cuando hay asociaciones y sigue contrato de `pr-traceability.md`. En una edición, una descripción existente con otra estructura no se migra a este template: los cambios de contenido pedidos y el drift del diff se corrigen dentro de su estructura, preservando el contenido ajeno al pedido. Solo agregar un hijo o sincronizar estados se limita a la sección de seguimiento.
 
 No incluir:
 

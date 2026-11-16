@@ -129,7 +129,7 @@ Aplica a una Story nueva bajo una épica existente y a una subtarea nueva bajo u
 
 1. Releer el padre por key. No reescribir, traducir ni reordenar ningún contenido fuera de la sección de seguimiento (`## Stories` en la épica, `## Tareas` en la Story), aunque no siga este template.
 2. Si la sección existe, insertar la fila del hijo en su posición por key y recalcular `Progreso`. Las filas existentes no se modifican.
-3. Si la sección no existe, agregarla al final de la descripción (antes de `## Pull requests` en una Story), con una fila por cada hijo real del padre, consultados con `parent = <KEY>` y solo los campos `summary`, `status`, `assignee` e `issuelinks` (este último solo para detectar bloqueos). Si el padre tiene más hijos que `<MAX_RESULTS>`, no crear la tabla: informar que el panel de hijos de Jira ya cubre ese seguimiento.
+3. Si la sección no existe, agregarla al final de la descripción (antes de `## Pull requests` en una Story), con una fila por cada hijo real del padre, consultados con `parent = <KEY>` y solo los campos `summary`, `status`, `assignee` e `issuelinks` (este último solo para detectar bloqueos). El índice de búsqueda puede omitir issues recién creados: unir ese resultado, deduplicado por key, con los hijos creados en esta ejecución releídos por key, y recién ahí calcular `Progreso`. Si el padre tiene más hijos que `<MAX_RESULTS>`, no crear la tabla: informar que el panel de hijos de Jira ya cubre ese seguimiento.
 4. No tocar los campos de la épica (fechas, sprint, labels, responsable) por agregar una Story.
 
 ### Actualizar el estado de un hijo
