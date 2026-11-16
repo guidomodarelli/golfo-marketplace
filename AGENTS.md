@@ -197,7 +197,8 @@ run-evals plugins/<plugin-name>/skills/<skill-name> --pretty
 run-evals plugins/<plugin-name>/skills/<skill-name> --repeat 3
 
 # Also run and grade every case without the skill: the case line gets `baseline` and the summary
-# `baseline_passed`, the cases that pass without the skill and so do not discriminate (doubles agent calls)
+# `baseline_passed`, the cases that pass without the skill and so do not discriminate (doubles agent calls).
+# A case marked `"control": "<reason>"` passes without the skill on purpose and counts in `baseline_control` instead
 run-evals plugins/<plugin-name>/skills/<skill-name> --baseline --repeat 3
 
 # Optional provider override (default: auto-detect Codex or Claude)
