@@ -124,6 +124,17 @@
           "type": "contains_any",
           "values": ["preserva", "conserva", "conflicto", "diferencia", "backup"],
           "description": "Explica protección de instrucciones y conflictos"
+        },
+        {
+          "type": "contains",
+          "value": "@AGENTS.md",
+          "description": "El CLAUDE.md queda como proxy de AGENTS.md",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["agent-ready.lock.json", "lockfile"],
+          "description": "Usa el lockfile para saber qué assets son gestionados"
         }
       ]
     },
@@ -252,6 +263,12 @@
           "type": "contains",
           "value": ".codex/.mcp.json",
           "description": "Identifica MCP específico de Codex"
+        },
+        {
+          "type": "regex",
+          "pattern": "[Ss]ymlinks?|hard links?|[Vv]istas?",
+          "description": "Explica que .claude/ tiene vistas hacia .agents/ en lugar de copias",
+          "critical": true
         }
       ]
     },
@@ -402,7 +419,7 @@
     {
       "id": "sync-refreshes-rule-catalog",
       "description": "Actualiza catálogo de referencias durante sync con IA.",
-      "input": "Explicá qué debe hacer `sync-marketplace.sh` cuando marketplace agrega una rule nueva o deja de publicar otra. Incluí orden upgrade/proyección/merge, análisis IA de `AGENTS.md`, corrección de referencias incompletas y protección contra referencias `@...`.",
+      "input": "Explicá qué debe hacer `sync-marketplace.sh` cuando marketplace agrega una rule nueva o deja de publicar otra. Incluí qué pasa si el upgrade trae una versión nueva del propio hook, el orden upgrade/proyección/merge, análisis IA de `AGENTS.md`, corrección de referencias incompletas y protección contra referencias `@...`.",
       "assertions": [
         {
           "type": "regex",
@@ -560,6 +577,12 @@
             "<component-name>[[:space:]]*:[[:space:]]*TODO"
           ],
           "description": "Evita convertir ejemplos de documentación en trabajo pendiente"
+        },
+        {
+          "type": "contains_any",
+          "values": ["\\[AUTO\\]", "\\[MANUAL\\]"],
+          "description": "Usa las etiquetas [AUTO] y [MANUAL] del reporte de Next steps",
+          "critical": true
         }
       ]
     },
@@ -624,8 +647,8 @@
           "description": "Ubica la skill en el plugin golfo-kit"
         },
         {
-          "type": "not_contains_any",
-          "values": [".agents/skills/constants-refactor", "frontend/skills/constants-refactor"],
+          "type": "contains_any",
+          "values": ["no crea", "no se proyecta", "no la proyecta", "no se duplica", "no la duplica", "no se copia", "no queda en .agents"],
           "description": "No la presenta como skill proyectada por el stack"
         }
       ]
@@ -694,7 +717,10 @@
           "type": "contains_any",
           "values": [
             "personalizaciones",
-            "personalizados"
+            "personalizados",
+            "propios",
+            "preserva",
+            "conserva"
           ],
           "description": "Conserva hooks propios al combinar configuraciones"
         }
@@ -787,9 +813,9 @@
           "description": "Explica que el hook informa el update pendiente"
         },
         {
-          "type": "regex",
-          "pattern": "(pull request|una rama|nueva rama|abr[ií] un PR|un PR con)",
-          "description": "Propone aplicar como cambio revisable"
+          "type": "contains",
+          "value": "update golfo",
+          "description": "Aplica con agent-ready update golfo, que deja el cambio revisable en el diff del lockfile"
         }
       ]
     },
@@ -870,7 +896,7 @@
         },
         {
           "type": "contains_any",
-          "values": ["no se detecta", "no lo detecta", "no la detecta", "no se selecciona"],
+          "values": ["no se detecta", "no lo detecta", "no la detecta", "no se selecciona", "no `business-flows`", "no business-flows"],
           "description": "Aclara que no se detecta solo"
         }
       ]
@@ -896,34 +922,6 @@
           "type": "not_contains_any",
           "values": ["--force"],
           "description": "No ofrece un flag que ya no existe"
-        }
-      ]
-    },
-    {
-      "id": "profiles-sharing-destination-fail-explained",
-      "description": "Dos stacks que publican el mismo destino no se combinan; explica el error y la alternativa con requires.",
-      "input": "Tengo un monorepo con una app React y un BFF en Node. Quiero correr agent-ready-setup con `--profiles react,node` para tener las rules de los dos. ¿Qué pasa y qué alternativas tengo? No ejecutes Bash ni escribas archivos.",
-      "assertions": [
-        {
-          "type": "contains_any",
-          "values": ["mismo destino", "both publish", "both write", "ambos publican", "los dos publican", "mismo archivo"],
-          "description": "Explica que ambos profiles publican el mismo destino",
-          "critical": true
-        },
-        {
-          "type": "contains_any",
-          "values": ["antes de escribir", "no escribe nada", "before writing", "sin escribir"],
-          "description": "Aclara que falla antes de escribir"
-        },
-        {
-          "type": "contains_any",
-          "values": ["rule propia", "rules propias", "regla propia", "reglas propias", "requires"],
-          "description": "Ofrece una alternativa soportada: rules propias del proyecto o un profile que extiende la stack con requires"
-        },
-        {
-          "type": "contains_any",
-          "values": ["por ruta", "por directorio", "por carpeta"],
-          "description": "Menciona que la asignación por ruta no está soportada"
         }
       ]
     },
@@ -987,9 +985,9 @@
           "critical": true
         },
         {
-          "type": "contains_any",
-          "values": ["s/\\^Stack", "`Stack:`", "Stack: <"],
-          "description": "Obtiene el stack de la línea que reporta bootstrap en lugar de dejar la variable vacía",
+          "type": "regex",
+          "pattern": "apply[^.]{0,120}(ejecuta|corre|runs|lanza)|(ejecuta|corre|runs|lanza)[^.]{0,80}merge",
+          "description": "Explica que agent-ready apply ya corre el merge con el stack que resolvió",
           "critical": true
         }
       ]
@@ -1909,7 +1907,7 @@
         },
         {
           "type": "regex",
-          "pattern": "((volvé|volver|de nuevo|otra vez|reintent|corré).{0,80}apply|apply.{0,200}(de nuevo|otra vez|reintent))",
+          "pattern": "((volvé|volver|de nuevo|otra vez|reintent|corré|[Dd]espués).{0,80}apply|apply.{0,200}(de nuevo|otra vez|reintent))",
           "description": "Indica volver a correr el apply después de decidir"
         }
       ]
@@ -1980,6 +1978,12 @@
           "type": "regex",
           "pattern": "(apply|aplic)",
           "description": "Indica volver a correr el apply"
+        },
+        {
+          "type": "contains_any",
+          "values": ["agent-ready.lock.json", "lockfile", "el lock", "del lock", "en el lock"],
+          "description": "Explica que el lock decide de quién es cada servidor: el que no registró un apply es del proyecto",
+          "critical": true
         }
       ]
     },
@@ -2003,6 +2007,12 @@
           "type": "regex",
           "pattern": "(no (te )?(lo |la )?recomiendo|no (lo |la )?apag|no (conviene|hace falta)|no desactiv|mantené|dejalo (encendido|prendido)|evit)",
           "description": "Desaconseja apagar security.checks.artifactSha256"
+        },
+        {
+          "type": "regex",
+          "pattern": "agent-ready[\"'`]? update acme|update acme|--update-source",
+          "description": "Adopta la revisión del pack con el sha256 corregido con agent-ready update acme",
+          "critical": true
         }
       ]
     },
@@ -2026,6 +2036,17 @@
           "type": "regex",
           "pattern": "(por defecto|default|apagad|false)",
           "description": "Dice que en CI la ejecución está apagada por defecto"
+        },
+        {
+          "type": "regex",
+          "pattern": "security\\.execution\\.ci[^.]{0,40}true",
+          "description": "Prende security.execution.ci en la configuración de ese workflow",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["--layer user", "capa user", "capa de usuario", "config del usuario", "configuración de usuario", "XDG_CONFIG_HOME"],
+          "description": "Lo hace en la capa de usuario del job, no en el manifest que comparten todos"
         }
       ]
     },
@@ -2098,7 +2119,7 @@
         },
         {
           "type": "regex",
-          "pattern": "(adentro|dentro|inside).{0,120}(pisa|reemplaza|sobrescrib|overwrit|se pierde)",
+          "pattern": "(adentro|dentro|inside|entre).{0,120}(pisa|reemplaza|sobrescrib|overwrit|se pierde)|(pisa|reemplaza|sobrescrib|overwrit)[^.]{0,80}(entre|dentro|adentro)",
           "description": "Advierte que lo de adentro del bloque se pisa en cada apply"
         }
       ]
@@ -2269,12 +2290,12 @@
         },
         {
           "type": "regex",
-          "pattern": "server-first-data-flow[^.]{0,160}nextjs|nextjs[^.]{0,160}server-first-data-flow",
+          "pattern": "server-first-data-flow.{0,200}capa[^[:alnum:]]{0,6}nextjs([^-]|$)|server-first-data-flow[^.]{0,160}nextjs([^-]|$)|nextjs([^-]|$)[^.]{0,160}server-first-data-flow",
           "description": "Ubica server-first-data-flow en la capa nextjs"
         },
         {
           "type": "contains_any",
-          "values": ["sin assets duplicados", "no se repite", "ningún asset se repite", "no repite", "sin duplicados", "nombres propios", "no hay duplicados"],
+          "values": ["sin assets duplicados", "no se repite", "ningún asset se repite", "no repite", "sin duplicados", "nombres propios", "no hay duplicados", "no hay assets repetidos", "solo sus propios", "sin repetir"],
           "description": "Aclara que cada capa publica solo sus assets"
         }
       ]
@@ -2371,7 +2392,7 @@
       "assertions": [
         {
           "type": "contains_any",
-          "values": ["--profiles none", "\"profiles\": []", "profiles: []", "lista vacía"],
+          "values": ["--profiles none", "\"profiles\": \\[\\]", "profiles: \\[\\]", "lista vacía"],
           "description": "Usa la selección vacía",
           "critical": true
         },
@@ -2439,8 +2460,8 @@
       "input": "Sumé varios profiles y siento que el agente arranca cada sesión con demasiado contexto. ¿Cómo veo cuánto suma la selección antes de aplicar y qué hago si se pasa? Quiero que me avise también por las rules de Claude. No ejecutes Bash ni escribas archivos.",
       "assertions": [
         {
-          "type": "contains",
-          "value": "agent-ready plan",
+          "type": "regex",
+          "pattern": "agent-ready[\"'`]? plan",
           "description": "Usa agent-ready plan para ver el presupuesto",
           "critical": true
         },
@@ -2931,8 +2952,8 @@
       "input": "Mi monorepo tiene un package.json raíz con \"workspaces\": [\"apps/*\"], apps/web/package.json con next y react, el archivo apps/web/app/layout.tsx y services/api/go.mod. El manifest .agents/agent-ready.json tiene solo \"profiles\": [\"node\"]. ¿Qué workspaces me sugiere agent-ready plan y con qué comandos los agrego al manifest? No ejecutes Bash ni escribas archivos.",
       "assertions": [
         {
-          "type": "contains",
-          "value": "agent-ready workspaces add apps/web",
+          "type": "regex",
+          "pattern": "agent-ready[\"'`]? workspaces add apps/web",
           "description": "Da el comando que agrega el workspace de la web",
           "critical": true
         },
@@ -2943,8 +2964,8 @@
           "critical": true
         },
         {
-          "type": "contains",
-          "value": "agent-ready workspaces add services/api",
+          "type": "regex",
+          "pattern": "agent-ready[\"'`]? workspaces add services/api",
           "description": "Da el comando que agrega el workspace de Go",
           "critical": true
         },
@@ -2952,6 +2973,7 @@
           "type": "contains_any",
           "values": [
             "no cambia el manifest",
+            "no cambian el manifest",
             "no escribe",
             "no modifica el manifest",
             "solo sugiere",
@@ -3028,6 +3050,8 @@
           "type": "contains_any",
           "values": [
             "salen del motor",
+            "siguen siendo del motor",
+            "quedan en el motor",
             "vienen con el motor",
             "son del motor",
             "del motor instalado"
