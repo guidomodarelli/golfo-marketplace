@@ -492,6 +492,303 @@ def slim(payload: Any, field_ids: list[str]) -> Any:
     raise JiraTicketError("jira-ticket: formato de entrada no reconocido para slim (se espera JQL, createmeta o issue)")
 
 
+# --- tracking --------------------------------------------------------------
+
+TRACKING_LEVELS = {
+    "story": {"heading": "## Tareas", "title_column": "Tarea", "before_heading": "## Pull requests"},
+    "epic": {"heading": "## Stories", "title_column": "Story", "before_heading": None},
+}
+STATUS_CATEGORY_EMOJI = {"new": "⬜", "indeterminate": "🔄", "done": "✅"}
+BLOCKED_EMOJI = "🚫"
+PROGRESS_PREFIX = "**Progreso:**"
+EMPTY_SECTION_PLACEHOLDER_REGEX = re.compile(r"^_Sin [^_]+ todavía\._\s*$")
+EMPTY_CELL = "—"
+KEY_COLUMN = "Key"
+STATUS_COLUMN = "Estado"
+ASSIGNEE_COLUMN = "Responsable"
+PR_COLUMN = "PR"
+NOTE_COLUMN = "Nota"
+SECTION_HEADING_REGEX = re.compile(r"^#{1,2} ")
+TABLE_SEPARATOR_REGEX = re.compile(r"^\|(\s*:?-{3,}:?\s*\|)+\s*$")
+ROW_KEY_REGEX = re.compile(r"\[(?P<key>[A-Z][A-Z0-9]+-[0-9]+)\]")
+LIST_ROW_REGEX = re.compile(r"^- (?P<emoji>\S+) \[(?P<key>[A-Z][A-Z0-9]+-[0-9]+)\]\([^)]*\) (?P<rest>.*)$")
+LIST_FIELD_SEPARATOR = " · "
+
+
+@dataclass
+class TrackedChild:
+    """Hijo releído en Jira tal como lo necesita la tabla de seguimiento."""
+
+    key: str
+    summary: str
+    status: str
+    category: str
+    assignee: str | None = None
+    pr: str | None = None
+    blocked: bool = False
+    note: str | None = None
+
+    @property
+    def emoji(self) -> str:
+        return BLOCKED_EMOJI if self.blocked else STATUS_CATEGORY_EMOJI[self.category]
+
+    @property
+    def status_cell(self) -> str:
+        return f"{self.emoji} {self.status}"
+
+
+def _issue_number(key: str) -> int:
+    return int(key.rsplit("-", 1)[1])
+
+
+def parse_tracked_children(payload: Any) -> list[TrackedChild]:
+    if not isinstance(payload, list):
+        raise JiraTicketError("jira-ticket: tracking espera `children` como lista de hijos releídos en Jira")
+    children: list[TrackedChild] = []
+    for index, raw in enumerate(payload):
+        if not isinstance(raw, dict):
+            raise JiraTicketError(f"jira-ticket: tracking children[{index}] no es un objeto")
+        key = str(raw.get("key") or "")
+        if not ISSUE_KEY_REGEX.match(key):
+            raise JiraTicketError(f"jira-ticket: tracking children[{index}] tiene key inválida '{key[:30]}'")
+        category = str(raw.get("category") or "")
+        if category not in STATUS_CATEGORY_EMOJI:
+            raise JiraTicketError(
+                f"jira-ticket: tracking {key} tiene statusCategory '{category[:30]}'; se espera {', '.join(STATUS_CATEGORY_EMOJI)}",
+                EXIT_UNRESOLVED,
+            )
+        for required in ("summary", "status"):
+            if not raw.get(required):
+                raise JiraTicketError(f"jira-ticket: tracking {key} no tiene `{required}`")
+        children.append(
+            TrackedChild(
+                key=key,
+                summary=str(raw["summary"]),
+                status=str(raw["status"]),
+                category=category,
+                assignee=raw.get("assignee") or None,
+                pr=raw.get("pr") or None,
+                blocked=bool(raw.get("blocked")),
+                note=raw.get("note") or None,
+            )
+        )
+    keys = [child.key for child in children]
+    duplicated = sorted({key for key in keys if keys.count(key) > 1})
+    if duplicated:
+        raise JiraTicketError(f"jira-ticket: tracking recibió hijos repetidos: {', '.join(duplicated)}")
+    return sorted(children, key=lambda child: (child.key.rsplit("-", 1)[0], _issue_number(child.key)))
+
+
+def _split_cells(row: str) -> list[tuple[int, int]]:
+    """Posiciones (inicio, fin) del contenido de cada celda de una fila `| a | b |`, respetando `\\|`."""
+    stripped_end = len(row.rstrip())
+    pipes = [index for index, char in enumerate(row[:stripped_end]) if char == "|" and (index == 0 or row[index - 1] != "\\")]
+    return [(pipes[position] + 1, pipes[position + 1]) for position in range(len(pipes) - 1)]
+
+
+def _cell_values(row: str) -> list[str]:
+    return [row[start:end].strip() for start, end in _split_cells(row)]
+
+
+def _replace_cell(row: str, column: int, value: str) -> str:
+    start, end = _split_cells(row)[column]
+    return f"{row[:start]} {value} {row[end:]}"
+
+
+def progress_line(emojis: list[str]) -> str:
+    total = len(emojis)
+    counts = {emoji: emojis.count(emoji) for emoji in (*STATUS_CATEGORY_EMOJI.values(), BLOCKED_EMOJI)}
+    parts = [
+        f"{counts[STATUS_CATEGORY_EMOJI['done']]}/{total} {STATUS_CATEGORY_EMOJI['done']}",
+        f"{counts[STATUS_CATEGORY_EMOJI['indeterminate']]} {STATUS_CATEGORY_EMOJI['indeterminate']}",
+        f"{counts[STATUS_CATEGORY_EMOJI['new']]} {STATUS_CATEGORY_EMOJI['new']}",
+    ]
+    if counts[BLOCKED_EMOJI]:
+        parts.append(f"{counts[BLOCKED_EMOJI]} {BLOCKED_EMOJI}")
+    return f"{PROGRESS_PREFIX} {' · '.join(parts)}"
+
+
+def _table_row(child: TrackedChild, columns: list[str], site_url: str) -> str:
+    values = {
+        KEY_COLUMN: f"[{child.key}]({browse_url(site_url, child.key)})",
+        STATUS_COLUMN: child.status_cell,
+        ASSIGNEE_COLUMN: child.assignee or EMPTY_CELL,
+        PR_COLUMN: child.pr or EMPTY_CELL,
+        NOTE_COLUMN: (child.note or EMPTY_CELL) if child.blocked else EMPTY_CELL,
+    }
+    title_columns = {level["title_column"] for level in TRACKING_LEVELS.values()}
+    cells = [values.get(column, child.summary if column in title_columns else EMPTY_CELL) for column in columns]
+    return "| " + " | ".join(_escape_cell(cell) for cell in cells) + " |"
+
+
+def _escape_cell(value: str) -> str:
+    """Escapa los `|` sin escapar para que el texto no parta la fila en otra celda."""
+    return re.sub(r"(?<!\\)\|", r"\\|", value)
+
+
+def _list_row(child: TrackedChild, site_url: str) -> str:
+    fields = [child.summary, child.status, child.assignee or EMPTY_CELL]
+    if child.pr:
+        fields.append(child.pr)
+    return f"- {child.emoji} [{child.key}]({browse_url(site_url, child.key)}) {LIST_FIELD_SEPARATOR.join(fields)}"
+
+
+def _new_section_lines(level: str, children: list[TrackedChild], site_url: str) -> list[str]:
+    columns = [KEY_COLUMN, TRACKING_LEVELS[level]["title_column"], STATUS_COLUMN, ASSIGNEE_COLUMN]
+    if level == "story" and any(child.pr for child in children):
+        columns.append(PR_COLUMN)
+    columns.append(NOTE_COLUMN)
+    header = "| " + " | ".join(columns) + " |"
+    separator = "|" + "|".join("---" for _ in columns) + "|"
+    rows = [_table_row(child, columns, site_url) for child in children]
+    return [TRACKING_LEVELS[level]["heading"], progress_line([child.emoji for child in children]), "", header, separator, *rows]
+
+
+def _section_bounds(lines: list[str], heading: str) -> tuple[int, int] | None:
+    fenced = _fenced_line_flags(lines)
+    start = next((index for index, line in enumerate(lines) if not fenced[index] and line.rstrip() == heading), None)
+    if start is None:
+        return None
+    end = next((index for index in range(start + 1, len(lines)) if not fenced[index] and SECTION_HEADING_REGEX.match(lines[index])), len(lines))
+    return start, end
+
+
+def update_tracking(description: str, children_payload: Any, level: str, site_url: str, create: bool = False) -> dict[str, Any]:
+    """Actualiza solo la sección de seguimiento: estado de cada fila, filas nuevas y `Progreso`.
+
+    Todo lo que está fuera de la sección queda idéntico byte a byte, y dentro de
+    ella solo cambian la celda `Estado` (y `Nota` cuando un hijo se bloquea o se
+    desbloquea) de los hijos que cambiaron, las filas que se insertan y la línea
+    `Progreso`. Sin sección, la crea solo con `create`.
+    """
+    if level not in TRACKING_LEVELS:
+        raise JiraTicketError(f"jira-ticket: tracking --level debe ser {' o '.join(TRACKING_LEVELS)}")
+    children = parse_tracked_children(children_payload)
+    by_key = {child.key: child for child in children}
+    newline = "\r\n" if "\r\n" in description else "\n"
+    had_final_newline = description.endswith(("\n", "\r\n"))
+    lines = description.splitlines()
+    heading = TRACKING_LEVELS[level]["heading"]
+    result: dict[str, Any] = {"level": level, "section": "updated", "added": [], "updated": [], "rows_without_child": [], "format": "table"}
+
+    bounds = _section_bounds(lines, heading)
+    if bounds is None:
+        if not create:
+            return {**result, "section": "missing", "changed": False, "description": description}
+        section = _new_section_lines(level, children, site_url)
+        before = TRACKING_LEVELS[level]["before_heading"]
+        anchor = _section_bounds(lines, before) if before else None
+        if anchor is not None:
+            insert_at = anchor[0]
+            new_lines = lines[:insert_at] + section + [""] + lines[insert_at:]
+        else:
+            trailing = [""] if lines and lines[-1].strip() else []
+            new_lines = lines + trailing + section
+        result.update(section="created", added=[child.key for child in children])
+    else:
+        start, end = bounds
+        body = lines[start + 1:end]
+        row_indexes: list[int] = []
+        row_keys: list[str] = []
+        header_index = next((index for index, line in enumerate(body) if line.startswith("|") and index + 1 < len(body) and TABLE_SEPARATOR_REGEX.match(body[index + 1].rstrip())), None)
+        if header_index is not None:
+            columns = _cell_values(body[header_index])
+            if KEY_COLUMN not in columns or STATUS_COLUMN not in columns:
+                raise JiraTicketError(f"jira-ticket: la tabla de '{heading}' no tiene columnas {KEY_COLUMN} y {STATUS_COLUMN}", EXIT_UNRESOLVED)
+            status_column = columns.index(STATUS_COLUMN)
+            note_column = columns.index(NOTE_COLUMN) if NOTE_COLUMN in columns else None
+            index = header_index + 2
+            while index < len(body) and body[index].startswith("|"):
+                match = ROW_KEY_REGEX.search(_cell_values(body[index])[columns.index(KEY_COLUMN)])
+                if match:
+                    row_indexes.append(index)
+                    row_keys.append(match.group("key"))
+                index += 1
+            table_end = index
+            for position, key in zip(row_indexes, row_keys):
+                child = by_key.get(key)
+                if child is None:
+                    result["rows_without_child"].append(key)
+                    continue
+                row = body[position]
+                cells = _cell_values(row)
+                was_blocked = cells[status_column].startswith(BLOCKED_EMOJI)
+                if cells[status_column] != child.status_cell:
+                    row = _replace_cell(row, status_column, child.status_cell)
+                if note_column is not None and was_blocked != child.blocked:
+                    row = _replace_cell(row, note_column, (child.note or EMPTY_CELL) if child.blocked else EMPTY_CELL)
+                if row != body[position]:
+                    body[position] = row
+                    result["updated"].append(key)
+            missing = [child for child in children if child.key not in row_keys]
+            for child in missing:
+                new_row = _table_row(child, columns, site_url)
+                later = [position for position, key in zip(row_indexes, row_keys) if key.rsplit("-", 1)[0] == child.key.rsplit("-", 1)[0] and _issue_number(key) > _issue_number(child.key)]
+                insert_at = min(later) if later else table_end
+                body.insert(insert_at, new_row)
+                row_indexes = [position + 1 if position >= insert_at else position for position in row_indexes]
+                row_indexes.append(insert_at)
+                row_keys.append(child.key)
+                table_end += 1
+                result["added"].append(child.key)
+            emojis = [_cell_values(body[position])[status_column].split(" ", 1)[0] for position in row_indexes]
+        else:
+            list_indexes = [index for index, line in enumerate(body) if LIST_ROW_REGEX.match(line)]
+            if list_indexes:
+                result["format"] = "list"
+                for position in list_indexes:
+                    match = LIST_ROW_REGEX.match(body[position])
+                    key = match.group("key")
+                    row_keys.append(key)
+                    child = by_key.get(key)
+                    if child is None:
+                        result["rows_without_child"].append(key)
+                        continue
+                    fields = match.group("rest").split(LIST_FIELD_SEPARATOR)
+                    old_emoji = match.group("emoji")
+                    if old_emoji != child.emoji or (len(fields) > 1 and fields[1] != child.status):
+                        if len(fields) > 1:
+                            fields[1] = child.status
+                        prefix = body[position][: match.start("emoji")]
+                        between = body[position][match.end("emoji"): match.start("rest")]
+                        body[position] = f"{prefix}{child.emoji}{between}{LIST_FIELD_SEPARATOR.join(fields)}"
+                        result["updated"].append(key)
+                last = list_indexes[-1]
+                for child in [child for child in children if child.key not in row_keys]:
+                    body.insert(last + 1, _list_row(child, site_url))
+                    last += 1
+                    row_keys.append(child.key)
+                    result["added"].append(child.key)
+                emojis = [LIST_ROW_REGEX.match(line).group("emoji") for line in body if LIST_ROW_REGEX.match(line)]
+            else:
+                placeholder = next((index for index, line in enumerate(body) if EMPTY_SECTION_PLACEHOLDER_REGEX.match(line.strip())), None)
+                if placeholder is None and any(line.strip() and not line.startswith(PROGRESS_PREFIX) for line in body):
+                    raise JiraTicketError(f"jira-ticket: la sección '{heading}' no tiene tabla ni lista de seguimiento reconocibles", EXIT_UNRESOLVED)
+                fresh = _new_section_lines(level, children, site_url)[1:]
+                if placeholder is not None:
+                    body[placeholder:placeholder + 1] = fresh[2:]
+                else:
+                    body = [line for line in body if not line.startswith(PROGRESS_PREFIX)]
+                    leading = [""] if not body or body[0].strip() else []
+                    body = leading + fresh[2:] + body
+                result["added"] = [child.key for child in children]
+                emojis = [child.emoji for child in children]
+        progress = progress_line(emojis)
+        progress_index = next((index for index, line in enumerate(body) if line.startswith(PROGRESS_PREFIX)), None)
+        if progress_index is None:
+            while body and not body[0].strip():
+                body = body[1:]
+            body = [progress, "", *body]
+        elif body[progress_index] != progress:
+            body[progress_index] = progress
+        new_lines = lines[: start + 1] + body + lines[end:]
+    new_description = newline.join(new_lines)
+    if had_final_newline:
+        new_description += newline
+    progress_text = next((line for line in new_lines if line.startswith(PROGRESS_PREFIX)), None)
+    return {**result, "changed": new_description != description, "progress": progress_text, "description": new_description}
+
+
 # --- CLI -------------------------------------------------------------------
 
 
@@ -512,6 +809,9 @@ def build_parser() -> argparse.ArgumentParser:
     backlink_cmd = sub.add_parser("backlink", help="Aplica o verifica el backlink PR→Jira sobre un body por stdin.")
     backlink_cmd.add_argument("action", choices=["apply", "verify"])
     backlink_cmd.add_argument("--key", required=True)
+    tracking_cmd = sub.add_parser("tracking", help="Actualiza la sección de seguimiento de una descripción (stdin JSON: description y children).")
+    tracking_cmd.add_argument("--level", required=True, choices=sorted(TRACKING_LEVELS))
+    tracking_cmd.add_argument("--create", action="store_true", help="Crea la sección si la descripción no la tiene.")
     slim_cmd = sub.add_parser("slim", help="Reduce una respuesta grande de Jira (stdin) a los campos pedidos.")
     slim_cmd.add_argument("--fields", default="")
     return parser
@@ -555,6 +855,11 @@ def main(argv: list[str] | None = None, environ: dict[str, str] | None = None) -
                 result = verify_backlink(body, args.key, site_url)
                 emit(result)
                 return EXIT_OK if result["canonical"] else EXIT_UNRESOLVED
+        elif args.command == "tracking":
+            payload = read_json_stdin()
+            if not isinstance(payload, dict) or not isinstance(payload.get("description"), str):
+                raise JiraTicketError("jira-ticket: tracking espera por stdin un objeto con `description` (texto) y `children` (lista)")
+            emit(update_tracking(payload["description"], payload.get("children", []), args.level, config.require("SITE_URL"), args.create))
         elif args.command == "slim":
             emit(slim(read_json_stdin(), [item.strip() for item in args.fields.split(",") if item.strip()]))
     except JiraTicketError as error:

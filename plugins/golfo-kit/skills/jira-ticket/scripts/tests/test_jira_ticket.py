@@ -456,3 +456,194 @@ def test_slim_jql_keeps_key_and_requested_fields():
 def test_slim_rejects_unknown_payload():
     with pytest.raises(jira_ticket.JiraTicketError):
         jira_ticket.slim(["not", "jira"], [])
+
+
+# --- tracking --------------------------------------------------------------
+
+STORY_DESCRIPTION = """## Problema
+Los emails de bienvenida salen sin logo.
+
+## Solución
+Migrar los templates al nuevo servicio de emails.
+
+```markdown
+## Tareas
+| Key | Tarea | Estado |
+```
+
+## Tareas
+**Progreso:** 1/3 ✅ · 1 🔄 · 1 ⬜
+
+| Key | Tarea | Estado | Responsable | Nota |
+|---|---|---|---|---|
+| [ACME-6001](https://acme.atlassian.net/browse/ACME-6001) | Migrar templates | ✅ Done | Ana Pérez | — |
+| [ACME-6002](https://acme.atlassian.net/browse/ACME-6002) | Probar envío \\| staging | 🔄 In Progress | Ana Pérez | — |
+| [ACME-6005](https://acme.atlassian.net/browse/ACME-6005) | Validar con producto | ⬜ To Do | — | — |
+
+## Pull requests
+- [acme/payments-api#88](https://github.com/acme/payments-api/pull/88)
+"""
+
+
+def child(key, status="To Do", category="new", summary=None, **extra):
+    return {"key": key, "summary": summary or f"Tarea {key}", "status": status, "category": category, **extra}
+
+
+CURRENT_CHILDREN = [
+    child("ACME-6001", "Done", "done", "Migrar templates", assignee="Ana Pérez"),
+    child("ACME-6002", "Done", "done", "Probar envío | staging", assignee="Ana Pérez"),
+    child("ACME-6005", "To Do", "new", "Validar con producto"),
+]
+
+
+def changed_lines(before, after):
+    old_lines, new_lines = before.splitlines(), after.splitlines()
+    assert len(old_lines) == len(new_lines)
+    return [(old, new) for old, new in zip(old_lines, new_lines) if old != new]
+
+
+def test_tracking_status_change_touches_only_its_cell_and_progress():
+    result = jira_ticket.update_tracking(STORY_DESCRIPTION, CURRENT_CHILDREN, "story", SITE_URL)
+    assert result["updated"] == ["ACME-6002"] and result["added"] == []
+    assert result["progress"] == "**Progreso:** 2/3 ✅ · 0 🔄 · 1 ⬜"
+    assert changed_lines(STORY_DESCRIPTION, result["description"]) == [
+        ("**Progreso:** 1/3 ✅ · 1 🔄 · 1 ⬜", "**Progreso:** 2/3 ✅ · 0 🔄 · 1 ⬜"),
+        (
+            "| [ACME-6002](https://acme.atlassian.net/browse/ACME-6002) | Probar envío \\| staging | 🔄 In Progress | Ana Pérez | — |",
+            "| [ACME-6002](https://acme.atlassian.net/browse/ACME-6002) | Probar envío \\| staging | ✅ Done | Ana Pérez | — |",
+        ),
+    ]
+
+
+def test_tracking_is_idempotent():
+    first = jira_ticket.update_tracking(STORY_DESCRIPTION, CURRENT_CHILDREN, "story", SITE_URL)
+    second = jira_ticket.update_tracking(first["description"], CURRENT_CHILDREN, "story", SITE_URL)
+    assert second["changed"] is False and second["description"] == first["description"]
+
+
+def test_tracking_preserves_crlf_and_missing_final_newline_outside_section():
+    original = STORY_DESCRIPTION.replace("\n", "\r\n").rstrip("\r\n")
+    result = jira_ticket.update_tracking(original, CURRENT_CHILDREN, "story", SITE_URL)
+    assert "\n" not in result["description"].replace("\r\n", "")
+    assert not result["description"].endswith("\r\n")
+    head, tail = original.split("## Tareas\r\n**Progreso")[0], original.split("## Pull requests")[1]
+    assert result["description"].startswith(head) and result["description"].endswith(tail)
+
+
+def test_tracking_ignores_heading_inside_code_fence():
+    result = jira_ticket.update_tracking(STORY_DESCRIPTION, CURRENT_CHILDREN, "story", SITE_URL)
+    assert "```markdown\n## Tareas\n| Key | Tarea | Estado |\n```" in result["description"]
+
+
+def test_tracking_inserts_new_child_in_key_order_without_touching_other_rows():
+    children = [*CURRENT_CHILDREN, child("ACME-6003", summary="Revisar copy")]
+    result = jira_ticket.update_tracking(STORY_DESCRIPTION, children, "story", SITE_URL)
+    lines = result["description"].splitlines()
+    row_keys = [line.split("]")[0][3:] for line in lines if line.startswith("| [ACME-")]
+    assert row_keys == ["ACME-6001", "ACME-6002", "ACME-6003", "ACME-6005"]
+    assert "| [ACME-6003](https://acme.atlassian.net/browse/ACME-6003) | Revisar copy | ⬜ To Do | — | — |" in lines
+    assert result["added"] == ["ACME-6003"] and result["progress"] == "**Progreso:** 2/4 ✅ · 0 🔄 · 2 ⬜"
+
+
+def test_tracking_blocked_child_sets_note_and_unblock_clears_it():
+    blocked = [*CURRENT_CHILDREN[:2], child("ACME-6005", blocked=True, note="Espera a ACME-7000", summary="Validar con producto")]
+    result = jira_ticket.update_tracking(STORY_DESCRIPTION, blocked, "story", SITE_URL)
+    assert "| 🚫 To Do | — | Espera a ACME-7000 |" in result["description"]
+    assert result["progress"] == "**Progreso:** 2/3 ✅ · 0 🔄 · 0 ⬜ · 1 🚫"
+    unblocked = jira_ticket.update_tracking(result["description"], CURRENT_CHILDREN, "story", SITE_URL)
+    assert "| ⬜ To Do | — | — |" in unblocked["description"]
+
+
+def test_tracking_reports_rows_without_child_and_keeps_them():
+    result = jira_ticket.update_tracking(STORY_DESCRIPTION, CURRENT_CHILDREN[:2], "story", SITE_URL)
+    assert result["rows_without_child"] == ["ACME-6005"]
+    assert "| [ACME-6005](https://acme.atlassian.net/browse/ACME-6005) | Validar con producto | ⬜ To Do | — | — |" in result["description"]
+
+
+def test_tracking_missing_section_is_left_alone_without_create():
+    description = "## Problema\nAlgo.\n"
+    result = jira_ticket.update_tracking(description, CURRENT_CHILDREN, "story", SITE_URL)
+    assert result["section"] == "missing" and result["changed"] is False and result["description"] == description
+
+
+def test_tracking_create_places_story_section_before_pull_requests():
+    description = "## Contexto\nTexto ajeno.\n\n## Pull requests\n- [acme/api#1](https://github.com/acme/api/pull/1)\n"
+    children = [child("ACME-11", pr="acme/api#1", summary="Con PR"), child("ACME-10", "In Progress", "indeterminate", "Sin PR")]
+    result = jira_ticket.update_tracking(description, children, "story", SITE_URL, create=True)
+    assert result["section"] == "created" and result["added"] == ["ACME-10", "ACME-11"]
+    assert result["description"] == (
+        "## Contexto\nTexto ajeno.\n\n"
+        "## Tareas\n**Progreso:** 0/2 ✅ · 1 🔄 · 1 ⬜\n\n"
+        "| Key | Tarea | Estado | Responsable | PR | Nota |\n|---|---|---|---|---|---|\n"
+        "| [ACME-10](https://acme.atlassian.net/browse/ACME-10) | Sin PR | 🔄 In Progress | — | — | — |\n"
+        "| [ACME-11](https://acme.atlassian.net/browse/ACME-11) | Con PR | ⬜ To Do | — | acme/api#1 | — |\n\n"
+        "## Pull requests\n- [acme/api#1](https://github.com/acme/api/pull/1)\n"
+    )
+
+
+def test_tracking_create_appends_epic_section_without_pr_column():
+    description = "## Contexto Q4\nNo mover sin hablar con el equipo."
+    result = jira_ticket.update_tracking(description, [child("ACME-512", summary="Recordatorio", pr="acme/api#9")], "epic", SITE_URL, create=True)
+    assert result["description"].startswith(description + "\n\n## Stories\n**Progreso:** 0/1 ✅ · 0 🔄 · 1 ⬜\n\n| Key | Story | Estado | Responsable | Nota |")
+    assert not result["description"].endswith("\n")
+
+
+def test_tracking_replaces_empty_epic_placeholder():
+    description = "## Objetivo\nX.\n\n## Stories\n_Sin stories todavía._\n"
+    result = jira_ticket.update_tracking(description, [child("ACME-801", summary="Alta de proveedores")], "epic", SITE_URL)
+    assert "_Sin stories" not in result["description"]
+    assert result["description"].endswith(
+        "## Stories\n**Progreso:** 0/1 ✅ · 0 🔄 · 1 ⬜\n\n| Key | Story | Estado | Responsable | Nota |\n|---|---|---|---|---|\n"
+        "| [ACME-801](https://acme.atlassian.net/browse/ACME-801) | Alta de proveedores | ⬜ To Do | — | — |\n"
+    )
+
+
+def test_tracking_updates_fallback_list_line():
+    description = (
+        "## Tareas\n**Progreso:** 0/2 ✅ · 0 🔄 · 2 ⬜\n\n"
+        "- ⬜ [ACME-21](https://acme.atlassian.net/browse/ACME-21) Migrar templates · To Do · Ana Pérez · acme/api#88\n"
+        "- ⬜ [ACME-23](https://acme.atlassian.net/browse/ACME-23) PR testeado · To Do · —\n"
+    )
+    children = [child("ACME-21", "Done", "done", "Migrar templates"), child("ACME-23", summary="PR testeado")]
+    result = jira_ticket.update_tracking(description, children, "story", SITE_URL)
+    assert result["format"] == "list" and result["updated"] == ["ACME-21"]
+    assert changed_lines(description, result["description"]) == [
+        ("**Progreso:** 0/2 ✅ · 0 🔄 · 2 ⬜", "**Progreso:** 1/2 ✅ · 0 🔄 · 1 ⬜"),
+        (
+            "- ⬜ [ACME-21](https://acme.atlassian.net/browse/ACME-21) Migrar templates · To Do · Ana Pérez · acme/api#88",
+            "- ✅ [ACME-21](https://acme.atlassian.net/browse/ACME-21) Migrar templates · Done · Ana Pérez · acme/api#88",
+        ),
+    ]
+
+
+@pytest.mark.parametrize(
+    "children",
+    [
+        [child("ACME-1", category="blocked")],
+        [child("ACME-1"), child("ACME-1")],
+        [child("acme-1")],
+        [{"key": "ACME-1", "category": "new", "status": "To Do"}],
+    ],
+)
+def test_tracking_rejects_invalid_children(children):
+    with pytest.raises(jira_ticket.JiraTicketError):
+        jira_ticket.update_tracking(STORY_DESCRIPTION, children, "story", SITE_URL)
+
+
+def test_tracking_rejects_section_without_recognizable_rows():
+    with pytest.raises(jira_ticket.JiraTicketError):
+        jira_ticket.update_tracking("## Tareas\nTexto libre que no es tabla.\n", CURRENT_CHILDREN, "story", SITE_URL)
+
+
+def test_tracking_cli_round_trip(monkeypatch, capsys):
+    payload = json.dumps({"description": STORY_DESCRIPTION, "children": CURRENT_CHILDREN}, ensure_ascii=False)
+    exit_code, out, err = run_cli(monkeypatch, capsys, ["tracking", "--level", "story"], payload)
+    assert exit_code == 0 and err == ""
+    result = json.loads(out)
+    assert result["changed"] is True and result["updated"] == ["ACME-6002"]
+
+
+def test_tracking_cli_unknown_category_exits_unresolved(monkeypatch, capsys):
+    payload = json.dumps({"description": STORY_DESCRIPTION, "children": [child("ACME-6001", category="waiting")]})
+    exit_code, _, err = run_cli(monkeypatch, capsys, ["tracking", "--level", "story"], payload)
+    assert exit_code == jira_ticket.EXIT_UNRESOLVED and "statusCategory" in err

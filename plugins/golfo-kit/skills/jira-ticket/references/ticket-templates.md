@@ -28,7 +28,7 @@ La skill escribe con `contentFormat: "markdown"`; la integración Atlassian lo c
   | `done` | ✅ |
   | Bloqueado (link `is blocked by` a un issue abierto, o lo indica el usuario) | 🚫, con el motivo en la columna `Nota` |
 
-- **Una fila por hijo, una celda por estado.** Cambiar el estado de un hijo es reescribir solo la celda `Estado` de su fila. La línea `Progreso` es derivada: la skill la recalcula desde las filas en la misma escritura; si una persona edita a mano una celda, la próxima sincronización corrige el contador.
+- **Una fila por hijo, una celda por estado.** Cambiar el estado de un hijo es reescribir solo la celda `Estado` de su fila. La línea `Progreso` es derivada: la skill la recalcula desde las filas en la misma escritura; si una persona edita a mano una celda, la próxima sincronización corrige el contador. Un hijo bloqueado cuenta solo como 🚫, que se agrega al final del contador (`· 1 🚫`) cuando hay alguno.
 - **Orden estable** por key numérica, para que agregar un hijo sea insertar una fila sin mover las demás.
 - **Responsable**: nombre visible que devuelve Jira, o `—` sin asignar. No usar emails ni account ids.
 - **PR**: solo `owner/repo#n` como texto, sin URL ni estado GitHub. La URL canónica vive una sola vez en `## Pull requests` de la Story. Poner un PR en una fila solo cuando ese hijo tiene un PR propio; si un PR cubre toda la Story, la celda queda `—`. Si ningún hijo tiene PR propio, omitir la columna.
@@ -119,6 +119,8 @@ Cambiar un estado sigue siendo tocar una sola línea.
 
 Toda escritura de la descripción de un padre (épica o Story) usa la relectura, `version` y el único retry de `Concurrencia de descripción padre` en `pr-traceability.md`.
 
+La sección de seguimiento no se redacta a mano: se calcula con `scripts/jira-ticket.py tracking --level story|epic`, pasando por stdin `{"description": "<descripción releída>", "children": [...]}` con cada hijo releído en Jira (`key`, `summary`, `status`, `category` = `statusCategory.key`, y opcionales `assignee`, `pr`, `blocked`, `note`). El helper cambia solo la celda `Estado` (y `Nota` al bloquear o desbloquear) de los hijos que cambiaron, inserta las filas que faltan por key, recalcula `Progreso` y deja idéntico todo lo demás, también en la lista de respaldo. Devuelve `description`, `changed`, `added`, `updated` y `rows_without_child` (filas cuyo hijo no vino en la entrada: se conservan y se informan). Con `changed: false` no se escribe. Sin sección devuelve `section: missing` y no la crea salvo `--create`. Si el helper no puede ejecutarse, aplicar estas mismas reglas a mano e informarlo.
+
 ### Crear
 
 Redactar la variante del nivel con los hijos que se crean en la misma ejecución. Releer después de crear los hijos y escribir la tabla con sus keys reales; nunca publicar filas con keys supuestas.
@@ -128,8 +130,8 @@ Redactar la variante del nivel con los hijos que se crean en la misma ejecución
 Aplica a una Story nueva bajo una épica existente y a una subtarea nueva bajo una Story existente.
 
 1. Releer el padre por key. No reescribir, traducir ni reordenar ningún contenido fuera de la sección de seguimiento (`## Stories` en la épica, `## Tareas` en la Story), aunque no siga este template.
-2. Si la sección existe, insertar la fila del hijo en su posición por key y recalcular `Progreso`. Las filas existentes no se modifican.
-3. Si la sección no existe, agregarla al final de la descripción (antes de `## Pull requests` en una Story), con una fila por cada hijo real del padre, consultados con `parent = <KEY>` y solo los campos `summary`, `status`, `assignee` e `issuelinks` (este último solo para detectar bloqueos). El índice de búsqueda puede omitir issues recién creados: unir ese resultado, deduplicado por key, con los hijos creados en esta ejecución releídos por key, y recién ahí calcular `Progreso`. Si el padre tiene más hijos que `<MAX_RESULTS>`, no crear la tabla: informar que el panel de hijos de Jira ya cubre ese seguimiento.
+2. Si la sección existe, correr `tracking` con los hijos actuales: inserta la fila del hijo en su posición por key y recalcula `Progreso`.
+3. Si la sección no existe, agregarla al final de la descripción (antes de `## Pull requests` en una Story), con una fila por cada hijo real del padre, consultados con `parent = <KEY>` y solo los campos `summary`, `status`, `assignee` e `issuelinks` (este último solo para detectar bloqueos). El índice de búsqueda puede omitir issues recién creados: unir ese resultado, deduplicado por key, con los hijos creados en esta ejecución releídos por key, y pasar esa unión a `tracking --create`. Si el padre tiene más hijos que `<MAX_RESULTS>`, no crear la tabla: informar que el panel de hijos de Jira ya cubre ese seguimiento.
 4. No tocar los campos de la épica (fechas, sprint, labels, responsable) por agregar una Story.
 
 ### Actualizar el estado de un hijo
@@ -137,7 +139,7 @@ Aplica a una Story nueva bajo una épica existente y a una subtarea nueva bajo u
 Cuando la skill cambia o verifica el estado de un hijo:
 
 1. Releer el estado real del hijo en Jira.
-2. Reescribir solo la celda `Estado` de su fila (o su línea en la lista de respaldo) y recalcular `Progreso`. Si el hijo quedó bloqueado o se desbloqueó, actualizar también su celda `Nota`.
+2. Correr `tracking` (sin `--create`) con los hijos releídos: reescribe solo la celda `Estado` de su fila (o su línea en la lista de respaldo), la celda `Nota` si se bloqueó o desbloqueó, y `Progreso`.
 3. Si el hijo es una Story con épica, actualizar también su fila en la tabla de la épica solo cuando cambia el estado de la Story, no el de sus subtareas.
 4. Si la sección existe pero falta la fila del hijo, insertarla como en `Agregar un hijo a un padre existente`. Si el padre no tiene sección de seguimiento, no crearla solo por un cambio de estado, salvo pedido explícito.
 
