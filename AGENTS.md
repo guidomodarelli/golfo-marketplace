@@ -204,6 +204,10 @@ run-evals plugins/<plugin-name>/skills/<skill-name> --baseline --repeat 3
 # Optional provider override (default: auto-detect Codex or Claude)
 run-evals plugins/<plugin-name>/skills/<skill-name> --provider codex
 
+# Measure the description: run each request of <skill>/evals/trigger-evals.json ([{query, should_trigger}])
+# against a copy of the frontmatter, and report whether the first tool call picks the skill (Claude only)
+run-evals plugins/<plugin-name>/skills/<skill-name> --triggers --repeat 3
+
 # Run an eval-config.json kept outside the skill (for example a held-out set); not valid with --all
 run-evals plugins/<plugin-name>/skills/<skill-name> --config /path/to/held-out/eval-config.json
 

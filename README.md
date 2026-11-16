@@ -470,6 +470,9 @@ run-evals plugins/<plugin-name>/skills/<skill-name> --repeat 3
 # Override de proveedor (por defecto: auto-detecta Codex o Claude)
 run-evals plugins/<plugin-name>/skills/<skill-name> --provider codex
 
+# Medir la activación del description con evals/trigger-evals.json (solo Claude)
+run-evals plugins/<plugin-name>/skills/<skill-name> --triggers --repeat 3
+
 # Correr los evals de un directorio de rules (rules/*.md sin SKILL.md, por ejemplo un stack de un pack de contenido)
 run-evals ../golfo-agent-profiles/stacks/nextjs
 
@@ -492,6 +495,18 @@ de control con `"control": "<motivo>"`. El motivo no puede estar vacío. Si pasa
 
 En Windows (Git Bash, MSYS2 o Cygwin), el prompt nombra la copia de la skill con su ruta de Windows
 (`cygpath -m`), porque el CLI nativo del agente no abre una ruta como `/tmp/tmp.X`.
+
+**Activación (`--triggers`):** mide si el `description` hace que el agente elija la skill.
+
+- **Los pedidos** salen de `evals/trigger-evals.json`, con el formato de skill-creator `[{query, should_trigger}]`, o
+  de un archivo pasado con `--config`.
+- **Cada corrida** usa un directorio vacío con una copia del frontmatter bajo un nombre único, que es la única skill
+  del proyecto. Corre con `--setting-sources project`, así que no entran las skills ni los plugins del usuario.
+- **Pasa** si la primera herramienta que llama el agente elige esa copia cuando debe, y no la elige cuando no debe.
+  Si la sesión no cargó la copia, la corrida no se califica.
+- **El JSONL** tiene una línea `trigger` por pedido y una `trigger_summary` con `trigger_rate`, la tasa en los pedidos
+  que deben activarla, y `false_trigger_rate`, la tasa en los que no.
+- **Solo funciona con Claude.** No se combina con `--all` ni con `--baseline`.
 
 **Directorios de rules:** una rule no es una skill, así que un directorio con `rules/*.md` y sin `SKILL.md` es un
 destino propio. Puede ser un stack, un profile o `base/` de un pack como golfo-agent-profiles. Sus evals van al lado,
