@@ -48,6 +48,13 @@ EVAL_REPEAT="${EVAL_REPEAT:-1}"
 # Optional eval-config.json outside the skill tree (for example a held-out set). The agent under
 # evaluation never sees it: the skill is always exposed through a copy without its evals/ dir.
 EVAL_CONFIG="${EVAL_CONFIG:-}"
+# --triggers: measure the description instead of the contract (run_trigger_evals). --config then names
+# a trigger evals file instead of an eval-config.json.
+EVAL_TRIGGERS="${EVAL_TRIGGERS:-0}"
+TRIGGER_EVALS_FILE_NAME="trigger-evals.json"
+TRIGGER_MAX_TURNS=2
+TRIGGER_TRIGGERED="triggered"
+TRIGGER_NOT_TRIGGERED="not_triggered"
 # Assertion types the grader implements. An unknown type (for example a typo) is rejected when the
 # config is validated: grading it would only print a warning and let the case pass unchecked.
 SUPPORTED_ASSERTION_TYPES_JSON='["contains","contains_any","not_contains_any","regex"]'
@@ -121,6 +128,12 @@ usage() {
     echo "                               <skill>/evals/eval-config.json (for example a held-out"
     echo "                               set kept outside the skill). Not valid with --all."
     echo "                               Equivalent to EVAL_CONFIG=FILE."
+    echo ""
+    echo "  --triggers, -T               Measure the description instead: run each request of"
+    echo "                               <skill>/evals/trigger-evals.json ([{query,"
+    echo "                               should_trigger}], or --config FILE) against a copy"
+    echo "                               of the frontmatter and report whether the first tool"
+    echo "                               call picks the skill. Claude only; not with --all."
     echo ""
     echo "The agent under evaluation always reads a copy of the skill without its evals/"
     echo "directory, so it cannot see the assertions it is graded against. With Claude it"
@@ -1405,6 +1418,177 @@ run_skill_evals() {
     return 0
 }
 
+# ── Trigger evals ──────────────────────────────────────
+# Whether the description makes the agent pick the skill. evals/trigger-evals.json lists requests,
+# each with should_trigger (the format of skill-creator). Every request runs in an empty directory
+# where a copy of the skill's frontmatter, under a unique name, is the only project skill: the run
+# triggers when the agent's first tool call invokes that copy. Claude only.
+validate_trigger_evals() {
+    jq -e 'type == "array" and length > 0
+        and all(.[]; type == "object" and (.query | type == "string" and length > 0) and (.should_trigger | type == "boolean"))' \
+        "$1" >/dev/null 2>&1
+}
+
+# Writes <stub_dir>/SKILL.md: the frontmatter of <skill_md> under <stub_name>, and a body that only
+# names it, so a run measures the description and nothing else.
+write_trigger_skill_stub() {
+    local skill_md="$1"
+    local stub_dir="$2"
+    local stub_name="$3"
+    mkdir -p "$stub_dir"
+    awk -v name="$stub_name" '
+        NR == 1 && /^---[[:space:]]*$/ { print; inside = 1; next }
+        inside && /^---[[:space:]]*$/ { print; exit }
+        inside && /^name:/ { print "name: " name; next }
+        inside { print }
+    ' "$skill_md" > "$stub_dir/SKILL.md"
+    printf '\n# %s\n\nTrigger evaluation copy of the skill: it only carries the description.\n' "$stub_name" >> "$stub_dir/SKILL.md"
+}
+
+# Prints TRIGGER_TRIGGERED, TRIGGER_NOT_TRIGGERED or BASELINE_INFRASTRUCTURE for one run of <query>.
+run_trigger_query() {
+    local skill_md="$1"
+    local skill_name="$2"
+    local query="$3"
+    local work_dir="$4"
+    local cwd="$work_dir/cwd"
+    local stub_name="${skill_name}-trigger-$(basename "$work_dir")"
+    local stream_file="$work_dir/stream.jsonl"
+    mkdir -p "$cwd"
+    write_trigger_skill_stub "$skill_md" "$cwd/.claude/skills/$stub_name" "$stub_name"
+    # --setting-sources project leaves out the user's skills and plugins (an installed copy of this
+    # skill would compete with the stub); TRIGGER_MAX_TURNS is enough to see the first tool call.
+    (cd "$cwd" && env -u CLAUDECODE claude -p "$query" \
+        --model "$GOLFO_MARKETPLACE_EVAL_MODEL" \
+        --effort "$GOLFO_MARKETPLACE_EVAL_REASONING_EFFORT" \
+        --setting-sources project \
+        --strict-mcp-config \
+        --no-session-persistence \
+        --max-turns "$TRIGGER_MAX_TURNS" \
+        --output-format stream-json \
+        --verbose) > "$stream_file" 2> "$work_dir/stderr" || true
+    # A copy the session did not load says nothing about the description.
+    if ! jq -e --arg name "$stub_name" 'select(.type == "system" and .subtype == "init") | .skills // [] | index($name)' \
+        "$stream_file" >/dev/null 2>&1; then
+        echo "$BASELINE_INFRASTRUCTURE"
+        return 0
+    fi
+    jq -rs --arg name "$stub_name" --arg triggered "$TRIGGER_TRIGGERED" --arg not_triggered "$TRIGGER_NOT_TRIGGERED" '
+        [.[] | select(.type == "assistant") | .message.content[]? | select(.type == "tool_use")] | first
+        | if . == null then $not_triggered
+          elif .name == "Skill" and ((.input.skill // "") | contains($name)) then $triggered
+          elif .name == "Read" and ((.input.file_path // "") | contains($name)) then $triggered
+          else $not_triggered end
+    ' "$stream_file" 2>/dev/null || echo "$BASELINE_INFRASTRUCTURE"
+}
+
+run_trigger_evals() {
+    local skill_path="$1"
+    local canonical_skill_path skill_md trigger_file skill_name total
+    canonical_skill_path=$(cd "$skill_path" && pwd -P)
+    skill_md="$canonical_skill_path/SKILL.md"
+    if [ ! -f "$skill_md" ]; then
+        echo -e "${RED}ERROR: --triggers measures a skill's description, and $skill_path has no SKILL.md${NC}" >&2
+        return 1
+    fi
+    trigger_file="${EVAL_CONFIG:-$canonical_skill_path/evals/$TRIGGER_EVALS_FILE_NAME}"
+    if [ ! -f "$trigger_file" ]; then
+        echo -e "${RED}ERROR: trigger evals not found: $trigger_file${NC}" >&2
+        return 1
+    fi
+    if ! validate_trigger_evals "$trigger_file"; then
+        echo -e "${RED}ERROR: Invalid trigger evals: $trigger_file needs a non-empty array of {query, should_trigger}${NC}" >&2
+        return 1
+    fi
+    skill_name=$(awk '/^name:[[:space:]]*/ { sub(/^name:[[:space:]]*/, ""); print; exit }' "$skill_md" | tr -d '\r')
+    total=$(jq 'length' "$trigger_file")
+
+    local work_root
+    work_root=$(mktemp -d)
+    trap "rm -rf '$work_root'" RETURN
+    echo -e "${BLUE}Trigger evals: ${BOLD}$skill_name${NC} — $total requests, $EVAL_REPEAT run(s) each" >&2
+
+    local i run pids=()
+    for i in $(seq 0 $((total - 1))); do
+        local query
+        query=$(jq -r ".[$i].query" "$trigger_file")
+        for run in $(seq 1 "$EVAL_REPEAT"); do
+            while [ ${#pids[@]} -ge "$EVAL_JOBS" ]; do
+                local running=() pid
+                for pid in "${pids[@]}"; do
+                    kill -0 "$pid" 2>/dev/null && running+=("$pid")
+                done
+                pids=("${running[@]+"${running[@]}"}")
+                [ ${#pids[@]} -ge "$EVAL_JOBS" ] && sleep 0.2
+            done
+            local work_dir="$work_root/q$i-r$run"
+            mkdir -p "$work_dir"
+            ( run_trigger_query "$skill_md" "$skill_name" "$query" "$work_dir" > "$work_dir.result" ) &
+            pids+=($!)
+        done
+    done
+    wait || true
+
+    local passed=0 failed=0 flaky=0 infrastructure=0 positives=0 negatives=0
+    local positive_runs=0 positive_triggered=0 negative_runs=0 negative_triggered=0
+    for i in $(seq 0 $((total - 1))); do
+        local query should_trigger triggered_runs=0 graded=0 result status passes
+        query=$(jq -r ".[$i].query" "$trigger_file")
+        should_trigger=$(jq -r ".[$i].should_trigger" "$trigger_file")
+        for run in $(seq 1 "$EVAL_REPEAT"); do
+            result=$(cat "$work_root/q$i-r$run.result" 2>/dev/null || echo "$BASELINE_INFRASTRUCTURE")
+            case "$result" in
+                "$TRIGGER_TRIGGERED") triggered_runs=$((triggered_runs + 1)); graded=$((graded + 1)) ;;
+                "$TRIGGER_NOT_TRIGGERED") graded=$((graded + 1)) ;;
+            esac
+        done
+        if [ "$should_trigger" = "true" ]; then
+            positives=$((positives + 1)); positive_runs=$((positive_runs + graded)); positive_triggered=$((positive_triggered + triggered_runs))
+            passes=$triggered_runs
+        else
+            negatives=$((negatives + 1)); negative_runs=$((negative_runs + graded)); negative_triggered=$((negative_triggered + triggered_runs))
+            passes=$((graded - triggered_runs))
+        fi
+        if [ "$graded" -eq 0 ]; then
+            status="$BASELINE_INFRASTRUCTURE"; infrastructure=$((infrastructure + 1)); failed=$((failed + 1))
+        elif [ "$passes" -eq "$graded" ]; then
+            status="passed"; passed=$((passed + 1))
+        else
+            status="failed"; failed=$((failed + 1))
+            [ "$passes" -gt 0 ] && status="flaky" && flaky=$((flaky + 1))
+        fi
+        if [ "$EVAL_JSONL" = "1" ]; then
+            jq -nc --arg skill "$skill_name" --arg provider "$RESOLVED_EVAL_PROVIDER" --arg query "$query" \
+                --argjson index "$((i + 1))" --argjson total "$total" --argjson should "$should_trigger" \
+                --argjson runs "$EVAL_REPEAT" --argjson graded "$graded" --argjson triggered "$triggered_runs" --arg status "$status" \
+                '{event: "trigger", provider: $provider, skill: $skill, index: $index, total: $total, query: $query,
+                  should_trigger: $should, runs: $runs, graded: $graded, triggered: $triggered, status: $status}'
+        else
+            local mark="${GREEN}✅" expected="should trigger"
+            [ "$status" = "passed" ] || mark="${RED}❌"
+            [ "$should_trigger" = "true" ] || expected="should not trigger"
+            echo -e "  $mark [$((i + 1))/$total] $expected: triggered $triggered_runs/$graded${NC}  $query"
+        fi
+    done
+
+    if [ "$EVAL_JSONL" = "1" ]; then
+        jq -nc --arg skill "$skill_name" --arg provider "$RESOLVED_EVAL_PROVIDER" --argjson total "$total" \
+            --argjson passed "$passed" --argjson failed "$failed" --argjson flaky "$flaky" --argjson infrastructure "$infrastructure" \
+            --argjson positives "$positives" --argjson negatives "$negatives" --argjson runs "$EVAL_REPEAT" \
+            --argjson positive_runs "$positive_runs" --argjson positive_triggered "$positive_triggered" \
+            --argjson negative_runs "$negative_runs" --argjson negative_triggered "$negative_triggered" \
+            '{event: "trigger_summary", provider: $provider, skill: $skill, total: $total, passed: $passed, failed: $failed,
+              flaky: $flaky, infrastructure: $infrastructure, runs: $runs, positives: $positives, negatives: $negatives,
+              trigger_rate: (if $positive_runs > 0 then ($positive_triggered / $positive_runs) else null end),
+              false_trigger_rate: (if $negative_runs > 0 then ($negative_triggered / $negative_runs) else null end)}'
+    else
+        echo -e "  Requests that should trigger: triggered $positive_triggered/$positive_runs runs"
+        echo -e "  Requests that should not:     triggered $negative_triggered/$negative_runs runs"
+        echo -e "  Passed: ${GREEN}$passed${NC}  Failed: ${RED}$failed${NC} (flaky $flaky, infrastructure $infrastructure)"
+    fi
+    [ "$failed" -eq 0 ]
+}
+
 run_all_evals() {
     # In JSONL mode keep stdout pure: decorative banners go to stderr.
     local banner_fd=1
@@ -1548,6 +1732,10 @@ while [ $# -gt 0 ]; do
             EVAL_CONFIG="${2:-}"
             shift 2 || shift
             ;;
+        --triggers|-T)
+            EVAL_TRIGGERS=1
+            shift
+            ;;
         *)
             args+=("$1")
             shift
@@ -1571,6 +1759,26 @@ if [ "${1:-}" = "--all" ] && [ -n "$EVAL_CONFIG" ]; then
     exit 2
 fi
 
+# The contract evals of a skill, or with --triggers how its description triggers it.
+run_target_evals() {
+    if [ "$EVAL_TRIGGERS" = "1" ]; then
+        run_trigger_evals "$1"
+    else
+        run_skill_evals "$1"
+    fi
+}
+
+if [ "$EVAL_TRIGGERS" = "1" ]; then
+    if [ "${1:-}" = "--all" ] || [ "$EVAL_BASELINE" = "1" ]; then
+        echo -e "${RED}ERROR: --triggers measures one skill's description; it cannot be combined with --all or --baseline${NC}" >&2
+        exit 2
+    fi
+    if [ "$RESOLVED_EVAL_PROVIDER" != "claude" ]; then
+        echo -e "${RED}ERROR: --triggers needs the claude provider: codex does not report which skill it activates${NC}" >&2
+        exit 2
+    fi
+fi
+
 case "${1:-}" in
     --all)
         run_all_evals
@@ -1578,10 +1786,10 @@ case "${1:-}" in
     "")
         # No args — look for skill in current directory
         if [ -f "SKILL.md" ]; then
-            run_skill_evals "$(pwd)"
+            run_target_evals "$(pwd)"
         elif [ -f "../SKILL.md" ]; then
             # Inside evals/ directory
-            run_skill_evals "$(cd .. && pwd)"
+            run_target_evals "$(cd .. && pwd)"
         else
             echo -e "${RED}ERROR: No SKILL.md found in current directory.${NC}"
             echo "Run from a skill directory or pass the path: run-evals path/to/skill"
@@ -1591,7 +1799,7 @@ case "${1:-}" in
     *)
         # Path to skill provided
         if [ -d "$1" ]; then
-            run_skill_evals "$1"
+            run_target_evals "$1"
         else
             echo -e "${RED}ERROR: Directory not found: $1${NC}"
             exit 1
