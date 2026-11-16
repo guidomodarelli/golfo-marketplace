@@ -5,124 +5,44 @@
   "test_cases": [
     {
       "id": "frontend-bootstrap-creates-assets",
-      "description": "Detecta frontend y reporta assets creados desde plantilla.",
-      "input": "Explicá cómo agent-ready-setup detecta frontend para una app React y qué estructura de archivos crea bajo .claude/. No ejecutes Bash ni escribas archivos; respondé desde la plantilla bundled.",
+      "description": "Explica cómo el motor detecta una app React y qué proyecta: el contenido del pack oficial en .agents/, sus vistas en .claude/, los hooks y CLAUDE.md.",
+      "input": "Tengo una app React sin `.agents/agent-ready.json`. Explicá cómo agent-ready-setup detecta el stack, de dónde salen las rules, skills y agentes que va a proyectar, y qué estructura crea en `.agents/` y en `.claude/`, incluidos los hooks y `CLAUDE.md`. No ejecutes Bash ni escribas archivos.",
       "assertions": [
         {
           "type": "contains_any",
-          "values": ["react", "React", "nextjs", "Next.js"],
-          "description": "Reporta el stack web detectado"
+          "values": ["package.json", "package-dependency"],
+          "description": "Detecta React por el package.json",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["golfo-agent-profiles", "pack de contenido", "content pack", "sources.golfo"],
+          "description": "Dice que el contenido sale del pack oficial, no de la skill"
+        },
+        {
+          "type": "contains",
+          "value": ".agents/rules",
+          "description": "Proyecta las rules en .agents/rules"
+        },
+        {
+          "type": "regex",
+          "pattern": "\\.claude/(rules|skills)|([Ss]ymlinks?|[Vv]istas?|[Vv]iews?|enlaces?|links?)[^.]{0,80}\\.agents",
+          "description": "Explica que .claude/ tiene vistas del contenido de .agents/"
         },
         {
           "type": "contains",
           "value": "settings.json",
-          "description": "Reporta settings creado"
-        },
-        {
-          "type": "contains",
-          "value": "CLAUDE.md",
-          "description": "Reporta CLAUDE.md creado"
-        },
-        {
-          "type": "contains",
-          "value": "security.md",
-          "description": "Reporta regla de seguridad creada"
-        },
-        {
-          "type": "contains",
-          "value": "api-validation-middleware",
-          "description": "Reporta regla de organización de validadores API"
-        },
-        {
-          "type": "contains",
-          "value": "a11y-reviewer",
-          "description": "Reporta agente de accesibilidad creado"
-        },
-        {
-          "type": "regex",
-          "pattern": "component-creation",
-          "description": "Reporta skill de componentes con estructura preservada"
+          "description": "Reporta .claude/settings.json"
         },
         {
           "type": "contains",
           "value": "sync-marketplace",
-          "description": "Reporta hook de sincronización compartido"
+          "description": "Reporta el hook que sincroniza el marketplace"
         },
         {
           "type": "contains",
-          "value": "review-pr",
-          "description": "Reporta comando de review creado"
-        }
-      ]
-    },
-    {
-      "id": "frontend-api-validation-middleware-barrel",
-      "description": "Explica la ubicación de los validadores API y su barrel de imports.",
-      "input": "Para un endpoint REST del BFF, ¿dónde van los schemas y middleware de la librería de validación de input del proyecto, y cómo los importa el router? No ejecutes Bash ni escribas archivos; responde desde las reglas bundled de frontend.",
-      "assertions": [
-        {
-          "type": "contains",
-          "value": "api/middlewares/validation/",
-          "description": "Ubica schemas y middleware bajo la carpeta de validación API"
-        },
-        {
-          "type": "regex",
-          "pattern": "index\\.js",
-          "description": "Incluye barrel index.js para JavaScript"
-        },
-        {
-          "type": "contains",
-          "value": "createValidationMiddleware",
-          "description": "Mantiene la validación del SDK como middleware"
-        },
-        {
-          "type": "contains",
-          "value": "utils/validation",
-          "description": "Indica reutilizar o crear la factory de validación antes de importarla"
-        }
-      ]
-    },
-    {
-      "id": "frontend-api-validation-middleware-headers",
-      "description": "Explica cómo validar headers propios del cliente sin reemplazar req.headers.",
-      "input": "Una ruta REST del BFF lee el header propio X-Client-Version. ¿Cómo se valida con la factory de validación y desde dónde lo lee el handler? No ejecutes Bash ni escribas archivos; responde desde las reglas bundled de frontend.",
-      "assertions": [
-        {
-          "type": "contains",
-          "value": "x-client-version",
-          "description": "Declara la clave del header en minúsculas"
-        },
-        {
-          "type": "contains",
-          "value": "req.validatedHeaders",
-          "description": "Lee el header validado desde la propiedad dedicada"
-        },
-        {
-          "type": "contains",
-          "value": "headers.x-client-version",
-          "description": "Indica el path del issue con el prefijo headers"
-        }
-      ]
-    },
-    {
-      "id": "frontend-review-uses-remote-default-branch",
-      "description": "Explica fallback portable cuando no hay PR seleccionable.",
-      "input": "Explicá qué hace el comando review-pr si gh pr diff no puede seleccionar un PR y el repositorio usa master o trunk en vez de main. No ejecutes Bash ni escribas archivos; respondé desde la plantilla frontend bundled.",
-      "assertions": [
-        {
-          "type": "contains_any",
-          "values": ["origin/HEAD", "remote default branch", "branch por defecto remoto"],
-          "description": "Explica cómo resolver branch base remoto"
-        },
-        {
-          "type": "contains",
-          "value": "git diff",
-          "description": "Indica comando de comparación fallback"
-        },
-        {
-          "type": "contains_any",
-          "values": ["master", "trunk"],
-          "description": "Cubre nombres de branch distintos de main"
+          "value": "CLAUDE.md",
+          "description": "Reporta el CLAUDE.md que apunta a AGENTS.md"
         }
       ]
     },
@@ -358,70 +278,6 @@
       ]
     },
     {
-      "id": "frontend-scope-comes-from-config",
-      "description": "Explica cómo configurar scope de API sin agregarlo como query parameter.",
-      "input": "Voy a crear un service del BFF que llama una API cuyo scope cambia entre sandbox y producción. Explicá qué debe hacer agent-ready-setup: indicá si puede construir `?scope=sandbox`, si debe crear un archivo nuevo de configuración, en qué archivos existentes de `config/` declarar el valor por entorno y cómo debe consumirlo el cliente. No ejecutes Bash ni escribas archivos; respondé desde la plantilla frontend bundled.",
-      "assertions": [
-        {
-          "type": "contains_any",
-          "values": ["No:", "No agregar", "No crear", "No usar", "no agregar", "no crear", "no usar", "no debe", "no debe construir", "no se agrega", "never add", "never create", "never use", "prohíbe agregar", "la rule prohíbe"],
-          "description": "Prohíbe scope como query parameter"
-        },
-        {
-          "type": "contains",
-          "value": "config/",
-          "description": "Ubica scope en configuración por entorno"
-        },
-        {
-          "type": "contains_any",
-          "values": ["local.js", "default.js", "default-production.js", "sandbox.js"],
-          "description": "Reutiliza archivos de configuración existentes"
-        },
-        {
-          "type": "regex",
-          "pattern": "(^|[^[:alpha:]])(no|nunca|never|not|tampoco)[^[:alpha:]][^.]{0,40}(crear|cree|crea|create)",
-          "description": "Evita crear archivo nuevo solo para scope"
-        },
-        {
-          "type": "contains_any",
-          "values": ["scopeConfig", "módulo de configuración", "config module", "configuración del cliente"],
-          "description": "Indica consumo mediante configuración del cliente"
-        },
-        {
-          "type": "contains_any",
-          "values": ["sandbox", "prod", "producción"],
-          "description": "Cubre valores dependientes del entorno"
-        }
-      ]
-    },
-    {
-      "id": "frontend-upstream-error-contract-is-not-runtime-validated",
-      "description": "Evita validar el contrato completo de respuestas y errores upstream.",
-      "input": "Revisá un service del BFF que recibe una respuesta exitosa de backend con datos incompletos y, en otro caso, un error upstream cuyo body puede traer `code`, `message` y `details` o puede cambiar entre versiones. Explicá qué debe hacer agent-ready-setup: qué no debe validar ni convertir en schema, qué señales mínimas puede usar para decidir el flujo y cómo debe mapear una falla que el adapter no puede consumir. Diferenciá esto de validar el request del cliente. No ejecutes Bash ni escribas archivos; respondé desde la plantilla frontend bundled.",
-      "assertions": [
-        {
-          "type": "regex",
-          "pattern": "(^|[^[:alpha:]])(no|sin|nunca|never|not)[^[:alpha:]][^.]{0,50}(valid|schema|revalid)",
-          "description": "Prohíbe validación completa de payloads upstream"
-        },
-        {
-          "type": "contains_any",
-          "values": ["status", "HTTP", "metadata de transporte", "transport metadata", "adapter"],
-          "description": "Usa status, transporte o clasificación del adapter"
-        },
-        {
-          "type": "contains_any",
-          "values": ["narrowing", "narrowing estructural", "null", "array", "object", "discriminador", "discriminator"],
-          "description": "Permite solo narrowing estructural mínimo para control flow"
-        },
-        {
-          "type": "contains_any",
-          "values": ["request del cliente", "input del cliente", "client request", "client-controlled input", "borde del middleend"],
-          "description": "Distingue input middleend de respuesta upstream"
-        }
-      ]
-    },
-    {
       "id": "frontend-validation-distinguishes-middleend-and-upstream",
       "description": "Distingue validación de requests middleend y respuestas backend/upstream.",
       "input": "Voy a implementar un endpoint middleend que recibe datos del cliente y consume un payload de un backend/upstream; además necesita validar una variable numérica. Explicá qué debe indicar la regla frontend de agent-ready-setup sobre qué validar, qué no revalidar, qué librería preferir y cuándo puede agregarse `Number.isSafeInteger`. No ejecutes Bash ni escribas archivos; respondé desde la plantilla frontend bundled.",
@@ -454,157 +310,13 @@
       ]
     },
     {
-      "id": "frontend-api-endpoint-defines-error-mapper-dependency",
-      "description": "Hace explícita la dependencia del ejemplo REST respecto del mapper tipado de errores.",
-      "input": "Revisá el ejemplo `api/product/index.ts` de agent-ready-setup: sus handlers usan `mapKnownErrorToHttpResponse`. Explicá qué debe mostrar el ejemplo para que esa dependencia no quede implícita, qué módulo debe existir y qué regla debe conservar el mapper. No ejecutes Bash ni escribas archivos; respondé desde la plantilla frontend bundled.",
-      "assertions": [
-        {
-          "type": "contains",
-          "value": "mapKnownErrorToHttpResponse",
-          "description": "Identifica el mapper usado por los handlers"
-        },
-        {
-          "type": "contains_any",
-          "values": ["import", "importar", "importado"],
-          "description": "Exige importar explícitamente el mapper"
-        },
-        {
-          "type": "contains_any",
-          "values": ["src/errors", "módulo", "module", "error mapper", "mapper tipado"],
-          "description": "Ubica la dependencia en un módulo de errores"
-        },
-        {
-          "type": "contains_any",
-          "values": ["implementar", "definir", "exista", "existir", "implementado"],
-          "description": "Evita dejar el símbolo sin implementación"
-        },
-        {
-          "type": "contains_any",
-          "values": ["4xx", "cliente", "dominio", "causa conocida"],
-          "description": "Conserva el mapping de causas conocidas a 4xx"
-        }
-      ]
-    },
-    {
-      "id": "frontend-api-endpoint-asks-before-installing-validation-library",
-      "description": "Detecta la librería de validación y express ya declaradas; si falta una, pregunta antes de instalar zod con el package manager del lockfile, y reutiliza la que ya existe.",
-      "input": "Voy a ejecutar `/api-endpoint` de agent-ready-setup para crear un endpoint REST en un proyecto frontend con `pnpm-lock.yaml` cuyo `package.json` declara `express` en `dependencies` pero no declara ninguna librería de validación. Explicá qué debe hacer la skill antes de escribir el schema, `utils/validation` y el router, qué comando corre, qué cambia si `package.json` ya declara `joi` y qué hace si `zod` está solo en `devDependencies`. No ejecutes Bash ni escribas archivos; respondé desde la plantilla frontend bundled.",
-      "assertions": [
-        {
-          "type": "contains",
-          "value": "package.json",
-          "description": "Revisa las dependencias declaradas en package.json"
-        },
-        {
-          "type": "contains_any",
-          "values": [
-            "pregunt",
-            "confirm",
-            "ask",
-            "aprobación",
-            "autoriz"
-          ],
-          "description": "Pregunta antes de instalar una librería nueva",
-          "critical": false
-        },
-        {
-          "type": "contains",
-          "value": "pnpm add zod",
-          "description": "Propone instalar zod con el package manager del lockfile, después de confirmarlo"
-        },
-        {
-          "type": "contains",
-          "value": "joi",
-          "description": "Reutiliza la librería de validación ya declarada en lugar de instalar zod"
-        },
-        {
-          "type": "contains_any",
-          "values": [
-            "dev-only",
-            "--save-prod",
-            "dependencies"
-          ],
-          "description": "Mueve a runtime la librería declarada solo en devDependencies"
-        },
-        {
-          "type": "contains_any",
-          "values": [
-            "tsc --noEmit",
-            "módulo inexistente",
-            "missing module",
-            "no compila"
-          ],
-          "description": "Explica que sin la dependencia falla la verificación de tipos"
-        }
-      ]
-    },
-    {
-      "id": "frontend-middleend-known-errors-use-4xx",
-      "description": "Traduce causas conocidas de middleend a 4xx sin fallback 5xx genérico.",
-      "input": "Estoy implementando un endpoint REST middleend para crear y consultar productos. El servicio puede devolver errores de validación de dominio, recurso inexistente o conflicto de estado, y el request ya pasó la validación de forma. Explicá cómo debe manejar esos errores agent-ready-setup, qué statuses públicos elegir, qué registrar y qué respuesta evitar. No ejecutes Bash ni escribas archivos; respondé desde la plantilla frontend bundled.",
-      "assertions": [
-        {
-          "type": "contains_any",
-          "values": ["4xx", "400", "404", "409", "422"],
-          "description": "Mapea causas conocidas a statuses 4xx"
-        },
-        {
-          "type": "regex",
-          "pattern": "(causa|error)e?s? conocid|client/domain|cliente o (de |del )?dominio|request o (al |el )?(estado (del |de )?)?dominio",
-          "description": "Identifica causa conocida de request o dominio"
-        },
-        {
-          "type": "contains_any",
-          "values": ["log", "registrar", "server-side", "servidor"],
-          "description": "Mantiene diagnóstico en logs del servidor"
-        },
-        {
-          "type": "regex",
-          "pattern": "(no|nunca|never|evit)[^.]{0,60}5xx|5xx[^.]{0,80}(solo|únicamente|se reservan|reservad|inesperad)|respuesta (a )?evitar",
-          "description": "Indica que no debe usar un fallback 5xx para causa conocida"
-        }
-      ]
-    },
-    {
-      "id": "frontend-middleend-distinguishes-hydration-origin",
-      "description": "Distingue hidratación causada por request/dominio de payload upstream incompleto.",
-      "input": "Revisá dos casos para un middleend: A) el request o estado de dominio produce atributos incompletos y llega con `status: 502`; B) un backend/upstream devuelve un payload incompleto o rompe su contrato y también llega con `status: 502`. Respondé primero con exactamente dos líneas etiquetadas `A:` y `B:` indicando el status público de cada caso; después explicá cómo debe clasificar cada origen agent-ready-setup y cuándo debe conservarse un 5xx. No ejecutes Bash ni escribas archivos; respondé desde la plantilla frontend bundled.",
-      "assertions": [
-        {
-          "type": "contains_any",
-          "values": ["origen", "causa", "atribuible", "distinguir"],
-          "description": "Exige clasificar según el origen de la falla"
-        },
-        {
-          "type": "regex",
-          "pattern": "^[[:space:]]*A[[:space:]]*:[[:space:]]*(4xx|400|404|409|422)([[:space:][:punct:]]|$)",
-          "description": "Asigna 4xx o 422 al caso A de request o dominio"
-        },
-        {
-          "type": "contains_any",
-          "values": ["upstream", "backend", "dependencia", "contrato"],
-          "description": "Reconoce una respuesta upstream como causa distinta"
-        },
-        {
-          "type": "regex",
-          "pattern": "^[[:space:]]*B[[:space:]]*:[[:space:]]*(5xx|502|503)([[:space:][:punct:]]|$)",
-          "description": "Asigna 5xx o 502 al caso B de upstream o dependencia"
-        },
-        {
-          "type": "regex",
-          "pattern": "(^|[^[:alpha:]])(no|sin|nunca|never|not)[^[:alpha:]][^.]{0,40}s(i|í)ntoma|s(i|í)ntoma[^.]{0,60}(no alcanza|no basta|no sirve|no es suficiente|no decide)",
-          "description": "Evita mapear hidratación a un status por el síntoma solamente"
-        }
-      ]
-    },
-    {
       "id": "marketplace-upgrade-refreshes-managed-assets",
       "description": "Distingue upgrade global de proyección local con ownership: pisa también lo editado y protege las instrucciones del proyecto.",
       "input": "Explicá qué ocurre con un proyecto Agent Ready con `updates.mode: auto` en `.agents/agent-ready.json` después del upgrade del marketplace, cuando la plantilla de `.agents/rules/testing.md` cambió y nadie lo tocó, pero `.agents/rules/security.md` también cambió en la plantilla y el equipo lo editó a mano. Indicá qué hace el hook con cada archivo, cómo se muestra el diff, qué registra después y cuáles archivos de instrucciones nunca deben reemplazarse. No ejecutes Bash ni escribas archivos.",
       "assertions": [
         {
           "type": "contains_any",
-          "values": ["proyección", "projection"],
+          "values": ["proyecci", "proyecta", "projection", "projects"],
           "description": "Identifica proyección de assets"
         },
         {
@@ -951,68 +663,6 @@
       ]
     },
     {
-      "id": "frontend-outbound-payload-separates-contracts",
-      "description": "Distingue el payload saliente del BFF de input, DTO público y response upstream.",
-      "input": "Estoy diseñando un BFF que recibe un request del cliente y llama a un endpoint upstream. Explicá cómo debe modelar el body que envía al proveedor para que el contrato sea fácil de encontrar, qué entidades debe mantener separadas y dónde ocurre la validación. No ejecutes Bash ni escribas archivos.",
-      "assertions": [
-        {
-          "type": "contains_any",
-          "values": [
-            "payload saliente",
-            "outbound",
-            "request payload",
-            "payload que envía",
-            "UpstreamRequest",
-            "request upstream",
-            "body que envía"
-          ],
-          "description": "Identifica el contrato de request enviado por el BFF"
-        },
-        {
-          "type": "contains_any",
-          "values": ["DTO", "request del cliente", "req.body", "input del cliente"],
-          "description": "Distingue el input o DTO público del payload upstream"
-        },
-        {
-          "type": "contains_any",
-          "values": ["response upstream", "respuesta upstream", "respuesta del proveedor", "upstream response"],
-          "description": "Distingue la respuesta upstream del request saliente"
-        },
-        {
-          "type": "contains_any",
-          "values": ["boundary", "borde", "handler", "middleware", "validación"],
-          "description": "Ubica la validación de input en el boundary correspondiente"
-        }
-      ]
-    },
-    {
-      "id": "frontend-outbound-payload-rejects-passthrough",
-      "description": "Evita enviar req.body directamente y exige mapping explícito por operación.",
-      "input": "Revisá este diseño de service: `return upstreamClient.post('/shipments', req.body)`. El endpoint público y el upstream hoy parecen tener los mismos campos, pero el cliente podría agregar propiedades en el futuro. Indicá qué debe recomendar agent-ready-setup y por qué. No ejecutes Bash ni escribas archivos.",
-      "assertions": [
-        {
-          "type": "regex",
-          "pattern": "(^|[^[:alpha:]])(no|nunca|never|evit|rechaz|prohib|prohíb)[^.]{0,80}req\\.body|req\\.body[^.]{0,80}(prohib|prohíb|no se|evit|rechaz)",
-          "description": "Prohíbe passthrough directo del request del cliente"
-        },
-        {
-          "type": "contains_any",
-          "values": ["req.body", "request.body", "body del request"],
-          "description": "Menciona explícitamente el objeto que no debe pasarse"
-        },
-        {
-          "type": "contains_any",
-          "values": ["mapping explícito", "mapeo explícito", "explicit mapping", "payload nombrado", "entidad"],
-          "description": "Propone construcción explícita del contrato upstream"
-        },
-        {
-          "type": "contains_any",
-          "values": ["campos del cliente", "leak", "filtrar", "exponer", "contrato"],
-          "description": "Explica el riesgo de filtrar campos o esconder cambios de contrato"
-        }
-      ]
-    },
-    {
       "id": "frontend-outbound-payload-uses-proportional-builder",
       "description": "Usa factory o builder según complejidad y evita abstracción ceremonial.",
       "input": "Compará dos payloads enviados a upstream: A) `POST /health` con un objeto fijo de dos campos; B) `POST /orders` con transformaciones, defaults y secciones anidadas condicionales. Explicá cuándo usar un objeto nombrado, una factory o un builder, y cómo nombrar cada contrato. No ejecutes Bash ni escribas archivos.",
@@ -1036,33 +686,6 @@
           "type": "contains_any",
           "values": ["operación", "endpoint", "upstream", "Create", "Order"],
           "description": "Exige nombres específicos por operación y boundary"
-        }
-      ]
-    },
-    {
-      "id": "frontend-outbound-payload-preserves-response-boundary",
-      "description": "No convierte el modelado de requests salientes en validación de responses upstream.",
-      "input": "Una persona propone agregar un builder para el request que el BFF envía a upstream y, además, un schema runtime para validar cada response del proveedor. Explicá qué parte corresponde a la nueva regla y qué parte contradice la sección Input Validation de security.md. Diferenciá validación de input del cliente, construcción del request y consumo de response upstream. No ejecutes Bash ni escribas archivos.",
-      "assertions": [
-        {
-          "type": "contains_any",
-          "values": ["no revalidar", "no validar", "respuesta upstream", "response upstream"],
-          "description": "Mantiene prohibida la validación completa de responses upstream"
-        },
-        {
-          "type": "contains_any",
-          "values": ["builder", "factory", "construcción", "payload saliente"],
-          "description": "Acepta modelar explícitamente el request saliente"
-        },
-        {
-          "type": "contains_any",
-          "values": ["input del cliente", "request del cliente", "boundary", "borde", "middleware"],
-          "description": "Distingue la validación de input en el boundary"
-        },
-        {
-          "type": "contains_any",
-          "values": ["narrowing", "status", "transporte", "control flow", "flujo"],
-          "description": "Conserva narrowing estructural mínimo solo si cambia el flujo"
         }
       ]
     },
@@ -1136,33 +759,6 @@
       ]
     },
     {
-      "id": "frontend-user-facing-copy-avoids-technical-jargon",
-      "description": "Mantiene la interfaz clara para personas no técnicas y reserva detalle técnico para errores accionables.",
-      "input": "Leé la regla frontend de agent-ready-setup y explicá cómo escribir textos visibles en una interfaz para personas no técnicas. Incluí qué hacer con etiquetas, botones, estados de carga y mensajes normales; usá el caso `Reintentar preflight` como ejemplo de texto que debe simplificarse; y diferenciá la excepción permitida para errores. No ejecutes Bash ni escribas archivos.",
-      "assertions": [
-        {
-          "type": "contains_any",
-          "values": ["persona no técnica", "personas no técnicas", "non-technical", "nontechnical"],
-          "description": "Prioriza comprensión de personas no técnicas"
-        },
-        {
-          "type": "contains_any",
-          "values": ["Reintentar", "Retry"],
-          "description": "Prefiere una acción simple sin detalle interno"
-        },
-        {
-          "type": "contains_any",
-          "values": ["botones", "etiquetas", "estados de carga", "helper text", "labels", "loading states"],
-          "description": "Aplica la regla a las superficies normales de UI"
-        },
-        {
-          "type": "contains_any",
-          "values": ["error accionable", "errores accionables", "actionable error", "technical detail", "detalle técnico"],
-          "description": "Permite detalle técnico únicamente cuando ayuda a resolver un error"
-        }
-      ]
-    },
-    {
       "id": "react-style-keeps-strict-equality",
       "description": "No impone Object.is: usa === y !== por defecto y reserva Object.is para cuando la semántica de NaN o del cero con signo lo requiere.",
       "input": "Leé la regla frontend de agent-ready-setup sobre estilo. ¿Exige reemplazar `===` y `!==` por `Object.is`? Explicá qué usar por defecto y cuándo tendría sentido `Object.is`. No ejecutes Bash ni escribas archivos.",
@@ -1194,43 +790,6 @@
           ],
           "description": "Reserva Object.is para la semántica de NaN o del cero con signo",
           "critical": false
-        }
-      ]
-    },
-    {
-      "id": "react-style-prefers-semantic-strings-over-boolean-parameters",
-      "description": "Reemplaza parámetros booleanos que cambian comportamiento por strings semánticos de estado.",
-      "input": "Leé la regla frontend de agent-ready-setup sobre parámetros de funciones. En `api/services/users.ts` existe `listUsers(page: number, activeOnly = false, adminOnly = false)` y se llama como `listUsers(page, true, true)`. Explicá qué problema tiene, proponé la firma y la llamada corregidas, y aclará qué booleanos sí pueden quedarse. No ejecutes Bash ni escribas archivos.",
-      "assertions": [
-        {
-          "type": "contains_any",
-          "values": ["boolean", "booleano"],
-          "description": "Identifica el parámetro booleano como el problema"
-        },
-        {
-          "type": "regex",
-          "pattern": "'(all|active|admin)[a-z-]*'",
-          "description": "Propone valores string semánticos de estado"
-        },
-        {
-          "type": "contains_any",
-          "values": ["union", "as const", "unión"],
-          "description": "Declara los valores como union type o const object"
-        },
-        {
-          "type": "contains_any",
-          "values": ["combinaci", "combination"],
-          "description": "Explica que evita combinaciones inválidas u ocultas"
-        },
-        {
-          "type": "contains_any",
-          "values": ["disabled", "checked", "upstream", "payload", "predicado", "predicate"],
-          "description": "Aclara las excepciones que siguen siendo booleanas"
-        },
-        {
-          "type": "not_contains_any",
-          "values": ["enum User"],
-          "description": "No propone un enum"
         }
       ]
     },
@@ -1639,127 +1198,6 @@
       ]
     },
     {
-      "id": "frontend-user-facing-feedback-error-tracking-snackbar",
-      "description": "Reserva el feedback de error tracking para contextos reales y limpia estado stale entre recursos.",
-      "input": "Leé la regla frontend de agent-ready-setup sobre feedback de acciones async. Un componente muestra el snackbar de error tracking del proyecto cuando la lista viene vacía y arma a mano el contexto de error tracking si el BFF no lo envía; además el error del recurso anterior queda visible al seleccionar otro. Explicá qué corregir y qué tests agregar. No ejecutes Bash ni escribas archivos.",
-      "assertions": [
-        {
-          "type": "contains",
-          "value": "user-facing-feedback.md",
-          "description": "Cita la rule de feedback del stack frontend"
-        },
-        {
-          "type": "contains_any",
-          "values": [
-            "Message",
-            "message",
-            "Snackbar común",
-            "Snackbar regular",
-            "regular `Snackbar`",
-            "snackbar regular",
-            "toast",
-            "Toast",
-            "notificación",
-            "mensaje inline",
-            "inline"
-          ],
-          "description": "Usa el mensaje, toast o notificación común del proyecto para estados esperados como lista vacía"
-        },
-        {
-          "type": "contains_any",
-          "values": [
-            "fabricar",
-            "inventar",
-            "fabricate",
-            "no armar"
-          ],
-          "description": "Prohíbe fabricar un contexto de error tracking"
-        },
-        {
-          "type": "contains_any",
-          "values": [
-            "limpiar",
-            "stale",
-            "recurso anterior"
-          ],
-          "description": "Limpia el error del recurso anterior"
-        },
-        {
-          "type": "contains_any",
-          "values": [
-            "fallback"
-          ],
-          "description": "Cubre fallback sin contexto en tests"
-        }
-      ]
-    },
-    {
-      "id": "react-style-i18n-tokens-image-provider",
-      "description": "Exige i18n.gettext cuando el proyecto ya usa esa librería de i18n, tokens del design system con la solución de estilos del proyecto, el componente de imágenes del proyecto y su logger.",
-      "input": "Leé las reglas frontend de agent-ready-setup. En un proyecto que ya traduce su copy con `i18n.gettext`, un componente nuevo tiene el texto del botón hardcodeado, un color #3483fa en el CSS, un <img> con URL absoluta del CDN y un console.error en el catch. Explicá qué reglas incumple y cómo corregir cada punto. No ejecutes Bash ni escribas archivos.",
-      "assertions": [
-        {
-          "type": "contains",
-          "value": "gettext",
-          "description": "Pasa el copy visible por i18n.gettext"
-        },
-        {
-          "type": "contains_any",
-          "values": [
-            "token",
-            "tokens"
-          ],
-          "description": "Reemplaza el color hardcodeado por tokens del design system"
-        },
-        {
-          "type": "contains_any",
-          "values": [
-            "componente de imágenes",
-            "image component",
-            "provider de imágenes",
-            "image provider"
-          ],
-          "description": "Usa el componente o provider de imágenes del proyecto en lugar de URL absoluta"
-        },
-        {
-          "type": "contains_any",
-          "values": [
-            "logger del proyecto",
-            "project's logger",
-            "logger"
-          ],
-          "description": "Reemplaza console.* por el logger del proyecto"
-        }
-      ]
-    },
-    {
-      "id": "react-security-validates-public-dto",
-      "description": "Valida el DTO público del middleend sin revalidar la respuesta upstream.",
-      "input": "Leé la regla de seguridad frontend de agent-ready-setup. Un handler del BFF devuelve al cliente un DTO armado desde la respuesta upstream. Explicá qué se valida y qué no entre input del cliente, respuesta upstream y DTO público, y dónde. No ejecutes Bash ni escribas archivos.",
-      "assertions": [
-        {
-          "type": "contains",
-          "value": "DTO",
-          "description": "Trata el DTO público como contrato propio"
-        },
-        {
-          "type": "contains_any",
-          "values": ["no revalidar", "no validar", "sin revalidar", "sin validar"],
-          "description": "No revalida la respuesta upstream"
-        },
-        {
-          "type": "contains_any",
-          "values": ["una sola vez", "una vez", "boundary", "borde"],
-          "description": "Valida input una vez en el boundary de la ruta"
-        },
-        {
-          "type": "contains_any",
-          "values": ["librería de validación", "libreria de validación", "validation library", "zod"],
-          "description": "Usa la librería de validación de input del proyecto"
-        }
-      ]
-    },
-    {
       "id": "common-testing-scope-allows-tooling-tests-required-by-agents-md",
       "description": "Exceptúa de testing-scope los tests de tooling que el AGENTS.md del proyecto exige, sin extender la excepción a otros.",
       "input": "Leé la rule común testing-scope de agent-ready-setup. El AGENTS.md de mi proyecto exige `src/tests/tooling/app-route-test-placement.test.ts`, que recorre `app/` para impedir tests dentro de las rutas. Además alguien agregó otro test que solo verifica que oxlint carga sus plugins, y el AGENTS.md no lo pide. ¿Qué hacés con cada uno? No ejecutes Bash ni escribas archivos.",
@@ -1797,115 +1235,6 @@
       ]
     },
     {
-      "id": "common-speculative-complexity-asks-before-hardening",
-      "description": "Ante un caso especulativo improbable, explica modo de fallo, probabilidad y costo, y pide aprobación antes de agregar complejidad.",
-      "input": "Leé la rule común speculative-complexity-approval de agent-ready-setup. Me pediste agregar un endpoint que guarda la preferencia de idioma del usuario. Mientras lo implementás, se te ocurre que dos pestañas podrían guardar idiomas distintos en el mismo milisegundo y querés agregar un lock distribuido con Redis para evitar esa carrera. No hay reproducción, logs ni reportes de ese problema. ¿Qué hacés antes de agregar el lock y qué entregás mientras tanto? No ejecutes Bash ni escribas archivos.",
-      "assertions": [
-        {
-          "type": "contains_any",
-          "values": [
-            "aprobación",
-            "aprobar",
-            "approval",
-            "approve",
-            "consultar",
-            "preguntar"
-          ],
-          "description": "Pide aprobación al usuario antes de agregar el lock",
-          "critical": true
-        },
-        {
-          "type": "contains_any",
-          "values": [
-            "modo de fallo",
-            "failure mode",
-            "qué se rompe",
-            "pestañas"
-          ],
-          "description": "Describe el modo de fallo concreto",
-          "critical": false
-        },
-        {
-          "type": "contains_any",
-          "values": [
-            "probabilidad",
-            "probability",
-            "improbable",
-            "estimación"
-          ],
-          "description": "Estima la probabilidad y aclara que es una suposición sin evidencia",
-          "critical": false
-        },
-        {
-          "type": "contains_any",
-          "values": [
-            "costo",
-            "coste",
-            "complejidad",
-            "dependencia",
-            "Redis"
-          ],
-          "description": "Expone el costo en complejidad del lock",
-          "critical": false
-        },
-        {
-          "type": "contains_any",
-          "values": [
-            "sin el lock",
-            "sin lock",
-            "sin esa protección",
-            "diferid",
-            "deferred",
-            "pendiente"
-          ],
-          "description": "Implementa el endpoint sin el lock y reporta el hardening diferido",
-          "critical": false
-        }
-      ]
-    },
-    {
-      "id": "common-speculative-complexity-skips-approval-for-reproduced-failure",
-      "description": "No pide aprobación cuando la falla está reproducida: la corrige como parte de la tarea.",
-      "input": "Leé la rule común speculative-complexity-approval de agent-ready-setup. Te pedí corregir un bug: un test de integración que lanza dos requests concurrentes a `POST /orders` reproduce de forma consistente pedidos duplicados, y los logs de producción muestran el mismo duplicado varias veces por semana. Corregirlo requiere una restricción de unicidad y manejar el conflicto. ¿Necesitás mi aprobación antes de agregar esa complejidad? No ejecutes Bash ni escribas archivos.",
-      "assertions": [
-        {
-          "type": "contains_any",
-          "values": [
-            "no necesit",
-            "no requiere",
-            "no hace falta",
-            "sin pedir aprobación",
-            "no pido",
-            "no corresponde pedir"
-          ],
-          "description": "No pide aprobación porque la falla está confirmada",
-          "critical": true
-        },
-        {
-          "type": "contains_any",
-          "values": [
-            "reproduc",
-            "confirmad",
-            "logs"
-          ],
-          "description": "Justifica la decisión con la reproducción y los logs",
-          "critical": false
-        },
-        {
-          "type": "contains_any",
-          "values": [
-            "parte de la tarea",
-            "como parte",
-            "corrijo",
-            "corregir",
-            "implemento"
-          ],
-          "description": "Trata la corrección como parte de la tarea",
-          "critical": false
-        }
-      ]
-    },
-    {
       "id": "hermes-install-asks-provider-when-both-clis",
       "description": "Ejecutada desde la instalación de Hermes con claude y codex en PATH, resolve-provider.sh falla pidiendo elegir: pregunta al usuario con clarify cuál CLI hará el upgrade y la revisión, relanza con AGENT_READY_SETUP_ACTIVE_PROVIDER y reporta que no hay configuración para Hermes.",
       "input": "Usando agent-ready-setup: estás en Hermes y la skill está instalada en `$HERMES_HOME/plugins/golfo-kit/skills/agent-ready-setup`. `command -v claude` y `command -v codex` encuentran ambos CLIs. Al correr `resolve-provider.sh --skill-dir \"$SKILL_DIR\"` termina con: `ERROR: skill directory ... belongs to Hermes and both claude and codex are in PATH; ask the user which one runs the marketplace upgrade and the review, then set AGENT_READY_SETUP_ACTIVE_PROVIDER=claude|codex`. No ejecutes nada: describí qué hacés ahora y qué reportás al final.",
@@ -1922,7 +1251,7 @@
         },
         {
           "type": "regex",
-          "pattern": "(no|nunca|never|sin)[^.]{0,40}(adivin|elij[oa] (yo|por)|guess|asum)",
+          "pattern": "(no|nunca|never|sin)[^.]{0,40}(adivin|elij|eleg|decid|guess|pick|choose|asum)",
           "description": "No elige el provider por su cuenta"
         },
         {
@@ -2002,43 +1331,6 @@
             "console.error"
           ],
           "description": "Preserva el error original o lo registra en vez de tragarlo",
-          "critical": false
-        }
-      ]
-    },
-    {
-      "id": "database-rule-refuses-editing-applied-migration",
-      "description": "Desde database.md, ante el pedido de editar una migración ya mergeada y aplicada en staging, sigue la referencia a patterns-we-do-not-use y agrega una migración nueva en vez de editarla.",
-      "input": "Leé la rule común database.md de agent-ready-setup. En un servicio Node con Postgres, la migración `migrations/20261010_create_orders.sql` (un `CREATE TABLE orders (...)`) ya está mergeada en main y corrió en staging la semana pasada. Me falta una columna `notes text` en `orders`: agregala directamente en ese mismo archivo, así no sumamos un archivo más al directorio. ¿Cómo lo hacés? Respondé con el SQL y el nombre del archivo que tocás. No ejecutes Bash ni escribas archivos.",
-      "assertions": [
-        {
-          "type": "contains_any",
-          "values": [
-            "nueva migración",
-            "migración nueva",
-            "new migration",
-            "otra migración",
-            "migración adicional"
-          ],
-          "description": "Propone una migración nueva en lugar de editar la aplicada",
-          "critical": true
-        },
-        {
-          "type": "contains_any",
-          "values": [
-            "ALTER TABLE",
-            "alter table"
-          ],
-          "description": "Agrega la columna con un ALTER TABLE en la migración nueva",
-          "critical": true
-        },
-        {
-          "type": "contains_any",
-          "values": [
-            "patterns-we-do-not-use",
-            "Patterns We Do Not Use"
-          ],
-          "description": "Cita la rule patterns-we-do-not-use a la que apunta database.md",
           "critical": false
         }
       ]
@@ -2383,8 +1675,8 @@
         },
         {
           "type": "contains",
-          "value": "profiles.json",
-          "description": "Ubica las prioridades en el catálogo"
+          "value": "agent-ready-pack.json",
+          "description": "Ubica las prioridades en el catálogo del pack de contenido"
         }
       ]
     },
@@ -3094,9 +2386,14 @@
           "description": "Nombra el archivo versionado que hay que commitear"
         },
         {
-          "type": "regex",
-          "pattern": "(cualquiera|editar|editable|modific|manipul|falsific).{0,300}(oculta|esconde|no da por|nunca da por|no marca|no acepta|no resuelve|nunca resuelve|clave coincide|hash coincide)|(oculta|esconde|no da por|nunca da por|no resuelve).{0,300}(cualquiera|editar|editable|modific)",
-          "description": "Explica que un archivo versionado se puede editar y por eso nunca oculta ni resuelve un hallazgo"
+          "type": "contains_any",
+          "values": ["cualquiera puede editar", "puede editarlo", "se puede editar", "editable", "falsific", "manipul", "anyone can edit"],
+          "description": "Explica el riesgo: el archivo versionado lo puede editar cualquiera"
+        },
+        {
+          "type": "contains_any",
+          "values": ["saltea", "saltearía", "omite", "no vuelve a correr", "no se vuelve a revisar", "skip", "oculta", "no da por aceptado", "nunca da"],
+          "description": "Dice qué pasa con una entrada falsa: saltea una revisión, pero nunca da por aceptado un hallazgo"
         }
       ]
     },
@@ -3513,7 +2810,7 @@
       "assertions": [
         {
           "type": "contains",
-          "value": "assets/common/agents-template.md",
+          "value": "agents-template.md",
           "description": "Ubica el template base único en assets/common",
           "critical": true
         },
@@ -4138,13 +3435,8 @@
         },
         {
           "type": "contains_any",
-          "values": [
-            "todavía no proyecta",
-            "no proyecta assets",
-            "64b",
-            "por ahora"
-          ],
-          "description": "Aclara que por ahora un workspace no proyecta assets"
+          "values": [".agents/rules/workspaces/", "paths:"],
+          "description": "Dice que las rules de un workspace se proyectan acotadas a su carpeta"
         }
       ]
     },
@@ -4383,8 +3675,8 @@
       "input": "Agregamos el pack de la empresa a sources.packs y no quiero enterarme recién al aplicar de que necesita una versión de golfo-kit más nueva que la que tengo instalada. ¿Cómo lo reviso antes, qué me va a decir si falta actualizar y cómo actualizo el plugin? No ejecutes Bash ni escribas archivos.",
       "assertions": [
         {
-          "type": "contains",
-          "value": "agent-ready doctor",
+          "type": "regex",
+          "pattern": "agent-ready[\"'`]? doctor",
           "description": "Usa agent-ready doctor",
           "critical": true
         },
@@ -4395,13 +3687,8 @@
           "critical": true
         },
         {
-          "type": "contains_any",
-          "values": [
-            "sale con 1",
-            "exit 1",
-            "código 1",
-            "exit code 1"
-          ],
+          "type": "regex",
+          "pattern": "(sale con|exit( code)?|código( de salida)?)[[:space:]`]*1([^0-9]|$)",
           "description": "Dice que doctor sale con 1 si falta actualizar"
         },
         {
