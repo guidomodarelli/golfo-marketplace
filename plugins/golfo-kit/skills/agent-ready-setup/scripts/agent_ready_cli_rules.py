@@ -47,9 +47,9 @@ def read(arguments):
     return rules, findings, root
 
 
-def limits(root):
-    """(warn, max) statement lengths of the repository's configuration, or the defaults outside one."""
-    configuration = resolve_configuration(agent_ready_common.find_repository_root(root))
+def limits(arguments):
+    """(enabled, warn, max) of the configuration of --project's repository, or the defaults outside one."""
+    configuration = resolve_configuration(agent_ready_common.find_repository_root(arguments.project))
     warn_chars = configuration.value(STATEMENT_WARN_CHARS_KEY)
     max_chars = configuration.value(MAX_STATEMENT_CHARS_KEY)
     if warn_chars > max_chars:
@@ -103,8 +103,8 @@ def command_rules_show(arguments):
 
 def command_rules_lint(arguments):
     """Atomicity, length and consistency of the rules; exits 1 when one finding is an error."""
-    rules, findings, root = read(arguments)
-    enabled, warn_chars, max_chars = limits(root)
+    rules, findings, _ = read(arguments)
+    enabled, warn_chars, max_chars = limits(arguments)
     if not enabled:
         sys.stderr.write(f"{RULES_ENABLED_KEY} is off: the rules were not linted.\n")
         return EXIT_OK

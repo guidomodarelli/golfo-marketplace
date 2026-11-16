@@ -105,12 +105,13 @@ EOF
       uses if it is not Vitest.
     - Run them with `pnpm test`.
 EOF
-  sed -i 's/$/\r/' .agents/rules/testing.md
+  # perl -pi edits in place the same way with GNU and BSD tools; sed -i does not.
+  perl -pi -e 's/\n/\r\n/' .agents/rules/testing.md
   run agent_ready rules show testing/unit-runner --json
   [ "$status" -eq 0 ]
   [ "$(jq -r '.rules[0].hash' <<<"$output")" = "$original" ]
 
-  sed -i 's/Vitest$/Jest/; s/Use   Vitest/Use   Jest/' .agents/rules/testing.md
+  perl -pi -e 's/Use   Vitest/Use   Jest/' .agents/rules/testing.md
   run agent_ready rules show testing/unit-runner --json
   [ "$(jq -r '.rules[0].hash' <<<"$output")" != "$original" ]
 }
@@ -120,9 +121,46 @@ EOF
   run agent_ready rules show testing/behavior-only --json
   neighbour="$(jq -r '.rules[0].hash' <<<"$output")"
 
-  sed -i 's/Use Vitest for unit tests./Use Jest for unit tests./' .agents/rules/testing.md
+  perl -pi -e 's/Use Vitest for unit tests\./Use Jest for unit tests./' .agents/rules/testing.md
+  run agent_ready rules show testing/unit-runner --json
+  [ "$(jq -r '.rules[0].statement' <<<"$output")" = "Use Jest for unit tests." ]
   run agent_ready rules show testing/behavior-only --json
   [ "$(jq -r '.rules[0].hash' <<<"$output")" = "$neighbour" ]
+}
+
+@test "a fence closes only with its own character and length, so examples inside stay out of the rules" {
+  cat > .agents/rules/examples.md <<'EOF'
+````markdown
+```bash
+pnpm test
+```
+<!-- rule id=example/inside-backticks -->
+- An example rule inside a four-backtick fence.
+````
+
+~~~markdown
+```
+<!-- rule id=example/inside-tildes -->
+- An example rule inside a tilde fence.
+~~~
+
+<!-- rule id=real/after-fences -->
+- A real rule after the examples.
+EOF
+
+  run agent_ready rules list --json
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '[.rules[].id] | join(",")' <<<"$output")" = "real/after-fences" ]
+}
+
+@test "rules lint --path takes the configuration of --project, not of the current directory" {
+  printf -- '- Prefer early returns.\n' > .agents/rules/style.md
+  printf '%s\n' '{"rules": {"enabled": false}}' > .agents/agent-ready.json
+  cd "$test_root"
+
+  run agent_ready rules lint --project "$project_dir" --path "$project_dir/.agents/rules/style.md"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"rules.enabled is off"* ]]
 }
 
 @test "rules lint passes a file of atomic rules and ignores prose, frontmatter and code fences" {

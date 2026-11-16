@@ -25,7 +25,8 @@ MARKER_LIKE = re.compile(r"^<!--\s*rule\b")
 ATTRIBUTE = re.compile(r"^(?P<name>[a-z]+)(?:=(?P<value>\S+))?$")
 TOP_LEVEL_BULLET = re.compile(r"^(?:[-*+]|\d+[.)])\s+(?P<text>.*)$")
 SUB_ITEM = re.compile(r"^\s+(?:[-*+]|\d+[.)])\s+(?P<text>.*)$")
-FENCE = re.compile(r"^\s*(?:```|~~~)")
+# A fence closes only with the character that opened it, at least as many times, and nothing after it.
+FENCE = re.compile(r"^ {0,3}(?P<fence>`{3,}|~{3,})(?P<rest>.*)$")
 FRONTMATTER_DELIMITER = "---"
 
 ID_SEGMENT = r"[a-z0-9]+(?:-[a-z0-9]+)*"
@@ -242,14 +243,18 @@ def parse_rule_text(text, path):
     rules = []
     findings = []
     index = strip_frontmatter(lines)
-    in_fence = False
+    open_fence = None
     while index < len(lines):
         line = lines[index]
-        if FENCE.match(line):
-            in_fence = not in_fence
+        fence = FENCE.match(line)
+        if fence and open_fence is None and not (fence.group("fence")[0] == "`" and "`" in fence.group("rest")):
+            open_fence = fence.group("fence")
             index += 1
             continue
-        if in_fence:
+        if open_fence is not None:
+            if (fence and fence.group("fence")[0] == open_fence[0] and len(fence.group("fence")) >= len(open_fence)
+                    and not fence.group("rest").strip()):
+                open_fence = None
             index += 1
             continue
         marker = MARKER.match(line)
