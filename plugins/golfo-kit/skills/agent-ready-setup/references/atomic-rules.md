@@ -103,6 +103,8 @@ Los dos límites se configuran en el módulo `rules`, y `rules.enabled: false` a
 agent-ready rules list [--path <archivo|carpeta>]... [--json]         # cada rule con su id, key y lugar
 agent-ready rules show <id> [--path <archivo|carpeta>]... [--json]    # metadatos, excepciones, detalles y hash
 agent-ready rules lint [--path <archivo|carpeta>]... [--json]         # atomicidad, largo y consistencia
+agent-ready rules impact <id> [--path <archivo|carpeta>]... [--json]  # qué toca cambiar esa rule
+agent-ready rules graph [--path <archivo|carpeta>]... [--json]        # todas las relaciones entre rules
 ```
 
 - **Sin `--path`:** leen `.agents/rules/` del repositorio.
@@ -114,6 +116,23 @@ agent-ready rules lint [--path <archivo|carpeta>]... [--json]         # atomicid
   ```
 
   En el CI del pack va el mismo comando.
+
+### Impacto y grafo
+
+`rules impact <id>` muestra, antes de cambiar una rule, qué rules la piden con `requires`, cuáles la
+reemplazan con `overrides` y qué skills la citan. `rules graph` lista todas esas relaciones, una por línea
+(`<desde> requires|overrides|cites <rule>  (<archivo>:<línea>)`).
+
+- **Citar una rule desde una skill:** se escribe `rule:<fuente>:<id>` o `rule:<id>` en el texto de la
+  skill, como `rule:golfo:testing/unit-runner`. Se leen los `.md` de `.agents/skills/` o, con `--path`,
+  los de cada carpeta `skills/`.
+- **El id:** se acepta con o sin la fuente. Dentro de un conjunto de rules los ids no se repiten, así que
+  `golfo:testing/unit-runner` y `testing/unit-runner` nombran la misma rule.
+- **Una rule reemplazada:** el apply la saca del archivo proyectado, pero `impact` la sigue mostrando
+  porque las referencias a ella quedan, y aclara que no está en el conjunto.
+- **Un id que nadie usa:** si ninguna rule tiene ese id y nada lo nombra, sale con 1.
+- **Pendiente:** cuántos repos de clientes reemplazan la rule (el `harvest` de #156) y el impacto por rule
+  en `plan`.
 
 ## 5. Reemplazar una sola rule
 

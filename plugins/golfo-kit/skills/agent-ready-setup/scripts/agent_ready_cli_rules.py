@@ -1,13 +1,16 @@
-"""agent-ready rules: list, show and lint the atomic rules of a repository or of a content pack.
+"""agent-ready rules: list, show, lint, impact and graph of the atomic rules of a repository or of a pack.
 
 Without --path the command reads the rules of the repository, under .agents/rules/. With --path it
 reads the files given, or every .md under a rules/ directory of each directory given, which is how
-the author of a pack lints it from its own checkout, without a consumer repository.
+the author of a pack lints it from its own checkout, without a consumer repository. impact and graph
+also read the skills next to the rules (.agents/skills/, or the skills/ directories under --path) for
+the rules they cite.
 """
 
 import os
 import sys
 
+import agent_ready_rule_graph
 import agent_ready_rules
 from agent_ready_cli_common import CLI_NAME, EXIT_FAILED, EXIT_OK, UsageError, find_repository_root
 import agent_ready_common
@@ -16,6 +19,7 @@ from agent_ready_config import resolve_configuration
 from agent_ready_options import RULES_ENABLED_KEY
 
 PROJECT_RULES_RELATIVE_PATH = ".agents/rules"
+PROJECT_SKILLS_RELATIVE_PATH = ".agents/skills"
 STATEMENT_WARN_CHARS_KEY = "rules.statementWarnChars"
 MAX_STATEMENT_CHARS_KEY = "rules.maxStatementChars"
 LISTED_STATEMENT_CHARS = 100
@@ -35,6 +39,19 @@ def targets(arguments):
         return sorted(set(files)), root
     root = find_repository_root(arguments.project)
     return agent_ready_rules.rule_files(os.path.join(root, PROJECT_RULES_RELATIVE_PATH)), root
+
+
+def citations(arguments, root):
+    """The rule citations of the skills of the targets of the command (agent_ready_rule_graph)."""
+    if arguments.path:
+        files = sorted({path for target in arguments.path
+                        for path in agent_ready_rule_graph.skill_files(os.path.abspath(target))})
+    else:
+        files = agent_ready_rule_graph.skill_files(os.path.join(root, PROJECT_SKILLS_RELATIVE_PATH))
+    try:
+        return agent_ready_rule_graph.skill_citations(files, root)
+    except OSError as read_error:
+        raise StateError(f"could not read a skill file: {read_error}") from read_error
 
 
 def read(arguments):
@@ -122,9 +139,50 @@ def command_rules_lint(arguments):
     return EXIT_FAILED if errors else EXIT_OK
 
 
+def place(item):
+    return f"{item['path']}:{item['line']}"
+
+
+def command_rules_impact(arguments):
+    """What a change to one rule touches: the rules that require it, the ones that replace it and the
+    skills that cite it."""
+    rules, _, root = read(arguments)
+    report = agent_ready_rule_graph.impact(rules, citations(arguments, root), arguments.id)
+    if report is None:
+        raise StateError(f"no rule has the id {arguments.id}, and no rule or skill names it "
+                         f"(see {CLI_NAME} rules list)")
+    if arguments.json:
+        sys.stdout.write(serialize_json(report))
+        return EXIT_OK
+    where = ", ".join(place(rule) for rule in report["rules"]) or "not in this set: replaced, or of another source"
+    sys.stdout.write(f"{report['id']}  ({where})\n")
+    sections = (("required by", report["requiredBy"]), ("replaced by", report["replacedBy"]),
+                ("cited by", report["citedBy"]))
+    for label, items in sections:
+        for item in items:
+            described = f"{item['id']} ({place(item)})" if "id" in item else place(item)
+            sys.stdout.write(f"  {label}: {described}\n")
+    if not any(items for _, items in sections):
+        sys.stdout.write("  nothing requires, replaces or cites it\n")
+    return EXIT_OK
+
+
+def command_rules_graph(arguments):
+    """Every edge between the rules, and from the skills to the rules they cite."""
+    rules, _, root = read(arguments)
+    rule_graph = agent_ready_rule_graph.graph(rules, citations(arguments, root))
+    if arguments.json:
+        sys.stdout.write(serialize_json(rule_graph))
+        return EXIT_OK
+    for edge in rule_graph["edges"]:
+        sys.stdout.write(f"{edge['from']} {edge['kind']} {edge['to']}  ({place(edge)})\n")
+    sys.stdout.write(f"{len(rule_graph['nodes'])} rules, {len(rule_graph['edges'])} edges.\n")
+    return EXIT_OK
+
+
 def register(subparsers, new_subparser):
-    """Add rules list|show|lint to the CLI parser."""
-    rules = new_subparser(subparsers, "rules", "List, show and lint the atomic rules.",
+    """Add rules list|show|lint|impact|graph to the CLI parser."""
+    rules = new_subparser(subparsers, "rules", "List, show, lint and trace the atomic rules.",
                           "  agent-ready rules list\n  agent-ready rules lint --path ../my-pack", None,
                           with_project=False)
     actions = rules.add_subparsers(dest="rules_action", metavar="<action>", required=True)
@@ -135,11 +193,17 @@ def register(subparsers, new_subparser):
          "  agent-ready rules show testing/unit-runner", command_rules_show),
         ("lint", "Check that each rule is atomic and short, and that the set is consistent.",
          "  agent-ready rules lint\n  agent-ready rules lint --path ../my-pack --json", command_rules_lint),
+        ("impact", "What a change to one rule touches: rules that require or replace it, skills that cite it.",
+         "  agent-ready rules impact testing/unit-runner\n  agent-ready rules impact golfo:testing/unit-runner --json",
+         command_rules_impact),
+        ("graph", "Every requires, overrides and skill citation between the rules.",
+         "  agent-ready rules graph\n  agent-ready rules graph --path ../my-pack --json", command_rules_graph),
     )
     for name, summary, examples, handler in commands:
         action = new_subparser(actions, name, summary, examples, handler)
-        if name == "show":
-            action.add_argument("id", help="id of the rule, as rules list prints it")
+        if name in ("show", "impact"):
+            action.add_argument("id", help="id of the rule, as rules list prints it"
+                                + (", with or without its source" if name == "impact" else ""))
         action.add_argument("--path", action="append",
                             help="a rule file, or a directory whose rules/ directories are read; repeatable "
                                  f"(default: {PROJECT_RULES_RELATIVE_PATH} of the repository)")

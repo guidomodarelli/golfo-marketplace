@@ -330,3 +330,65 @@ EOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"rules.enabled is off: the rules were not linted."* ]]
 }
+
+write_rule_graph() {
+  write_testing_rules
+  printf '<!-- rule id=team/runner overrides=golfo:testing/unit-runner -->\n- Use Jest for unit tests.\n' > .agents/rules/team.md
+  mkdir -p .agents/skills/add-tests
+  printf -- '---\nname: add-tests\n---\nFollow rule:golfo:testing/unit-runner when you add tests; a subrule:x is not a citation.\n' \
+    > .agents/skills/add-tests/SKILL.md
+}
+
+@test "rules impact lists the rules that require or replace a rule and the skills that cite it" {
+  write_rule_graph
+
+  run agent_ready rules impact testing/unit-runner
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"testing/unit-runner  (.agents/rules/testing.md:13)"* ]]
+  [[ "$output" == *"required by: testing/behavior-only (.agents/rules/testing.md:18)"* ]]
+  [[ "$output" == *"replaced by: team/runner (.agents/rules/team.md:2)"* ]]
+  [[ "$output" == *"cited by: .agents/skills/add-tests/SKILL.md:4"* ]]
+
+  # The id with its source names the same rule.
+  run agent_ready rules impact golfo:testing/unit-runner --json
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s' "$output" | python3 -c 'import json, sys; report = json.load(sys.stdin); print(len(report["requiredBy"]), len(report["replacedBy"]), len(report["citedBy"]))')" = "1 1 1" ]
+
+  run agent_ready rules impact team/runner
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"nothing requires, replaces or cites it"* ]]
+}
+
+@test "rules impact of a replaced rule still shows what replaces it, and an unknown id fails" {
+  write_rule_graph
+  # The apply projects the file without the replaced rule: only the references to it remain.
+  perl -0pi -e 's/<!-- rule id=testing\/unit-runner [^\n]*\n- Use Vitest[^\n]*\n(  [^\n]*\n)*//' .agents/rules/testing.md
+
+  run agent_ready rules impact testing/unit-runner
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"not in this set"* ]]
+  [[ "$output" == *"replaced by: team/runner"* ]]
+
+  run agent_ready rules impact testing/absent
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"no rule has the id testing/absent"* ]]
+}
+
+@test "rules graph prints every requires, overrides and citation, also of a pack with --path" {
+  write_rule_graph
+
+  run agent_ready rules graph
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"testing/behavior-only requires testing/unit-runner"* ]]
+  [[ "$output" == *"team/runner overrides golfo:testing/unit-runner"* ]]
+  [[ "$output" == *".agents/skills/add-tests/SKILL.md cites golfo:testing/unit-runner"* ]]
+  [[ "$output" == *"3 rules, 3 edges."* ]]
+
+  mkdir -p "$test_root/pack/profiles/base/rules" "$test_root/pack/profiles/base/skills/review"
+  cp .agents/rules/testing.md "$test_root/pack/profiles/base/rules/"
+  cp .agents/skills/add-tests/SKILL.md "$test_root/pack/profiles/base/skills/review/"
+  cd "$test_root"
+  run agent_ready rules graph --path pack --json
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s' "$output" | python3 -c 'import json, sys; graph = json.load(sys.stdin); print(len(graph["nodes"]), sorted(edge["kind"] for edge in graph["edges"]))')" = "2 ['cites', 'requires']" ]
+}
