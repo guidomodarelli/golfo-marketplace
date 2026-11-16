@@ -33,6 +33,7 @@ from agent_ready_manifest import configuration_of
 from agent_ready_options import UPDATES_AUTO, UPDATES_PINNED
 from agent_ready_output import write_line
 from agent_ready_packs import SOURCE_AVAILABLE, is_pack_profile, source_of_profile
+from agent_ready_rule_overrides import rule_override_texts
 
 
 def validate_pack_destinations(project_root, assets):
@@ -196,7 +197,8 @@ def enforce_sync_policy(project_root, skill_dir, catalog, resolved, digests, sel
     # The content digest covers engine-owned files too (hooks, settings templates): with the revision
     # of the lock projected, a new engine is not a release of the content and the sync goes on.
     if lock and not projects_locked_revision and content_source.update_mode(configuration_of(project_root)) == UPDATES_PINNED:
-        assets = desired_assets(skill_dir, catalog, resolved)
+        # The same texts as the plan, so a rule an override removed hashes as the apply wrote it.
+        assets = desired_assets(skill_dir, catalog, resolved, shared_texts=rule_override_texts(skill_dir, catalog, resolved))
         golfo_assets = {destination: entry for destination, entry in assets.items() if not is_pack_profile(entry["profile"])}
         identity = source_identity(skill_dir, golfo_assets, merged_template_entries(skill_dir, catalog, resolved),
                                    golfo_blocks(desired_blocks(skill_dir, catalog, resolved, assets)),

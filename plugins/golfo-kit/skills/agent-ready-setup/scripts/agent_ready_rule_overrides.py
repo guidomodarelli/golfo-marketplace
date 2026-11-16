@@ -12,7 +12,7 @@ import os
 import agent_ready_rules
 from agent_ready_common import ProfileError, sha256_of_text, skill_cache_directory, walk_content_files, write_text_atomically
 from agent_ready_packs import is_pack_profile, source_of_profile
-from agent_ready_profiles import BASE_PROFILE_NAME, profile_asset_root
+from agent_ready_profiles import BASE_PROFILE_NAME, is_overridden, profile_asset_root, resolved_overrides
 
 OFFICIAL_RULE_SOURCE = "golfo"
 RULE_SOURCE_SEPARATOR = ":"
@@ -35,9 +35,14 @@ def profile_rule_files(root):
 
 
 def selection_rules(skill_dir, catalog, resolved):
-    """{qualified id: (profile, relative path, absolute path, rule)} of the core and the selected profiles."""
+    """{qualified id: (profile, relative path, absolute path, rule)} of the core and the selected profiles.
+
+    A file another profile replaces whole (the profile's overrides) is not projected, so its rules are
+    left out; a locked rule in it is an error, because replacing the file would remove the rule.
+    """
     roots = [(BASE_PROFILE_NAME, os.path.join(skill_dir, catalog.get("baseAssets", "assets/common")))]
     roots += [(name, profile_asset_root(skill_dir, catalog, name)) for name in resolved]
+    replaced_files = resolved_overrides(skill_dir, catalog, resolved)
     published = {}
     for profile_name, root in roots:
         if not root or not os.path.isdir(root):
@@ -45,6 +50,14 @@ def selection_rules(skill_dir, catalog, resolved):
         for relative_path, absolute_path in profile_rule_files(root):
             with open(absolute_path, encoding="utf-8", newline="") as rule_file:
                 rules, _ = agent_ready_rules.parse_rule_text(rule_file.read(), relative_path)
+            if is_overridden(replaced_files, profile_name, relative_path):
+                locked = [rule.id for rule in rules if rule.locked]
+                if locked:
+                    replacing = replaced_files[profile_name].get(relative_path, "another profile")
+                    raise ProfileError(f"profile '{replacing}' overrides {profile_name}:{relative_path}, which has the "
+                                       f"locked rule {rule_source(profile_name)}{RULE_SOURCE_SEPARATOR}{locked[0]}; "
+                                       "a locked rule cannot be replaced")
+                continue
             for rule in rules:
                 qualified = f"{rule_source(profile_name)}{RULE_SOURCE_SEPARATOR}{rule.id}"
                 previous = published.setdefault(qualified, (profile_name, relative_path, absolute_path, rule))
@@ -80,6 +93,12 @@ def resolved_rule_overrides(skill_dir, catalog, resolved):
                 raise ProfileError(f"the rules {previous} and {qualified} both override {reference}; keep one")
             overrides.append({"profile": profile_name, "rule": qualified, "replaces": reference,
                               "targetProfile": target_profile, "targetPath": target_path})
+    # A rule that replaces another and is itself replaced (a chain, or two rules replacing each other)
+    # would leave no instruction where the author expected one: keep the replacements one level deep.
+    for override in overrides:
+        if override["rule"] in replaced_by:
+            raise ProfileError(f"the rule {override['rule']} overrides {override['replaces']} and is overridden by "
+                               f"{replaced_by[override['rule']]}; a rule that replaces another cannot be replaced")
     return overrides
 
 

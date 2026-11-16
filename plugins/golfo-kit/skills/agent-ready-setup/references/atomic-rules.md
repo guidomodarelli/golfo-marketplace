@@ -137,7 +137,11 @@ Una rule de un profile de la selección reemplaza una rule de otro profile con
   - una rule del mismo profile;
   - una rule del núcleo;
   - dos rules que reemplazan la misma;
-  - el mismo id publicado dos veces por la misma fuente.
+  - una rule que reemplaza otra y a su vez está reemplazada, como dos rules que se reemplazan entre sí:
+    se borrarían las dos;
+  - un `overrides` de archivo entero del profile sobre un archivo con una rule `locked`;
+  - el mismo id publicado dos veces por la misma fuente. Las rules de un archivo que otro profile reemplaza
+    entero no cuentan, porque ese archivo no se proyecta.
 - **Hoy cubre** las rules de los profiles de la raíz de la selección. Que una rule propia del proyecto o de un
   workspace reemplace una rule gestionada llega en la próxima parte de #168.
 

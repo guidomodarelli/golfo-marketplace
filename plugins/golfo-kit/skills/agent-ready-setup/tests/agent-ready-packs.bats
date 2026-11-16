@@ -1152,6 +1152,43 @@ EOF
   done
 }
 
+@test "two rules that replace each other fail before writing instead of removing both" {
+  copy_example_pack
+  write_atomic_pack_rules "overrides=acme:conventions/logger"
+  sed_script='s#<!-- rule id=conventions/naming -->#<!-- rule id=conventions/naming overrides=acme:kafka/logger -->#'
+  perl -pi -e "$sed_script" "$pack_dir/profiles/base/rules/acme-conventions.md"
+  write_manifest acme/kafka-interno "acme=path:../acme-pack"
+  before="$(tree_fingerprint)"
+
+  run_bootstrap
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"a rule that replaces another cannot be replaced"* ]]
+  [ "$(tree_fingerprint)" = "$before" ]
+}
+
+@test "a whole-file override leaves the rules of the replaced file out, and cannot replace a locked rule" {
+  copy_example_pack
+  write_atomic_pack_rules ""
+  # The replacement keeps an id of the file it replaces: only the projected file counts.
+  printf '<!-- rule id=conventions/naming -->\n- Name Kafka topics after their domain.\n' \
+    > "$pack_dir/profiles/kafka-interno/rules/acme-conventions-kafka.md"
+  perl -pi -e 's/ locked -->/ -->/' "$pack_dir/profiles/base/rules/acme-conventions.md"
+  edit_pack_catalog 'catalog["profiles"]["kafka-interno"]["overrides"] = ["acme/base:rules/acme-conventions.md"]'
+  write_manifest acme/kafka-interno "acme=path:../acme-pack"
+
+  run_bootstrap
+  [ "$status" -eq 0 ]
+  [ ! -e .agents/rules/acme-conventions.md ]
+  grep -q 'Name Kafka topics' .agents/rules/acme-conventions-kafka.md
+
+  write_atomic_pack_rules ""
+  before="$(tree_fingerprint)"
+  run_bootstrap
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"which has the locked rule acme:conventions/errors; a locked rule cannot be replaced"* ]]
+  [ "$(tree_fingerprint)" = "$before" ]
+}
+
 @test "an override of something the selection does not have, or of the core, fails before writing" {
   copy_example_pack
   write_manifest acme/kafka-interno "acme=path:../acme-pack"
