@@ -3284,6 +3284,33 @@
           "description": "Dice cómo verlo en el plan"
         }
       ]
+    },
+    {
+      "id": "rule-impact-before-change",
+      "description": "Antes de cambiar una rule, el usuario quiere saber qué rules y skills dependen de ella.",
+      "input": "Quiero cambiar la rule testing/unit-runner de mi repo con agent-ready, pero antes necesito saber qué otras rules dependen de ella, si alguna la reemplaza y qué skills la mencionan. ¿Qué comando me lo muestra, y cómo hago para que una skill quede registrada como que cita esa rule? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "rules impact",
+          "description": "Usa agent-ready rules impact",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "rule:(golfo:)?testing/unit-runner",
+          "description": "Explica la cita rule:<fuente>:<id> en la skill",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "requires",
+            "required by"
+          ],
+          "description": "Menciona las dependencias por requires"
+        }
+      ]
     }
   ]
 }
