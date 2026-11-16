@@ -544,13 +544,37 @@ join_wrapped_lines() {
     ' <<< "$1"
 }
 
+# A UTF-8 locale for grading, the first one this machine has: under the C locale (Git Bash's default)
+# a bracket such as [oó] never matches the two bytes of "ó", and -i does not fold "Ó" to "ó", so an
+# assertion written in Spanish would fail on a correct response. Empty when there is none.
+assertion_locale() {
+    local available candidate
+    available=$(locale -a 2>/dev/null | tr -d '\r') || available=""
+    for candidate in C.UTF-8 C.utf8 en_US.UTF-8 en_US.utf8; do
+        if printf '%s\n' "$available" | grep -qx -- "$candidate"; then
+            printf '%s' "$candidate"
+            return 0
+        fi
+    done
+}
+ASSERTION_LOCALE="$(assertion_locale)"
+
+# grep for grading a response, under ASSERTION_LOCALE when there is one.
+assertion_grep() {
+    if [ -n "$ASSERTION_LOCALE" ]; then
+        LC_ALL="$ASSERTION_LOCALE" grep "$@"
+    else
+        grep "$@"
+    fi
+}
+
 # Positive assertions match the raw response or the same text with each paragraph and list item on one
 # line: a model often wraps a sentence, and a line-based grep would miss a phrase split across lines.
 response_matches() {
     local response="$1"
     shift
-    printf '%s\n' "$response" | grep -qi "$@" && return 0
-    join_wrapped_lines "$response" | grep -qi "$@"
+    printf '%s\n' "$response" | assertion_grep -qi "$@" && return 0
+    join_wrapped_lines "$response" | assertion_grep -qi "$@"
 }
 
 validate_assertion_contains() {
@@ -641,8 +665,8 @@ validate_assertion_not_contains_any() {
     for k in $(seq 0 $((values_count - 1))); do
         local v
         v=$(jq -r ".test_cases[$case_idx].assertions[$assert_idx].values[$k]" "$config_file")
-        if printf '%s\n' "$response" | grep -qi -- "$v" ||
-            printf '%s\n' "$normalized_response" | grep -qi -- "$v"; then
+        if printf '%s\n' "$response" | assertion_grep -qi -- "$v" ||
+            printf '%s\n' "$normalized_response" | assertion_grep -qi -- "$v"; then
             return 1
         fi
     done
