@@ -53,6 +53,8 @@ EVAL_CONFIG="${EVAL_CONFIG:-}"
 EVAL_TRIGGERS="${EVAL_TRIGGERS:-0}"
 TRIGGER_EVALS_FILE_NAME="trigger-evals.json"
 TRIGGER_MAX_TURNS=2
+# Agent Skills specification: a name has 1-64 characters.
+SKILL_NAME_MAX_LENGTH=64
 TRIGGER_TRIGGERED="triggered"
 TRIGGER_NOT_TRIGGERED="not_triggered"
 # Assertion types the grader implements. An unknown type (for example a typo) is rejected when the
@@ -1452,7 +1454,12 @@ run_trigger_query() {
     local query="$3"
     local work_dir="$4"
     local cwd="$work_dir/cwd"
-    local stub_name="${skill_name}-trigger-$(basename "$work_dir")"
+    # A skill name has at most SKILL_NAME_MAX_LENGTH characters: the prefix gives way to the suffix
+    # that makes the copy unique, and never ends in a hyphen.
+    local stub_suffix="-trigger-$(basename "$work_dir")"
+    local stub_prefix="${skill_name:0:$((SKILL_NAME_MAX_LENGTH - ${#stub_suffix}))}"
+    stub_prefix="${stub_prefix%%-}"
+    local stub_name="${stub_prefix}${stub_suffix}"
     local stream_file="$work_dir/stream.jsonl"
     mkdir -p "$cwd"
     write_trigger_skill_stub "$skill_md" "$cwd/.claude/skills/$stub_name" "$stub_name"

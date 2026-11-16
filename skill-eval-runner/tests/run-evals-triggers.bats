@@ -221,3 +221,20 @@ run_triggers() {
     [ "$status" -eq 0 ]
     grep -Eq "^skill_md_name=name: ${SKILL_NAME}-trigger-q0-r1$" "${STUB_LOG}"
 }
+
+@test "a 64-character skill name still gives a copy name within the limit" {
+    long_name="contract-skill-with-a-very-long-name-that-uses-all-of-the-limit"
+    long_name="${long_name}$(printf 'x%.0s' $(seq 1 $((64 - ${#long_name}))))"
+    [ "${#long_name}" -eq 64 ]
+    sed -i "s/^name: .*/name: ${long_name}/" "${SKILL_DIR}/SKILL.md"
+    write_triggers '[{"query": "TRIGGER please", "should_trigger": true}]'
+
+    run_triggers
+    report="$output"
+
+    [ "$status" -eq 0 ]
+    copy_name=$(sed -n 's/^skill_md_name=name: //p' "${STUB_LOG}" | head -1)
+    [ "${#copy_name}" -le 64 ]
+    [[ "$copy_name" == *-trigger-q0-r1 ]]
+    [[ "$copy_name" != *--trigger-* ]]
+}
