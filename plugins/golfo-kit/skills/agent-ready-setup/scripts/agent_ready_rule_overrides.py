@@ -24,6 +24,7 @@ from agent_ready_common import (
 from agent_ready_lockfile import read_lock, was_applied
 from agent_ready_packs import is_pack_profile, source_of_profile
 from agent_ready_profiles import BASE_PROFILE_NAME, is_overridden, profile_asset_root, resolved_overrides
+from agent_ready_workspaces import is_workspace_rule
 
 OFFICIAL_RULE_SOURCE = "golfo"
 # The source and the owner of the rules the project wrote itself, as the structural reports name them.
@@ -95,7 +96,9 @@ def project_rules(project_root, catalog_rule_paths, managed_destinations=()):
 
     A file is the project's own when no profile of the selection publishes it (``catalog_rule_paths``,
     relative to an asset root), it is not in ``managed_destinations`` (the rules of the workspaces) and
-    no apply wrote it (the lock). A link is never read.
+    no apply wrote it (the lock). A link is never read, and neither is a file under rules/workspaces/:
+    the instructions never reference that subtree for the project's own rules, so no provider would
+    load the replacement.
     """
     rules_root = os.path.join(project_root, *PROJECT_RULES_DIRECTORY.strip("/").split("/"))
     if not os.path.isdir(rules_root):
@@ -107,7 +110,8 @@ def project_rules(project_root, catalog_rule_paths, managed_destinations=()):
     found = []
     for relative_path, absolute_path in walk_files(rules_root):
         destination = PROJECT_RULES_DIRECTORY + relative_path
-        if not relative_path.endswith(RULE_FILE_SUFFIX) or is_link(absolute_path) or destination in managed:
+        if (not relative_path.endswith(RULE_FILE_SUFFIX) or is_workspace_rule(relative_path)
+                or is_link(absolute_path) or destination in managed):
             continue
         with open(absolute_path, encoding="utf-8", errors="replace", newline="") as rule_file:
             rules, _ = agent_ready_rules.parse_rule_text(rule_file.read(), destination)
@@ -148,17 +152,19 @@ def resolved_rule_overrides(skill_dir, catalog, resolved, project_root=None, man
                 raise ProfileError(f"{what}, a rule of the same profile; edit or remove that rule instead")
             if target_rule.locked:
                 raise ProfileError(f"{what}, which is locked; it cannot be replaced")
-            previous = replaced_by.setdefault(reference, qualified)
-            if previous != qualified:
-                raise ProfileError(f"the rules {previous} and {qualified} both override {reference}; keep one")
+            # A pack may be named like the project's own source: the owner tells the two rules apart.
+            previous = replaced_by.setdefault(reference, (profile_name, qualified))
+            if previous != (profile_name, qualified):
+                raise ProfileError(f"the rules {previous[1]} and {qualified} both override {reference}; keep one")
             overrides.append({"profile": profile_name, "rule": qualified, "replaces": reference,
                               "targetProfile": target_profile, "targetPath": target_path})
     # A rule that replaces another and is itself replaced (a chain, or two rules replacing each other)
     # would leave no instruction where the author expected one: keep the replacements one level deep.
+    # A rule of the project's own is never projected, so nothing can replace it.
     for override in overrides:
-        if override["rule"] in replaced_by:
+        if override["profile"] != PROJECT_RULE_SOURCE and override["rule"] in replaced_by:
             raise ProfileError(f"the rule {override['rule']} overrides {override['replaces']} and is overridden by "
-                               f"{replaced_by[override['rule']]}; a rule that replaces another cannot be replaced")
+                               f"{replaced_by[override['rule']][1]}; a rule that replaces another cannot be replaced")
     return overrides
 
 

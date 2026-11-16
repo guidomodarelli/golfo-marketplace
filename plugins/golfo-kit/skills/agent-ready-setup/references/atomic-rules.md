@@ -137,7 +137,8 @@ Puede declararlo:
   ```
 
   El archivo propio no cambia ni entra al lock. Si se borra, el próximo apply vuelve a proyectar la rule
-  reemplazada.
+  reemplazada. Un archivo propio bajo `.agents/rules/workspaces/` no reemplaza nada: las instrucciones no
+  lo referencian, así que ningún provider cargaría el reemplazo.
 
 - **Qué se proyecta:** el archivo de la rule reemplazada sin esa rule. Las demás rules del archivo, la prosa y
   su hash quedan igual. `plan` lo muestra como `Rule overridden: <fuente>:<id> by <fuente>:<id> of <profile>`.

@@ -1197,6 +1197,31 @@ EOF
   run_bootstrap
   [ "$status" -eq 0 ]
   grep -q 'Log with the Acme logger' .agents/rules/acme-conventions.md
+
+  # No provider loads a project file under rules/workspaces/, so it cannot remove a managed rule.
+  mkdir -p .agents/rules/workspaces/api
+  printf '<!-- rule id=team/logger overrides=acme:conventions/logger -->\n- Log with pino.\n' \
+    > .agents/rules/workspaces/api/team.md
+  run_bootstrap
+  [ "$status" -eq 0 ]
+  grep -q 'Log with the Acme logger' .agents/rules/acme-conventions.md
+}
+
+@test "a project rule keeps its own identity when a pack is named project" {
+  copy_example_pack
+  write_atomic_pack_rules ""
+  # Rename the pack and the profiles it names, acme/... to project/...
+  edit_pack_catalog 'import json; catalog.update(json.loads(json.dumps(catalog).replace("acme/", "project/").replace("\"acme\"", "\"project\"")))'
+  write_manifest project/kafka-interno "project=path:../acme-pack"
+  run_bootstrap
+  [ "$status" -eq 0 ]
+
+  # The same qualified id as the rule it replaces: one replacement, not a chain.
+  printf '<!-- rule id=conventions/logger overrides=project:conventions/logger -->\n- Log with pino.\n' > .agents/rules/team.md
+  run_bootstrap
+  [ "$status" -eq 0 ]
+  ! grep -q 'Log with the Acme logger' .agents/rules/acme-conventions.md
+  grep -q 'Name services after their domain.' .agents/rules/acme-conventions.md
 }
 
 @test "a whole-file override leaves the rules of the replaced file out, and cannot replace a locked rule" {
