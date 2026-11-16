@@ -3,7 +3,7 @@
 ## 📝 Descripción
 
 ### ❓ ¿Qué problema resuelve?
-Los avisos de facturación se enviaban por un servicio legado y deben usar el nuevo motor de campañas.
+Los avisos de facturación se enviaban por un servicio legado y deben usar el nuevo servicio de emails.
 
 ### 💡 ¿Cuál fue la solución?
 Se envían los tres avisos a sus campañas, preservando destinatario y datos del evento.

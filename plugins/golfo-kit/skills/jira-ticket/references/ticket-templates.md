@@ -49,7 +49,7 @@ La skill escribe con `contentFormat: "markdown"`; la integración Atlassian lo c
 
 | Key | Story | Estado | Responsable | Nota |
 |---|---|---|---|---|
-| [ACME-10](<SITE_URL>/browse/ACME-10) | Alta de flotilleros | ✅ Done | Ana Pérez | — |
+| [ACME-10](<SITE_URL>/browse/ACME-10) | Alta de proveedores | ✅ Done | Ana Pérez | — |
 | [ACME-14](<SITE_URL>/browse/ACME-14) | Guía de registro | 🔄 In Progress | — | — |
 | [ACME-17](<SITE_URL>/browse/ACME-17) | Copy de errores | ⬜ To Do | Luis Gómez | — |
 ```

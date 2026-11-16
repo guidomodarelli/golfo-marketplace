@@ -160,7 +160,7 @@ Caso de referencia: en un flujo de solicitud de acceso, al vencer el código SMS
 - **Rechazado**: mensaje en el formulario de pago con el motivo accionable, datos conservados (salvo el código de seguridad si el proveedor lo exige) y "Usar otro medio".
 - **Pendiente**: página o estado que dice qué se espera (acreditación, revisión), cuánto suele tardar (como [estimación](system-status.md#progreso-real-o-estimación), nunca como plazo exacto) y cómo se avisará; sin botón de pagar de nuevo.
 - **Resultado incierto** (timeout, cierre de la ventana, respuesta perdida): "No pudimos confirmar el pago" con "Comprobar estado"; nunca reintentar el cobro automáticamente ni ofrecer "Pagar de nuevo" sin consultar el estado de la operación (id o clave de idempotencia) ([recuperación de operaciones](state-matrix.md#recuperación-de-operaciones)).
-- **Referencias**: Stripe Checkout, Mercado Pago Checkout, Shopify checkout (total visible, validación al salir del campo, estados de pago pendiente).
+- **Referencias**: Stripe Checkout, Shopify checkout (total visible, validación al salir del campo, estados de pago pendiente).
 
 ## Inbox y notificaciones
 

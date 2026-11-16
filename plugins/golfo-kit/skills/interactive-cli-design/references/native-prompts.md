@@ -1,6 +1,6 @@
 # Prompts propios: menú con filtro, memoria, secretos y Ctrl+C
 
-Para cuando el proyecto no tiene librería de prompts y no conviene sumar una, o la que tiene no filtra ni dibuja en stderr. Lo que sigue salió de dos CLIs reales en Python 3.9+ sin dependencias (`testdriver` de fury_carpincho y `emu` de system-config), probados en pseudoconsolas de macOS. Windows no tiene `termios`: ahí va el menú numerado.
+Para cuando el proyecto no tiene librería de prompts y no conviene sumar una, o la que tiene no filtra ni dibuja en stderr. Lo que sigue salió de CLIs reales en Python 3.9+ sin dependencias (entre ellos `emu` de system-config), probados en pseudoconsolas de macOS. Windows no tiene `termios`: ahí va el menú numerado.
 
 ## Índice
 
@@ -196,7 +196,7 @@ Lo que el CLI crea (no lo que el usuario responde) va a un registro aparte, con 
 
 ## Secretos
 
-Pedirlo recién cuando un paso lo necesita: `--help`, `--dry-run` o un comando de solo lectura no lo piden. Antes de preguntar, buscarlo sin molestar, en este orden: el flag `--<dato>-file` o la variable documentada, el llavero del sistema (si le queda margen antes de vencer), y la herramienta oficial de login (`gh auth token`, `fury get-token`). Recién después, la terminal.
+Pedirlo recién cuando un paso lo necesita: `--help`, `--dry-run` o un comando de solo lectura no lo piden. Antes de preguntar, buscarlo sin molestar, en este orden: el flag `--<dato>-file` o la variable documentada, el llavero del sistema (si le queda margen antes de vencer), y la herramienta oficial de login (por ejemplo `gh auth token`). Recién después, la terminal.
 
 En bash, leer de `/dev/tty` y apagar el eco **antes** de imprimir la pregunta, para que un valor pegado enseguida tampoco se vea. Restaurar la terminal apenas termina la lectura, así las preguntas siguientes vuelven a mostrar lo que se escribe, y además en un `trap` por si la lectura se corta:
 
