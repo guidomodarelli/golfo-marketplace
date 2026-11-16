@@ -3198,6 +3198,34 @@
           "description": "Lo declara en la configuración del proyecto"
         }
       ]
+    },
+    {
+      "id": "rule-override-replaces-one-rule",
+      "description": "El autor de un pack quiere que una rule suya reemplace una sola rule de otro profile, no el archivo entero.",
+      "input": "En mi pack acme, el profile acme/kafka-interno tiene una rule de logging para Kafka. Quiero que reemplace solo la rule con id conventions/logger del archivo rules/acme-conventions.md de acme/base, y que las otras rules de ese archivo se sigan proyectando. ¿Cómo lo escribo con agent-ready? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "overrides=acme:conventions/logger",
+          "description": "Usa overrides con la fuente y el id de la rule",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "<!-- rule",
+          "description": "Lo declara en el comentario de la rule",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "Rule overridden",
+            "agent-ready plan",
+            "plan"
+          ],
+          "description": "Dice cómo verlo en el plan"
+        }
+      ]
     }
   ]
 }

@@ -334,6 +334,26 @@ EOF
   grep -Fq 'changed locally' .agents/rules/acme-kafka.md
 }
 
+@test "pinned content hashes a rule file that lost a rule to an override as the apply wrote it" {
+  copy_skill
+  printf '\n<!-- rule id=testing/unit-runner -->\n- Use Vitest for unit tests.\n' \
+    >> "$content_dir/profiles/software-development/rules/testing-scope.md"
+  publish_pack_repository
+  printf '\n<!-- rule id=kafka/runner overrides=golfo:testing/unit-runner -->\n- Use Jest for Kafka consumers.\n' \
+    >> "$pack_repository/profiles/kafka-interno/rules/acme-kafka.md"
+  git -C "$pack_repository" commit -qam "replace the unit runner rule"
+  write_manifest acme/kafka-interno '{"updates": {"mode": "pinned"}, "sources": {"packs": [{"name": "acme", "source": "git+https://packs.example.invalid/acme", "ref": "main", "updates": "auto"}]}}'
+  run_bootstrap
+  [ "$status" -eq 0 ]
+  ! grep -Fq 'Use Vitest for unit tests.' .agents/rules/testing-scope.md
+
+  # Nothing changed: the file without the rule is not a release pending.
+  run_session_start AGENT_READY_SETUP_SYNC_FOREGROUND=1 AGENT_READY_SETUP_MARKETPLACE_UPGRADED=1
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"has a release pending"* ]]
+  [[ "$output" == *"projection completed"* ]]
+}
+
 @test "pinned content counts what a profile only a workspace selects projects" {
   copy_skill
   publish_pack_repository

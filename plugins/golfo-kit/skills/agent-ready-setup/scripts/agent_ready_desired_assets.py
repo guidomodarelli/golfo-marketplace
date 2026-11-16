@@ -514,7 +514,7 @@ def compose_stack_directory(skill_dir, catalog, resolved, compose_root, workspac
     overridden = shared_overrides(skill_dir, catalog, resolved, workspace_profiles)
     # The instruction scripts read rules/ of the tree: a stack without rules of its own (a pack stack
     # that only publishes its section) is composed, which gives the tree an empty rules/.
-    if not overridden and not workspace_rules and not shared_profiles and primary and asset_profiles == [primary] and \
+    if not overridden and not workspace_rules and not shared_profiles and not shared_texts and primary and asset_profiles == [primary] and \
             os.path.isdir(os.path.join(profile_asset_root(skill_dir, catalog, primary), "rules")):
         return profile_asset_root(skill_dir, catalog, primary)
 

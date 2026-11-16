@@ -110,6 +110,7 @@ from agent_ready_profiles import (
     resolved_tools,
 )
 from agent_ready_review_findings import project_owned_instructions, review_summary
+from agent_ready_rule_overrides import resolved_rule_overrides, rule_override_texts
 from agent_ready_source_identity import (
     golfo_blocks,
     merged_template_entries,
@@ -216,7 +217,8 @@ def composed_workspace_assets(skill_dir, catalog, resolved, workspaces):
     """
     workspace_profiles = workspace_selection.added_profiles(resolved, workspaces)
     workspace_rules = workspace_rule_files(skill_dir, catalog, workspaces)
-    shared_texts = workspace_shared_texts(skill_dir, catalog, workspaces, workspace_profiles, workspace_rules)
+    shared_texts = rule_override_texts(skill_dir, catalog, resolved)
+    shared_texts.update(workspace_shared_texts(skill_dir, catalog, workspaces, workspace_profiles, workspace_rules))
     assets = desired_assets(skill_dir, catalog, resolved, workspace_rules, workspace_profiles, shared_texts)
     return workspace_profiles, workspace_rules, shared_texts, assets
 
@@ -349,6 +351,7 @@ def compute_plan(project_root, skill_dir, catalog, profile_names):
         "overrides": [{"profile": by, "replaces": f"{target}{ASSET_REFERENCE_SEPARATOR}{path}"}
                       for target, paths in sorted(shared_overrides(skill_dir, catalog, resolved, workspace_profiles).items())
                       for path, by in sorted(paths.items())],
+        "ruleOverrides": resolved_rule_overrides(skill_dir, catalog, resolved),
     }
 
 
@@ -653,6 +656,9 @@ def print_plan(project_root, skill_dir, plan, provider, skip_marketplace_upgrade
         write_line(f"Defaults left out: {', '.join(excluded)} ({EXCLUDED_DEFAULTS_KEY})")
     for override in plan.get("overrides", []):
         write_line(f"Overridden: {override['replaces']} by {override['profile']} (only its own asset is projected)")
+    for override in plan.get("ruleOverrides", []):
+        write_line(f"Rule overridden: {override['replaces']} by {override['rule']} of {override['profile']} "
+                   f"({override['targetPath']} keeps its other rules)")
     for workspace in plan.get("workspaces", []):
         write_line(f"Workspace {workspace_selection.describe(workspace)}")
         if workspace.get("rules"):
