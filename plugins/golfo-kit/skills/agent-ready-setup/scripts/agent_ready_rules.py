@@ -84,7 +84,7 @@ SKIPPED_DIRECTORIES = (".git", "node_modules")
 class Rule:
     """One atomic rule as it is written in its file."""
 
-    def __init__(self, path, line, metadata, statement, exceptions, details):
+    def __init__(self, path, line, metadata, statement, exceptions, details, span=None):
         self.path = path
         self.line = line
         self.id = metadata.get(ATTRIBUTE_ID)
@@ -96,6 +96,8 @@ class Rule:
         self.statement = statement
         self.exceptions = exceptions
         self.details = details
+        # (first, after last) line index of the marker and its bullet in the text, for remove_rules.
+        self.span = span
 
     def canonical(self):
         """The rule without its formatting: what two equal rules share, and what the hash covers."""
@@ -308,7 +310,7 @@ def read_entry(lines, index, marker, path, rules, findings):
         break
     if not problems:
         statement, exceptions, details = split_items(body)
-        rules.append(Rule(path, bullet_index + 1, metadata, statement, exceptions, details))
+        rules.append(Rule(path, bullet_index + 1, metadata, statement, exceptions, details, (index, cursor)))
     return cursor
 
 
@@ -420,3 +422,26 @@ def read_rules(paths, display_root):
         rules.extend(file_rules)
         findings.extend(file_findings)
     return rules, findings
+
+
+def remove_rules(text, rule_ids):
+    """The text of a rule file without the rules whose id is in ``rule_ids``: marker, bullet and sub-bullets.
+
+    The neighbours, the prose and the line endings of the file stay as they are, so the other rules keep
+    their hash. A blank line left doubled by the removal is dropped.
+    """
+    newline = "\r\n" if "\r\n" in text else "\n"
+    lines = text.replace("\r\n", "\n").split("\n")
+    rules, _ = parse_rule_text(text, "")
+    removed = set()
+    for rule in rules:
+        if rule.id in rule_ids:
+            removed.update(range(*rule.span))
+    kept = []
+    for index, line in enumerate(lines):
+        if index in removed:
+            continue
+        if not line.strip() and kept and not kept[-1].strip() and index - 1 in removed:
+            continue
+        kept.append(line)
+    return newline.join(kept)

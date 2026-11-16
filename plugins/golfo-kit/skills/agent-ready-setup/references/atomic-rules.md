@@ -114,3 +114,32 @@ agent-ready rules lint [--path <archivo|carpeta>]... [--json]         # atomicid
   ```
 
   En el CI del pack va el mismo comando.
+
+## 5. Reemplazar una sola rule
+
+Una rule de un profile de la selección reemplaza una rule de otro profile con
+`overrides=<fuente>:<id>`. La `<fuente>` es el nombre del pack de un profile con namespace (`acme` para
+`acme/backend`) o `golfo` para el contenido oficial:
+
+```markdown
+<!-- rule id=kafka/logger overrides=acme:conventions/logger -->
+- Log Kafka consumers with the structured Kafka logger.
+```
+
+- **Qué se proyecta:** el archivo de la rule reemplazada sin esa rule. Las demás rules del archivo, la prosa y
+  su hash quedan igual. `plan` lo muestra como `Rule overridden: <fuente>:<id> by <fuente>:<id> of <profile>`.
+- **El texto:** el plan y la proyección leen el mismo archivo, guardado en la caché por usuario por su sha256.
+  Así el lock registra los mismos bytes que quedaron en el repo.
+- **Falla antes de escribir:**
+  - un `overrides` sin la fuente;
+  - una rule que ningún profile de la selección publica;
+  - una rule `locked`;
+  - una rule del mismo profile;
+  - una rule del núcleo;
+  - dos rules que reemplazan la misma;
+  - el mismo id publicado dos veces por la misma fuente.
+- **Hoy cubre** las rules de los profiles de la raíz de la selección. Que una rule propia del proyecto o de un
+  workspace reemplace una rule gestionada llega en la próxima parte de #168.
+
+Para reemplazar un archivo entero sigue estando el `overrides` del profile
+([profiles.md](profiles.md)).

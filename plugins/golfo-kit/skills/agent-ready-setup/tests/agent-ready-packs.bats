@@ -1086,6 +1086,72 @@ PY
   [ -f .agents/rules/lint-gate.md ]
 }
 
+# Atomic rules of the example pack: two conventions of acme/base, one of them locked, and a Kafka rule
+# of acme/kafka-interno whose marker gets the attributes the test passes.
+write_atomic_pack_rules() {
+  cat > "$pack_dir/profiles/base/rules/acme-conventions.md" <<'EOF'
+# Acme conventions
+
+<!-- rule id=conventions/logger key=logging.library -->
+- Log with the Acme logger.
+  - Except: scripts that run once may print to stdout.
+
+<!-- rule id=conventions/errors locked -->
+- Wrap every error with the operation that failed.
+
+<!-- rule id=conventions/naming -->
+- Name services after their domain.
+EOF
+  cat > "$pack_dir/profiles/kafka-interno/rules/acme-kafka.md" <<EOF
+# Kafka
+
+<!-- rule id=kafka/logger $1 -->
+- Log Kafka consumers with the structured Kafka logger.
+EOF
+}
+
+@test "a rule that overrides one rule of another profile removes only that rule from its file" {
+  copy_example_pack
+  write_atomic_pack_rules "overrides=acme:conventions/logger"
+  write_manifest acme/kafka-interno "acme=path:../acme-pack"
+
+  run_bootstrap --plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Rule overridden: acme:conventions/logger by acme:kafka/logger of acme/kafka-interno (rules/acme-conventions.md keeps its other rules)"* ]]
+
+  run_bootstrap
+  [ "$status" -eq 0 ]
+  ! grep -q 'Log with the Acme logger' .agents/rules/acme-conventions.md
+  ! grep -q 'scripts that run once' .agents/rules/acme-conventions.md
+  grep -q 'Wrap every error with the operation that failed.' .agents/rules/acme-conventions.md
+  grep -q 'Name services after their domain.' .agents/rules/acme-conventions.md
+  grep -q 'structured Kafka logger' .agents/rules/acme-kafka.md
+  # The lock records the bytes the projection wrote, so the next plan sees nothing to change.
+  [ "$(lock_value 'data["assets"][".agents/rules/acme-conventions.md"]["sha256"]')" = \
+    "$(python3 -c 'import hashlib, sys; print(hashlib.sha256(open(sys.argv[1], "rb").read().replace(b"\r\n", b"\n")).hexdigest())' .agents/rules/acme-conventions.md)" ]
+
+  write_atomic_pack_rules ""
+  run_bootstrap
+  [ "$status" -eq 0 ]
+  grep -q 'Log with the Acme logger' .agents/rules/acme-conventions.md
+}
+
+@test "a rule override that is unqualified, unknown, of a locked rule or of its own profile fails before writing" {
+  copy_example_pack
+  write_manifest acme/kafka-interno "acme=path:../acme-pack"
+  before="$(tree_fingerprint)"
+  for attributes in 'overrides=conventions/logger|name the rule with its source' \
+                    'overrides=acme:conventions/absent|which no selected profile publishes' \
+                    'overrides=acme:conventions/errors|which is locked' \
+                    'overrides=acme:kafka/logger|a rule of the same profile'; do
+    write_atomic_pack_rules "${attributes%%|*}"
+    run_bootstrap
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"${attributes#*|}"* ]]
+    [ "$(tree_fingerprint)" = "$before" ]
+  done
+}
+
 @test "an override of something the selection does not have, or of the core, fails before writing" {
   copy_example_pack
   write_manifest acme/kafka-interno "acme=path:../acme-pack"

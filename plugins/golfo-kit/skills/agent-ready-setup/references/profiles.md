@@ -14,7 +14,7 @@ de CI del motor (`assets/ci/profiles.json`). Cada profile declara:
 | `requires` | profiles que se agregan antes, en orden; siempre vienen |
 | `defaults` | profiles que trae al elegirlo, después de la selección; el repo puede dejarlos afuera con `excludedDefaults` |
 | `conflicts` | profiles incompatibles; seleccionarlos juntos es error |
-| `overrides` | assets de otro profile de la selección que este reemplaza a propósito, como `<profile>:<path>` (`software-development:rules/testing-scope.md`, o `react:skills/component-creation` para una skill): se proyecta solo el suyo y `plan` lo muestra (`Overridden: …`). Reemplazar algo que la selección no tiene, o el núcleo (`common`), falla antes de escribir |
+| `overrides` | assets de otro profile de la selección que este reemplaza a propósito, como `<profile>:<path>` (`software-development:rules/testing-scope.md`, o `react:skills/component-creation` para una skill): se proyecta solo el suyo y `plan` lo muestra (`Overridden: …`). Reemplazar algo que la selección no tiene, o el núcleo (`common`), falla antes de escribir. Para reemplazar una sola rule de un archivo, `overrides` va en la rule ([atomic-rules.md](atomic-rules.md), sección 5) |
 | `complements` | skills o herramientas de otros profiles con las que este va junto, como `<profile>:skills/<nombre>`, `<profile>:mcpServers/<nombre>` o `<profile>:clis/<nombre>`: declara que no compiten, y el aviso de herramientas que compiten por la misma capacidad (`provides`) no sale |
 | `tools` | herramientas que el apply instala o registra (`browser`) |
 | `detect` | señales estáticas para detectar el profile; opcional (ver [detection.md](detection.md)) |
