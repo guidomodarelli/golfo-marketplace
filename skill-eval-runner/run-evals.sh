@@ -1473,11 +1473,17 @@ run_trigger_query() {
         echo "$BASELINE_INFRASTRUCTURE"
         return 0
     fi
-    jq -rs --arg name "$stub_name" --arg triggered "$TRIGGER_TRIGGERED" --arg not_triggered "$TRIGGER_NOT_TRIGGERED" '
-        [.[] | select(.type == "assistant") | .message.content[]? | select(.type == "tool_use")] | first
-        | if . == null then $not_triggered
-          elif .name == "Skill" and ((.input.skill // "") | contains($name)) then $triggered
-          elif .name == "Read" and ((.input.file_path // "") | contains($name)) then $triggered
+    # The first tool call decides, whatever ends the run afterwards (TRIGGER_MAX_TURNS cuts it on
+    # purpose). Without one, only a run that finished successfully answered in text: a failed or
+    # truncated run says nothing about the description.
+    jq -rs --arg name "$stub_name" --arg triggered "$TRIGGER_TRIGGERED" --arg not_triggered "$TRIGGER_NOT_TRIGGERED" \
+        --arg infrastructure "$BASELINE_INFRASTRUCTURE" '
+        ([.[] | select(.type == "assistant") | .message.content[]? | select(.type == "tool_use")] | first) as $call
+        | ([.[] | select(.type == "result")] | last) as $result
+        | if $call == null then
+            (if $result != null and ($result.is_error | not) and $result.subtype == "success" then $not_triggered else $infrastructure end)
+          elif $call.name == "Skill" and (($call.input.skill // "") | contains($name)) then $triggered
+          elif $call.name == "Read" and (($call.input.file_path // "") | contains($name)) then $triggered
           else $not_triggered end
     ' "$stream_file" 2>/dev/null || echo "$BASELINE_INFRASTRUCTURE"
 }
@@ -1500,7 +1506,9 @@ run_trigger_evals() {
         echo -e "${RED}ERROR: Invalid trigger evals: $trigger_file needs a non-empty array of {query, should_trigger}${NC}" >&2
         return 1
     fi
-    skill_name=$(awk '/^name:[[:space:]]*/ { sub(/^name:[[:space:]]*/, ""); print; exit }' "$skill_md" | tr -d '\r')
+    # The scalar, without the YAML quotes a valid frontmatter may put around it.
+    skill_name=$(awk '/^name:[[:space:]]*/ { sub(/^name:[[:space:]]*/, ""); print; exit }' "$skill_md" | tr -d '\r' \
+        | sed -E "s/[[:space:]]+\$//; s/^\"(.*)\"\$/\\1/; s/^'(.*)'\$/\\1/")
     total=$(jq 'length' "$trigger_file")
 
     local work_root
@@ -1549,7 +1557,9 @@ run_trigger_evals() {
             negatives=$((negatives + 1)); negative_runs=$((negative_runs + graded)); negative_triggered=$((negative_triggered + triggered_runs))
             passes=$((graded - triggered_runs))
         fi
-        if [ "$graded" -eq 0 ]; then
+        # An ungraded run shrinks the sample the request asked for, so it never passes as a whole: the
+        # request is infrastructure, with the runs it did grade still in the line.
+        if [ "$graded" -lt "$EVAL_REPEAT" ]; then
             status="$BASELINE_INFRASTRUCTURE"; infrastructure=$((infrastructure + 1)); failed=$((failed + 1))
         elif [ "$passes" -eq "$graded" ]; then
             status="passed"; passed=$((passed + 1))

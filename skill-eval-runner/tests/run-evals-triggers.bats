@@ -36,6 +36,9 @@ name=$(basename "$stub_dir")
 } >> "$STUB_LOG"
 query="$*"
 case "$query" in
+  *FLIPLOAD*)
+    calls_file="${STUB_LOG}.calls"; call=$(( $(cat "$calls_file" 2>/dev/null || echo 0) + 1 )); echo "$call" > "$calls_file"
+    [ $((call % 2)) -eq 1 ] && query="TRIGGER" || query="NOLOAD TRIGGER" ;;
   *FLIP*)
     calls_file="${STUB_LOG}.calls"; call=$(( $(cat "$calls_file" 2>/dev/null || echo 0) + 1 )); echo "$call" > "$calls_file"
     [ $((call % 2)) -eq 1 ] && query="TRIGGER" || query="IGNORE" ;;
@@ -45,10 +48,18 @@ case "$query" in
   *) jq -nc --arg name "$name" '{type: "system", subtype: "init", skills: [$name, "other-skill"]}' ;;
 esac
 case "$query" in
+  # The provider fails after loading the skill, before any tool call.
+  *ERROR*) jq -nc '{type: "result", subtype: "error_during_execution", is_error: true}'; exit 1 ;;
+  # The model answers in text, without a tool call, and the run ends normally.
+  *TEXT*)
+    jq -nc '{type: "assistant", message: {content: [{type: "text", text: "Use a sort function."}]}}'
+    jq -nc '{type: "result", subtype: "success", is_error: false}'
+    exit 0 ;;
   *TRIGGER*) jq -nc --arg name "$name" '{type: "assistant", message: {content: [{type: "tool_use", name: "Skill", input: {skill: $name}}]}}' ;;
   *) jq -nc '{type: "assistant", message: {content: [{type: "tool_use", name: "Bash", input: {command: "ls"}}]}}' ;;
 esac
-jq -nc '{type: "result", subtype: "error_max_turns"}'
+jq -nc '{type: "result", subtype: "error_max_turns", is_error: true}'
+exit 1
 CLAUDE_STUB
     chmod +x "${STUB_BIN}/claude"
 }
@@ -161,4 +172,52 @@ run_triggers() {
 
     run --separate-stderr env "PATH=${STUB_BIN}:${PATH}" "GOLFO_MARKETPLACE_EVAL_PROVIDER=claude" "${EVAL_RUNNER}" --triggers --all
     [ "$status" -eq 2 ]
+}
+
+@test "a run that fails before any tool call is not graded, even for a request that should not trigger" {
+    write_triggers '[{"query": "ERROR now", "should_trigger": false}]'
+
+    run_triggers
+    report="$output"
+
+    [ "$status" -eq 1 ]
+    run jq -e 'select(.event == "trigger" and .graded == 0 and .status == "infrastructure")' <<< "$report"
+    [ "$status" -eq 0 ]
+    run jq -e 'select(.event == "trigger_summary" and .false_trigger_rate == null)' <<< "$report"
+    [ "$status" -eq 0 ]
+}
+
+@test "an answer in text that ends normally counts as not triggered" {
+    write_triggers '[{"query": "TEXT only", "should_trigger": false}]'
+
+    run_triggers
+    report="$output"
+
+    [ "$status" -eq 0 ]
+    run jq -e 'select(.event == "trigger" and .graded == 1 and .triggered == 0 and .status == "passed")' <<< "$report"
+    [ "$status" -eq 0 ]
+}
+
+@test "with --repeat, a request with an ungraded run does not pass" {
+    write_triggers '[{"query": "FLIPLOAD", "should_trigger": true}]'
+
+    run_triggers --repeat 2
+    report="$output"
+
+    [ "$status" -eq 1 ]
+    run jq -e 'select(.event == "trigger" and .runs == 2 and .graded == 1 and .triggered == 1 and .status == "infrastructure")' <<< "$report"
+    [ "$status" -eq 0 ]
+    run jq -e 'select(.event == "trigger_summary" and .infrastructure == 1 and .passed == 0)' <<< "$report"
+    [ "$status" -eq 0 ]
+}
+
+@test "a quoted name in the frontmatter still gives a valid copy" {
+    sed -i "s/^name: .*/name: \"${SKILL_NAME}\"/" "${SKILL_DIR}/SKILL.md"
+    write_triggers '[{"query": "TRIGGER please", "should_trigger": true}]'
+
+    run_triggers
+    report="$output"
+
+    [ "$status" -eq 0 ]
+    grep -Eq "^skill_md_name=name: ${SKILL_NAME}-trigger-q0-r1$" "${STUB_LOG}"
 }
