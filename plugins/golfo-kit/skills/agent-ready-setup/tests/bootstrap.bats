@@ -1502,6 +1502,7 @@ EOF
     [ "$status" -eq 0 ]
     [ -f .agents/hooks/harness-review.py ]
     [ -f .agents/hooks/review-cache.py ]
+    [ -f .agents/hooks/rule-format.py ]
     # The patch already ran when PostToolUse fires: its files are on disk. Their content is new
     # for each stack, so no pair of them comes from the review cache of the previous stack.
     printf '%s\n' "# Testing for $stack" > .agents/rules/testing.md

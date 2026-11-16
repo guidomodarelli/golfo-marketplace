@@ -188,7 +188,8 @@ json.dump(data, open(path, "w", encoding="utf-8"))' "$1" "$2"
   printf '%s\n' '{"findings": [{"pair": 1, "documents": [".agents/rules/style.md", ".agents/rules/testing.md#testing/mocks"],
     "lines": ["Never mock dependencies.", "Mock every dependency, even the clock."], "kind": "contradiction",
     "text": "Mocks are both required and forbidden."}]}' > "$FAKE_RESPONSE"
-  sed -i 's/Mock every dependency\./Mock every dependency, even the clock./' .agents/rules/testing.md
+  sed -i.bak 's/Mock every dependency\./Mock every dependency, even the clock./' .agents/rules/testing.md
+  rm -f .agents/rules/testing.md.bak
   run_hook .agents/rules/testing.md
   [ "$(calls)" -eq 2 ]
   # Only the changed rule goes back to the provider; the pairs of its neighbor stay cached.
@@ -201,6 +202,50 @@ json.dump(data, open(path, "w", encoding="utf-8"))' "$1" "$2"
   run_cli review list --json
   [ "$status" -eq 0 ]
   echo "$output" | python3 -c 'import json, sys; assert [finding["files"] for finding in json.load(sys.stdin)["findings"]] == [[".agents/rules/style.md", ".agents/rules/testing.md#testing/mocks"]]'
+}
+
+@test "a rule is reviewed with the titles and paragraphs above it, and a rule inside a code block is not one" {
+  printf '%s\n' '# Unit tests' '' 'These rules apply only to unit tests.' '' '<!-- rule id=testing/mocks -->' \
+    '- Mock every dependency.' '' '````markdown' '```' '<!-- rule id=example/rule -->' '- An example rule.' '```' '````' \
+    '' '# Naming' '' '<!-- rule id=testing/names -->' '- Name tests after the behavior.' > .agents/rules/testing.md
+  run_hook .agents/rules/testing.md
+  [ "$status" -eq 0 ]
+  # Two rules and the rest of the file, each paired with style.md and the skill.
+  [[ "$output" == *"reviewing 6 of 6 pairs with claude (0 from the cache)"* ]]
+  python3 - "$FAKE_INPUT" <<'PY'
+import re, sys
+text = open(sys.argv[1], encoding="utf-8").read()
+documents = dict(re.findall(r'<document path="([^"]+)">\n(.*?)\n</document>', text, re.S))
+mocks = documents[".agents/rules/testing.md#testing/mocks"]
+assert "# Unit tests" in mocks and "These rules apply only to unit tests." in mocks, mocks
+assert "# Naming" not in mocks, mocks
+assert "These rules apply" not in documents[".agents/rules/testing.md#testing/names"]
+assert not any("example/rule" in name for name in documents), sorted(documents)
+assert "An example rule." in documents[".agents/rules/testing.md#"]
+PY
+
+  # Changing the title of a section reviews again the rules under it and the rest of the file, not the others.
+  sed -i.bak 's/^# Unit tests$/# Integration tests/' .agents/rules/testing.md
+  rm -f .agents/rules/testing.md.bak
+  run_hook .agents/rules/testing.md
+  [[ "$output" == *"reviewing 4 of 6 pairs with claude (2 from the cache)"* ]]
+  ! grep -Fq 'testing.md#testing/names' "$FAKE_INPUT"
+}
+
+@test "an instructions review of a rule file split into rules stays current while the file does not change" {
+  printf '%s\n' '# Testing' '' '<!-- rule id=testing/mocks -->' '- Mock every dependency.' > .agents/rules/testing.md
+  run python3 -B - "$cache_script" <<'PY'
+import importlib.util, sys
+specification = importlib.util.spec_from_file_location("review_cache", sys.argv[1])
+module = importlib.util.module_from_spec(specification)
+specification.loader.exec_module(module)
+# A review of whole files (the AGENTS.md review) names the file; its hash is the one of the whole file.
+hashes = module.file_hashes(".", [".agents/rules/testing.md", ".agents/rules/testing.md#testing/mocks"])
+whole = module.text_hash(module.normalized_text(".agents/rules/testing.md"))
+assert hashes[".agents/rules/testing.md"] == whole, hashes
+assert hashes[".agents/rules/testing.md#testing/mocks"] not in (None, whole), hashes
+PY
+  [ "$status" -eq 0 ]
 }
 
 @test "pairs the provider did not answer leave the check incomplete, never clean" {
