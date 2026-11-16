@@ -905,6 +905,33 @@
           "description": "Al pasar el tope sale con el comando para seguir"
         }
       ]
+    },
+    {
+      "id": "help-one-color-per-role",
+      "description": "Una ayuda donde todo sale del color de la marca pasa a un color por papel: títulos, comandos, flags y también los papeles que el pedido no nombra, legible sobre fondo oscuro y claro.",
+      "input": "Mi CLI en Python `harbor` (subcomandos `deploy` y `rollback`, flags `--env`, `--region` y `--dry-run`) ya tiene un --help en dos columnas con color, pero todo sale en el violeta de la marca: el nombre, los encabezados, los subcomandos y las flags. Se ve todo igual y no encuentro nada. Arreglá los colores del --help y devolvé el helper completo.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "(un|cada) color (por|para cada) (papel|rol)|color por (papel|rol)|(papel|papeles|rol|roles)[^.]{0,80}(no comparten|distint)|no comparten (el )?(mismo )?color",
+          "description": "Asigna un color propio a cada papel de la ayuda"
+        },
+        {
+          "type": "regex",
+          "pattern": "variables? de entorno|env(ironment)?[ _-]?var|comandos? citad|c[oó]digo citad|inline code",
+          "description": "Cubre papeles que el pedido no nombra (variables de entorno o comandos citados)"
+        },
+        {
+          "type": "regex",
+          "pattern": "fondo claro|fondos? (oscuro y claro|claro y oscuro)|tema claro|light (background|theme)|dark and light|light and dark",
+          "description": "Elige tonos que se lean sobre fondo oscuro y claro"
+        },
+        {
+          "type": "regex",
+          "pattern": "(violeta|marca|brand)[^.]{0,120}(solo|s[oó]lo|only|reserv|únicamente)[^.]{0,80}(nombre|name|tarjeta|card|banner|encabezado de la corrida)",
+          "description": "Deja el color de la marca solo para el nombre"
+        }
+      ]
     }
   ]
 }

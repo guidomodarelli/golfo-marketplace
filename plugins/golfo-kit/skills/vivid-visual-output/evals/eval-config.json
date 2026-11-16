@@ -219,6 +219,33 @@
           "description": "Sin terminal sigue mostrando progreso con un latido, sin animación"
         }
       ]
+    },
+    {
+      "id": "cli-palette-one-color-per-role",
+      "description": "La paleta de un CLI nuevo da un color a cada papel (títulos, comandos, flags, variables, datos atenuados, estados), sin repartir todo en un acento, y se prueba sobre fondo oscuro y claro.",
+      "input": "Arrancamos `ferry-times`, un CLI en Node que muestra horarios de ferris. Va a tener un --help con subcomandos y flags, pasos numerados, una tabla y estados de cada salida. Definí la paleta como constantes y el módulo que pinta la ayuda. Devolvé el archivo completo.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "(un|cada) color (por|para cada) (papel|rol)|color por (papel|rol)|(papel|papeles|rol|roles)[^.]{0,80}(no comparten|distint)|no comparten (el )?(mismo )?color",
+          "description": "Da un color propio a cada papel de la salida"
+        },
+        {
+          "type": "regex",
+          "pattern": "variables? de entorno|env(ironment)?[ _-]?var|comandos? citad|c[oó]digo citad|inline code",
+          "description": "Incluye papeles que el pedido no nombra (variables de entorno o comandos citados)"
+        },
+        {
+          "type": "regex",
+          "pattern": "fondo claro|fondos? (oscuro y claro|claro y oscuro)|tema claro|light (background|theme)|dark and light|light and dark",
+          "description": "Elige tonos que se lean sobre fondo oscuro y claro"
+        },
+        {
+          "type": "regex",
+          "pattern": "(marca|brand)[^.]{0,120}(solo|s[oó]lo|only|reserv|únicamente)[^.]{0,80}(nombre|name|tarjeta|card|banner|contador|\\[[0-9]/)",
+          "description": "Deja el color de la marca para el nombre y el contador de pasos, no repetido en todo"
+        }
+      ]
     }
   ]
 }
