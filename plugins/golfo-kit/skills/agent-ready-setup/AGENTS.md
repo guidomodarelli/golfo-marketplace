@@ -8,6 +8,27 @@ Esta skill es el motor: no tiene rules, skills de stack, agents, commands, catá
 2. Los tests del motor proyectan el pack oficial en el tag de `tests/content-pack.ref`, que clona `tests/prepare-content-pack.sh`. Un cambio del motor que necesita contenido nuevo se publica primero en el pack, con su tag, y después sube esa ref.
 3. El catálogo de «Step 4 — Report» en `SKILL.md` describe el pack oficial en la versión de `tests/content-pack.ref`: actualizarlo cuando sube la ref.
 
+## Evals
+
+`evals/eval-config.json` mide el motor y `evals/trigger-evals.json` mide la activación del `description`. Se corren con `run-evals` (README, «Correr evals localmente»).
+
+1. **Qué caso va acá:** uno que prueba lo que hace el motor, como la detección, el CLI, la configuración, los packs, las revisiones de IA, los workspaces, la CI o las actualizaciones. Un caso que mide el texto de una rule o de una skill del pack va a los evals del pack, en `<stack|profile|base>/evals/` de golfo-agent-profiles: la copia de la skill que lee el agente evaluado no trae ese contenido.
+2. **En cada PR que cambia la skill:** correr con `--baseline --repeat 3` los casos nuevos o modificados y los del área que toca el cambio, con `--config` y una copia de solo esos casos.
+   - Un caso nuevo pasa 3/3 con la skill y falla sin ella.
+   - Si pasa sin la skill porque el modelo ya lo hace bien por defecto, se marca `"control": "<motivo>"`.
+   - El resultado va en «Pruebas Manuales» del PR.
+3. **Al cambiar el `description`:** correr `--triggers --repeat 3` y comparar `trigger_rate` y `false_trigger_rate` con la última corrida. El `description` no puede pasar de 1024 caracteres: para sumar un disparador hay que recortar otro.
+4. **La baseline completa** (`--baseline --repeat 3` de todos los casos, más `--triggers --repeat 3`) se corre en estos momentos, y el resultado se enlaza en la issue o en el PR:
+   - al subir `tests/content-pack.ref` a una versión minor o major del pack;
+   - al cerrar una issue del roadmap (#91);
+   - al menos una vez por mes.
+5. **Una aserción mide comportamiento, no redacción.**
+   - **Antes de cambiar una aserción** que falla, leer la respuesta guardada: si la respuesta cumple, la aserción está mal; si no cumple, el problema es de la skill.
+   - **`contains` y `contains_any` son regex de `grep`:** escapar `[` y `]` cuando son literales.
+   - **Una regex se evalúa por línea.** Un `[^.]` corta en el punto de un nombre de archivo.
+   - **Aceptar las variantes correctas:** sinónimos, plural, mayúsculas, rutas entre comillas.
+   - **No usar `not_contains_any`** con algo que una respuesta correcta nombra para rechazarlo, como «no uso `eslint-disable`».
+
 ## Consistencia de instrucciones
 
 Al agregar o modificar un template de instrucciones o cualquier otra instrucción de este skill:
