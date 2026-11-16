@@ -31,7 +31,7 @@ La skill escribe con `contentFormat: "markdown"`; la integración Atlassian lo c
 - **Una fila por hijo, una celda por estado.** Cambiar el estado de un hijo es reescribir solo la celda `Estado` de su fila. La línea `Progreso` es derivada: la skill la recalcula desde las filas en la misma escritura; si una persona edita a mano una celda, la próxima sincronización corrige el contador. Formato exacto, el mismo que escribe `tracking`: `**Progreso:** <done>/<total> ✅ · <en curso> 🔄 · <pendientes> ⬜`, con las tres cifras siempre, aunque alguna sea 0. Un hijo bloqueado cuenta solo como 🚫 y, si hay alguno, se agrega al final `· <bloqueados> 🚫` (por ejemplo `**Progreso:** 2/3 ✅ · 0 🔄 · 0 ⬜ · 1 🚫`). Todas las filas llevan el emoji de su estado, también las que no cambiaron.
 - **Orden estable** por key numérica, para que agregar un hijo sea insertar una fila sin mover las demás.
 - **Responsable**: nombre visible que devuelve Jira, o `—` sin asignar. No usar emails ni account ids.
-- **PR**: solo `owner/repo#n` como texto, sin URL ni estado GitHub. La URL canónica vive una sola vez en `## Pull requests` de la Story. Poner un PR en una fila solo cuando ese hijo tiene un PR propio; si un PR cubre toda la Story, la celda queda `—`. Si ningún hijo tiene PR propio, omitir la columna.
+- **PR**: solo `owner/repo#n` como texto, sin URL ni estado GitHub. La URL canónica vive una sola vez en `## Pull requests` de la Story. Poner un PR en una fila solo cuando ese hijo tiene un PR propio; si un PR cubre toda la Story, la celda queda `—`. Si ningún hijo tiene PR propio, omitir la columna; cuando un hijo nuevo trae el primero, `tracking` agrega la columna antes de `Nota` con `—` en las filas existentes.
 - **Marcadores.** Los headings de este template (`## Objetivo`, `## Stories`, `## Problema`, `## Tareas`…) delimitan secciones: la skill reescribe una sección desde su heading hasta el siguiente `##` y no toca nada más.
 
 ## Épica
@@ -103,13 +103,14 @@ Sin tabla, sin URLs de PR (puede nombrar el número y remitir a la Story) y sin 
 
 ## Lista de respaldo
 
-Si la relectura muestra que la tabla no se renderizó, usar una línea por hijo con el mismo orden y los mismos campos:
+Si la relectura muestra que la tabla no se renderizó, usar una línea por hijo con el mismo orden y los mismos campos: `<título> · <estado> · <responsable>`, más ` · <owner/repo#n>` si el hijo tiene PR propio y ` · Nota: <motivo>` si está bloqueado. El título puede contener ` · `: el helper lee los campos desde la derecha.
 
 ```markdown
 ## Tareas
-**Progreso:** 2/4 ✅ · 1 🔄 · 1 ⬜
+**Progreso:** 1/3 ✅ · 0 🔄 · 1 ⬜ · 1 🚫
 
 - ✅ [ACME-21](<SITE_URL>/browse/ACME-21) Migrar templates · Done · Ana Pérez · acme/payments-api#88
+- 🚫 [ACME-22](<SITE_URL>/browse/ACME-22) Revisar con producto · To Do · Luis Gómez · Nota: espera ACME-30
 - ⬜ [ACME-23](<SITE_URL>/browse/ACME-23) PR testeado · To Do · —
 ```
 
