@@ -110,7 +110,7 @@ from agent_ready_profiles import (
     resolved_tools,
 )
 from agent_ready_review_findings import project_owned_instructions, review_summary
-from agent_ready_rule_overrides import resolved_rule_overrides, rule_override_texts
+from agent_ready_rule_overrides import MANAGED_DESTINATION_PREFIX, resolved_rule_overrides, rule_override_texts
 from agent_ready_source_identity import (
     golfo_blocks,
     merged_template_entries,
@@ -210,25 +210,33 @@ def resolve_workspaces(project_root, catalog, profile_names, resolved, entries=N
                                        lambda names: resolve_project_profiles(catalog, names, project_root))
 
 
-def composed_workspace_assets(skill_dir, catalog, resolved, workspaces):
+def composed_workspace_assets(skill_dir, catalog, resolved, workspaces, project_root=None):
     """(profiles only workspaces select, workspace rules, shared texts, desired assets) of a selection.
+
+    ``project_root`` adds the overrides that the project's own rules declare (rule_override_texts).
 
     It raises ProfileError for what an apply cannot compose: an override of a root asset, two profiles of
     a workspace that publish one rule, two assets with one destination.
     """
     workspace_profiles = workspace_selection.added_profiles(resolved, workspaces)
     workspace_rules = workspace_rule_files(skill_dir, catalog, workspaces)
-    shared_texts = rule_override_texts(skill_dir, catalog, resolved)
+    shared_texts = rule_override_texts(skill_dir, catalog, resolved, project_root,
+                                       workspace_rule_destinations(workspace_rules))
     shared_texts.update(workspace_shared_texts(skill_dir, catalog, workspaces, workspace_profiles, workspace_rules))
     assets = desired_assets(skill_dir, catalog, resolved, workspace_rules, workspace_profiles, shared_texts)
     return workspace_profiles, workspace_rules, shared_texts, assets
+
+
+def workspace_rule_destinations(workspace_rules):
+    """The destinations of the rules the workspaces get (workspace_rule_files): managed, never the project's own."""
+    return {MANAGED_DESTINATION_PREFIX + tree_path for tree_path in workspace_rules}
 
 
 def check_workspace_composition(project_root, skill_dir, catalog, resolved, workspaces):
     """Raise ProfileError when an apply could not project these workspaces: their assets
     (composed_workspace_assets), the destinations of their packs and their blocks. agent-ready workspaces
     add runs it before it writes the manifest."""
-    _, workspace_rules, _, assets = composed_workspace_assets(skill_dir, catalog, resolved, workspaces)
+    _, workspace_rules, _, assets = composed_workspace_assets(skill_dir, catalog, resolved, workspaces, project_root)
     validate_pack_destinations(project_root, assets)
     root_blocks = desired_blocks(skill_dir, catalog, resolved, assets)
     workspace_file_blocks(skill_dir, catalog, workspaces, assets, root_blocks, workspace_rules)
@@ -249,7 +257,8 @@ def compute_plan(project_root, skill_dir, catalog, profile_names):
     """Build the read-only plan for the selected profiles."""
     resolved = resolve_project_profiles(catalog, profile_names, project_root)
     workspaces = resolve_workspaces(project_root, catalog, profile_names, resolved)
-    workspace_profiles, workspace_rules, _, assets = composed_workspace_assets(skill_dir, catalog, resolved, workspaces)
+    workspace_profiles, workspace_rules, _, assets = composed_workspace_assets(skill_dir, catalog, resolved, workspaces,
+                                                                              project_root)
     for workspace in workspaces:
         workspace["rules"] = sum(1 for entry in workspace_rules.values() if entry["workspace"] == workspace["path"])
         workspace["sharedAssets"] = sum(1 for entry in assets.values()
@@ -352,7 +361,8 @@ def compute_plan(project_root, skill_dir, catalog, profile_names):
         "overrides": [{"profile": by, "replaces": f"{target}{ASSET_REFERENCE_SEPARATOR}{path}"}
                       for target, paths in sorted(shared_overrides(skill_dir, catalog, resolved, workspace_profiles).items())
                       for path, by in sorted(paths.items())],
-        "ruleOverrides": resolved_rule_overrides(skill_dir, catalog, resolved),
+        "ruleOverrides": resolved_rule_overrides(skill_dir, catalog, resolved, project_root,
+                                                 workspace_rule_destinations(workspace_rules)),
     }
 
 
