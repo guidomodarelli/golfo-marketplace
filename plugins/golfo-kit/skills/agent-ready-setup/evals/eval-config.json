@@ -3226,6 +3226,37 @@
           "description": "Dice cómo verlo en el plan"
         }
       ]
+    },
+    {
+      "id": "rule-key-conflict-without-ai",
+      "description": "El usuario tiene una rule propia que decide lo mismo que una gestionada y quiere detectarlo sin IA.",
+      "input": "Una rule gestionada de agent-ready dice que usemos Vitest y yo tengo una rule propia en .agents/rules/ que dice Jest. Quiero que agent-ready detecte este tipo de choque sin llamar a ninguna IA, y que el CI falle por eso. ¿Cómo tengo que escribir mi rule y qué comando lo muestra? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "key=",
+          "description": "Declara la key de decisión en la rule",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "agent-ready conflicts",
+            "conflicts --offline",
+            "conflicts --json"
+          ],
+          "description": "Nombra agent-ready conflicts",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "ci.conflicts",
+            "agent-ready check"
+          ],
+          "description": "Dice cómo hacerlo fallar en CI"
+        }
+      ]
     }
   ]
 }

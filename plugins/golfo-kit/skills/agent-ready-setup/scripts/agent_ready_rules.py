@@ -345,6 +345,23 @@ def lint_rules(rules, warn_chars=DEFAULT_STATEMENT_WARN_CHARS, max_chars=DEFAULT
     return findings
 
 
+def key_conflicts(rules):
+    """[{key, rules}] of each decision key that two or more rules decide with different content.
+
+    Rules that decide a key alike are a duplicate, not a conflict, and are left out.
+    """
+    by_key = {}
+    for rule in rules:
+        if rule.key:
+            by_key.setdefault(rule.key, []).append(rule)
+    conflicts = []
+    for key, deciding in sorted(by_key.items()):
+        contents = {json.dumps(rule.content(), sort_keys=True) for rule in deciding}
+        if len(contents) > 1:
+            conflicts.append({"key": key, "rules": deciding})
+    return conflicts
+
+
 def set_findings(rules):
     """Findings that need the whole set: repeated ids, keys decided twice, equal rules, unknown requires."""
     findings = []

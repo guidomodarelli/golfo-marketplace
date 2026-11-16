@@ -135,6 +135,7 @@ from agent_ready_structural import (
     print_context_budget,
     print_parity_report,
     print_repo_reality,
+    print_rule_keys,
     print_settings_conflicts,
     structural_conflict_lines,
     structural_conflicts,
@@ -678,6 +679,7 @@ def print_plan(project_root, skill_dir, plan, provider, skip_marketplace_upgrade
         print_context_budget(plan["context"])
     print_machine_report(plan.get("machine"))
     print_repo_reality(plan.get("repoReality", []))
+    print_rule_keys(plan.get("ruleKeys", []))
     print_settings_conflicts(plan.get("settingsConflicts", {}))
     print_parity_report(plan.get("parity", {}))
     print_competing_tools(plan.get("competingTools", []))

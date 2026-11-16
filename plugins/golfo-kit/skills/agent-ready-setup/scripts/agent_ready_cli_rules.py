@@ -13,11 +13,11 @@ from agent_ready_cli_common import CLI_NAME, EXIT_FAILED, EXIT_OK, UsageError, f
 import agent_ready_common
 from agent_ready_common import StateError, serialize_json
 from agent_ready_config import resolve_configuration
+from agent_ready_options import RULES_ENABLED_KEY
 
 PROJECT_RULES_RELATIVE_PATH = ".agents/rules"
 STATEMENT_WARN_CHARS_KEY = "rules.statementWarnChars"
 MAX_STATEMENT_CHARS_KEY = "rules.maxStatementChars"
-RULES_ENABLED_KEY = "rules.enabled"
 LISTED_STATEMENT_CHARS = 100
 ELLIPSIS = "…"
 

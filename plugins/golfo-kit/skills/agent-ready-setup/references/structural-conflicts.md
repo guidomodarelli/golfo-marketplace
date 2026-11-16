@@ -3,7 +3,7 @@
 Los chequeos sin IA de una selección y los que comparan skills:
 - qué suma al contexto de cada sesión;
 - qué choca con lo instalado en la máquina;
-- qué rules contradice el repo;
+- qué rules contradice el repo, y qué rules deciden la misma `key` de forma distinta;
 - qué hooks, permisos o settings chocan;
 - la paridad entre providers, variables de entorno y CI;
 - qué skills compiten;
@@ -116,6 +116,23 @@ semántica. Para reemplazar la rule del contenido por la del proyecto, `override
 | Clave | Default | Efecto |
 |---|---|---|
 | `conflicts.repoReality.enabled` | `true` | `false` no compara las rules con el repo |
+
+### Rules que deciden lo mismo distinto
+
+Una rule atómica puede declarar la decisión que resuelve con `key` ([atomic-rules.md](atomic-rules.md)).
+Dos rules con la misma `key` y distinto statement o excepciones son un conflicto, sin llamar a ningún
+modelo. Pasa, por ejemplo, con una rule gestionada que dice Vitest y una propia del proyecto que dice Jest.
+
+- **Qué rules entran:** las que quedan en `.agents/rules/` después del apply, las gestionadas (ya sin las que
+  reemplaza un `overrides`) y las propias del proyecto.
+- **Workspaces:** una rule de un workspace se compara con las de la raíz, que valen para todo el repo, y nunca con
+  las de otro workspace: en un monorepo, `apps/web` puede usar Jest y `apps/admin` Vitest.
+- **Dónde aparece:** `plan`, `agent-ready conflicts` (sale con 6) y `check` con `ci.conflicts.structural`
+  muestran `! <key> is decided differently by <id> (<profile>, <archivo>:<línea>) and …`. En el JSON está bajo
+  `ruleKeys`.
+- **No es conflicto:** dos rules con la misma `key` y el mismo contenido. Eso es un duplicado, y lo reporta
+  `agent-ready rules lint`.
+- **Cómo apagarlo:** `rules.enabled: false` lo apaga, junto con el lint.
 
 ## 4. Hooks, permisos y settings
 
