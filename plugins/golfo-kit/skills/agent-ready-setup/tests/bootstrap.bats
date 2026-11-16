@@ -1729,20 +1729,25 @@ EOF
   fake_bin="$test_root/bin"
   invocation_log="$test_root/marketplace-invocation.log"
   hook="$skill_dir/assets/common/hooks/sync-marketplace.sh"
-  mkdir -p "$fake_bin"
+  # An empty home: a marketplace snapshot installed on this machine must not decide the source.
+  empty_home="$test_root/empty-home"
+  mkdir -p "$fake_bin" "$empty_home"
+  # Every call of a run is logged: the projection may call the CLI again after the upgrade.
   cat > "$fake_bin/claude" <<'EOF'
 #!/bin/bash
-printf '%s %s\n' "${0##*/}" "$*" > "$MARKETPLACE_INVOCATION_LOG"
+printf '%s %s\n' "${0##*/}" "$*" >> "$MARKETPLACE_INVOCATION_LOG"
 EOF
   chmod +x "$fake_bin/claude"
   cp -p "$fake_bin/claude" "$fake_bin/codex"
 
-  MARKETPLACE_INVOCATION_LOG="$invocation_log" PATH="$fake_bin:$PATH" \
+  : > "$invocation_log"
+  HOME="$empty_home" MARKETPLACE_INVOCATION_LOG="$invocation_log" PATH="$fake_bin:$PATH" \
     run bash "$hook" --provider claude
   [ "$status" -eq 0 ]
   grep -Fxq 'claude plugin marketplace update golfo-marketplace' "$invocation_log"
 
-  MARKETPLACE_INVOCATION_LOG="$invocation_log" PATH="$fake_bin:$PATH" \
+  : > "$invocation_log"
+  HOME="$empty_home" MARKETPLACE_INVOCATION_LOG="$invocation_log" PATH="$fake_bin:$PATH" \
     run bash "$hook" -p codex
   [ "$status" -eq 0 ]
   grep -Fxq 'codex plugin marketplace upgrade golfo-marketplace' "$invocation_log"
@@ -1751,8 +1756,10 @@ EOF
   cp "$hook" .agents/hooks/sync-marketplace.sh
   cp "${hook%/*}/agent-ready-skill-source.sh" .agents/hooks/
 
-  MARKETPLACE_INVOCATION_LOG="$invocation_log" PATH="$fake_bin:$PATH" \
-    run bash .agents/hooks/sync-marketplace.sh
+  # The Codex upgrade above opened its window; forcing the upgrade shows which CLI the path picks.
+  : > "$invocation_log"
+  AGENT_READY_SETUP_FORCE_UPGRADE=1 HOME="$empty_home" MARKETPLACE_INVOCATION_LOG="$invocation_log" \
+    PATH="$fake_bin:$PATH" run bash .agents/hooks/sync-marketplace.sh
   [ "$status" -eq 0 ]
   grep -Fxq 'codex plugin marketplace upgrade golfo-marketplace' "$invocation_log"
 
@@ -1760,10 +1767,8 @@ EOF
   [ "$status" -ne 0 ]
   [[ "$output" == *"unsupported marketplace provider"* ]]
 
-  # An empty home: a marketplace snapshot installed on this machine must not decide the source.
-  mkdir -p "$test_root/empty-home"
   run env -u AGENT_READY_SETUP_SKILL_DIR -u CODEX_HOME -u CLAUDE_CONFIG_DIR \
-    HOME="$test_root/empty-home" MARKETPLACE_INVOCATION_LOG="$invocation_log" PATH="$fake_bin:$PATH" \
+    HOME="$empty_home" MARKETPLACE_INVOCATION_LOG="$invocation_log" PATH="$fake_bin:$PATH" \
     bash "$hook" --provider claude
   [ "$status" -eq 0 ]
 }
