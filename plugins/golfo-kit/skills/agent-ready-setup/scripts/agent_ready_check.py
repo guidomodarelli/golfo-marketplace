@@ -182,7 +182,7 @@ def report_conflicts(plan, as_json):
     semantic, unchecked = semantic_conflict_lines(plan)
     found = bool(structural or semantic)
     if as_json:
-        keys = ("machine", "repoReality", "parity", "competingTools", "settingsConflicts", "semanticConflicts",
+        keys = ("machine", "repoReality", "ruleKeys", "parity", "competingTools", "settingsConflicts", "semanticConflicts",
                 "competingSkills")
         write_line(serialize_json({"structural": structural, "semantic": semantic, "unchecked": unchecked,
                                    "found": found, "details": {key: plan[key] for key in keys if key in plan}})

@@ -251,6 +251,34 @@ first_conflict_id() {
   [[ "$stderr" == *"could not be checked for semantic conflicts (claude gave no valid answer), so nothing was changed"* ]]
 }
 
+@test "a managed and a project rule that decide one key differently are a conflict found without any provider" {
+  printf '\n<!-- rule id=verification/runner key=testing.unit-runner -->\n- Use Vitest for unit tests.\n' \
+    >> "$content_dir/base/rules/verify-changes.md"
+  agent_ready apply --stack node
+  [ "$status" -eq 0 ]
+  mkdir -p .agents/rules
+  printf '<!-- rule id=team/runner key=testing.unit-runner -->\n- Use Jest for unit tests.\n' > .agents/rules/team.md
+  : > "$FAKE_CALLS"
+
+  agent_ready conflicts --offline
+  [ "$status" -eq 6 ]
+  [[ "$output" == *"testing.unit-runner is decided differently by"*"verification/runner (common, .agents/rules/verify-changes.md:"*"team/runner (project, .agents/rules/team.md:2)"* ]]
+  [ "$(calls)" -eq 0 ]
+
+  agent_ready conflicts --offline --json
+  [ "$(printf '%s' "$output" | python3 -c 'import json,sys; print(json.load(sys.stdin)["details"]["ruleKeys"][0]["key"])' | tr -d '\r')" = "testing.unit-runner" ]
+
+  # The same decision is a duplicate, not a conflict.
+  printf '<!-- rule id=team/runner key=testing.unit-runner -->\n- Use Vitest for unit tests.\n' > .agents/rules/team.md
+  agent_ready conflicts --offline
+  [[ "$output" != *"decided differently"* ]]
+
+  printf '<!-- rule id=team/runner key=testing.unit-runner -->\n- Use Jest for unit tests.\n' > .agents/rules/team.md
+  write_manifest '{"profiles": ["node"], "rules": {"enabled": false}}'
+  agent_ready conflicts --offline
+  [[ "$output" != *"decided differently"* ]]
+}
+
 @test "conflicts.enabled false and offline runs call no provider" {
   agent_ready apply --stack node
   [ "$status" -eq 0 ]

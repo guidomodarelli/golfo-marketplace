@@ -14,6 +14,7 @@ import agent_ready_pack_mcp as pack_mcp
 import agent_ready_pack_tools as pack_tools
 import agent_ready_parity as parity
 import agent_ready_repo_facts as repo_facts
+import agent_ready_rules as atomic_rules
 import agent_ready_settings_conflicts as settings_conflicts
 import agent_ready_skill_overlap as skill_overlap
 from agent_ready_actions import ACTION_CONFLICT, ACTION_RETIRE
@@ -39,6 +40,7 @@ from agent_ready_options import (
     REVIEWS_COMMIT_KEY,
     REVIEWS_ENABLED_KEY,
     REVIEWS_TTL_KEY,
+    RULES_ENABLED_KEY,
     TOOLS_ENABLED_KEY,
 )
 from agent_ready_output import paint, write_line
@@ -141,6 +143,37 @@ def projected_rules(project_root, plan):
     rules += [{"path": RULES_DESTINATION_PREFIX + path, "profile": PROJECT_RULES_PROFILE, "text": text}
               for path, text in sorted(project_rules.items())]
     return rules, project_rules
+
+
+def rule_key_report(project_root, plan):
+    """[{key, rules: [{id, path, profile, line}]}] of the decision keys that the rules after the apply,
+    managed and the project's own, decide differently: a conflict found without any model."""
+    rules, _ = projected_rules(project_root, plan)
+    parsed = []
+    profiles = {}
+    for rule_file in rules:
+        file_rules, _ = atomic_rules.parse_rule_text(rule_file["text"], rule_file["path"])
+        for rule in file_rules:
+            profiles[id(rule)] = rule_file["profile"]
+        parsed.extend(file_rules)
+    return [{"key": conflict["key"],
+             "rules": [{"id": rule.id, "path": rule.path, "line": rule.line, "profile": profiles[id(rule)]}
+                       for rule in conflict["rules"]]}
+            for conflict in atomic_rules.key_conflicts(parsed)]
+
+
+def rule_key_lines(conflicts):
+    """One line per decision key that two rules decide differently."""
+    return [f"  ! {conflict['key']} is decided differently by "
+            + " and ".join(f"{rule['id']} ({rule['profile']}, {rule['path']}:{rule['line']})" for rule in conflict["rules"])
+            + "; keep one, or replace the other with overrides"
+            for conflict in conflicts]
+
+
+def print_rule_keys(conflicts):
+    """Print the lines of rule_key_lines."""
+    for line in rule_key_lines(conflicts):
+        write_line(paint(line, "warning", sys.stdout))
 
 
 def repo_reality_report(project_root, skill_dir, plan):
@@ -426,6 +459,8 @@ def structural_conflicts(project_root, skill_dir, plan, catalog, configuration, 
         report["machine"] = machine_report(project_root, plan, configuration)
     if configuration.value(REPO_REALITY_ENABLED_KEY):
         report["repoReality"] = repo_reality_report(project_root, skill_dir, plan)
+    if configuration.value(RULES_ENABLED_KEY):
+        report["ruleKeys"] = rule_key_report(project_root, plan)
     report["parity"] = parity_report(project_root, skill_dir, plan, configuration, with_user=with_machine)
     if configuration.value(COMPETING_TOOLS_ENABLED_KEY):
         report["competingTools"] = pack_tools.competing_tools(plan.get("packToolDeclarations", []), catalog)
@@ -440,6 +475,7 @@ def structural_conflict_lines(report):
     provider sees, the servers left to the user and an assumption the catalog cannot check."""
     lines = machine_report_lines({"shadowed": (report.get("machine") or {}).get("shadowed", [])})
     lines += repo_reality_lines([finding for finding in report.get("repoReality", []) if not finding.get("unknown")])
+    lines += rule_key_lines(report.get("ruleKeys", []))
     lines += settings_conflicts_lines(report.get("settingsConflicts") or {})
     lines += parity_report_lines({key: value for key, value in (report.get("parity") or {}).items() if key != "views"})
     lines += competing_tools_lines(report.get("competingTools") or [])

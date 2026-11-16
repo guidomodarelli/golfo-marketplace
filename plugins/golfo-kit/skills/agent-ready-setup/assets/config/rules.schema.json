@@ -8,7 +8,7 @@
   "additionalProperties": false,
   "properties": {
     "enabled": {
-      "description": "Apagado, agent-ready rules lint no revisa nada y sale con 0. list y show siguen leyendo las rules.",
+      "description": "Apagado, agent-ready rules lint no revisa nada y sale con 0, y plan, conflicts y check no buscan rules que decidan la misma key de forma distinta. list y show siguen leyendo las rules.",
       "type": "boolean",
       "default": true
     },
