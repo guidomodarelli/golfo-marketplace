@@ -360,14 +360,14 @@ merge-base de su base:
 ### Qué suite correr según el cambio
 
 En local en Windows, las suites de agent-ready-setup tardan mucho. Cada test ejecuta bootstrap y sync
-completos, y en Git Bash cada proceso cuesta unos 40 ms. Corridas en serie en una máquina de 8 núcleos, con
-`pnpm exec bats` (#95); con `scripts/run-bats.sh` se ahorra además lo que cuesta bats:
+completos, y en Git Bash cada proceso cuesta unos 40 ms. Corridas en serie con `scripts/run-bats.sh` (#95);
+`bootstrap.bats` y `merge-instructions.bats` suman sus áreas, corridas de a una:
 
 | Suite | Tests | En serie |
 |---|---|---|
-| `bootstrap.bats` | 133 | ~88 min |
-| `agent-ready-state.bats` | 52 | ~41 min |
-| `merge-instructions.bats` | 35 | ~9 min |
+| `bootstrap.bats` | 133 | ~32 min |
+| `agent-ready-state.bats` | 52 | ~14 min |
+| `merge-instructions.bats` | 35 | ~3 min |
 
 Correrlas en paralelo no ayuda: con 8 procesos de bats, `merge-instructions.bats` baja solo ×1,5, porque cada test
 se vuelve más lento. Durante una tarea, corré solo lo que cubre el cambio y dejá la suite completa a la CI:
@@ -409,8 +409,8 @@ fuera de la suite aislada.
 
 Cada test de esas dos suites lleva un tag de área (`# bats test_tags=area:<área>`). Corré la del cambio con
 `--filter-tags`, y una más si el cambio toca dos áreas. En local en Windows, los tests de cada área suman menos de
-5 minutos (la columna «En Windows» sale de las corridas en serie de #95), y correr un área sola suma unos 10
-segundos de bats.
+5 minutos: la columna «En Windows» es lo que tardó cada área corrida sola con `scripts/run-bats.sh` en #95,
+contando el arranque de bats.
 
 ```bash
 LC_ALL=C.UTF-8 bash scripts/run-bats.sh --filter-tags area:skill-source plugins/golfo-kit/skills/agent-ready-setup/tests/bootstrap.bats
@@ -418,34 +418,34 @@ LC_ALL=C.UTF-8 bash scripts/run-bats.sh --filter-tags area:skill-source plugins/
 
 | Suite | Área | Qué cubre | Archivos | Tests | En Windows |
 |---|---|---|---|---|---|
-| `bootstrap.bats` | `area:session-start` | SessionStart y el registro de los servidores MCP del browser | `assets/common/hooks/sync-marketplace.sh`, `scripts/setup-browser-tools.py` | 5 | ~4 min |
-| `bootstrap.bats` | `area:cli` | argumentos, flags y salidas de bootstrap y del hook, y qué provider se usa | `scripts/bootstrap.sh`, `scripts/resolve-provider.sh` | 13 | ~2 min |
-| `bootstrap.bats` | `area:pr-template` | el template de PR de GitHub y su bloque gestionado | `scripts/managed-block.sh` | 5 | ~4 min |
-| `bootstrap.bats` | `area:projection` | los árboles de Claude, `.agents` y Codex, y que un segundo apply no cambie nada | `scripts/bootstrap-asset-projection.sh` | 5 | ~2 min |
-| `bootstrap.bats` | `area:stacks` | las rules y los adaptadores de cada stack | `scripts/bootstrap-asset-projection.sh`, el pack de contenido | 2 | ~5 min |
-| `bootstrap.bats` | `area:browser-rule` | la rule del browser en cada stack, con los dos providers | `scripts/bootstrap-asset-projection.sh` | 1 | ~5 min |
-| `bootstrap.bats` | `area:adapters` | los adaptadores de skills y el registro de agents y commands en Claude | `scripts/bootstrap-asset-projection.sh` | 4 | ~3 min |
-| `bootstrap.bats` | `area:settings` | el merge de los settings de Claude con lo propio del proyecto | `scripts/merge-managed-settings.py` | 5 | ~5 min |
-| `bootstrap.bats` | `area:autonomous-sync` | la sync en segundo plano: settings y copias de Claude | `assets/common/hooks/sync-marketplace.sh` | 2 | ~3 min |
-| `bootstrap.bats` | `area:claude-views` | las vistas de `.claude/` de las rules gestionadas y propias | `scripts/asset-sync-common.sh` | 3 | ~4 min |
-| `bootstrap.bats` | `area:instructions-root` | `AGENTS.md` y el proxy `CLAUDE.md` de la raíz | `scripts/instruction-normalization.sh`, `scripts/normalize-instructions.sh` | 9 | ~5 min |
-| `bootstrap.bats` | `area:instructions-nested` | los pares anidados y el `CLAUDE.md` de `.claude/` | `scripts/instruction-normalization.sh` | 5 | ~5 min |
-| `bootstrap.bats` | `area:instructions-edge` | mayúsculas distintas, archivos ignorados por Git y raíces symlink | `scripts/instruction-normalization.sh` | 9 | ~4 min |
-| `bootstrap.bats` | `area:harness-hooks` | el hook que revisa una rule editada, en Claude y en Codex | `assets/common/hooks/harness-review.py`, `check-harness-consistency.sh` | 6 | ~4 min |
-| `bootstrap.bats` | `area:codex-hooks` | la instalación de los hooks de Codex | `scripts/asset-sync-common.sh` (`sync_codex_hooks`) | 1 | ~4 min |
-| `bootstrap.bats` | `area:codex-hooks-merge` | el merge de `.codex/hooks.json` con lo propio del proyecto | `scripts/merge-codex-hooks.py` | 6 | ~5 min |
-| `bootstrap.bats` | `area:marketplace-upgrade` | el upgrade del marketplace y su ventana de una hora | `scripts/bootstrap.sh` (`upgrade_marketplace`), `sync-marketplace.sh` | 8 | ~4 min |
-| `bootstrap.bats` | `area:skill-source` | qué versión de la caché de plugins usa bootstrap | `scripts/bootstrap-skill-source.sh` | 4 | ~3 min |
-| `bootstrap.bats` | `area:skill-snapshot` | el snapshot del marketplace contra la caché de plugins, y `--skill-dir` | `scripts/bootstrap-skill-source.sh` | 3 | ~2 min |
-| `bootstrap.bats` | `area:sync-hook-cache` | qué versión usa el hook de sync: caché o snapshot | `assets/common/hooks/agent-ready-skill-source.sh`, `sync-marketplace.sh` | 4 | ~4 min |
-| `bootstrap.bats` | `area:sync-hook-codex` | los marketplaces locales y Git de Codex en el hook de sync | `assets/common/hooks/agent-ready-skill-source.sh` | 4 | ~3 min |
-| `bootstrap.bats` | `area:sync-hook` | el hook de sync sin bootstrap: helpers, escrituras atómicas y locks | `assets/common/hooks/sync-marketplace.sh`, `scripts/asset-sync-common.sh` | 11 | ~4 min |
-| `bootstrap.bats` | `area:managed-assets` | las actualizaciones de assets gestionados, sus diffs y los destinos inseguros | `scripts/bootstrap-asset-projection.sh` (`sync_file`) | 7 | ~4 min |
-| `bootstrap.bats` | `area:hard-links` | las vistas como hard links: cuándo se usan, se relinkean y se podan | `scripts/asset-sync-common.sh` | 6 | ~4 min |
-| `bootstrap.bats` | `area:relink-hook` | el hook de git que relinkea las vistas después de un `git reset` | `scripts/asset-sync-common.sh` (`install_hard_link_git_hook`) | 5 | ~4 min |
-| `merge-instructions.bats` | `area:managed-block` | el bloque gestionado de `AGENTS.md`, sus rules y las secciones de los stacks | `scripts/managed-block.sh`, `scripts/merge-instructions.sh` | 13 | ~3 min |
-| `merge-instructions.bats` | `area:review` | la revisión de IA de `AGENTS.md`, su caché y sus rechazos | `scripts/merge-instructions.sh` | 15 | ~5 min |
-| `merge-instructions.bats` | `area:merge-safety` | el reemplazo atómico, los locks y el orden del hook de sync | `scripts/merge-instructions.sh`, `sync-marketplace.sh` | 7 | ~2 min |
+| `bootstrap.bats` | `area:session-start` | SessionStart y el registro de los servidores MCP del browser | `assets/common/hooks/sync-marketplace.sh`, `scripts/setup-browser-tools.py` | 5 | ~1,4 min |
+| `bootstrap.bats` | `area:cli` | argumentos, flags y salidas de bootstrap y del hook, y qué provider se usa | `scripts/bootstrap.sh`, `scripts/resolve-provider.sh` | 13 | <1 min |
+| `bootstrap.bats` | `area:pr-template` | el template de PR de GitHub y su bloque gestionado | `scripts/managed-block.sh` | 5 | ~1,4 min |
+| `bootstrap.bats` | `area:projection` | los árboles de Claude, `.agents` y Codex, y que un segundo apply no cambie nada | `scripts/bootstrap-asset-projection.sh` | 5 | <1 min |
+| `bootstrap.bats` | `area:stacks` | las rules y los adaptadores de cada stack | `scripts/bootstrap-asset-projection.sh`, el pack de contenido | 2 | ~1,5 min |
+| `bootstrap.bats` | `area:browser-rule` | la rule del browser en cada stack, con los dos providers | `scripts/bootstrap-asset-projection.sh` | 1 | ~1,5 min |
+| `bootstrap.bats` | `area:adapters` | los adaptadores de skills y el registro de agents y commands en Claude | `scripts/bootstrap-asset-projection.sh` | 4 | <1 min |
+| `bootstrap.bats` | `area:settings` | el merge de los settings de Claude con lo propio del proyecto | `scripts/merge-managed-settings.py` | 5 | ~1,6 min |
+| `bootstrap.bats` | `area:autonomous-sync` | la sync en segundo plano: settings y copias de Claude | `assets/common/hooks/sync-marketplace.sh` | 2 | ~1,1 min |
+| `bootstrap.bats` | `area:claude-views` | las vistas de `.claude/` de las rules gestionadas y propias | `scripts/asset-sync-common.sh` | 3 | ~1,2 min |
+| `bootstrap.bats` | `area:instructions-root` | `AGENTS.md` y el proxy `CLAUDE.md` de la raíz | `scripts/instruction-normalization.sh`, `scripts/normalize-instructions.sh` | 9 | ~1,3 min |
+| `bootstrap.bats` | `area:instructions-nested` | los pares anidados y el `CLAUDE.md` de `.claude/` | `scripts/instruction-normalization.sh` | 5 | ~1,5 min |
+| `bootstrap.bats` | `area:instructions-edge` | mayúsculas distintas, archivos ignorados por Git y raíces symlink | `scripts/instruction-normalization.sh` | 9 | ~1,2 min |
+| `bootstrap.bats` | `area:harness-hooks` | el hook que revisa una rule editada, en Claude y en Codex | `assets/common/hooks/harness-review.py`, `check-harness-consistency.sh` | 6 | ~1,5 min |
+| `bootstrap.bats` | `area:codex-hooks` | la instalación de los hooks de Codex | `scripts/asset-sync-common.sh` (`sync_codex_hooks`) | 1 | ~1,4 min |
+| `bootstrap.bats` | `area:codex-hooks-merge` | el merge de `.codex/hooks.json` con lo propio del proyecto | `scripts/merge-codex-hooks.py` | 6 | ~1,8 min |
+| `bootstrap.bats` | `area:marketplace-upgrade` | el upgrade del marketplace y su ventana de una hora | `scripts/bootstrap.sh` (`upgrade_marketplace`), `sync-marketplace.sh` | 8 | ~1,6 min |
+| `bootstrap.bats` | `area:skill-source` | qué versión de la caché de plugins usa bootstrap | `scripts/bootstrap-skill-source.sh` | 4 | ~1,3 min |
+| `bootstrap.bats` | `area:skill-snapshot` | el snapshot del marketplace contra la caché de plugins, y `--skill-dir` | `scripts/bootstrap-skill-source.sh` | 3 | <1 min |
+| `bootstrap.bats` | `area:sync-hook-cache` | qué versión usa el hook de sync: caché o snapshot | `assets/common/hooks/agent-ready-skill-source.sh`, `sync-marketplace.sh` | 4 | ~1,6 min |
+| `bootstrap.bats` | `area:sync-hook-codex` | los marketplaces locales y Git de Codex en el hook de sync | `assets/common/hooks/agent-ready-skill-source.sh` | 4 | ~1 min |
+| `bootstrap.bats` | `area:sync-hook` | el hook de sync sin bootstrap: helpers, escrituras atómicas y locks | `assets/common/hooks/sync-marketplace.sh`, `scripts/asset-sync-common.sh` | 11 | ~1,6 min |
+| `bootstrap.bats` | `area:managed-assets` | las actualizaciones de assets gestionados, sus diffs y los destinos inseguros | `scripts/bootstrap-asset-projection.sh` (`sync_file`) | 7 | ~1,6 min |
+| `bootstrap.bats` | `area:hard-links` | las vistas como hard links: cuándo se usan, se relinkean y se podan | `scripts/asset-sync-common.sh` | 6 | ~1,3 min |
+| `bootstrap.bats` | `area:relink-hook` | el hook de git que relinkea las vistas después de un `git reset` | `scripts/asset-sync-common.sh` (`install_hard_link_git_hook`) | 5 | ~1,1 min |
+| `merge-instructions.bats` | `area:managed-block` | el bloque gestionado de `AGENTS.md`, sus rules y las secciones de los stacks | `scripts/managed-block.sh`, `scripts/merge-instructions.sh` | 13 | <1 min |
+| `merge-instructions.bats` | `area:review` | la revisión de IA de `AGENTS.md`, su caché y sus rechazos | `scripts/merge-instructions.sh` | 15 | ~1,6 min |
+| `merge-instructions.bats` | `area:merge-safety` | el reemplazo atómico, los locks y el orden del hook de sync | `scripts/merge-instructions.sh`, `sync-marketplace.sh` | 7 | <1 min |
 
 Un test nuevo lleva el tag del área que cubre. Si un área pasa de 5 minutos, partila en dos que tengan sentido por sí
 solas.
