@@ -13,6 +13,7 @@ Leer antes de crear, editar o validar cualquier issue de `jira-ticket`. Los valo
 | Tipo padre nuevo | `<STORY_TYPE>` (por defecto `Story`) |
 | Padre existente compatible | `<STORY_TYPE>`; conservar `<TASK_TYPE>` legacy válido sin duplicar ni convertir automáticamente |
 | Tipo subtarea | `<SUBTASK_TYPE>` (por defecto `Sub-task`) |
+| Tipo épica | `Epic`, opcional: solo se crea cuando el pedido la pide |
 | Campo quarter | `<QUARTER_FIELD>`, opcional |
 | Campo fecha de inicio | `<START_DATE_FIELD>`, opcional |
 | Campo sprint | `<SPRINT_FIELD>` (tipo `com.pyxis.greenhopper.jira:gh-sprint`), opcional |
@@ -131,6 +132,19 @@ Campo de sistema `duedate`, opcional en Story y Sub-task. Nunca se deriva ni se 
 - Si la fecha es anterior a la fecha de inicio del issue, o si la de una subtarea es posterior a la del padre, advertirlo y pedir confirmación antes de escribir.
 - Enviar `"duedate": "<YYYY-MM-DD>"` solo cuando haya fecha confirmada; nunca enviar un valor vacío para "limpiar" una fecha existente salvo pedido explícito.
 - Releer después de escribir y verificar la fecha de cada issue.
+
+## Épica
+
+Una épica nueva se crea solo por pedido explícito y antes que sus Stories, con `issueTypeName: "Epic"` en `<PROJECT_KEY>`. Si el tipo no existe en la metadata del proyecto, detener e informarlo.
+
+| Campo | Épica nueva |
+|---|---|
+| Labels | Solo las solicitadas; nunca `PR_LABELS`, que pertenecen a Stories y subtareas |
+| Quarter y fecha de inicio | Mismas reglas que el padre, si están configurados |
+| Sprint | No se envía: una épica no se planifica en sprints |
+| Responsable y Due date | Mismas reglas que el padre, incluida la pregunta por Due date |
+
+Una épica existente no se edita por colgarle una Story: sus campos se preservan y su descripción solo recibe la fila de seguimiento de `ticket-templates.md`.
 
 ## Payloads conceptuales
 
