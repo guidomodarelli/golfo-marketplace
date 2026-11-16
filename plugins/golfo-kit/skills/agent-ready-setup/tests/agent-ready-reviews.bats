@@ -173,6 +173,36 @@ json.dump(data, open(path, "w", encoding="utf-8"))' "$1" "$2"
   [ "$(cache_value 'len(data["entries"])')" -eq 3 ]
 }
 
+@test "a rule file with atomic rules is reviewed rule by rule: changing one rule reviews only its pairs" {
+  printf '# Testing\n\n<!-- rule id=testing/runner -->\n- Use the runner of the project.\n\n<!-- rule id=testing/mocks -->\n- Mock every dependency.\n' \
+    > .agents/rules/testing.md
+  run_hook .agents/rules/testing.md
+  [ "$status" -eq 0 ]
+  # Each rule is a document of its own, paired with style.md and the skill: the title alone is not one.
+  [[ "$output" == *"reviewing 4 of 4 pairs with claude (0 from the cache)"* ]]
+  grep -Fq '<document path=".agents/rules/testing.md#testing/mocks">' "$FAKE_INPUT"
+  ! grep -Fq '<document path=".agents/rules/testing.md">' "$FAKE_INPUT"
+  # The rules of one file share a line of the pairs, instead of one line per pair of documents.
+  grep -Fxq '1. .agents/rules/style.md <-> .agents/rules/testing.md#testing/mocks, .agents/rules/testing.md#testing/runner' "$FAKE_INPUT"
+
+  printf '%s\n' '{"findings": [{"pair": 1, "documents": [".agents/rules/style.md", ".agents/rules/testing.md#testing/mocks"],
+    "lines": ["Never mock dependencies.", "Mock every dependency, even the clock."], "kind": "contradiction",
+    "text": "Mocks are both required and forbidden."}]}' > "$FAKE_RESPONSE"
+  sed -i 's/Mock every dependency\./Mock every dependency, even the clock./' .agents/rules/testing.md
+  run_hook .agents/rules/testing.md
+  [ "$(calls)" -eq 2 ]
+  # Only the changed rule goes back to the provider; the pairs of its neighbor stay cached.
+  [[ "$output" == *"reviewing 2 of 4 pairs with claude (2 from the cache)"* ]]
+  ! grep -Fq 'testing.md#testing/runner' "$FAKE_INPUT"
+  [[ "$output" == *".agents/rules/style.md <-> .agents/rules/testing.md#testing/mocks: Mocks are both required and forbidden."* ]]
+  [ "$(cache_value 'len(data["entries"])')" -eq 4 ]
+
+  # status reads the finding as current: the rule it names is on disk as it was reviewed.
+  run_cli review list --json
+  [ "$status" -eq 0 ]
+  echo "$output" | python3 -c 'import json, sys; assert [finding["files"] for finding in json.load(sys.stdin)["findings"]] == [[".agents/rules/style.md", ".agents/rules/testing.md#testing/mocks"]]'
+}
+
 @test "pairs the provider did not answer leave the check incomplete, never clean" {
   printf '%s\n' 'not json' > "$FAKE_RESPONSE"
   run_hook .agents/rules/testing.md

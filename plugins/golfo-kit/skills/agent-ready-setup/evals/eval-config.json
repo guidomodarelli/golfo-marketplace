@@ -3338,6 +3338,31 @@
           "description": "Ubica el hash por rule en el lock"
         }
       ]
+    },
+    {
+      "id": "review-cache-per-rule",
+      "description": "El usuario pregunta si cambiar una sola rule atómica repite la revisión de IA de todo el archivo; la respuesta es que solo se revisan los pares de esa rule.",
+      "input": "En .agents/rules/testing.md tengo 30 rules atómicas de agent-ready. Si cambio el texto de una sola, ¿la revisión de contradicciones con IA (el hook después de editar y agent-ready plan) vuelve a revisar las 30 contra mis otras rules y skills, o solo esa? ¿Cómo aparece esa rule en un hallazgo? ¿Y si por error dos rules del archivo tienen el mismo id? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "[Ss][oó]lo (los pares de )?(esa|la) rule|rule por rule|por rule|las (otras|dem[aá]s) .*(cach[eé]|no se (vuelven a )?revisa)",
+          "description": "Dice que solo se vuelven a revisar los pares de la rule cambiada",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "testing.md#",
+          "description": "Nombra la rule en el hallazgo como <archivo>#<id>",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(archivo|documento) (entero|completo)|todo el archivo|un (solo|único) documento",
+          "description": "Con un id repetido el archivo se revisa entero, como un documento",
+          "critical": true
+        }
+      ]
     }
   ]
 }
