@@ -108,6 +108,7 @@ getJiraIssueTypeMetaWithFields(issueTypeId: "<id>", requiredFieldsOnly: true)
 | `repo-id [--root]` | `repository_id` según `<REPO_ID_SOURCES>` y `<REPO_PREFIXES>` |
 | `pr-normalize <n\|url>...` | `pull_requests`, `pr_labels` y `all_prs_merged` leídos de GitHub |
 | `backlink apply\|verify --key <KEY>` | Parche `traceability-only` idempotente del body del PR (stdin → stdout) con links a `<SITE_URL>` |
+| `tracking --level story\|epic [--create]` | Sección de seguimiento actualizada desde `{description, children}` por stdin: celda `Estado`, filas nuevas y `Progreso`, sin tocar el resto (`ticket-templates.md`) |
 | `slim --fields <ids>` | Reduce respuestas grandes de JQL, createmeta o issue a los campos pedidos |
 
 Si el script no puede ejecutarse, aplicar las mismas reglas de las referencias manualmente e informarlo.

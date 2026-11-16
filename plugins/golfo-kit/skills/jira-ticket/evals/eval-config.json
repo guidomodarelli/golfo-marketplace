@@ -551,8 +551,8 @@
     },
     {
       "id": "add-story-to-existing-epic",
-      "description": "Agrega una Story a una épica de quarter existente: solo inserta su fila y recalcula el progreso, sin reescribir el contenido ajeno ni tocar los campos de la épica.",
-      "input": "Configuración resuelta por `jira-ticket.py config`: SITE_URL https://acme.atlassian.net, PROJECT_KEY ACME, BOARD_ID 101, ASSIGNEE_ACCOUNT_ID configurado, STORY_TYPE Story, SUBTASK_TYPE Sub-task, QUARTER_FIELD customfield_20002, START_DATE_FIELD customfield_20003, SPRINT_FIELD customfield_20001. Creá una Story en ACME 'Recordatorio de suscripción vencida' bajo la épica existente ACME-500 (Epic, ACME, In Progress, del quarter, la mantiene otro equipo). Empieza el 2026-11-13, sin Due date, sin subtareas. No hay repo ni PR. La descripción actual de ACME-500 es:\n\n## Contexto Q4\nPrioridades acordadas con Operaciones el 2026-10-01. No mover sin hablar con Marta.\n\n## Stories\n**Progreso:** 1/2 ✅ · 1 🔄 · 0 ⬜\n\n| Key | Story | Estado | Responsable | Nota |\n|---|---|---|---|---|\n| [ACME-501](https://acme.atlassian.net/browse/ACME-501) | Alta de proveedores | ✅ Done | Ana Pérez | — |\n| [ACME-503](https://acme.atlassian.net/browse/ACME-503) | Guía de registro | 🔄 In Progress | Luis Gómez | — |\n\nMetadata ACME válida: Story 10100, quarter Q4/26 ID 9019; sprint resuelto 501. No publiques nada: devolvé payloads conceptuales y la descripción final de ACME-500 suponiendo que la Story se crea como ACME-512 en To Do sin responsable.",
+      "description": "Story nueva bajo una épica de quarter existente sin sección de seguimiento: agrega `## Stories` al final con todos los hijos reales, une la Story recién creada (que la búsqueda JQL no devuelve) leída por key y no toca el contenido ajeno.",
+      "input": "Configuración resuelta por `jira-ticket.py config`: SITE_URL https://acme.atlassian.net, PROJECT_KEY ACME, BOARD_ID 101, ASSIGNEE_ACCOUNT_ID configurado, STORY_TYPE Story, SUBTASK_TYPE Sub-task, QUARTER_FIELD customfield_20002, START_DATE_FIELD customfield_20003, SPRINT_FIELD customfield_20001. Creá una Story en ACME 'Recordatorio de suscripción vencida' bajo la épica existente ACME-500 (Epic, ACME, In Progress, del quarter, la mantiene otro equipo). Empieza el 2026-11-13, sin Due date, sin subtareas. No hay repo ni PR. Metadata ACME válida: Story 10100, quarter Q4/26 ID 9019; sprint resuelto 501. La descripción actual de ACME-500 es:\n\n## Contexto Q4\nPrioridades acordadas con Operaciones el 2026-10-01. No mover sin hablar con Marta.\n\n## Riesgos\n- Dependemos del proveedor de pagos.\n\nSuponé que la Story se crea como ACME-512 y que getJiraIssue ACME-512 la devuelve en To Do sin responsable. Justo después, `parent = ACME-500` devuelve solo ACME-501 'Alta de proveedores' (Done, Ana Pérez) y ACME-503 'Guía de registro' (In Progress, Luis Gómez). No publiques nada: devolvé el orden de operaciones, los payloads conceptuales y la descripción final completa de ACME-500.",
       "assertions": [
         {
           "type": "regex",
@@ -561,13 +561,23 @@
         },
         {
           "type": "regex",
+          "pattern": "^## Stories",
+          "description": "Agrega a la épica la sección de seguimiento que no tenía."
+        },
+        {
+          "type": "regex",
+          "pattern": "\\|[[:space:]]*\\[?ACME-501.{0,200}Done",
+          "description": "La tabla incluye los hijos que ya tenía la épica, no solo la Story nueva."
+        },
+        {
+          "type": "regex",
           "pattern": "\\|[[:space:]]*\\[?ACME-512.{0,200}To Do",
-          "description": "Inserta la fila de ACME-512 en la tabla de la épica."
+          "description": "La tabla incluye la Story recién creada aunque la búsqueda JQL no la devolvió."
         },
         {
           "type": "regex",
           "pattern": "Progreso.{0,40}1/3",
-          "description": "Recalcula el progreso a 1/3."
+          "description": "El progreso cuenta los tres hijos reales (1/3)."
         },
         {
           "type": "not_contains_any",
@@ -575,18 +585,13 @@
             "## Objetivo"
           ],
           "description": "No reestructura la épica ajena con el template de épica."
-        },
-        {
-          "type": "regex",
-          "pattern": "(version|updated|rele(e|er|ctura)|re-?fetch).{0,200}ACME-500|ACME-500.{0,200}(version|updated|rele(e|er|ctura)|re-?fetch)",
-          "description": "Relee la épica y usa control de concurrencia antes de editar su descripción."
         }
       ]
     },
     {
       "id": "update-child-status-row",
-      "description": "Cambio de estado de una subtarea: reescribe solo su celda Estado y el contador, sin transicionar el padre ni regenerar la descripción.",
-      "input": "Configuración resuelta por `jira-ticket.py config`: SITE_URL https://acme.atlassian.net, PROJECT_KEY ACME, BOARD_ID 101, ASSIGNEE_ACCOUNT_ID configurado, STORY_TYPE Story, SUBTASK_TYPE Sub-task, QUARTER_FIELD customfield_20002, START_DATE_FIELD customfield_20003, SPRINT_FIELD customfield_20001. Sincronizá el seguimiento de la Story ACME-6000 (In Progress, sin PR asociados, sin épica). Al releer en Jira, la subtarea ACME-6002 pasó a Done; ACME-6001 sigue Done y ACME-6003 sigue To Do. La descripción actual de ACME-6000 es:\n\n## Problema\nLos emails de bienvenida salen sin logo.\n\n## Solución\nMigrar los templates al motor nuevo.\n\n## Criterios de aceptación\n- El email de bienvenida muestra el logo.\n\n## Tareas\n**Progreso:** 1/3 ✅ · 1 🔄 · 1 ⬜\n\n| Key | Tarea | Estado | Responsable | Nota |\n|---|---|---|---|---|\n| [ACME-6001](https://acme.atlassian.net/browse/ACME-6001) | Migrar templates | ✅ Done | Ana Pérez | — |\n| [ACME-6002](https://acme.atlassian.net/browse/ACME-6002) | Probar envío | 🔄 In Progress | Ana Pérez | — |\n| [ACME-6003](https://acme.atlassian.net/browse/ACME-6003) | Validar con producto | ⬜ To Do | — | — |\n\nNo publiques nada: devolvé las operaciones y la descripción final.",
+      "description": "Sincronizar el seguimiento cuando una subtarea termina y otra queda bloqueada: cambia solo esas celdas, anota el bloqueo, cuenta el bloqueado aparte y no transiciona la Story.",
+      "input": "Configuración resuelta por `jira-ticket.py config`: SITE_URL https://acme.atlassian.net, PROJECT_KEY ACME, BOARD_ID 101, ASSIGNEE_ACCOUNT_ID configurado, STORY_TYPE Story, SUBTASK_TYPE Sub-task, QUARTER_FIELD customfield_20002, START_DATE_FIELD customfield_20003, SPRINT_FIELD customfield_20001. Sincronizá el seguimiento de la Story ACME-6000 (In Progress, sin PR asociados, sin épica). Al releer en Jira: ACME-6001 sigue Done; ACME-6002 pasó a Done; ACME-6003 sigue To Do pero ahora tiene un link 'is blocked by' a ACME-7000, que está abierto. La descripción actual de ACME-6000 es:\n\n## Problema\nLos emails de bienvenida salen sin logo.\n\n## Solución\nMigrar los templates al nuevo servicio de emails.\n\n## Criterios de aceptación\n- El email de bienvenida muestra el logo.\n\n## Tareas\n| Key | Tarea | Estado | Responsable | Nota |\n|---|---|---|---|---|\n| [ACME-6001](https://acme.atlassian.net/browse/ACME-6001) | Migrar templates | Done | Ana Pérez | — |\n| [ACME-6002](https://acme.atlassian.net/browse/ACME-6002) | Probar envío | In Progress | Ana Pérez | — |\n| [ACME-6003](https://acme.atlassian.net/browse/ACME-6003) | Validar con producto | To Do | — | — |\n\nNo publiques nada: devolvé las operaciones y la descripción final.",
       "assertions": [
         {
           "type": "regex",
@@ -595,8 +600,13 @@
         },
         {
           "type": "regex",
-          "pattern": "Progreso.{0,40}2/3",
-          "description": "Recalcula el progreso a 2/3."
+          "pattern": "To Do[[:space:]]*\\|[^|]*\\|[^|]*ACME-7000[^|]*\\|[[:space:]]*$",
+          "description": "La fila pendiente de ACME-6003 anota el bloqueo por ACME-7000 en su última celda (Nota); no cruza el emoji 🚫, que el grep de MSYS no matchea con `.` en UTF-8."
+        },
+        {
+          "type": "regex",
+          "pattern": "Progreso.{0,60}2/3.{0,60}0 .{0,40}0 .{0,40}1 ",
+          "description": "Agrega la línea de progreso con el bloqueado contado aparte (2/3, 0, 0, 1)."
         },
         {
           "type": "not_contains_any",
@@ -604,11 +614,6 @@
             "transitionJiraIssue(.*ACME-6000"
           ],
           "description": "No transiciona la Story: el estado de un hijo no decide el del padre."
-        },
-        {
-          "type": "regex",
-          "pattern": "(solo|[uú]nicamente|[uú]nica).{0,120}(celda|fila|l[ií]nea)",
-          "description": "Limita la edición a la celda del hijo y el contador."
         }
       ]
     }
