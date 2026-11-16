@@ -68,7 +68,8 @@ DEFAULT_MAX_STATEMENT_CHARS = 300
 # Several decisions in one statement: a second sentence, or clauses chained with a semicolon.
 # Inline code and parentheses are left out first, so `a.b`, "e.g. x" in parentheses or a
 # semicolon inside code never count.
-INLINE_CODE = re.compile(r"`[^`]*`")
+# A code span opens and closes with backtick runs of the same length, as in Markdown: `` `a`; `b` ``.
+INLINE_CODE = re.compile(r"(?<!`)(`+)(?!`).+?(?<!`)\1(?!`)")
 PARENTHESIZED = re.compile(r"\([^()]*\)")
 SENTENCE_BREAK = re.compile(r"[.!?]\s+(?=[A-Z])")
 CLAUSE_CHAIN = re.compile(r";\s+\S")
@@ -394,14 +395,26 @@ def rule_files(target):
             and (inside_rules or RULES_DIRECTORY_NAME in relative_path.split("/")[:-1])]
 
 
+def display_path(path, display_root):
+    """``path`` relative to ``display_root`` when it is inside it, else the absolute path.
+
+    On Windows a path on another drive has no relative form, and relpath raises ValueError.
+    """
+    try:
+        relative = os.path.relpath(path, display_root)
+    except ValueError:
+        relative = None
+    if relative is None or relative.startswith(".."):
+        return path.replace(os.sep, "/")
+    return relative.replace(os.sep, "/")
+
+
 def read_rules(paths, display_root):
     """(rules, findings) of every rule file of ``paths``, with paths shown relative to ``display_root``."""
     rules = []
     findings = []
     for path in paths:
-        display = os.path.relpath(path, display_root).replace(os.sep, "/")
-        if display.startswith(".."):
-            display = path.replace(os.sep, "/")
+        display = display_path(path, display_root)
         with open(path, encoding="utf-8") as file_handle:
             file_rules, file_findings = parse_rule_text(file_handle.read(), display)
         rules.extend(file_rules)

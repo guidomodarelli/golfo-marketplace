@@ -248,6 +248,9 @@ EOF
 
 <!-- rule id=style/one-decision -->
 - Call `config.load(); config.apply()` once at startup (e.g. In main. Not elsewhere), i.e. before any request.
+
+<!-- rule id=style/double-backticks -->
+- Document the literal syntax `` `first`; `second` `` in the guide.
 EOF
 
   run agent_ready rules lint --json
