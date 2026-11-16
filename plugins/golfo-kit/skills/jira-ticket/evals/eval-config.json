@@ -600,8 +600,8 @@
         },
         {
           "type": "regex",
-          "pattern": "\\|[[:space:]]*\\[?ACME-6003.{0,200}ACME-7000",
-          "description": "La fila de ACME-6003 anota el bloqueo por ACME-7000 en su nota."
+          "pattern": "To Do[[:space:]]*\\|[^|]*\\|[^|]*ACME-7000[^|]*\\|[[:space:]]*$",
+          "description": "La fila pendiente de ACME-6003 anota el bloqueo por ACME-7000 en su última celda (Nota); no cruza el emoji 🚫, que el grep de MSYS no matchea con `.` en UTF-8."
         },
         {
           "type": "regex",
