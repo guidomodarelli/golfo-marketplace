@@ -125,6 +125,8 @@ modelo. Pasa, por ejemplo, con una rule gestionada que dice Vitest y una propia 
 
 - **Qué rules entran:** las que quedan en `.agents/rules/` después del apply, las gestionadas (ya sin las que
   reemplaza un `overrides`) y las propias del proyecto.
+- **Workspaces:** una rule de un workspace se compara con las de la raíz, que valen para todo el repo, y nunca con
+  las de otro workspace: en un monorepo, `apps/web` puede usar Jest y `apps/admin` Vitest.
 - **Dónde aparece:** `plan`, `agent-ready conflicts` (sale con 6) y `check` con `ci.conflicts.structural`
   muestran `! <key> is decided differently by <id> (<profile>, <archivo>:<línea>) and …`. En el JSON está bajo
   `ruleKeys`.

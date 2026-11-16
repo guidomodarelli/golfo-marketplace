@@ -149,17 +149,30 @@ def rule_key_report(project_root, plan):
     """[{key, rules: [{id, path, profile, line}]}] of the decision keys that the rules after the apply,
     managed and the project's own, decide differently: a conflict found without any model."""
     rules, _ = projected_rules(project_root, plan)
-    parsed = []
+    root_rules = []
+    workspace_rules = {}
     profiles = {}
     for rule_file in rules:
         file_rules, _ = atomic_rules.parse_rule_text(rule_file["text"], rule_file["path"])
         for rule in file_rules:
             profiles[id(rule)] = rule_file["profile"]
-        parsed.extend(file_rules)
-    return [{"key": conflict["key"],
-             "rules": [{"id": rule.id, "path": rule.path, "line": rule.line, "profile": profiles[id(rule)]}
-                       for rule in conflict["rules"]]}
-            for conflict in atomic_rules.key_conflicts(parsed)]
+        workspace = rule_file.get("workspace")
+        (workspace_rules.setdefault(workspace, []) if workspace else root_rules).extend(file_rules)
+    # A rule of the root applies to every workspace; the rules of two workspaces never apply to the same
+    # files, as in the AI review (agent_ready_conflicts), so each workspace is compared with the root only.
+    scopes = [root_rules] + [root_rules + scoped for _, scoped in sorted(workspace_rules.items())]
+    report = []
+    seen = set()
+    for scope in scopes:
+        for conflict in atomic_rules.key_conflicts(scope):
+            identity = (conflict["key"], tuple(sorted((rule.path, rule.line) for rule in conflict["rules"])))
+            if identity in seen:
+                continue
+            seen.add(identity)
+            report.append({"key": conflict["key"],
+                           "rules": [{"id": rule.id, "path": rule.path, "line": rule.line,
+                                      "profile": profiles[id(rule)]} for rule in conflict["rules"]]})
+    return report
 
 
 def rule_key_lines(conflicts):

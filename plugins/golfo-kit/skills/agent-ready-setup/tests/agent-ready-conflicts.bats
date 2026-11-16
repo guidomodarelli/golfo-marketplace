@@ -279,6 +279,29 @@ first_conflict_id() {
   [[ "$output" != *"decided differently"* ]]
 }
 
+@test "two workspaces may decide one key differently; a workspace and the root may not" {
+  mkdir -p agent-packs/acme/profiles/jest/rules agent-packs/acme/profiles/vitest/rules apps/web apps/admin
+  touch apps/web/.keep apps/admin/.keep
+  printf '%s\n' '{"schemaVersion": 1, "name": "acme", "version": "1.0.0", "profiles": {"jest": {"kind": "capability", "description": "Jest.", "assets": "profiles/jest"}, "vitest": {"kind": "capability", "description": "Vitest.", "assets": "profiles/vitest"}}}' > agent-packs/acme/agent-ready-pack.json
+  printf '<!-- rule id=jest/runner key=testing.unit-runner -->\n- Use Jest for unit tests.\n' > agent-packs/acme/profiles/jest/rules/acme-jest.md
+  printf '<!-- rule id=vitest/runner key=testing.unit-runner -->\n- Use Vitest for unit tests.\n' > agent-packs/acme/profiles/vitest/rules/acme-vitest.md
+  write_manifest '{"profiles": ["node"], "sources": {"packs": [{"name": "acme", "source": "path:./agent-packs/acme"}]}, "workspaces": [{"path": "apps/web", "profiles": ["acme/jest"]}, {"path": "apps/admin", "profiles": ["acme/vitest"]}]}'
+
+  agent_ready conflicts --offline
+  [[ "$output" != *"decided differently"* ]]
+
+  mkdir -p .agents/rules
+  printf '<!-- rule id=team/runner key=testing.unit-runner -->\n- Use Mocha for unit tests.\n' > .agents/rules/team.md
+  agent_ready conflicts --offline
+  [ "$status" -eq 6 ]
+  # One line per workspace against the root, and no line pairs the two workspaces.
+  conflict_lines="$(grep 'decided differently' <<<"$output")"
+  [ "$(grep -c '' <<<"$conflict_lines")" -eq 2 ]
+  grep 'jest/runner' <<<"$conflict_lines" | grep -q 'team/runner'
+  grep 'vitest/runner' <<<"$conflict_lines" | grep -q 'team/runner'
+  ! grep 'jest/runner' <<<"$conflict_lines" | grep -q 'vitest/runner'
+}
+
 @test "conflicts.enabled false and offline runs call no provider" {
   agent_ready apply --stack node
   [ "$status" -eq 0 ]
