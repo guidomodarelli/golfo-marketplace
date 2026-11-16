@@ -76,7 +76,7 @@ REALISTIC_JQL = jql_with(
     sprint(499, "2026.Q3.R3.S1", state="closed"),
     sprint(500, "2026.Q4.R1.S2", state="closed"),
     sprint(ACTIVE_SPRINT_ID, "2026.Q4.R2.S3"),
-    sprint(900, "🟢 Billing_2026Q4R2SP1", board=202),
+    sprint(900, "Sprint 7 otro equipo", board=202),
     sprint(ACTIVE_SPRINT_ID, "2026.Q4.R2.S3"),
 )
 

@@ -6,13 +6,15 @@ description: >
   Construye el alcance desde el diff, sincroniza padre y subtareas, completa quarter, fecha de inicio y sprint activo cuando están
   configurados, pregunta si los tickets tienen Due date, enlaza uno o varios pull requests en ambos sentidos y mueve a Done el trabajo
   cuando todos sus PRs están fusionados. Usar cuando se pida crear, actualizar o sincronizar un ticket de Jira desde los cambios actuales
-  o asociarlo con pull requests; reutiliza tickets existentes, crea y asigna faltantes y agrega label jira-ticket al PR tras verificar vínculo.
+  o asociarlo con pull requests; también crea épicas, cuelga stories de una épica existente sin pisar su contenido y mantiene en la
+  descripción una tabla de seguimiento de los hijos con su estado. Reutiliza tickets existentes, crea y asigna faltantes y agrega
+  label jira-ticket al PR tras verificar vínculo.
 ---
 
 # Jira Ticket
 
 Crear o actualizar **Stories con subtareas reales (`Sub-task`)** en el proyecto Jira configurado, desde pedido explícito o cambios del repositorio actual.
-Crear padres nuevos como `<STORY_TYPE>`; reutilizar Stories existentes y Tasks legacy válidos sin duplicar ni convertir automáticamente. Los hitos solicitados se gestionan como issues hijos, no como checklists textuales en la descripción.
+Crear padres nuevos como `<STORY_TYPE>`; reutilizar Stories existentes y Tasks legacy válidos sin duplicar ni convertir automáticamente. La épica es opcional: se crea solo cuando el pedido la pide, y una épica existente recibe Stories nuevas sin perder su contenido. Los hitos solicitados se gestionan como issues hijos, no como checklists textuales en la descripción; la descripción de cada padre muestra esos hijos en una tabla de seguimiento.
 La skill no contiene datos de ninguna organización: sitio, proyecto, tablero, ids de campos, responsable y convenciones llegan por variables `JIRA_TICKET_*` ([configuración](references/config.md)). En este documento, `<NOMBRE>` es el valor de `JIRA_TICKET_NOMBRE`.
 Requiere la integración Atlassian (MCP) y la memoria persistente disponible en el entorno; Git y GitHub CLI solo cuando hay cambios o PR asociados.
 Crear en proyecto `<PROJECT_KEY>`; no inventar componente, equipo ni label para forzar visibilidad en tablero.
@@ -55,8 +57,9 @@ Antes de cualquier write, validar contenido redactado en español.
 
 | Artefacto | Responsabilidad |
 |---|---|
-| Padre JIRA | Descripción general, alcance técnico detallado, cobertura automática y links canónicos de PR |
-| Subtareas JIRA | Issues `<SUBTASK_TYPE>` para unidades del diff o hitos explícitamente solicitados |
+| Épica JIRA (opcional) | Objetivo, alcance y tabla de seguimiento de sus Stories |
+| Padre JIRA | Problema, solución breve (áreas técnicas y cobertura automática en modo repositorio), criterios de aceptación, tabla de seguimiento de subtareas y links canónicos de PR |
+| Subtareas JIRA | Issues `<SUBTASK_TYPE>` para unidades del diff o hitos explícitamente solicitados; describen qué hacer y cómo se valida |
 | Pull request | Resumen para reviewer, tipo de cambio, pruebas manuales, contratos HTTP y notas opcionales |
 | Skill sobre PR | Agregar o normalizar backlink al padre JIRA y label `jira-ticket` |
 
@@ -78,6 +81,8 @@ Reglas de separación:
   [contrato de trazabilidad](references/pr-traceability.md).
 - Antes de decidir o modificar estado del padre, leer
   [máquina de estados](references/status-transitions.md).
+- Antes de redactar o editar la descripción de una épica, Story o subtarea, de agregar un hijo a un padre existente
+  o de reflejar el cambio de estado de un hijo, leer [templates por nivel](references/ticket-templates.md).
 
 ## Consultas acotadas y helper
 
@@ -166,7 +171,7 @@ Aplicar precedencia:
 4. **Memoria:** fallback cuando labels y referencias no encuentran ticket.
 5. **Creación:** si no existe padre después de búsquedas exitosas, crear y asignar según `jira-fields.md`, también cuando solicitud sea asociar PR. Respetar pedido explícito de no crear.
 
-Épica del padre nuevo: si el pedido indica una épica, verificarla por key (tipo `Epic`, proyecto `<PROJECT_KEY>`) y enviarla como `parent` de la Story. Rechazar épicas de otro proyecto e informarlo en una sola línea con la key y el motivo. Sin épica indicada, no inventarla: si hay candidatas plausibles, preguntar cuál usar; si no hay, crear sin épica e informarlo.
+Épica del padre nuevo: si el pedido indica una épica, verificarla por key (tipo `Epic`, proyecto `<PROJECT_KEY>`) y enviarla como `parent` de la Story. Rechazar épicas de otro proyecto e informarlo en una sola línea con la key y el motivo. Sin épica indicada, no inventarla: si hay candidatas plausibles, preguntar cuál usar; si no hay, crear sin épica e informarlo. Si el pedido pide una épica nueva, crearla primero según `Épica` de `jira-fields.md` y colgar de ella las Stories. Al colgar una Story de una épica existente, la épica solo recibe su fila de seguimiento según `Agregar un hijo a un padre existente` de `ticket-templates.md`: el resto de su descripción y sus campos no se tocan.
 
 Para memoria:
 
@@ -233,30 +238,7 @@ Sin repositorio, usar resumen conciso sin prefijo. Para tareas planificadas, des
 
 ### Description padre
 
-```markdown
-## Descripción general
-<qué cambió, qué problema resuelve y por qué es necesario>
-
----
-
-## Alcance técnico
-
-### <Área 1>
-- <implementación, configuración, migración, dependencia, componente o servicio>
-
-### <Área 2>
-- <cambio relevante>
-
----
-
-## Cobertura automática
-- <pruebas unitarias, integración, E2E o casos borde agregados/actualizados>
-
-## Pull requests
-- [owner/repository#123](https://github.com/owner/repository/pull/123)
-```
-
-`## Pull requests` se agrega solo cuando hay asociaciones y sigue contrato de `pr-traceability.md`.
+Usar la variante `Story` de [`ticket-templates.md`](references/ticket-templates.md) (y `Épica` cuando se crea una). `## Pull requests` se agrega solo cuando hay asociaciones y sigue contrato de `pr-traceability.md`. En una edición, una descripción existente con otra estructura no se migra a este template: los cambios de contenido pedidos y el drift del diff se corrigen dentro de su estructura, preservando el contenido ajeno al pedido. Solo agregar un hijo o sincronizar estados se limita a la sección de seguimiento.
 
 No incluir:
 
@@ -280,7 +262,7 @@ Antes de crear, leer subtareas existentes y comparar alcance, no solo título. R
 
 Al reemplazar un checklist existente, trasladar alcance, evidencia y pendientes a subtareas; retirar únicamente el checklist solicitado después de verificar su creación. Preservar contenido ajeno y links canónicos de PR en el padre. Si falla una creación, conservar seguimiento pendiente y reportar claves confirmadas, sin duplicarlas al reanudar.
 
-Description de cada subtarea explica alcance y criterio de finalización en español; no reproduce estructura completa del padre ni incluye URLs PR. Puede mencionar número de PR y remitir al padre.
+Description de cada subtarea sigue la variante `Subtarea` de `ticket-templates.md` (qué hacer y cómo se valida) en español; no reproduce estructura completa del padre ni incluye URLs PR. Puede mencionar número de PR y remitir al padre.
 
 Estados de hitos se determinan por su propio criterio, no por el estado de la Story:
 
@@ -299,7 +281,8 @@ Consultar transiciones por subtarea antes de cambiar estado y verificar resultad
 2. Crear padre con `issueTypeName: "<STORY_TYPE>"`, description deseada, campos obligatorios, sprint resuelto y Due date confirmado, si lo tiene.
 3. Crear issues `<SUBTASK_TYPE>` independientes con `parent` igual a la key de la Story; heredar labels, quarter y start date, sin enviar sprint, con el Due date que confirmó el usuario para cada una. Verificar que cada hito solicitado tenga un issue hijo real.
 4. Releer por key padre y subtareas; verificar asignación, sprint y Due date. Si alguna escritura falla, reportar claves creadas, causa y pasos pendientes; reutilizarlas al reanudar, sin recrear padre.
-5. Mostrar:
+5. Escribir la tabla de seguimiento del padre con las keys reales releídas y, si la Story cuelga de una épica, su fila en la épica, según `ticket-templates.md`.
+6. Mostrar:
 
 | # | Clave | Tipo | Resumen |
 |---|---|---|---|
@@ -315,7 +298,8 @@ Consultar transiciones por subtarea antes de cambiar estado y verificar resultad
 5. Actualizar solo drift real; corregir siempre campos obligatorios faltantes. Si falta fecha de inicio del padre, aplicar la precedencia y el fallback de consenso entre subtareas de `jira-fields.md` antes de pedirla; informar el origen de una fecha de seguimiento inferida. Si el padre no tiene sprint, asignar el sprint activo resuelto; preservar uno existente salvo pedido explícito.
 6. Ejecutar edits de issues independientes en paralelo; nunca writes concurrentes sobre mismo padre.
 7. Crear subtareas faltantes con campos heredados; antes, preguntar por su Due date si el pedido no lo indica. Preservar el Due date de issues existentes salvo pedido explícito.
-8. Mostrar:
+8. Mantener la tabla de seguimiento según `ticket-templates.md`: fila nueva por hijo creado y celda `Estado` por hijo que cambió de estado; nada más de la descripción cambia por eso.
+9. Mostrar:
 
 | # | Clave | Tipo | Acción | Resumen |
 |---|---|---|---|---|
@@ -368,6 +352,7 @@ Releer por key padre y subtareas, y releer todos los PR en GitHub. Validar:
 - Sprint del padre resuelto o preservado y heredado por cada subtarea, según `jira-fields.md`.
 - Due date de cada issue igual a lo confirmado por el usuario o preservado, según `jira-fields.md`.
 - Estado individual actualizado de cada PR.
+- Tabla de seguimiento del padre (y de la épica, si la hay) con una fila por hijo real y estados iguales a los releídos en Jira, según `ticket-templates.md`.
 - Status padre coherente con `status-transitions.md`.
 
 Corregir mismatch local y revalidar elemento. No reiniciar flujo ni repetir transición ya verificada.
