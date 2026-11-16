@@ -17,7 +17,7 @@ from agent_ready_common import (
     sha256_of_text,
     skill_cache_directory,
     text_bytes,
-    walk_files,
+    walk_content_files,
     write_text_atomically,
 )
 from agent_ready_detection import STACK_PROFILE_KIND
@@ -125,7 +125,7 @@ def workspace_shared_texts(skill_dir, catalog, workspaces, workspace_profiles, w
             workspace_rules, {workspace["path"] for workspace in workspaces if name in workspace["own"]})
         if not rule_workspaces:
             continue
-        for relative_path, absolute_path in walk_files(asset_root):
+        for relative_path, absolute_path in walk_content_files(asset_root):
             if not relative_path.endswith(".md") or not is_workspace_shared_asset(relative_path):
                 continue
             with open(absolute_path, encoding="utf-8", newline="") as template_file:
@@ -164,7 +164,7 @@ def desired_assets(skill_dir, catalog, resolved, workspace_rules=None, workspace
     destinations_by_folded_name = {}
     overridden = shared_overrides(skill_dir, catalog, resolved, workspace_profiles)
     for profile_name, root, is_stack_root in sources:
-        for relative_path, absolute_path in walk_files(root):
+        for relative_path, absolute_path in walk_content_files(root):
             if profile_name in workspace_profiles and not is_workspace_shared_asset(relative_path):
                 continue
             if is_overridden(overridden, profile_name, relative_path):
@@ -221,7 +221,7 @@ def workspace_rule_files(skill_dir, catalog, workspaces):
             asset_root = profile_asset_root(skill_dir, catalog, name)
             if not asset_root:
                 continue
-            for relative_path, absolute_path in walk_files(asset_root):
+            for relative_path, absolute_path in walk_content_files(asset_root):
                 if not relative_path.startswith(workspace_selection.RULES_DIRECTORY + "/") or \
                         is_overridden(overridden, name, relative_path):
                     continue
@@ -257,7 +257,7 @@ def workspace_profile_origins(skill_dir, catalog, workspace_profiles):
         asset_root = profile_asset_root(skill_dir, catalog, name)
         if is_pack_profile(name) or not asset_root:
             continue
-        for relative_path, absolute_path in walk_files(asset_root):
+        for relative_path, absolute_path in walk_content_files(asset_root):
             origins[f"{name}:{relative_path}"] = sha256_of_file(absolute_path)
     return origins
 
@@ -323,7 +323,7 @@ def workspace_file_blocks(skill_dir, catalog, workspaces, assets, root_blocks, w
             asset_root = profile_asset_root(skill_dir, catalog, name)
             if not asset_root:
                 continue
-            for relative_path, absolute_path in walk_files(asset_root):
+            for relative_path, absolute_path in walk_content_files(asset_root):
                 destination = managed_blocks.destination_of(relative_path)
                 if destination is None or destination == managed_blocks.INSTRUCTION_SECTIONS_DESTINATION:
                     continue
@@ -358,7 +358,7 @@ def desired_blocks(skill_dir, catalog, resolved, assets):
     for profile_name, root in sources:
         if not root:
             continue
-        for relative_path, absolute_path in walk_files(root):
+        for relative_path, absolute_path in walk_content_files(root):
             destination = managed_blocks.destination_of(relative_path)
             if destination is None:
                 continue
@@ -489,7 +489,7 @@ def profile_digests(skill_dir, catalog, resolved):
             }
         lines = [json.dumps(entry, sort_keys=True)]
         if root:
-            lines += [f"{relative_path}\t{sha256_of_file(absolute_path)}" for relative_path, absolute_path in walk_files(root)]
+            lines += [f"{relative_path}\t{sha256_of_file(absolute_path)}" for relative_path, absolute_path in walk_content_files(root)]
         digests[name] = {"kind": entry.get("kind", "base"), "digest": sha256_of_text("\n".join(lines))}
     return digests
 
@@ -520,7 +520,7 @@ def compose_stack_directory(skill_dir, catalog, resolved, compose_root, workspac
 
     owners = {}
     for name in asset_profiles + shared_profiles:
-        for relative_path, _ in walk_files(profile_asset_root(skill_dir, catalog, name)):
+        for relative_path, _ in walk_content_files(profile_asset_root(skill_dir, catalog, name)):
             if name in shared_profiles and not is_workspace_shared_asset(relative_path):
                 continue
             if is_overridden(overridden, name, relative_path):

@@ -206,6 +206,24 @@ PY
   [ "$(lock_value '",".join(data["profileOrder"])')" = "software-development,node,acme/base,acme/kafka-interno,browser" ]
 }
 
+@test "the evals next to the rules of a pack profile are never projected" {
+  copy_example_pack
+  mkdir -p "$pack_dir/profiles/kafka-interno/evals"
+  printf '{"marker": "pack-evals-marker"}\n' > "$pack_dir/profiles/kafka-interno/evals/eval-config.json"
+  mkdir -p "$pack_dir/profiles/kafka-interno/skills/acme-kafka-consumer/evals"
+  printf '{"marker": "skill-evals-marker"}\n' > "$pack_dir/profiles/kafka-interno/skills/acme-kafka-consumer/evals/eval-config.json"
+  write_manifest acme/kafka-interno "acme=path:../acme-pack"
+
+  run_bootstrap
+  [ "$status" -eq 0 ]
+  [ -f .agents/rules/acme-kafka.md ]
+  [ -f .agents/skills/acme-kafka-consumer/SKILL.md ]
+  run grep -rqs pack-evals-marker .agents .claude AGENTS.md
+  [ "$status" -ne 0 ]
+  # A skill keeps its own evals: they are part of it.
+  grep -q skill-evals-marker .agents/skills/acme-kafka-consumer/evals/eval-config.json
+}
+
 @test "the lockfile records owner, origin and hash, and no path of this machine" {
   copy_example_pack
   write_manifest acme/kafka-interno "acme=path:../acme-pack"

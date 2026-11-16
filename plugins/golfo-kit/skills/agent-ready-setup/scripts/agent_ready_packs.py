@@ -25,6 +25,7 @@ from agent_ready_common import (
     ProfileError,
     StateError,
     is_link,
+    is_unprojected_content,
     read_json_file,
     sha256_of_file,
     sha256_of_text,
@@ -660,6 +661,9 @@ def validate_asset_tree(source, profile_name, asset_root, relative_root):
             if is_link(entry_path):
                 raise ProfileError(f"pack '{source_name}' profile '{profile_name}': {relative_root}/{relative_path} is a symlink, which packs cannot use")
             if entry_name in file_names:
+                if is_unprojected_content(relative_path):
+                    # Evals of the profile's rules: accepted and never projected (walk_content_files).
+                    continue
                 if "/" not in relative_path or relative_path.split("/", 1)[0] not in PACK_ALLOWED_ASSET_DIRECTORIES:
                     allowed = ", ".join(PACK_ALLOWED_ASSET_DIRECTORIES)
                     raise ProfileError(f"pack '{source_name}' profile '{profile_name}': {relative_path} is outside the directories a pack can publish ({allowed})")
