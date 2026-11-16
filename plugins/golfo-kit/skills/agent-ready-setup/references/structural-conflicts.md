@@ -132,6 +132,8 @@ modelo. Pasa, por ejemplo, con una rule gestionada que dice Vitest y una propia 
   `ruleKeys`.
 - **No es conflicto:** dos rules con la misma `key` y el mismo contenido. Eso es un duplicado, y lo reporta
   `agent-ready rules lint`.
+- **Cómo resolverlo:** dejar una de las dos, o que la rule propia reemplace la gestionada con
+  `overrides=<fuente>:<id>` ([atomic-rules.md](atomic-rules.md), sección 5). Una rule del núcleo no se reemplaza.
 - **Cómo apagarlo:** `rules.enabled: false` lo apaga, junto con el lint.
 
 ## 4. Hooks, permisos y settings

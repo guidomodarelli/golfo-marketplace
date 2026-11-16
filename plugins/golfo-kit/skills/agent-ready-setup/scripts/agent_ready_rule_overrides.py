@@ -3,18 +3,33 @@
 A rule of a selected profile with ``overrides=<source>:<id>`` replaces that single rule of another
 selected profile: the file that holds the replaced rule is projected without it, and its other rules
 stay. ``<source>`` is the pack name of a namespaced profile, or ``golfo`` for the official content.
-A rule marked ``locked`` cannot be replaced. The file without the rule is kept in the per-user cache
-by its sha256 and given to the plan and the projection as a shared text, so both read the same bytes.
+A rule the project wrote itself in ``.agents/rules/`` replaces a managed rule the same way: its source
+is ``project``. A rule marked ``locked`` cannot be replaced. The file without the rule is kept in the
+per-user cache by its sha256 and given to the plan and the projection as a shared text, so both read the
+same bytes.
 """
 
 import os
 
 import agent_ready_rules
-from agent_ready_common import ProfileError, sha256_of_text, skill_cache_directory, walk_content_files, write_text_atomically
+from agent_ready_common import (
+    ProfileError,
+    is_link,
+    sha256_of_text,
+    skill_cache_directory,
+    walk_content_files,
+    walk_files,
+    write_text_atomically,
+)
+from agent_ready_lockfile import read_lock, was_applied
 from agent_ready_packs import is_pack_profile, source_of_profile
 from agent_ready_profiles import BASE_PROFILE_NAME, is_overridden, profile_asset_root, resolved_overrides
 
 OFFICIAL_RULE_SOURCE = "golfo"
+# The source and the owner of the rules the project wrote itself, as the structural reports name them.
+PROJECT_RULE_SOURCE = "project"
+PROJECT_RULES_DIRECTORY = ".agents/rules/"
+MANAGED_DESTINATION_PREFIX = ".agents/"
 RULE_SOURCE_SEPARATOR = ":"
 RULES_PREFIX = "rules/"
 RULE_FILE_SUFFIX = ".md"
@@ -67,14 +82,59 @@ def selection_rules(skill_dir, catalog, resolved):
     return published
 
 
-def resolved_rule_overrides(skill_dir, catalog, resolved):
-    """The rule overrides of the selection, validated: [{profile, rule, replaces, targetProfile, targetPath}]."""
+def selection_rule_paths(skill_dir, catalog, resolved):
+    """The relative paths (rules/...) of every rule file of the core and the selected profiles."""
+    roots = [os.path.join(skill_dir, catalog.get("baseAssets", "assets/common"))]
+    roots += [profile_asset_root(skill_dir, catalog, name) for name in resolved]
+    return {relative_path for root in roots if root and os.path.isdir(root)
+            for relative_path, _ in profile_rule_files(root)}
+
+
+def project_rules(project_root, catalog_rule_paths, managed_destinations=()):
+    """[rule] of the rules the project wrote itself in .agents/rules, each with its path in the repository.
+
+    A file is the project's own when no profile of the selection publishes it (``catalog_rule_paths``,
+    relative to an asset root), it is not in ``managed_destinations`` (the rules of the workspaces) and
+    no apply wrote it (the lock). A link is never read.
+    """
+    rules_root = os.path.join(project_root, *PROJECT_RULES_DIRECTORY.strip("/").split("/"))
+    if not os.path.isdir(rules_root):
+        return []
+    lock = read_lock(project_root) or {"assets": {}}
+    managed = {MANAGED_DESTINATION_PREFIX + relative_path for relative_path in catalog_rule_paths}
+    managed |= set(managed_destinations)
+    managed |= {destination for destination, entry in lock["assets"].items() if was_applied(entry)}
+    found = []
+    for relative_path, absolute_path in walk_files(rules_root):
+        destination = PROJECT_RULES_DIRECTORY + relative_path
+        if not relative_path.endswith(RULE_FILE_SUFFIX) or is_link(absolute_path) or destination in managed:
+            continue
+        with open(absolute_path, encoding="utf-8", errors="replace", newline="") as rule_file:
+            rules, _ = agent_ready_rules.parse_rule_text(rule_file.read(), destination)
+        found += rules
+    return found
+
+
+def resolved_rule_overrides(skill_dir, catalog, resolved, project_root=None, managed_destinations=()):
+    """The rule overrides of the selection and of the project's own rules, validated:
+    [{profile, rule, replaces, targetProfile, targetPath}].
+
+    ``project_root`` adds the rules the project wrote itself (project_rules), with profile ``project``;
+    ``managed_destinations`` are the rule files the workspaces get, which are not the project's own.
+    """
     published = selection_rules(skill_dir, catalog, resolved)
+    overriders = [(qualified, profile_name, rule) for qualified, (profile_name, _, _, rule) in sorted(published.items())]
+    if project_root:
+        project_owned = project_rules(project_root, selection_rule_paths(skill_dir, catalog, resolved),
+                                      managed_destinations)
+        overriders += [(f"{PROJECT_RULE_SOURCE}{RULE_SOURCE_SEPARATOR}{rule.id}", PROJECT_RULE_SOURCE, rule)
+                       for rule in project_owned]
     overrides = []
     replaced_by = {}
-    for qualified, (profile_name, _, _, rule) in sorted(published.items()):
+    for qualified, profile_name, rule in overriders:
         for reference in rule.overrides:
-            what = f"the rule {qualified} of '{profile_name}' overrides {reference}"
+            where = f" ({rule.path}:{rule.line})" if profile_name == PROJECT_RULE_SOURCE else ""
+            what = f"the rule {qualified} of '{profile_name}'{where} overrides {reference}"
             if RULE_SOURCE_SEPARATOR not in reference:
                 raise ProfileError(f"{what}: name the rule with its source, such as "
                                    f"{OFFICIAL_RULE_SOURCE}{RULE_SOURCE_SEPARATOR}{reference}")
@@ -102,11 +162,12 @@ def resolved_rule_overrides(skill_dir, catalog, resolved):
     return overrides
 
 
-def rule_override_texts(skill_dir, catalog, resolved):
-    """{(profile, relative path): (text path, sha256)} of each file that loses a rule to an override."""
+def rule_override_texts(skill_dir, catalog, resolved, project_root=None, managed_destinations=()):
+    """{(profile, relative path): (text path, sha256)} of each file that loses a rule to an override
+    (resolved_rule_overrides, with the same ``project_root`` and ``managed_destinations``)."""
     published = selection_rules(skill_dir, catalog, resolved)
     removals = {}
-    for override in resolved_rule_overrides(skill_dir, catalog, resolved):
+    for override in resolved_rule_overrides(skill_dir, catalog, resolved, project_root, managed_destinations):
         target_profile, target_path, absolute_path, rule = published[override["replaces"]]
         removals.setdefault((target_profile, target_path, absolute_path), set()).add(rule.id)
     texts = {}

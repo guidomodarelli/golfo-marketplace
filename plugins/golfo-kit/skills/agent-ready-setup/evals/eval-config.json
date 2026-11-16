@@ -3257,6 +3257,33 @@
           "description": "Dice cómo hacerlo fallar en CI"
         }
       ]
+    },
+    {
+      "id": "project-rule-overrides-managed-rule",
+      "description": "El usuario quiere que una rule propia del proyecto reemplace una sola rule gestionada de un pack, sin editar el pack.",
+      "input": "En mi repo uso agent-ready con el pack acme. El profile acme/base proyecta .agents/rules/acme-conventions.md, y una de sus rules, con id conventions/logger, dice que usemos el logger de Acme. En este repo usamos pino y no puedo cambiar el pack. Quiero escribir una rule propia en .agents/rules/ que reemplace solo esa rule, y que las otras rules del archivo se sigan proyectando. ¿Cómo la escribo y cómo verifico qué va a pasar? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "overrides=acme:conventions/logger",
+          "description": "Usa overrides con la fuente y el id de la rule",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "<!-- rule",
+          "description": "Lo declara en el comentario de una rule atómica propia",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "Rule overridden",
+            "agent-ready plan"
+          ],
+          "description": "Dice cómo verlo en el plan"
+        }
+      ]
     }
   ]
 }

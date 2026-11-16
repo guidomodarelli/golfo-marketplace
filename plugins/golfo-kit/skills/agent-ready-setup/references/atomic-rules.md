@@ -117,14 +117,27 @@ agent-ready rules lint [--path <archivo|carpeta>]... [--json]         # atomicid
 
 ## 5. Reemplazar una sola rule
 
-Una rule de un profile de la selección reemplaza una rule de otro profile con
-`overrides=<fuente>:<id>`. La `<fuente>` es el nombre del pack de un profile con namespace (`acme` para
-`acme/backend`) o `golfo` para el contenido oficial:
+Una rule reemplaza una rule de un profile de la selección con `overrides=<fuente>:<id>`. La `<fuente>` es el
+nombre del pack de un profile con namespace (`acme` para `acme/backend`) o `golfo` para el contenido oficial.
+Puede declararlo:
 
-```markdown
-<!-- rule id=kafka/logger overrides=acme:conventions/logger -->
-- Log Kafka consumers with the structured Kafka logger.
-```
+- **una rule de otro profile de la selección:**
+
+  ```markdown
+  <!-- rule id=kafka/logger overrides=acme:conventions/logger -->
+  - Log Kafka consumers with the structured Kafka logger.
+  ```
+
+- **una rule propia del proyecto,** en un archivo de `.agents/rules/` que no escribió ningún apply. Su fuente
+  es `project` (`project:team/logger` en los mensajes y en `plan`):
+
+  ```markdown
+  <!-- rule id=team/logger overrides=acme:conventions/logger -->
+  - Log with pino.
+  ```
+
+  El archivo propio no cambia ni entra al lock. Si se borra, el próximo apply vuelve a proyectar la rule
+  reemplazada.
 
 - **Qué se proyecta:** el archivo de la rule reemplazada sin esa rule. Las demás rules del archivo, la prosa y
   su hash quedan igual. `plan` lo muestra como `Rule overridden: <fuente>:<id> by <fuente>:<id> of <profile>`.
@@ -133,7 +146,7 @@ Una rule de un profile de la selección reemplaza una rule de otro profile con
 - **Falla antes de escribir:**
   - un `overrides` sin la fuente;
   - una rule que ningún profile de la selección publica;
-  - una rule `locked`;
+  - una rule `locked`, también desde una rule propia del proyecto;
   - una rule del mismo profile;
   - una rule del núcleo;
   - dos rules que reemplazan la misma;
@@ -142,8 +155,8 @@ Una rule de un profile de la selección reemplaza una rule de otro profile con
   - un `overrides` de archivo entero del profile sobre un archivo con una rule `locked`;
   - el mismo id publicado dos veces por la misma fuente. Las rules de un archivo que otro profile reemplaza
     entero no cuentan, porque ese archivo no se proyecta.
-- **Hoy cubre** las rules de los profiles de la raíz de la selección. Que una rule propia del proyecto o de un
-  workspace reemplace una rule gestionada llega en la próxima parte de #168.
+- **Hoy cubre** las rules de los profiles de la raíz de la selección: los profiles que suma solo un workspace no
+  se pueden reemplazar con una rule.
 
 Para reemplazar un archivo entero sigue estando el `overrides` del profile
 ([profiles.md](profiles.md)).

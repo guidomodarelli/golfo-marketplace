@@ -198,7 +198,7 @@ def enforce_sync_policy(project_root, skill_dir, catalog, resolved, digests, sel
     # of the lock projected, a new engine is not a release of the content and the sync goes on.
     if lock and not projects_locked_revision and content_source.update_mode(configuration_of(project_root)) == UPDATES_PINNED:
         # The same texts as the plan, so a rule an override removed hashes as the apply wrote it.
-        assets = desired_assets(skill_dir, catalog, resolved, shared_texts=rule_override_texts(skill_dir, catalog, resolved))
+        assets = desired_assets(skill_dir, catalog, resolved, shared_texts=rule_override_texts(skill_dir, catalog, resolved, project_root))
         golfo_assets = {destination: entry for destination, entry in assets.items() if not is_pack_profile(entry["profile"])}
         identity = source_identity(skill_dir, golfo_assets, merged_template_entries(skill_dir, catalog, resolved),
                                    golfo_blocks(desired_blocks(skill_dir, catalog, resolved, assets)),
