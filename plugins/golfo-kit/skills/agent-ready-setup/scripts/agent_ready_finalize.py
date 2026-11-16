@@ -12,6 +12,7 @@ import agent_ready_nested as nested
 import agent_ready_pack_clis as pack_clis
 import agent_ready_pack_mcp as pack_mcp
 import agent_ready_pack_scripts as pack_scripts
+import agent_ready_rule_changes as rule_changes
 import agent_ready_workspaces as workspace_selection
 from agent_ready_actions import (
     ACTION_CONFLICT,
@@ -234,6 +235,11 @@ def finalize(project_root, skill_dir, plan, updates):
                 "sha256": entry["sha256"],
                 "state": STATE_APPLIED,
             }
+            # The hash of each atomic rule of the file, so a change shows rule by rule.
+            if rule_changes.is_rule_destination(destination):
+                hashes = rule_changes.rule_hashes(rule_changes.read_text(absolute_path), destination)
+                if hashes:
+                    lock_assets[destination]["rules"] = hashes
         else:
             failed.append(destination)
             lock_assets[destination] = {

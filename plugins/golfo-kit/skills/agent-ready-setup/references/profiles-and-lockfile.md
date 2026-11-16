@@ -26,7 +26,7 @@ El contrato sigue en estas referencias:
 | Archivo | Quién lo edita | Contenido |
 |---|---|---|
 | `.agents/agent-ready.json` | personas (versionado) | `profiles` elegidos y lo que difiere de los defaults (capa de proyecto de [configuration.md](configuration.md)) |
-| `.agents/agent-ready.lock.json` | solo el apply | source resuelto, profiles con digest, fuentes de packs, inventario de assets, archivos fusionados |
+| `.agents/agent-ready.lock.json` | solo el apply | source resuelto, profiles con digest, fuentes de packs, inventario de assets (con el hash de cada rule atómica, ver [atomic-rules.md](atomic-rules.md), sección 2), archivos fusionados |
 
 El lockfile registra `source.name` (`golfo`), `source.version` (versión del contenido),
 `source.kind` (`git`, o `local` con el override de desarrollo), `source.revision` (commit del pack de

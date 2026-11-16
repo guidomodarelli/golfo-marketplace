@@ -1136,6 +1136,40 @@ EOF
   grep -q 'Log with the Acme logger' .agents/rules/acme-conventions.md
 }
 
+@test "the lock hashes each atomic rule, and the plan shows an update rule by rule with what depends on it" {
+  copy_example_pack
+  write_atomic_pack_rules ""
+  write_manifest acme/kafka-interno "acme=path:../acme-pack"
+  run_bootstrap
+  [ "$status" -eq 0 ]
+  [ "$(lock_value '",".join(sorted(data["assets"][".agents/rules/acme-conventions.md"]["rules"]))')" = \
+    "conventions/errors,conventions/logger,conventions/naming" ]
+  logger_hash="$(lock_value 'data["assets"][".agents/rules/acme-conventions.md"]["rules"]["conventions/logger"]')"
+  naming_hash="$(lock_value 'data["assets"][".agents/rules/acme-conventions.md"]["rules"]["conventions/naming"]')"
+  [ "$(lock_value '",".join(data["assets"][".agents/rules/acme-kafka.md"]["rules"])')" = "kafka/logger" ]
+  # A file of prose, without atomic rules, has no rule hashes.
+  [ "$(lock_value '"rules" in data["assets"][".agents/rules/testing-scope.md"]')" = "False" ]
+
+  mkdir -p .agents/skills/services
+  printf -- '---\nname: services\n---\nName each service as rule:acme:conventions/naming says.\n' > .agents/skills/services/SKILL.md
+  perl -pi -e 's/Name services after their domain\./Name services after their bounded context./' \
+    "$pack_dir/profiles/base/rules/acme-conventions.md"
+  printf '\n<!-- rule id=conventions/metrics -->\n- Export metrics with OpenTelemetry.\n' >> "$pack_dir/profiles/base/rules/acme-conventions.md"
+
+  run_bootstrap --plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"~ rule changed: conventions/naming"* ]]
+  [[ "$output" == *"+ rule added: conventions/metrics"* ]]
+  [[ "$output" == *"! conventions/naming is cited by .agents/skills/services/SKILL.md:4"* ]]
+  [[ "$output" != *"rule changed: conventions/logger"* ]]
+
+  run_bootstrap
+  [ "$status" -eq 0 ]
+  # Only the rule that changed has a new hash.
+  [ "$(lock_value 'data["assets"][".agents/rules/acme-conventions.md"]["rules"]["conventions/logger"]')" = "$logger_hash" ]
+  [ "$(lock_value 'data["assets"][".agents/rules/acme-conventions.md"]["rules"]["conventions/naming"]')" != "$naming_hash" ]
+}
+
 @test "a rule override that is unqualified, unknown, of a locked rule or of its own profile fails before writing" {
   copy_example_pack
   write_manifest acme/kafka-interno "acme=path:../acme-pack"

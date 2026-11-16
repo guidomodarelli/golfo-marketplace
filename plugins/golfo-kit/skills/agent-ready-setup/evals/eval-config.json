@@ -3311,6 +3311,33 @@
           "description": "Menciona las dependencias por requires"
         }
       ]
+    },
+    {
+      "id": "plan-shows-rule-changes",
+      "description": "El usuario quiere ver, antes de actualizar, qué rules atómicas cambian y qué depende de ellas, no el diff del archivo entero.",
+      "input": "Salió una versión nueva del contenido de agent-ready y el archivo .agents/rules/testing.md cambia. Ese archivo tiene varias rules atómicas, y no quiero leer el diff entero: quiero saber qué rules cambian, cuáles se agregan o se van, y si algo de mi repo depende de las que cambian. ¿Qué comando lo muestra y qué voy a ver? ¿Dónde queda registrado el hash de cada rule? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "agent-ready\"?\\s+plan|--dry-run",
+          "description": "Usa agent-ready plan, o apply/update --dry-run, que muestran el mismo plan",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "rule changed",
+            "ruleChanges"
+          ],
+          "description": "Dice cómo aparecen las rules que cambian",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "agent-ready.lock.json",
+          "description": "Ubica el hash por rule en el lock"
+        }
+      ]
     }
   ]
 }
