@@ -3136,6 +3136,68 @@
           "description": "Da el comando que actualiza el plugin"
         }
       ]
+    },
+    {
+      "id": "rules-lint-pack-in-ci",
+      "description": "El autor de un pack quiere que el CI del pack falle, sin IA, si una rule tiene varias instrucciones o si dos rules deciden lo mismo de forma distinta.",
+      "input": "Mantengo un pack de rules para agent-ready. Quiero que el CI del pack falle si una rule mete varias instrucciones juntas o si dos rules deciden lo mismo de forma distinta (una dice Jest y otra Vitest), sin llamar a ninguna IA. ¿Qué comando corro en el CI y cómo tengo que escribir las rules para que eso se detecte? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "rules lint",
+          "description": "Nombra agent-ready rules lint",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "--path",
+          "description": "Usa --path para leer el pack sin un repositorio consumidor",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "<!-- rule",
+          "description": "Muestra el comentario de la rule atómica",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "key=",
+            "`key`",
+            "key-conflict"
+          ],
+          "description": "Explica que la misma key con distinto contenido es el conflicto",
+          "critical": true
+        }
+      ]
+    },
+    {
+      "id": "rules-statement-limits-config",
+      "description": "El usuario quiere mover los límites de largo del statement que revisa el lint de rules en su repo.",
+      "input": "El lint de rules de agent-ready me avisa cuando el statement de una rule pasa los 200 caracteres. En este repo quiero que avise recién a los 250 y que falle a los 350. ¿Qué claves cambio y dónde? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "rules.statementWarnChars",
+          "description": "Nombra rules.statementWarnChars",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "rules.maxStatementChars",
+          "description": "Nombra rules.maxStatementChars",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "agent-ready.json",
+            "config set"
+          ],
+          "description": "Lo declara en la configuración del proyecto"
+        }
+      ]
     }
   ]
 }

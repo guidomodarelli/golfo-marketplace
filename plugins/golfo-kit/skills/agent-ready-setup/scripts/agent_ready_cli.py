@@ -47,6 +47,7 @@ from agent_ready_options import SOURCES_ENABLED_KEY, UPDATES_PRESET_KEY
 from agent_ready_cli_ci import register as register_ci_commands
 from agent_ready_cli_lifecycle import register as register_lifecycle_commands
 from agent_ready_cli_reviews import register as register_review_commands
+from agent_ready_cli_rules import register as register_rules_commands
 from agent_ready_content import CONTENT_SOURCE_NAME
 from agent_ready_cli_selection import register as register_selection_commands
 from agent_ready_cli_trust import register as register_trust_commands
@@ -402,6 +403,7 @@ def build_parser():
     register_review_commands(subparsers, new_subparser)
     register_trust_commands(subparsers, new_subparser)
     register_ci_commands(subparsers, new_subparser)
+    register_rules_commands(subparsers, new_subparser)
     return parser
 
 

@@ -98,6 +98,16 @@ Caché de las revisiones de IA: la de AGENTS.md contra sus rules y la de consist
 | `reviews.ttl` | integer | — | todas | — | — | Horas que vale una revisión guardada; pasado ese tiempo se revisa de nuevo aunque nada haya cambiado. Sin valor, no vence. |
 | `reviews.commit` | boolean | `false` | todas | — | — | Además de la caché local, guarda cada resultado en .agents/agent-ready.review-cache.json para commitearlo, así el CI y el equipo saltean las revisiones cuyo hash coincide sin pagarlas de nuevo. Cualquiera puede editar un archivo versionado: un resultado de ahí solo evita repetir una revisión idéntica y nunca oculta un hallazgo que la caché local conoce. Los hooks lo toman del último apply. |
 
+## `rules`: Rules atómicas
+
+agent-ready rules lint revisa que cada rule de .agents/rules/ (o de un pack, con --path) tenga una sola instrucción corta y que el conjunto no se contradiga. El formato está en references/atomic-rules.md.
+
+| Clave | Tipo | Default | Capas | Variable | Seguridad | Descripción |
+|---|---|---|---|---|---|---|
+| `rules.enabled` | boolean | `true` | todas | — | — | Apagado, agent-ready rules lint no revisa nada y sale con 0. list y show siguen leyendo las rules. |
+| `rules.statementWarnChars` | integer | `200` | todas | — | — | Largo del statement, en caracteres, desde el que el lint avisa sin fallar. Cuenta solo el statement, no las excepciones ni los detalles. |
+| `rules.maxStatementChars` | integer | `300` | todas | — | — | Largo del statement, en caracteres, desde el que el lint falla. Tiene que ser mayor o igual que rules.statementWarnChars. |
+
 ## `security`: Seguridad
 
 Qué puede aflojar el manifest de un repositorio. Endurecer siempre se aplica; aflojar desde el proyecto requiere que la máquina haya aprobado el repositorio.
