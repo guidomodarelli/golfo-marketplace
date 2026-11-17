@@ -342,6 +342,9 @@ def apply(project_root, candidate_id, settings, skill_path=None, accepted=False)
         entry["learned"] = {field: written[field] for field in ("action", "ruleId", "skill", "overrides",
                                                                 "previousStatement") if written.get(field)}
         entry["learned"]["date"] = today
+        # The marker as apply wrote it, which learn revert compares with: the entry's key and paths can
+        # change afterwards with new evidence.
+        entry["learned"]["marker"] = {"key": entry.get("key"), "paths": sorted(entry.get("paths") or [])}
         if accepted:
             entry["learned"]["accepted"] = True
         entry["learned"]["path"] = os.path.relpath(written["path"], project_root).replace(os.sep, "/")

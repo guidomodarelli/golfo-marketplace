@@ -108,7 +108,8 @@ def revert_rule(project_root, entry):
         _, new_text = replaced_statement(project_root, rule, learned["previousStatement"])
         write_text_atomically(path, new_text)
         return
-    written_marker = (entry.get("key"), sorted(entry.get("paths") or []),
+    marker = learned.get("marker") or {"key": entry.get("key"), "paths": sorted(entry.get("paths") or [])}
+    written_marker = (marker["key"], marker["paths"],
                       sorted((learned.get("overrides") or "").split(",")) if learned.get("overrides") else [], [], False)
     if (rule.key, sorted(rule.paths), sorted(rule.overrides), sorted(rule.requires), rule.locked) != written_marker:
         # The marker apply wrote changed (locked, requires, paths...): the rule is the team's now.

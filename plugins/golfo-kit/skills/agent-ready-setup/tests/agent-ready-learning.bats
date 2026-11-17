@@ -761,3 +761,17 @@ managed_rule() {
   [[ "$stderr" == *"rule learned/records-header in .agents/rules/learned.md has a marker someone changed after the learning"* ]]
   grep -Fq 'key=records.header locked -->' .agents/rules/learned.md
 }
+
+@test "revert compares with the marker apply wrote, not with a key recorded later" {
+  commit_identity
+  agent_ready learn record --kind rule --statement "Records carry the case number in the header." \
+    --quote "de ahora en más, número arriba" --explicit --session s1
+  header="$(id_of 'header')"
+  agent_ready learn apply "$header"
+  agent_ready learn record --kind rule --key records.header --statement "Records carry the case number in the header." \
+    --quote "arriba" --session s2
+  [[ "$output" == *"already-learned"* ]]
+  agent_ready learn revert "$header"
+  [ "$status" -eq 0 ]
+  [ ! -e .agents/rules/learned.md ]
+}
