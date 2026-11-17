@@ -557,7 +557,7 @@ normalize_instructions
 project_asset_tree "$COMMON_SRC"
 project_asset_tree "$SRC"
 project_rule_claude_views "$TEMPLATE_RENDERER" "$SRC/rules" "$COMMON_SRC/rules"
-project_skill_claude_views
+project_skill_claude_views "$COMMON_SRC" "$SRC"
 prune_hard_link_views
 install_hard_link_git_hook "$SKILL_DIR/assets/git-hooks/post-index-change"
 

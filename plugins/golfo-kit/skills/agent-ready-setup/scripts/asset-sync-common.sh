@@ -521,7 +521,7 @@ project_rule_claude_views() {
 # like the skills of a profile. A skill an apply wrote is left alone: its view,
 # or the absence of one for the Codex adapter of an agent or command, is the
 # projection's. Views of a deleted project skill are pruned.
-# Consumers define link_claude_asset and record_removed.
+# Arguments: the asset roots of this projection. Consumers define link_claude_asset and record_removed.
 project_skill_claude_views() {
   local skill_directory
   local skill_name
@@ -531,15 +531,26 @@ project_skill_claude_views() {
   local relative_path
 
   [[ -d "$SHARED_DIR/skills" && ! -L "$SHARED_DIR/skills" ]] || return 0
-  managed_skills="$(python3 - "$SHARED_DIR/agent-ready.lock.json" "$SHARED_DIR/skills/" <<'PY'
-import json, sys
+  # Managed: what the lock records, and what the asset roots of this projection publish as a skill
+  # (skills/<name>/, skills/<name>.md) or as the Codex adapter of an agent or a command. The lock alone
+  # is not enough: the first apply projects before it writes the lock.
+  managed_skills="$(python3 - "$SHARED_DIR/agent-ready.lock.json" "$SHARED_DIR/skills/" "$@" <<'PY'
+import json, os, sys
 try:
     with open(sys.argv[1], encoding="utf-8") as handle:
         assets = json.load(handle).get("assets", {})
 except (OSError, ValueError):
     assets = {}
 prefix = sys.argv[2]
-print("\n".join(sorted({path[len(prefix):].split("/")[0] for path in assets if path.startswith(prefix)})))
+names = {path[len(prefix):].split("/")[0] for path in assets if path.startswith(prefix)}
+for root in sys.argv[3:]:
+    for folder in ("skills", "agents", "commands"):
+        try:
+            entries = os.listdir(os.path.join(root, folder))
+        except OSError:
+            continue
+        names.update(entry[:-3] if entry.endswith(".md") else entry for entry in entries)
+print("\n".join(sorted(names)))
 PY
 )" || return 1
 
