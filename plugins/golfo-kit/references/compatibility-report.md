@@ -8,7 +8,7 @@
 ## A. Resumen ejecutivo
 
 - **Fecha de auditoría:** 2026-10-23 (generado 2026-10-23T21:00:00Z).
-- **Total de skills analizadas:** 47.
+- **Total de skills analizadas:** 48.
 - **Funcionalidades deshabilitadas:** 0.
 - **Adaptaciones implementadas:** 42; verificadas: 20.
 - **Problemas críticos pendientes:** ninguno.
@@ -43,7 +43,7 @@ Dependencias implícitas de navegador de measured-performance-optimization, prev
 | `adapted` | 0 | 1 | 1 |
 | `partial` | 0 | 0 | 0 |
 | `incompatible` | 0 | 0 | 0 |
-| `unverified` | 43 | 46 | 46 |
+| `unverified` | 44 | 47 | 47 |
 
 ### Regla de derivación del estado
 
@@ -73,6 +73,7 @@ Una funcionalidad `disabled` lista las alternativas investigadas y ninguna es vi
 | `codex-comment-closeout` | `compatible` | `unverified` | `unverified` |
 | `constants-refactor` | `unverified` | `unverified` | `unverified` |
 | `create-issue` | `unverified` | `unverified` | `unverified` |
+| `deepen-prompt` | `unverified` | `unverified` | `unverified` |
 | `enforce-jsdoc-tsdoc` | `unverified` | `unverified` | `unverified` |
 | `error-observability-diagnostics` | `unverified` | `unverified` | `unverified` |
 | `feature-branch-pr` | `unverified` | `unverified` | `unverified` |
@@ -269,8 +270,8 @@ Pendiente de verificar:
 **Identificación**
 
 - Nombre: Be Ambitious; versión: 1.0.0; SKILL.md: `plugins/golfo-kit/skills/be-ambitious/SKILL.md`.
-- Propósito: Reescribe una tarea o prompt en una versión más profunda (no más grande): campo, prácticas expertas, fuentes primarias, métodos y chequeo externo con criterio pasa/falla.
-- Funcionalidades principales: análisis de cuatro preguntas; reescritura del prompt; cierre sin ejecutar.
+- Propósito: Hace la tarea con la máxima ambición posible: lo pedido como piso, el techo imaginable, los saltos más grandes que se pueden terminar, varias pasadas de mejora y un cierre que separa lo verificado de lo que no.
+- Funcionalidades principales: piso y techo; saltos por palanca; límites autoimpuestos; pasadas de mejora; barreras de riesgo; cierre con evidencia.
 - Agentes soportados declarados: no declara.
 
 **Dependencias**
@@ -288,7 +289,7 @@ Sin dependencias específicas de agente detectadas por inspección. No se ejecut
 
 | Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
 |---|---|---|---|---|---|---|---|
-| `core-workflow` | sí | `unverified` | `native` | Instrucciones de la skill; no usa herramientas específicas de agente. | — | Sin dependencias específicas detectadas por inspección; no ejecutada en Claude Code en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
+| `core-workflow` | sí | `unverified` | `native` | Instrucciones de la skill; usa las herramientas que el agente tenga disponibles, sin depender de ninguna específica. | — | Sin dependencias específicas detectadas por inspección; no ejecutada en Claude Code en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
 
 #### be-ambitious / `codex`: `unverified`
 
@@ -299,7 +300,7 @@ Sin dependencias específicas de agente detectadas por inspección. No se ejecut
 
 | Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
 |---|---|---|---|---|---|---|---|
-| `core-workflow` | sí | `unverified` | `native` | Instrucciones de la skill; no usa herramientas específicas de agente. | — | Sin dependencias específicas detectadas por inspección; no ejecutada en Codex CLI en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
+| `core-workflow` | sí | `unverified` | `native` | Instrucciones de la skill; usa las herramientas que el agente tenga disponibles, sin depender de ninguna específica. | — | Sin dependencias específicas detectadas por inspección; no ejecutada en Codex CLI en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
 
 #### be-ambitious / `hermes`: `unverified`
 
@@ -310,7 +311,7 @@ Sin dependencias específicas de agente detectadas por inspección. No se ejecut
 
 | Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
 |---|---|---|---|---|---|---|---|
-| `core-workflow` | sí | `unverified` | `native` | Instrucciones de la skill; no usa herramientas específicas de agente. | — | Sin dependencias específicas detectadas por inspección; no ejecutada en Hermes Agent en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
+| `core-workflow` | sí | `unverified` | `native` | Instrucciones de la skill; usa las herramientas que el agente tenga disponibles, sin depender de ninguna específica. | — | Sin dependencias específicas detectadas por inspección; no ejecutada en Hermes Agent en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
 
 **Implementación**
 
@@ -668,6 +669,73 @@ Sin dependencias específicas de agente detectadas por inspección. No se ejecut
 | Prueba | Agente | Tipo | Comando | Resultado | Evidencia |
 |---|---|---|---|---|---|
 | `static-inspection` | `any` | static | `grep -rE "AskUserQuestion\|request_user_input\|Monitor\|Cron(Create\|List\|Delete)\|PushNotification\|TaskStop\|Agent\|subagent\|mcp__\|claude -p\|codex exec\|~/.claude\|~/.codex\|apply_patch\|update_plan" plugins/golfo-kit/skills/<skill>` | `passed` | Inspección de SKILL.md, references y scripts del 2026-10-23; las coincidencias de "hook" son hooks de React o de git, no hooks de agente. |
+
+Pendiente de verificar:
+
+- Ejecutar la skill en Claude Code con un caso real.
+- Ejecutar la skill en Codex CLI con un caso real.
+- Ejecutar la skill en Hermes Agent con un caso real.
+
+### `deepen-prompt`
+
+**Identificación**
+
+- Nombre: Deepen Prompt; versión: 2.0.0; SKILL.md: `plugins/golfo-kit/skills/deepen-prompt/SKILL.md`.
+- Propósito: Reescribe una tarea o prompt en una versión más profunda (no más grande): campo, prácticas expertas, fuentes primarias, métodos y chequeo externo con criterio pasa/falla.
+- Funcionalidades principales: análisis de cuatro preguntas; reescritura del prompt; cierre sin ejecutar.
+- Agentes soportados declarados: no declara.
+
+**Dependencias**
+
+Sin dependencias específicas de agente detectadas por inspección.
+
+**Compatibilidad por agente**
+
+#### deepen-prompt / `claude_code`: `unverified`
+
+Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Claude Code durante esta auditoría, así que su funcionamiento no está verificado.
+
+- Capacidades faltantes: ninguna.
+- Alternativas investigadas: ninguna.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `core-workflow` | sí | `unverified` | `native` | Instrucciones de la skill; no usa herramientas específicas de agente. | — | Sin dependencias específicas detectadas por inspección; no ejecutada en Claude Code en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
+
+#### deepen-prompt / `codex`: `unverified`
+
+Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Codex CLI durante esta auditoría, así que su funcionamiento no está verificado.
+
+- Capacidades faltantes: ninguna.
+- Alternativas investigadas: ninguna.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `core-workflow` | sí | `unverified` | `native` | Instrucciones de la skill; no usa herramientas específicas de agente. | — | Sin dependencias específicas detectadas por inspección; no ejecutada en Codex CLI en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
+
+#### deepen-prompt / `hermes`: `unverified`
+
+Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Hermes Agent durante esta auditoría, así que su funcionamiento no está verificado.
+
+- Capacidades faltantes: ninguna.
+- Alternativas investigadas: ninguna.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `core-workflow` | sí | `unverified` | `native` | Instrucciones de la skill; no usa herramientas específicas de agente. | — | Sin dependencias específicas detectadas por inspección; no ejecutada en Hermes Agent en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
+
+**Implementación**
+
+- Adaptaciones: ninguna.
+- Archivos modificados: ninguno.
+- Fallback: ninguno.
+- Cambios de comportamiento respecto del original: ninguno.
+
+**Verificación**
+
+| Prueba | Agente | Tipo | Comando | Resultado | Evidencia |
+|---|---|---|---|---|---|
+| `static-inspection` | `any` | static | `grep -rE "AskUserQuestion\|request_user_input\|Monitor\|Cron(Create\|List\|Delete)\|PushNotification\|TaskStop\|Agent\|subagent\|mcp__\|claude -p\|codex exec\|~/.claude\|~/.codex\|apply_patch\|update_plan" plugins/golfo-kit/skills/<skill>` | `passed` | Inspección de SKILL.md y evals del 2026-10-30: la skill solo produce texto y no usa herramientas específicas de agente. |
 
 Pendiente de verificar:
 

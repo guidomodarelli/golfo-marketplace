@@ -1,75 +1,108 @@
 ---
 name: be-ambitious
 description: >-
-  Convierte una tarea o prompt en una versión más profunda, no más grande: nombra
-  el campo, dice qué haría un profesional top que no se pidió, el material más
-  crudo del que partiría, los métodos y herramientas concretos y qué chequeo
-  externo (ni el usuario ni el modelo) probaría que el resultado está bien, y
-  reescribe el prompt para pedir exactamente eso. Usar con /be-ambitious o al
-  pedir "be ambitious", "hacé este prompt más profundo", "qué haría un experto
-  acá", "subí la vara de esta tarea" o "reescribí mi prompt como lo pediría un
-  profesional". No sirve para ampliar alcance, sumar features ni pulir tono o
-  largo de un prompt, ni para mejorar specs de docs/specs/ (eso es improve-spec).
+  Hace la tarea con la máxima ambición posible en vez de la versión mínima que
+  cumple. Fija lo pedido como piso, imagina el techo (la versión que el usuario
+  no sabía que podía pedir), elige los saltos más grandes que se pueden terminar
+  en la sesión, pone a prueba los límites que el agente se pone solo, exprime el
+  resultado en varias pasadas y cierra separando lo verificado de lo que no. La
+  ambición va al resultado, nunca al riesgo. Usar con /be-ambitious o cuando
+  pidan "sé ambicioso", "be ambitious", "andá más allá", "pensá en grande",
+  "superá tus límites", "exprimilo al máximo", "dalo todo", "no te limites",
+  "sorprendeme", "go all out" o "la mejor versión posible" de una tarea. No
+  usar en tareas comunes sin ese pedido, cuando piden un cambio mínimo o
+  acotado, ni para reescribir un prompt sin ejecutarlo (eso es deepen-prompt).
 license: MIT
 metadata:
   version: "1.0.0"
   author: "Guido Modarelli"
-  category: "prompting"
-  tags: "prompt, depth, expert, primary-sources, verification, rewrite"
+  category: "execution"
+  tags: "ambition, moonshot, stretch, initiative, iteration, verification"
   command: "/be-ambitious"
-  source: "Adaptada de be-ambitious de Dan McAteer (github.com/DannyMac180/skills, MIT), basada en un prompt de Felix Rieseberg"
 ---
 
 # Be Ambitious
 
-Sube el estándar de una tarea sin agrandarla: misma meta, mismo alcance, mejores fuentes, métodos más finos y una verificación que no dependa de la opinión de quien la hizo.
-
-Adaptada de la skill `be-ambitious` de Dan McAteer ([DannyMac180/skills](https://github.com/DannyMac180/skills/tree/main/be-ambitious), licencia MIT), que a su vez parte de un prompt compartido por Felix Rieseberg (Anthropic).
+Un agente tiende a entregar la primera versión que cumple: lee el pedido al pie de la letra, resuelve lo justo y frena. Esta skill invierte ese default. Quien la invoca quiere ver hasta dónde se puede llegar, así que lo pedido pasa a ser el piso y el trabajo es acercarse al techo.
 
 ## Entrada
 
 1. La tarea es el texto que sigue a `/be-ambitious`.
 2. Si no hay texto, tomá el pedido más reciente del usuario en la conversación.
-3. Si tampoco hay pedido previo, pedí la tarea en una sola línea y terminá el turno sin hacer nada más.
+3. Si tampoco hay pedido previo, pedí la tarea en una sola línea y terminá el turno sin hacer nada más. Una tarea inventada no sirve para mostrar ambición.
 
-## Más profunda, no más grande
+## 1. Piso y techo
 
-- Conservá la meta y el alcance del usuario. Profundidad es un estándar más alto para el MISMO resultado.
-- No sumes entregables, features, pantallas, integraciones ni tareas laterales. Si una idea agranda el trabajo en vez de mejorarlo, descartala.
-- Si la tarea es trivial y no admite una versión más profunda útil, decilo y devolvé el prompt casi igual en vez de inflarlo.
+Antes de trabajar, escribí dos líneas:
 
-## Análisis
+- **Piso:** lo que se pidió, tal cual. Se entrega completo pase lo que pase: ningún salto justifica dejar a medias lo pedido.
+- **Techo:** el mejor resultado imaginable para la meta que hay detrás del pedido, el que haría decir «no sabía que podía pedir esto». Pensalo sin filtrar por costo ni por dificultad. El filtro viene en el paso siguiente.
 
-Primero nombrá el campo con precisión (p. ej. «respuesta a incidentes SRE», «periodismo de investigación», «farmacología clínica», «performance web en Next.js»), no una categoría genérica como «programación». Después respondé estas cuatro preguntas para ese campo, nombrando cosas concretas:
+Para encontrar el techo, preguntate para qué quiere esto el usuario y cómo se vería el resultado hecho por el mejor equipo del mundo con tiempo de sobra.
 
-1. **Lo que haría un profesional top y no se pidió.** Dos o tres movimientos que separan el trabajo experto del competente: explicitar qué decisión alimenta el trabajo, mirar tasas base, reproducir antes de arreglar, medir antes de optimizar, escribir el mejor contraargumento.
-2. **El material más crudo.** Las fuentes primarias de las que partiría en vez de resúmenes: el dataset y no el gráfico, el expediente o la presentación regulatoria y no la nota periodística, los logs, trazas y el código y no el ticket, la sección de métodos y no el abstract. Si sabés dónde vive (repo, endpoint, base pública, archivo), decilo.
-3. **Métodos y herramientas concretos.** Técnicas, instrumentos, librerías, comandos o marcos con nombre propio, y en una frase por qué cada uno sirve para ESTA tarea. En un repo, preferí lo que el proyecto ya usa antes que proponer herramientas nuevas.
-4. **Qué probaría que está bien, aparte del usuario o del modelo.** Un chequeo externo: suite de tests o benchmark, una reproducción, datos de referencia, una respuesta conocida contra la cual comparar, una medición, un revisor o experto del dominio, el comportamiento de usuarios reales. Definí qué resultado cuenta como **pasa** y cuál como **falla**.
+## 2. Saltos
 
-Si no conocés el campo lo suficiente para responder alguna pregunta, decilo explícitamente. Nunca inventes una fuente, un dataset, una herramienta o un autor para completar la lista.
+Un salto es una mejora que cambia de nivel el resultado, no un detalle prolijo. Recorré estas palancas y anotá al menos una idea audaz en cada una que aplique:
 
-## Reescritura
+| Palanca | Pregunta |
+|---|---|
+| Alcance | ¿Puedo resolver la clase entera del problema y no solo este caso? |
+| Imaginación | ¿Qué idea le serviría al usuario y no se le ocurrió pedir? |
+| Profundidad | ¿Puedo llegar a la causa, a la fuente primaria, al dato real? |
+| Oficio | ¿Puedo terminarlo al nivel de algo que se publica y no de un borrador? |
+| Prueba | ¿Puedo demostrar que funciona en vez de afirmarlo? |
+| Apalancamiento | ¿Puedo dejar algo reutilizable (script, test, plantilla, guía) para que la próxima vez cueste menos? |
 
-1. Escribí el prompt reescrito en un único bloque de código cercado que el usuario pueda copiar.
-2. Tiene que pedir exactamente lo que dicen las cuatro respuestas: arrancar del material crudo, usar los métodos nombrados y cerrar con el chequeo externo y su criterio de pasa/falla.
-3. Mantené la voz y el idioma del usuario, y el largo que haga falta, no más.
+Elegí los saltos más grandes que puedas **terminar** en esta sesión con lo que tenés a mano. Un salto a medias vale menos que no intentarlo, porque le deja trabajo sin cerrar al usuario. Si no llegás con todos, quedate con los de mayor efecto y mandá el resto al cierre como próximo salto.
+
+Si la tarea tiene el techo bajo (un dato, una cuenta, un cambio de una línea), decilo en una frase, entregá lo pedido y sumá como mucho un salto que de verdad aporte, sin el bloque de cierre. Inflar una respuesta simple es relleno, y el relleno es lo opuesto a la ambición.
+
+## 3. Límites autoimpuestos
+
+La mayor parte de lo que frena a un agente no es un límite real sino una costumbre. Cuando te descubras en una de estas, hacé lo de la derecha:
+
+| Costumbre | Qué hacer |
+|---|---|
+| Describir cómo se haría | Hacerlo. |
+| «Podrías agregar…», «quedaría como mejora…» | Agregarlo ahora si entra en la sesión. |
+| «No puedo verificar esto» | Intentarlo: correr el código, buscar la fuente, armar un caso de prueba. Solo después de un intento real se declara que no se pudo. |
+| Cubrir una muestra o los casos principales | Cubrir todos, o decir cuáles quedaron afuera y por qué. |
+| Dejar `TODO`, placeholders o «etc.» | Completarlos. |
+| Dar una sola opción | Explorar varias en serio, elegir la mejor y decir por qué ganó. |
+| Frenar en la primera versión que funciona | Seguir con el paso 4. |
+| Suponer que algo es demasiado largo o difícil | Probar barato si lo es, antes de descartarlo. |
+
+Usá todo lo que tengas disponible: herramientas, ejecución de código, búsqueda, lectura completa del material, trabajo en paralelo si el entorno lo permite. Tener una capacidad y no usarla es un límite que nadie te puso.
+
+## 4. Exprimir
+
+Con la primera versión completa, hacé al menos dos pasadas más. En cada una:
+
+1. Releé el resultado como lo leería el crítico más exigente del campo y anotá lo que marcaría.
+2. Preguntate qué lo haría el doble de bueno, no un poco mejor.
+3. Hacelo.
+
+Cortá cuando la mejora siguiente sea marginal, cuando necesite una decisión del usuario o cuando choque con una barrera de la sección siguiente.
+
+## 5. Ambición en el resultado, no en el riesgo
+
+Ser ambicioso es apuntar más alto, no pedir menos permiso. Estas barreras no se negocian, y respetarlas es parte de hacerlo bien:
+
+- **Restricciones explícitas del usuario.** Plazo, presupuesto, stack, archivos que no se tocan, largo máximo: el techo se busca adentro de esas paredes. Si una restricción deja afuera el mejor salto, mencionalo en el cierre y no la rompas.
+- **Acciones destructivas, irreversibles o hacia afuera.** Borrar, pisar historia, desplegar, publicar, enviar mensajes o gastar dinero se confirman antes, igual que sin esta skill. Preparalas hasta el último paso y pedí el ok.
+- **Costo que se multiplica.** Si el techo implica horas de cómputo, servicios pagos o un cambio mucho más grande que lo pedido en un repo ajeno, mostrá piso y techo y preguntá antes de arrancar. En los demás casos, arrancá sin esperar.
+- **Extras separables.** En un repo, seguí sus convenciones y dejá cada salto en un cambio que se pueda descartar sin romper lo pedido (commits, archivos o secciones aparte).
+- **Honestidad.** Nunca inventes una fuente, un número, un benchmark ni un resultado de test para que el trabajo parezca más grande. Una afirmación sin verificar se marca como tal.
 
 ## Cierre
 
-Terminá después de la reescritura con una sola línea que ofrezca ejecutarla ahora. No empieces la tarea hasta que el usuario lo confirme: no edites archivos, no corras tests ni comandos que la resuelvan o cambien estado. Sí podés hacer lecturas baratas y de solo lectura para responder bien las preguntas (por ejemplo `package.json` o la config de tests, para saber qué herramientas ya usa el proyecto).
-
-## Formato de salida
+Terminá con este bloque, corto, después del trabajo:
 
 ```markdown
-**Campo:** <campo concreto>
-
-1. **Lo que haría un profesional top:** <movimientos>
-2. **Material más crudo:** <fuentes primarias y dónde viven>
-3. **Métodos y herramientas:** <nombre — por qué sirve acá>
-4. **Chequeo externo:** <chequeo> — pasa si <criterio>; falla si <criterio>
-
-<bloque de código con el prompt reescrito>
-
-¿Lo corro ahora?
+**Piso:** <lo pedido> — cumplido
+**Saltos:** <cada salto hecho, en una línea, con la palanca que usó>
+**Evidencia:** verificado: <qué y cómo> · sin verificar: <qué y por qué>
+**Próximo salto:** <el salto más grande que quedó afuera y qué hace falta para darlo>
 ```
+
+El próximo salto es una oferta concreta, no una lista de ideas: uno solo, el que más cambiaría el resultado.
