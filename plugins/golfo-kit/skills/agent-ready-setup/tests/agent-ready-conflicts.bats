@@ -110,6 +110,12 @@ install_engine_copy() {
   cp -R "$repository_root/plugins/golfo-kit/.claude-plugin" "$repository_root/plugins/golfo-kit/.codex-plugin" "$installed_plugin/"
   cp -R "$skill_dir/assets" "$skill_dir/scripts" "$skill_dir/SKILL.md" "$engine_copy/"
   copy_content_pack
+  # The pairs of this suite are whole files: verify-changes.md stays prose here, so it is one document.
+  # The review of a file split into atomic rules, one document per rule, is in agent-ready-reviews.bats.
+  printf '# Verify Changes
+
+Verify your work after each meaningful change instead of assuming it worked.
+'     > "$content_dir/base/rules/verify-changes.md"
 }
 
 agent_ready() {
