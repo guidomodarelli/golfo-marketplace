@@ -80,7 +80,8 @@ jobs:
     needs: changes
     if: needs.changes.outputs.agent_ready == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Every suite in one job: 21 to 27 minutes, and a slow runner reached 30 with no test failing.
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

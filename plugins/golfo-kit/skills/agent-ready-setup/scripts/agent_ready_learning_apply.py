@@ -15,6 +15,7 @@ import agent_ready_learning as learning
 import agent_ready_rules
 from agent_ready_common import StateError, write_text_atomically
 from agent_ready_lockfile import read_lock, was_applied
+from agent_ready_profiles import BASE_PROFILE_NAME
 from agent_ready_rule_overrides import PROJECT_RULE_SOURCE, rule_source
 from agent_ready_workspaces import WORKSPACE_RULES_DIRECTORY
 
@@ -56,10 +57,11 @@ def unique_rule_id(slug, taken):
 
 
 def repository_rules(project_root):
-    """[(rule, managed, source)] of the root rules of the repository: managed is what an apply wrote."""
-    files = [path for path in agent_ready_rules.rule_files(os.path.join(project_root, PROJECT_RULES_RELATIVE_PATH))
-             if not agent_ready_rules.display_path(path, os.path.join(project_root, PROJECT_RULES_RELATIVE_PATH))
-             .startswith(WORKSPACE_RULES_DIRECTORY + "/")]
+    """[(rule, managed, source, profile)] of the root rules of the repository: managed is what an apply
+    wrote, and profile is the profile of the lock that wrote it."""
+    rules_root = os.path.join(project_root, PROJECT_RULES_RELATIVE_PATH)
+    files = [path for path in agent_ready_rules.rule_files(rules_root)
+             if not agent_ready_rules.display_path(path, rules_root).startswith(WORKSPACE_RULES_DIRECTORY + "/")]
     try:
         rules, _ = agent_ready_rules.read_rules(files, project_root)
     except (OSError, UnicodeDecodeError) as read_error:
@@ -69,7 +71,8 @@ def repository_rules(project_root):
     for rule in rules:
         asset = assets.get(rule.path)
         managed = was_applied(asset)
-        described.append((rule, managed, rule_source(asset["profile"]) if managed else PROJECT_RULE_SOURCE))
+        profile = asset.get("profile") if managed else None
+        described.append((rule, managed, rule_source(profile) if managed else PROJECT_RULE_SOURCE, profile))
     return described
 
 
@@ -113,27 +116,50 @@ def replaced_statement(project_root, rule, statement):
     lines = text.replace("\r\n", "\n").split("\n")
     index = rule.line - 1
     bullet = agent_ready_rules.rule_format_module().TOP_LEVEL_BULLET.match(lines[index])
-    # The statement may wrap on indented lines: they are the bullet's until the first sub-item.
-    end = index + 1
-    while end < len(lines) and lines[end].startswith((" ", "\t")) and not agent_ready_rules.SUB_ITEM.match(lines[end]):
-        end += 1
-    lines[index:end] = [lines[index][:bullet.start("text")] + statement]
+    # The statement is the bullet and its indented continuations, blank lines between them included,
+    # up to the first sub-item of the rule (rule-format.py decides where the rule ends).
+    rule_end = rule.span[1]
+    statement_end = index + 1
+    for position in range(index + 1, rule_end):
+        if agent_ready_rules.SUB_ITEM.match(lines[position]):
+            break
+        if lines[position].strip():
+            statement_end = position + 1
+    lines[index:statement_end] = [lines[index][:bullet.start("text")] + statement]
     return path, newline.join(lines)
 
 
-def check_rule_text(path, text, project_root):
-    _, findings = agent_ready_rules.parse_rule_text(text, os.path.relpath(path, project_root))
+def check_rule_text(path, text, rule_id, project_root, max_statement_chars):
+    """The learned rule parses and passes the lint of one rule (atomic and short) before anything is written."""
+    rules, findings = agent_ready_rules.parse_rule_text(text, os.path.relpath(path, project_root))
+    learned = [rule for rule in rules if rule.id == rule_id]
+    findings = findings + agent_ready_rules.lint_rules(learned, max_statement_chars, max_statement_chars)
     errors = [finding for finding in findings if finding.level == agent_ready_rules.LEVEL_ERROR]
     if errors:
-        raise StateError("the learned rule would not be a valid atomic rule: " + errors[0].render())
+        raise StateError("the learned rule would not be a valid atomic rule, so nothing was written: "
+                         + errors[0].render())
+
+
+def scope(paths):
+    return ", ".join(sorted(paths)) or "the whole repository"
 
 
 def plan_rule(project_root, entry, registry):
     """What writing the entry as a rule does: {action, path, text, ruleId, overrides, supersedes}."""
     described = repository_rules(project_root)
     key = entry.get("key")
-    same_key = [(rule, managed, source) for rule, managed, source in described if key and rule.key == key]
-    own = [rule for rule, managed, _ in same_key if not managed]
+    same_key = [item for item in described if key and item[0].key == key]
+    # A locked rule stops the learning wherever it is, before anything else is decided.
+    for rule, _, source, _ in same_key:
+        if rule.locked:
+            raise LockedRuleError(f"{source}:{rule.id} decides {key} and is locked: it cannot change, so "
+                                  "nothing was saved; tell the user so in one line")
+    for rule, _, source, _ in same_key:
+        if sorted(rule.paths) != sorted(entry.get("paths") or []):
+            raise StateError(f"{source}:{rule.id} decides {key} for {scope(rule.paths)}, and the instruction is for "
+                             f"{scope(entry.get('paths') or [])}: record it with a key of its own for that scope; "
+                             "nothing was written")
+    own = [rule for rule, managed, _, _ in same_key if not managed]
     if own:
         rule = own[0]
         previous = next((item for item in registry["candidates"] if item is not entry
@@ -143,14 +169,14 @@ def plan_rule(project_root, entry, registry):
         return {"action": ACTION_SUPERSEDE if previous else ACTION_UPDATE, "path": path, "text": text,
                 "ruleId": rule.id, "overrides": None, "supersedes": previous["id"] if previous else None}
     overrides = None
-    for rule, _, source in same_key:
-        if rule.locked:
-            raise LockedRuleError(f"{source}:{rule.id} decides {key} and its profile marks it locked: it cannot "
-                                  "change, so nothing was saved; tell the user so in one line")
+    for rule, _, source, profile in same_key:
+        if profile == BASE_PROFILE_NAME:
+            raise StateError(f"{source}:{rule.id} decides {key} and belongs to the core, which a rule cannot "
+                             "override yet: nothing was saved")
         overrides = f"{source}:{rule.id}"
     if is_managed(project_root, LEARNED_RULES_RELATIVE_PATH):
         raise StateError(f"{LEARNED_RULES_RELATIVE_PATH} is managed by a profile; a learned rule never goes there")
-    rule_id = unique_rule_id(slug_of(entry), {rule.id for rule, _, _ in described})
+    rule_id = unique_rule_id(slug_of(entry), {item[0].id for item in described})
     path, text = appended_rule(project_root, rule_id, entry, overrides)
     return {"action": ACTION_CREATE, "path": path, "text": text, "ruleId": rule_id, "overrides": overrides,
             "supersedes": None}
@@ -202,6 +228,9 @@ def apply(project_root, candidate_id, settings, skill_path=None):
         entry = next((item for item in registry["candidates"] if item["id"] == candidate_id), None)
         if entry is None:
             raise StateError(f"no entry has the id {candidate_id} (see agent-ready learn list)")
+        if entry["status"] == learning.STATUS_SUPERSEDED:
+            raise StateError(f"{candidate_id} was replaced by {entry.get('supersededBy')}: only new evidence "
+                             "of the user brings it back")
         decision = learning.decide(entry, settings["mode"], settings["threshold"], settings["ttl_days"])
         if decision != learning.DECISION_LEARN:
             reasons = {learning.DECISION_ALREADY_LEARNED: "it is already learned",
@@ -214,7 +243,8 @@ def apply(project_root, candidate_id, settings, skill_path=None):
             if entry["kind"] == learning.KIND_NESTED and not entry.get("paths"):
                 raise StateError(f"{candidate_id} is only for one folder: record it with --paths")
             written = plan_rule(project_root, entry, registry)
-            check_rule_text(written["path"], written["text"], project_root)
+            check_rule_text(written["path"], written["text"], written["ruleId"], project_root,
+                            settings["max_statement_chars"])
             write_text_atomically(written["path"], written["text"])
         today = settings["today"].isoformat()
         entry["status"] = learning.STATUS_LEARNED

@@ -928,6 +928,37 @@ EOF
   assert_claude_view .claude/rules/react-security.md
 }
 
+# bats test_tags=area:claude-views
+@test "sync and apply give the project's own skills a Claude view, never the managed adapters, and prune deleted ones" {
+  source_dir="$test_root/dynamic-skill"
+  cp -R "$skill_dir" "$source_dir"
+  cat > "$source_dir/scripts/merge-instructions.sh" <<'EOF'
+#!/bin/bash
+exit 0
+EOF
+  run_bootstrap react
+  [ "$status" -eq 0 ]
+  mkdir -p .agents/skills/draft-record/references
+  printf -- '---\nname: draft-record\ndescription: Draft a record.\n---\n1. Header.\n' > .agents/skills/draft-record/SKILL.md
+  printf '%s\n' '# Template' > .agents/skills/draft-record/references/template.md
+
+  run_marketplace_sync "$source_dir/assets/common/hooks/sync-marketplace.sh" "$source_dir"
+
+  [ "$status" -eq 0 ]
+  assert_claude_view .claude/skills/draft-record/SKILL.md "../../../.agents/skills/draft-record/SKILL.md"
+  assert_claude_view .claude/skills/draft-record/references/template.md
+  # The Codex adapter of a Claude agent stays without a view.
+  [ -f .agents/skills/a11y-reviewer/SKILL.md ]
+  [ ! -e .claude/skills/a11y-reviewer ]
+
+  rm -r .agents/skills/draft-record
+  run_bootstrap react
+  [ "$status" -eq 0 ]
+  [ ! -L .claude/skills/draft-record/SKILL.md ]
+  [ ! -L .claude/skills/draft-record/references/template.md ]
+  [ ! -e .claude/skills/a11y-reviewer ]
+}
+
 # bats test_tags=area:adapters
 @test "sync hook replaces placeholder adapter descriptions from older projections" {
   source_dir="$test_root/dynamic-skill"

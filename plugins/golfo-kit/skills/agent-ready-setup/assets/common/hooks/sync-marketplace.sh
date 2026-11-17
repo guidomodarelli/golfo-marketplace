@@ -913,6 +913,7 @@ project_rule_claude_views \
   "$skill_dir/scripts/render-instruction-template.sh" \
   "$stack_dir/rules" \
   "$skill_dir/assets/common/rules"
+project_skill_claude_views
 prune_hard_link_views
 install_hard_link_git_hook "$skill_dir/assets/git-hooks/post-index-change"
 

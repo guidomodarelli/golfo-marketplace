@@ -293,7 +293,7 @@ managed_rule() {
     --quote "de ahora en más, usá el runner del proyecto" --explicit --session s1
   agent_ready learn apply "$(id_of 'runner of the project')"
   [ "$status" -ne 0 ]
-  [[ "$stderr" == *"golfo:testing/runner decides testing.unit-runner and its profile marks it locked: it cannot change, so nothing was saved"* ]]
+  [[ "$stderr" == *"golfo:testing/runner decides testing.unit-runner and is locked: it cannot change, so nothing was saved"* ]]
   [ ! -e .agents/rules/learned.md ]
   [ "$(git rev-list --count HEAD)" -eq "$commits" ]
   [ "$(registry_value 'data["candidates"][0]["status"]')" = "candidate" ]
@@ -336,4 +336,96 @@ managed_rule() {
   [ "$status" -eq 0 ]
   [[ "$output" == *"create: .agents/skills/draft-record in .agents/skills/draft-record"* ]]
   git show --name-only --format= HEAD | grep -Fxq .agents/skills/draft-record/SKILL.md
+}
+
+@test "a locked rule stops the learning even when a rule of the project decides the same key" {
+  commit_identity
+  managed_rule locked
+  printf '%s\n' '# Team' '' '<!-- rule id=team/runner key=testing.unit-runner overrides=golfo:testing/runner -->' \
+    '- Use Jest.' > .agents/rules/team.md
+  agent_ready learn record --kind rule --key testing.unit-runner --statement "Use the test runner of the project." \
+    --quote "de ahora en más, el runner del proyecto" --explicit --session s1
+  agent_ready learn apply "$(id_of 'runner of the project')"
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"golfo:testing/runner decides testing.unit-runner and is locked"* ]]
+  grep -Fxq -- '- Use Jest.' .agents/rules/team.md
+
+  printf '%s\n' '# Team' '' '<!-- rule id=team/runner key=testing.unit-runner locked -->' '- Use Jest.' > .agents/rules/team.md
+  rm .agents/agent-ready.lock.json .agents/rules/testing.md
+  agent_ready learn apply "$(id_of 'runner of the project')"
+  [[ "$stderr" == *"project:team/runner decides testing.unit-runner and is locked"* ]]
+  grep -Fxq -- '- Use Jest.' .agents/rules/team.md
+}
+
+@test "a rule of the core, or of another scope, is never replaced by a learned rule" {
+  commit_identity
+  managed_rule ""
+  sed -i.bak 's/"software-development"/"common"/' .agents/agent-ready.lock.json && rm .agents/agent-ready.lock.json.bak
+  agent_ready learn record --kind rule --key testing.unit-runner --statement "Use the test runner of the project." \
+    --quote "de ahora en más, el runner del proyecto" --explicit --session s1
+  agent_ready learn apply "$(id_of 'runner of the project')"
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"belongs to the core, which a rule cannot override yet: nothing was saved"* ]]
+  [ ! -e .agents/rules/learned.md ]
+
+  rm .agents/agent-ready.lock.json .agents/rules/testing.md
+  printf '%s\n' '# Team' '' '<!-- rule id=team/runner key=testing.unit-runner -->' '- Use Vitest.' > .agents/rules/team.md
+  agent_ready learn record --kind nested --key testing.unit-runner --statement "Use pytest." --paths "backend/**" \
+    --quote "en backend, siempre pytest" --explicit --session s1
+  agent_ready learn apply "$(id_of 'pytest')"
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"project:team/runner decides testing.unit-runner for the whole repository, and the instruction is for backend/**"* ]]
+  grep -Fxq -- '- Use Vitest.' .agents/rules/team.md
+}
+
+@test "a statement that is not one atomic decision is refused before anything is written" {
+  commit_identity
+  agent_ready learn record --kind rule --statement "Use pytest; run the tests before committing." \
+    --quote "siempre pytest y correr los tests" --explicit --session s1
+  commits="$(git rev-list --count HEAD)"
+  agent_ready learn apply "$(id_of 'pytest')"
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"would not be a valid atomic rule, so nothing was written"*"several-decisions"* ]]
+  [ ! -e .agents/rules/learned.md ]
+  [ "$(git rev-list --count HEAD)" -eq "$commits" ]
+}
+
+@test "a replaced instruction is not applied again from its old evidence, but the user can bring it back" {
+  commit_identity
+  header_rule --quote "de ahora en más, número arriba" --explicit --session s1
+  header="$(id_of 'header')"
+  agent_ready learn apply "$header"
+  agent_ready learn record --kind rule --key records.header --statement "Records carry the case number in the footer." \
+    --quote "no, al pie" --explicit --session s2
+  agent_ready learn apply "$(id_of 'footer')"
+
+  agent_ready learn apply "$header"
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"$header was replaced by learn-"* ]]
+
+  # Said again without «always»: a fresh candidate, whose old explicit evidence does not count.
+  header_rule --quote "mejor arriba" --session s3
+  [[ "$output" == *"wait: keep it as a candidate until another episode repeats it (1 of 2)"* ]]
+  header_rule --quote "arriba, dije" --session s4
+  [[ "$output" == *"  learn: "* ]]
+  agent_ready learn apply "$header"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"supersede: learned/records-header"*"replaces learn-"* ]]
+  grep -Fxq -- '- Records carry the case number in the header.' .agents/rules/learned.md
+}
+
+@test "replacing a statement takes all of it, also an indented continuation after a blank line" {
+  commit_identity
+  mkdir -p .agents/rules
+  printf '%s\n' '# Testing' '' '<!-- rule id=testing/runner key=testing.unit-runner -->' '- Run the tests with' '' \
+    '  `vitest`.' '  - Except: the e2e suite.' > .agents/rules/team.md
+  agent_ready rules lint
+  [ "$status" -eq 0 ]
+  agent_ready learn record --kind rule --key testing.unit-runner --statement "Run the tests with pytest." \
+    --quote "de ahora en más, pytest" --explicit --session s1
+  agent_ready learn apply "$(id_of 'pytest')"
+  [ "$status" -eq 0 ]
+  ! grep -Fq 'vitest' .agents/rules/team.md
+  grep -Fxq -- '- Run the tests with pytest.' .agents/rules/team.md
+  grep -Fxq -- '  - Except: the e2e suite.' .agents/rules/team.md
 }

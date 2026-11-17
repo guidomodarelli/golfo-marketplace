@@ -80,9 +80,11 @@ proyecto, nunca en un asset que escribió un apply (los que el lockfile registra
 | Una rule del proyecto ya decide la misma `key` | edita esa rule en el lugar: cambia el statement y conserva su marcador, sus excepciones y sus detalles (`update`) |
 | Esa rule es una aprendida antes | la reemplaza igual, y la entrada anterior pasa a `superseded` con `supersededBy` (`supersede`) |
 | Una rule gestionada decide la misma `key` | agrega la rule aprendida con `overrides=<fuente>:<id>`, sin tocar la gestionada: el próximo apply la deja afuera de ese repo y otro repo con el mismo profile no cambia |
-| Esa rule gestionada es `locked` | no escribe nada ni commitea, y sale con error: el agente le dice al usuario en una línea que eso no se puede cambiar. La entrada sigue en `candidate` |
+| Una rule de la misma `key` es `locked`, sea gestionada o del proyecto | no escribe nada ni commitea, y sale con error: el agente le dice al usuario en una línea que eso no se puede cambiar. La entrada sigue en `candidate` |
+| La rule gestionada es del núcleo (`base/` del pack) | no escribe nada: el núcleo todavía no se puede reemplazar con `overrides` |
+| La rule de la misma `key` vale para otro alcance (otros `paths`) | no escribe nada: una instrucción de una carpeta nunca pisa una de todo el repositorio, ni al revés. Se registra con una `key` propia para ese alcance |
 | Ninguna rule decide esa `key` | agrega una rule nueva en `.agents/rules/learned.md` con id `learned/<key>` (o las primeras palabras del statement), su `key` y sus `paths` |
-| `kind` es `skill` | el agente escribe la skill en `.agents/skills/<nombre>/SKILL.md` y la registra con `--skill .agents/skills/<nombre>` |
+| `kind` es `skill` | el agente escribe la skill en `.agents/skills/<nombre>/SKILL.md` y la registra con `--skill .agents/skills/<nombre>`. El próximo sync o apply le da su vista en `.claude/skills/`, como a toda skill propia del proyecto |
 | `kind` es `nested` | escribe la rule con `paths=`; sin `--paths` en `record`, `apply` lo pide |
 
 Cada aprendizaje es **un commit** con solo sus archivos (la rule o la skill, `candidates.json` y
@@ -90,8 +92,13 @@ Cada aprendizaje es **un commit** con solo sus archivos (la rule o la skill, `ca
 `Learning-Id: <id>` y `Learned-from: <episodios>`. `.agents/learning/log.md` suma una línea con la fecha,
 la acción, el id, la rule y el statement, y nunca la cita.
 
+Antes de escribir, la rule resultante pasa el lint de una rule atómica ([atomic-rules.md](atomic-rules.md)):
+un statement con varias decisiones o demasiado largo no se escribe.
+
 `apply` se niega con un error si la entrada no está decidida para aprender: espera otro episodio,
-venció, ya está aprendida o `learning.mode` es `developer-review`. La rule nueva entra al bloque
+venció, ya está aprendida, fue reemplazada (`superseded`) o `learning.mode` es `developer-review`.
+Una instrucción reemplazada vuelve solo si el usuario la da de nuevo: pasa otra vez a `candidate` y
+cuenta solo la evidencia nueva, así puede reemplazar a su vez a la que la había reemplazado. La rule nueva entra al bloque
 gestionado de `AGENTS.md` y a `.claude/` en el próximo sync o apply, como cualquier rule del proyecto.
 
 ## Comandos

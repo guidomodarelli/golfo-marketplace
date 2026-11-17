@@ -139,8 +139,11 @@ def evidence_dates(entry):
 def live_evidence(entry, ttl_days):
     """The evidence since the last time the candidate expired: going back from the newest, it stops at
     the first gap of more than ttl_days between two pieces. Repetitions that each arrive before the
-    candidate expires all count, however long the whole series is."""
-    dated = sorted(zip(evidence_dates(entry), range(len(entry["evidence"]))), reverse=True)
+    candidate expires all count, however long the whole series is. Evidence before ``liveFrom`` belongs
+    to an instruction that was replaced, and never counts again."""
+    first_live = entry.get("liveFrom", 0)
+    dated = sorted(((date, index) for index, date in enumerate(evidence_dates(entry)) if index >= first_live),
+                   reverse=True)
     live = []
     for position, (date, index) in enumerate(dated):
         if position and (dated[position - 1][0] - date).days > ttl_days:
@@ -173,7 +176,7 @@ def decide(entry, mode, threshold, ttl_days):
     """learn, propose (the developer decides, in developer-review mode), wait or already-learned."""
     if entry["status"] == STATUS_LEARNED:
         return DECISION_ALREADY_LEARNED
-    if entry["status"] == STATUS_EXPIRED:
+    if entry["status"] in (STATUS_EXPIRED, STATUS_SUPERSEDED):
         return DECISION_WAIT
     if is_explicit(entry, ttl_days) or live_episodes(entry, ttl_days) >= threshold:
         return DECISION_PROPOSE if mode == MODE_DEVELOPER_REVIEW else DECISION_LEARN
@@ -229,6 +232,12 @@ def record(project_root, instruction, settings):
             if instruction.get(field):
                 entry[field] = instruction[field]
         if evidence not in entry["evidence"]:
+            if entry["status"] == STATUS_SUPERSEDED:
+                # The user gives a replaced instruction again: it comes back as a candidate that counts
+                # only the evidence from now on, so it can replace the newer one again.
+                entry["status"] = STATUS_CANDIDATE
+                entry["liveFrom"] = len(entry["evidence"])
+                entry.pop("supersededBy", None)
             entry["evidence"].append(evidence)
         entry["updated"] = max(entry.get("updated", date.isoformat()), date.isoformat())
         if entry["status"] == STATUS_EXPIRED:
