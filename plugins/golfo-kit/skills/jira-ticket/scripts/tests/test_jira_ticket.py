@@ -703,3 +703,413 @@ def test_tracking_ignores_fenced_example_table_inside_section():
     assert "| [ACME-1](https://acme.atlassian.net/browse/ACME-1) | Ejemplo | ⬜ To Do |\n```" in result["description"]
     assert "| [ACME-2](https://acme.atlassian.net/browse/ACME-2) | Real | ✅ Done | — | — |" in result["description"]
     assert result["description"].count("[ACME-2]") == 1
+
+
+# --- tracking: lista anidada ---------------------------------------------------
+
+NESTED_LIST_DESCRIPTION = (
+    "## Tareas\n**Progreso:** 0/2 ✅ · 0 🔄 · 2 ⬜\n\n"
+    "- ⬜ [ACME-21](https://acme.atlassian.net/browse/ACME-21) Migrar templates · v2\n"
+    "  - Estado: To Do\n"
+    "  - Responsable: Ana Pérez\n"
+    "  - PR: acme/api#88\n"
+    "- ⬜ [ACME-23](https://acme.atlassian.net/browse/ACME-23) PR testeado\n"
+    "  - Estado: To Do\n"
+    "  - Responsable: —\n"
+)
+
+
+def test_tracking_nested_list_status_change_touches_only_emoji_status_and_progress():
+    children = [child("ACME-21", "Done", "done", "Migrar templates · v2"), child("ACME-23", summary="PR testeado")]
+    result = jira_ticket.update_tracking(NESTED_LIST_DESCRIPTION, children, "story", SITE_URL)
+    assert result["format"] == "list" and result["updated"] == ["ACME-21"]
+    assert changed_lines(NESTED_LIST_DESCRIPTION, result["description"]) == [
+        ("**Progreso:** 0/2 ✅ · 0 🔄 · 2 ⬜", "**Progreso:** 1/2 ✅ · 0 🔄 · 1 ⬜"),
+        (
+            "- ⬜ [ACME-21](https://acme.atlassian.net/browse/ACME-21) Migrar templates · v2",
+            "- ✅ [ACME-21](https://acme.atlassian.net/browse/ACME-21) Migrar templates · v2",
+        ),
+        ("  - Estado: To Do", "  - Estado: Done"),
+    ]
+    assert jira_ticket.update_tracking(result["description"], children, "story", SITE_URL)["changed"] is False
+
+
+def test_tracking_nested_list_blocks_unblocks_and_appends_new_child_nested():
+    blocked = [
+        child("ACME-21", summary="Migrar templates · v2"),
+        child("ACME-23", summary="PR testeado", blocked=True, note="espera ACME-30"),
+        child("ACME-25", "In Progress", "indeterminate", "Revisar copy", assignee="Luis Gómez"),
+    ]
+    result = jira_ticket.update_tracking(NESTED_LIST_DESCRIPTION, blocked, "story", SITE_URL)
+    assert result["added"] == ["ACME-25"] and result["updated"] == ["ACME-23"]
+    assert result["progress"] == "**Progreso:** 0/3 ✅ · 1 🔄 · 1 ⬜ · 1 🚫"
+    assert result["description"].endswith(
+        "- 🚫 [ACME-23](https://acme.atlassian.net/browse/ACME-23) PR testeado\n"
+        "  - Estado: To Do\n"
+        "  - Responsable: —\n"
+        "  - Nota: espera ACME-30\n"
+        "- 🔄 [ACME-25](https://acme.atlassian.net/browse/ACME-25) Revisar copy\n"
+        "  - Estado: In Progress\n"
+        "  - Responsable: Luis Gómez\n"
+    )
+    unblocked = [{**item, "blocked": False} for item in blocked]
+    cleared = jira_ticket.update_tracking(result["description"], unblocked, "story", SITE_URL)
+    assert "Nota:" not in cleared["description"] and "- ⬜ [ACME-23]" in cleared["description"]
+
+
+def test_tracking_list_flag_creates_nested_list_and_converts_existing_table():
+    created = jira_ticket.update_tracking(
+        "## Problema\nAlgo falla.\n", [child("ACME-21", "Done", "done", "Migrar templates", pr="acme/api#88")], "story", SITE_URL, create=True, as_list=True
+    )
+    assert created["format"] == "list"
+    assert created["description"].endswith(
+        "## Tareas\n**Progreso:** 1/1 ✅ · 0 🔄 · 0 ⬜\n\n"
+        "- ✅ [ACME-21](https://acme.atlassian.net/browse/ACME-21) Migrar templates\n"
+        "  - Estado: Done\n  - Responsable: —\n  - PR: acme/api#88\n"
+    )
+    converted = jira_ticket.update_tracking(STORY_DESCRIPTION, CURRENT_CHILDREN, "story", SITE_URL, as_list=True)
+    assert converted["converted_from"] == "table" and converted["format"] == "list"
+    section = converted["description"].split("## Tareas\n**Progreso:**", 1)[1]
+    assert "|---|" not in section
+    assert "- ✅ [ACME-6002](https://acme.atlassian.net/browse/ACME-6002) Probar envío | staging\n  - Estado: Done\n  - Responsable: Ana Pérez\n" in section
+    assert converted["description"].endswith("## Pull requests\n- [acme/payments-api#88](https://github.com/acme/payments-api/pull/88)\n")
+
+
+# --- adf: Markdown enriquecido → ADF ------------------------------------------
+
+
+def adf_types(nodes):
+    return [node["type"] for node in nodes]
+
+
+def find_nodes(node, node_type):
+    found = [node] if node.get("type") == node_type else []
+    for inner in node.get("content") or []:
+        found.extend(find_nodes(inner, node_type))
+    return found
+
+
+RICH_MARKDOWN = """## Problema
+Los emails salen **sin logo** desde {date:2026-07-21}.
+
+> [!WARNING] Bloqueo
+> Depende de [ACME-30](https://acme.atlassian.net/browse/ACME-30).
+
+> [!DECISION]
+> - Se migra con el servicio nuevo, no con un parche
+
+> «Necesitamos el logo antes del lanzamiento»
+
+<details><summary>Detalle técnico</summary>
+
+- Áreas
+  - `templates/`
+  - `mailer`
+1. Paso uno
+
+</details>
+
+---
+
+| Key | Estado |
+|---|---|
+| ACME-1 | ✅ {status:green:Done} |
+"""
+
+
+def test_adf_compiles_every_rich_block_to_its_jira_node():
+    doc = jira_ticket.adf.markdown_to_document(RICH_MARKDOWN)
+    assert doc["version"] == 1 and doc["type"] == "doc"
+    assert adf_types(doc["content"]) == ["heading", "paragraph", "panel", "decisionList", "blockquote", "expand", "rule", "table"]
+    panel = doc["content"][2]
+    assert panel["attrs"] == {"panelType": "warning"}
+    assert jira_ticket.adf.node_text(panel) == "BloqueoDepende de ACME-30."
+    assert find_nodes(panel, "text")[0]["marks"] == [{"type": "strong"}]
+    links = [mark for node in find_nodes(panel, "text") for mark in node.get("marks", []) if mark["type"] == "link"]
+    assert links == [{"type": "link", "attrs": {"href": "https://acme.atlassian.net/browse/ACME-30"}}]
+    decision = doc["content"][3]["content"][0]
+    assert decision["attrs"]["state"] == "DECIDED" and jira_ticket.adf.node_text(decision) == "Se migra con el servicio nuevo, no con un parche"
+    expand = doc["content"][5]
+    assert expand["attrs"] == {"title": "Detalle técnico"}
+    assert adf_types(expand["content"]) == ["bulletList", "orderedList"]
+    nested = expand["content"][0]["content"][0]["content"]
+    assert adf_types(nested) == ["paragraph", "bulletList"] and len(nested[1]["content"]) == 2
+    assert find_nodes(doc, "date")[0]["attrs"] == {"timestamp": "1784592000000"}
+    assert find_nodes(doc, "status")[0]["attrs"] == {"text": "Done", "color": "green"}
+    table = doc["content"][7]
+    assert adf_types(table["content"][0]["content"]) == ["tableHeader", "tableHeader"]
+    assert jira_ticket.adf.node_text(table["content"][1]["content"][1]) == "✅ Done"
+
+
+def test_adf_compilation_is_deterministic():
+    assert jira_ticket.adf.markdown_to_document(RICH_MARKDOWN) == jira_ticket.adf.markdown_to_document(RICH_MARKDOWN)
+
+
+@pytest.mark.parametrize(
+    "markdown, expected",
+    [
+        ("{status:rosa:Done}", "color de status"),
+        ("{date:2026-02-30}", "fecha"),
+        ("> [!DANGER]\n> texto", "desconocido"),
+        ("<details><summary>Título</summary>\n\ntexto", "</details>"),
+        ("> [!INFO]", "no tiene contenido"),
+    ],
+)
+def test_adf_cli_rejects_invalid_rich_markdown(monkeypatch, capsys, markdown, expected):
+    exit_code, out, err = run_cli(monkeypatch, capsys, ["adf"], markdown)
+    assert exit_code == jira_ticket.EXIT_USAGE and out == "" and expected in err
+
+
+def test_adf_cli_emits_document(monkeypatch, capsys):
+    exit_code, out, _ = run_cli(monkeypatch, capsys, ["adf"], "## Qué hacer\n- Migrar templates\n")
+    assert exit_code == 0 and adf_types(json.loads(out)["content"]) == ["heading", "bulletList"]
+
+
+# --- tracking sobre ADF --------------------------------------------------------
+
+STORY_ADF_MARKDOWN = """## Problema
+Los emails de bienvenida salen sin logo.
+
+## Tareas
+**Progreso:** 1/3 ✅ · 1 🔄 · 1 ⬜
+
+| Key | Tarea | Estado | Responsable | Nota |
+|---|---|---|---|---|
+| [ACME-6001](https://acme.atlassian.net/browse/ACME-6001) | Migrar templates | ✅ Done | Ana Pérez | — |
+| [ACME-6002](https://acme.atlassian.net/browse/ACME-6002) | Probar envío \\| staging | 🔄 In Progress | Ana Pérez | — |
+| [ACME-6005](https://acme.atlassian.net/browse/ACME-6005) | Validar con producto | ⬜ To Do | — | — |
+
+## Pull requests
+- [acme/payments-api#88](https://github.com/acme/payments-api/pull/88)
+"""
+
+
+def story_adf():
+    return jira_ticket.adf.markdown_to_document(STORY_ADF_MARKDOWN)
+
+
+def adf_table_texts(doc):
+    table = find_nodes(doc, "table")[0]
+    return [[jira_ticket.adf.node_text(cell) for cell in row["content"]] for row in table["content"]]
+
+
+def test_tracking_adf_status_change_touches_only_its_cell_and_progress():
+    before = story_adf()
+    result = jira_ticket.update_tracking_adf(before, CURRENT_CHILDREN, "story", SITE_URL)
+    after = result["description"]
+    assert result["format"] == "adf-table" and result["updated"] == ["ACME-6002"] and result["changed"] is True
+    assert result["progress"] == "**Progreso:** 2/3 ✅ · 0 🔄 · 1 ⬜"
+    changed_nodes = [index for index, (old, new) in enumerate(zip(before["content"], after["content"])) if old != new]
+    assert adf_types([after["content"][index] for index in changed_nodes]) == ["paragraph", "table"]
+    old_rows, new_rows = find_nodes(before, "tableRow"), find_nodes(after, "tableRow")
+    assert [index for index, (old, new) in enumerate(zip(old_rows, new_rows)) if old != new] == [2]
+    status_cell = new_rows[2]["content"][2]
+    assert find_nodes(status_cell, "status")[0]["attrs"] == {"text": "Done", "color": "green"}
+    assert jira_ticket.adf.node_text(status_cell) == "✅ Done"
+    assert [index for index, (old, new) in enumerate(zip(old_rows[2]["content"], new_rows[2]["content"])) if old != new] == [2]
+
+
+def test_tracking_adf_is_idempotent_and_does_not_mutate_input():
+    before = story_adf()
+    snapshot = json.loads(json.dumps(before))
+    first = jira_ticket.update_tracking_adf(before, CURRENT_CHILDREN, "story", SITE_URL)
+    assert before == snapshot
+    second = jira_ticket.update_tracking_adf(first["description"], CURRENT_CHILDREN, "story", SITE_URL)
+    assert second["changed"] is False and second["description"] == first["description"]
+
+
+def test_tracking_adf_inserts_child_in_key_order_with_pr_column_and_blocked_lozenge():
+    children = [*CURRENT_CHILDREN, child("ACME-6003", summary="Revisar copy", pr="acme/payments-api#90", blocked=True, note="espera ACME-30")]
+    result = jira_ticket.update_tracking_adf(story_adf(), children, "story", SITE_URL)
+    rows = adf_table_texts(result["description"])
+    assert result["added"] == ["ACME-6003"] and result["columns_added"] == ["PR"]
+    assert rows[0] == ["Key", "Tarea", "Estado", "Responsable", "PR", "Nota"]
+    assert [row[0] for row in rows[1:]] == ["ACME-6001", "ACME-6002", "ACME-6003", "ACME-6005"]
+    assert rows[3] == ["ACME-6003", "Revisar copy", "🚫 To Do", "—", "acme/payments-api#90", "espera ACME-30"]
+    assert rows[1][4] == "—"
+    assert [node["attrs"]["color"] for node in find_nodes(find_nodes(result["description"], "tableRow")[3], "status")] == ["red"]
+    assert result["progress"] == "**Progreso:** 2/4 ✅ · 0 🔄 · 1 ⬜ · 1 🚫"
+
+
+def test_tracking_adf_reports_rows_without_child_and_keeps_them():
+    result = jira_ticket.update_tracking_adf(story_adf(), CURRENT_CHILDREN[:2], "story", SITE_URL)
+    assert result["rows_without_child"] == ["ACME-6005"]
+    assert [row[0] for row in adf_table_texts(result["description"])[1:]] == ["ACME-6001", "ACME-6002", "ACME-6005"]
+
+
+def test_tracking_adf_create_places_section_between_dividers_before_pull_requests():
+    doc = jira_ticket.adf.markdown_to_document("## Problema\nAlgo falla.\n\n## Pull requests\n- [acme/api#1](https://github.com/acme/api/pull/1)\n")
+    missing = jira_ticket.update_tracking_adf(doc, CURRENT_CHILDREN, "story", SITE_URL)
+    assert missing["section"] == "missing" and missing["changed"] is False and missing["description"] == doc
+    created = jira_ticket.update_tracking_adf(doc, CURRENT_CHILDREN, "story", SITE_URL, create=True)
+    content = created["description"]["content"]
+    assert adf_types(content) == ["heading", "paragraph", "rule", "heading", "paragraph", "table", "rule", "heading", "bulletList"]
+    assert [jira_ticket.adf.node_text(node) for node in content if node["type"] == "heading"] == ["Problema", "Tareas", "Pull requests"]
+    assert content[-2:] == doc["content"][-2:] and content[:2] == doc["content"][:2]
+    again = jira_ticket.update_tracking_adf(created["description"], CURRENT_CHILDREN, "story", SITE_URL, create=True)
+    assert again["changed"] is False
+
+
+def test_tracking_adf_replaces_placeholder_and_converts_bullet_tracking_to_table():
+    epic = jira_ticket.adf.markdown_to_document("## Objetivo\nAlta de proveedores.\n\n## Stories\n_Sin stories todavía._\n")
+    filled = jira_ticket.update_tracking_adf(epic, [child("ACME-801", summary="Alta de proveedores")], "epic", SITE_URL)
+    assert adf_types(filled["description"]["content"]) == ["heading", "paragraph", "heading", "paragraph", "table"]
+    assert adf_table_texts(filled["description"])[0] == ["Key", "Story", "Estado", "Responsable", "Nota"]
+    listed = jira_ticket.adf.markdown_to_document(
+        "## Tareas\n**Progreso:** 0/1 ✅ · 0 🔄 · 1 ⬜\n\n- ⬜ [ACME-21](https://acme.atlassian.net/browse/ACME-21) Migrar templates · To Do · Ana Pérez\n"
+    )
+    converted = jira_ticket.update_tracking_adf(listed, [child("ACME-21", "Done", "done", "Migrar templates", assignee="Ana Pérez")], "story", SITE_URL)
+    assert converted["converted_from"] == "list" and adf_types(converted["description"]["content"]) == ["heading", "paragraph", "table"]
+    with pytest.raises(jira_ticket.JiraTicketError) as error:
+        jira_ticket.update_tracking_adf(listed, [child("ACME-99")], "story", SITE_URL)
+    assert error.value.exit_code == jira_ticket.EXIT_UNRESOLVED and "ACME-21" in str(error.value)
+
+
+def test_tracking_adf_rejects_section_with_unrecognizable_content():
+    doc = jira_ticket.adf.markdown_to_document("## Tareas\nTexto libre escrito a mano.\n")
+    with pytest.raises(jira_ticket.JiraTicketError) as error:
+        jira_ticket.update_tracking_adf(doc, CURRENT_CHILDREN, "story", SITE_URL)
+    assert error.value.exit_code == jira_ticket.EXIT_UNRESOLVED
+
+
+def test_tracking_cli_accepts_adf_description_and_rejects_list_flag(monkeypatch, capsys):
+    payload = json.dumps({"description": story_adf(), "children": CURRENT_CHILDREN})
+    exit_code, out, _ = run_cli(monkeypatch, capsys, ["tracking", "--level", "story"], payload)
+    assert exit_code == 0 and json.loads(out)["description"]["type"] == "doc"
+    exit_code, _, err = run_cli(monkeypatch, capsys, ["tracking", "--level", "story", "--list"], payload)
+    assert exit_code == jira_ticket.EXIT_USAGE and "--list" in err
+    exit_code, _, err = run_cli(monkeypatch, capsys, ["tracking", "--level", "story"], json.dumps({"description": {"type": "paragraph"}, "children": []}))
+    assert exit_code == jira_ticket.EXIT_USAGE and "doc" in err
+
+
+# --- section -------------------------------------------------------------------
+
+PROBLEM_PANEL = "> [!NOTE]\n> Los emails salen sin logo.\n"
+PR_SECTION_BODY = "- [acme/payments-api#88](https://github.com/acme/payments-api/pull/88)\n"
+
+
+def test_section_replaces_only_its_adf_nodes_and_is_idempotent():
+    before = story_adf()
+    result = jira_ticket.update_section(before, "Problema", PROBLEM_PANEL)
+    after = result["description"]["content"]
+    assert result["action"] == "replaced" and adf_types(after[:2]) == ["heading", "panel"]
+    assert after[2:] == before["content"][2:]
+    assert jira_ticket.update_section(result["description"], "Problema", PROBLEM_PANEL)["action"] == "unchanged"
+
+
+def test_section_creates_adf_section_before_anchor_or_at_end():
+    before = story_adf()
+    created = jira_ticket.update_section(before, "Criterios de aceptación", "- El email llega con logo\n", before="Tareas")
+    headings = [jira_ticket.adf.node_text(node) for node in created["description"]["content"] if node["type"] == "heading"]
+    assert created["action"] == "created" and headings == ["Problema", "Criterios de aceptación", "Tareas", "Pull requests"]
+    appended = jira_ticket.update_section(before, "Notas", "- uno\n")
+    assert appended["description"]["content"][:-2] == before["content"]
+
+
+def test_section_on_markdown_description_keeps_the_rest_byte_for_byte():
+    second_pr = "- [acme/payments-api#90](https://github.com/acme/payments-api/pull/90)\n"
+    result = jira_ticket.update_section(STORY_DESCRIPTION, "Pull requests", PR_SECTION_BODY + second_pr)
+    assert result["action"] == "replaced" and result["description"] == STORY_DESCRIPTION + second_pr
+    assert jira_ticket.update_section(STORY_DESCRIPTION, "Pull requests", PR_SECTION_BODY)["action"] == "unchanged"
+    created = jira_ticket.update_section("## Problema\r\nAlgo falla.", "Pull requests", "- [acme/api#1](https://github.com/acme/api/pull/1)")
+    assert created["description"] == "## Problema\r\nAlgo falla.\r\n\r\n## Pull requests\r\n- [acme/api#1](https://github.com/acme/api/pull/1)"
+
+
+def test_section_cli_round_trip(monkeypatch, capsys):
+    payload = json.dumps({"description": story_adf(), "markdown": PR_SECTION_BODY})
+    exit_code, out, _ = run_cli(monkeypatch, capsys, ["section", "--heading", "Pull requests"], payload)
+    assert exit_code == 0 and json.loads(out)["action"] == "unchanged"
+    exit_code, _, err = run_cli(monkeypatch, capsys, ["section", "--heading", "Pull requests"], json.dumps({"description": "x"}))
+    assert exit_code == jira_ticket.EXIT_USAGE and "markdown" in err
+
+
+def test_section_with_empty_markdown_removes_only_that_section():
+    blocked = jira_ticket.update_section(story_adf(), "Bloqueo", "> [!ERROR] Bloqueado\n> Espera ACME-30.\n", before="Problema")
+    assert blocked["action"] == "created" and adf_types(blocked["description"]["content"][:2]) == ["heading", "panel"]
+    removed = jira_ticket.update_section(blocked["description"], "Bloqueo", "")
+    assert removed["action"] == "removed" and removed["description"] == story_adf()
+    assert jira_ticket.update_section(story_adf(), "Bloqueo", "")["action"] == "unchanged"
+    markdown = "## Bloqueo\n> 🚫 **Bloqueado**\n> Espera ACME-30.\n\n" + STORY_DESCRIPTION
+    assert jira_ticket.update_section(markdown, "Bloqueo", "")["description"] == STORY_DESCRIPTION
+    assert jira_ticket.update_section(STORY_DESCRIPTION, "Pull requests", "\n")["description"] == STORY_DESCRIPTION.split("\n## Pull requests")[0]
+
+
+# --- plain ---------------------------------------------------------------------
+
+
+def test_plain_drops_adf_only_elements_and_keeps_content_and_code():
+    plain = jira_ticket.adf.markdown_to_plain(RICH_MARKDOWN + "\n```markdown\n> [!INFO]\n{date:2026-01-01}\n```\n")
+    assert "Los emails salen **sin logo** desde 2026-07-21." in plain
+    assert "> ⚠️ **Bloqueo**\n> Depende de [ACME-30]" in plain
+    assert "> 🧭 **Decisiones**\n> - Se migra con el servicio nuevo" in plain
+    assert "**Detalle técnico**\n\n- Áreas\n  - `templates/`" in plain
+    assert "| ACME-1 | ✅ Done |" in plain
+    assert "<details>" not in plain and "</details>" not in plain and "{status" not in plain
+    assert plain.endswith("```markdown\n> [!INFO]\n{date:2026-01-01}\n```\n")
+
+
+def test_plain_cli_writes_markdown_and_rejects_unknown_callout(monkeypatch, capsys):
+    exit_code, out, _ = run_cli(monkeypatch, capsys, ["plain"], "> [!ERROR] Bloqueado\n> Espera ACME-30 hasta {date:2026-07-21}.\n")
+    assert exit_code == 0 and out == "> 🚫 **Bloqueado**\n> Espera ACME-30 hasta 2026-07-21.\n"
+    exit_code, _, err = run_cli(monkeypatch, capsys, ["plain"], "> [!DANGER]\n> x\n")
+    assert exit_code == jira_ticket.EXIT_USAGE and "desconocido" in err
+
+
+# --- regresiones de review ------------------------------------------------------
+
+
+def test_tracking_list_inserts_new_child_after_real_list_not_inside_fenced_example():
+    description = NESTED_LIST_DESCRIPTION + "\n```markdown\n- ⬜ [ACME-90](https://acme.atlassian.net/browse/ACME-90) Ejemplo\n  - Estado: To Do\n```\n"
+    children = [child("ACME-21", summary="Migrar templates · v2"), child("ACME-23", summary="PR testeado"), child("ACME-25", summary="Revisar copy")]
+    result = jira_ticket.update_tracking(description, children, "story", SITE_URL)
+    new_row = result["description"].index("- ⬜ [ACME-25]")
+    assert result["added"] == ["ACME-25"] and new_row < result["description"].index("```markdown")
+    assert result["description"].endswith("```markdown\n- ⬜ [ACME-90](https://acme.atlassian.net/browse/ACME-90) Ejemplo\n  - Estado: To Do\n```\n")
+
+
+@pytest.mark.parametrize(
+    "list_markdown",
+    [
+        "- ⬜ [ACME-21](https://acme.atlassian.net/browse/ACME-21) Migrar templates v2 · To Do · Ana Pérez · acme/api#88\n"
+        "- 🚫 [ACME-23](https://acme.atlassian.net/browse/ACME-23) PR testeado · To Do · — · Nota: espera a Infra\n",
+        "- ⬜ [ACME-21](https://acme.atlassian.net/browse/ACME-21) Migrar templates v2\n  - Estado: To Do\n  - Responsable: Ana Pérez\n  - PR: acme/api#88\n"
+        "- 🚫 [ACME-23](https://acme.atlassian.net/browse/ACME-23) PR testeado\n  - Estado: To Do\n  - Responsable: —\n  - Nota: espera a Infra\n",
+    ],
+)
+def test_tracking_adf_list_conversion_keeps_title_assignee_pr_and_note(list_markdown):
+    listed = jira_ticket.adf.markdown_to_document("## Tareas\n**Progreso:** 0/2 ✅ · 0 🔄 · 1 ⬜ · 1 🚫\n\n" + list_markdown)
+    children = [child("ACME-21", "Done", "done", "Título nuevo en Jira"), child("ACME-23", summary="PR testeado", blocked=True)]
+    converted = jira_ticket.update_tracking_adf(listed, children, "story", SITE_URL)
+    assert adf_table_texts(converted["description"]) == [
+        ["Key", "Tarea", "Estado", "Responsable", "PR", "Nota"],
+        ["ACME-21", "Migrar templates v2", "✅ Done", "Ana Pérez", "acme/api#88", "—"],
+        ["ACME-23", "PR testeado", "🚫 To Do", "—", "—", "espera a Infra"],
+    ]
+
+
+def test_tracking_list_flag_rebuilds_flattened_table_from_children():
+    flattened = (
+        "## Tareas\n**Progreso:** 1/2 ✅ · 1 🔄 · 0 ⬜\n\n"
+        "| Key | Tarea | Estado | Responsable | Nota | |---|---|---|---|---| | ACME-6001 | Migrar templates | ✅ Done | Ana Pérez | — | | ACME-6002 | Probar envío | 🔄 In Progress | Ana Pérez | — |\n\n"
+        "## Pull requests\n- [acme/payments-api#88](https://github.com/acme/payments-api/pull/88)\n"
+    )
+    with pytest.raises(jira_ticket.JiraTicketError):
+        jira_ticket.update_tracking(flattened, CURRENT_CHILDREN[:2], "story", SITE_URL)
+    result = jira_ticket.update_tracking(flattened, CURRENT_CHILDREN[:2], "story", SITE_URL, as_list=True)
+    assert result["converted_from"] == "flattened-table" and result["format"] == "list"
+    assert result["description"] == (
+        "## Tareas\n**Progreso:** 2/2 ✅ · 0 🔄 · 0 ⬜\n\n"
+        "- ✅ [ACME-6001](https://acme.atlassian.net/browse/ACME-6001) Migrar templates\n  - Estado: Done\n  - Responsable: Ana Pérez\n"
+        "- ✅ [ACME-6002](https://acme.atlassian.net/browse/ACME-6002) Probar envío | staging\n  - Estado: Done\n  - Responsable: Ana Pérez\n\n"
+        "## Pull requests\n- [acme/payments-api#88](https://github.com/acme/payments-api/pull/88)\n"
+    )
+
+
+def test_adf_keeps_every_list_item_after_blank_separated_nested_list():
+    doc = jira_ticket.adf.markdown_to_document("- Áreas\n\n  - templates/\n- Cobertura automática: tests\n- Criterio: email con logo\n\nTexto final.\n")
+    assert adf_types(doc["content"]) == ["bulletList", "paragraph"]
+    items = doc["content"][0]["content"]
+    assert [jira_ticket.adf.node_text(item["content"][0]) for item in items] == ["Áreas", "Cobertura automática: tests", "Criterio: email con logo"]
+    assert adf_types(items[0]["content"]) == ["paragraph", "bulletList"]
+    deeper_first = jira_ticket.adf.markdown_to_document("  - hijo\n- padre\n")
+    assert [jira_ticket.adf.node_text(item) for node in deeper_first["content"] for item in node["content"]] == ["hijo", "padre"]
