@@ -18,6 +18,8 @@ from agent_ready_common import StateError, serialize_json
 from agent_ready_config import resolve_configuration
 from agent_ready_options import RULES_ENABLED_KEY
 from agent_ready_workspaces import WORKSPACE_RULES_DIRECTORY
+from agent_ready_lockfile import read_lock
+import agent_ready_rule_overrides as rule_overrides
 
 PROJECT_RULES_RELATIVE_PATH = ".agents/rules"
 PROJECT_SKILLS_RELATIVE_PATH = ".agents/skills"
@@ -79,6 +81,28 @@ def configured_limits(configuration):
     return configuration.value(RULES_ENABLED_KEY), warn_chars, max_chars
 
 
+def rule_set_of(project_root, path, lock):
+    """(workspace, source) of a rule file of .agents/rules/: the rules of one set load together.
+
+    The root and each workspace (.agents/rules/workspaces/<path>/, with any folder of its rules under it)
+    load apart, and two sources may publish the same id, as their rules are named <source>:<id>. A file
+    the lock records takes its profile's source and workspace; any other file is the project's.
+    """
+    destination = os.path.relpath(path, project_root).replace(os.sep, "/")
+    entry = ((lock or {}).get("assets") or {}).get(destination) or {}
+    source = rule_overrides.rule_source(entry["profile"]) if entry.get("profile") else rule_overrides.PROJECT_RULE_SOURCE
+    if entry.get("workspace"):
+        return entry["workspace"], source
+    relative = os.path.relpath(path, os.path.join(project_root, PROJECT_RULES_RELATIVE_PATH)).replace(os.sep, "/")
+    if not relative.startswith(f"{WORKSPACE_RULES_DIRECTORY}/"):
+        return "", source
+    inside = relative[len(WORKSPACE_RULES_DIRECTORY) + 1:]
+    # The longest workspace of the lock that holds the file; without one, the folder of the file.
+    workspaces = sorted((lock or {}).get("workspaces") or {}, key=len, reverse=True)
+    owner = next((workspace for workspace in workspaces if inside.startswith(f"{workspace}/")), None)
+    return owner or os.path.dirname(inside), source
+
+
 def adopted_rule_errors(project_root, configuration):
     """The lint errors of the rule files of .agents/rules/ that already use atomic rules, for agent-ready check.
 
@@ -88,14 +112,11 @@ def adopted_rule_errors(project_root, configuration):
     enabled, warn_chars, max_chars = configured_limits(configuration)
     if not enabled:
         return []
+    lock = read_lock(project_root)
     rules_root = os.path.join(project_root, PROJECT_RULES_RELATIVE_PATH)
-    # The rules of each workspace are loaded apart from the root's and from the other workspaces', so each
-    # is its own set: a rule of the root and its copy for a workspace are not a repeated id.
     sets = {}
     for path in agent_ready_rules.rule_files(rules_root):
-        relative = os.path.relpath(path, rules_root).replace(os.sep, "/")
-        in_workspace = relative.startswith(f"{WORKSPACE_RULES_DIRECTORY}/")
-        sets.setdefault(os.path.dirname(relative) if in_workspace else "", []).append(path)
+        sets.setdefault(rule_set_of(project_root, path, lock), []).append(path)
     errors = []
     for files in sets.values():
         try:

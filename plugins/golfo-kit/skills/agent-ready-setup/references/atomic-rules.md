@@ -120,8 +120,12 @@ El chequeo de CI corre el mismo lint sobre `.agents/rules/`, bajo el modo de `ci
 - **Qué archivos lee:** solo los que ya tienen alguna rule atómica. Un archivo en prosa que el proyecto no
   migró no aparece, así que adoptar el formato es una decisión por archivo y nunca rompe el CI.
 - **Qué cuenta:** solo los errores, no los avisos.
-- **Cada workspace es un conjunto aparte:** las rules de `.agents/rules/workspaces/<path>/` se revisan entre
-  sí, sin las de la raíz ni las de otros workspaces, porque nunca se cargan juntas.
+- **Cada workspace es un conjunto aparte:** las rules de `.agents/rules/workspaces/<path>/`, con las carpetas
+  de rules que tenga adentro, se revisan entre sí, sin las de la raíz ni las de otros workspaces, porque
+  nunca se cargan juntas.
+- **Cada fuente también:** dos packs pueden publicar el mismo id, porque sus rules se nombran
+  `<fuente>:<id>`. El lock dice de qué profile, y por lo tanto de qué fuente, es cada archivo gestionado; un
+  archivo propio es de `project`.
 
 ## 4. Comandos
 

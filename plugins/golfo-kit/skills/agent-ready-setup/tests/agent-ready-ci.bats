@@ -351,6 +351,43 @@ skip_without_pseudoterminal() {
   [[ "$output" != *"Rules lint"* ]]
 }
 
+@test "the rules lint of check keeps two sources apart and a workspace whole, with its rule folders" {
+  mkdir -p .agents/rules/workspaces/apps/web/testing
+  printf '%s\n' '<!-- rule id=testing/runner -->' '- Use Vitest.' > .agents/rules/alpha-testing.md
+  printf '%s\n' '<!-- rule id=testing/runner -->' '- Use the runner of the project.' > .agents/rules/beta-testing.md
+  printf '%s\n' '<!-- rule id=web/base -->' '- Keep pages small.' > .agents/rules/workspaces/apps/web/base.md
+  printf '%s\n' '<!-- rule id=web/behavior requires=web/base -->' '- Test behavior.' \
+    > .agents/rules/workspaces/apps/web/testing/behavior.md
+  run python3 -B - "$skill_dir/scripts" "$PWD" <<'PY'
+import json, os, sys
+sys.path.insert(0, sys.argv[1])
+import agent_ready_cli_rules
+from agent_ready_config import resolve_configuration
+project = sys.argv[2]
+# Two packs publish testing/runner in files of their own, and the workspace apps/web has a rule folder.
+lock = {"assets": {
+    ".agents/rules/alpha-testing.md": {"profile": "alpha/testing", "sha256": "x", "state": "applied"},
+    ".agents/rules/beta-testing.md": {"profile": "beta/testing", "sha256": "x", "state": "applied"},
+    ".agents/rules/workspaces/apps/web/base.md": {"profile": "alpha/web", "sha256": "x", "workspace": "apps/web"},
+    ".agents/rules/workspaces/apps/web/testing/behavior.md": {"profile": "alpha/web", "sha256": "x",
+                                                              "workspace": "apps/web"}},
+    "workspaces": {"apps/web": {"profiles": ["alpha/web"], "own": []}}}
+with open(os.path.join(project, ".agents", "agent-ready.lock.json"), "w", encoding="utf-8") as handle:
+    json.dump(lock, handle)
+errors = agent_ready_cli_rules.adopted_rule_errors(project, resolve_configuration(project))
+print([error.render() for error in errors])
+assert errors == [], [error.render() for error in errors]
+
+# The same id twice in one source is still an error.
+lock["assets"][".agents/rules/beta-testing.md"]["profile"] = "alpha/other"
+with open(os.path.join(project, ".agents", "agent-ready.lock.json"), "w", encoding="utf-8") as handle:
+    json.dump(lock, handle)
+codes = [error.code for error in agent_ready_cli_rules.adopted_rule_errors(project, resolve_configuration(project))]
+assert codes == ["duplicate-id"], codes
+PY
+  [ "$status" -eq 0 ]
+}
+
 @test "agent-ready conflicts exits 6 on a conflict, and check fails on it under ci.conflicts.structural" {
   printf '{"devDependencies": {"jest": "29"}}\n' > package.json
   mkdir -p .agents/rules
