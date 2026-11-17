@@ -158,7 +158,7 @@ write_manifest() {
 }
 
 days_ago() {
-  python3 -c 'import datetime, sys; print(datetime.date.today() - datetime.timedelta(days=int(sys.argv[1])))' "$1" | tr -d ''
+  python3 -c 'import datetime, sys; print(datetime.date.today() - datetime.timedelta(days=int(sys.argv[1])))' "$1" | tr -d '\r'
 }
 
 @test "repetitions that each arrive before the candidate expires all count, however long the series" {
