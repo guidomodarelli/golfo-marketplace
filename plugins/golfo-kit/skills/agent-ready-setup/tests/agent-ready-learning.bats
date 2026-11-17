@@ -678,3 +678,39 @@ managed_rule() {
   [ "$status" -eq 0 ]
   [ ! -e .agents/skills/draft-record/SKILL.md ]
 }
+
+@test "reverting a replacement relearns what it replaced even after the user repeated it, unless it was rejected" {
+  commit_identity
+  header_rule --quote "de ahora en más, número arriba" --explicit --session s1
+  header="$(id_of 'header')"
+  agent_ready learn apply "$header"
+  agent_ready learn record --kind rule --key records.header --statement "Records carry the case number in the footer." \
+    --quote "no, al pie" --explicit --session s2
+  footer="$(id_of 'footer')"
+  agent_ready learn apply "$footer"
+  # The user repeats the replaced instruction: it is a candidate again.
+  header_rule --quote "mejor arriba" --session s3
+  [ "$(registry_value 'data["candidates"][0]["status"]')" = "candidate" ]
+
+  agent_ready learn reject "$header"
+  agent_ready learn revert "$footer"
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"reverting $footer brings back the text of $header, which the developer rejected"* ]]
+  grep -Fxq -- '- Records carry the case number in the footer.' .agents/rules/learned.md
+
+  agent_ready learn accept "$header"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"supersede: learned/records-header"* ]]
+  agent_ready learn revert "$header"
+  [ "$status" -eq 0 ]
+  grep -Fxq -- '- Records carry the case number in the footer.' .agents/rules/learned.md
+  [ "$(registry_value '[entry["status"] for entry in data["candidates"] if "footer" in entry["statement"]][0]')" = "learned" ]
+
+  # Repeated again and reverted: the text is the header's, and so is the learned entry.
+  agent_ready learn record --kind rule --key records.header --statement "Records carry the case number in the header." \
+    --quote "arriba, de nuevo" --session s4
+  agent_ready learn revert "$footer"
+  [ "$status" -eq 0 ]
+  grep -Fxq -- '- Records carry the case number in the header.' .agents/rules/learned.md
+  [ "$(registry_value 'data["candidates"][0]["status"]')" = "learned" ]
+}

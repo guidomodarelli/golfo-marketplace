@@ -127,6 +127,12 @@ def revert(project_root, candidate_id, settings):
             raise StateError(f"{candidate_id} is {entry['status']}, not learned: there is nothing to revert")
         sha = learning_commit(project_root, entry)
         path = entry["learned"]["path"]
+        # The text this learning replaced comes back, so its entry is learned again, whatever new evidence
+        # did to it since; a rejection would not hold, so it stops the revert before anything changes.
+        previous = next((item for item in registry["candidates"] if item["id"] == entry.get("supersedes")), None)
+        if previous is not None and previous["status"] == learning.STATUS_REJECTED:
+            raise StateError(f"reverting {candidate_id} brings back the text of {previous['id']}, which the developer "
+                             f"rejected: accept {previous['id']} first, or edit {path} by hand; nothing was reverted")
         if entry["learned"].get("ruleId"):
             revert_rule(project_root, entry)
         else:
@@ -134,12 +140,10 @@ def revert(project_root, candidate_id, settings):
         today = settings["today"].isoformat()
         entry["status"] = learning.STATUS_REVERTED
         entry["reverted"] = {"date": today, "commit": sha}
-        if entry.get("supersedes"):
-            previous = next((item for item in registry["candidates"] if item["id"] == entry["supersedes"]), None)
-            if previous is not None and previous.get("supersededBy") == entry["id"]:
-                # The text it replaced is back, and so is that learning.
-                previous["status"] = learning.STATUS_LEARNED
-                previous.pop("supersededBy", None)
+        if previous is not None and previous["status"] in (learning.STATUS_SUPERSEDED, learning.STATUS_CANDIDATE,
+                                                           learning.STATUS_EXPIRED):
+            previous["status"] = learning.STATUS_LEARNED
+            previous.pop("supersededBy", None)
         learning.write_registry(project_root, registry)
         log_path = append_log(project_root, f"- {today} revert {entry['id']} ({path}, commit {sha[:12]}): "
                                             f"{entry['statement']}\n")
