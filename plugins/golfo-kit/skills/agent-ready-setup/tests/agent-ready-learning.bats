@@ -50,7 +50,7 @@ write_manifest() {
   header_rule --quote "de ahora en más, el número de expediente va en el encabezado de las actas" \
     --explicit --session s1
   [ "$status" -eq 0 ]
-  [[ "$output" == "learn-"*"  learn: learn it now: write it as a rule of the project"* ]]
+  [[ "$output" == "learn-"*"  learn: learn it now as a rule of the project: agent-ready learn apply learn-"* ]]
   [ "$(registry_value 'data["candidates"][0]["evidence"][0]["quote"]')" = \
     "de ahora en más, el número de expediente va en el encabezado de las actas" ]
   [ "$(registry_value 'data["candidates"][0]["evidence"][0]["source"]')" = "in-session" ]
@@ -188,4 +188,152 @@ days_ago() {
   # Only the writers: a bare wait would also wait for the timer of BATS_TEST_TIMEOUT.
   wait "${writer_pids[@]}"
   [ "$(registry_value 'len(data["candidates"])')" -eq 4 ]
+}
+
+# 156b: writing what was learned.
+
+commit_identity() {
+  git config user.name Test
+  git config user.email test@example.invalid
+  git commit -q --allow-empty -m init
+}
+
+id_of() {
+  agent_ready learn list --json
+  printf '%s' "$output" | python3 -c 'import json, sys; print([entry["id"] for entry in json.load(sys.stdin)["entries"] if sys.argv[1] in entry["statement"]][0])' "$1" | tr -d '\r'
+}
+
+# A managed rule an apply wrote: the lock names its profile, so it is golfo's.
+managed_rule() {
+  mkdir -p .agents/rules
+  printf '%s\n' '# Testing' '' "<!-- rule id=testing/runner key=testing.unit-runner $1 -->" '- Use Vitest.' \
+    > .agents/rules/testing.md
+  printf '%s\n' '{"assets": {".agents/rules/testing.md": {"profile": "software-development", "sha256": "x", "state": "applied"}}}' \
+    > .agents/agent-ready.lock.json
+}
+
+@test "apply writes an explicit instruction as a rule of the project, in one commit with its trailers and log line" {
+  commit_identity
+  printf 'work in progress\n' > notes.txt
+  git add notes.txt
+  header_rule --quote "de ahora en más, número arriba" --explicit --session s1
+  [[ "$output" == *"agent-ready learn apply learn-"* ]]
+  candidate="$(id_of 'header')"
+
+  agent_ready learn apply "$candidate"
+  [ "$status" -eq 0 ]
+  [[ "$output" == "$candidate  create: learned/records-header in .agents/rules/learned.md (commit "* ]]
+  grep -Fxq '<!-- rule id=learned/records-header key=records.header -->' .agents/rules/learned.md
+  grep -Fxq -- '- Records carry the case number in the header.' .agents/rules/learned.md
+  agent_ready rules lint
+  [ "$status" -eq 0 ]
+  grep -Fq "create $candidate (learned/records-header): Records carry the case number in the header." .agents/learning/log.md
+  [ "$(registry_value 'data["candidates"][0]["status"]')" = "learned" ]
+  # One commit with the rule, the registry and the log; what the user had staged stays out of it.
+  [ "$(git log -1 --format=%B | grep -c "^Learning-Id: $candidate$")" -eq 1 ]
+  git log -1 --format=%B | grep -q '^Learned-from: s1:'
+  [ "$(git show --name-only --format= HEAD | sort | tr '\n' ' ')" = \
+    ".agents/learning/candidates.json .agents/learning/log.md .agents/rules/learned.md " ]
+  git diff --cached --name-only | grep -Fxq notes.txt
+
+  agent_ready learn apply "$candidate"
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"is not learned: it is already learned"* ]]
+}
+
+@test "a newer instruction on the same key replaces the learned one in place, and the old one is superseded" {
+  commit_identity
+  header_rule --quote "número arriba" --explicit --session s1
+  agent_ready learn apply "$(id_of 'header')"
+  agent_ready learn record --kind rule --key records.header --statement "Records carry the case number in the footer." \
+    --quote "no, al pie" --explicit --session s2
+  footer="$(id_of 'footer')"
+  agent_ready learn apply "$footer"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"supersede: learned/records-header in .agents/rules/learned.md, replaces learn-"* ]]
+  [ "$(grep -c '^<!-- rule' .agents/rules/learned.md)" -eq 1 ]
+  grep -Fxq -- '- Records carry the case number in the footer.' .agents/rules/learned.md
+  agent_ready learn list --status superseded
+  [[ "$output" == *"Records carry the case number in the header."* ]]
+  [ "$(git log --format=%s | grep -c '^learn: ')" -eq 2 ]
+}
+
+@test "a rule the team wrote on the same key is edited in place and keeps its exceptions" {
+  commit_identity
+  mkdir -p .agents/rules
+  printf '%s\n' '# Records' '' '<!-- rule id=records/header key=records.header -->' '- Records carry the date in the header.' \
+    '  - Except: drafts.' > .agents/rules/records.md
+  header_rule --quote "de ahora en más, el número arriba" --explicit --session s1
+  agent_ready learn apply "$(id_of 'case number')"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"update: records/header in .agents/rules/records.md"* ]]
+  grep -Fxq -- '- Records carry the case number in the header.' .agents/rules/records.md
+  grep -Fxq -- '  - Except: drafts.' .agents/rules/records.md
+  [ ! -e .agents/rules/learned.md ]
+}
+
+@test "a managed rule on the same key is replaced with overrides and never edited; a locked one stops the learning" {
+  commit_identity
+  managed_rule ""
+  agent_ready learn record --kind rule --key testing.unit-runner --statement "Use the test runner of the project." \
+    --quote "de ahora en más, usá el runner del proyecto" --explicit --session s1
+  candidate="$(id_of 'runner of the project')"
+  agent_ready learn apply "$candidate"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"create: learned/testing-unit-runner in .agents/rules/learned.md, overrides golfo:testing/runner"* ]]
+  grep -Fxq '<!-- rule id=learned/testing-unit-runner key=testing.unit-runner overrides=golfo:testing/runner -->' \
+    .agents/rules/learned.md
+  grep -Fxq -- '- Use Vitest.' .agents/rules/testing.md
+
+  # Locked: nothing is written or committed, and the message says why.
+  rm -rf .agents/learning .agents/rules/learned.md
+  managed_rule locked
+  commits="$(git rev-list --count HEAD)"
+  agent_ready learn record --kind rule --key testing.unit-runner --statement "Use the test runner of the project." \
+    --quote "de ahora en más, usá el runner del proyecto" --explicit --session s1
+  agent_ready learn apply "$(id_of 'runner of the project')"
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"golfo:testing/runner decides testing.unit-runner and its profile marks it locked: it cannot change, so nothing was saved"* ]]
+  [ ! -e .agents/rules/learned.md ]
+  [ "$(git rev-list --count HEAD)" -eq "$commits" ]
+  [ "$(registry_value 'data["candidates"][0]["status"]')" = "candidate" ]
+}
+
+@test "apply refuses what record did not decide to learn, and asks for the folder or the skill it needs" {
+  commit_identity
+  header_rule --quote "número arriba" --session s1
+  agent_ready learn apply "$(id_of 'header')"
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"it waits for another episode, or it expired"* ]]
+  write_manifest '{"learning": {"mode": "developer-review"}}'
+  header_rule --quote "de ahora en más, número arriba" --explicit --session s2
+  agent_ready learn apply "$(id_of 'header')"
+  [[ "$stderr" == *"learning.mode is developer-review: the developer decides"* ]]
+  rm .agents/agent-ready.json
+  agent_ready learn apply learn-0000000000
+  [[ "$stderr" == *"no entry has the id learn-0000000000"* ]]
+
+  agent_ready learn record --kind nested --statement "Invoices round to two decimals." --quote "siempre dos decimales" \
+    --explicit --session s1
+  agent_ready learn apply "$(id_of 'Invoices')"
+  [[ "$stderr" == *"is only for one folder: record it with --paths"* ]]
+  agent_ready learn record --kind nested --statement "Invoices round to two decimals." --quote "siempre dos decimales" \
+    --paths "billing/**" --explicit --session s1
+  agent_ready learn apply "$(id_of 'Invoices')"
+  [ "$status" -eq 0 ]
+  grep -Fq 'paths=billing/** -->' .agents/rules/learned.md
+
+  agent_ready learn record --kind skill --statement "Draft a record in four steps." --quote "siempre así: paso 1..." \
+    --explicit --session s1
+  skill="$(id_of 'four steps')"
+  agent_ready learn apply "$skill"
+  [[ "$stderr" == *"is a skill: write it under .agents/skills/<name>/ and pass --skill"* ]]
+  agent_ready learn apply "$skill" --skill notes
+  [[ "$stderr" == *"must be a directory directly under .agents/skills/"* ]]
+  mkdir -p .agents/skills/draft-record
+  printf -- '---\nname: draft-record\ndescription: Draft a record.\n---\n1. Header.\n' > .agents/skills/draft-record/SKILL.md
+  agent_ready learn apply "$skill" --skill .agents/skills/draft-record
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"create: .agents/skills/draft-record in .agents/skills/draft-record"* ]]
+  git show --name-only --format= HEAD | grep -Fxq .agents/skills/draft-record/SKILL.md
 }

@@ -4,9 +4,9 @@ agent-ready-setup aprende de las instrucciones del usuario: una preferencia o un
 repite puede quedar como rule del proyecto, y un procedimiento de varios pasos, como skill. Decide el
 agente, con reglas de evidencia fijas. Al usuario nunca se le pregunta «¿lo guardo?».
 
-Esta referencia cubre el registro, la evidencia y la decisión de `agent-ready learn record`. Escribir lo
-aprendido, revertirlo, los hooks de sesión, la reorganización y el `harvest` entre clientes son las
-partes siguientes de la issue #156.
+Esta referencia cubre el registro, la evidencia, la decisión de `agent-ready learn record` y cómo
+`agent-ready learn apply` escribe lo aprendido. Revertirlo, los hooks de sesión, la reorganización y el
+`harvest` entre clientes son las partes siguientes de la issue #156.
 
 ## Qué se aprende y qué no
 
@@ -70,6 +70,30 @@ todas.
 leyendo el registro. Las claves y sus defaults: [configuration-keys.md](configuration-keys.md), sección
 `learning`.
 
+## Escribir lo aprendido
+
+Cuando `record` dice `learn`, el agente corre `agent-ready learn apply <id>`. Solo escribe en la zona del
+proyecto, nunca en un asset que escribió un apply (los que el lockfile registra):
+
+| Caso | Qué hace |
+|---|---|
+| Una rule del proyecto ya decide la misma `key` | edita esa rule en el lugar: cambia el statement y conserva su marcador, sus excepciones y sus detalles (`update`) |
+| Esa rule es una aprendida antes | la reemplaza igual, y la entrada anterior pasa a `superseded` con `supersededBy` (`supersede`) |
+| Una rule gestionada decide la misma `key` | agrega la rule aprendida con `overrides=<fuente>:<id>`, sin tocar la gestionada: el próximo apply la deja afuera de ese repo y otro repo con el mismo profile no cambia |
+| Esa rule gestionada es `locked` | no escribe nada ni commitea, y sale con error: el agente le dice al usuario en una línea que eso no se puede cambiar. La entrada sigue en `candidate` |
+| Ninguna rule decide esa `key` | agrega una rule nueva en `.agents/rules/learned.md` con id `learned/<key>` (o las primeras palabras del statement), su `key` y sus `paths` |
+| `kind` es `skill` | el agente escribe la skill en `.agents/skills/<nombre>/SKILL.md` y la registra con `--skill .agents/skills/<nombre>` |
+| `kind` es `nested` | escribe la rule con `paths=`; sin `--paths` en `record`, `apply` lo pide |
+
+Cada aprendizaje es **un commit** con solo sus archivos (la rule o la skill, `candidates.json` y
+`log.md`), aunque haya otros cambios en el índice. El mensaje es `learn: <statement>` con los trailers
+`Learning-Id: <id>` y `Learned-from: <episodios>`. `.agents/learning/log.md` suma una línea con la fecha,
+la acción, el id, la rule y el statement, y nunca la cita.
+
+`apply` se niega con un error si la entrada no está decidida para aprender: espera otro episodio,
+venció, ya está aprendida o `learning.mode` es `developer-review`. La rule nueva entra al bloque
+gestionado de `AGENTS.md` y a `.claude/` en el próximo sync o apply, como cualquier rule del proyecto.
+
 ## Comandos
 
 ```bash
@@ -77,6 +101,9 @@ leyendo el registro. Las claves y sus defaults: [configuration-keys.md](configur
 agent-ready learn record --kind rule --key records.header \
   --statement "Records carry the case number in the header." \
   --quote "de ahora en más, el número de expediente va en el encabezado" --explicit --session <sesión>
+
+# Escribirla como rule del proyecto y commitearla.
+agent-ready learn apply learn-5db4a07240
 
 # Qué espera una repetición y con qué configuración.
 agent-ready learn status

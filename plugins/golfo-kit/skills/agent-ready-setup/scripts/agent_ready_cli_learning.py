@@ -1,6 +1,7 @@
 """agent-ready learn: the registry of what the agent learns from the instructions of the user.
 
-record adds the evidence of one instruction and prints what happens with it; status and list read the
+record adds the evidence of one instruction and prints what happens with it; apply writes one that
+record decided to learn as a rule or a skill of the project and commits it; status and list read the
 registry. None of them prints the quotes of the user, which stay in .agents/learning/candidates.json.
 """
 
@@ -8,6 +9,7 @@ import datetime
 import sys
 
 import agent_ready_learning as learning
+import agent_ready_learning_apply as learning_apply
 from agent_ready_cli_common import EXIT_OK, find_repository_root
 from agent_ready_common import StateError, serialize_json
 from agent_ready_config import resolve_configuration
@@ -19,7 +21,7 @@ LEARNING_TTL_KEY = "learning.candidateTtlDays"
 MAX_STATEMENT_CHARS_KEY = "rules.maxStatementChars"
 
 DECISION_MESSAGES = {
-    learning.DECISION_LEARN: "learn it now: write it as a {kind} of the project",
+    learning.DECISION_LEARN: "learn it now as a {kind} of the project: agent-ready learn apply {id}",
     learning.DECISION_PROPOSE: "learning.mode is developer-review: leave it for the developer, write nothing",
     learning.DECISION_WAIT: "keep it as a candidate until another episode repeats it ({episodes} of {threshold})",
     learning.DECISION_ALREADY_LEARNED: "already learned: nothing new to write",
@@ -60,11 +62,29 @@ def command_learn_record(arguments):
                                          "sameKey": [learning.public_view(item, settings["ttl_days"])
                                                      for item in same_key]}))
         return EXIT_OK
-    message = DECISION_MESSAGES[decision].format(kind=entry["kind"], episodes=episodes,
+    message = DECISION_MESSAGES[decision].format(kind=entry["kind"], id=entry["id"], episodes=episodes,
                                                  threshold=settings["threshold"])
     sys.stdout.write(f"{entry['id']}  {decision}: {message}\n    {entry['statement']}\n")
     for item in same_key:
         sys.stdout.write(f"  same key {entry['key']}: {item['id']} ({item['status']}) {item['statement']}\n")
+    return EXIT_OK
+
+
+def command_learn_apply(arguments):
+    """Write one entry that record decided to learn, register it and commit it."""
+    project_root = find_repository_root(arguments.project)
+    settings = settings_of(project_root)
+    written = learning_apply.apply(project_root, arguments.id, settings, arguments.skill)
+    learned = written["entry"]["learned"]
+    if arguments.json:
+        sys.stdout.write(serialize_json({"id": arguments.id, "commit": written["commit"], "learned": learned,
+                                         "supersedes": written["supersedes"]}))
+        return EXIT_OK
+    target = learned.get("ruleId") or learned.get("skill")
+    extras = "".join(f", {label} {value}" for label, value in (("overrides", learned.get("overrides")),
+                                                                ("replaces", written["supersedes"])) if value)
+    sys.stdout.write(f"{arguments.id}  {learned['action']}: {target} in {learned['path']}{extras} "
+                     f"(commit {written['commit'][:12]})\n")
     return EXIT_OK
 
 
@@ -116,7 +136,7 @@ def command_learn_list(arguments):
 
 
 def register(subparsers, new_subparser):
-    """Add learn record|status|list to the CLI parser."""
+    """Add learn record|apply|status|list to the CLI parser."""
     learn = new_subparser(subparsers, "learn", "Record and read what the agent learns from the user.",
                           "  agent-ready learn status\n  agent-ready learn list --status candidate", None,
                           with_project=False)
@@ -144,6 +164,14 @@ def register(subparsers, new_subparser):
     record_action.add_argument("--source", choices=learning.SOURCES, default=learning.SOURCE_IN_SESSION,
                                help="in-session (the agent, while working) or session-end (the review at the end)")
     record_action.add_argument("--json", action="store_true", help="print the result as JSON")
+    apply_action = new_subparser(
+        actions, "apply", "Write an instruction record decided to learn as a rule or skill of the project, and commit it.",
+        "  agent-ready learn apply learn-5db4a07240\n"
+        "  agent-ready learn apply learn-0c1d2e3f4a --skill .agents/skills/records",
+        command_learn_apply)
+    apply_action.add_argument("id", help="id of the entry, as record and list print it")
+    apply_action.add_argument("--skill", help="the directory of the skill the agent wrote, for an entry of kind skill")
+    apply_action.add_argument("--json", action="store_true", help="print the result as JSON")
     status_action = new_subparser(actions, "status", "The settings of learning and what waits for a repetition.",
                                   "  agent-ready learn status\n  agent-ready learn status --json", command_learn_status)
     status_action.add_argument("--json", action="store_true", help="print the result as JSON")
