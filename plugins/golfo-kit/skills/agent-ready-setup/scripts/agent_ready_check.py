@@ -8,6 +8,7 @@ import sys
 import tempfile
 import types
 
+import agent_ready_cli_rules as project_rules
 import agent_ready_conflicts as conflicts_review
 import agent_ready_content as content_source
 import agent_ready_skill_overlap as skill_overlap
@@ -327,9 +328,14 @@ def check_conflicts(project_root, content_dir, offline):
     structural_mode = configuration.value(CI_CONFLICTS_STRUCTURAL_KEY)
     semantic_mode = configuration.value(CI_CONFLICTS_SEMANTIC_KEY)
     result = {"structuralMode": structural_mode, "semanticMode": semantic_mode, "structural": [], "semantic": [],
-              "unchecked": 0}
+              "rules": [], "unchecked": 0}
     if structural_mode == CI_CONFLICTS_OFF and semantic_mode == CI_CONFLICTS_OFF:
         return result, False
+    if structural_mode != CI_CONFLICTS_OFF:
+        # agent-ready rules lint of the project's rule files that use atomic rules: deterministic, like the
+        # structural checks, and under their mode (references/atomic-rules.md, section 3).
+        result["rules"] = [f"  {finding.render()}"
+                           for finding in project_rules.adopted_rule_errors(project_root, configuration)]
     catalog = load_effective_catalog(project_root, content_dir)
     run = types.SimpleNamespace(project=project_root, skill_dir=content_dir, offline=offline, profiles=None, stack=None,
                                 format="text", provider=session_provider())
@@ -359,7 +365,7 @@ def check_conflicts(project_root, content_dir, offline):
         reviews = {"semanticConflicts": semantic_conflicts(run, plan, instructions_with_applied=True),
                    "competingSkills": competing_skills_report(run, plan, catalog, configuration)}
         result["semantic"], result["unchecked"] = semantic_conflict_lines(reviews)
-    failing = ((structural_mode == CI_CONFLICTS_FAIL and bool(result["structural"]))
+    failing = ((structural_mode == CI_CONFLICTS_FAIL and bool(result["structural"] or result["rules"]))
                or (semantic_mode == CI_CONFLICTS_FAIL and bool(result["semantic"] or result["unchecked"])))
     return result, failing
 
@@ -373,7 +379,7 @@ def print_check_text(result):
         CHECK_SOURCE_UNAVAILABLE: ("source not available", "error"),
         CHECK_CONFIG_ERROR: ("configuration error", "error"),
         CHECK_SKIPPED: ("skipped", "muted"),
-        CHECK_CONFLICTS: ("conflicts between the profiles", "error"),
+        CHECK_CONFLICTS: ("conflicts between the profiles or rule lint errors", "error"),
     }
     headline, color = headlines[result["status"]]
     ci = result["ci"]
@@ -392,6 +398,10 @@ def print_check_text(result):
             write_line(f"Conflicts ({mode_key}: {conflicts[kind + 'Mode']}):")
             for line in conflicts[kind]:
                 write_line(line)
+    if conflicts.get("rules"):
+        write_line(f"Rules lint ({CI_CONFLICTS_STRUCTURAL_KEY}: {conflicts['structuralMode']}):")
+        for line in conflicts["rules"]:
+            write_line(line)
     if conflicts.get("semanticProblem"):
         write_line(f"  ! the AI reviews could not run: {conflicts['semanticProblem']} "
                    f"({CI_CONFLICTS_SEMANTIC_KEY}: {conflicts['semanticMode']})")

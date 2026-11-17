@@ -3363,6 +3363,31 @@
           "critical": true
         }
       ]
+    },
+    {
+      "id": "check-lints-adopted-rule-files",
+      "description": "agent-ready check corre el lint de rules solo en los archivos con rules atómicas, bajo ci.conflicts.structural y con el código 6.",
+      "input": "En mi repo, .agents/rules/ tiene varios archivos de rules en prosa y uno, team.md, que ya migré a rules atómicas, pero le quedó un bullet sin su comentario de rule. ¿Falla agent-ready check en el CI? Si falla, ¿con qué código de salida, y qué clave de configuración lo baja a un aviso? ¿Qué pasa con los archivos en prosa? Respondé desde la skill, sin ejecutar comandos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "ci.conflicts.structural",
+          "description": "El lint de rules queda bajo ci.conflicts.structural",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(c(o|ó)digo|exit|sale)[^0-9]{0,30}6([^0-9]|$)|(^|[^0-9])6[^0-9]{0,10}\\(?conflict",
+          "description": "Sale con 6, el código de los conflictos",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "prosa.{0,120}(no (se )?(revisa|lint|cuenta|falla|aparece|reporta)|ignor|salte|omit|fuera)|(no (se )?(revisa|lint|cuentan|fallan|aparecen|reporta)|ignor|salte|omit).{0,120}prosa",
+          "description": "Los archivos en prosa no se lintean en check",
+          "critical": true
+        }
+      ]
     }
   ]
 }

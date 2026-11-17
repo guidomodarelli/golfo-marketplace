@@ -312,6 +312,45 @@ skip_without_pseudoterminal() {
   [ ! -e .agents/ci ]
 }
 
+@test "check lints the rule files that use atomic rules under ci.conflicts.structural, and skips prose ones" {
+  mkdir -p .agents/rules/workspaces/apps/web
+  # A prose file the project never migrated: its bullets are not lint errors of the check.
+  printf '%s\n' '# Team notes' '' '- Keep the changelog short.' > .agents/rules/team-notes.md
+  printf '%s\n' '# Team' '' '<!-- rule id=team/logger -->' '- Log with pino.' > .agents/rules/team.md
+  # The same rule for a workspace is another set, not a repeated id.
+  cp .agents/rules/team.md .agents/rules/workspaces/apps/web/team.md
+  run_cli apply
+  [ "$status" -eq 0 ]
+  run_cli check --offline
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"Rules lint"* ]]
+
+  # A file that adopted the format is linted: an untagged bullet and a statement that chains two decisions.
+  printf '%s\n' '' '- Log every request.' '' '<!-- rule id=team/errors -->' '- Wrap errors. Never swallow them.' \
+    >> .agents/rules/team.md
+  run_cli check --offline
+  [ "$status" -eq 6 ]
+  [[ "$output" == *"Rules lint (ci.conflicts.structural: fail):"* ]]
+  [[ "$output" == *".agents/rules/team.md:6: error: [untagged-rule]"* ]]
+  [[ "$output" == *"[several-decisions] team/errors"* ]]
+  [[ "$output" != *"team-notes.md"* ]]
+  [[ "$output" != *"duplicate-id"* ]]
+  run_cli check --offline --format json
+  [ "$status" -eq 6 ]
+  [ "$(printf '%s' "$output" | python3 -c 'import json, sys; print(len(json.load(sys.stdin)["conflicts"]["rules"]))' | tr -d '\r')" = "2" ]
+
+  # warn lists them and passes; rules.enabled false does not lint.
+  run_cli config set ci.conflicts.structural warn
+  run_cli check --offline
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Rules lint (ci.conflicts.structural: warn):"* ]]
+  run_cli config set ci.conflicts.structural fail
+  run_cli config set rules.enabled false
+  run_cli check --offline
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"Rules lint"* ]]
+}
+
 @test "agent-ready conflicts exits 6 on a conflict, and check fails on it under ci.conflicts.structural" {
   printf '{"devDependencies": {"jest": "29"}}\n' > package.json
   mkdir -p .agents/rules

@@ -28,7 +28,7 @@ cualquier modo, y un argumento inválido del comando también sale con 2. Una fu
 desactualizada si la `ref` avanzó, porque el chequeo responde si falta actualizar y no si se aplica solo. Un commit
 completo nunca queda desactualizado. `updates.refresh` configura `plan` y `status`; el chequeo solo evita la red
 con `--offline`. `--format json` imprime un objeto con `status`, `ci` (`enabled` y `mode`), `exitStatus`,
-`problems`, `unavailable` y `conflicts`.
+`problems`, `unavailable` y `conflicts` (con `rules`, una línea por error del lint).
 
 ### Conflictos entre perfiles (`ci.conflicts`)
 
@@ -37,7 +37,7 @@ El chequeo también corre los chequeos de conflictos de `agent-ready conflicts`
 
 | Clave | Default | Qué cubre |
 |---|---|---|
-| `ci.conflicts.structural` | `fail` | sin IA, baratos y deterministas: sombras, rules contra la configuración del repo, permisos, hooks y formateadores, paridad entre providers, variables de entorno, jobs de CI duplicados y herramientas que compiten |
+| `ci.conflicts.structural` | `fail` | sin IA, baratos y deterministas: sombras, rules contra la configuración del repo, permisos, hooks y formateadores, paridad entre providers, variables de entorno, jobs de CI duplicados y herramientas que compiten, y los errores de `agent-ready rules lint` en los archivos de `.agents/rules/` con rules atómicas ([atomic-rules.md](atomic-rules.md), «En `agent-ready check`») |
 | `ci.conflicts.semantic` | `off` | las revisiones de IA (contradicciones entre rules, skills que compiten): necesitan la CLI de un provider con credenciales en el CI, y un par sin revisar cuenta como fallido en `fail` |
 
 `off` no los mira, `warn` los lista sin cambiar el código y `fail` sale con 6 cuando hay alguno. Solo

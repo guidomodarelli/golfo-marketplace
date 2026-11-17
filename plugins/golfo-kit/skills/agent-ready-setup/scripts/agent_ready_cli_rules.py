@@ -17,6 +17,7 @@ import agent_ready_common
 from agent_ready_common import StateError, serialize_json
 from agent_ready_config import resolve_configuration
 from agent_ready_options import RULES_ENABLED_KEY
+from agent_ready_workspaces import WORKSPACE_RULES_DIRECTORY
 
 PROJECT_RULES_RELATIVE_PATH = ".agents/rules"
 PROJECT_SKILLS_RELATIVE_PATH = ".agents/skills"
@@ -66,12 +67,47 @@ def read(arguments):
 
 def limits(arguments):
     """(enabled, warn, max) of the configuration of --project's repository, or the defaults outside one."""
-    configuration = resolve_configuration(agent_ready_common.find_repository_root(arguments.project))
+    return configured_limits(resolve_configuration(agent_ready_common.find_repository_root(arguments.project)))
+
+
+def configured_limits(configuration):
+    """(enabled, warn, max) of the rules module of a configuration."""
     warn_chars = configuration.value(STATEMENT_WARN_CHARS_KEY)
     max_chars = configuration.value(MAX_STATEMENT_CHARS_KEY)
     if warn_chars > max_chars:
         raise UsageError(f"{STATEMENT_WARN_CHARS_KEY} ({warn_chars}) is over {MAX_STATEMENT_CHARS_KEY} ({max_chars})")
     return configuration.value(RULES_ENABLED_KEY), warn_chars, max_chars
+
+
+def adopted_rule_errors(project_root, configuration):
+    """The lint errors of the rule files of .agents/rules/ that already use atomic rules, for agent-ready check.
+
+    A file with no rule marker is prose its project has not migrated: its bullets are not reported, so
+    adopting the format is a decision per file and never a failing CI on a repository that did not take it.
+    """
+    enabled, warn_chars, max_chars = configured_limits(configuration)
+    if not enabled:
+        return []
+    rules_root = os.path.join(project_root, PROJECT_RULES_RELATIVE_PATH)
+    # The rules of each workspace are loaded apart from the root's and from the other workspaces', so each
+    # is its own set: a rule of the root and its copy for a workspace are not a repeated id.
+    sets = {}
+    for path in agent_ready_rules.rule_files(rules_root):
+        relative = os.path.relpath(path, rules_root).replace(os.sep, "/")
+        in_workspace = relative.startswith(f"{WORKSPACE_RULES_DIRECTORY}/")
+        sets.setdefault(os.path.dirname(relative) if in_workspace else "", []).append(path)
+    errors = []
+    for files in sets.values():
+        try:
+            rules, findings = agent_ready_rules.read_rules(files, project_root)
+        except (OSError, UnicodeDecodeError) as read_error:
+            raise StateError(f"could not read a rule file: {read_error}") from read_error
+        adopted = {rule.path for rule in rules} | {finding.path for finding in findings
+                                                   if finding.code != agent_ready_rules.CODE_UNTAGGED_RULE}
+        findings = [finding for finding in findings if finding.path in adopted]
+        findings += agent_ready_rules.lint_rules(rules, warn_chars, max_chars)
+        errors += [finding for finding in findings if finding.level == agent_ready_rules.LEVEL_ERROR]
+    return sorted(errors, key=lambda finding: (finding.path, finding.line, finding.code))
 
 
 def shortened(text):
