@@ -635,3 +635,46 @@ managed_rule() {
   [ ! -e .agents/skills/draft-record/SKILL.md ]
   [ -z "$(git status --porcelain -- .agents/skills)" ]
 }
+
+@test "reverting the last learned rule keeps what the team wrote in its file" {
+  commit_identity
+  header_rule --quote "de ahora en más, número arriba" --explicit --session s1
+  header="$(id_of 'header')"
+  agent_ready learn apply "$header"
+  printf '\n## Team notes\n\nReviewed by the team.\n' >> .agents/rules/learned.md
+  git commit -qam "team notes"
+  agent_ready learn revert "$header"
+  [ "$status" -eq 0 ]
+  grep -Fxq 'Reviewed by the team.' .agents/rules/learned.md
+  ! grep -Fq 'case number' .agents/rules/learned.md
+}
+
+@test "a superseded entry cannot be rejected, since reverting the newer one brings it back" {
+  commit_identity
+  header_rule --quote "de ahora en más, número arriba" --explicit --session s1
+  header="$(id_of 'header')"
+  agent_ready learn apply "$header"
+  agent_ready learn record --kind rule --key records.header --statement "Records carry the case number in the footer." \
+    --quote "no, al pie" --explicit --session s2
+  footer="$(id_of 'footer')"
+  agent_ready learn apply "$footer"
+  agent_ready learn reject "$header"
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"$header is superseded by $footer and not in force; reverting $footer would bring it back"* ]]
+  [ "$(registry_value 'data["candidates"][0]["status"]')" = "superseded" ]
+}
+
+@test "a skill learned in the first commit of the repository can be reverted" {
+  git config user.name Test
+  git config user.email test@example.invalid
+  agent_ready learn record --kind skill --statement "Draft a record in four steps." --quote "siempre así" --explicit --session s1
+  skill="$(id_of 'four steps')"
+  mkdir -p .agents/skills/draft-record
+  printf -- '---\nname: draft-record\ndescription: Draft a record.\n---\n1. Header.\n' > .agents/skills/draft-record/SKILL.md
+  agent_ready learn apply "$skill" --skill .agents/skills/draft-record
+  [ "$status" -eq 0 ]
+  [ "$(git rev-list --count HEAD)" -eq 1 ]
+  agent_ready learn revert "$skill"
+  [ "$status" -eq 0 ]
+  [ ! -e .agents/skills/draft-record/SKILL.md ]
+}

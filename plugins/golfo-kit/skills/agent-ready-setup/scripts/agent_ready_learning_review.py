@@ -14,12 +14,15 @@ import agent_ready_rules
 from agent_ready_common import StateError, write_text_atomically
 from agent_ready_learning_apply import (
     ACTION_CREATE,
-    LEARNED_SCOPED_PREFIX,
     append_log,
     commit_paths,
+    learned_file,
     read_text,
     replaced_statement,
 )
+
+# The tree of no files, which git knows without it being in the repository: what a root commit is compared to.
+EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 
 
 def git(project_root, *arguments):
@@ -48,6 +51,11 @@ def reject(project_root, candidate_id, settings):
             raise StateError(f"{candidate_id} is learned: undo it with agent-ready learn revert {candidate_id}")
         if entry["status"] == learning.STATUS_REJECTED:
             raise StateError(f"{candidate_id} is already rejected")
+        if entry["status"] == learning.STATUS_SUPERSEDED:
+            # Reverting the newer one gives this text back as learned: a rejection could not hold.
+            raise StateError(f"{candidate_id} is superseded by {entry.get('supersededBy')} and not in force; reverting "
+                             f"{entry.get('supersededBy')} would bring it back, so revert that first and then "
+                             f"revert {candidate_id}")
         entry["status"] = learning.STATUS_REJECTED
         entry["rejected"] = {"date": settings["today"].isoformat()}
         learning.write_registry(project_root, registry)
@@ -71,7 +79,8 @@ def learning_commit(project_root, entry):
 
 def reverse_patch(project_root, sha, path):
     """Undo in the working tree what ``sha`` did to ``path``, keeping the later changes; nothing on conflict."""
-    diff = git_bytes(project_root, "diff", "--binary", f"{sha}^", sha, "--", path)
+    has_parent = git(project_root, "rev-parse", "--verify", "--quiet", f"{sha}^").returncode == 0
+    diff = git_bytes(project_root, "diff", "--binary", f"{sha}^" if has_parent else EMPTY_TREE, sha, "--", path)
     if diff.returncode != 0 or not diff.stdout:
         raise StateError(f"commit {sha[:12]} has no change of {path} to undo")
     check = git_bytes(project_root, "apply", "--reverse", "--check", input_bytes=diff.stdout)
@@ -100,9 +109,9 @@ def revert_rule(project_root, entry):
         write_text_atomically(path, new_text)
         return
     new_text = agent_ready_rules.remove_rules(text, {rule.id})
-    remaining, _ = agent_ready_rules.parse_rule_text(new_text, learned["path"])
-    if not remaining and os.path.basename(path).startswith(LEARNED_SCOPED_PREFIX.rstrip("-")):
-        # A learned file only holds learned rules: with none left, it goes too.
+    learned_path, header = learned_file(project_root, entry.get("paths") or [])
+    if learned_path == learned["path"] and new_text.replace("\r\n", "\n").strip() == header.strip():
+        # Only the header apply wrote is left: the file goes. Anything the team added keeps it.
         os.remove(path)
         return
     write_text_atomically(path, new_text)
