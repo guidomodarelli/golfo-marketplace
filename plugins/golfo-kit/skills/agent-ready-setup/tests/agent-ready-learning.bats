@@ -714,3 +714,37 @@ managed_rule() {
   grep -Fxq -- '- Records carry the case number in the header.' .agents/rules/learned.md
   [ "$(registry_value 'data["candidates"][0]["status"]')" = "learned" ]
 }
+
+@test "revert leaves a created rule alone once someone added exceptions or details to it" {
+  commit_identity
+  header_rule --quote "de ahora en más, número arriba" --explicit --session s1
+  header="$(id_of 'header')"
+  agent_ready learn apply "$header"
+  printf '  - Except: drafts.\n' >> .agents/rules/learned.md
+  git commit -qam "team exception"
+  agent_ready learn revert "$header"
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"rule learned/records-header in .agents/rules/learned.md has exceptions or details someone added"* ]]
+  grep -Fxq -- '  - Except: drafts.' .agents/rules/learned.md
+  [ "$(registry_value 'data["candidates"][0]["status"]')" = "learned" ]
+}
+
+@test "a learning that creates its rule forgets what an older learning of the entry replaced" {
+  commit_identity
+  header_rule --quote "de ahora en más, número arriba" --explicit --session s1
+  header="$(id_of 'header')"
+  agent_ready learn apply "$header"
+  agent_ready learn record --kind rule --key records.header --statement "Records carry the case number in the footer." \
+    --quote "no, al pie" --explicit --session s2
+  footer="$(id_of 'footer')"
+  agent_ready learn apply "$footer"
+  agent_ready learn revert "$footer"
+  agent_ready learn revert "$header"
+  agent_ready learn reject "$header"
+  agent_ready learn accept "$footer"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"create: learned/records-header"* ]]
+  [ "$(registry_value '"supersedes" in [entry for entry in data["candidates"] if "footer" in entry["statement"]][0]')" = "False" ]
+  agent_ready learn revert "$footer"
+  [ "$status" -eq 0 ]
+}

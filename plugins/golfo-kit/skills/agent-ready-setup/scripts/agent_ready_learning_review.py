@@ -108,6 +108,10 @@ def revert_rule(project_root, entry):
         _, new_text = replaced_statement(project_root, rule, learned["previousStatement"])
         write_text_atomically(path, new_text)
         return
+    if rule.exceptions or rule.details:
+        # A created rule has only its statement: what is under it, someone added afterwards.
+        raise StateError(f"rule {rule.id} in {learned['path']} has exceptions or details someone added after the "
+                         f"learning; nothing was reverted, undo it by hand")
     new_text = agent_ready_rules.remove_rules(text, {rule.id})
     learned_path, header = learned_file(project_root, entry.get("paths") or [])
     if learned_path == learned["path"] and new_text.replace("\r\n", "\n").strip() == header.strip():

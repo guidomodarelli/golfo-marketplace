@@ -345,6 +345,8 @@ def apply(project_root, candidate_id, settings, skill_path=None, accepted=False)
         if accepted:
             entry["learned"]["accepted"] = True
         entry["learned"]["path"] = os.path.relpath(written["path"], project_root).replace(os.sep, "/")
+        # Only this learning's own relationship counts: an older supersedes of the entry no longer does.
+        entry.pop("supersedes", None)
         if written["supersedes"]:
             entry["supersedes"] = written["supersedes"]
             previous = next(item for item in registry["candidates"] if item["id"] == written["supersedes"])

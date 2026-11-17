@@ -117,7 +117,8 @@ Decide el agente; lo que necesita criterio humano lo revisa el desarrollador, nu
 | `learn reject <id>` | descarta una entrada que no está aprendida: queda `rejected` y la evidencia nueva no la aprende. Commitea el registro y el log. Una entrada `superseded` no se rechaza: revertir la que la reemplazó la devolvería, así que primero se revierte esa |
 | `learn revert <id>` | deshace un aprendizaje. Una rule que creó se saca (y su archivo aprendido también, si no quedó nada más que el encabezado que escribió `apply`), y una que editó vuelve a su statement anterior, buscándola por su id, así no importa qué se escribió alrededor después. Si la entrada había reemplazado a otra, esa vuelve a `learned`, aunque el usuario la haya repetido mientras tanto; si el desarrollador la rechazó, `revert` no toca nada y pide aceptarla primero. Una skill vuelve a como estaba antes del commit del aprendizaje. Commitea con `Learning-Id:` y `Reverts: <sha>` |
 
-`revert` no toca nada si la rule cambió después del aprendizaje (ya no dice lo que escribió) o si el
+`revert` no toca nada si la rule cambió después del aprendizaje (ya no dice lo que escribió, o alguien le
+agregó excepciones o detalles a una rule que el aprendizaje creó) o si el
 parche de una skill no aplica: lo dice y hay que deshacerlo a mano. Una instrucción revertida vuelve
 como candidata si el usuario la da de nuevo, contando solo la evidencia nueva.
 
