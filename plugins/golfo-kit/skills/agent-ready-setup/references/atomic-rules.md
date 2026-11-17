@@ -112,6 +112,23 @@ El largo cuenta solo el statement, no las excepciones ni los detalles: el motivo
 Los dos límites se configuran en el módulo `rules`, y `rules.enabled: false` apaga el lint
 ([configuration-keys.md](configuration-keys.md)).
 
+### En `agent-ready check`
+
+El chequeo de CI corre el mismo lint sobre `.agents/rules/`, bajo el modo de `ci.conflicts.structural`
+([ci-check.md](ci-check.md), «Conflictos entre perfiles»):
+
+- **Qué archivos lee:** solo los que ya tienen alguna rule atómica. Un archivo en prosa que el proyecto no
+  migró no aparece, así que adoptar el formato es una decisión por archivo y nunca rompe el CI.
+- **Qué cuenta:** solo los errores, no los avisos.
+- **Cada workspace es un conjunto aparte:** las rules de `.agents/rules/workspaces/<path>/`, con las carpetas
+  de rules que tenga adentro, se revisan junto con las de la raíz de su fuente, que el workspace también
+  carga, y nunca con las de otros workspaces. Los errores de las rules de la raíz se informan una sola vez.
+- **Una rule reemplazada** con `overrides=<fuente>:<id>` no está en ningún archivo proyectado, pero un
+  `requires` que la nombra no cuenta como desconocido.
+- **Cada fuente también:** dos packs pueden publicar el mismo id, porque sus rules se nombran
+  `<fuente>:<id>`. El lock dice de qué profile, y por lo tanto de qué fuente, es cada archivo gestionado; un
+  archivo propio es de `project`.
+
 ## 4. Comandos
 
 ```bash

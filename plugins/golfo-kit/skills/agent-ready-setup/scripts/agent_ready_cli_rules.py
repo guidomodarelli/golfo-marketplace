@@ -17,6 +17,9 @@ import agent_ready_common
 from agent_ready_common import StateError, serialize_json
 from agent_ready_config import resolve_configuration
 from agent_ready_options import RULES_ENABLED_KEY
+from agent_ready_workspaces import WORKSPACE_RULES_DIRECTORY
+from agent_ready_lockfile import read_lock
+import agent_ready_rule_overrides as rule_overrides
 
 PROJECT_RULES_RELATIVE_PATH = ".agents/rules"
 PROJECT_SKILLS_RELATIVE_PATH = ".agents/skills"
@@ -66,12 +69,83 @@ def read(arguments):
 
 def limits(arguments):
     """(enabled, warn, max) of the configuration of --project's repository, or the defaults outside one."""
-    configuration = resolve_configuration(agent_ready_common.find_repository_root(arguments.project))
+    return configured_limits(resolve_configuration(agent_ready_common.find_repository_root(arguments.project)))
+
+
+def configured_limits(configuration):
+    """(enabled, warn, max) of the rules module of a configuration."""
     warn_chars = configuration.value(STATEMENT_WARN_CHARS_KEY)
     max_chars = configuration.value(MAX_STATEMENT_CHARS_KEY)
     if warn_chars > max_chars:
         raise UsageError(f"{STATEMENT_WARN_CHARS_KEY} ({warn_chars}) is over {MAX_STATEMENT_CHARS_KEY} ({max_chars})")
     return configuration.value(RULES_ENABLED_KEY), warn_chars, max_chars
+
+
+def rule_set_of(project_root, path, lock):
+    """(workspace, source) of a rule file of .agents/rules/: the rules of one set load together.
+
+    The root and each workspace (.agents/rules/workspaces/<path>/, with any folder of its rules under it)
+    load apart, and two sources may publish the same id, as their rules are named <source>:<id>. A file
+    the lock records takes its profile's source and workspace; any other file is the project's.
+    """
+    destination = os.path.relpath(path, project_root).replace(os.sep, "/")
+    entry = ((lock or {}).get("assets") or {}).get(destination) or {}
+    source = rule_overrides.rule_source(entry["profile"]) if entry.get("profile") else rule_overrides.PROJECT_RULE_SOURCE
+    if entry.get("workspace"):
+        return entry["workspace"], source
+    relative = os.path.relpath(path, os.path.join(project_root, PROJECT_RULES_RELATIVE_PATH)).replace(os.sep, "/")
+    if not relative.startswith(f"{WORKSPACE_RULES_DIRECTORY}/"):
+        return "", source
+    inside = relative[len(WORKSPACE_RULES_DIRECTORY) + 1:]
+    # The longest workspace of the lock that holds the file; without one, the folder of the file.
+    workspaces = sorted((lock or {}).get("workspaces") or {}, key=len, reverse=True)
+    owner = next((workspace for workspace in workspaces if inside.startswith(f"{workspace}/")), None)
+    return owner or os.path.dirname(inside), source
+
+
+def adopted_rule_errors(project_root, configuration):
+    """The lint errors of the rule files of .agents/rules/ that already use atomic rules, for agent-ready check.
+
+    A file with no rule marker is prose its project has not migrated: its bullets are not reported, so
+    adopting the format is a decision per file and never a failing CI on a repository that did not take it.
+    """
+    enabled, warn_chars, max_chars = configured_limits(configuration)
+    if not enabled:
+        return []
+    lock = read_lock(project_root)
+    rules_root = os.path.join(project_root, PROJECT_RULES_RELATIVE_PATH)
+    sets = {}
+    for path in agent_ready_rules.rule_files(rules_root):
+        sets.setdefault(rule_set_of(project_root, path, lock), []).append(path)
+    parsed = {}
+    for rule_set, files in sets.items():
+        try:
+            parsed[rule_set] = agent_ready_rules.read_rules(files, project_root)
+        except (OSError, UnicodeDecodeError) as read_error:
+            raise StateError(f"could not read a rule file: {read_error}") from read_error
+    # A rule another one replaces with overrides=<source>:<id> is not projected, but the rules that
+    # require it keep the reference (references/atomic-rules.md, «Una rule reemplazada»).
+    replaced = {}
+    for rules, _ in parsed.values():
+        for rule in rules:
+            for target in rule.overrides:
+                source, _, identifier = target.partition(rule_overrides.RULE_SOURCE_SEPARATOR)
+                replaced.setdefault(source, set()).add(identifier)
+    errors = []
+    for (workspace, source), (rules, findings) in parsed.items():
+        own_paths = {rule.path for rule in rules} | {finding.path for finding in findings}
+        adopted = {rule.path for rule in rules} | {finding.path for finding in findings
+                                                   if finding.code != agent_ready_rules.CODE_UNTAGGED_RULE}
+        findings = [finding for finding in findings if finding.path in adopted]
+        # A workspace loads the root's rules too: its rules are checked with the root's of their source,
+        # and only the findings of its own files are reported, the root's being reported once, by the root.
+        # The root's go first, so a workspace rule that repeats one of their ids is the one reported.
+        together = (parsed.get(("", source), ([], []))[0] if workspace else []) + rules
+        findings += [finding for finding in agent_ready_rules.lint_rules(together, warn_chars, max_chars,
+                                                                         replaced.get(source, set()))
+                     if finding.path in own_paths]
+        errors += [finding for finding in findings if finding.level == agent_ready_rules.LEVEL_ERROR]
+    return sorted(errors, key=lambda finding: (finding.path, finding.line, finding.code))
 
 
 def shortened(text):

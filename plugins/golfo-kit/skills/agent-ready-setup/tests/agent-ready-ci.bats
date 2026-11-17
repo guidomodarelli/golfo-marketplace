@@ -312,6 +312,98 @@ skip_without_pseudoterminal() {
   [ ! -e .agents/ci ]
 }
 
+@test "check lints the rule files that use atomic rules under ci.conflicts.structural, and skips prose ones" {
+  mkdir -p .agents/rules/workspaces/apps/web
+  # A prose file the project never migrated: its bullets are not lint errors of the check.
+  printf '%s\n' '# Team notes' '' '- Keep the changelog short.' > .agents/rules/team-notes.md
+  printf '%s\n' '# Team' '' '<!-- rule id=team/logger -->' '- Log with pino.' > .agents/rules/team.md
+  # A workspace file of the project is linted with the root's rules, which it loads too.
+  printf '%s\n' '# Web' '' '<!-- rule id=web/logger requires=team/logger -->' '- Log the route.' \
+    > .agents/rules/workspaces/apps/web/team.md
+  run_cli apply
+  [ "$status" -eq 0 ]
+  run_cli check --offline
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"Rules lint"* ]]
+
+  # A file that adopted the format is linted: an untagged bullet and a statement that chains two decisions.
+  printf '%s\n' '' '- Log every request.' '' '<!-- rule id=team/errors -->' '- Wrap errors. Never swallow them.' \
+    >> .agents/rules/team.md
+  run_cli check --offline
+  [ "$status" -eq 6 ]
+  [[ "$output" == *"Rules lint (ci.conflicts.structural: fail):"* ]]
+  [[ "$output" == *".agents/rules/team.md:6: error: [untagged-rule]"* ]]
+  [[ "$output" == *"[several-decisions] team/errors"* ]]
+  [[ "$output" != *"team-notes.md"* ]]
+  [[ "$output" != *"duplicate-id"* ]]
+  run_cli check --offline --format json
+  [ "$status" -eq 6 ]
+  [ "$(printf '%s' "$output" | python3 -c 'import json, sys; print(len(json.load(sys.stdin)["conflicts"]["rules"]))' | tr -d '\r')" = "2" ]
+
+  # warn lists them and passes; rules.enabled false does not lint.
+  run_cli config set ci.conflicts.structural warn
+  run_cli check --offline
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Rules lint (ci.conflicts.structural: warn):"* ]]
+  run_cli config set ci.conflicts.structural fail
+  run_cli config set rules.enabled false
+  run_cli check --offline
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"Rules lint"* ]]
+}
+
+@test "the rules lint of check keeps two sources apart and a workspace whole, with its rule folders" {
+  mkdir -p .agents/rules/workspaces/apps/web/testing
+  printf '%s\n' '<!-- rule id=testing/runner -->' '- Use Vitest.' > .agents/rules/alpha-testing.md
+  printf '%s\n' '<!-- rule id=testing/runner -->' '- Use the runner of the project.' > .agents/rules/beta-testing.md
+  printf '%s\n' '<!-- rule id=web/base -->' '- Keep pages small.' > .agents/rules/workspaces/apps/web/base.md
+  printf '%s\n' '<!-- rule id=web/behavior requires=web/base -->' '- Test behavior.' \
+    > .agents/rules/workspaces/apps/web/testing/behavior.md
+  run python3 -B - "$skill_dir/scripts" "$PWD" <<'PY'
+import json, os, sys
+sys.path.insert(0, sys.argv[1])
+import agent_ready_cli_rules
+from agent_ready_config import resolve_configuration
+project = sys.argv[2]
+# Two packs publish testing/runner in files of their own, and the workspace apps/web has a rule folder.
+lock = {"assets": {
+    ".agents/rules/alpha-testing.md": {"profile": "alpha/testing", "sha256": "x", "state": "applied"},
+    ".agents/rules/beta-testing.md": {"profile": "beta/testing", "sha256": "x", "state": "applied"},
+    ".agents/rules/workspaces/apps/web/base.md": {"profile": "alpha/web", "sha256": "x", "workspace": "apps/web"},
+    ".agents/rules/workspaces/apps/web/testing/behavior.md": {"profile": "alpha/web", "sha256": "x",
+                                                              "workspace": "apps/web"}},
+    "workspaces": {"apps/web": {"profiles": ["alpha/web"], "own": []}}}
+with open(os.path.join(project, ".agents", "agent-ready.lock.json"), "w", encoding="utf-8") as handle:
+    json.dump(lock, handle)
+errors = agent_ready_cli_rules.adopted_rule_errors(project, resolve_configuration(project))
+assert errors == [], [error.render() for error in errors]
+
+# A workspace rule may require a root rule of its source, which the workspace loads too; and a rule may
+# require one that another rule replaces with overrides, which is not in any file.
+with open(os.path.join(project, ".agents", "rules", "workspaces", "apps", "web", "errors.md"), "w", encoding="utf-8") as handle:
+    handle.write("<!-- rule id=web/errors requires=testing/runner -->\n- Report errors.\n")
+lock["assets"][".agents/rules/workspaces/apps/web/errors.md"] = {"profile": "alpha/web", "sha256": "x",
+                                                                 "workspace": "apps/web"}
+with open(os.path.join(project, ".agents", "rules", "alpha-logging.md"), "w", encoding="utf-8") as handle:
+    handle.write("<!-- rule id=logging/errors requires=logging/logger -->\n- Log errors.\n")
+with open(os.path.join(project, ".agents", "rules", "team.md"), "w", encoding="utf-8") as handle:
+    handle.write("<!-- rule id=team/logger overrides=alpha:logging/logger -->\n- Log with pino.\n")
+lock["assets"][".agents/rules/alpha-logging.md"] = {"profile": "alpha/testing", "sha256": "x"}
+with open(os.path.join(project, ".agents", "agent-ready.lock.json"), "w", encoding="utf-8") as handle:
+    json.dump(lock, handle)
+errors = agent_ready_cli_rules.adopted_rule_errors(project, resolve_configuration(project))
+assert errors == [], [error.render() for error in errors]
+
+# The same id twice in one source is still an error, reported once, on the second file.
+lock["assets"][".agents/rules/beta-testing.md"]["profile"] = "alpha/other"
+with open(os.path.join(project, ".agents", "agent-ready.lock.json"), "w", encoding="utf-8") as handle:
+    json.dump(lock, handle)
+errors = agent_ready_cli_rules.adopted_rule_errors(project, resolve_configuration(project))
+assert [(error.code, error.path) for error in errors] == [("duplicate-id", ".agents/rules/beta-testing.md")],     [error.render() for error in errors]
+PY
+  [ "$status" -eq 0 ]
+}
+
 @test "agent-ready conflicts exits 6 on a conflict, and check fails on it under ci.conflicts.structural" {
   printf '{"devDependencies": {"jest": "29"}}\n' > package.json
   mkdir -p .agents/rules
