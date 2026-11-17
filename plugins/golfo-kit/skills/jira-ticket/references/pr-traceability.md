@@ -114,6 +114,7 @@ Reglas:
 - Orden estable por repository y número.
 - No persistir estado GitHub en descripción; puede quedar obsoleto.
 - Máximo una sección canónica.
+- Escribirla con `jira-ticket.py section --heading "Pull requests"` sobre la descripción releída (documento ADF o Markdown, según `rich-format.md`): reemplaza solo esa sección o la crea al final.
 - Subtareas nunca reciben sección ni URLs PR.
 
 ## Concurrencia de descripción padre

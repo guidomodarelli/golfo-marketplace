@@ -156,8 +156,8 @@ createJiraIssue(
   projectKey: "<PROJECT_KEY>",
   issueTypeName: "<STORY_TYPE>",
   summary: "<resumen en español; prefijo repository_id cuando corresponda>",
-  description: "<alcance solicitado en español>",
-  contentFormat: "markdown",
+  description: <documento ADF de `jira-ticket.py adf`, o Markdown de `plain` en modo de respaldo>,
+  contentFormat: "adf",   # "markdown" en modo de respaldo; ver rich-format.md
   assignee_account_id: "<responsable solicitado o configurado>",
   additional_fields: {
     "labels": ["<labels solicitadas o existentes>", ...PR_LABELS],
