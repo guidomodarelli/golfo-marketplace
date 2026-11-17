@@ -71,6 +71,17 @@ Señales estáticas del proyecto que eligen el stack primario de un repositorio 
 | `detection.enabled` | boolean | `true` | todas | `AGENT_READY_SETUP_DETECTION` | — | Apagada, plan no muestra señales ni sugerencias y un repositorio sin selección pide --stack o --profiles. |
 | `detection.workspaces` | boolean | `true` | todas | — | — | Apagada, plan y agent-ready workspaces list no sugieren workspaces: las carpetas de un monorepo con un stack que la raíz no tiene. |
 
+## `learning`: Aprendizaje
+
+agent-ready learn registra las instrucciones del usuario que pueden quedar como rules o skills del proyecto y decide, con reglas de evidencia fijas, cuáles se aprenden. El registro, la evidencia y las decisiones están en references/learning.md.
+
+| Clave | Tipo | Default | Capas | Variable | Seguridad | Descripción |
+|---|---|---|---|---|---|---|
+| `learning.enabled` | boolean | `true` | todas | — | — | Apagado, agent-ready learn record no registra nada y sale con 0; status y list siguen leyendo el registro. |
+| `learning.mode` | `auto` \| `developer-review` | `"auto"` | todas | — | `auto` < `developer-review` | auto: una instrucción que cumple las reglas de evidencia se aprende en el momento. developer-review: queda como propuesta para el desarrollador y el agente no escribe nada. |
+| `learning.threshold` | integer | `2` | todas | — | — | Episodios distintos en los que tiene que aparecer una instrucción implícita (una corrección o una preferencia sin «siempre») para aprenderla. Una explícita se aprende con uno. |
+| `learning.candidateTtlDays` | integer | `90` | todas | — | — | Días sin evidencia nueva después de los cuales un candidato vence. Si la instrucción vuelve, se cuenta desde cero: la evidencia vencida no suma. |
+
 ## `nested`: AGENTS.md anidados
 
 Bloques que los profiles publican en el AGENTS.md de una carpeta del repositorio (por ejemplo, app/ de Next.js App Router), cada uno con su CLAUDE.md proxy. El contenido fuera del bloque es del proyecto.

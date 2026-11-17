@@ -3388,6 +3388,31 @@
           "critical": true
         }
       ]
+    },
+    {
+      "id": "learn-record-counts-episodes",
+      "description": "agent-ready learn record cuenta episodios distintos: una instrucción implícita repetida en la misma conversación del mismo día queda como candidata, se aprende al aparecer en otro episodio, y list no muestra las citas.",
+      "input": "Hoy, en la misma conversación, le dije dos veces al agente que ponga el número de expediente arriba en las actas, sin decir «siempre» ni «de ahora en más». El agente lo registró con agent-ready learn record. ¿Ya se aprende como rule del proyecto? ¿Qué tiene que pasar para que se aprenda? ¿agent-ready learn list muestra la frase que le dije? Respondé desde la skill, sin ejecutar comandos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "(todav(i|í)a no|a(u|ú)n no|no se aprende|no (lo )?aprende|queda (como )?(un )?candidat|sigue (como )?(un )?candidat|wait)",
+          "description": "Todavía no se aprende: queda como candidata",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(otro|segundo|nuevo|distinto) episodio|episodios distintos|otra (sesi(o|ó)n|conversaci(o|ó)n)|otro d(i|í)a",
+          "description": "Hace falta otro episodio: repetirlo en el mismo no suma",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(no|nunca)[^.]{0,60}(muestra|aparece|imprime|ves|ve|incluye)[^.]{0,80}(cita|frase|quote)|(cita|frase|quote)[^.]{0,80}(no|nunca)[^.]{0,40}(muestra|aparece|imprime|sale)|(sin|nunca) (las )?citas|solo (vive|queda|est(a|á))[^.]{0,40}candidates\\.json",
+          "description": "list no muestra las citas del usuario",
+          "critical": true
+        }
+      ]
     }
   ]
 }

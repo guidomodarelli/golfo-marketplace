@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Aprendizaje",
+  "description": "agent-ready learn registra las instrucciones del usuario que pueden quedar como rules o skills del proyecto y decide, con reglas de evidencia fijas, cuáles se aprenden. El registro, la evidencia y las decisiones están en references/learning.md.",
+  "x-module": "learning",
+  "x-mount": "learning",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "enabled": {
+      "description": "Apagado, agent-ready learn record no registra nada y sale con 0; status y list siguen leyendo el registro.",
+      "type": "boolean",
+      "default": true
+    },
+    "mode": {
+      "description": "auto: una instrucción que cumple las reglas de evidencia se aprende en el momento. developer-review: queda como propuesta para el desarrollador y el agente no escribe nada.",
+      "type": "string",
+      "enum": ["auto", "developer-review"],
+      "default": "auto",
+      "x-security": { "strictness": ["auto", "developer-review"] }
+    },
+    "threshold": {
+      "description": "Episodios distintos en los que tiene que aparecer una instrucción implícita (una corrección o una preferencia sin «siempre») para aprenderla. Una explícita se aprende con uno.",
+      "type": "integer",
+      "minimum": 1,
+      "default": 2
+    },
+    "candidateTtlDays": {
+      "description": "Días sin evidencia nueva después de los cuales un candidato vence. Si la instrucción vuelve, se cuenta desde cero: la evidencia vencida no suma.",
+      "type": "integer",
+      "minimum": 1,
+      "default": 90
+    }
+  }
+}
