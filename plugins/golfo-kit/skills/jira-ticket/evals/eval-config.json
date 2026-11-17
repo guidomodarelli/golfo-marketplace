@@ -616,6 +616,110 @@
           "description": "No transiciona la Story: el estado de un hijo no decide el del padre."
         }
       ]
+    },
+    {
+      "id": "rich-story-blocked-with-decision",
+      "description": "Story nueva en modo enriquecido: bloqueo como panel de error con fecha, decisión como bloque de decisión, detalle técnico plegado en un expand y escritura con contentFormat adf, sin checklists ni menciones.",
+      "input": "Configuración resuelta por `jira-ticket.py config`: SITE_URL https://acme.atlassian.net, PROJECT_KEY ACME, BOARD_ID 101, ASSIGNEE_ACCOUNT_ID configurado, STORY_TYPE Story, SUBTASK_TYPE Sub-task, QUARTER_FIELD customfield_20002, START_DATE_FIELD customfield_20003, SPRINT_FIELD customfield_20001. El schema de createJiraIssue y editJiraIssue declara `contentFormat` con los valores `markdown` y `adf`, y getJiraIssue declara `responseContentFormat` con los mismos valores. Creá una Story en ACME desde los cambios del repo payments-api (repository_id payments-api): se migran los templates de email al servicio nuevo de emails porque los de bienvenida salen sin logo. El diff toca `src/mailer/templates/` y `src/mailer/client.ts`, con tests en `src/mailer/__tests__/`. Se decidió migrar al servicio nuevo en vez de parchear el viejo porque el viejo se apaga en enero. La Story está frenada: depende de ACME-7000 (abierto, credenciales del servicio nuevo), que según Infra se resuelve el 1 de diciembre de 2026. Sin subtareas, sin épica, sin PR todavía. Empezó el 2026-11-13, sin Due date. Metadata ACME válida: Story 10100, quarter Q4/26 ID 9019; sprint resuelto 501. Búsqueda previa sin candidatos. No publiques nada ni ejecutes comandos: devolvé el texto fuente completo de la descripción tal como se lo pasarías al helper, el comando del helper que lo convierte y el payload conceptual de creación.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "\\[!ERROR\\]",
+          "description": "El bloqueo va como panel de error, no como texto suelto."
+        },
+        {
+          "type": "regex",
+          "pattern": "[{]date:2026-12-01[}]",
+          "description": "La fecha en que se destraba va como nodo de fecha."
+        },
+        {
+          "type": "regex",
+          "pattern": "\\[!DECISION\\]",
+          "description": "La decisión de migrar en vez de parchear va como bloque de decisión."
+        },
+        {
+          "type": "regex",
+          "pattern": "<details><summary>",
+          "description": "El detalle técnico del diff queda plegado en un expand."
+        },
+        {
+          "type": "regex",
+          "pattern": "contentFormat\\\"?[[:space:]]*:[[:space:]]*\\\"adf\\\"",
+          "description": "Escribe en ADF porque la herramienta lo admite."
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "^ *- \\[ \\]",
+            "contentFormat\"\\{0,1\\} *: *\"markdown\""
+          ],
+          "description": "No usa checklists ni cae al modo Markdown cuando ADF está disponible."
+        }
+      ]
+    },
+    {
+      "id": "markdown-fallback-nested-list",
+      "description": "Modo Markdown de respaldo: la herramienta no admite ADF y la tabla quedó aplanada al releer, así que el seguimiento pasa a lista anidada con emoji y un sub-item por dato.",
+      "input": "Configuración resuelta por `jira-ticket.py config`: SITE_URL https://acme.atlassian.net, PROJECT_KEY ACME, BOARD_ID 101, ASSIGNEE_ACCOUNT_ID configurado, STORY_TYPE Story, SUBTASK_TYPE Sub-task, QUARTER_FIELD customfield_20002, START_DATE_FIELD customfield_20003, SPRINT_FIELD customfield_20001. En este entorno el schema de createJiraIssue y editJiraIssue solo admite `contentFormat: \"markdown\"`. Acabás de escribir la sección de seguimiento de la Story ACME-6000 (In Progress, sin PR asociados, sin épica) y al releerla por key la tabla volvió aplanada como una sola línea de texto con barras verticales, sin filas. Hijos releídos en Jira: ACME-6001 'Migrar templates' Done, Ana Pérez; ACME-6002 'Probar envío' In Progress, Ana Pérez; ACME-6003 'Validar con producto' To Do, sin responsable, bloqueada por ACME-7000 que está abierto. No publiques nada ni ejecutes comandos: devolvé qué hacés, el comando del helper y la sección `## Tareas` final completa.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "tracking.{0,120}--list",
+          "description": "Convierte la tabla con `tracking --list`."
+        },
+        {
+          "type": "regex",
+          "pattern": "^  - Estado: In Progress",
+          "description": "Cada hijo lleva su estado en un sub-item propio (lista anidada), no todo en una línea."
+        },
+        {
+          "type": "regex",
+          "pattern": "^  - Nota: .{0,80}ACME-7000",
+          "description": "El bloqueo queda en un sub-item Nota del hijo bloqueado."
+        },
+        {
+          "type": "regex",
+          "pattern": "Progreso.{0,60}1/3.{0,60}1 .{0,40}0 .{0,40}1 ",
+          "description": "El progreso cuenta el bloqueado aparte (1/3, 1, 0, 1)."
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "contentFormat\"\\{0,1\\} *: *\"adf\""
+          ],
+          "description": "No intenta escribir ADF cuando la herramienta no lo admite."
+        }
+      ]
+    },
+    {
+      "id": "edit-single-section-keeps-foreign-content",
+      "description": "Editar una Story existente con contenido ajeno (imagen y mención) en modo enriquecido: cambia solo las secciones pedidas con `section`, sin recompilar la descripción entera.",
+      "input": "Configuración resuelta por `jira-ticket.py config`: SITE_URL https://acme.atlassian.net, PROJECT_KEY ACME, BOARD_ID 101, ASSIGNEE_ACCOUNT_ID configurado, STORY_TYPE Story, SUBTASK_TYPE Sub-task, QUARTER_FIELD customfield_20002, START_DATE_FIELD customfield_20003, SPRINT_FIELD customfield_20001. El schema de createJiraIssue y editJiraIssue declara `contentFormat` con los valores `markdown` y `adf`, y getJiraIssue declara `responseContentFormat` con los mismos valores. La Story ACME-6000 (In Progress) estaba frenada por ACME-7000, que ya se cerró: sacale el aviso de bloqueo. Su descripción actual, leída en ADF, tiene estos nodos en orden: heading 'Bloqueo', panel de error 'Bloqueado: espera ACME-7000'; heading 'Problema', párrafo; heading 'Solución', párrafo, una imagen (mediaSingle) que pegó Diseño y un párrafo con una mención a Marta; heading 'Tareas', párrafo de progreso y tabla con ACME-6001 y ACME-6002, los dos en Done y sin cambios. No hay PR. No publiques nada ni ejecutes comandos: devolvé las operaciones en orden, con el comando del helper y su entrada, y qué queda sin tocar.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "section.{0,60}--heading.{0,20}Bloqueo",
+          "description": "Quita el bloqueo con `section --heading Bloqueo`."
+        },
+        {
+          "type": "regex",
+          "pattern": "\\\"markdown\\\"[[:space:]]*:[[:space:]]*\\\"\\\"|markdown.{0,40}vac[ií]",
+          "description": "Pasa `markdown` vacío para quitar la sección."
+        },
+        {
+          "type": "regex",
+          "pattern": "(imagen|mediaSingle|menci[oó]n).{0,200}(intact|sin tocar|igual|id[eé]ntic|conserv|preserv|no se toca|no cambia)|(intact|sin tocar|igual|id[eé]ntic|conserv|preserv|no se toca|no cambia).{0,200}(imagen|mediaSingle|menci[oó]n)",
+          "description": "Declara que la imagen y la mención ajenas quedan intactas."
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "jira-ticket.py adf",
+            "contentFormat\"\\{0,1\\} *: *\"markdown\""
+          ],
+          "description": "No recompila la descripción entera ni la reescribe en Markdown."
+        }
+      ]
     }
   ]
 }

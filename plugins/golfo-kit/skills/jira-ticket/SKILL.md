@@ -7,14 +7,16 @@ description: >
   configurados, pregunta si los tickets tienen Due date, enlaza uno o varios pull requests en ambos sentidos y mueve a Done el trabajo
   cuando todos sus PRs están fusionados. Usar cuando se pida crear, actualizar o sincronizar un ticket de Jira desde los cambios actuales
   o asociarlo con pull requests; también crea épicas, cuelga stories de una épica existente sin pisar su contenido y mantiene en la
-  descripción una tabla de seguimiento de los hijos con su estado. Reutiliza tickets existentes, crea y asigna faltantes y agrega
-  label jira-ticket al PR tras verificar vínculo.
+  descripción una tabla de seguimiento de los hijos con su estado. Usa formato enriquecido de Jira (paneles,
+  estados) y emojis. Reutiliza tickets existentes, crea y asigna faltantes y agrega label jira-ticket al PR tras verificar
+  vínculo.
 ---
 
 # Jira Ticket
 
 Crear o actualizar **Stories con subtareas reales (`Sub-task`)** en el proyecto Jira configurado, desde pedido explícito o cambios del repositorio actual.
 Crear padres nuevos como `<STORY_TYPE>`; reutilizar Stories existentes y Tasks legacy válidos sin duplicar ni convertir automáticamente. La épica es opcional: se crea solo cuando el pedido la pide, y una épica existente recibe Stories nuevas sin perder su contenido. Los hitos solicitados se gestionan como issues hijos, no como checklists textuales en la descripción; la descripción de cada padre muestra esos hijos en una tabla de seguimiento.
+Las descripciones se escriben para leerse de un vistazo: secciones cortas, emoji al inicio de todo lo que expresa un estado y los elementos enriquecidos de Jira (paneles, lozenges de estado, expand, decisiones, fechas) con un papel fijo cada uno, según [formato enriquecido](references/rich-format.md).
 La skill no contiene datos de ninguna organización: sitio, proyecto, tablero, ids de campos, responsable y convenciones llegan por variables `JIRA_TICKET_*` ([configuración](references/config.md)). En este documento, `<NOMBRE>` es el valor de `JIRA_TICKET_NOMBRE`.
 Requiere la integración Atlassian (MCP) y la memoria persistente disponible en el entorno; Git y GitHub CLI solo cuando hay cambios o PR asociados.
 Crear en proyecto `<PROJECT_KEY>`; no inventar componente, equipo ni label para forzar visibilidad en tablero.
@@ -22,6 +24,21 @@ El sprint se descubre en Jira según `jira-fields.md`; nunca se calcula ni se in
 
 > **NUNCA ejecutar `git push`, `git push --force` ni otro comando de upload Git durante esta skill.**
 > Gestión de tickets es independiente de publicación del repositorio.
+
+## Mapa del flujo
+
+| Paso | Qué resuelve | Referencia |
+|---|---|---|
+| 0 | Configuración y features activas | `config.md` |
+| 1 | Modo (tarea explícita o repositorio), campos, Due date y PRs | `jira-fields.md` |
+| 2 | Padre existente o creación, y épica | `pr-traceability.md` |
+| 3 | Alcance desde el diff (solo modo repositorio) | — |
+| 4 | Summary, descripción y subtareas deseadas | `ticket-templates.md`, `rich-format.md` |
+| 5 | Crear o actualizar issues y su seguimiento | `jira-fields.md`, `ticket-templates.md` |
+| 6 | Trazabilidad Jira ↔ PR | `pr-traceability.md` |
+| 7 | Estado del padre | `status-transitions.md` |
+| 8 | Gate final | — |
+| 9 | Memoria y reporte | — |
 
 ## Alcance estricto
 
@@ -83,6 +100,8 @@ Reglas de separación:
   [máquina de estados](references/status-transitions.md).
 - Antes de redactar o editar la descripción de una épica, Story o subtarea, de agregar un hijo a un padre existente
   o de reflejar el cambio de estado de un hijo, leer [templates por nivel](references/ticket-templates.md).
+- Antes de escribir o editar cualquier descripción, leer [formato enriquecido](references/rich-format.md): decide el modo de
+  escritura (ADF o Markdown de respaldo), qué elemento de Jira corresponde a cada papel y cómo editar una sola sección.
 
 ## Consultas acotadas y helper
 
@@ -108,7 +127,10 @@ getJiraIssueTypeMetaWithFields(issueTypeId: "<id>", requiredFieldsOnly: true)
 | `repo-id [--root]` | `repository_id` según `<REPO_ID_SOURCES>` y `<REPO_PREFIXES>` |
 | `pr-normalize <n\|url>...` | `pull_requests`, `pr_labels` y `all_prs_merged` leídos de GitHub |
 | `backlink apply\|verify --key <KEY>` | Parche `traceability-only` idempotente del body del PR (stdin → stdout) con links a `<SITE_URL>` |
-| `tracking --level story\|epic [--create]` | Sección de seguimiento actualizada desde `{description, children}` por stdin: celda `Estado`, filas nuevas y `Progreso`, sin tocar el resto (`ticket-templates.md`) |
+| `adf` | Documento ADF desde Markdown enriquecido por stdin, para escribir con `contentFormat: "adf"` (`rich-format.md`) |
+| `plain` | El mismo Markdown enriquecido sin elementos exclusivos de ADF, para el modo Markdown de respaldo |
+| `section --heading <texto> [--before <heading>]` | Una sola sección reescrita, creada o quitada desde `{description, markdown}` por stdin; el resto de la descripción queda idéntico |
+| `tracking --level story\|epic [--create] [--list]` | Sección de seguimiento actualizada desde `{description, children}` por stdin: celda `Estado`, filas nuevas y `Progreso`, sin tocar el resto (`ticket-templates.md`). `description` es el documento ADF o el texto Markdown releído; `--list` deja el seguimiento Markdown como lista anidada |
 | `slim --fields <ids>` | Reduce respuestas grandes de JQL, createmeta o issue a los campos pedidos |
 
 Si el script no puede ejecutarse, aplicar las mismas reglas de las referencias manualmente e informarlo.
@@ -239,7 +261,7 @@ Sin repositorio, usar resumen conciso sin prefijo. Para tareas planificadas, des
 
 ### Description padre
 
-Usar la variante `Story` de [`ticket-templates.md`](references/ticket-templates.md) (y `Épica` cuando se crea una). `## Pull requests` se agrega solo cuando hay asociaciones y sigue contrato de `pr-traceability.md`. En una edición, una descripción existente con otra estructura no se migra a este template: los cambios de contenido pedidos y el drift del diff se corrigen dentro de su estructura, preservando el contenido ajeno al pedido. Solo agregar un hijo o sincronizar estados se limita a la sección de seguimiento.
+Usar la variante `Story` de [`ticket-templates.md`](references/ticket-templates.md) (y `Épica` cuando se crea una), redactada en el Markdown enriquecido de [`rich-format.md`](references/rich-format.md) y compilada con `adf` o `plain` según el modo de escritura resuelto. Los elementos enriquecidos se usan solo en su papel y con evidencia: panel de bloqueo si el ticket está frenado, expand para el detalle técnico, decisiones cuando el pedido o el diff las traen. `## Pull requests` se agrega solo cuando hay asociaciones y sigue contrato de `pr-traceability.md`. En una edición, una descripción existente con otra estructura no se migra a este template: los cambios de contenido pedidos y el drift del diff se corrigen dentro de su estructura, preservando el contenido ajeno al pedido. Solo agregar un hijo o sincronizar estados se limita a la sección de seguimiento. Toda edición parte de la descripción releída y cambia una sección por vez con `section` o `tracking`; nunca se recompila la descripción entera.
 
 No incluir:
 
@@ -279,10 +301,10 @@ Consultar transiciones por subtarea antes de cambiar estado y verificar resultad
 ### Crear
 
 1. Leer payloads en `jira-fields.md`.
-2. Crear padre con `issueTypeName: "<STORY_TYPE>"`, description deseada, campos obligatorios, sprint resuelto y Due date confirmado, si lo tiene.
+2. Crear padre con `issueTypeName: "<STORY_TYPE>"`, description deseada en el modo de escritura resuelto (`rich-format.md`), campos obligatorios, sprint resuelto y Due date confirmado, si lo tiene.
 3. Crear issues `<SUBTASK_TYPE>` independientes con `parent` igual a la key de la Story; heredar labels, quarter y start date, sin enviar sprint, con el Due date que confirmó el usuario para cada una. Verificar que cada hito solicitado tenga un issue hijo real.
 4. Releer por key padre y subtareas; verificar asignación, sprint y Due date. Si alguna escritura falla, reportar claves creadas, causa y pasos pendientes; reutilizarlas al reanudar, sin recrear padre.
-5. Escribir la tabla de seguimiento del padre con las keys reales releídas y, si la Story cuelga de una épica, su fila en la épica, según `ticket-templates.md`.
+5. Agregar con `tracking --create` la tabla de seguimiento del padre con las keys reales releídas y, si la Story cuelga de una épica, su fila en la épica, según `ticket-templates.md`.
 6. Mostrar:
 
 | # | Clave | Tipo | Resumen |
@@ -310,11 +332,15 @@ Consultar transiciones por subtarea antes de cambiar estado y verificar resultad
 
 Para cualquier update del padre, tenga PR asociados o no, usar `version`, `updated`, relectura inmediata y un solo retry según `pr-traceability.md`. Nunca sobrescribir description concurrentemente.
 
+### Formato de los reportes
+
+Las tablas de este paso y del gate final son la forma por defecto de mostrar resultados al usuario. Si la superficie donde se responde no renderiza tablas, usar una lista anidada con los mismos datos: una línea por ticket con su emoji y su key, y un sub-item `Campo: valor` por columna. En los dos formatos, cada resultado empieza con su emoji (✅, ❌, ➖, 🆕, ✏️) para que se lea sin recorrer el texto.
+
 ## Paso 6 — Sincronizar trazabilidad bidireccional
 
 Si hay PR, ejecutar `pr-traceability.md` en este orden:
 
-1. Normalizar sección `## Pull requests` del padre.
+1. Normalizar sección `## Pull requests` del padre con `section --heading "Pull requests"`.
 2. Confirmar labels en padre y subtareas.
 3. Aplicar parche `traceability-only` a cada PR:
    - backlink bajo `## 📝 Descripción`;
@@ -354,6 +380,7 @@ Releer por key padre y subtareas, y releer todos los PR en GitHub. Validar:
 - Due date de cada issue igual a lo confirmado por el usuario o preservado, según `jira-fields.md`.
 - Estado individual actualizado de cada PR.
 - Tabla de seguimiento del padre (y de la épica, si la hay) con una fila por hijo real y estados iguales a los releídos en Jira, según `ticket-templates.md`.
+- Descripciones escritas en el modo resuelto según `rich-format.md`: elementos enriquecidos solo en su papel y con evidencia, sin sintaxis de Markdown enriquecido (`[!…]`, `{status:…}`, `<details>`) visible como texto, y contenido ajeno intacto.
 - Status padre coherente con `status-transitions.md`.
 
 Corregir mismatch local y revalidar elemento. No reiniciar flujo ni repetir transición ya verificada.
@@ -396,4 +423,5 @@ Memoria sirve para discovery; nunca como fuente de identidad, estado o contenido
 - Nunca editar título PR desde esta skill.
 - Nunca regenerar body PR; solo backlink canónico.
 - Nunca actualizar desde memoria sin fetch de Jira/GitHub.
+- Nunca reescribir una descripción entera para cambiar una sección.
 - No cerrar tarea hasta gate final completo.
