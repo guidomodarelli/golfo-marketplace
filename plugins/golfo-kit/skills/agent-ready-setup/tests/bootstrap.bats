@@ -951,6 +951,17 @@ EOF
   [ -f .agents/skills/a11y-reviewer/SKILL.md ]
   [ ! -e .claude/skills/a11y-reviewer ]
 
+  # A Claude skill someone wrote with the name of a project skill is theirs: preserved and reported.
+  mkdir -p .agents/skills/team-notes .claude/skills/team-notes
+  printf -- '---\nname: team-notes\ndescription: Notes.\n---\nShared.\n' > .agents/skills/team-notes/SKILL.md
+  printf -- '---\nname: team-notes\ndescription: Notes.\n---\nClaude only.\n' > .claude/skills/team-notes/SKILL.md
+  run_marketplace_sync "$source_dir/assets/common/hooks/sync-marketplace.sh" "$source_dir"
+  [ "$status" -eq 0 ]
+  [ ! -L .claude/skills/team-notes/SKILL.md ]
+  grep -Fxq 'Claude only.' .claude/skills/team-notes/SKILL.md
+  [[ "$output" == *".claude/skills/team-notes/SKILL.md is a Claude skill of its own with the name of project skill team-notes; preserved"* ]]
+  rm -r .agents/skills/team-notes
+
   rm -r .agents/skills/draft-record
   run_bootstrap react
   [ "$status" -eq 0 ]

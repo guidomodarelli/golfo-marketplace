@@ -86,8 +86,8 @@ proyecto, nunca en un asset que escribió un apply (los que el lockfile registra
 | Más de una rule activa decide la `key` (sin contar las gestionadas que una rule propia ya reemplaza) | no escribe nada: editar una dejaría las otras en vigor. El equipo deja una primero |
 | La rule de la misma `key` vale para otro alcance (otros `paths`) | no escribe nada: una instrucción de una carpeta nunca pisa una de todo el repositorio, ni al revés. Se registra con una `key` propia para ese alcance |
 | Ninguna rule decide esa `key` | agrega una rule nueva en `.agents/rules/learned.md` con id `learned/<key>` (o las primeras palabras del statement), su `key` y sus `paths` |
-| `kind` es `skill` | el agente escribe la skill en `.agents/skills/<nombre>/SKILL.md` y la registra con `--skill .agents/skills/<nombre>`. El próximo sync o apply le da su vista en `.claude/skills/`, como a toda skill propia del proyecto |
-| `kind` es `nested` | escribe la rule con `paths=`; sin `--paths` en `record`, `apply` lo pide |
+| `kind` es `skill` | el agente escribe la skill en `.agents/skills/<nombre>/SKILL.md` y la registra con `--skill .agents/skills/<nombre>`. El próximo sync o apply le da su vista en `.claude/skills/`, como a toda skill propia del proyecto; si en `.claude/skills/` ya hay una skill propia de Claude con ese nombre, la preserva y lo informa |
+| `kind` es `nested`, o la entrada tiene `paths` | escribe la rule en `.agents/rules/learned-<carpetas>.md`, un archivo propio con `paths:` en el frontmatter, además de `paths=` en el marcador: Claude descarta los comentarios HTML y solo el frontmatter le deja el alcance. Sin `--paths` en `record`, `apply` lo pide |
 
 Cada aprendizaje es **un commit** con solo sus archivos (la rule o la skill, `candidates.json` y
 `log.md`), aunque haya otros cambios en el índice. El mensaje es `learn: <statement>` con los trailers

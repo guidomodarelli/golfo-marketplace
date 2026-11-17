@@ -30,6 +30,9 @@ LEARNED_RULES_HEADER = ("# Learned\n\nRules the agent learned from the instructi
                         "(agent-ready learn, references/learning.md of agent-ready-setup).\n")
 LOG_HEADER = "# Learning log\n\nWhat the agent learned, changed or replaced, and from which instruction.\n\n"
 WORD = re.compile(r"[a-z0-9]+")
+LEARNED_SCOPED_PREFIX = "learned-"
+FRONTMATTER_FENCE = "---"
+FRONTMATTER_GLOB = re.compile(r'^\s+-\s+"(?P<glob>[^"]+)"\s*$')
 
 ACTION_CREATE = "create"
 ACTION_UPDATE = "update"
@@ -85,8 +88,9 @@ def marker_of(rule_id, entry, overrides):
     if entry.get("key"):
         attributes.append(f"key={entry['key']}")
     if entry.get("paths"):
-        if any(char.isspace() or "," in glob for glob in entry["paths"] for char in glob):
-            raise StateError(f"{entry['id']}: a glob of --paths has a space or a comma, which a rule marker cannot hold")
+        if any(char.isspace() or char in ',"' for glob in entry["paths"] for char in glob):
+            raise StateError(f"{entry['id']}: a glob of --paths has a space, a comma or a quote, which a rule marker "
+                             "cannot hold")
         attributes.append("paths=" + ",".join(entry["paths"]))
     if overrides:
         attributes.append(f"overrides={overrides}")
@@ -98,10 +102,42 @@ def read_text(path):
         return file_handle.read()
 
 
+def frontmatter_paths(text):
+    """The paths: list of the YAML frontmatter of a rule file, as this module writes it, or []."""
+    lines = text.replace("\r\n", "\n").split("\n")
+    if not lines or lines[0] != FRONTMATTER_FENCE or FRONTMATTER_FENCE not in lines[1:]:
+        return []
+    block = lines[1:lines.index(FRONTMATTER_FENCE, 1)]
+    return sorted(match.group("glob") for match in map(FRONTMATTER_GLOB.match, block) if match)
+
+
+def learned_file(project_root, paths):
+    """(relative path, header) of the file a learned rule goes to. A rule for some folders goes to a file
+    of its own whose frontmatter carries paths: Claude drops the HTML marker, so only the frontmatter
+    keeps the scope in its view of the rule."""
+    if not paths:
+        return LEARNED_RULES_RELATIVE_PATH, LEARNED_RULES_HEADER
+    slug = "-".join(word for glob in sorted(paths) for word in WORD.findall(glob.lower())) or "scoped"
+    globs = "".join(f'  - "{glob}"\n' for glob in sorted(paths))
+    header = (f"{FRONTMATTER_FENCE}\npaths:\n{globs}{FRONTMATTER_FENCE}\n# Learned for {', '.join(sorted(paths))}\n\n"
+              "Rules the agent learned from the instructions of the user (agent-ready learn, references/learning.md "
+              "of agent-ready-setup).\n")
+    suffix = ""
+    while True:
+        relative = f"{PROJECT_RULES_RELATIVE_PATH}/{LEARNED_SCOPED_PREFIX}{slug}{suffix}.md"
+        path = os.path.join(project_root, relative)
+        if not os.path.exists(path) or frontmatter_paths(read_text(path)) == sorted(paths):
+            return relative, header
+        suffix = f"-{int(suffix[1:] or 1) + 1}"
+
+
 def appended_rule(project_root, rule_id, entry, overrides):
-    """(path, new text) of learned.md with the new rule at its end."""
-    path = os.path.join(project_root, LEARNED_RULES_RELATIVE_PATH)
-    text = read_text(path) if os.path.exists(path) else LEARNED_RULES_HEADER
+    """(path, new text) of the learned file of the scope of the entry, with the new rule at its end."""
+    relative, header = learned_file(project_root, entry.get("paths") or [])
+    if is_managed(project_root, relative):
+        raise StateError(f"{relative} is managed by a profile; a learned rule never goes there")
+    path = os.path.join(project_root, relative)
+    text = read_text(path) if os.path.exists(path) else header
     newline = "\r\n" if "\r\n" in text else "\n"
     block = newline.join([marker_of(rule_id, entry, overrides), f"- {entry['statement']}"]) + newline
     return path, text.rstrip("\r\n") + newline + newline + block
@@ -190,8 +226,6 @@ def plan_rule(project_root, entry, registry):
         replaced.append(f"{source}:{rule.id}")
     # Every managed rule of the key is replaced, so none of them stays next to the learned one.
     overrides = ",".join(replaced) or None
-    if is_managed(project_root, LEARNED_RULES_RELATIVE_PATH):
-        raise StateError(f"{LEARNED_RULES_RELATIVE_PATH} is managed by a profile; a learned rule never goes there")
     rule_id = unique_rule_id(slug_of(entry), {item[0].id for item in described})
     path, text = appended_rule(project_root, rule_id, entry, overrides)
     return {"action": ACTION_CREATE, "path": path, "text": text, "ruleId": rule_id, "overrides": overrides,

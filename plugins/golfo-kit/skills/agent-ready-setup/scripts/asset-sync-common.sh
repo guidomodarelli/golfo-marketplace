@@ -560,7 +560,17 @@ PY
     [[ -f "$skill_directory/SKILL.md" && ! -L "$skill_directory" ]] || continue
     grep -Fxq -- "$skill_name" <<< "$managed_skills" && continue
     while IFS= read -r -d '' skill_file; do
-      link_claude_asset "${skill_file#"$SHARED_DIR/"}"
+      relative_path="${skill_file#"$SHARED_DIR/"}"
+      view_path="$CLAUDE_DIR/$relative_path"
+      # A Claude skill someone wrote at the same path is theirs: it is preserved and reported. A view,
+      # or a hard-link view git detached into a copy with the same bytes, is ours to relink.
+      if [[ -e "$view_path" || -L "$view_path" ]] &&
+        ! is_current_claude_view "$view_path" "$(relative_shared_target "$relative_path")" "$skill_file" &&
+        ! { [[ -f "$view_path" && ! -L "$view_path" ]] && cmp -s -- "$view_path" "$skill_file"; }; then
+        record_conflict "$view_path is a Claude skill of its own with the name of project skill $skill_name; preserved"
+        continue
+      fi
+      link_claude_asset "$relative_path"
     done < <(find "$skill_directory" -type f -print0)
   done
 

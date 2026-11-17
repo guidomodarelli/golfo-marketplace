@@ -321,7 +321,12 @@ managed_rule() {
     --paths "billing/**" --explicit --session s1
   agent_ready learn apply "$(id_of 'Invoices')"
   [ "$status" -eq 0 ]
-  grep -Fq 'paths=billing/** -->' .agents/rules/learned.md
+  # A rule for some folders goes to a file whose frontmatter keeps the scope Claude reads.
+  grep -Fq 'paths=billing/** -->' .agents/rules/learned-billing.md
+  [ "$(sed -n 1,4p .agents/rules/learned-billing.md | tr '\n' '|')" = '---|paths:|  - "billing/**"|---|' ]
+  [ ! -e .agents/rules/learned.md ]
+  agent_ready rules lint
+  [ "$status" -eq 0 ]
 
   agent_ready learn record --kind skill --statement "Draft a record in four steps." --quote "siempre así: paso 1..." \
     --explicit --session s1
