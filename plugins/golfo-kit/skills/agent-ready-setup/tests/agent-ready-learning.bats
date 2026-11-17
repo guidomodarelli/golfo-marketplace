@@ -467,3 +467,28 @@ managed_rule() {
   [[ "$stderr" == *"golfo:web/runner decides testing.unit-runner and already replaces golfo:testing/runner"* ]]
   [ ! -e .agents/rules/learned.md ]
 }
+
+@test "two active rules on the key make the learning ambiguous, but a managed rule the project replaces does not count" {
+  commit_identity
+  mkdir -p .agents/rules
+  printf '%s\n' '# Team' '' '<!-- rule id=team/runner key=testing.unit-runner -->' '- Use Vitest.' > .agents/rules/team.md
+  printf '%s\n' '# Web' '' '<!-- rule id=web/runner key=testing.unit-runner -->' '- Use Vitest.' > .agents/rules/web.md
+  agent_ready learn record --kind rule --key testing.unit-runner --statement "Use pytest." \
+    --quote "de ahora en más, pytest" --explicit --session s1
+  agent_ready learn apply "$(id_of 'pytest')"
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"project:team/runner, project:web/runner all decide testing.unit-runner"* ]]
+  grep -Fxq -- '- Use Vitest.' .agents/rules/team.md
+
+  # The project rule replaces the managed one, so only the project rule is in force.
+  mv .agents/rules/web.md .agents/rules/testing.md
+  sed -i.bak 's#web/runner#testing/runner#' .agents/rules/testing.md && rm .agents/rules/testing.md.bak
+  printf '%s\n' '{"assets": {".agents/rules/testing.md": {"profile": "software-development", "sha256": "x", "state": "applied"}}}' \
+    > .agents/agent-ready.lock.json
+  printf '%s\n' '# Team' '' '<!-- rule id=team/runner key=testing.unit-runner overrides=golfo:testing/runner -->' \
+    '- Use Jest.' > .agents/rules/team.md
+  agent_ready learn apply "$(id_of 'pytest')"
+  [ "$status" -eq 0 ]
+  grep -Fxq -- '- Use pytest.' .agents/rules/team.md
+  grep -Fxq -- '- Use Vitest.' .agents/rules/testing.md
+}

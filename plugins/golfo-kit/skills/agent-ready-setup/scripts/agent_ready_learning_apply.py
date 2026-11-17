@@ -163,6 +163,14 @@ def plan_rule(project_root, entry, registry):
                              f"{scope(entry.get('paths') or [])}: record it with a key of its own for that scope; "
                              "nothing was written")
     own = [rule for rule, managed, _, _ in same_key if not managed]
+    # A managed rule a rule of the project already replaces is not active; any other one is.
+    replaced_by_project = {reference for rule in own for reference in rule.overrides}
+    active = [(rule, managed, source) for rule, managed, source, _ in same_key
+              if not (managed and f"{source}:{rule.id}" in replaced_by_project)]
+    if own and len(active) > 1:
+        names = ", ".join(f"{source}:{rule.id}" for rule, _, source in active)
+        raise StateError(f"{names} all decide {key}: editing one would leave the others in force, so nothing was "
+                         "written; keep one of them first")
     if own:
         rule = own[0]
         previous = next((item for item in registry["candidates"] if item is not entry
