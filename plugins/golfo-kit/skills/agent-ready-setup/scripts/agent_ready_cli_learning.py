@@ -10,6 +10,7 @@ import sys
 
 import agent_ready_learning as learning
 import agent_ready_learning_apply as learning_apply
+import agent_ready_learning_review as learning_review
 from agent_ready_cli_common import EXIT_OK, find_repository_root
 from agent_ready_common import StateError, serialize_json
 from agent_ready_config import resolve_configuration
@@ -25,6 +26,7 @@ DECISION_MESSAGES = {
     learning.DECISION_PROPOSE: "learning.mode is developer-review: leave it for the developer, write nothing",
     learning.DECISION_WAIT: "keep it as a candidate until another episode repeats it ({episodes} of {threshold})",
     learning.DECISION_ALREADY_LEARNED: "already learned: nothing new to write",
+    learning.DECISION_REJECTED: "the developer rejected it: write nothing (agent-ready learn accept {id} brings it back)",
 }
 
 
@@ -71,10 +73,12 @@ def command_learn_record(arguments):
 
 
 def command_learn_apply(arguments):
-    """Write one entry that record decided to learn, register it and commit it."""
+    """Write one entry that record decided to learn (or, with accept, one the developer chose), register
+    it and commit it."""
     project_root = find_repository_root(arguments.project)
     settings = settings_of(project_root)
-    written = learning_apply.apply(project_root, arguments.id, settings, arguments.skill)
+    written = learning_apply.apply(project_root, arguments.id, settings, arguments.skill,
+                                   accepted=arguments.learn_action == "accept")
     learned = written["entry"]["learned"]
     if arguments.json:
         sys.stdout.write(serialize_json({"id": arguments.id, "commit": written["commit"], "learned": learned,
@@ -85,6 +89,31 @@ def command_learn_apply(arguments):
                                                                 ("replaces", written["supersedes"])) if value)
     sys.stdout.write(f"{arguments.id}  {learned['action']}: {target} in {learned['path']}{extras} "
                      f"(commit {written['commit'][:12]})\n")
+    return EXIT_OK
+
+
+def command_learn_reject(arguments):
+    """Keep an entry from being learned until the developer accepts it."""
+    project_root = find_repository_root(arguments.project)
+    entry, sha = learning_review.reject(project_root, arguments.id, settings_of(project_root))
+    if arguments.json:
+        sys.stdout.write(serialize_json({"id": entry["id"], "status": entry["status"], "commit": sha}))
+        return EXIT_OK
+    sys.stdout.write(f"{entry['id']}  rejected (commit {sha[:12]})\n    {entry['statement']}\n")
+    return EXIT_OK
+
+
+def command_learn_revert(arguments):
+    """Undo a learning in its rule or skill, with a commit of its own."""
+    project_root = find_repository_root(arguments.project)
+    entry, learned_sha, revert_sha = learning_review.revert(project_root, arguments.id, settings_of(project_root))
+    if arguments.json:
+        sys.stdout.write(serialize_json({"id": entry["id"], "status": entry["status"], "reverts": learned_sha,
+                                         "commit": revert_sha, "restored": entry.get("supersedes")}))
+        return EXIT_OK
+    restored = f", {entry['supersedes']} is learned again" if entry.get("supersedes") else ""
+    sys.stdout.write(f"{entry['id']}  reverted: {entry['learned']['path']} as before commit {learned_sha[:12]}"
+                     f"{restored} (commit {revert_sha[:12]})\n")
     return EXIT_OK
 
 
@@ -99,19 +128,29 @@ def command_learn_status(arguments):
     items, settings = read_entries(arguments)
     counts = {status: sum(1 for item in items if item["status"] == status) for status in learning.STATUSES}
     waiting = [item for item in items if item["status"] == learning.STATUS_CANDIDATE]
+    # In developer-review mode, what the rules of evidence would learn waits for learn accept.
+    proposals = [item for item in waiting if learning.decide(item, settings["mode"], settings["threshold"],
+                                                             settings["ttl_days"]) == learning.DECISION_PROPOSE]
     if arguments.json:
         sys.stdout.write(serialize_json({
             "enabled": settings["enabled"], "mode": settings["mode"], "threshold": settings["threshold"],
             "candidateTtlDays": settings["ttl_days"], "counts": counts,
-            "candidates": [learning.public_view(item, settings["ttl_days"]) for item in waiting]}))
+            "candidates": [learning.public_view(item, settings["ttl_days"]) for item in waiting],
+            "proposals": [item["id"] for item in proposals]}))
         return EXIT_OK
     state = settings["mode"] if settings["enabled"] else "off"
     sys.stdout.write(f"Learning: {state}, {settings['threshold']} episodes to learn an implicit instruction, "
                      f"candidates expire after {settings['ttl_days']} days without evidence.\n")
     sys.stdout.write("  " + ", ".join(f"{counts[status]} {status}" for status in learning.STATUSES) + "\n")
     for item in waiting:
+        if item in proposals:
+            continue
         episodes = learning.live_episodes(item, settings["ttl_days"])
         sys.stdout.write(f"  {item['id']}  {episodes}/{settings['threshold']} episodes  {item['statement']}\n")
+    if proposals:
+        sys.stdout.write("Proposals for the developer (agent-ready learn accept <id>, or reject <id>):\n")
+        for item in proposals:
+            sys.stdout.write(f"  {item['id']}  {item['statement']}\n")
     return EXIT_OK
 
 
@@ -136,7 +175,7 @@ def command_learn_list(arguments):
 
 
 def register(subparsers, new_subparser):
-    """Add learn record|apply|status|list to the CLI parser."""
+    """Add learn record|apply|accept|reject|revert|status|list to the CLI parser."""
     learn = new_subparser(subparsers, "learn", "Record and read what the agent learns from the user.",
                           "  agent-ready learn status\n  agent-ready learn list --status candidate", None,
                           with_project=False)
@@ -169,9 +208,20 @@ def register(subparsers, new_subparser):
         "  agent-ready learn apply learn-5db4a07240\n"
         "  agent-ready learn apply learn-0c1d2e3f4a --skill .agents/skills/records",
         command_learn_apply)
-    apply_action.add_argument("id", help="id of the entry, as record and list print it")
-    apply_action.add_argument("--skill", help="the directory of the skill the agent wrote, for an entry of kind skill")
-    apply_action.add_argument("--json", action="store_true", help="print the result as JSON")
+    accept_action = new_subparser(
+        actions, "accept", "The developer learns an entry the rules of evidence did not, or a proposal of developer-review.",
+        "  agent-ready learn accept learn-5db4a07240", command_learn_apply)
+    reject_action = new_subparser(
+        actions, "reject", "The developer keeps an entry from being learned until it is accepted.",
+        "  agent-ready learn reject learn-5db4a07240", command_learn_reject)
+    revert_action = new_subparser(
+        actions, "revert", "Undo a learning in its rule or skill, keeping later changes, with a commit of its own.",
+        "  agent-ready learn revert learn-5db4a07240", command_learn_revert)
+    for action in (apply_action, accept_action, reject_action, revert_action):
+        action.add_argument("id", help="id of the entry, as record and list print it")
+        if action in (apply_action, accept_action):
+            action.add_argument("--skill", help="the directory of the skill the agent wrote, for an entry of kind skill")
+        action.add_argument("--json", action="store_true", help="print the result as JSON")
     status_action = new_subparser(actions, "status", "The settings of learning and what waits for a repetition.",
                                   "  agent-ready learn status\n  agent-ready learn status --json", command_learn_status)
     status_action.add_argument("--json", action="store_true", help="print the result as JSON")

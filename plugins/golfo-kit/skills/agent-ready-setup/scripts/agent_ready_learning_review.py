@@ -1,0 +1,141 @@
+"""What the developer decides about what the agent learned: reject a candidate or revert a learning.
+
+The agent learns on its own from fixed rules of evidence (agent_ready_learning_apply); the developer
+reviews it afterwards. reject keeps an instruction from being learned until the developer accepts it,
+and revert undoes the change a learning made to its rule or skill, with a commit of its own, leaving
+the later changes of the same files in place (references/learning.md, «Revisar lo aprendido»).
+"""
+
+import os
+import subprocess
+
+import agent_ready_learning as learning
+import agent_ready_rules
+from agent_ready_common import StateError, write_text_atomically
+from agent_ready_learning_apply import (
+    ACTION_CREATE,
+    LEARNED_SCOPED_PREFIX,
+    append_log,
+    commit_paths,
+    read_text,
+    replaced_statement,
+)
+
+
+def git(project_root, *arguments):
+    return subprocess.run(["git", *arguments], cwd=project_root, capture_output=True, text=True, check=False)
+
+
+def git_bytes(project_root, *arguments, input_bytes=None):
+    """git with bytes in and out: a patch passed as text would get CRLF line endings on Windows."""
+    return subprocess.run(["git", *arguments], cwd=project_root, input=input_bytes, capture_output=True, check=False)
+
+
+def find_entry(registry, candidate_id):
+    entry = next((item for item in registry["candidates"] if item["id"] == candidate_id), None)
+    if entry is None:
+        raise StateError(f"no entry has the id {candidate_id} (see agent-ready learn list)")
+    return entry
+
+
+def reject(project_root, candidate_id, settings):
+    """Mark an entry that is not learned as rejected and commit the registry; returns (entry, sha)."""
+    with learning.RegistryLock(project_root):
+        registry = learning.read_registry(project_root)
+        learning.refresh_expiry(registry, settings["today"], settings["ttl_days"])
+        entry = find_entry(registry, candidate_id)
+        if entry["status"] == learning.STATUS_LEARNED:
+            raise StateError(f"{candidate_id} is learned: undo it with agent-ready learn revert {candidate_id}")
+        if entry["status"] == learning.STATUS_REJECTED:
+            raise StateError(f"{candidate_id} is already rejected")
+        entry["status"] = learning.STATUS_REJECTED
+        entry["rejected"] = {"date": settings["today"].isoformat()}
+        learning.write_registry(project_root, registry)
+        log_path = append_log(project_root, f"- {settings['today'].isoformat()} reject {entry['id']}: "
+                                            f"{entry['statement']}\n")
+        sha = commit_paths(project_root, [learning.candidates_path(project_root), log_path],
+                           f"learn: reject {entry['statement']}\n\nLearning-Id: {entry['id']}\n")
+    return entry, sha
+
+
+def learning_commit(project_root, entry):
+    """The sha of the commit that wrote the learning: the newest with its Learning-Id and its file."""
+    result = git(project_root, "log", "--format=%H", "--fixed-strings", f"--grep=Learning-Id: {entry['id']}",
+                 "--", entry["learned"]["path"])
+    shas = result.stdout.split()
+    if result.returncode != 0 or not shas:
+        raise StateError(f"no commit with Learning-Id: {entry['id']} changed {entry['learned']['path']}; "
+                         "undo it by hand")
+    return shas[0]
+
+
+def reverse_patch(project_root, sha, path):
+    """Undo in the working tree what ``sha`` did to ``path``, keeping the later changes; nothing on conflict."""
+    diff = git_bytes(project_root, "diff", "--binary", f"{sha}^", sha, "--", path)
+    if diff.returncode != 0 or not diff.stdout:
+        raise StateError(f"commit {sha[:12]} has no change of {path} to undo")
+    check = git_bytes(project_root, "apply", "--reverse", "--check", input_bytes=diff.stdout)
+    if check.returncode != 0:
+        raise StateError(f"{path} changed after commit {sha[:12]} in the lines the learning wrote: "
+                         f"{check.stderr.decode(errors='replace').strip()}; nothing was reverted, undo it by hand")
+    applied = git_bytes(project_root, "apply", "--reverse", input_bytes=diff.stdout)
+    if applied.returncode != 0:
+        raise StateError(f"could not undo {path}: {applied.stderr.decode(errors='replace').strip()}")
+
+
+def revert_rule(project_root, entry):
+    """Undo a learning in its rule by the rule's id, so the rules around it do not matter: a rule the
+    learning created goes away (and its learned file with it, once empty), and a rule it edited gets its
+    previous statement back. A rule edited since then is left alone."""
+    learned = entry["learned"]
+    path = os.path.join(project_root, learned["path"])
+    text = read_text(path) if os.path.exists(path) else ""
+    rules, _ = agent_ready_rules.parse_rule_text(text, learned["path"])
+    rule = next((item for item in rules if item.id == learned["ruleId"]), None)
+    if rule is None or learning.normalized_statement(rule.statement) != learning.normalized_statement(entry["statement"]):
+        raise StateError(f"{learned['path']} changed after the learning: rule {learned['ruleId']} no longer says "
+                         f"what {entry['id']} wrote; nothing was reverted, undo it by hand")
+    if learned["action"] != ACTION_CREATE:
+        _, new_text = replaced_statement(project_root, rule, learned["previousStatement"])
+        write_text_atomically(path, new_text)
+        return
+    new_text = agent_ready_rules.remove_rules(text, {rule.id})
+    remaining, _ = agent_ready_rules.parse_rule_text(new_text, learned["path"])
+    if not remaining and os.path.basename(path).startswith(LEARNED_SCOPED_PREFIX.rstrip("-")):
+        # A learned file only holds learned rules: with none left, it goes too.
+        os.remove(path)
+        return
+    write_text_atomically(path, new_text)
+
+
+def revert(project_root, candidate_id, settings):
+    """Undo a learning: its rule or skill goes back to what it was before, the entry it replaced is
+    learned again, and a commit records it. Returns (entry, sha of the learning, sha of the revert)."""
+    with learning.RegistryLock(project_root):
+        registry = learning.read_registry(project_root)
+        entry = find_entry(registry, candidate_id)
+        if entry["status"] != learning.STATUS_LEARNED:
+            raise StateError(f"{candidate_id} is {entry['status']}, not learned: there is nothing to revert")
+        sha = learning_commit(project_root, entry)
+        path = entry["learned"]["path"]
+        if entry["learned"].get("ruleId"):
+            revert_rule(project_root, entry)
+        else:
+            reverse_patch(project_root, sha, path)
+        today = settings["today"].isoformat()
+        entry["status"] = learning.STATUS_REVERTED
+        entry["reverted"] = {"date": today, "commit": sha}
+        if entry.get("supersedes"):
+            previous = next((item for item in registry["candidates"] if item["id"] == entry["supersedes"]), None)
+            if previous is not None and previous.get("supersededBy") == entry["id"]:
+                # The text it replaced is back, and so is that learning.
+                previous["status"] = learning.STATUS_LEARNED
+                previous.pop("supersededBy", None)
+        learning.write_registry(project_root, registry)
+        log_path = append_log(project_root, f"- {today} revert {entry['id']} ({path}, commit {sha[:12]}): "
+                                            f"{entry['statement']}\n")
+        revert_sha = commit_paths(project_root,
+                                  [os.path.join(project_root, path), learning.candidates_path(project_root), log_path],
+                                  f"learn: revert {entry['statement']}\n\nLearning-Id: {entry['id']}\n"
+                                  f"Reverts: {sha}\n")
+    return entry, sha, revert_sha

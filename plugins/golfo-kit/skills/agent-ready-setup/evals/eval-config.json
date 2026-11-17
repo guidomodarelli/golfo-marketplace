@@ -3438,6 +3438,31 @@
           "critical": true
         }
       ]
+    },
+    {
+      "id": "learn-review-revert-and-reject",
+      "description": "El desarrollador deshace un aprendizaje con learn revert, que devuelve la instrucción que había reemplazado, y descarta una candidata con learn reject, que el agente no aprende aunque el cliente insista.",
+      "input": "Soy el desarrollador del repo de un cliente. El agente aprendió «las actas llevan el número de expediente arriba» y después «al pie», que reemplazó a la anterior. Quiero deshacer lo de «al pie», y que una candidata, «firmar en tinta azul», no se aprenda nunca aunque el cliente lo vuelva a pedir. ¿Qué comandos de agent-ready uso y en qué queda cada cosa? Respondé desde la skill, sin ejecutar comandos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "learn revert",
+          "description": "Deshace el aprendizaje con learn revert",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "learn reject",
+          "description": "Descarta la candidata con learn reject",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(vuelve|volver|queda|restaura|recupera|reaparece)[^.]{0,100}(anterior|arriba|learned|aprendida)|(anterior|arriba)[^.]{0,100}(vuelve|restaura|recupera|reaparece|learned)",
+          "description": "La instrucción reemplazada («arriba») vuelve a estar aprendida",
+          "critical": true
+        }
+      ]
     }
   ]
 }

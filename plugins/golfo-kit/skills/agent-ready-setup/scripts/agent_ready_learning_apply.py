@@ -227,7 +227,9 @@ def plan_rule(project_root, entry, registry):
                          and item.get("learned", {}).get("ruleId") == rule.id), None)
         path, text = replaced_statement(project_root, rule, entry["statement"])
         return {"action": ACTION_SUPERSEDE if previous else ACTION_UPDATE, "path": path, "text": text,
-                "ruleId": rule.id, "overrides": None, "supersedes": previous["id"] if previous else None}
+                "ruleId": rule.id, "overrides": None, "supersedes": previous["id"] if previous else None,
+                # What learn revert writes back.
+                "previousStatement": rule.statement}
     replaced = []
     for rule, _, source, profile in same_key:
         if profile == BASE_PROFILE_NAME:
@@ -280,18 +282,34 @@ def commit(project_root, paths, entry, episodes):
     """One commit with only the files of this learning, whatever else is staged."""
     message = (f"learn: {entry['statement']}\n\nLearning-Id: {entry['id']}\n"
                f"Learned-from: {', '.join(episodes)}\n")
+    return commit_paths(project_root, paths, message)
+
+
+def commit_paths(project_root, paths, message):
+    """Commit only ``paths`` (also the ones removed) with ``message``, whatever else is staged; the sha."""
     relative = [os.path.relpath(path, project_root).replace(os.sep, "/") for path in paths]
-    for command in (["git", "add", "--", *relative], ["git", "commit", "--quiet", "-m", message, "--", *relative],
-                    ["git", "rev-parse", "HEAD"]):
+    for command in (["git", "add", "-A", "--", *relative],
+                    ["git", "commit", "--quiet", "-m", message, "--", *relative], ["git", "rev-parse", "HEAD"]):
         result = subprocess.run(command, cwd=project_root, capture_output=True, text=True, check=False)
         if result.returncode != 0:
-            raise StateError(f"learn apply wrote the files but `{' '.join(command[:2])}` failed: "
+            raise StateError(f"agent-ready learn wrote the files but `{' '.join(command[:2])}` failed: "
                              f"{(result.stderr or result.stdout).strip()}; commit them by hand")
     return result.stdout.strip()
 
 
-def apply(project_root, candidate_id, settings, skill_path=None):
-    """Write one entry that record decided to learn, register it and commit it. Returns what was written."""
+def append_log(project_root, line):
+    """Add one line to .agents/learning/log.md, creating it with its header; returns its path."""
+    log_path = os.path.join(project_root, LOG_RELATIVE_PATH)
+    log_text = read_text(log_path) if os.path.exists(log_path) else LOG_HEADER
+    write_text_atomically(log_path, log_text + line)
+    return log_path
+
+
+def apply(project_root, candidate_id, settings, skill_path=None, accepted=False):
+    """Write one entry that record decided to learn, register it and commit it. Returns what was written.
+
+    ``accepted`` is learn accept: the developer decides, so the rules of evidence and learning.mode do
+    not stop it; what the entry may never do (locked, managed, scope) still does."""
     with learning.RegistryLock(project_root):
         registry = learning.read_registry(project_root)
         learning.refresh_expiry(registry, settings["today"], settings["ttl_days"])
@@ -301,11 +319,14 @@ def apply(project_root, candidate_id, settings, skill_path=None):
         if entry["status"] == learning.STATUS_SUPERSEDED:
             raise StateError(f"{candidate_id} was replaced by {entry.get('supersededBy')}: only new evidence "
                              "of the user brings it back")
+        if entry["status"] == learning.STATUS_LEARNED:
+            raise StateError(f"{candidate_id} is not learned: it is already learned")
         decision = learning.decide(entry, settings["mode"], settings["threshold"], settings["ttl_days"])
-        if decision != learning.DECISION_LEARN:
+        if not accepted and decision != learning.DECISION_LEARN:
             reasons = {learning.DECISION_ALREADY_LEARNED: "it is already learned",
                        learning.DECISION_PROPOSE: "learning.mode is developer-review: the developer decides",
-                       learning.DECISION_WAIT: "it waits for another episode, or it expired"}
+                       learning.DECISION_WAIT: "it waits for another episode, or it expired",
+                       learning.DECISION_REJECTED: "the developer rejected it; learn accept brings it back"}
             raise StateError(f"{candidate_id} is not learned: {reasons[decision]}")
         if entry["kind"] == learning.KIND_SKILL:
             written = plan_skill(project_root, entry, skill_path)
@@ -318,9 +339,11 @@ def apply(project_root, candidate_id, settings, skill_path=None):
             write_text_atomically(written["path"], written["text"])
         today = settings["today"].isoformat()
         entry["status"] = learning.STATUS_LEARNED
-        entry["learned"] = {field: written[field] for field in ("action", "ruleId", "skill", "overrides")
-                            if written.get(field)}
+        entry["learned"] = {field: written[field] for field in ("action", "ruleId", "skill", "overrides",
+                                                                "previousStatement") if written.get(field)}
         entry["learned"]["date"] = today
+        if accepted:
+            entry["learned"]["accepted"] = True
         entry["learned"]["path"] = os.path.relpath(written["path"], project_root).replace(os.sep, "/")
         if written["supersedes"]:
             entry["supersedes"] = written["supersedes"]
@@ -328,9 +351,8 @@ def apply(project_root, candidate_id, settings, skill_path=None):
             previous["status"] = learning.STATUS_SUPERSEDED
             previous["supersededBy"] = entry["id"]
         learning.write_registry(project_root, registry)
-        log_path = os.path.join(project_root, LOG_RELATIVE_PATH)
-        log_text = read_text(log_path) if os.path.exists(log_path) else LOG_HEADER
-        write_text_atomically(log_path, log_text + log_line(today, written["action"], entry, written))
+        log_path = append_log(project_root, log_line(today, written["action"] + (" (accepted)" if accepted else ""),
+                                                     entry, written))
         episodes = sorted({item["episode"] for item in learning.live_evidence(entry, settings["ttl_days"])})
         written["commit"] = commit(project_root, [written["path"], learning.candidates_path(project_root), log_path],
                                    entry, episodes)

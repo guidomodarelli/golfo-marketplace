@@ -528,3 +528,110 @@ managed_rule() {
   [[ "$output" == *"update: backend/runner in .agents/rules/backend.md"* ]]
   grep -Fxq -- '- Use pytest.' .agents/rules/backend.md
 }
+
+# 156c: what the developer decides.
+
+@test "in developer-review mode status lists the proposals, and only learn accept writes them" {
+  commit_identity
+  write_manifest '{"learning": {"mode": "developer-review"}}'
+  header_rule --quote "de ahora en más, número arriba" --explicit --session s1
+  candidate="$(id_of 'header')"
+  agent_ready learn status
+  [[ "$output" == *"Proposals for the developer (agent-ready learn accept <id>, or reject <id>):"*"$candidate  Records carry the case number in the header."* ]]
+  agent_ready learn status --json
+  [ "$(printf '%s' "$output" | python3 -c 'import json, sys; print(json.load(sys.stdin)["proposals"][0])' | tr -d '\r')" = "$candidate" ]
+  agent_ready learn apply "$candidate"
+  [ "$status" -ne 0 ]
+
+  agent_ready learn accept "$candidate"
+  [ "$status" -eq 0 ]
+  [[ "$output" == "$candidate  create: learned/records-header in .agents/rules/learned.md (commit "* ]]
+  [ "$(registry_value 'data["candidates"][0]["learned"]["accepted"]')" = "True" ]
+  grep -Fq "create (accepted) $candidate" .agents/learning/log.md
+}
+
+@test "a rejected entry is never learned by the agent, and learn accept brings it back" {
+  commit_identity
+  header_rule --quote "número arriba" --session s1
+  candidate="$(id_of 'header')"
+  agent_ready learn reject "$candidate"
+  [ "$status" -eq 0 ]
+  [[ "$output" == "$candidate  rejected (commit "* ]]
+  git log -1 --format=%B | grep -Fxq "Learning-Id: $candidate"
+  grep -Fq "reject $candidate: Records carry the case number in the header." .agents/learning/log.md
+
+  # The user insists, even explicitly: the developer's decision holds.
+  header_rule --quote "de ahora en más, número arriba" --explicit --session s2
+  [[ "$output" == *"  rejected: the developer rejected it: write nothing (agent-ready learn accept $candidate brings it back)"* ]]
+  agent_ready learn apply "$candidate"
+  [[ "$stderr" == *"the developer rejected it; learn accept brings it back"* ]]
+  agent_ready learn reject "$candidate"
+  [[ "$stderr" == *"is already rejected"* ]]
+
+  agent_ready learn accept "$candidate"
+  [ "$status" -eq 0 ]
+  grep -Fxq -- '- Records carry the case number in the header.' .agents/rules/learned.md
+  agent_ready learn reject "$candidate"
+  [[ "$stderr" == *"is learned: undo it with agent-ready learn revert $candidate"* ]]
+}
+
+@test "revert undoes a learning in its rule, keeps later changes, and brings back what it replaced" {
+  commit_identity
+  header_rule --quote "de ahora en más, número arriba" --explicit --session s1
+  header="$(id_of 'header')"
+  agent_ready learn apply "$header"
+  agent_ready learn record --kind rule --key records.header --statement "Records carry the case number in the footer." \
+    --quote "no, al pie" --explicit --session s2
+  footer="$(id_of 'footer')"
+  agent_ready learn apply "$footer"
+  # A later learning in the same file stays when the earlier one is reverted.
+  agent_ready learn record --kind rule --statement "Reports end with the sources." --quote "siempre las fuentes" \
+    --explicit --session s2
+  agent_ready learn apply "$(id_of 'sources')"
+
+  agent_ready learn revert "$footer"
+  [ "$status" -eq 0 ]
+  [[ "$output" == "$footer  reverted: .agents/rules/learned.md as before commit "*", $header is learned again (commit "* ]]
+  grep -Fxq -- '- Records carry the case number in the header.' .agents/rules/learned.md
+  grep -Fxq -- '- Reports end with the sources.' .agents/rules/learned.md
+  agent_ready learn list --status learned
+  [[ "$output" == *"$header  learned"* ]]
+  git log -1 --format=%B | grep -q "^Reverts: [0-9a-f]\{40\}$"
+  grep -Fq "revert $footer (.agents/rules/learned.md, commit " .agents/learning/log.md
+  agent_ready learn revert "$footer"
+  [[ "$stderr" == *"$footer is reverted, not learned: there is nothing to revert"* ]]
+
+  # Said again, a reverted instruction is a fresh candidate.
+  agent_ready learn record --kind rule --key records.header --statement "Records carry the case number in the footer." \
+    --quote "al pie, otra vez" --session s3
+  [[ "$output" == *"wait: keep it as a candidate until another episode repeats it (1 of 2)"* ]]
+}
+
+@test "revert refuses a rule that changed after the learning, and changes nothing" {
+  commit_identity
+  header_rule --quote "de ahora en más, número arriba" --explicit --session s1
+  header="$(id_of 'header')"
+  agent_ready learn apply "$header"
+  sed -i.bak 's/in the header\./in the header, in bold./' .agents/rules/learned.md && rm .agents/rules/learned.md.bak
+  git commit -qam "team edit"
+  commits="$(git rev-list --count HEAD)"
+  agent_ready learn revert "$header"
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *".agents/rules/learned.md changed after the learning: rule learned/records-header no longer says what $header wrote; nothing was reverted"* ]]
+  grep -Fq 'in the header, in bold.' .agents/rules/learned.md
+  [ "$(git rev-list --count HEAD)" -eq "$commits" ]
+  [ "$(registry_value 'data["candidates"][0]["status"]')" = "learned" ]
+}
+
+@test "revert removes a learned skill" {
+  commit_identity
+  agent_ready learn record --kind skill --statement "Draft a record in four steps." --quote "siempre así" --explicit --session s1
+  skill="$(id_of 'four steps')"
+  mkdir -p .agents/skills/draft-record
+  printf -- '---\nname: draft-record\ndescription: Draft a record.\n---\n1. Header.\n' > .agents/skills/draft-record/SKILL.md
+  agent_ready learn apply "$skill" --skill .agents/skills/draft-record
+  agent_ready learn revert "$skill"
+  [ "$status" -eq 0 ]
+  [ ! -e .agents/skills/draft-record/SKILL.md ]
+  [ -z "$(git status --porcelain -- .agents/skills)" ]
+}

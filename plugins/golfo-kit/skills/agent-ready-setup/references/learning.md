@@ -4,9 +4,10 @@ agent-ready-setup aprende de las instrucciones del usuario: una preferencia o un
 repite puede quedar como rule del proyecto, y un procedimiento de varios pasos, como skill. Decide el
 agente, con reglas de evidencia fijas. Al usuario nunca se le pregunta «¿lo guardo?».
 
-Esta referencia cubre el registro, la evidencia, la decisión de `agent-ready learn record` y cómo
-`agent-ready learn apply` escribe lo aprendido. Revertirlo, los hooks de sesión, la reorganización y el
-`harvest` entre clientes son las partes siguientes de la issue #156.
+Esta referencia cubre el registro, la evidencia, la decisión de `agent-ready learn record`, cómo
+`agent-ready learn apply` escribe lo aprendido y cómo lo revisa el desarrollador (`accept`, `reject` y
+`revert`). Los hooks de sesión, la reorganización y el `harvest` entre clientes son las partes siguientes
+de la issue #156.
 
 ## Qué se aprende y qué no
 
@@ -30,7 +31,7 @@ instrucción:
 | `key` | la decisión que toma, como en las [rules atómicas](atomic-rules.md) (`records.header`) |
 | `paths` | los globs de la carpeta a la que aplica, si aplica a una |
 | `evidence` | cada vez que el usuario la dio: `session`, `episode`, `date`, `source` (`in-session` o `session-end`), `quote`, la frase literal, y `explicit` si esa vez pidió que dure |
-| `status` | `candidate`, `learned`, `superseded` o `expired` |
+| `status` | `candidate`, `learned`, `superseded`, `expired`, `rejected` (el desarrollador lo descartó) o `reverted` (el desarrollador deshizo el aprendizaje) |
 | `created`, `updated` | fechas de la primera y la última evidencia |
 
 Dos instrucciones son la misma entrada cuando su `statement` coincide sin contar mayúsculas, espacios
@@ -59,6 +60,7 @@ episodio es una sola evidencia.
 | `propose` | lo mismo, con `learning.mode` en `developer-review`: queda para el desarrollador y el agente no escribe nada |
 | `wait` | una implícita con menos episodios que el umbral, o un candidato vencido |
 | `already-learned` | la entrada ya está aprendida |
+| `rejected` | el desarrollador la rechazó: ni una instrucción explícita la aprende, hasta que el desarrollador la acepte |
 
 Un candidato sin evidencia en `learning.candidateTtlDays` días vence (`expired`). Si la instrucción
 vuelve, la entrada pasa otra vez a `candidate`, pero la evidencia vencida no suma: ni sus episodios ni
@@ -103,6 +105,21 @@ venció, ya está aprendida, fue reemplazada (`superseded`) o `learning.mode` es
 Una instrucción reemplazada vuelve solo si el usuario la da de nuevo: pasa otra vez a `candidate` y
 cuenta solo la evidencia nueva, así puede reemplazar a su vez a la que la había reemplazado. La rule nueva entra al bloque
 gestionado de `AGENTS.md` y a `.claude/` en el próximo sync o apply, como cualquier rule del proyecto.
+
+## Revisar lo aprendido
+
+Decide el agente; lo que necesita criterio humano lo revisa el desarrollador, nunca el cliente, con
+`agent-ready learn status`, `list` y `log.md`:
+
+| Comando | Qué hace |
+|---|---|
+| `learn accept <id>` | aprende la entrada aunque las reglas de evidencia no alcancen o `learning.mode` sea `developer-review`. Escribe igual que `apply` y con sus mismos límites (`locked`, gestionado, alcance), y el log la marca `(accepted)`. `learn status` lista las propuestas de `developer-review` |
+| `learn reject <id>` | descarta una entrada que no está aprendida: queda `rejected` y la evidencia nueva no la aprende. Commitea el registro y el log |
+| `learn revert <id>` | deshace un aprendizaje. Una rule que creó se saca, y una que editó vuelve a su statement anterior, buscándola por su id, así no importa qué se escribió alrededor después. Si la entrada había reemplazado a otra, esa vuelve a `learned`. Una skill vuelve a como estaba antes del commit del aprendizaje. Commitea con `Learning-Id:` y `Reverts: <sha>` |
+
+`revert` no toca nada si la rule cambió después del aprendizaje (ya no dice lo que escribió) o si el
+parche de una skill no aplica: lo dice y hay que deshacerlo a mano. Una instrucción revertida vuelve
+como candidata si el usuario la da de nuevo, contando solo la evidencia nueva.
 
 ## Comandos
 
