@@ -28,7 +28,7 @@ import shlex
 import shutil
 import subprocess
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Callable
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
@@ -527,7 +527,8 @@ LIST_PR_REGEX = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#[0-9]+$")
 NESTED_FIELD_LABELS = (STATUS_COLUMN, ASSIGNEE_COLUMN, PR_COLUMN, NOTE_COLUMN)
 NESTED_FIELD_REGEX = re.compile(rf"^(?P<indent> {{2,}})- (?P<label>{'|'.join(NESTED_FIELD_LABELS)}): (?P<value>.*)$")
 NESTED_FIELD_INDENT = "  "
-ADF_LIST_KEY_REGEX = re.compile(r"^\S+\s+(?P<key>[A-Z][A-Z0-9]+-[0-9]+)(?![0-9])")
+ADF_LIST_KEY_REGEX = re.compile(r"^(?P<emoji>\S+)\s+(?P<key>[A-Z][A-Z0-9]+-[0-9]+)(?![0-9])\s*(?P<rest>.*)$")
+NESTED_FIELD_TEXT_REGEX = re.compile(rf"^(?P<label>{'|'.join(NESTED_FIELD_LABELS)}): (?P<value>.*)$")
 
 
 @dataclass
@@ -732,6 +733,13 @@ def _table_end(body: list[str], fenced: list[bool], header_index: int) -> int:
     return end
 
 
+def _is_flattened_table_line(line: str) -> bool:
+    """Tabla de seguimiento que Jira devolvió aplanada: texto con barras verticales que nombra las columnas o una key."""
+    if "|" not in line or line.startswith(PROGRESS_PREFIX):
+        return False
+    return bool(EMBEDDED_ISSUE_KEY_REGEX.search(line)) or (KEY_COLUMN in line and STATUS_COLUMN in line)
+
+
 def _table_to_nested_list(body: list[str], fenced: list[bool], header_index: int) -> None:
     """Reemplaza la tabla de seguimiento por la lista anidada, con los valores que ya tenía cada fila."""
     columns = _cell_values(body[header_index])
@@ -890,7 +898,8 @@ def _update_list(body: list[str], list_indexes: list[int], children: list[Tracke
     result["rows_without_child"].extend(reversed(without_child))
     row_keys = list(reversed(list(emoji_by_key)))
     emojis = [emoji_by_key[key] for key in row_keys]
-    last = max(index for index, line in enumerate(body) if LIST_ROW_REGEX.match(line))
+    fenced = _fenced_line_flags(body)
+    last = max(index for index, line in enumerate(body) if not fenced[index] and LIST_ROW_REGEX.match(line))
     while last + 1 < len(body) and NESTED_FIELD_REGEX.match(body[last + 1]):
         last += 1
     for child in [child for child in children if child.key not in emoji_by_key]:
@@ -911,7 +920,9 @@ def update_tracking(description: str, children_payload: Any, level: str, site_ur
     `PR` cuando un hijo nuevo la necesita y la línea `Progreso`. Los bloques de
     código de la sección se ignoran. Sin sección, la crea solo con `create`.
     Con `as_list` la sección queda como lista anidada: se crea así y, si ya
-    era una tabla, se convierte conservando los valores de cada fila.
+    era una tabla, se convierte conservando los valores de cada fila. Una
+    tabla que Jira devolvió aplanada como texto se reemplaza por la lista
+    armada desde `children`.
     """
     if level not in TRACKING_LEVELS:
         raise JiraTicketError(f"jira-ticket: tracking --level debe ser {' o '.join(TRACKING_LEVELS)}")
@@ -955,6 +966,12 @@ def update_tracking(description: str, children_payload: Any, level: str, site_ur
             result["format"] = "list"
             emojis = _update_list(body, list_indexes, children, site_url, result)
         else:
+            if as_list:
+                flattened = [index for index, line in enumerate(body) if not fenced[index] and _is_flattened_table_line(line)]
+                if flattened:
+                    body = [line for index, line in enumerate(body) if index not in flattened and not (index - 1 in flattened and not line.strip())]
+                    fenced = _fenced_line_flags(body)
+                    result["converted_from"] = "flattened-table"
             placeholder = next((index for index, line in enumerate(body) if not fenced[index] and EMPTY_SECTION_PLACEHOLDER_REGEX.match(line.strip())), None)
             if placeholder is None and any(line.strip() and not fenced[index] and not line.startswith(PROGRESS_PREFIX) for index, line in enumerate(body)):
                 raise JiraTicketError(f"jira-ticket: la sección '{heading}' no tiene tabla ni lista de seguimiento reconocibles", EXIT_UNRESOLVED)
@@ -1019,6 +1036,58 @@ def _adf_list_keys(node: dict[str, Any]) -> list[str]:
     """Keys de una lista de seguimiento guardada como viñetas (`<emoji> <KEY> …`); vacío si la lista es otra cosa."""
     keys = [match.group("key") for item in node.get("content") or [] if (match := ADF_LIST_KEY_REGEX.match(adf.node_text(item).strip()))]
     return keys if len(keys) == len(node.get("content") or []) else []
+
+
+def _adf_list_entries(node: dict[str, Any]) -> dict[str, dict[str, str | None]]:
+    """Datos que ya guardaba cada hijo de una lista de seguimiento de viñetas, anidada o en una línea."""
+    entries: dict[str, dict[str, str | None]] = {}
+    for item in node.get("content") or []:
+        blocks = item.get("content") or []
+        head = ADF_LIST_KEY_REGEX.match(adf.node_text(blocks[0]).strip()) if blocks else None
+        if head is None:
+            continue
+        entry: dict[str, str | None] = {"emoji": head.group("emoji"), "summary": head.group("rest").strip() or None, "assignee": None, "pr": None, "note": None}
+        fields = [
+            match
+            for block in blocks[1:]
+            if block.get("type") == "bulletList"
+            for sub_item in block.get("content") or []
+            if (match := NESTED_FIELD_TEXT_REGEX.match(adf.node_text(sub_item).strip()))
+        ]
+        if fields:
+            labels = {ASSIGNEE_COLUMN: "assignee", PR_COLUMN: "pr", NOTE_COLUMN: "note"}
+            entry.update({labels[match.group("label")]: match.group("value").strip() for match in fields if match.group("label") in labels})
+        elif (flat := ListEntry.parse(head.group("rest"))) is not None:
+            entry.update(summary=flat.summary, assignee=flat.assignee, pr=flat.pr, note=flat.note)
+        entries[head.group("key")] = entry
+    return entries
+
+
+def _adf_table_from_list(level: str, children: list[TrackedChild], entries: dict[str, dict[str, str | None]], site_url: str) -> dict[str, Any]:
+    """Tabla que reemplaza a una lista de viñetas: conserva título, responsable, PR y nota de cada línea y solo trae de Jira el estado."""
+    merged: list[TrackedChild] = []
+    for child in children:
+        entry = entries.get(child.key, {})
+        assignee = entry.get("assignee")
+        merged.append(
+            replace(
+                child,
+                summary=entry.get("summary") or child.summary,
+                assignee=assignee if assignee and assignee != EMPTY_CELL else child.assignee,
+                pr=entry.get("pr") or child.pr,
+            )
+        )
+    columns = _tracking_columns(level, merged)
+    header = adf.table_row([adf.table_cell([adf.text_node(column)], header=True) for column in columns])
+    rows = []
+    for child in merged:
+        row = _adf_row(child, columns, site_url)
+        entry = entries.get(child.key, {})
+        kept_note = entry.get("note")
+        if kept_note and (entry.get("emoji") == BLOCKED_EMOJI) == child.blocked:
+            row["content"][columns.index(NOTE_COLUMN)] = adf.table_cell([adf.text_node(kept_note)])
+        rows.append(row)
+    return adf.table([header, *rows])
 
 
 def _adf_update_table(table: dict[str, Any], children: list[TrackedChild], level: str, site_url: str, result: dict[str, Any], heading: str) -> list[str]:
@@ -1130,7 +1199,7 @@ def update_tracking_adf(description: dict[str, Any], children_payload: Any, leve
                         f"jira-ticket: la lista de seguimiento de '{heading}' tiene hijos que no vinieron en `children` ({', '.join(unknown)}); pasar todos los hijos para convertirla en tabla",
                         EXIT_UNRESOLVED,
                     )
-                body[list_index] = new_table
+                body[list_index] = _adf_table_from_list(level, children, _adf_list_entries(body[list_index]), site_url)
                 result["converted_from"] = "list"
             elif placeholder is not None:
                 body[placeholder] = new_table

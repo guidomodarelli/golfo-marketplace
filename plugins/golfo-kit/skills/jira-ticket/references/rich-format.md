@@ -32,7 +32,7 @@ Jira guarda las descripciones en ADF (Atlassian Document Format). Paneles, lozen
 
 - Leer en el mismo formato en que se escribe: en modo enriquecido, pedir la descripción en ADF (el parámetro de formato de respuesta de `getJiraIssue`, si existe) y pasar ese documento tal cual al helper. Leer en Markdown y reescribir ese texto borra paneles, lozenges y expands que ya estaban.
 - Si Jira rechaza el documento ADF por un nodo, quitar ese elemento según la columna `Respaldo` de la tabla siguiente y reintentar una sola vez. Si vuelve a fallar, pasar a modo Markdown para esa ejecución e informarlo.
-- En modo Markdown, releer después de escribir: si la tabla de seguimiento quedó aplanada como texto, convertirla a lista anidada con `tracking --list` (ver `ticket-templates.md`).
+- En modo Markdown, releer después de escribir: si la tabla de seguimiento quedó aplanada como texto, convertirla a lista anidada con `tracking --list` (ver `ticket-templates.md`). Una tabla aplanada ya no tiene filas que leer, así que la lista se arma desde `children`: pasar todos los hijos releídos, con su `pr` y su `note`.
 - Informar el modo usado en la respuesta final solo cuando fue el de respaldo, con el motivo en una línea.
 
 ## Un elemento por papel

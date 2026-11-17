@@ -1053,3 +1053,63 @@ def test_plain_cli_writes_markdown_and_rejects_unknown_callout(monkeypatch, caps
     assert exit_code == 0 and out == "> 🚫 **Bloqueado**\n> Espera ACME-30 hasta 2026-07-21.\n"
     exit_code, _, err = run_cli(monkeypatch, capsys, ["plain"], "> [!DANGER]\n> x\n")
     assert exit_code == jira_ticket.EXIT_USAGE and "desconocido" in err
+
+
+# --- regresiones de review ------------------------------------------------------
+
+
+def test_tracking_list_inserts_new_child_after_real_list_not_inside_fenced_example():
+    description = NESTED_LIST_DESCRIPTION + "\n```markdown\n- ⬜ [ACME-90](https://acme.atlassian.net/browse/ACME-90) Ejemplo\n  - Estado: To Do\n```\n"
+    children = [child("ACME-21", summary="Migrar templates · v2"), child("ACME-23", summary="PR testeado"), child("ACME-25", summary="Revisar copy")]
+    result = jira_ticket.update_tracking(description, children, "story", SITE_URL)
+    new_row = result["description"].index("- ⬜ [ACME-25]")
+    assert result["added"] == ["ACME-25"] and new_row < result["description"].index("```markdown")
+    assert result["description"].endswith("```markdown\n- ⬜ [ACME-90](https://acme.atlassian.net/browse/ACME-90) Ejemplo\n  - Estado: To Do\n```\n")
+
+
+@pytest.mark.parametrize(
+    "list_markdown",
+    [
+        "- ⬜ [ACME-21](https://acme.atlassian.net/browse/ACME-21) Migrar templates v2 · To Do · Ana Pérez · acme/api#88\n"
+        "- 🚫 [ACME-23](https://acme.atlassian.net/browse/ACME-23) PR testeado · To Do · — · Nota: espera a Infra\n",
+        "- ⬜ [ACME-21](https://acme.atlassian.net/browse/ACME-21) Migrar templates v2\n  - Estado: To Do\n  - Responsable: Ana Pérez\n  - PR: acme/api#88\n"
+        "- 🚫 [ACME-23](https://acme.atlassian.net/browse/ACME-23) PR testeado\n  - Estado: To Do\n  - Responsable: —\n  - Nota: espera a Infra\n",
+    ],
+)
+def test_tracking_adf_list_conversion_keeps_title_assignee_pr_and_note(list_markdown):
+    listed = jira_ticket.adf.markdown_to_document("## Tareas\n**Progreso:** 0/2 ✅ · 0 🔄 · 1 ⬜ · 1 🚫\n\n" + list_markdown)
+    children = [child("ACME-21", "Done", "done", "Título nuevo en Jira"), child("ACME-23", summary="PR testeado", blocked=True)]
+    converted = jira_ticket.update_tracking_adf(listed, children, "story", SITE_URL)
+    assert adf_table_texts(converted["description"]) == [
+        ["Key", "Tarea", "Estado", "Responsable", "PR", "Nota"],
+        ["ACME-21", "Migrar templates v2", "✅ Done", "Ana Pérez", "acme/api#88", "—"],
+        ["ACME-23", "PR testeado", "🚫 To Do", "—", "—", "espera a Infra"],
+    ]
+
+
+def test_tracking_list_flag_rebuilds_flattened_table_from_children():
+    flattened = (
+        "## Tareas\n**Progreso:** 1/2 ✅ · 1 🔄 · 0 ⬜\n\n"
+        "| Key | Tarea | Estado | Responsable | Nota | |---|---|---|---|---| | ACME-6001 | Migrar templates | ✅ Done | Ana Pérez | — | | ACME-6002 | Probar envío | 🔄 In Progress | Ana Pérez | — |\n\n"
+        "## Pull requests\n- [acme/payments-api#88](https://github.com/acme/payments-api/pull/88)\n"
+    )
+    with pytest.raises(jira_ticket.JiraTicketError):
+        jira_ticket.update_tracking(flattened, CURRENT_CHILDREN[:2], "story", SITE_URL)
+    result = jira_ticket.update_tracking(flattened, CURRENT_CHILDREN[:2], "story", SITE_URL, as_list=True)
+    assert result["converted_from"] == "flattened-table" and result["format"] == "list"
+    assert result["description"] == (
+        "## Tareas\n**Progreso:** 2/2 ✅ · 0 🔄 · 0 ⬜\n\n"
+        "- ✅ [ACME-6001](https://acme.atlassian.net/browse/ACME-6001) Migrar templates\n  - Estado: Done\n  - Responsable: Ana Pérez\n"
+        "- ✅ [ACME-6002](https://acme.atlassian.net/browse/ACME-6002) Probar envío | staging\n  - Estado: Done\n  - Responsable: Ana Pérez\n\n"
+        "## Pull requests\n- [acme/payments-api#88](https://github.com/acme/payments-api/pull/88)\n"
+    )
+
+
+def test_adf_keeps_every_list_item_after_blank_separated_nested_list():
+    doc = jira_ticket.adf.markdown_to_document("- Áreas\n\n  - templates/\n- Cobertura automática: tests\n- Criterio: email con logo\n\nTexto final.\n")
+    assert adf_types(doc["content"]) == ["bulletList", "paragraph"]
+    items = doc["content"][0]["content"]
+    assert [jira_ticket.adf.node_text(item["content"][0]) for item in items] == ["Áreas", "Cobertura automática: tests", "Criterio: email con logo"]
+    assert adf_types(items[0]["content"]) == ["paragraph", "bulletList"]
+    deeper_first = jira_ticket.adf.markdown_to_document("  - hijo\n- padre\n")
+    assert [jira_ticket.adf.node_text(item) for node in deeper_first["content"] for item in node["content"]] == ["hijo", "padre"]

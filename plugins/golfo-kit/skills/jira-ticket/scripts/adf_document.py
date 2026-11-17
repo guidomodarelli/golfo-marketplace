@@ -299,11 +299,20 @@ def _blocks(lines: list[str]) -> list[dict[str, Any]]:
             index = end
         elif LIST_ITEM_REGEX.match(line):
             items: list[tuple[int, bool, str]] = []
-            while index < len(lines) and (item := LIST_ITEM_REGEX.match(lines[index])):
+            while index < len(lines):
+                item = LIST_ITEM_REGEX.match(lines[index])
+                if item is None:
+                    following = next((position for position in range(index, len(lines)) if lines[position].strip()), None)
+                    if lines[index].strip() or following is None or not LIST_ITEM_REGEX.match(lines[following]):
+                        break
+                    index = following
+                    continue
                 items.append((len(item.group("indent")) // LIST_INDENT_WIDTH, item.group("marker")[0].isdigit(), item.group("text")))
                 index += 1
-            lists, _ = _list_from_items(items, 0, items[0][0])
-            nodes.extend(lists)
+            consumed = 0
+            while consumed < len(items):
+                lists, consumed = _list_from_items(items, consumed, items[consumed][0])
+                nodes.extend(lists)
         else:
             end = index + 1
             while end < len(lines) and lines[end].strip() and not _starts_block(lines[end], lines[end + 1] if end + 1 < len(lines) else None):
