@@ -20,7 +20,7 @@ colors:
   surface-card:      "#FFFFFF"   # Mockups, example boxes, accordions
   # Bordes
   border:            "#E0DDD6"   # Borde estándar — separadores, tablas
-  border-strong:     "#D0CDC6"   # Borde de cards/mockups/pills
+  border-strong:     "#D0CDC6"   # Borde de mockups/example boxes/pills
   border-neutral:    "#CCCCCC"   # Borde del badge gris
   border-ink:        "#1A1A1A"   # Línea pesada del doc-header y part-header (2px)
   # Superficie oscura (code blocks, step circles)
@@ -160,7 +160,7 @@ rounded:
   sm:   4px     # badges
   md:   6px     # pills, chips de estado
   lg:   8px     # callouts, code blocks, accordions
-  xl:   10px    # mockups, example boxes, cards grandes
+  xl:   10px    # mockups, example boxes, comparación antes / después
   full: 9999px  # circular (step-circle, mockup dots)
 
 spacing:
@@ -845,7 +845,7 @@ software". Si en algún caso muy puntual se necesita sombra, usar
 | `rounded.sm` | 4px | Badges |
 | `rounded.md` | 6px | Pills, chips de estado |
 | `rounded.lg` | 8px | Callouts, code blocks, accordions |
-| `rounded.xl` | 10px | Mockups, example boxes, cards grandes |
+| `rounded.xl` | 10px | Mockups, example boxes, comparación antes / después |
 | `rounded.full` | 9999px | Step circles, dots del mockup bar |
 
 **Sin redondeos por encima de `10px`** salvo lo circular puro. Esto preserva
@@ -1417,6 +1417,32 @@ Los documentos **no marcan secciones nuevas ni actualizadas**: nada de badges "N
 versión se lee como el documento completo y vigente; el historial de cambios queda en la
 herramienta donde se publica (por ejemplo, el historial de versiones del visor).
 
+### Sin tarjetas
+
+Los documentos **no usan tarjetas (cards)** para organizar contenido: nada de grillas de cajas con
+borde, fondo `surface-card` y título, ni de envolver párrafos, listas, pasos o resúmenes en una caja
+para "destacarlos". La estructura sale de la tipografía, los [divisores](#gramática-de-líneas) y el
+orden de las secciones; el contenido corre sobre el fondo, como en papel.
+
+Antes de encajar algo, usar el componente del sistema que ya resuelve esa necesidad:
+
+| En vez de una tarjeta para… | Usar |
+| --- | --- |
+| Una lista de opciones, roles o casos con sus atributos | [Tabla](#tables) `situación → comportamiento` |
+| Un aviso, una aclaración o una consecuencia | [Callout](#callouts) del tono que corresponda |
+| Un proceso o una secuencia | [Steps](#steps) |
+| Detalle de referencia que no todos leen | [Accordion](#accordion-bloques-colapsables) |
+| Una cita, un mensaje o un texto literal de la app | [Example box](#example-box) |
+| Un grupo de ideas relacionadas | Párrafos o lista bajo el `section-title` |
+
+**Solo cuando es indispensable**: la pieza no se entiende sin delimitarla y ningún componente de la
+tabla anterior la resuelve. Son excepciones ya definidas por el sistema, no un patrón a imitar:
+`mockup` y `app-frame` (una captura es una pantalla), `example-box`, `accordion`, la vista previa del
+[mapa de secciones](#mapa-de-secciones) y la tarjeta del [glosario](#glosario) (contenido flotante).
+Las tarjetas que aparecen **dentro de una captura** son de la app, no del documento (ver
+[Menú de manuales](#menú-de-manuales)). Una excepción nueva se justifica en el documento y usa los
+tokens de contorno de [Gramática de líneas](#gramática-de-líneas), sin sombra.
+
 ### Glosario
 
 Términos del dominio con su definición a mano, sin salir del párrafo.
@@ -1600,6 +1626,7 @@ El documento debe imprimirse (o exportarse a PDF) sin perder jerarquía:
 - **No agregues efectos hover llamativos** en documentos estáticos. Si el doc es interactivo, los hovers deben ser cambios sutiles de borde o fondo, nunca elevación dramática.
 - **No animes la entrada de contenido al scrollear**, ni uses rebotes, escalas, parallax o duraciones de más de 200ms.
 - **No uses fondos blancos puros para el body** en pantalla. El `#F8F7F4` está calibrado para que `surface-card` (blanco) destaque por encima. (En impresión sí se usa blanco.)
+- **No uses tarjetas (cards)** para agrupar o destacar contenido, salvo que sea indispensable (ver [Sin tarjetas](#sin-tarjetas)).
 - **No uses más de un `doc-title` por archivo.** Para sub-documentos, usar `part-header`.
 - **No uses grises más claros que `label`** para texto, ni los `*-border` como color de texto.
 
@@ -1616,6 +1643,7 @@ la regla (no la repite); entre paréntesis, el script que la verifica cuando hay
 - [ ] Sin scroll horizontal de página a 360px; impresión según [Impresión](#impresión); movimiento según [Motion](#motion).
 - [ ] Navegación: [índice](#índice-toc), [botón «Inicio»](#botón-inicio-volver-al-inicio), [mapa](#mapa-de-secciones), [píldora](#píldora-de-sección) y [copiar enlace](#copiar-enlace-a-una-sección) funcionan también en el visor final (`check-rendered.js`).
 - [ ] [Sin marcas de novedad](#sin-marcas-de-novedad) (`check-manual.mjs`).
+- [ ] [Sin tarjetas](#sin-tarjetas): ninguna caja fuera de las excepciones indispensables.
 - [ ] [Glosario](#glosario): términos, definiciones y menciones (`check-manual.mjs`).
 - [ ] [Puntos sobre capturas](#puntos-sobre-capturas): orden, numeración y anclaje (`check-manual.mjs`, `check-rendered.js`).
 - [ ] [Comparación antes / después](#comparación-antes--después), [Menú de manuales](#menú-de-manuales) e [Ir al menú](#ir-al-menú) cuando se usan.
@@ -1638,6 +1666,12 @@ la regla (no la repite); entre paréntesis, el script que la verifica cuando hay
 
 Cambios que alteran cómo se ve o se escribe un documento. Los documentos
 viejos siguen funcionando: los nombres de clase no cambiaron.
+
+### 2026-11-17
+
+- **Sin tarjetas:** los documentos no usan cards para agrupar o destacar contenido; cada necesidad
+  tiene su componente (tabla, callout, steps, accordion, example box) y solo quedan las excepciones
+  indispensables de [Sin tarjetas](#sin-tarjetas).
 
 ### 2026-10-27
 
