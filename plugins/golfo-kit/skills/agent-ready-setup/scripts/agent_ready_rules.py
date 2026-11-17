@@ -26,16 +26,21 @@ RULE_FORMAT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.p
                                 "assets", "common", "hooks", "rule-format.py")
 
 
-def load_rule_format():
-    """rule-format.py of this installation; its file name is not importable directly."""
-    specification = importlib.util.spec_from_file_location("rule_format", RULE_FORMAT_PATH)
-    module = importlib.util.module_from_spec(specification)
-    specification.loader.exec_module(module)
-    return module
+_RULE_FORMAT = None
 
 
-rule_format = load_rule_format()
-TOP_LEVEL_BULLET = rule_format.TOP_LEVEL_BULLET
+def rule_format_module():
+    """rule-format.py of this installation, loaded once on the first read of a rule file, so importing
+    this module never needs the hooks; its file name is not importable directly."""
+    global _RULE_FORMAT
+    if _RULE_FORMAT is None:
+        specification = importlib.util.spec_from_file_location("rule_format", RULE_FORMAT_PATH)
+        module = importlib.util.module_from_spec(specification)
+        specification.loader.exec_module(module)
+        _RULE_FORMAT = module
+    return _RULE_FORMAT
+
+
 ATTRIBUTE = re.compile(r"^(?P<name>[a-z]+)(?:=(?P<value>\S+))?$")
 SUB_ITEM = re.compile(r"^\s+(?:[-*+]|\d+[.)])\s+(?P<text>.*)$")
 
@@ -246,10 +251,11 @@ def parse_rule_text(text, path):
     lines = text.replace("\r\n", "\n").split("\n")
     rules = []
     findings = []
+    rule_format = rule_format_module()
     for block in rule_format.blocks(lines):
         if block.kind == rule_format.BLOCK_MARKER:
             read_entry(lines, block, path, rules, findings)
-        elif block.kind == rule_format.BLOCK_TEXT and TOP_LEVEL_BULLET.match(lines[block.start]):
+        elif block.kind == rule_format.BLOCK_TEXT and rule_format.TOP_LEVEL_BULLET.match(lines[block.start]):
             findings.append(Finding(LEVEL_ERROR, CODE_UNTAGGED_RULE, path, block.start + 1,
                                     "a top-level bullet without a <!-- rule id=... --> marker above it; "
                                     "give it an id, or write it as prose if it is not an instruction"))
@@ -272,7 +278,7 @@ def read_entry(lines, block, path, rules, findings):
                                 "the marker must be followed by a top-level bullet with the statement", rule_id))
         return
     # The indented lines of the rule; its blank lines separate nothing.
-    body = [TOP_LEVEL_BULLET.match(lines[block.bullet]).group("text")]
+    body = [rule_format_module().TOP_LEVEL_BULLET.match(lines[block.bullet]).group("text")]
     body.extend(line for line in lines[block.bullet + 1:block.end] if line.strip())
     if not problems:
         statement, exceptions, details = split_items(body)
