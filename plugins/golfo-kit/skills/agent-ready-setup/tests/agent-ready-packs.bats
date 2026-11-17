@@ -1139,6 +1139,10 @@ EOF
 @test "the lock hashes each atomic rule, and the plan shows an update rule by rule with what depends on it" {
   copy_example_pack
   write_atomic_pack_rules ""
+  printf '# Acme notes
+
+Keep notes short.
+' > "$pack_dir/profiles/base/rules/acme-notes.md"
   write_manifest acme/kafka-interno "acme=path:../acme-pack"
   run_bootstrap
   [ "$status" -eq 0 ]
@@ -1148,7 +1152,7 @@ EOF
   naming_hash="$(lock_value 'data["assets"][".agents/rules/acme-conventions.md"]["rules"]["conventions/naming"]')"
   [ "$(lock_value '",".join(data["assets"][".agents/rules/acme-kafka.md"]["rules"])')" = "kafka/logger" ]
   # A file of prose, without atomic rules, has no rule hashes.
-  [ "$(lock_value '"rules" in data["assets"][".agents/rules/testing-scope.md"]')" = "False" ]
+  [ "$(lock_value '"rules" in data["assets"][".agents/rules/acme-notes.md"]')" = "False" ]
 
   mkdir -p .agents/skills/services
   printf -- '---\nname: services\n---\nName each service as rule:acme:conventions/naming says.\n' > .agents/skills/services/SKILL.md
