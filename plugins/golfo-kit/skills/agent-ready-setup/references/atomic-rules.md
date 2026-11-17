@@ -121,8 +121,10 @@ El chequeo de CI corre el mismo lint sobre `.agents/rules/`, bajo el modo de `ci
   migró no aparece, así que adoptar el formato es una decisión por archivo y nunca rompe el CI.
 - **Qué cuenta:** solo los errores, no los avisos.
 - **Cada workspace es un conjunto aparte:** las rules de `.agents/rules/workspaces/<path>/`, con las carpetas
-  de rules que tenga adentro, se revisan entre sí, sin las de la raíz ni las de otros workspaces, porque
-  nunca se cargan juntas.
+  de rules que tenga adentro, se revisan junto con las de la raíz de su fuente, que el workspace también
+  carga, y nunca con las de otros workspaces. Los errores de las rules de la raíz se informan una sola vez.
+- **Una rule reemplazada** con `overrides=<fuente>:<id>` no está en ningún archivo proyectado, pero un
+  `requires` que la nombra no cuenta como desconocido.
 - **Cada fuente también:** dos packs pueden publicar el mismo id, porque sus rules se nombran
   `<fuente>:<id>`. El lock dice de qué profile, y por lo tanto de qué fuente, es cada archivo gestionado; un
   archivo propio es de `project`.

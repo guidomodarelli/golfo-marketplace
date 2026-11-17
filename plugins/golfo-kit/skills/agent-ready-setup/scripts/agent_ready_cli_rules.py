@@ -117,16 +117,33 @@ def adopted_rule_errors(project_root, configuration):
     sets = {}
     for path in agent_ready_rules.rule_files(rules_root):
         sets.setdefault(rule_set_of(project_root, path, lock), []).append(path)
-    errors = []
-    for files in sets.values():
+    parsed = {}
+    for rule_set, files in sets.items():
         try:
-            rules, findings = agent_ready_rules.read_rules(files, project_root)
+            parsed[rule_set] = agent_ready_rules.read_rules(files, project_root)
         except (OSError, UnicodeDecodeError) as read_error:
             raise StateError(f"could not read a rule file: {read_error}") from read_error
+    # A rule another one replaces with overrides=<source>:<id> is not projected, but the rules that
+    # require it keep the reference (references/atomic-rules.md, «Una rule reemplazada»).
+    replaced = {}
+    for rules, _ in parsed.values():
+        for rule in rules:
+            for target in rule.overrides:
+                source, _, identifier = target.partition(rule_overrides.RULE_SOURCE_SEPARATOR)
+                replaced.setdefault(source, set()).add(identifier)
+    errors = []
+    for (workspace, source), (rules, findings) in parsed.items():
+        own_paths = {rule.path for rule in rules} | {finding.path for finding in findings}
         adopted = {rule.path for rule in rules} | {finding.path for finding in findings
                                                    if finding.code != agent_ready_rules.CODE_UNTAGGED_RULE}
         findings = [finding for finding in findings if finding.path in adopted]
-        findings += agent_ready_rules.lint_rules(rules, warn_chars, max_chars)
+        # A workspace loads the root's rules too: its rules are checked with the root's of their source,
+        # and only the findings of its own files are reported, the root's being reported once, by the root.
+        # The root's go first, so a workspace rule that repeats one of their ids is the one reported.
+        together = (parsed.get(("", source), ([], []))[0] if workspace else []) + rules
+        findings += [finding for finding in agent_ready_rules.lint_rules(together, warn_chars, max_chars,
+                                                                         replaced.get(source, set()))
+                     if finding.path in own_paths]
         errors += [finding for finding in findings if finding.level == agent_ready_rules.LEVEL_ERROR]
     return sorted(errors, key=lambda finding: (finding.path, finding.line, finding.code))
 

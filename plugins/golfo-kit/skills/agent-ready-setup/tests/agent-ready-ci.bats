@@ -317,8 +317,9 @@ skip_without_pseudoterminal() {
   # A prose file the project never migrated: its bullets are not lint errors of the check.
   printf '%s\n' '# Team notes' '' '- Keep the changelog short.' > .agents/rules/team-notes.md
   printf '%s\n' '# Team' '' '<!-- rule id=team/logger -->' '- Log with pino.' > .agents/rules/team.md
-  # The same rule for a workspace is another set, not a repeated id.
-  cp .agents/rules/team.md .agents/rules/workspaces/apps/web/team.md
+  # A workspace file of the project is linted with the root's rules, which it loads too.
+  printf '%s\n' '# Web' '' '<!-- rule id=web/logger requires=team/logger -->' '- Log the route.' \
+    > .agents/rules/workspaces/apps/web/team.md
   run_cli apply
   [ "$status" -eq 0 ]
   run_cli check --offline
@@ -375,15 +376,30 @@ lock = {"assets": {
 with open(os.path.join(project, ".agents", "agent-ready.lock.json"), "w", encoding="utf-8") as handle:
     json.dump(lock, handle)
 errors = agent_ready_cli_rules.adopted_rule_errors(project, resolve_configuration(project))
-print([error.render() for error in errors])
 assert errors == [], [error.render() for error in errors]
 
-# The same id twice in one source is still an error.
+# A workspace rule may require a root rule of its source, which the workspace loads too; and a rule may
+# require one that another rule replaces with overrides, which is not in any file.
+with open(os.path.join(project, ".agents", "rules", "workspaces", "apps", "web", "errors.md"), "w", encoding="utf-8") as handle:
+    handle.write("<!-- rule id=web/errors requires=testing/runner -->\n- Report errors.\n")
+lock["assets"][".agents/rules/workspaces/apps/web/errors.md"] = {"profile": "alpha/web", "sha256": "x",
+                                                                 "workspace": "apps/web"}
+with open(os.path.join(project, ".agents", "rules", "alpha-logging.md"), "w", encoding="utf-8") as handle:
+    handle.write("<!-- rule id=logging/errors requires=logging/logger -->\n- Log errors.\n")
+with open(os.path.join(project, ".agents", "rules", "team.md"), "w", encoding="utf-8") as handle:
+    handle.write("<!-- rule id=team/logger overrides=alpha:logging/logger -->\n- Log with pino.\n")
+lock["assets"][".agents/rules/alpha-logging.md"] = {"profile": "alpha/testing", "sha256": "x"}
+with open(os.path.join(project, ".agents", "agent-ready.lock.json"), "w", encoding="utf-8") as handle:
+    json.dump(lock, handle)
+errors = agent_ready_cli_rules.adopted_rule_errors(project, resolve_configuration(project))
+assert errors == [], [error.render() for error in errors]
+
+# The same id twice in one source is still an error, reported once, on the second file.
 lock["assets"][".agents/rules/beta-testing.md"]["profile"] = "alpha/other"
 with open(os.path.join(project, ".agents", "agent-ready.lock.json"), "w", encoding="utf-8") as handle:
     json.dump(lock, handle)
-codes = [error.code for error in agent_ready_cli_rules.adopted_rule_errors(project, resolve_configuration(project))]
-assert codes == ["duplicate-id"], codes
+errors = agent_ready_cli_rules.adopted_rule_errors(project, resolve_configuration(project))
+assert [(error.code, error.path) for error in errors] == [("duplicate-id", ".agents/rules/beta-testing.md")],     [error.render() for error in errors]
 PY
   [ "$status" -eq 0 ]
 }

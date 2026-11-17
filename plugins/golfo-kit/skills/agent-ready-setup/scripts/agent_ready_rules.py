@@ -295,7 +295,7 @@ def decisions_in(statement):
     return 1 + len(SENTENCE_BREAK.findall(plain.strip())) + len(CLAUSE_CHAIN.findall(plain))
 
 
-def lint_rules(rules, warn_chars=DEFAULT_STATEMENT_WARN_CHARS, max_chars=DEFAULT_MAX_STATEMENT_CHARS):
+def lint_rules(rules, warn_chars=DEFAULT_STATEMENT_WARN_CHARS, max_chars=DEFAULT_MAX_STATEMENT_CHARS, known_ids=()):
     """Findings of a set of rules read together: each rule alone, and the set (ids, keys, requires)."""
     findings = []
     for rule in rules:
@@ -312,7 +312,7 @@ def lint_rules(rules, warn_chars=DEFAULT_STATEMENT_WARN_CHARS, max_chars=DEFAULT
             findings.append(Finding(LEVEL_ERROR, CODE_SEVERAL_DECISIONS, rule.path, rule.line,
                                     "the statement chains several instructions (more than one sentence, or clauses "
                                     "joined with ';'); split it into one rule per decision", rule.id))
-    findings.extend(set_findings(rules))
+    findings.extend(set_findings(rules, known_ids))
     return findings
 
 
@@ -333,8 +333,12 @@ def key_conflicts(rules):
     return conflicts
 
 
-def set_findings(rules):
-    """Findings that need the whole set: repeated ids, keys decided twice, equal rules, unknown requires."""
+def set_findings(rules, known_ids=()):
+    """Findings that need the whole set: repeated ids, keys decided twice, equal rules, unknown requires.
+
+    ``known_ids`` are ids of the set that are not in its files, such as a rule another one replaces with
+    overrides: a reference to it is not unknown.
+    """
     findings = []
     first_by_id = {}
     for rule in rules:
@@ -365,7 +369,7 @@ def set_findings(rules):
                                     f"has the same statement as {first.id} ({first.path}:{first.line})", rule.id))
     for rule in rules:
         for required in rule.requires:
-            if ":" not in required and required not in first_by_id:
+            if ":" not in required and required not in first_by_id and required not in known_ids:
                 findings.append(Finding(LEVEL_ERROR, CODE_UNKNOWN_REQUIRES, rule.path, rule.line,
                                         f"requires {required}, which no rule of this set has as its id; "
                                         "name a rule of another source as <source>:<id>", rule.id))
