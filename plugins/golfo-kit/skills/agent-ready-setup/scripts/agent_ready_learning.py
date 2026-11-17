@@ -136,14 +136,27 @@ def evidence_dates(entry):
     return [parse_date(item["date"], f"the evidence of {entry['id']}") for item in entry["evidence"]]
 
 
+def live_evidence(entry, ttl_days):
+    """The evidence since the last time the candidate expired: going back from the newest, it stops at
+    the first gap of more than ttl_days between two pieces. Repetitions that each arrive before the
+    candidate expires all count, however long the whole series is."""
+    dated = sorted(zip(evidence_dates(entry), range(len(entry["evidence"]))), reverse=True)
+    live = []
+    for position, (date, index) in enumerate(dated):
+        if position and (dated[position - 1][0] - date).days > ttl_days:
+            break
+        live.append(entry["evidence"][index])
+    return live
+
+
 def live_episodes(entry, ttl_days):
-    """Distinct episodes of the evidence that is no older than ttl_days before the newest one: older
-    evidence expired with its candidate and does not count again."""
-    dates = evidence_dates(entry)
-    if not dates:
-        return 0
-    oldest_live = max(dates) - datetime.timedelta(days=ttl_days)
-    return len({item["episode"] for item, date in zip(entry["evidence"], dates) if date >= oldest_live})
+    """Distinct episodes of the live evidence: what expired with the candidate does not count again."""
+    return len({item["episode"] for item in live_evidence(entry, ttl_days)})
+
+
+def is_explicit(entry, ttl_days):
+    """The user asked for it to last in some live evidence; an explicit request that expired does not."""
+    return any(item.get("explicit") for item in live_evidence(entry, ttl_days))
 
 
 def refresh_expiry(registry, today, ttl_days):
@@ -156,13 +169,13 @@ def refresh_expiry(registry, today, ttl_days):
             entry["status"] = STATUS_EXPIRED
 
 
-def decide(entry, explicit, mode, threshold, ttl_days):
+def decide(entry, mode, threshold, ttl_days):
     """learn, propose (the developer decides, in developer-review mode), wait or already-learned."""
     if entry["status"] == STATUS_LEARNED:
         return DECISION_ALREADY_LEARNED
     if entry["status"] == STATUS_EXPIRED:
         return DECISION_WAIT
-    if explicit or entry.get("explicit") or live_episodes(entry, ttl_days) >= threshold:
+    if is_explicit(entry, ttl_days) or live_episodes(entry, ttl_days) >= threshold:
         return DECISION_PROPOSE if mode == MODE_DEVELOPER_REVIEW else DECISION_LEARN
     return DECISION_WAIT
 
@@ -199,6 +212,9 @@ def record(project_root, instruction, settings):
     date = instruction["date"]
     evidence = {"session": session, "episode": episode_of(session, date, instruction.get("episode")),
                 "date": date.isoformat(), "quote": instruction["quote"].strip(), "source": instruction["source"]}
+    if instruction.get("explicit"):
+        # On the evidence, not on the entry: an explicit request that expires stops counting.
+        evidence["explicit"] = True
     with RegistryLock(project_root):
         registry = read_registry(project_root)
         refresh_expiry(registry, settings["today"], settings["ttl_days"])
@@ -212,8 +228,6 @@ def record(project_root, instruction, settings):
         for field in ("key", "paths"):
             if instruction.get(field):
                 entry[field] = instruction[field]
-        if instruction.get("explicit"):
-            entry["explicit"] = True
         if evidence not in entry["evidence"]:
             entry["evidence"].append(evidence)
         entry["updated"] = max(entry.get("updated", date.isoformat()), date.isoformat())
@@ -221,8 +235,7 @@ def record(project_root, instruction, settings):
             # New evidence brings it back, counting only what is not expired.
             entry["status"] = STATUS_CANDIDATE
         refresh_expiry(registry, settings["today"], settings["ttl_days"])
-        decision = decide(entry, instruction.get("explicit"), settings["mode"], settings["threshold"],
-                          settings["ttl_days"])
+        decision = decide(entry, settings["mode"], settings["threshold"], settings["ttl_days"])
         write_registry(project_root, registry)
     same_key = [item for item in registry["candidates"]
                 if item is not entry and entry.get("key") and item.get("key") == entry["key"]
@@ -240,8 +253,9 @@ def entries(project_root, today, ttl_days):
 def public_view(entry, ttl_days):
     """An entry without the quotes of the user: what list, status and anything outside this file show."""
     view = {field: entry[field] for field in ("id", "statement", "kind", "status", "created", "updated",
-                                               "key", "paths", "explicit") if field in entry}
+                                               "key", "paths") if field in entry}
     view["episodes"] = live_episodes(entry, ttl_days)
-    view["evidence"] = [{field: item[field] for field in ("session", "episode", "date", "source")}
-                        for item in entry["evidence"]]
+    view["explicit"] = is_explicit(entry, ttl_days)
+    view["evidence"] = [{field: item[field] for field in ("session", "episode", "date", "source", "explicit")
+                         if field in item} for item in entry["evidence"]]
     return view

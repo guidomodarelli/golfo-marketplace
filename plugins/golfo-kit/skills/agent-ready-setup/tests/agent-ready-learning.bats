@@ -157,11 +157,35 @@ write_manifest() {
   [[ "$output" == "Learning: off,"* ]]
 }
 
+days_ago() {
+  python3 -c 'import datetime, sys; print(datetime.date.today() - datetime.timedelta(days=int(sys.argv[1])))' "$1" | tr -d ''
+}
+
+@test "repetitions that each arrive before the candidate expires all count, however long the series" {
+  write_manifest '{"learning": {"threshold": 3, "candidateTtlDays": 90}}'
+  header_rule --quote "número arriba" --session s1 --date "$(days_ago 120)"
+  header_rule --quote "número arriba" --session s2 --date "$(days_ago 60)"
+  header_rule --quote "número arriba" --session s3
+  [[ "$output" == *"  learn: "* ]]
+}
+
+@test "an explicit request that expired does not skip the threshold when the instruction comes back" {
+  write_manifest '{"learning": {"candidateTtlDays": 30}}'
+  header_rule --quote "de ahora en más, número arriba" --explicit --session s1 --date "$(days_ago 40)"
+  header_rule --quote "número arriba" --session s2
+  [[ "$output" == *"wait: keep it as a candidate until another episode repeats it (1 of 2)"* ]]
+  agent_ready learn list --json
+  [ "$(printf '%s' "$output" | python3 -c 'import json, sys; print(json.load(sys.stdin)["entries"][0]["explicit"])')" = "False" ]
+}
+
 @test "two sessions recording at the same time keep both instructions" {
+  writer_pids=()
   for index in 1 2 3 4; do
     python3 -B "$cli" learn record --kind rule --statement "Rule number $index." --quote "regla $index" \
       --session "s$index" > /dev/null &
+    writer_pids+=("$!")
   done
-  wait
+  # Only the writers: a bare wait would also wait for the timer of BATS_TEST_TIMEOUT.
+  wait "${writer_pids[@]}"
   [ "$(registry_value 'len(data["candidates"])')" -eq 4 ]
 }

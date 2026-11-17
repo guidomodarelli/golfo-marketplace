@@ -29,8 +29,7 @@ instrucción:
 | `kind` | `rule` (preferencia o restricción), `skill` (procedimiento de varios pasos) o `nested` (solo para una carpeta) |
 | `key` | la decisión que toma, como en las [rules atómicas](atomic-rules.md) (`records.header`) |
 | `paths` | los globs de la carpeta a la que aplica, si aplica a una |
-| `explicit` | el usuario pidió que dure |
-| `evidence` | cada vez que el usuario la dio: `session`, `episode`, `date`, `source` (`in-session` o `session-end`) y `quote`, la frase literal |
+| `evidence` | cada vez que el usuario la dio: `session`, `episode`, `date`, `source` (`in-session` o `session-end`), `quote`, la frase literal, y `explicit` si esa vez pidió que dure |
 | `status` | `candidate`, `learned`, `superseded` o `expired` |
 | `created`, `updated` | fechas de la primera y la última evidencia |
 
@@ -62,7 +61,10 @@ episodio es una sola evidencia.
 | `already-learned` | la entrada ya está aprendida |
 
 Un candidato sin evidencia en `learning.candidateTtlDays` días vence (`expired`). Si la instrucción
-vuelve, la entrada pasa otra vez a `candidate`, pero la evidencia vencida no suma episodios.
+vuelve, la entrada pasa otra vez a `candidate`, pero la evidencia vencida no suma: ni sus episodios ni
+un pedido explícito. Cuenta la evidencia desde el último hueco de más de `learning.candidateTtlDays`
+días entre dos evidencias, así que repeticiones espaciadas que nunca dejaron vencer al candidato suman
+todas.
 
 `learning.enabled` en `false` hace que `record` no registre nada y salga con 0; `status` y `list` siguen
 leyendo el registro. Las claves y sus defaults: [configuration-keys.md](configuration-keys.md), sección
