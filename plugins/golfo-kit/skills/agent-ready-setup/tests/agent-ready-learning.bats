@@ -509,3 +509,22 @@ managed_rule() {
   [[ "$stderr" == *"golfo:testing/runner decides testing.unit-runner and team/runner (.agents/rules/team.md) already replaces it"* ]]
   [ ! -e .agents/rules/learned.md ]
 }
+
+@test "the paths: of the file of a rule are its scope, as Claude reads it" {
+  commit_identity
+  mkdir -p .agents/rules
+  printf '%s\n' '---' 'paths: ["backend/**"]' '---' '# Backend' '' '<!-- rule id=backend/runner key=testing.unit-runner -->' \
+    '- Use unittest.' > .agents/rules/backend.md
+  agent_ready learn record --kind rule --key testing.unit-runner --statement "Use pytest everywhere." \
+    --quote "de ahora en más, pytest" --explicit --session s1
+  agent_ready learn apply "$(id_of 'everywhere')"
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"project:backend/runner decides testing.unit-runner for backend/**, and the instruction is for the whole repository"* ]]
+
+  agent_ready learn record --kind nested --key testing.unit-runner --statement "Use pytest." --paths "backend/**" \
+    --quote "en backend, siempre pytest" --explicit --session s1
+  agent_ready learn apply "$(id_of 'Use pytest.')"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"update: backend/runner in .agents/rules/backend.md"* ]]
+  grep -Fxq -- '- Use pytest.' .agents/rules/backend.md
+}

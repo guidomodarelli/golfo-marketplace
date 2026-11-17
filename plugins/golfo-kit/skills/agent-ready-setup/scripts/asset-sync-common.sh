@@ -528,6 +528,7 @@ project_skill_claude_views() {
   local skill_file
   local managed_skills
   local view_path
+  local view_target
   local relative_path
 
   [[ -d "$SHARED_DIR/skills" && ! -L "$SHARED_DIR/skills" ]] || return 0
@@ -563,10 +564,13 @@ PY
       relative_path="${skill_file#"$SHARED_DIR/"}"
       view_path="$CLAUDE_DIR/$relative_path"
       # A Claude skill someone wrote at the same path is theirs: it is preserved and reported. A view,
-      # or a hard-link view git detached into a copy with the same bytes, is ours to relink.
+      # a hard-link view git detached into a copy with the same bytes, or a committed symlink view that a
+      # checkout with core.symlinks=false wrote as a file holding its target, is ours to relink.
+      view_target="$(relative_shared_target "$relative_path")"
       if [[ -e "$view_path" || -L "$view_path" ]] &&
-        ! is_current_claude_view "$view_path" "$(relative_shared_target "$relative_path")" "$skill_file" &&
-        ! { [[ -f "$view_path" && ! -L "$view_path" ]] && cmp -s -- "$view_path" "$skill_file"; }; then
+        ! is_current_claude_view "$view_path" "$view_target" "$skill_file" &&
+        ! { [[ -f "$view_path" && ! -L "$view_path" ]] &&
+          { cmp -s -- "$view_path" "$skill_file" || [[ "$(cat -- "$view_path")" == "$view_target" ]]; }; }; then
         record_conflict "$view_path is a Claude skill of its own with the name of project skill $skill_name; preserved"
         continue
       fi

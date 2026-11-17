@@ -13,11 +13,11 @@ import unicodedata
 
 import agent_ready_learning as learning
 import agent_ready_rules
-from agent_ready_common import StateError, write_text_atomically
+from agent_ready_common import ProfileError, StateError, write_text_atomically
 from agent_ready_lockfile import read_lock, was_applied
 from agent_ready_profiles import BASE_PROFILE_NAME
 from agent_ready_rule_overrides import PROJECT_RULE_SOURCE, rule_source
-from agent_ready_workspaces import WORKSPACE_RULES_DIRECTORY
+from agent_ready_workspaces import PATHS_LINE, WORKSPACE_RULES_DIRECTORY, frontmatter_patterns
 
 PROJECT_RULES_RELATIVE_PATH = ".agents/rules"
 PROJECT_SKILLS_RELATIVE_PATH = ".agents/skills"
@@ -32,7 +32,6 @@ LOG_HEADER = "# Learning log\n\nWhat the agent learned, changed or replaced, and
 WORD = re.compile(r"[a-z0-9]+")
 LEARNED_SCOPED_PREFIX = "learned-"
 FRONTMATTER_FENCE = "---"
-FRONTMATTER_GLOB = re.compile(r'^\s+-\s+"(?P<glob>[^"]+)"\s*$')
 
 ACTION_CREATE = "create"
 ACTION_UPDATE = "update"
@@ -102,13 +101,26 @@ def read_text(path):
         return file_handle.read()
 
 
-def frontmatter_paths(text):
-    """The paths: list of the YAML frontmatter of a rule file, as this module writes it, or []."""
+def frontmatter_paths(text, rule_path):
+    """The sorted patterns of paths: in the YAML frontmatter of a rule file, or [] without one; read as
+    the workspaces read it (agent_ready_workspaces.frontmatter_patterns)."""
     lines = text.replace("\r\n", "\n").split("\n")
-    if not lines or lines[0] != FRONTMATTER_FENCE or FRONTMATTER_FENCE not in lines[1:]:
-        return []
-    block = lines[1:lines.index(FRONTMATTER_FENCE, 1)]
-    return sorted(match.group("glob") for match in map(FRONTMATTER_GLOB.match, block) if match)
+    end = agent_ready_rules.rule_format_module().frontmatter_end(lines)
+    for index in range(1, max(end - 1, 1)):
+        if PATHS_LINE.match(lines[index]):
+            try:
+                patterns, _ = frontmatter_patterns(lines, index, rule_path)
+            except ProfileError as scope_error:
+                raise StateError(str(scope_error)) from scope_error
+            return sorted(patterns)
+    return []
+
+
+def rule_scope(project_root, rule):
+    """Where a rule applies: the paths of its marker, else the paths: of its file, which Claude reads."""
+    if rule.paths:
+        return sorted(rule.paths)
+    return frontmatter_paths(read_text(os.path.join(project_root, rule.path)), rule.path)
 
 
 def learned_file(project_root, paths):
@@ -126,7 +138,7 @@ def learned_file(project_root, paths):
     while True:
         relative = f"{PROJECT_RULES_RELATIVE_PATH}/{LEARNED_SCOPED_PREFIX}{slug}{suffix}.md"
         path = os.path.join(project_root, relative)
-        if not os.path.exists(path) or frontmatter_paths(read_text(path)) == sorted(paths):
+        if not os.path.exists(path) or frontmatter_paths(read_text(path), relative) == sorted(paths):
             return relative, header
         suffix = f"-{int(suffix[1:] or 1) + 1}"
 
@@ -194,8 +206,9 @@ def plan_rule(project_root, entry, registry):
             raise LockedRuleError(f"{source}:{rule.id} decides {key} and is locked: it cannot change, so "
                                   "nothing was saved; tell the user so in one line")
     for rule, _, source, _ in same_key:
-        if sorted(rule.paths) != sorted(entry.get("paths") or []):
-            raise StateError(f"{source}:{rule.id} decides {key} for {scope(rule.paths)}, and the instruction is for "
+        current_scope = rule_scope(project_root, rule)
+        if current_scope != sorted(entry.get("paths") or []):
+            raise StateError(f"{source}:{rule.id} decides {key} for {scope(current_scope)}, and the instruction is for "
                              f"{scope(entry.get('paths') or [])}: record it with a key of its own for that scope; "
                              "nothing was written")
     own = [rule for rule, managed, _, _ in same_key if not managed]

@@ -962,6 +962,15 @@ EOF
   [[ "$output" == *".claude/skills/team-notes/SKILL.md is a Claude skill of its own with the name of project skill team-notes; preserved"* ]]
   rm -r .agents/skills/team-notes
 
+  # A checkout with core.symlinks=false writes a committed symlink view as a file holding its target:
+  # that is the project skill's view, so it is relinked and not reported.
+  rm .claude/skills/draft-record/SKILL.md
+  printf '%s' '../../../.agents/skills/draft-record/SKILL.md' > .claude/skills/draft-record/SKILL.md
+  run_marketplace_sync "$source_dir/assets/common/hooks/sync-marketplace.sh" "$source_dir"
+  [ "$status" -eq 0 ]
+  assert_claude_view .claude/skills/draft-record/SKILL.md
+  [[ "$output" != *"project skill draft-record; preserved"* ]]
+
   rm -r .agents/skills/draft-record
   run_bootstrap react
   [ "$status" -eq 0 ]
