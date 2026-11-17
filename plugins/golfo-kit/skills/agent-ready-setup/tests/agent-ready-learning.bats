@@ -748,3 +748,16 @@ managed_rule() {
   agent_ready learn revert "$footer"
   [ "$status" -eq 0 ]
 }
+
+@test "revert leaves a created rule alone once someone changed its marker" {
+  commit_identity
+  header_rule --quote "de ahora en más, número arriba" --explicit --session s1
+  header="$(id_of 'header')"
+  agent_ready learn apply "$header"
+  sed -i.bak 's/key=records.header -->/key=records.header locked -->/' .agents/rules/learned.md && rm .agents/rules/learned.md.bak
+  git commit -qam "team locks it"
+  agent_ready learn revert "$header"
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"rule learned/records-header in .agents/rules/learned.md has a marker someone changed after the learning"* ]]
+  grep -Fq 'key=records.header locked -->' .agents/rules/learned.md
+}
