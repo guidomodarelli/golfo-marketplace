@@ -223,7 +223,14 @@ def plan_rule(project_root, entry, registry):
         if rule.overrides:
             raise StateError(f"{source}:{rule.id} decides {key} and already replaces {', '.join(rule.overrides)}: "
                              "a rule that replaces another cannot be replaced, so nothing was saved")
-        replaced.append(f"{source}:{rule.id}")
+        reference = f"{source}:{rule.id}"
+        # One target, one replacement: a rule of any key that already replaces it wins, and the engine
+        # would reject a second one.
+        replacing = [other for other, _, _, _ in described if reference in other.overrides]
+        if replacing:
+            raise StateError(f"{reference} decides {key} and {replacing[0].id} ({replacing[0].path}) already "
+                             "replaces it: a rule is replaced once, so nothing was saved")
+        replaced.append(reference)
     # Every managed rule of the key is replaced, so none of them stays next to the learned one.
     overrides = ",".join(replaced) or None
     rule_id = unique_rule_id(slug_of(entry), {item[0].id for item in described})

@@ -497,3 +497,15 @@ managed_rule() {
   grep -Fxq -- '- Use pytest.' .agents/rules/team.md
   grep -Fxq -- '- Use Vitest.' .agents/rules/testing.md
 }
+
+@test "a managed rule that a rule of another key already replaces is not replaced twice" {
+  commit_identity
+  managed_rule ""
+  printf '%s\n' '# Team' '' '<!-- rule id=team/runner overrides=golfo:testing/runner -->' '- Use Jest.' > .agents/rules/team.md
+  agent_ready learn record --kind rule --key testing.unit-runner --statement "Use pytest." \
+    --quote "de ahora en más, pytest" --explicit --session s1
+  agent_ready learn apply "$(id_of 'pytest')"
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"golfo:testing/runner decides testing.unit-runner and team/runner (.agents/rules/team.md) already replaces it"* ]]
+  [ ! -e .agents/rules/learned.md ]
+}

@@ -83,6 +83,7 @@ proyecto, nunca en un asset que escribió un apply (los que el lockfile registra
 | Una rule de la misma `key` es `locked`, sea gestionada o del proyecto | no escribe nada ni commitea, y sale con error: el agente le dice al usuario en una línea que eso no se puede cambiar. La entrada sigue en `candidate` |
 | La rule gestionada es del núcleo (`base/` del pack) | no escribe nada: el núcleo todavía no se puede reemplazar con `overrides` |
 | La rule gestionada ya reemplaza a otra con `overrides` | no escribe nada: el motor no acepta cadenas de reemplazos |
+| Otra rule del proyecto, de cualquier `key`, ya reemplaza a esa gestionada | no escribe nada: una rule se reemplaza una sola vez |
 | Más de una rule activa decide la `key` (sin contar las gestionadas que una rule propia ya reemplaza) | no escribe nada: editar una dejaría las otras en vigor. El equipo deja una primero |
 | La rule de la misma `key` vale para otro alcance (otros `paths`) | no escribe nada: una instrucción de una carpeta nunca pisa una de todo el repositorio, ni al revés. Se registra con una `key` propia para ese alcance |
 | Ninguna rule decide esa `key` | agrega una rule nueva en `.agents/rules/learned.md` con id `learned/<key>` (o las primeras palabras del statement), su `key` y sus `paths` |
