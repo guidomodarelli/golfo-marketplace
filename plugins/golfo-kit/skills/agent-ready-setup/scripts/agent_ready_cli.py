@@ -45,6 +45,7 @@ from agent_ready_common import StateError, serialize_json
 from agent_ready_config import LAYER_PROJECT, ConfigurationError, format_value, load_schema, parse_text_value
 from agent_ready_options import SOURCES_ENABLED_KEY, UPDATES_PRESET_KEY
 from agent_ready_cli_ci import register as register_ci_commands
+from agent_ready_cli_learning import register as register_learning_commands
 from agent_ready_cli_lifecycle import register as register_lifecycle_commands
 from agent_ready_cli_reviews import register as register_review_commands
 from agent_ready_cli_rules import register as register_rules_commands
@@ -404,6 +405,7 @@ def build_parser():
     register_trust_commands(subparsers, new_subparser)
     register_ci_commands(subparsers, new_subparser)
     register_rules_commands(subparsers, new_subparser)
+    register_learning_commands(subparsers, new_subparser)
     return parser
 
 
