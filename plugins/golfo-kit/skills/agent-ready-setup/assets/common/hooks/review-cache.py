@@ -21,6 +21,7 @@ import datetime
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -85,6 +86,127 @@ def normalized_text(path):
     """The text a review saw: UTF-8 with LF line endings, so a CRLF checkout is the same unit."""
     with open(path, "rb") as file_handle:
         return file_handle.read().decode("utf-8", errors="replace").replace("\r\n", "\n")
+
+
+# A rule file with atomic rules (#168, references/atomic-rules.md) is reviewed rule by rule: each rule
+# is a document of its own, named <file>#<id>, with the titles and paragraphs of its sections, which say
+# where it applies; what the file says outside its rules is the document <file>#. Changing one rule only
+# invalidates the pairs of that rule, and changing a title or a paragraph the pairs of the rules under it.
+# <file> alone is always the whole file, as every other review keeps it.
+UNIT_SEPARATOR = "#"
+RULES_DIRECTORY_SEGMENT = "rules"
+RULE_DOCUMENT_SUFFIX = ".md"
+RULE_ID_PATTERN = re.compile(r"(?:^|\s)id=(?P<id>\S+)")
+RULE_FORMAT_FILE_NAME = "rule-format.py"
+_RULE_FORMAT = None
+
+
+def rule_format_module():
+    """rule-format.py from this same directory, the shape of a rule file that agent_ready_rules.py reads too."""
+    global _RULE_FORMAT
+    if _RULE_FORMAT is None:
+        import importlib.util
+
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), RULE_FORMAT_FILE_NAME)
+        specification = importlib.util.spec_from_file_location("rule_format", path)
+        module = importlib.util.module_from_spec(specification)
+        specification.loader.exec_module(module)
+        _RULE_FORMAT = module
+    return _RULE_FORMAT
+
+
+def document_path(name):
+    """The file a reviewed document comes from: a rule <file>#<id> and the rest <file># come from <file>."""
+    return name.partition(UNIT_SEPARATOR)[0]
+
+
+def is_rule_document(name):
+    """True for a Markdown file under a rules/ folder, the only files whose rules are split apart."""
+    path = document_path(name)
+    return path.endswith(RULE_DOCUMENT_SUFFIX) and RULES_DIRECTORY_SEGMENT in path.split("/")[:-1]
+
+
+def joined_lines(parts):
+    """The non-empty parts, one after the other, without blank lines at either end."""
+    return "\n".join(part for part in parts if part.strip()).strip("\n")
+
+
+def rule_units(name, text):
+    """{document: text} of one reviewed file: one per atomic rule and the rest of the file under ``<name>#``.
+
+    Each rule keeps its comment, the frontmatter of its file and, for every title above it, that title
+    and the paragraphs of its section, which say where the rule applies. A file without atomic rules, or
+    with a shape this split does not recognise (a comment without an id or a bullet, a repeated id,
+    which agent-ready rules lint reports), is one document under ``name``, as before.
+    """
+    if text is None or not is_rule_document(name) or UNIT_SEPARATOR in name:
+        return {name: text}
+    rule_format = rule_format_module()
+    lines = text.split("\n")
+    header = joined_lines(lines[:rule_format.frontmatter_end(lines)])
+    # Each section is its title and its paragraphs; the first one, without a title, is the file's preamble.
+    sections = [{"level": 0, "lines": []}]
+    stack = [0]
+    rules = []
+    for block in rule_format.blocks(lines):
+        line = lines[block.start]
+        if block.kind == rule_format.BLOCK_MARKER:
+            identifier = RULE_ID_PATTERN.search(block.marker.group("attributes") or "") if block.marker else None
+            if not identifier or block.bullet is None:
+                return {name: text}
+            body = joined_lines([line] + lines[block.bullet:block.end])
+            rules.append((f"{name}{UNIT_SEPARATOR}{identifier.group('id')}", body, list(stack)))
+            continue
+        heading = rule_format.HEADING.match(line) if block.kind == rule_format.BLOCK_TEXT else None
+        if heading:
+            level = len(heading.group("level"))
+            while len(stack) > 1 and sections[stack[-1]]["level"] >= level:
+                stack.pop()
+            sections.append({"level": level, "lines": [line]})
+            stack.append(len(sections) - 1)
+            continue
+        sections[stack[-1]]["lines"].append(line)
+    if not rules:
+        return {name: text}
+    units = {}
+    for unit, body, rule_stack in rules:
+        if unit in units:
+            return {name: text}
+        context = [joined_lines(sections[section]["lines"]) for section in rule_stack]
+        units[unit] = joined_lines([header] + context + [body])
+    rest = [line for section in sections for line in section["lines"]]
+    if any(line.strip() and not rule_format.HEADING.match(line) for line in rest):
+        units[f"{name}{UNIT_SEPARATOR}"] = joined_lines([header, joined_lines(rest)])
+    return units
+
+
+def unit_text(project_root, name):
+    """The text a document has on disk now: a rule of a file, the rest of a file split into rules, or a
+    whole file; None when it is gone."""
+    path = document_path(name)
+    try:
+        text = normalized_text(os.path.join(project_root, path))
+    except OSError:
+        return None
+    if UNIT_SEPARATOR not in name:
+        return text
+    return rule_units(path, text).get(name)
+
+
+def unit_pairs(directions, texts):
+    """The pairs of ``directions`` (pair of files: direction) between documents, with each document's text.
+
+    A file split into rules takes part with each rule and its rest; two documents of the same file are
+    never paired, as a file was never paired with itself.
+    """
+    split = {name: rule_units(name, text) for name, text in texts.items()}
+    documents_text = {document: text for parts in split.values() for document, text in parts.items()}
+    paired = {}
+    for (first, second), direction in sorted(directions.items()):
+        for first_document in split.get(first, {first: None}):
+            for second_document in split.get(second, {second: None}):
+                paired.setdefault(tuple(sorted((first_document, second_document))), direction)
+    return paired, documents_text
 
 
 def text_hash(text):
@@ -319,7 +441,8 @@ class ReviewCache:
             entries.update(records)
             for unit, entry in list(entries.items()):
                 names = entry.get("files", {})
-                if unit not in records and any(not os.path.exists(os.path.join(self.project_root, name)) for name in names):
+                if unit not in records and any(not os.path.exists(os.path.join(self.project_root, document_path(name)))
+                                               for name in names):
                     del entries[unit]
             write_json_atomically(self.shared_path, {"schemaVersion": SCHEMA_VERSION, "entries": entries},
                                   ".agent-ready.review-cache.")
@@ -347,7 +470,8 @@ class ReviewCache:
         roots = worktree_roots(self.project_root)
 
         def gone(name):
-            return not os.path.isabs(name) and not any(os.path.exists(os.path.join(root, name)) for root in roots)
+            return not os.path.isabs(name) and not any(os.path.exists(os.path.join(root, document_path(name)))
+                                                       for root in roots)
 
         for unit, entry in list(data["entries"].items()):
             if unit in keep:
@@ -454,10 +578,8 @@ def file_hashes(project_root, names):
     """{name: hash of its normalized text}, None for a file that is gone."""
     hashes = {}
     for name in names:
-        try:
-            hashes[name] = text_hash(normalized_text(os.path.join(project_root, name)))
-        except OSError:
-            hashes[name] = None
+        text = unit_text(project_root, name)
+        hashes[name] = None if text is None else text_hash(text)
     return hashes
 
 

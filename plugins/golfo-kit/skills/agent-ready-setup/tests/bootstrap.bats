@@ -1502,6 +1502,7 @@ EOF
     [ "$status" -eq 0 ]
     [ -f .agents/hooks/harness-review.py ]
     [ -f .agents/hooks/review-cache.py ]
+    [ -f .agents/hooks/rule-format.py ]
     # The patch already ran when PostToolUse fires: its files are on disk. Their content is new
     # for each stack, so no pair of them comes from the review cache of the previous stack.
     printf '%s\n' "# Testing for $stack" > .agents/rules/testing.md
@@ -2532,6 +2533,8 @@ EOF
   cp "$skill_dir/assets/common/hooks/sync-marketplace.sh" \
     "$source_dir/assets/common/hooks/sync-marketplace.sh"
   cp "$skill_dir/assets/common/hooks/agent-ready-skill-source.sh" "$source_dir/assets/common/hooks/"
+  # The engine reads rule files with the format the hooks share.
+  cp "$skill_dir/assets/common/hooks/rule-format.py" "$source_dir/assets/common/hooks/"
   cp "$skill_dir/scripts/asset-sync-common.sh" "$source_dir/scripts/asset-sync-common.sh"
   # Minimal sources still need the configuration schemas and the state helper the hook resolves.
   cp "$skill_dir/scripts/agent-ready-state.py" "$source_dir/scripts/agent-ready-state.py"
@@ -2647,6 +2650,8 @@ EOF
   cp "$skill_dir/assets/common/hooks/sync-marketplace.sh" \
     "$source_dir/assets/common/hooks/sync-marketplace.sh"
   cp "$skill_dir/assets/common/hooks/agent-ready-skill-source.sh" "$source_dir/assets/common/hooks/"
+  # The engine reads rule files with the format the hooks share.
+  cp "$skill_dir/assets/common/hooks/rule-format.py" "$source_dir/assets/common/hooks/"
   cp "$skill_dir/scripts/asset-sync-common.sh" "$source_dir/scripts/asset-sync-common.sh"
   # Minimal sources still need the configuration schemas and the state helper the hook resolves.
   cp "$skill_dir/scripts/agent-ready-state.py" "$source_dir/scripts/agent-ready-state.py"

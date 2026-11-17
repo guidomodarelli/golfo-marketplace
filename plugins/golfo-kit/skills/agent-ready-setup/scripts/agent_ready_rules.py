@@ -13,21 +13,36 @@ The comment costs no context in Claude Code, which strips HTML comments from CLA
 authors of packs, and this module its only implementation.
 """
 
+import importlib.util
 import json
 import os
 import re
 
 from agent_ready_common import sha256_of_text, walk_files
 
-MARKER = re.compile(r"^<!--\s*rule(?:\s+(?P<attributes>.*?))?\s*-->\s*$")
-# Any comment that starts like a marker, so a misspelled one is reported instead of read as prose.
-MARKER_LIKE = re.compile(r"^<!--\s*rule\b")
+# The Markdown shape of a rule file (markers, code blocks, the end of a rule) lives in rule-format.py, next
+# to the hooks, so the AI review of the hooks splits a file into the same rules this module reads.
+RULE_FORMAT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir,
+                                "assets", "common", "hooks", "rule-format.py")
+
+
+_RULE_FORMAT = None
+
+
+def rule_format_module():
+    """rule-format.py of this installation, loaded once on the first read of a rule file, so importing
+    this module never needs the hooks; its file name is not importable directly."""
+    global _RULE_FORMAT
+    if _RULE_FORMAT is None:
+        specification = importlib.util.spec_from_file_location("rule_format", RULE_FORMAT_PATH)
+        module = importlib.util.module_from_spec(specification)
+        specification.loader.exec_module(module)
+        _RULE_FORMAT = module
+    return _RULE_FORMAT
+
+
 ATTRIBUTE = re.compile(r"^(?P<name>[a-z]+)(?:=(?P<value>\S+))?$")
-TOP_LEVEL_BULLET = re.compile(r"^(?:[-*+]|\d+[.)])\s+(?P<text>.*)$")
 SUB_ITEM = re.compile(r"^\s+(?:[-*+]|\d+[.)])\s+(?P<text>.*)$")
-# A fence closes only with the character that opened it, at least as many times, and nothing after it.
-FENCE = re.compile(r"^ {0,3}(?P<fence>`{3,}|~{3,})(?P<rest>.*)$")
-FRONTMATTER_DELIMITER = "---"
 
 ID_SEGMENT = r"[a-z0-9]+(?:-[a-z0-9]+)*"
 RULE_ID = re.compile(rf"^{ID_SEGMENT}(?:/{ID_SEGMENT})*$")
@@ -208,15 +223,6 @@ def metadata_problems(metadata):
     return problems
 
 
-def strip_frontmatter(lines):
-    """Index of the first line after a leading YAML frontmatter, or 0 without one."""
-    if lines and lines[0].strip() == FRONTMATTER_DELIMITER:
-        for index in range(1, len(lines)):
-            if lines[index].strip() == FRONTMATTER_DELIMITER:
-                return index + 1
-    return 0
-
-
 def split_items(body_lines):
     """(statement, exceptions, details) of the bullet of a rule and its indented lines."""
     statement_parts = [body_lines[0]]
@@ -245,73 +251,38 @@ def parse_rule_text(text, path):
     lines = text.replace("\r\n", "\n").split("\n")
     rules = []
     findings = []
-    index = strip_frontmatter(lines)
-    open_fence = None
-    while index < len(lines):
-        line = lines[index]
-        fence = FENCE.match(line)
-        if fence and open_fence is None and not (fence.group("fence")[0] == "`" and "`" in fence.group("rest")):
-            open_fence = fence.group("fence")
-            index += 1
-            continue
-        if open_fence is not None:
-            if (fence and fence.group("fence")[0] == open_fence[0] and len(fence.group("fence")) >= len(open_fence)
-                    and not fence.group("rest").strip()):
-                open_fence = None
-            index += 1
-            continue
-        marker = MARKER.match(line)
-        if marker or MARKER_LIKE.match(line):
-            index = read_entry(lines, index, marker, path, rules, findings)
-            continue
-        if TOP_LEVEL_BULLET.match(line):
-            findings.append(Finding(LEVEL_ERROR, CODE_UNTAGGED_RULE, path, index + 1,
+    rule_format = rule_format_module()
+    for block in rule_format.blocks(lines):
+        if block.kind == rule_format.BLOCK_MARKER:
+            read_entry(lines, block, path, rules, findings)
+        elif block.kind == rule_format.BLOCK_TEXT and rule_format.TOP_LEVEL_BULLET.match(lines[block.start]):
+            findings.append(Finding(LEVEL_ERROR, CODE_UNTAGGED_RULE, path, block.start + 1,
                                     "a top-level bullet without a <!-- rule id=... --> marker above it; "
                                     "give it an id, or write it as prose if it is not an instruction"))
-        index += 1
     return rules, findings
 
 
-def read_entry(lines, index, marker, path, rules, findings):
-    """Read the rule whose marker is at ``index``; return the index of the line after it."""
-    line_number = index + 1
-    if not marker:
+def read_entry(lines, block, path, rules, findings):
+    """Read the rule of a marker block of rule-format.py into ``rules``, or its problems into ``findings``."""
+    line_number = block.start + 1
+    if not block.marker:
         findings.append(Finding(LEVEL_ERROR, CODE_MARKER_SYNTAX, path, line_number,
                                 "the rule marker is not closed on its line: <!-- rule id=... -->"))
-        return index + 1
-    metadata, problems = parse_marker(marker.group("attributes"))
+        return
+    metadata, problems = parse_marker(block.marker.group("attributes"))
     rule_id = metadata.get(ATTRIBUTE_ID)
     for problem in problems:
         findings.append(Finding(LEVEL_ERROR, CODE_MARKER_SYNTAX, path, line_number, problem, rule_id))
-    bullet_index = index + 1
-    while bullet_index < len(lines) and not lines[bullet_index].strip():
-        bullet_index += 1
-    bullet = TOP_LEVEL_BULLET.match(lines[bullet_index]) if bullet_index < len(lines) else None
-    if not bullet:
+    if block.bullet is None:
         findings.append(Finding(LEVEL_ERROR, CODE_MARKER_WITHOUT_RULE, path, line_number,
                                 "the marker must be followed by a top-level bullet with the statement", rule_id))
-        return index + 1
-    body = [bullet.group("text")]
-    cursor = bullet_index + 1
-    while cursor < len(lines):
-        current = lines[cursor]
-        if current.strip() and current[:1] in (" ", "\t"):
-            body.append(current)
-            cursor += 1
-            continue
-        # A blank line belongs to the rule only when an indented line follows it.
-        if not current.strip():
-            following = cursor + 1
-            while following < len(lines) and not lines[following].strip():
-                following += 1
-            if following < len(lines) and lines[following][:1] in (" ", "\t"):
-                cursor = following
-                continue
-        break
+        return
+    # The indented lines of the rule; its blank lines separate nothing.
+    body = [rule_format_module().TOP_LEVEL_BULLET.match(lines[block.bullet]).group("text")]
+    body.extend(line for line in lines[block.bullet + 1:block.end] if line.strip())
     if not problems:
         statement, exceptions, details = split_items(body)
-        rules.append(Rule(path, bullet_index + 1, metadata, statement, exceptions, details, (index, cursor)))
-    return cursor
+        rules.append(Rule(path, block.bullet + 1, metadata, statement, exceptions, details, (block.start, block.end)))
 
 
 def decisions_in(statement):

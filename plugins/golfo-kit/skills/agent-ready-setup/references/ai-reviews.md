@@ -40,13 +40,33 @@ Cada revisión se guarda por unidad, nunca con un hash global: editar una rule s
 a revisar las unidades donde participa. La clave de una unidad es el hash de todo lo que
 puede cambiar su resultado:
 
-- el contenido de cada archivo, con los fines de línea normalizados a LF;
+- el contenido de cada documento, con los fines de línea normalizados a LF;
 - el id y la versión del chequeo, que cambia con su prompt;
 - el provider y el modelo (`AGENT_READY_SETUP_MERGE_MODEL` cambia el de `instructions`);
 - la versión del motor que aplicó el repo (`generator.version` del lockfile).
 
 Si cambia cualquiera de estas partes, la unidad se revisa otra vez y su entrada se
-reemplaza. Cada entrada guarda el veredicto (`consistent` o `findings`) y los hallazgos:
+reemplaza.
+
+**Un archivo con rules atómicas** ([atomic-rules.md](atomic-rules.md)) bajo una carpeta `rules/` se
+revisa rule por rule, en el hook y en `plan`:
+
+- **Cada rule es un documento:** se llama `<archivo>#<id>` y lleva su comentario, el frontmatter del
+  archivo y, de cada título que tiene arriba, el título y los párrafos de su sección, que dicen dónde se
+  aplica la rule.
+- **El resto del archivo** (títulos y párrafos) es el documento `<archivo>#`. Un archivo que fuera de
+  sus rules solo tiene títulos no tiene ese documento. `<archivo>` solo sigue siendo el archivo entero,
+  como en las demás revisiones (por ejemplo, la de `AGENTS.md`).
+- **Qué no es una rule:** lo que está en un bloque de código, como un ejemplo. El hook lee las rules con
+  el mismo formato que `agent-ready rules` (`assets/common/hooks/rule-format.py`).
+- **Qué se vuelve a revisar:** cambiar una rule solo revisa los pares de esa rule. Cambiar un título o un
+  párrafo revisa los de las rules de esa sección y los del resto del archivo. Los demás siguen en la
+  caché, y un hallazgo nombra la rule (`.agents/rules/style.md <-> .agents/rules/testing.md#testing/mocks`).
+- **Las rules del mismo archivo** no se comparan entre sí, como un archivo nunca se comparó consigo mismo.
+- **Archivo entero:** un archivo sin rules atómicas, o con una forma que el lint marca como error (un
+  comentario sin id o sin bullet, un id repetido), sigue siendo un documento.
+
+Al provider le llega una línea por documento, con todos los de otro archivo con los que se compara. Cada entrada guarda el veredicto (`consistent` o `findings`) y los hallazgos:
 archivos, líneas citadas, tipo y texto. Un `AGENTS.md` recién creado desde el template se
 guarda como revisado por `template`, así ningún provider lo revisa hasta que alguien lo edite.
 

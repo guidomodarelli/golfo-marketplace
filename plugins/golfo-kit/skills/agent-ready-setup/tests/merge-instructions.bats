@@ -964,6 +964,8 @@ EOF
   cp "$skill_dir/assets/common/hooks/sync-marketplace.sh" \
     "$source_dir/assets/common/hooks/sync-marketplace.sh"
   cp "$skill_dir/assets/common/hooks/agent-ready-skill-source.sh" "$source_dir/assets/common/hooks/"
+  # The engine reads rule files with the format the hooks share.
+  cp "$skill_dir/assets/common/hooks/rule-format.py" "$source_dir/assets/common/hooks/"
   cp "$skill_dir/scripts/asset-sync-common.sh" "$source_dir/scripts/asset-sync-common.sh"
   # Minimal sources still need the configuration schemas and the state helper the hook resolves; the
   # content comes from the content pack of the tests.
@@ -1027,6 +1029,8 @@ EOF
   cp "$skill_dir/assets/common/hooks/sync-marketplace.sh" \
     "$source_dir/assets/common/hooks/sync-marketplace.sh"
   cp "$skill_dir/assets/common/hooks/agent-ready-skill-source.sh" "$source_dir/assets/common/hooks/"
+  # The engine reads rule files with the format the hooks share.
+  cp "$skill_dir/assets/common/hooks/rule-format.py" "$source_dir/assets/common/hooks/"
   cp "$skill_dir/scripts/asset-sync-common.sh" "$source_dir/scripts/asset-sync-common.sh"
   # Minimal sources still need the configuration schemas and the state helper the hook resolves; the
   # content comes from the content pack of the tests.

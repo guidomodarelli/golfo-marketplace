@@ -249,6 +249,8 @@ def review_conflicts(project_root, engine_dir, cache_module, provider, direction
     # The check to run: the contradictions of harness-review by default, or another one with its own
     # CHECK, CHECK_VERSION and review_pairs (the competing skills of agent_ready_skill_overlap.py).
     check = check or harness
+    # A rule file with atomic rules is reviewed rule by rule, so the cache keeps one entry per pair of rules.
+    directions, texts = cache_module.unit_pairs(directions, texts)
     pairs = sorted(directions)
     report = {"pairs": len(pairs), "fromCache": 0, "reviewed": 0, "unchecked": 0, "uncheckedUpdate": 0,
               "reason": None, "findings": [], "quiet": 0}

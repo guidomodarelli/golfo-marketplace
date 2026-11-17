@@ -549,7 +549,8 @@ def semantic_conflicts(arguments, plan, instructions_with_applied=False):
     report["block"] = configuration.value(CONFLICTS_BLOCK_KEY)
     levels = conflicts_review.document_levels(plan["entries"], nested_files)
     for finding in report["findings"]:
-        finding["levels"] = [levels.get(name, conflicts_review.ROOT_LEVEL) for name in finding.get("files", [])]
+        finding["levels"] = [levels.get(module.document_path(name), conflicts_review.ROOT_LEVEL)
+                             for name in finding.get("files", [])]
     return report
 
 

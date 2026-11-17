@@ -87,6 +87,8 @@ Cambiar el texto de la rule o sus metadatos, sí. `agent-ready rules show <id>` 
   `! <id> is required by|replaced by|cited by …`.
   En `plan --json`, cada entrada lleva `ruleChanges` y `ruleImpact`. El archivo se sigue escribiendo
   entero, y el diff del archivo sigue al final del plan.
+- **La revisión de IA:** cada rule es un documento propio de la revisión de contradicciones, así que
+  cambiar una no vuelve a revisar las demás del archivo ([ai-reviews.md](ai-reviews.md), sección 2).
 
 ## 3. Qué revisa el lint
 
