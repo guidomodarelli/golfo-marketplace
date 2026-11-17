@@ -429,3 +429,41 @@ managed_rule() {
   grep -Fxq -- '- Run the tests with pytest.' .agents/rules/team.md
   grep -Fxq -- '  - Except: the e2e suite.' .agents/rules/team.md
 }
+
+@test "a rule of the project that requires another one can be updated by a learning" {
+  commit_identity
+  mkdir -p .agents/rules
+  printf '%s\n' '# Team' '' '<!-- rule id=team/base -->' '- Keep tests next to the code.' '' \
+    '<!-- rule id=team/tests key=testing.unit-runner requires=team/base -->' '- Use Vitest.' > .agents/rules/team.md
+  agent_ready learn record --kind rule --key testing.unit-runner --statement "Use pytest." \
+    --quote "de ahora en más, pytest" --explicit --session s1
+  agent_ready learn apply "$(id_of 'pytest')"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"update: team/tests in .agents/rules/team.md"* ]]
+  grep -Fxq -- '- Use pytest.' .agents/rules/team.md
+}
+
+@test "every managed rule of the key is replaced, and one that already replaces another stops the learning" {
+  commit_identity
+  mkdir -p .agents/rules
+  printf '%s\n' '# Testing' '' '<!-- rule id=testing/runner key=testing.unit-runner -->' '- Use Vitest.' > .agents/rules/testing.md
+  printf '%s\n' '# Web' '' '<!-- rule id=web/runner key=testing.unit-runner -->' '- Use Vitest.' > .agents/rules/web.md
+  printf '%s\n' '{"assets": {".agents/rules/testing.md": {"profile": "software-development", "sha256": "x", "state": "applied"},' \
+    '".agents/rules/web.md": {"profile": "react", "sha256": "x", "state": "applied"}}}' > .agents/agent-ready.lock.json
+  agent_ready learn record --kind rule --key testing.unit-runner --statement "Use pytest." \
+    --quote "de ahora en más, pytest" --explicit --session s1
+  agent_ready learn apply "$(id_of 'pytest')"
+  [ "$status" -eq 0 ]
+  grep -Fq 'overrides=golfo:testing/runner,golfo:web/runner -->' .agents/rules/learned.md
+
+  rm -rf .agents/learning .agents/rules/learned.md
+  printf '%s\n' '# Web' '' '<!-- rule id=web/runner key=testing.unit-runner overrides=golfo:testing/runner -->' '- Use Jest.' \
+    > .agents/rules/web.md
+  rm .agents/rules/testing.md
+  agent_ready learn record --kind rule --key testing.unit-runner --statement "Use pytest." \
+    --quote "de ahora en más, pytest" --explicit --session s1
+  agent_ready learn apply "$(id_of 'pytest')"
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"golfo:web/runner decides testing.unit-runner and already replaces golfo:testing/runner"* ]]
+  [ ! -e .agents/rules/learned.md ]
+}

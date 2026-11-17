@@ -130,10 +130,13 @@ def replaced_statement(project_root, rule, statement):
 
 
 def check_rule_text(path, text, rule_id, project_root, max_statement_chars):
-    """The learned rule parses and passes the lint of one rule (atomic and short) before anything is written."""
+    """The learned rule parses and passes the lint of one rule (atomic and short) before anything is written.
+    The other rules of the repository are known ids, so a requires= of the rule finds what it names."""
     rules, findings = agent_ready_rules.parse_rule_text(text, os.path.relpath(path, project_root))
     learned = [rule for rule in rules if rule.id == rule_id]
-    findings = findings + agent_ready_rules.lint_rules(learned, max_statement_chars, max_statement_chars)
+    known_ids = {item[0].id for item in repository_rules(project_root)} | {rule.id for rule in rules}
+    findings = findings + agent_ready_rules.lint_rules(learned, max_statement_chars, max_statement_chars,
+                                                       known_ids=known_ids)
     errors = [finding for finding in findings if finding.level == agent_ready_rules.LEVEL_ERROR]
     if errors:
         raise StateError("the learned rule would not be a valid atomic rule, so nothing was written: "
@@ -168,12 +171,17 @@ def plan_rule(project_root, entry, registry):
         path, text = replaced_statement(project_root, rule, entry["statement"])
         return {"action": ACTION_SUPERSEDE if previous else ACTION_UPDATE, "path": path, "text": text,
                 "ruleId": rule.id, "overrides": None, "supersedes": previous["id"] if previous else None}
-    overrides = None
+    replaced = []
     for rule, _, source, profile in same_key:
         if profile == BASE_PROFILE_NAME:
             raise StateError(f"{source}:{rule.id} decides {key} and belongs to the core, which a rule cannot "
                              "override yet: nothing was saved")
-        overrides = f"{source}:{rule.id}"
+        if rule.overrides:
+            raise StateError(f"{source}:{rule.id} decides {key} and already replaces {', '.join(rule.overrides)}: "
+                             "a rule that replaces another cannot be replaced, so nothing was saved")
+        replaced.append(f"{source}:{rule.id}")
+    # Every managed rule of the key is replaced, so none of them stays next to the learned one.
+    overrides = ",".join(replaced) or None
     if is_managed(project_root, LEARNED_RULES_RELATIVE_PATH):
         raise StateError(f"{LEARNED_RULES_RELATIVE_PATH} is managed by a profile; a learned rule never goes there")
     rule_id = unique_rule_id(slug_of(entry), {item[0].id for item in described})
