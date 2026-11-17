@@ -516,6 +516,80 @@ project_rule_claude_views() {
   done < <(find "$CLAUDE_DIR/rules" -type l -print0)
 }
 
+# Skills the repository adds under .agents/skills/ (a skill the agent learned,
+# or one the team wrote) get a Claude view of every file, so Claude finds them
+# like the skills of a profile. A skill an apply wrote is left alone: its view,
+# or the absence of one for the Codex adapter of an agent or command, is the
+# projection's. Views of a deleted project skill are pruned.
+# Arguments: the asset roots of this projection. Consumers define link_claude_asset and record_removed.
+project_skill_claude_views() {
+  local skill_directory
+  local skill_name
+  local skill_file
+  local managed_skills
+  local view_path
+  local view_target
+  local relative_path
+
+  [[ -d "$SHARED_DIR/skills" && ! -L "$SHARED_DIR/skills" ]] || return 0
+  # Managed: what the lock records, and what the asset roots of this projection publish as a skill
+  # (skills/<name>/, skills/<name>.md) or as the Codex adapter of an agent or a command. The lock alone
+  # is not enough: the first apply projects before it writes the lock.
+  managed_skills="$(python3 - "$SHARED_DIR/agent-ready.lock.json" "$SHARED_DIR/skills/" "$@" <<'PY'
+import json, os, sys
+try:
+    with open(sys.argv[1], encoding="utf-8") as handle:
+        assets = json.load(handle).get("assets", {})
+except (OSError, ValueError):
+    assets = {}
+prefix = sys.argv[2]
+names = {path[len(prefix):].split("/")[0] for path in assets if path.startswith(prefix)}
+for root in sys.argv[3:]:
+    for folder in ("skills", "agents", "commands"):
+        try:
+            entries = os.listdir(os.path.join(root, folder))
+        except OSError:
+            continue
+        names.update(entry[:-3] if entry.endswith(".md") else entry for entry in entries)
+print("\n".join(sorted(names)))
+PY
+)" || return 1
+
+  for skill_directory in "$SHARED_DIR/skills"/*/; do
+    skill_directory="${skill_directory%/}"
+    skill_name="${skill_directory##*/}"
+    [[ -f "$skill_directory/SKILL.md" && ! -L "$skill_directory" ]] || continue
+    grep -Fxq -- "$skill_name" <<< "$managed_skills" && continue
+    while IFS= read -r -d '' skill_file; do
+      relative_path="${skill_file#"$SHARED_DIR/"}"
+      view_path="$CLAUDE_DIR/$relative_path"
+      # A Claude skill someone wrote at the same path is theirs: it is preserved and reported. A view,
+      # a hard-link view git detached into a copy with the same bytes, or a committed symlink view that a
+      # checkout with core.symlinks=false wrote as a file holding its target, is ours to relink.
+      view_target="$(relative_shared_target "$relative_path")"
+      if [[ -e "$view_path" || -L "$view_path" ]] &&
+        ! is_current_claude_view "$view_path" "$view_target" "$skill_file" &&
+        ! { [[ -f "$view_path" && ! -L "$view_path" ]] &&
+          { cmp -s -- "$view_path" "$skill_file" || [[ "$(cat -- "$view_path")" == "$view_target" ]]; }; }; then
+        record_conflict "$view_path is a Claude skill of its own with the name of project skill $skill_name; preserved"
+        continue
+      fi
+      link_claude_asset "$relative_path"
+    done < <(find "$skill_directory" -type f -print0)
+  done
+
+  [[ -d "$CLAUDE_DIR/skills" && ! -L "$CLAUDE_DIR/skills" ]] || return 0
+  while IFS= read -r -d '' view_path; do
+    relative_path="${view_path#"$CLAUDE_DIR/"}"
+    [[ -e "$SHARED_DIR/$relative_path" || -L "$SHARED_DIR/$relative_path" ]] && continue
+    [[ "$(readlink -- "$view_path")" == "$(relative_shared_target "$relative_path")" ]] || continue
+    if rm -f -- "$view_path"; then
+      record_removed "$view_path"
+      rmdir -- "${view_path%/*}" 2>/dev/null || true
+    fi
+  done < <(find "$CLAUDE_DIR/skills" -type l -print0)
+}
+
 merge_managed_settings() {
   local template_path="$1"
   local settings_path="$2"

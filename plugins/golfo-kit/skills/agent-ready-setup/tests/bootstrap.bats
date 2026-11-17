@@ -928,6 +928,57 @@ EOF
   assert_claude_view .claude/rules/react-security.md
 }
 
+# bats test_tags=area:claude-views
+@test "sync and apply give the project's own skills a Claude view, never the managed adapters, and prune deleted ones" {
+  source_dir="$test_root/dynamic-skill"
+  cp -R "$skill_dir" "$source_dir"
+  cat > "$source_dir/scripts/merge-instructions.sh" <<'EOF'
+#!/bin/bash
+exit 0
+EOF
+  run_bootstrap react
+  [ "$status" -eq 0 ]
+  mkdir -p .agents/skills/draft-record/references
+  printf -- '---\nname: draft-record\ndescription: Draft a record.\n---\n1. Header.\n' > .agents/skills/draft-record/SKILL.md
+  printf '%s\n' '# Template' > .agents/skills/draft-record/references/template.md
+
+  run_marketplace_sync "$source_dir/assets/common/hooks/sync-marketplace.sh" "$source_dir"
+
+  [ "$status" -eq 0 ]
+  assert_claude_view .claude/skills/draft-record/SKILL.md "../../../.agents/skills/draft-record/SKILL.md"
+  assert_claude_view .claude/skills/draft-record/references/template.md
+  # The Codex adapter of a Claude agent stays without a view.
+  [ -f .agents/skills/a11y-reviewer/SKILL.md ]
+  [ ! -e .claude/skills/a11y-reviewer ]
+
+  # A Claude skill someone wrote with the name of a project skill is theirs: preserved and reported.
+  mkdir -p .agents/skills/team-notes .claude/skills/team-notes
+  printf -- '---\nname: team-notes\ndescription: Notes.\n---\nShared.\n' > .agents/skills/team-notes/SKILL.md
+  printf -- '---\nname: team-notes\ndescription: Notes.\n---\nClaude only.\n' > .claude/skills/team-notes/SKILL.md
+  run_marketplace_sync "$source_dir/assets/common/hooks/sync-marketplace.sh" "$source_dir"
+  [ "$status" -eq 0 ]
+  [ ! -L .claude/skills/team-notes/SKILL.md ]
+  grep -Fxq 'Claude only.' .claude/skills/team-notes/SKILL.md
+  [[ "$output" == *".claude/skills/team-notes/SKILL.md is a Claude skill of its own with the name of project skill team-notes; preserved"* ]]
+  rm -r .agents/skills/team-notes
+
+  # A checkout with core.symlinks=false writes a committed symlink view as a file holding its target:
+  # that is the project skill's view, so it is relinked and not reported.
+  rm .claude/skills/draft-record/SKILL.md
+  printf '%s' '../../../.agents/skills/draft-record/SKILL.md' > .claude/skills/draft-record/SKILL.md
+  run_marketplace_sync "$source_dir/assets/common/hooks/sync-marketplace.sh" "$source_dir"
+  [ "$status" -eq 0 ]
+  assert_claude_view .claude/skills/draft-record/SKILL.md
+  [[ "$output" != *"project skill draft-record; preserved"* ]]
+
+  rm -r .agents/skills/draft-record
+  run_bootstrap react
+  [ "$status" -eq 0 ]
+  [ ! -L .claude/skills/draft-record/SKILL.md ]
+  [ ! -L .claude/skills/draft-record/references/template.md ]
+  [ ! -e .claude/skills/a11y-reviewer ]
+}
+
 # bats test_tags=area:adapters
 @test "sync hook replaces placeholder adapter descriptions from older projections" {
   source_dir="$test_root/dynamic-skill"

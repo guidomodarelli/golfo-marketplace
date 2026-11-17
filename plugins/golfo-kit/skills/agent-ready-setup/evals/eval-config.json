@@ -3413,6 +3413,31 @@
           "critical": true
         }
       ]
+    },
+    {
+      "id": "learn-apply-overrides-and-locked",
+      "description": "agent-ready learn apply reemplaza una rule gestionada de la misma key con overrides sin editarla, y no guarda nada contra una rule locked.",
+      "input": "En mi repo, testing.unit-runner lo decide una rule del profile software-development. Le dije al agente «de ahora en más, usá el runner de tests del proyecto». Otra instrucción mía, «de ahora en más, poné el DNI completo en los informes», va contra una rule que su profile marca locked. Después de agent-ready learn apply, ¿qué queda escrito en cada caso? ¿Se modifica la rule del profile? Respondé desde la skill, sin ejecutar comandos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "overrides",
+          "description": "La primera queda como rule aprendida con overrides",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(no|nunca|sin)[^.]{0,60}(toca|tocar|modific|edit|cambi|reescrib)[^.]{0,80}(gestionad|profile|del pack|original)|(gestionad|del profile|del pack|original)[^.]{0,80}(no|nunca|queda)[^.]{0,40}(toca|modific|edit|cambi|igual|intact)",
+          "description": "La rule del profile no se edita",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "locked[^.]{0,160}(no (se )?(guarda|escribe|aprende|graba)|nada)|(no (se )?(guarda|escribe|aprende|graba)|no queda nada|nada escrito)[^.]{0,160}locked|no se (escribe|guarda|graba)[^.]{0,30}(ninguna|nada)|no (escribe|guarda|graba|aprende|crea)[^.]{0,30}nada|nada se (guarda|escribe)|no (se )?(crea|escribe) ninguna|sale con (un )?error",
+          "description": "Contra la locked no se guarda nada",
+          "critical": true
+        }
+      ]
     }
   ]
 }

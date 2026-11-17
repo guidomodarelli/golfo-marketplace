@@ -4,9 +4,9 @@ agent-ready-setup aprende de las instrucciones del usuario: una preferencia o un
 repite puede quedar como rule del proyecto, y un procedimiento de varios pasos, como skill. Decide el
 agente, con reglas de evidencia fijas. Al usuario nunca se le pregunta «¿lo guardo?».
 
-Esta referencia cubre el registro, la evidencia y la decisión de `agent-ready learn record`. Escribir lo
-aprendido, revertirlo, los hooks de sesión, la reorganización y el `harvest` entre clientes son las
-partes siguientes de la issue #156.
+Esta referencia cubre el registro, la evidencia, la decisión de `agent-ready learn record` y cómo
+`agent-ready learn apply` escribe lo aprendido. Revertirlo, los hooks de sesión, la reorganización y el
+`harvest` entre clientes son las partes siguientes de la issue #156.
 
 ## Qué se aprende y qué no
 
@@ -70,6 +70,40 @@ todas.
 leyendo el registro. Las claves y sus defaults: [configuration-keys.md](configuration-keys.md), sección
 `learning`.
 
+## Escribir lo aprendido
+
+Cuando `record` dice `learn`, el agente corre `agent-ready learn apply <id>`. Solo escribe en la zona del
+proyecto, nunca en un asset que escribió un apply (los que el lockfile registra):
+
+| Caso | Qué hace |
+|---|---|
+| Una rule del proyecto ya decide la misma `key` | edita esa rule en el lugar: cambia el statement y conserva su marcador, sus excepciones y sus detalles (`update`) |
+| Esa rule es una aprendida antes | la reemplaza igual, y la entrada anterior pasa a `superseded` con `supersededBy` (`supersede`) |
+| Una o más rules gestionadas deciden la misma `key` | agrega la rule aprendida con `overrides=<fuente>:<id>` de cada una, sin tocarlas: el próximo apply la deja afuera de ese repo y otro repo con el mismo profile no cambia |
+| Una rule de la misma `key` es `locked`, sea gestionada o del proyecto | no escribe nada ni commitea, y sale con error: el agente le dice al usuario en una línea que eso no se puede cambiar. La entrada sigue en `candidate` |
+| La rule gestionada es del núcleo (`base/` del pack) | no escribe nada: el núcleo todavía no se puede reemplazar con `overrides` |
+| La rule gestionada ya reemplaza a otra con `overrides` | no escribe nada: el motor no acepta cadenas de reemplazos |
+| Otra rule del proyecto, de cualquier `key`, ya reemplaza a esa gestionada | no escribe nada: una rule se reemplaza una sola vez |
+| Más de una rule activa decide la `key` (sin contar las gestionadas que una rule propia ya reemplaza) | no escribe nada: editar una dejaría las otras en vigor. El equipo deja una primero |
+| La rule de la misma `key` vale para otro alcance (los `paths` de su marcador o, sin ellos, los `paths:` del frontmatter de su archivo) | no escribe nada: una instrucción de una carpeta nunca pisa una de todo el repositorio, ni al revés. Se registra con una `key` propia para ese alcance |
+| Ninguna rule decide esa `key` | agrega una rule nueva en `.agents/rules/learned.md` con id `learned/<key>` (o las primeras palabras del statement), su `key` y sus `paths` |
+| `kind` es `skill` | el agente escribe la skill en `.agents/skills/<nombre>/SKILL.md` y la registra con `--skill .agents/skills/<nombre>`. El próximo sync o apply le da su vista en `.claude/skills/`, como a toda skill propia del proyecto; si en `.claude/skills/` ya hay una skill propia de Claude con ese nombre, la preserva y lo informa |
+| `kind` es `nested`, o la entrada tiene `paths` | escribe la rule en `.agents/rules/learned-<carpetas>.md`, un archivo propio con `paths:` en el frontmatter, además de `paths=` en el marcador: Claude descarta los comentarios HTML y solo el frontmatter le deja el alcance. Sin `--paths` en `record`, `apply` lo pide |
+
+Cada aprendizaje es **un commit** con solo sus archivos (la rule o la skill, `candidates.json` y
+`log.md`), aunque haya otros cambios en el índice. El mensaje es `learn: <statement>` con los trailers
+`Learning-Id: <id>` y `Learned-from: <episodios>`. `.agents/learning/log.md` suma una línea con la fecha,
+la acción, el id, la rule y el statement, y nunca la cita.
+
+Antes de escribir, la rule resultante pasa el lint de una rule atómica ([atomic-rules.md](atomic-rules.md)):
+un statement con varias decisiones o demasiado largo no se escribe.
+
+`apply` se niega con un error si la entrada no está decidida para aprender: espera otro episodio,
+venció, ya está aprendida, fue reemplazada (`superseded`) o `learning.mode` es `developer-review`.
+Una instrucción reemplazada vuelve solo si el usuario la da de nuevo: pasa otra vez a `candidate` y
+cuenta solo la evidencia nueva, así puede reemplazar a su vez a la que la había reemplazado. La rule nueva entra al bloque
+gestionado de `AGENTS.md` y a `.claude/` en el próximo sync o apply, como cualquier rule del proyecto.
+
 ## Comandos
 
 ```bash
@@ -77,6 +111,9 @@ leyendo el registro. Las claves y sus defaults: [configuration-keys.md](configur
 agent-ready learn record --kind rule --key records.header \
   --statement "Records carry the case number in the header." \
   --quote "de ahora en más, el número de expediente va en el encabezado" --explicit --session <sesión>
+
+# Escribirla como rule del proyecto y commitearla.
+agent-ready learn apply learn-5db4a07240
 
 # Qué espera una repetición y con qué configuración.
 agent-ready learn status
