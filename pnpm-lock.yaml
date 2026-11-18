@@ -172,6 +172,9 @@ importers:
       bats:
         specifier: 1.13.0
         version: 1.13.0
+      elkjs:
+        specifier: 0.12.1
+        version: 0.12.1
       playwright-core:
         specifier: 1.64.1
         version: 1.64.1
@@ -202,6 +205,9 @@ packages:
     resolution: {integrity: sha512-giSYKGTOcPZyJDbfbTtzAedLcNWdjCLbXYU3/MwPnjyvDXzu6Dgw8d2M+8jHhZXSmsCMSQqCp+YBsJ603UO4vQ==}
     hasBin: true
 
+  elkjs@0.12.1:
+    resolution: {integrity: sha512-IhMYKHE4S2vtx0QrhBP3lYOIKDeIiJXBrdq9MGYkuB8ZHqhrBnHNfSUndjXFewrX1CPK8chwq+2NA0K0hliYuw==}
+
   playwright-core@1.64.1:
     resolution: {integrity: sha512-BC4s8y6SEVA6Q1rSxZTto8hI1KUI3xXlHGZgvGqP4IqPdI/a6FX9H29IDNz7vKo9l21b6LfYosScPL6M3xxyDQ==}
     engines: {node: '>=20'}
@@ -228,6 +234,8 @@ snapshots:
       '@babel/helper-validator-identifier': 7.29.7
 
   bats@1.13.0: {}
+
+  elkjs@0.12.1: {}
 
   playwright-core@1.64.1: {}
 

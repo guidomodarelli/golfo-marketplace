@@ -1,0 +1,939 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flujo del PR — __FLOW_GRAPH_TITLE__</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --page: #f6f7f9;
+    --surface: #ffffff;
+    --surface-muted: #eef0f4;
+    --text: #171a21;
+    --text-muted: #5a6272;
+    --border: #d5d9e2;
+    --accent: #3451d1;
+    --accent-contrast: #ffffff;
+    --added: #15803d;
+    --added-fill: #dcfce7;
+    --modified: #b45309;
+    --modified-fill: #fef3c7;
+    --removed: #b91c1c;
+    --removed-fill: #fee2e2;
+    --unchanged: #7b8494;
+    --unchanged-fill: #ffffff;
+    --group-fill: #eceff4;
+    --radius: 10px;
+    --space-1: 0.25rem;
+    --space-2: 0.5rem;
+    --space-3: 0.75rem;
+    --space-4: 1rem;
+    --space-6: 1.5rem;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --page: #101319;
+      --surface: #181c24;
+      --surface-muted: #222733;
+      --text: #e9ecf2;
+      --text-muted: #a2abbb;
+      --border: #333a49;
+      --accent: #8ea2ff;
+      --accent-contrast: #101319;
+      --added: #4ade80;
+      --added-fill: #12331f;
+      --modified: #fbbf24;
+      --modified-fill: #3a2c0b;
+      --removed: #f87171;
+      --removed-fill: #3b1516;
+      --unchanged: #8a94a6;
+      --unchanged-fill: #1f2430;
+      --group-fill: #161a22;
+    }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--page);
+    color: var(--text);
+    font: 0.9375rem/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  header {
+    padding: var(--space-4) var(--space-6) var(--space-3);
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+  h1 { margin: 0; font-size: 1.25rem; line-height: 1.3; text-wrap: balance; }
+  .subtitle { margin: var(--space-1) 0 0; color: var(--text-muted); font-size: 0.875rem; }
+  .subtitle code { font-size: 0.8125rem; }
+  a { color: var(--accent); }
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3) var(--space-6);
+    margin-top: var(--space-3);
+  }
+  .segmented { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .segmented button {
+    border: 0;
+    padding: var(--space-2) var(--space-3);
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    cursor: pointer;
+  }
+  .segmented button + button { border-left: 1px solid var(--border); }
+  .segmented button[aria-pressed="true"], .segmented button[aria-selected="true"] {
+    background: var(--accent);
+    color: var(--accent-contrast);
+    font-weight: 600;
+  }
+  button:focus-visible, a:focus-visible, input:focus-visible, .graph-node:focus-visible, .graph-edge:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .toggle { display: inline-flex; align-items: center; gap: var(--space-2); cursor: pointer; }
+  .legend { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); margin: 0; padding: 0; list-style: none; font-size: 0.8125rem; color: var(--text-muted); }
+  .legend li { display: inline-flex; align-items: center; gap: var(--space-2); }
+  .swatch { flex: none; width: 0.875rem; height: 0.875rem; border-radius: 3px; border: 2px solid; }
+  .swatch.added { background: var(--added-fill); border-color: var(--added); }
+  .swatch.modified { background: var(--modified-fill); border-color: var(--modified); }
+  .swatch.removed { background: var(--removed-fill); border-color: var(--removed); border-style: dashed; }
+  .swatch.unchanged { background: var(--unchanged-fill); border-color: var(--unchanged); }
+  .line-sample { width: 1.5rem; border-top: 2px dashed var(--text-muted); }
+  main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 22rem; }
+  .canvas-area { position: relative; min-height: 24rem; overflow: hidden; }
+  #graph { position: absolute; inset: 0; width: 100%; height: 100%; cursor: grab; touch-action: none; user-select: none; }
+  #graph.is-panning { cursor: grabbing; }
+  .zoom-controls { position: absolute; right: var(--space-4); bottom: var(--space-4); display: flex; gap: var(--space-1); }
+  .zoom-controls button {
+    min-width: 2.25rem;
+    padding: var(--space-1) var(--space-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    cursor: pointer;
+  }
+  .graph-group rect { fill: var(--group-fill); stroke: var(--border); }
+  .graph-group text { fill: var(--text-muted); font-size: 12px; font-weight: 600; paint-order: stroke; stroke: var(--group-fill); stroke-width: 5; stroke-linejoin: round; }
+  .graph-group-name { pointer-events: none; }
+  .graph-node, .graph-edge { cursor: pointer; }
+  .graph-node rect { fill: var(--unchanged-fill); stroke: var(--unchanged); stroke-width: 2; }
+  .graph-node .node-kind { fill: var(--text-muted); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; }
+  .graph-node .node-label { fill: var(--text); font-size: 13px; font-weight: 600; }
+  .graph-node.added rect { fill: var(--added-fill); stroke: var(--added); }
+  .graph-node.modified rect { fill: var(--modified-fill); stroke: var(--modified); }
+  .graph-node.removed rect { fill: var(--removed-fill); stroke: var(--removed); stroke-dasharray: 6 4; }
+  .graph-edge { color: var(--unchanged); }
+  .graph-edge.added { color: var(--added); }
+  .graph-edge.modified { color: var(--modified); }
+  .graph-edge.removed { color: var(--removed); }
+  .graph-edge .edge-line { fill: none; stroke: currentColor; stroke-width: 2; stroke-linejoin: round; }
+  .graph-edge.added .edge-line, .graph-edge.modified .edge-line, .graph-edge.removed .edge-line { stroke-width: 2.5; }
+  .graph-edge.inferred .edge-line { stroke-dasharray: 6 5; }
+  .graph-edge .edge-hit { fill: none; stroke: transparent; stroke-width: 14; }
+  .graph-edge .edge-arrow { fill: currentColor; }
+  .graph-edge text { fill: var(--text); font-size: 11px; paint-order: stroke; stroke: var(--page); stroke-width: 4; stroke-linejoin: round; }
+  .graph-node.selected rect { stroke: var(--accent); stroke-width: 4; stroke-dasharray: none; }
+  .graph-edge.selected { color: var(--accent); }
+  .graph-edge.selected .edge-line { stroke-width: 4; }
+  .canvas-message {
+    position: absolute;
+    inset: var(--space-6);
+    display: grid;
+    place-content: center;
+    margin: 0;
+    text-align: center;
+    color: var(--text-muted);
+  }
+  #formal-model { position: absolute; inset: 0; overflow: auto; padding: var(--space-6); }
+  #formal-model p { margin: 0; max-width: 46rem; }
+  #formal-model pre {
+    margin: var(--space-3) 0 0;
+    padding: var(--space-4);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow-x: auto;
+    font: 0.8125rem/1.6 ui-monospace, "Cascadia Code", Consolas, monospace;
+  }
+  aside {
+    overflow-y: auto;
+    padding: var(--space-4);
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+  }
+  aside h2 { margin: 0 0 var(--space-2); font-size: 1rem; }
+  aside h3 { margin: var(--space-4) 0 var(--space-1); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
+  aside p { margin: 0 0 var(--space-2); }
+  .placeholder { color: var(--text-muted); }
+  .badges { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-2); }
+  .badge { padding: 0 var(--space-2); border-radius: 999px; border: 1px solid var(--border); font-size: 0.75rem; }
+  .badge.added { color: var(--added); border-color: var(--added); background: var(--added-fill); }
+  .badge.modified { color: var(--modified); border-color: var(--modified); background: var(--modified-fill); }
+  .badge.removed { color: var(--removed); border-color: var(--removed); background: var(--removed-fill); }
+  .evidence { margin: 0; padding: 0; list-style: none; }
+  .evidence li { overflow-wrap: anywhere; font: 0.8125rem/1.6 ui-monospace, "Cascadia Code", Consolas, monospace; }
+  .element-list { margin: 0; padding: 0; list-style: none; }
+  .element-list button {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-2);
+    border: 0;
+    border-radius: 6px;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .element-list button:hover, .element-list button[aria-current="true"] { background: var(--surface-muted); }
+  .title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); }
+  .text-button {
+    flex: none;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    cursor: pointer;
+  }
+  .text-button[aria-expanded="true"] { background: var(--surface-muted); font-weight: 600; }
+  /* Beside the canvas the panel folds with "Detalle"; its own close button is for the drawer. */
+  .panel-header { display: none; align-items: center; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-2); }
+  .panel-header span { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
+  .backdrop { position: fixed; inset: 0; z-index: 2; background: rgb(0 0 0 / 0.45); }
+  body.panel-closed main { grid-template-columns: minmax(0, 1fr); }
+  #toggle-filters { display: none; }
+  /* Phone layout: the canvas takes the whole page; filters fold away and the panel is a drawer. */
+  @media (max-width: 52rem) {
+    main { grid-template-columns: minmax(0, 1fr); }
+    .canvas-area { min-height: 0; }
+    header { padding: var(--space-3) var(--space-4) var(--space-2); }
+    h1 { font-size: 1.0625rem; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+    .toolbar { gap: var(--space-2) var(--space-3); margin-top: var(--space-2); }
+    #toggle-filters { display: inline-block; }
+    .panel-header { display: flex; }
+    header:not(.filters-open) .collapsible { display: none; }
+    aside {
+      position: fixed;
+      inset: 0 0 0 auto;
+      z-index: 3;
+      width: min(22rem, 88vw);
+      box-shadow: -8px 0 24px rgb(0 0 0 / 0.25);
+      animation: panel-in 180ms ease-out;
+    }
+    .zoom-controls button, .text-button, .segmented button { min-height: 2.75rem; }
+    .zoom-controls button { min-width: 2.75rem; }
+    .element-list button { padding-block: var(--space-2); }
+  }
+  @keyframes panel-in {
+    from { transform: translateX(100%); }
+    to { transform: translateX(0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    aside { animation: none; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="title-row">
+    <h1 id="title">__FLOW_GRAPH_TITLE__</h1>
+    <button type="button" class="text-button" id="toggle-panel" aria-controls="side-panel" aria-expanded="true">Detalle</button>
+  </div>
+  <p class="subtitle collapsible" id="subtitle"></p>
+  <div class="toolbar">
+    <div class="segmented" role="tablist" aria-label="Vista" id="view-tabs"></div>
+    <button type="button" class="text-button" id="toggle-filters" aria-expanded="false">Filtros</button>
+    <div class="segmented collapsible" role="group" aria-label="Momento" id="moment-buttons"></div>
+    <label class="toggle collapsible" id="only-changed-toggle"><input type="checkbox" id="only-changed"> Solo lo que cambió</label>
+    <ul class="legend collapsible" aria-label="Referencias">
+      <li><span class="swatch added"></span>Agregado</li>
+      <li><span class="swatch modified"></span>Modificado</li>
+      <li><span class="swatch removed"></span>Eliminado</li>
+      <li><span class="swatch unchanged"></span>Sin cambios</li>
+      <li><span class="line-sample"></span>Relación inferida</li>
+    </ul>
+  </div>
+</header>
+<main>
+  <section class="canvas-area" aria-label="Grafo">
+    <svg id="graph" role="group" tabindex="0" aria-label="Grafo del flujo. Flechas para mover, más y menos para el zoom, cero para ajustar. La lista de elementos del panel lo describe en texto"></svg>
+    <div class="zoom-controls" id="zoom-controls">
+      <button type="button" data-zoom="in" aria-label="Acercar">+</button>
+      <button type="button" data-zoom="out" aria-label="Alejar">−</button>
+      <button type="button" data-zoom="fit">Ajustar</button>
+    </div>
+    <p class="canvas-message" id="canvas-message" hidden></p>
+    <div id="formal-model" hidden></div>
+  </section>
+  <div class="backdrop" id="backdrop" hidden></div>
+  <aside id="side-panel" aria-label="Detalle y elementos">
+    <div class="panel-header">
+      <span>Panel</span>
+      <button type="button" class="text-button" id="close-panel" aria-label="Cerrar el panel">Cerrar</button>
+    </div>
+    <div id="detail" aria-live="polite"></div>
+    <h3>Elementos de esta vista</h3>
+    <ul class="element-list" id="element-list"></ul>
+  </aside>
+</main>
+
+<!-- __FLOW_GRAPH_LIBRARIES__ -->
+<script type="application/json" id="flow-graph-model">__FLOW_GRAPH_MODEL_JSON__</script>
+<script>
+(() => {
+  'use strict';
+
+  const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
+  const VIEW = { changes: 'changes', business: 'business', formal: 'formal' };
+  const MOMENT = { diff: 'diff', before: 'before', after: 'after' };
+  const CHANGE = { added: 'added', modified: 'modified', removed: 'removed', unchanged: 'unchanged' };
+  const INFERRED = 'inferred';
+  const CHANGE_LABELS = { added: 'Agregado', modified: 'Modificado', removed: 'Eliminado', unchanged: 'Sin cambios' };
+  const VIEW_LABELS = { changes: 'Flujo de cambios', business: 'Flujo de negocio', formal: 'Modelo formal' };
+  const MOMENT_LABELS = { diff: 'Diferencia', before: 'Antes', after: 'Después' };
+
+  const NODE_HEIGHT_PX = 52;
+  const NODE_MIN_WIDTH_PX = 120;
+  const NODE_HORIZONTAL_PADDING_PX = 20;
+  const NODE_CORNER_RADIUS_PX = 8;
+  const NODE_KIND_BASELINE_PX = 20;
+  const NODE_LABEL_BASELINE_PX = 38;
+  const NODE_LABEL_FONT = '600 13px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+  const EDGE_LABEL_FONT = '11px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+  const EDGE_LABEL_HEIGHT_PX = 16;
+  const EDGE_LABEL_BASELINE_PX = 12;
+  const EDGE_LABEL_EXTRA_WIDTH_PX = 8;
+  const GROUP_CORNER_RADIUS_PX = 12;
+  const GROUP_LABEL_BASELINE_PX = 20;
+  const GROUP_PADDING = '[top=36,left=20,bottom=20,right=20]';
+  const ARROW_LENGTH_PX = 10;
+  const ARROW_HALF_WIDTH_PX = 5;
+  const VIEWPORT_MARGIN_PX = 32;
+  const ZOOM_STEP = 1.25;
+  const MIN_SCALE = 0.15;
+  const MIN_READABLE_SCALE = 0.75;
+  const MAX_SCALE = 3;
+  const DRAG_THRESHOLD_PX = 4;
+  const KEYBOARD_PAN_STEP_PX = 60;
+  // Same width as the phone layout of the stylesheet.
+  const PHONE_LAYOUT_QUERY = '(max-width: 52rem)';
+  const FULL_COMMIT_HASH_PATTERN = /^[0-9a-f]{40}$/;
+  const SHORT_COMMIT_HASH_LENGTH = 7;
+  const PINCH_POINTER_COUNT = 2;
+  const GROUP_ID_PREFIX = 'group:';
+  const ROOT_ID = 'root';
+  const ELK_LAYOUT_OPTIONS = {
+    'elk.algorithm': 'layered',
+      'elk.hierarchyHandling': 'INCLUDE_CHILDREN',
+    'elk.edgeRouting': 'ORTHOGONAL',
+    'elk.json.shapeCoords': 'ROOT',
+    'elk.json.edgeCoords': 'ROOT',
+    // Layers follow the order of the model, so the flow reads from its first element to its last.
+    'elk.layered.cycleBreaking.strategy': 'MODEL_ORDER',
+    'elk.layered.considerModelOrder.strategy': 'NODES_AND_EDGES',
+    'elk.layered.spacing.nodeNodeBetweenLayers': '70',
+    'elk.spacing.nodeNode': '32',
+    'elk.spacing.edgeNode': '24',
+    'elk.spacing.edgeEdge': '18',
+    'elk.spacing.edgeLabel': '6',
+  };
+
+  const model = JSON.parse(document.getElementById('flow-graph-model').textContent);
+  const KIND_LABELS = model.kindLabels;
+  const state = { view: VIEW.changes, moment: MOMENT.diff, onlyChanged: false, selectedId: null };
+  const elementsById = new Map();
+  const viewport = { x: 0, y: 0, scale: 1, contentWidth: 0, contentHeight: 0 };
+  let layoutRequestId = 0;
+
+  const svg = document.getElementById('graph');
+  const zoomControls = document.getElementById('zoom-controls');
+  const canvasMessage = document.getElementById('canvas-message');
+  const formalModelContainer = document.getElementById('formal-model');
+  const detailContainer = document.getElementById('detail');
+  const elementList = document.getElementById('element-list');
+  const measuringContext = document.createElement('canvas').getContext('2d');
+  const pageHeader = document.querySelector('header');
+  const sidePanel = document.getElementById('side-panel');
+  const backdrop = document.getElementById('backdrop');
+  const togglePanelButton = document.getElementById('toggle-panel');
+  const closePanelButton = document.getElementById('close-panel');
+  const toggleFiltersButton = document.getElementById('toggle-filters');
+  const phoneLayout = window.matchMedia(PHONE_LAYOUT_QUERY);
+
+  const createElement = (tagName, { className, text, attributes = {} } = {}, children = []) => {
+    const element = document.createElement(tagName);
+    if (className) element.className = className;
+    if (text !== undefined) element.textContent = text;
+    for (const [name, value] of Object.entries(attributes)) element.setAttribute(name, value);
+    element.append(...children);
+    return element;
+  };
+
+  const createSvgElement = (tagName, attributes = {}, children = []) => {
+    const element = document.createElementNS(SVG_NAMESPACE, tagName);
+    for (const [name, value] of Object.entries(attributes)) element.setAttribute(name, value);
+    element.append(...children);
+    return element;
+  };
+
+  const measureText = (text, font) => {
+    measuringContext.font = font;
+    return Math.ceil(measuringContext.measureText(text).width);
+  };
+
+  const labelOf = (elementId) => elementsById.get(elementId)?.label ?? elementId;
+  const relationshipLabel = (relationship) => relationship.label ?? KIND_LABELS[relationship.kind] ?? '';
+
+  /** In "before" and "after" the graph shows one version of the code, so nothing is highlighted. */
+  const displayedChange = (element) => (state.moment === MOMENT.diff ? element.change : CHANGE.unchanged);
+
+  /** Elements of the current view, before any filter. */
+  function readViewElements() {
+    if (state.view === VIEW.business) {
+      return {
+        groups: [],
+        nodes: model.businessFlow.states,
+        relationships: (model.businessFlow.transitions ?? []).map((transition) => ({
+          ...transition,
+          label: transition.guard ? `${transition.trigger} [${transition.guard}]` : transition.trigger,
+        })),
+      };
+    }
+    return { groups: model.groups ?? [], nodes: model.nodes, relationships: model.edges ?? [] };
+  }
+
+  /** Applies the moment (before/after) and the "only changed" filter. */
+  function filterElements({ groups, nodes, relationships }) {
+    const hiddenChange = { [MOMENT.before]: CHANGE.added, [MOMENT.after]: CHANGE.removed }[state.moment];
+    let visibleNodes = nodes.filter((node) => node.change !== hiddenChange);
+    const visibleNodeIds = new Set(visibleNodes.map((node) => node.id));
+    let visibleRelationships = relationships.filter(
+      (relationship) => relationship.change !== hiddenChange && visibleNodeIds.has(relationship.source) && visibleNodeIds.has(relationship.target),
+    );
+
+    if (state.onlyChanged) {
+      // Keep what changed plus its direct neighbours, so a changed piece still shows where it connects.
+      const changedNodeIds = new Set(visibleNodes.filter((node) => node.change !== CHANGE.unchanged).map((node) => node.id));
+      visibleRelationships = visibleRelationships.filter(
+        (relationship) => relationship.change !== CHANGE.unchanged || changedNodeIds.has(relationship.source) || changedNodeIds.has(relationship.target),
+      );
+      const keptNodeIds = new Set([...changedNodeIds, ...visibleRelationships.flatMap((relationship) => [relationship.source, relationship.target])]);
+      visibleNodes = visibleNodes.filter((node) => keptNodeIds.has(node.id));
+    }
+    const usedGroupIds = new Set(visibleNodes.map((node) => node.group).filter(Boolean));
+    return { groups: groups.filter((group) => usedGroupIds.has(group.id)), nodes: visibleNodes, relationships: visibleRelationships };
+  }
+
+  function toLayoutGraph({ groups, nodes, relationships }) {
+    const toLayoutNode = (node) => ({
+      id: node.id,
+      width: Math.max(NODE_MIN_WIDTH_PX, measureText(node.label, NODE_LABEL_FONT) + NODE_HORIZONTAL_PADDING_PX * 2),
+      height: NODE_HEIGHT_PX,
+    });
+    const groupNodes = groups.map((group) => ({
+      id: `${GROUP_ID_PREFIX}${group.id}`,
+      layoutOptions: { 'elk.padding': GROUP_PADDING },
+      children: nodes.filter((node) => node.group === group.id).map(toLayoutNode),
+    }));
+    return {
+      id: ROOT_ID,
+      // A portrait screen reads a flow from top to bottom; a wide one, from left to right.
+      layoutOptions: { ...ELK_LAYOUT_OPTIONS, 'elk.direction': phoneLayout.matches ? 'DOWN' : 'RIGHT' },
+      children: [...groupNodes, ...nodes.filter((node) => !node.group).map(toLayoutNode)],
+      edges: relationships.map((relationship) => {
+        const label = relationshipLabel(relationship);
+        return {
+          id: relationship.id,
+          sources: [relationship.source],
+          targets: [relationship.target],
+          labels: label ? [{ text: label, width: measureText(label, EDGE_LABEL_FONT) + EDGE_LABEL_EXTRA_WIDTH_PX, height: EDGE_LABEL_HEIGHT_PX }] : [],
+        };
+      }),
+    };
+  }
+
+  function makeSelectable(svgElement, elementId, accessibleName) {
+    svgElement.dataset.elementId = elementId;
+    svgElement.setAttribute('tabindex', '0');
+    svgElement.setAttribute('role', 'button');
+    svgElement.setAttribute('aria-label', accessibleName);
+    svgElement.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        select(elementId);
+      }
+    });
+  }
+
+  function drawNode(layoutNode) {
+    const node = elementsById.get(layoutNode.id);
+    const centerX = layoutNode.width / 2;
+    const group = createSvgElement('g', { class: `graph-node ${displayedChange(node)}`, transform: `translate(${layoutNode.x} ${layoutNode.y})` }, [
+      createSvgElement('rect', { width: layoutNode.width, height: layoutNode.height, rx: NODE_CORNER_RADIUS_PX }),
+      createSvgElement('text', { class: 'node-kind', x: centerX, y: NODE_KIND_BASELINE_PX, 'text-anchor': 'middle' }, [KIND_LABELS[node.kind] ?? '']),
+      createSvgElement('text', { class: 'node-label', x: centerX, y: NODE_LABEL_BASELINE_PX, 'text-anchor': 'middle' }, [node.label]),
+    ]);
+    makeSelectable(group, node.id, `${KIND_LABELS[node.kind] ?? ''} ${node.label}, ${CHANGE_LABELS[node.change]}`);
+    return group;
+  }
+
+  function drawGroup(layoutGroup, groupLabel) {
+    const transform = `translate(${layoutGroup.x} ${layoutGroup.y})`;
+    // The name is drawn in its own layer, above the edges, so a line that crosses it does not hide it.
+    return {
+      box: createSvgElement('g', { class: 'graph-group', transform }, [
+        createSvgElement('rect', { width: layoutGroup.width, height: layoutGroup.height, rx: GROUP_CORNER_RADIUS_PX }),
+      ]),
+      name: createSvgElement('g', { class: 'graph-group graph-group-name', transform }, [
+        createSvgElement('text', { x: layoutGroup.width / 2, y: GROUP_LABEL_BASELINE_PX, 'text-anchor': 'middle' }, [groupLabel]),
+      ]),
+    };
+  }
+
+  function drawEdge(layoutEdge) {
+    const relationship = elementsById.get(layoutEdge.id);
+    const points = (layoutEdge.sections ?? []).flatMap((section) => [section.startPoint, ...(section.bendPoints ?? []), section.endPoint]);
+    if (points.length < 2) return null;
+    const lastPoint = points.at(-1);
+    const previousPoint = points.at(-2);
+    const angle = Math.atan2(lastPoint.y - previousPoint.y, lastPoint.x - previousPoint.x);
+    // The line stops at the base of the arrow head, so the head ends exactly on the node border.
+    const lineEnd = { x: lastPoint.x - Math.cos(angle) * ARROW_LENGTH_PX, y: lastPoint.y - Math.sin(angle) * ARROW_LENGTH_PX };
+    const pathData = [...points.slice(0, -1), lineEnd].map((point, index) => `${index === 0 ? 'M' : 'L'}${point.x} ${point.y}`).join(' ');
+    const arrow = createSvgElement('polygon', {
+      class: 'edge-arrow',
+      points: `0,0 ${-ARROW_LENGTH_PX},${-ARROW_HALF_WIDTH_PX} ${-ARROW_LENGTH_PX},${ARROW_HALF_WIDTH_PX}`,
+      transform: `translate(${lastPoint.x} ${lastPoint.y}) rotate(${(angle * 180) / Math.PI})`,
+    });
+    const labels = (layoutEdge.labels ?? []).map((label) =>
+      createSvgElement('text', { x: label.x + label.width / 2, y: label.y + EDGE_LABEL_BASELINE_PX, 'text-anchor': 'middle' }, [label.text]),
+    );
+    const confidenceClass = relationship.confidence === INFERRED ? INFERRED : '';
+    const group = createSvgElement('g', { class: `graph-edge ${displayedChange(relationship)} ${confidenceClass}` }, [
+      createSvgElement('path', { class: 'edge-hit', d: pathData }),
+      createSvgElement('path', { class: 'edge-line', d: pathData }),
+      arrow,
+      ...labels,
+    ]);
+    makeSelectable(group, relationship.id, `${labelOf(relationship.source)} a ${labelOf(relationship.target)}: ${relationshipLabel(relationship)}, ${CHANGE_LABELS[relationship.change]}`);
+    return group;
+  }
+
+  function drawLayout(layout, groups) {
+    const groupLabels = new Map(groups.map((group) => [`${GROUP_ID_PREFIX}${group.id}`, group.label]));
+    const groupLayer = createSvgElement('g');
+    const edgeLayer = createSvgElement('g');
+    const groupNameLayer = createSvgElement('g');
+    const nodeLayer = createSvgElement('g');
+    const visit = (layoutNode) => {
+      for (const child of layoutNode.children ?? []) {
+        if (groupLabels.has(child.id)) {
+          const group = drawGroup(child, groupLabels.get(child.id));
+          groupLayer.append(group.box);
+          groupNameLayer.append(group.name);
+        } else {
+          nodeLayer.append(drawNode(child));
+        }
+        visit(child);
+      }
+      for (const layoutEdge of layoutNode.edges ?? []) {
+        const edge = drawEdge(layoutEdge);
+        if (edge) edgeLayer.append(edge);
+      }
+    };
+    visit(layout);
+    svg.replaceChildren(groupLayer, edgeLayer, groupNameLayer, nodeLayer);
+    viewport.contentWidth = layout.width;
+    viewport.contentHeight = layout.height;
+    fitViewport({ keepReadable: phoneLayout.matches });
+    highlightSelection();
+  }
+
+  function applyViewport() {
+    const { width, height } = svg.getBoundingClientRect();
+    if (width === 0 || height === 0) return;
+    svg.setAttribute('viewBox', `${viewport.x} ${viewport.y} ${width / viewport.scale} ${height / viewport.scale}`);
+  }
+
+  /**
+   * Shows the whole graph. With `keepReadable` the zoom never drops below the size at which the
+   * labels can be read: on a small screen the graph then starts at its first elements and the
+   * rest is reached by moving the canvas, instead of everything shrinking to fit.
+   */
+  function fitViewport({ keepReadable = false } = {}) {
+    const { width, height } = svg.getBoundingClientRect();
+    if (width === 0 || height === 0 || viewport.contentWidth === 0) return;
+    const wholeGraphScale = Math.min((width - VIEWPORT_MARGIN_PX * 2) / viewport.contentWidth, (height - VIEWPORT_MARGIN_PX * 2) / viewport.contentHeight, 1);
+    viewport.scale = Math.max(keepReadable ? Math.max(wholeGraphScale, MIN_READABLE_SCALE) : wholeGraphScale, MIN_SCALE);
+    const visibleWidth = width / viewport.scale;
+    const visibleHeight = height / viewport.scale;
+    const margin = VIEWPORT_MARGIN_PX / viewport.scale;
+    // An axis that fits is centred; one that does not starts at the beginning of the flow.
+    viewport.x = viewport.contentWidth + margin * 2 > visibleWidth ? -margin : (viewport.contentWidth - visibleWidth) / 2;
+    viewport.y = viewport.contentHeight + margin * 2 > visibleHeight ? -margin : (viewport.contentHeight - visibleHeight) / 2;
+    applyViewport();
+  }
+
+  /** Zooms keeping the point under `anchor` (in screen pixels, relative to the SVG) in place. */
+  function zoomBy(factor, anchor) {
+    const { width, height } = svg.getBoundingClientRect();
+    const anchorPoint = anchor ?? { x: width / 2, y: height / 2 };
+    const nextScale = Math.min(Math.max(viewport.scale * factor, MIN_SCALE), MAX_SCALE);
+    viewport.x += anchorPoint.x / viewport.scale - anchorPoint.x / nextScale;
+    viewport.y += anchorPoint.y / viewport.scale - anchorPoint.y / nextScale;
+    viewport.scale = nextScale;
+    applyViewport();
+  }
+
+  function panBy(deltaX, deltaY) {
+    viewport.x += deltaX / viewport.scale;
+    viewport.y += deltaY / viewport.scale;
+    applyViewport();
+  }
+
+  /** Keyboard control of the canvas: arrows move it, + and - zoom, 0 fits the whole graph. */
+  function handleViewportKey(event) {
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    const actions = {
+      ArrowLeft: () => panBy(-KEYBOARD_PAN_STEP_PX, 0),
+      ArrowRight: () => panBy(KEYBOARD_PAN_STEP_PX, 0),
+      ArrowUp: () => panBy(0, -KEYBOARD_PAN_STEP_PX),
+      ArrowDown: () => panBy(0, KEYBOARD_PAN_STEP_PX),
+      '+': () => zoomBy(ZOOM_STEP),
+      '=': () => zoomBy(ZOOM_STEP),
+      '-': () => zoomBy(1 / ZOOM_STEP),
+      0: () => fitViewport(),
+    };
+    const action = actions[event.key];
+    if (!action) return;
+    event.preventDefault();
+    action();
+  }
+
+  function setUpViewportInteraction() {
+    let drag = null;
+    let pinch = null;
+    // Whether the gesture in progress moved or zoomed the canvas, so its click selects nothing.
+    let wasLastGestureMove = false;
+    const activePointers = new Map();
+    svg.addEventListener('keydown', handleViewportKey);
+    svg.addEventListener('wheel', (event) => {
+      event.preventDefault();
+      const bounds = svg.getBoundingClientRect();
+      zoomBy(event.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP, { x: event.clientX - bounds.left, y: event.clientY - bounds.top });
+    }, { passive: false });
+    const startDrag = (pointer, { moved, target }) => {
+      drag = { startX: pointer.x, startY: pointer.y, originX: viewport.x, originY: viewport.y, moved, target };
+    };
+    /** Distance between the two fingers and their midpoint, relative to the SVG. */
+    const measurePinch = () => {
+      const [first, second] = [...activePointers.values()];
+      const bounds = svg.getBoundingClientRect();
+      return {
+        distance: Math.hypot(second.x - first.x, second.y - first.y),
+        midpoint: { x: (first.x + second.x) / 2 - bounds.left, y: (first.y + second.y) / 2 - bounds.top },
+      };
+    };
+    svg.addEventListener('pointerdown', (event) => {
+      activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      wasLastGestureMove = activePointers.size > 1;
+      if (activePointers.size === PINCH_POINTER_COUNT) {
+        // A second finger turns the gesture into a pinch; it is no longer a click or a one-finger pan.
+        drag = null;
+        pinch = measurePinch();
+        svg.classList.add('is-panning');
+        return;
+      }
+      if (activePointers.size === 1) startDrag({ x: event.clientX, y: event.clientY }, { moved: false, target: event.target });
+    });
+    svg.addEventListener('pointermove', (event) => {
+      if (activePointers.has(event.pointerId)) activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (pinch && activePointers.size === PINCH_POINTER_COUNT) {
+        const current = measurePinch();
+        if (pinch.distance > 0 && current.distance > 0) {
+          // Follow the midpoint first, then zoom around it, so the content stays under the fingers.
+          viewport.x -= (current.midpoint.x - pinch.midpoint.x) / viewport.scale;
+          viewport.y -= (current.midpoint.y - pinch.midpoint.y) / viewport.scale;
+          zoomBy(current.distance / pinch.distance, current.midpoint);
+        }
+        pinch = current;
+        return;
+      }
+      if (!drag) return;
+      const deltaX = event.clientX - drag.startX;
+      const deltaY = event.clientY - drag.startY;
+      if (!drag.moved && Math.hypot(deltaX, deltaY) < DRAG_THRESHOLD_PX) return;
+      if (!drag.moved) {
+        drag.moved = true;
+        svg.setPointerCapture(event.pointerId);
+        svg.classList.add('is-panning');
+      }
+      viewport.x = drag.originX - deltaX / viewport.scale;
+      viewport.y = drag.originY - deltaY / viewport.scale;
+      applyViewport();
+    });
+    const endDrag = (event) => {
+      activePointers.delete(event.pointerId);
+      if (pinch) {
+        pinch = null;
+        svg.classList.remove('is-panning');
+        // The finger that stays down keeps panning from where it is, without counting as a click.
+        const [remainingPointer] = activePointers.values();
+        if (remainingPointer) startDrag(remainingPointer, { moved: true, target: null });
+        return;
+      }
+      if (!drag) return;
+      const finishedDrag = drag;
+      drag = null;
+      svg.classList.remove('is-panning');
+      if (finishedDrag.moved) wasLastGestureMove = true;
+    };
+    // Selection waits for the click instead of acting on pointerup: on a touch screen the browser
+    // sends the click after the finger lifts, and if the drawer had already opened that click
+    // would land on whatever the drawer put under the finger.
+    svg.addEventListener('click', (event) => {
+      if (wasLastGestureMove) return;
+      select(event.target.closest?.('[data-element-id]')?.dataset.elementId ?? null);
+    });
+    svg.addEventListener('pointerup', endDrag);
+    svg.addEventListener('pointercancel', endDrag);
+    zoomControls.addEventListener('click', (event) => {
+      const action = event.target.closest('button')?.dataset.zoom;
+      if (action === 'in') zoomBy(ZOOM_STEP);
+      if (action === 'out') zoomBy(1 / ZOOM_STEP);
+      if (action === 'fit') fitViewport();
+    });
+    // The canvas changes size when the window does and when the panel or the filters fold.
+    new ResizeObserver(applyViewport).observe(svg);
+  }
+
+  /** `hidden` is a property of HTML elements only; an SVG element needs the attribute. */
+  const setGraphHidden = (isHidden) => svg.toggleAttribute('hidden', isHidden);
+
+  function showCanvasMessage(text) {
+    canvasMessage.textContent = text;
+    canvasMessage.hidden = !text;
+    setGraphHidden(Boolean(text));
+    zoomControls.hidden = Boolean(text);
+  }
+
+  async function drawGraph(visibleElements) {
+    const requestId = ++layoutRequestId;
+    svg.replaceChildren();
+    if (visibleElements.nodes.length === 0) {
+      showCanvasMessage('No hay elementos para mostrar con estos filtros.');
+      return;
+    }
+    if (typeof window.ELK !== 'function') {
+      showCanvasMessage('No se pudo cargar la librería que acomoda el grafo (¿sin conexión?). La lista del panel describe el mismo flujo en texto.');
+      return;
+    }
+    showCanvasMessage('');
+    try {
+      const layout = await new window.ELK().layout(toLayoutGraph(visibleElements));
+      // A newer filter or view started while this layout was running; its result is the one to draw.
+      if (requestId === layoutRequestId) drawLayout(layout, visibleElements.groups);
+    } catch (layoutError) {
+      console.error('pr-flow-graph: ELK could not lay out the graph', layoutError);
+      if (requestId === layoutRequestId) showCanvasMessage('No se pudo acomodar el grafo. La lista del panel describe el mismo flujo en texto.');
+    }
+  }
+
+  function renderDetail() {
+    detailContainer.replaceChildren();
+    const element = elementsById.get(state.selectedId);
+    if (!element) {
+      detailContainer.append(
+        createElement('h2', { text: 'Detalle' }),
+        createElement('p', { className: 'placeholder', text: 'Elegí un nodo o una relación del grafo, o un elemento de la lista, para ver qué es y dónde está en el código.' }),
+      );
+      return;
+    }
+    const isRelationship = Boolean(element.source);
+    const badges = createElement('div', { className: 'badges' }, [
+      createElement('span', { className: `badge ${element.change}`, text: CHANGE_LABELS[element.change] }),
+      createElement('span', { className: 'badge', text: KIND_LABELS[element.kind] ?? 'Transición' }),
+      ...(element.confidence ? [createElement('span', { className: 'badge', text: element.confidence === INFERRED ? 'Inferida' : 'Verificada en el código' })] : []),
+    ]);
+    detailContainer.append(createElement('h2', { text: isRelationship ? relationshipLabel(element) : element.label }), badges);
+    if (isRelationship) detailContainer.append(createElement('p', { text: `${labelOf(element.source)} → ${labelOf(element.target)}` }));
+    if (element.summary) detailContainer.append(createElement('p', { text: element.summary }));
+    if (element.reason) detailContainer.append(createElement('h3', { text: 'Por qué se infiere' }), createElement('p', { text: element.reason }));
+    detailContainer.append(createElement('h3', { text: 'Evidencia' }));
+    const evidence = element.evidence ?? [];
+    if (evidence.length === 0) {
+      detailContainer.append(createElement('p', { className: 'placeholder', text: 'Sin evidencia registrada: el PR no cambió este elemento.' }));
+      return;
+    }
+    detailContainer.append(
+      createElement('ul', { className: 'evidence' }, evidence.map((item) => {
+        const reference = `${item.path}:${item.line}`;
+        const content = item.href
+          ? createElement('a', { text: reference, attributes: { href: item.href, target: '_blank', rel: 'noopener' } })
+          : document.createTextNode(reference);
+        return createElement('li', {}, [content]);
+      })),
+    );
+  }
+
+  function renderElementList({ nodes, relationships }) {
+    const toItem = (element, text) => {
+      const button = createElement('button', { attributes: { type: 'button', 'data-element-id': element.id } }, [
+        createElement('span', { className: `swatch ${displayedChange(element)}` }),
+        createElement('span', { text }),
+      ]);
+      button.addEventListener('click', () => select(element.id));
+      return createElement('li', {}, [button]);
+    };
+    elementList.replaceChildren(
+      ...nodes.map((node) => toItem(node, node.label)),
+      ...relationships.map((relationship) => toItem(relationship, `${labelOf(relationship.source)} → ${labelOf(relationship.target)}: ${relationshipLabel(relationship)}`)),
+    );
+  }
+
+  function renderFormalModel() {
+    formalModelContainer.replaceChildren(
+      createElement('p', { text: 'Modelo en Lean 4 del flujo de negocio. Lean lo compiló sin errores y sin pruebas pendientes: las propiedades valen para este modelo, que es una abstracción del código escrita a partir del PR, no el código mismo.' }),
+      createElement('pre', {}, [createElement('code', { text: model.formalModel.source })]),
+    );
+  }
+
+  function highlightSelection() {
+    for (const element of document.querySelectorAll('[data-element-id]')) {
+      const isSelected = element.dataset.elementId === state.selectedId;
+      if (element instanceof SVGElement) element.classList.toggle('selected', isSelected);
+      else element.setAttribute('aria-current', String(isSelected));
+    }
+  }
+
+  function select(elementId) {
+    state.selectedId = elementId;
+    highlightSelection();
+    renderDetail();
+    // On a phone the panel is a drawer over the canvas: choosing something is asking to read it.
+    if (elementId && phoneLayout.matches) setPanelOpen(true);
+  }
+
+  /**
+   * Shows or hides the side panel. On a phone it is a drawer with a backdrop, so focus moves into
+   * it when it opens and back to the button that opened it when it closes.
+   */
+  function setPanelOpen(isOpen, { moveFocus = true } = {}) {
+    const wasOpen = !sidePanel.hidden;
+    sidePanel.hidden = !isOpen;
+    backdrop.hidden = !(isOpen && phoneLayout.matches);
+    document.body.classList.toggle('panel-closed', !isOpen);
+    togglePanelButton.setAttribute('aria-expanded', String(isOpen));
+    if (!moveFocus || wasOpen === isOpen || !phoneLayout.matches) return;
+    (isOpen ? closePanelButton : togglePanelButton).focus();
+  }
+
+  function setUpCollapsibles() {
+    togglePanelButton.addEventListener('click', () => setPanelOpen(sidePanel.hidden));
+    closePanelButton.addEventListener('click', () => setPanelOpen(false));
+    backdrop.addEventListener('click', () => setPanelOpen(false));
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && phoneLayout.matches && !sidePanel.hidden) setPanelOpen(false);
+    });
+    toggleFiltersButton.addEventListener('click', () => {
+      const isOpen = pageHeader.classList.toggle('filters-open');
+      toggleFiltersButton.setAttribute('aria-expanded', String(isOpen));
+    });
+    // The panel starts open where it fits beside the canvas and closed where it would cover it.
+    phoneLayout.addEventListener('change', () => {
+      setPanelOpen(!phoneLayout.matches, { moveFocus: false });
+      // The direction of the flow depends on the layout, so the graph is laid out again.
+      render();
+    });
+    setPanelOpen(!phoneLayout.matches, { moveFocus: false });
+  }
+
+  function render() {
+    const isFormalView = state.view === VIEW.formal;
+    formalModelContainer.hidden = !isFormalView;
+    document.getElementById('moment-buttons').hidden = isFormalView;
+    document.getElementById('only-changed-toggle').hidden = isFormalView;
+    elementsById.clear();
+
+    if (isFormalView) {
+      layoutRequestId += 1;
+      showCanvasMessage('');
+      setGraphHidden(true);
+      zoomControls.hidden = true;
+      renderFormalModel();
+      elementList.replaceChildren();
+      state.selectedId = null;
+      renderDetail();
+      return;
+    }
+    const viewElements = readViewElements();
+    for (const element of [...viewElements.nodes, ...viewElements.relationships]) elementsById.set(element.id, element);
+    const visibleElements = filterElements(viewElements);
+    const visibleIds = new Set([...visibleElements.nodes, ...visibleElements.relationships].map((element) => element.id));
+    if (!visibleIds.has(state.selectedId)) state.selectedId = null;
+    renderElementList(visibleElements);
+    renderDetail();
+    drawGraph(visibleElements);
+  }
+
+  function buildSegmentedControl(containerId, labels, stateKey, pressedAttribute) {
+    const container = document.getElementById(containerId);
+    const buttons = Object.entries(labels).map(([value, label]) => {
+      const button = createElement('button', { text: label, attributes: { type: 'button', [pressedAttribute]: String(state[stateKey] === value) } });
+      if (pressedAttribute === 'aria-selected') button.setAttribute('role', 'tab');
+      button.addEventListener('click', () => {
+        state[stateKey] = value;
+        for (const other of buttons) other.setAttribute(pressedAttribute, String(other === button));
+        render();
+      });
+      return button;
+    });
+    container.replaceChildren(...buttons);
+  }
+
+  /** A ref given as a full commit hash is shown abbreviated, the way git does. */
+  const shortRef = (ref) => (FULL_COMMIT_HASH_PATTERN.test(ref) ? ref.slice(0, SHORT_COMMIT_HASH_LENGTH) : ref);
+
+  function renderSubtitle() {
+    const { pullRequest } = model;
+    const subtitle = document.getElementById('subtitle');
+    subtitle.append(
+      createElement('code', { text: shortRef(pullRequest.headRef) }), ' → ', createElement('code', { text: shortRef(pullRequest.baseRef) }),
+      ...(model.architecture ? [` · Arquitectura: ${model.architecture}`] : []),
+    );
+    if (pullRequest.url) {
+      subtitle.append(' · ', createElement('a', { text: 'Ver el pull request', attributes: { href: pullRequest.url, target: '_blank', rel: 'noopener' } }));
+    }
+  }
+
+  const availableViewLabels = Object.fromEntries(
+    Object.entries(VIEW_LABELS).filter(([view]) => view === VIEW.changes || (view === VIEW.business && model.businessFlow) || (view === VIEW.formal && model.formalModel)),
+  );
+  renderSubtitle();
+  buildSegmentedControl('view-tabs', availableViewLabels, 'view', 'aria-selected');
+  buildSegmentedControl('moment-buttons', MOMENT_LABELS, 'moment', 'aria-pressed');
+  document.getElementById('only-changed').addEventListener('change', (event) => {
+    state.onlyChanged = event.target.checked;
+    render();
+  });
+  setUpCollapsibles();
+  setUpViewportInteraction();
+  render();
+})();
+</script>
+</body>
+</html>

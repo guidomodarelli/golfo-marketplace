@@ -1,0 +1,206 @@
+{
+  "schema_version": 2,
+  "skill": "pr-flow-graph",
+  "description": "Evalúa el modelo de flujo que la skill escribe a partir de un PR: evidencia archivo:línea en lo que cambió, relaciones inferidas declaradas con su motivo, lado base para lo eliminado, flujo de negocio en lenguaje de usuario, y los cortes honestos (sin diff, refactor sin cambio observable, Lean no instalado).",
+  "test_cases": [
+    {
+      "id": "inferred-registration-declared",
+      "description": "Una relación que solo existe por inyección de dependencias se marca como inferida y con motivo, no como verificada.",
+      "input": "/pr-flow-graph\n\nNo podés escribir archivos ni correr comandos en este entorno: mostrá el contenido completo de pr-flow-graph/flow-graph.json en tu respuesta.\n\nPR «Agregar carrito al detalle», base main, head feature/cart-from-detail. Arquitectura Flux en Android. Diff completo:\n\n--- /dev/null\n+++ b/app/src/main/java/shop/cart/CartActions.kt\n@@ -0,0 +1,6 @@\n+package shop.cart\n+\n+data class AddToCartAction(val productId: String)\n+\n+fun addToCart(dispatcher: Dispatcher, productId: String) =\n+    dispatcher.dispatch(AddToCartAction(productId))\n--- /dev/null\n+++ b/app/src/main/java/shop/cart/CartStore.kt\n@@ -0,0 +1,9 @@\n+package shop.cart\n+\n+class CartStore : Store<CartState>(CartState()) {\n+    @Subscribe\n+    fun onAddToCart(action: AddToCartAction) {\n+        setState(state.copy(items = state.items + action.productId))\n+    }\n+}\n+\n--- a/app/src/main/java/shop/di/StoreModule.kt\n+++ b/app/src/main/java/shop/di/StoreModule.kt\n@@ -12,3 +12,4 @@\n     @Provides fun productStore() = ProductStore()\n+    @Provides @IntoSet fun cartStore(): Store<*> = CartStore()\n--- a/app/src/main/java/shop/detail/ProductDetailFragment.kt\n+++ b/app/src/main/java/shop/detail/ProductDetailFragment.kt\n@@ -40,3 +40,4 @@\n         binding.title.text = product.title\n+        binding.addToCart.setOnClickListener { addToCart(dispatcher, product.id) }\n\nEn ningún archivo hay una llamada directa del Dispatcher a CartStore: el Dispatcher recorre el Set<Store<*>> inyectado y entrega la acción por reflexión a los métodos @Subscribe.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "\"confidence\"\\s*:\\s*\"inferred\"",
+          "description": "Marca como inferida la entrega del Dispatcher al store"
+        },
+        {
+          "type": "regex",
+          "pattern": "\"reason\"\\s*:\\s*\"[^\"]*(inyecci|@IntoSet|@Subscribe|reflexi|Set<)",
+          "description": "Explica el motivo de la inferencia con lo que vio en el código"
+        },
+        {
+          "type": "regex",
+          "pattern": "\"confidence\"\\s*:\\s*\"verified\"",
+          "description": "Deja como verificadas las relaciones que sí están escritas (el click que despacha)"
+        },
+        {
+          "type": "regex",
+          "pattern": "\"path\"\\s*:\\s*\"app/src/main/java/shop/cart/CartStore\\.kt\"",
+          "description": "Da evidencia del store agregado con su ruta relativa al repo"
+        },
+        {
+          "type": "regex",
+          "pattern": "\"line\"\\s*:\\s*[1-9]",
+          "description": "La evidencia lleva número de línea"
+        }
+      ]
+    },
+    {
+      "id": "model-follows-schema",
+      "description": "El modelo usa el contrato: versión, estado del cambio por elemento, tipos del perfil Flux y flujo de negocio con estado inicial.",
+      "input": "/pr-flow-graph\n\nNo podés escribir archivos ni correr comandos en este entorno: mostrá el contenido completo de pr-flow-graph/flow-graph.json en tu respuesta.\n\nPR «Marcar notificaciones como leídas», base main, head feature/mark-read. Arquitectura Flux en Android. Diff completo:\n\n--- /dev/null\n+++ b/app/src/main/java/inbox/MarkReadAction.kt\n@@ -0,0 +1,3 @@\n+package inbox\n+\n+data class MarkReadAction(val notificationId: String)\n--- a/app/src/main/java/inbox/InboxStore.kt\n+++ b/app/src/main/java/inbox/InboxStore.kt\n@@ -20,3 +20,10 @@\n     }\n+\n+    fun onMarkRead(action: MarkReadAction) {\n+        setState(state.copy(saving = true))\n+        api.markRead(action.notificationId)\n+            .onSuccess { setState(state.copy(saving = false, unread = state.unread - action.notificationId)) }\n+            .onFailure { setState(state.copy(saving = false, error = it.message)) }\n+    }\n--- a/app/src/main/java/inbox/InboxFragment.kt\n+++ b/app/src/main/java/inbox/InboxFragment.kt\n@@ -55,3 +55,4 @@\n         adapter.submitList(state.items)\n+        adapter.onSwipe = { id -> dispatcher.dispatch(MarkReadAction(id)) }\n\nInboxStore llama directamente a dispatcher.register(this) en su init (línea 12, sin cambios).",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "\"schemaVersion\"\\s*:\\s*1",
+          "description": "Declara la versión del esquema"
+        },
+        {
+          "type": "regex",
+          "pattern": "\"kind\"\\s*:\\s*\"store\"",
+          "description": "Clasifica InboxStore como store"
+        },
+        {
+          "type": "regex",
+          "pattern": "\"change\"\\s*:\\s*\"modified\"",
+          "description": "Marca como modificadas las piezas que el PR edita"
+        },
+        {
+          "type": "regex",
+          "pattern": "\"kind\"\\s*:\\s*\"action\"",
+          "description": "Clasifica MarkReadAction como acción"
+        },
+        {
+          "type": "regex",
+          "pattern": "\"businessFlow\"\\s*:",
+          "description": "Incluye el flujo de negocio"
+        },
+        {
+          "type": "regex",
+          "pattern": "\"kind\"\\s*:\\s*\"initial\"",
+          "description": "El flujo de negocio tiene un estado inicial"
+        },
+        {
+          "type": "regex",
+          "pattern": "\"kind\"\\s*:\\s*\"error\"",
+          "description": "Modela el camino de error que agrega el PR"
+        },
+        {
+          "type": "regex",
+          "pattern": "\"trigger\"\\s*:\\s*\"[^\"]*(desliz|swipe|arrastr)",
+          "description": "Describe la transición con la acción del usuario"
+        }
+      ]
+    },
+    {
+      "id": "removed-element-uses-base-side",
+      "description": "Lo eliminado se marca como removed y su evidencia apunta al lado base del diff.",
+      "input": "/pr-flow-graph\n\nNo podés escribir archivos ni correr comandos en este entorno: mostrá el contenido completo de pr-flow-graph/flow-graph.json en tu respuesta.\n\nPR «Quitar el cliente legacy de cupones», base main, head feature/drop-legacy-coupons. Backend en capas (Node). Diff completo:\n\n--- a/src/coupons/legacy-coupon-client.js\n+++ /dev/null\n@@ -1,8 +0,0 @@\n-const http = require('../http');\n-\n-async function fetchLegacyCoupon(code) {\n-  return http.get(`https://legacy.example.com/coupons/${code}`);\n-}\n-\n-module.exports = { fetchLegacyCoupon };\n-\n--- a/src/coupons/coupon-service.js\n+++ b/src/coupons/coupon-service.js\n@@ -10,6 +10,5 @@ async function applyCoupon(orderId, code) {\n-  const coupon = (await couponRepository.findByCode(code)) ?? (await fetchLegacyCoupon(code));\n+  const coupon = await couponRepository.findByCode(code);\n   if (!coupon) throw new CouponNotFoundError(code);\n\nPOST /orders/:id/coupon (src/coupons/coupon-routes.js:14, sin cambios) llama a applyCoupon.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "\"change\"\\s*:\\s*\"removed\"",
+          "description": "Marca el cliente legacy y su llamada como eliminados"
+        },
+        {
+          "type": "regex",
+          "pattern": "\"side\"\\s*:\\s*\"base\"",
+          "description": "La evidencia de lo eliminado apunta al lado base"
+        },
+        {
+          "type": "regex",
+          "pattern": "\"change\"\\s*:\\s*\"unchanged\"",
+          "description": "Conserva como contexto la ruta que no cambió"
+        }
+      ]
+    },
+    {
+      "id": "pure-refactor-omits-business-flow",
+      "description": "En un refactor sin cambio observable no inventa un flujo de negocio y lo dice.",
+      "input": "/pr-flow-graph\n\nNo podés escribir archivos ni correr comandos en este entorno: mostrá el contenido completo de pr-flow-graph/flow-graph.json en tu respuesta y después el reporte.\n\nPR «Renombrar UserRepo a UserRepository», base main, head feature/rename-user-repo. MVVM en Android. Diff completo:\n\n--- a/app/src/main/java/profile/UserRepo.kt\n+++ b/app/src/main/java/profile/UserRepository.kt\n@@ -3,3 +3,3 @@\n-class UserRepo(private val api: UserApi) {\n+class UserRepository(private val api: UserApi) {\n     suspend fun load(id: String) = api.user(id)\n--- a/app/src/main/java/profile/ProfileViewModel.kt\n+++ b/app/src/main/java/profile/ProfileViewModel.kt\n@@ -8,3 +8,3 @@\n-class ProfileViewModel(private val users: UserRepo) : ViewModel() {\n+class ProfileViewModel(private val users: UserRepository) : ViewModel() {\n     fun load(id: String) = viewModelScope.launch { _state.value = users.load(id) }\n\nNo cambia ningún comportamiento: es solo el nombre de la clase.",
+      "assertions": [
+        {
+          "type": "not_contains_any",
+          "values": [
+            "\"businessFlow\""
+          ],
+          "description": "No inventa un flujo de negocio para un cambio sin comportamiento observable"
+        },
+        {
+          "type": "regex",
+          "pattern": "sin cambios observables|no cambia (el |ning[uú]n )?comportamiento|refactor|renombr",
+          "description": "Explica que el flujo de negocio no cambia"
+        },
+        {
+          "type": "regex",
+          "pattern": "\"schemaVersion\"\\s*:\\s*1",
+          "description": "El modelo del refactor sigue el contrato de la skill"
+        },
+        {
+          "type": "regex",
+          "pattern": "\"confidence\"\\s*:\\s*\"(verified|inferred)\"",
+          "description": "Cada relación declara si está verificada o inferida"
+        },
+        {
+          "type": "regex",
+          "pattern": "\"change\"\\s*:\\s*\"modified\"",
+          "description": "Igual grafica las piezas que el PR tocó"
+        }
+      ]
+    },
+    {
+      "id": "no-diff-stops",
+      "control": "Detenerse cuando no hay diff es el comportamiento esperable de cualquier agente; el caso vigila que la skill no lo rompa armando un modelo igual.",
+      "description": "Sin diff contra la base, lo dice y no arma un modelo.",
+      "input": "/pr-flow-graph\n\nEstoy en la branch main y `git diff origin/main...HEAD` no devuelve nada. Tampoco hay un PR abierto para esta branch.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "no hay (cambios|diff|diferencias)|sin (cambios|diff)|nada que graficar|no tiene cambios",
+          "description": "Dice que no hay cambios para graficar"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "\"schemaVersion\"",
+            "\"nodes\"",
+            "flowchart LR"
+          ],
+          "description": "No inventa un modelo ni un diagrama"
+        }
+      ]
+    },
+    {
+      "id": "lean-unavailable-is-not-claimed",
+      "description": "Con --lean y sin Lean instalado, no presenta el modelo formal como verificado.",
+      "input": "/pr-flow-graph --lean\n\nYa generaste pr-flow-graph/flow-graph.json y pr-flow-graph/FlowModel.lean para el PR «Reintentar el pago rechazado». Corriste el render y esta fue la salida:\n\n[ok] pr-flow-graph/flow-graph.json es válido.\n[warn] El modelo Lean queda fuera del grafo. `lean` is not installed, so the Lean model could not be checked.\n[ok] Grafo interactivo: pr-flow-graph/pr-flow-graph.html\n[ok] Mermaid para el PR: pr-flow-graph/pr-flow-graph.md\n6 nodos, 7 relaciones, 4 estados de negocio\nAgregados 5 · modificados 2 · eliminados 0\nRelaciones inferidas: 1 · modelo Lean: no incluido\n\nEscribí el reporte final.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "no (est[aá] )?instalad|no (se )?(pudo )?verific|sin verificar|no verificado",
+          "description": "Informa que Lean no está instalado o que el modelo no se verificó"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "Modelo formal:** incluido",
+            "Modelo formal incluido",
+            "propiedades probadas",
+            "Lean lo compiló"
+          ],
+          "description": "No presenta el modelo formal como incluido ni probado"
+        },
+        {
+          "type": "regex",
+          "pattern": "pr-flow-graph\\.html",
+          "description": "Entrega igual la ruta del grafo generado"
+        },
+        {
+          "type": "regex",
+          "pattern": "\\*\\*Modelo formal:\\*\\*( |\\*)*no incluido",
+          "description": "Usa la línea «Modelo formal» del reporte de la skill para decir que no se incluyó"
+        },
+        {
+          "type": "regex",
+          "pattern": "\\*\\*Fuera del grafo:\\*\\*",
+          "description": "El reporte dice qué quedó fuera del grafo"
+        },
+        {
+          "type": "regex",
+          "pattern": "[Ii]nferid",
+          "description": "Menciona las relaciones inferidas a confirmar"
+        }
+      ]
+    }
+  ]
+}
