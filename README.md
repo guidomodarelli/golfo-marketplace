@@ -320,7 +320,7 @@ temporales.
 `pnpm run test:skill-coverage` corre con `node --test` la suite del motor de cobertura incremental de
 skills (`plugins/golfo-kit/tools/skill-coverage/`) sobre repos git temporales; usa `@babel/parser`
 de las devDependencies para el análisis por símbolos.
-`pnpm run test:pr-flow-graph` corre con `node --test` las suites de `skills/pr-flow-graph`: el
+`pnpm run test:pr-flow-graph` corre con `node --test` las suites de `pr-flow-graph`: el
 validador del modelo, los renderers de Mermaid y HTML, la compuerta de Lean, el contrato del CLI y la
 página del grafo en un navegador real. Esta última usa `playwright-core` y su Chromium, igual que la
 suite de `user-manual`, y toma ELK de la devDependency `elkjs`, sin red.
@@ -394,7 +394,7 @@ se vuelve más lento. Durante una tarea, corré solo lo que cubre el cambio y de
 | `review-fix-loop`, `sibling-worktree`, `create-version`, `check-version-bump`, `validate-portable-plugins` o el eval runner | Su suite (`pnpm run test:review-fix-loop`, `pnpm run test:sibling-worktree`, `bash scripts/run-bats.sh tests/create-version.bats tests/check-version-bump.bats tests/validate-portable-plugins.bats`, `bash scripts/run-bats.sh skill-eval-runner/tests/*.bats`) |
 | Motor de cobertura de skills (`plugins/golfo-kit/tools/skill-coverage/**`) | `pnpm run test:skill-coverage` |
 | `user-manual`: navegación de `DESIGN.md`, `scripts/check-*`, `build-manual.mjs` o `assets/` | `pnpm run test:user-manual` (con Playwright para la suite de navegador) y, si se tocó la paleta, `bash scripts/run-bats.sh plugins/golfo-kit/skills/user-manual/tests/check-design-tokens.bats` |
-| `pr-flow-graph` (`skills/pr-flow-graph/`): el modelo de flujo, `scripts/` o `assets/flow-graph-template.html` | `pnpm run test:pr-flow-graph` (con Playwright para la suite de navegador) |
+| `pr-flow-graph`: el modelo de flujo, `scripts/` o `assets/flow-graph-template.html` | `pnpm run test:pr-flow-graph` (con Playwright para la suite de navegador) |
 | Helper de `jira-ticket` (`scripts/jira-ticket.py`) | `pnpm run test:jira-ticket` (necesita `pytest`: `python3 -m pip install pytest`) |
 | Frontmatter de una skill o `plugin.json` de un plugin | `pnpm validate-portable-plugins` |
 
