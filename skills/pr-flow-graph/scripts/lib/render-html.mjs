@@ -15,12 +15,15 @@ const GITHUB_DIFF_SIDE_MARKER = { [EVIDENCE_SIDE.base]: 'L', [EVIDENCE_SIDE.head
  * @param {string} [options.leanSource] Lean model that already passed `checkLeanModel`.
  * @param {Map<string, string>} [options.inlinedLibraries] Library source by URL; a library found
  *   here is embedded in the page, so the page also opens without network.
+ * @param {{ checks: import('./render-report.mjs').Check[] }} [options.verification] What was
+ *   verified before rendering. Without it the page says the graph was not verified.
  * @returns {string} HTML document.
  */
-export function renderFlowGraphHtml(model, { leanSource, inlinedLibraries = new Map() } = {}) {
+export function renderFlowGraphHtml(model, { leanSource, inlinedLibraries = new Map(), verification } = {}) {
   const pageModel = {
     ...withEvidenceLinks(model),
     kindLabels: KIND_LABELS,
+    ...(verification ? { verification } : {}),
     ...(leanSource ? { formalModel: { language: 'lean4', source: leanSource } } : {}),
   };
   // Function replacers: the replacement text may contain `$`, which a string replacement expands.

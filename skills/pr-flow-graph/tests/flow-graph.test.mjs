@@ -8,6 +8,7 @@ import { after, before, describe, test } from 'node:test';
 import { checkLeanModel } from '../scripts/lib/check-lean-model.mjs';
 import { buildGithubDiffUrl, renderFlowGraphHtml } from '../scripts/lib/render-html.mjs';
 import { renderBusinessStateDiagram, renderChangeFlowchart, renderMermaidMarkdown } from '../scripts/lib/render-mermaid.mjs';
+import { buildVerificationChecks, findOutputMismatches, renderReport } from '../scripts/lib/render-report.mjs';
 import { hasBlockingFindings, validateFlowGraph } from '../scripts/lib/validate-flow-graph.mjs';
 import { CLI_PATH, EXAMPLE_MODEL_PATH, FIXTURES_DIRECTORY, SKILL_DIRECTORY, loadExampleModel } from './support/example-model.mjs';
 
@@ -114,6 +115,44 @@ describe('validateFlowGraph', () => {
     assert.deepEqual(locationsOf(warningsOf(model)), ['nodes[7]']);
   });
 
+  test('rejects a relationship that outlives one of its ends', () => {
+    const model = loadExampleModel();
+    model.edges[0].change = 'modified';
+    model.edges[6].change = 'unchanged';
+
+    const errors = errorsOf(model);
+
+    assert.deepEqual(locationsOf(errors), ['edges[0].change', 'edges[6].change']);
+    assert.match(errors[0].message, /Must be "added" because the node "toggle-favorite-action" is added/);
+    assert.match(errors[1].message, /Must be "removed" because the node "legacy-wishlist-client" is removed/);
+  });
+
+  test('rejects two relationships that say the same thing', () => {
+    const model = loadExampleModel();
+    model.edges.push({ ...model.edges[0], id: 'screen-dispatches-toggle-again' });
+    model.businessFlow.transitions.push({ ...model.businessFlow.transitions[0], id: 'tap-favorite-again', target: 'favorite' });
+
+    const errors = errorsOf(model);
+
+    assert.deepEqual(locationsOf(errors), ['edges[7]', 'businessFlow.transitions[5]']);
+    assert.match(errors[0].message, /Repeats edges\[0\]/);
+    assert.match(errors[1].message, /Repeats businessFlow\.transitions\[0\].*would not know which one to follow/);
+  });
+
+  test('requires the business flow to say in one sentence what changes for the user', () => {
+    const model = loadExampleModel();
+    delete model.businessFlow.summary;
+
+    assert.deepEqual(locationsOf(errorsOf(model)), ['businessFlow.summary']);
+  });
+
+  test('requires a path and a reason for each file left out of the graph', () => {
+    const model = loadExampleModel();
+    model.outOfScope = [{ path: 'docs/', reason: 'Documentación.' }, { path: 'gradle/libs.versions.toml' }, 'README.md'];
+
+    assert.deepEqual(locationsOf(errorsOf(model)), ['outOfScope[1].reason', 'outOfScope[2]']);
+  });
+
   test('reports a model that is not an object instead of throwing', () => {
     assert.deepEqual(locationsOf(validateFlowGraph(null)), ['(root)']);
   });
@@ -216,10 +255,88 @@ describe('HTML output', () => {
     assert.match(inlinedHtml, /<script data-library="elkjs@0\.12\.1">window\.ELK = function \(\) \{\}; \/\/ <\\\/script><\/script>/);
   });
 
+  test('carries the verification record only when render passes one', () => {
+    const checks = [{ id: 'model-shape', label: 'Estructura del modelo', status: 'passed', detail: '7 piezas.' }];
+
+    assert.deepEqual(readEmbeddedModel(renderFlowGraphHtml(loadExampleModel(), { verification: { checks } })).verification, { checks });
+    assert.equal(readEmbeddedModel(renderFlowGraphHtml(loadExampleModel())).verification, undefined);
+  });
+
   test('includes the Lean source only when it is passed', () => {
     const html = renderFlowGraphHtml(loadExampleModel(), { leanSource: 'theorem ok : True := trivial' });
 
     assert.deepEqual(readEmbeddedModel(html).formalModel, { language: 'lean4', source: 'theorem ok : True := trivial' });
+  });
+});
+
+describe('report and output checks', () => {
+  const NOT_REQUESTED = { requested: false, included: false, detail: 'No se pidió un modelo formal.' };
+  const REPOSITORY_STATISTICS = {
+    evidenceCount: 13, changedElementCount: 11, verifiedRelationshipCount: 6, changedFileCount: 9, outOfScopeFileCount: 2, baseCommit: 'aaaaaaa', headCommit: 'bbbbbbb',
+  };
+  const statusesOf = (checks) => Object.fromEntries(checks.map((check) => [check.id, check.status]));
+
+  test('marks the repository checks as skipped when the repository was not read', () => {
+    const checks = buildVerificationChecks({ model: loadExampleModel(), leanOutcome: NOT_REQUESTED });
+
+    assert.deepEqual(statusesOf(checks), {
+      'model-shape': 'passed', 'evidence-exists': 'skipped', 'change-matches-diff': 'skipped', 'relationship-names-endpoint': 'skipped',
+      'diff-coverage': 'skipped', 'formal-model': 'skipped', outputs: 'passed',
+    });
+  });
+
+  test('marks them as passed with what was counted, and a rejected Lean model as a warning', () => {
+    const leanOutcome = { requested: true, included: false, detail: '`lean` rejected the Lean model: unsolved goals' };
+
+    const checks = buildVerificationChecks({ model: loadExampleModel(), repositoryStatistics: REPOSITORY_STATISTICS, leanOutcome });
+
+    assert.equal(statusesOf(checks)['evidence-exists'], 'passed');
+    assert.equal(statusesOf(checks)['formal-model'], 'warning');
+    assert.match(checks.find((check) => check.id === 'diff-coverage').detail, /9 archivos cambiados: 7 en el grafo y 2 declarados fuera/);
+  });
+
+  test('writes the report from the model: counts, the business sentence, each inferred relationship and each check', () => {
+    const model = loadExampleModel();
+    model.outOfScope = [{ path: 'docs/', reason: 'Documentación.' }];
+    const checks = buildVerificationChecks({ model, repositoryStatistics: REPOSITORY_STATISTICS, leanOutcome: NOT_REQUESTED });
+
+    const report = renderReport({ model, paths: { html: 'out/pr-flow-graph.html', mermaid: 'out/pr-flow-graph.md' }, checks, leanOutcome: NOT_REQUESTED });
+
+    assert.match(report, /^\*\*Grafo:\*\* out\/pr-flow-graph\.html\n\*\*Mermaid para el PR:\*\* out\/pr-flow-graph\.md\n/);
+    assert.match(report, /- \*\*Cambios:\*\* 9 agregados, 1 modificado, 2 eliminados \(piezas y relaciones\) en flux-unidirectional/);
+    assert.match(report, /- \*\*Flujo de negocio:\*\* Desde el detalle de un producto/);
+    assert.match(report, /- \*\*Relaciones inferidas:\*\* 2, conviene que una persona las confirme\n  - Dispatcher → FavoritesStore \(actualiza\): /);
+    assert.match(report, /  - No se pudo guardar → Guardando \(Reintentar\): /);
+    assert.match(report, /- \*\*Fuera del grafo:\*\*\n  - `docs\/`: Documentación\./);
+    assert.match(report, /- \*\*Modelo formal:\*\* no pedido/);
+    assert.match(report, /  - ✓ Cada evidencia existe en el código\. 13 líneas abiertas entre aaaaaaa \(antes\) y bbbbbbb \(después\)\./);
+  });
+
+  test('says so when the pull request changes nothing observable and nothing is inferred or left out', () => {
+    const model = loadExampleModel();
+    delete model.businessFlow;
+    model.edges = model.edges.filter((edge) => edge.confidence === 'verified');
+    const checks = buildVerificationChecks({ model, leanOutcome: NOT_REQUESTED });
+
+    const report = renderReport({ model, paths: { html: 'a.html', mermaid: 'a.md' }, checks, leanOutcome: NOT_REQUESTED });
+
+    assert.match(report, /- \*\*Flujo de negocio:\*\* sin cambios observables/);
+    assert.match(report, /- \*\*Relaciones inferidas:\*\* ninguna/);
+    assert.match(report, /- \*\*Fuera del grafo:\*\* nada declarado/);
+    assert.match(report, /– Cada evidencia existe en el código\. No se comprobó/);
+  });
+
+  test('finds a page or a diagram that lost part of the model', () => {
+    const model = loadExampleModel();
+    const html = renderFlowGraphHtml(model);
+    const mermaid = renderMermaidMarkdown(model);
+    const shorterModel = loadExampleModel();
+    shorterModel.edges.pop();
+
+    assert.deepEqual(findOutputMismatches(model, html, mermaid), []);
+    assert.deepEqual(findOutputMismatches(model, renderFlowGraphHtml(shorterModel), mermaid), ['The generated page does not carry the same `edges` as the model.']);
+    assert.deepEqual(findOutputMismatches(model, html, mermaid.replaceAll('favorites_store', 'store')), ['The Mermaid file does not draw "favorites-store".']);
+    assert.deepEqual(findOutputMismatches(model, '<html></html>', mermaid), ['The generated page does not embed the model.']);
   });
 });
 
@@ -273,6 +390,21 @@ describe('Lean gate and CLI', () => {
     assert.equal(checkLeanModel(leanPath, FAKE_LEAN_OPTIONS).status, 'compiled');
   });
 
+  test('rejects a Lean model that leaves out a business state or states no theorem, without running the checker', () => {
+    const leanPath = writeWorkFile('Partial.lean', 'inductive State where\n  | notFavorite | saving\ntheorem ok : True := trivial\n');
+    const definitionsOnlyPath = writeWorkFile('Definitions.lean', 'inductive State where\n  | notFavorite\n');
+
+    const partial = checkLeanModel(leanPath, { ...FAKE_LEAN_OPTIONS, expectedStateIds: ['not-favorite', 'saving', 'save-failed'] });
+    const complete = checkLeanModel(leanPath, { ...FAKE_LEAN_OPTIONS, expectedStateIds: ['not-favorite', 'saving'] });
+    const definitionsOnly = checkLeanModel(definitionsOnlyPath, FAKE_LEAN_OPTIONS);
+
+    assert.equal(partial.status, 'incomplete');
+    assert.match(partial.detail, /does not name these business states: saveFailed/);
+    assert.equal(complete.status, 'compiled');
+    assert.equal(definitionsOnly.status, 'incomplete');
+    assert.match(definitionsOnly.detail, /states no `theorem`/);
+  });
+
   test('reports that Lean is not installed when the executable is missing', () => {
     const leanPath = writeWorkFile('Unchecked.lean', 'theorem ok : True := trivial\n');
 
@@ -293,20 +425,24 @@ describe('Lean gate and CLI', () => {
     assert.match(rejected.detail, /unsolved goals/);
   });
 
-  test('render writes the page and the Mermaid file and prints their paths as JSON on stdout', () => {
+  test('render writes the page, the Mermaid file and the report, and prints their paths and checks as JSON on stdout', () => {
     const outputDirectory = path.join(workDirectory, 'rendered');
 
-    const result = runCli('render', EXAMPLE_MODEL_PATH, '--out', outputDirectory);
+    const result = runCli('render', EXAMPLE_MODEL_PATH, '--skip-repo-check', '--out', outputDirectory);
 
     assert.equal(result.status, 0, result.stderr);
-    const output = JSON.parse(result.stdout);
+    const { checks, ...output } = JSON.parse(result.stdout);
     assert.deepEqual(output, {
       html: path.join(outputDirectory, 'pr-flow-graph.html'),
       mermaid: path.join(outputDirectory, 'pr-flow-graph.md'),
+      report: path.join(outputDirectory, 'pr-flow-graph-report.md'),
       lean: false,
+      repositoryChecked: false,
     });
-    assert.ok(existsSync(output.html));
+    assert.equal(checks.length, 7);
+    assert.deepEqual(readEmbeddedModel(readFileSync(output.html, 'utf8')).verification, { checks });
     assert.match(readFileSync(output.mermaid, 'utf8'), /stateDiagram-v2/);
+    assert.match(readFileSync(output.report, 'utf8'), /\*\*Grafo:\*\* .*pr-flow-graph\.html/);
     assert.doesNotMatch(result.stderr, /\u001b\[/, 'NO_COLOR output must not carry ANSI escapes');
   });
 
@@ -316,7 +452,7 @@ describe('Lean gate and CLI', () => {
     const modelPath = writeWorkFile('invalid.json', JSON.stringify(model));
     const outputDirectory = path.join(workDirectory, 'not-rendered');
 
-    const result = runCli('render', modelPath, '--out', outputDirectory);
+    const result = runCli('render', modelPath, '--skip-repo-check', '--out', outputDirectory);
 
     assert.equal(result.status, 1);
     assert.match(result.stderr, /edges\[2\]\.reason/);
@@ -338,6 +474,7 @@ describe('Lean gate and CLI', () => {
     assert.equal(runCli('render').status, 2);
     assert.equal(runCli('validate', path.join(workDirectory, 'does-not-exist.json')).status, 2);
     assert.equal(runCli('render', EXAMPLE_MODEL_PATH, '--unknown-flag').status, 2);
+    assert.equal(runCli('render', EXAMPLE_MODEL_PATH).status, 2, 'render needs --repo or --skip-repo-check');
   });
 
   test('prints the usage with --help', () => {

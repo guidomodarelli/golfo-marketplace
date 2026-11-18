@@ -12,7 +12,7 @@ Sirve para dos cosas concretas: obliga a enumerar todos los estados y eventos (l
 
 Escribí `pr-flow-graph/FlowModel.lean` a partir de `businessFlow`, sin importar Mathlib (así compila con una instalación limpia de Lean):
 
-1. Un tipo inductivo `State` con un constructor por estado y otro `Event` con uno por `trigger`.
+1. Un tipo inductivo `State` con un constructor por estado, llamado como su `id` en lowerCamelCase (`save-failed` → `saveFailed`), y otro `Event` con uno por `trigger`. La compuerta comprueba que cada estado vigente esté nombrado.
 2. Una función total `step : State → Event → State`. Un evento que no aplica en un estado lo deja igual.
 3. Una o más propiedades como `theorem`, elegidas porque importan para este PR.
 
@@ -26,8 +26,10 @@ Para tipos finitos chicos, `cases … <;> simp [step]` o `decide` alcanzan. Si u
 
 `flow-graph.mjs render --lean pr-flow-graph/FlowModel.lean` incluye el modelo en el grafo solo si:
 
-- `lean` lo compila con código de salida 0, y
-- el archivo no usa `sorry`, `admit` ni `axiom` (con cualquiera de ellos Lean acepta el archivo sin que la propiedad esté probada).
+- `lean` lo compila con código de salida 0,
+- el archivo no usa `sorry`, `admit` ni `axiom` (con cualquiera de ellos Lean acepta el archivo sin que la propiedad esté probada),
+- enuncia al menos un `theorem`, y
+- nombra todos los estados de `businessFlow` que siguen vigentes después del PR.
 
 Qué informar en cada caso:
 
@@ -35,6 +37,8 @@ Qué informar en cada caso:
 |---|---|
 | Compila | «Modelo formal incluido», con las propiedades probadas en una línea cada una. |
 | Lean no está instalado | «Modelo formal no verificado: Lean no está instalado». Ofrecé el archivo como borrador sin verificar, nunca como modelo probado. |
-| No compila o usa `sorry` | «Modelo formal no incluido», con el primer error. Corregilo y reintentá; si una propiedad resulta falsa, reportala como hallazgo. |
+| No compila, usa `sorry`, no tiene teoremas o le falta un estado | «Modelo formal no incluido», con el primer error. Corregilo y reintentá; si una propiedad resulta falsa, reportala como hallazgo. |
+
+El reporte generado ya escribe esa línea con el resultado real de la compuerta: no la redactes a mano.
 
 Lean se instala con [elan](https://github.com/leanprover/elan). No lo instales sin que el usuario lo pida.

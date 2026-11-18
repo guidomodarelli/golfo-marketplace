@@ -49,7 +49,8 @@ describe('rendered page in a real browser', { skip: playwright ? false : missing
   let offlinePageUrl;
 
   const openPage = async (url, contextOptions = {}) => {
-    const context = await browser.newContext({ viewport: DESKTOP_VIEWPORT, ...contextOptions });
+    // Reduced motion by default: positions are read right after an action, without waiting for a glide.
+    const context = await browser.newContext({ viewport: DESKTOP_VIEWPORT, reducedMotion: 'reduce', ...contextOptions });
     const page = await context.newPage();
     const problems = [];
     page.on('pageerror', (pageError) => problems.push(String(pageError)));
@@ -137,7 +138,7 @@ describe('rendered page in a real browser', { skip: playwright ? false : missing
     assert.equal(await page.locator('#graph .graph-node.added').count(), 0, 'a single version of the code is shown without highlights');
   });
 
-  test('"Solo lo que cambió" keeps changed elements and their direct neighbours', async () => {
+  test('the toggle that hides what the pull request did not touch says how much it hides, and keeps direct neighbours', async () => {
     const model = loadExampleModel();
     model.nodes.push(
       { id: 'analytics-tracker', label: 'AnalyticsTracker', kind: 'service', change: 'unchanged' },
@@ -154,7 +155,8 @@ describe('rendered page in a real browser', { skip: playwright ? false : missing
     const { page } = await openPage(pathToFileURL(pagePath).href);
     await waitForNodeCount(page, 9);
 
-    await page.getByLabel('Solo lo que cambió').check();
+    // Two unrelated nodes and the relationship between them.
+    await page.getByLabel('Ocultar lo que el PR no tocó (3)').check();
     await waitForNodeCount(page, 7);
 
     const labels = await nodeLabels(page);
@@ -458,6 +460,114 @@ describe('rendered page in a real browser', { skip: playwright ? false : missing
 
       assert.ok(heights.length >= 8);
       assert.ok(heights.every((height) => height >= 44), `heights: ${heights.join(', ')}`);
+    });
+  });
+
+  describe('verification, focus and tour', () => {
+    const PASSED_CHECKS = ['model-shape', 'evidence-exists', 'change-matches-diff', 'relationship-names-endpoint', 'diff-coverage', 'outputs'].map((id) => ({
+      id, label: `Check ${id}`, status: 'passed', detail: 'Detalle.',
+    }));
+    const writeVerifiedPage = (name, checks) => {
+      const elkLibrary = BROWSER_LIBRARIES.find((library) => library.name === 'elkjs');
+      const inlinedLibraries = new Map([[elkLibrary.url, readFileSync(require.resolve('elkjs/lib/elk.bundled.js'), 'utf8')]]);
+      const pagePath = path.join(workDirectory, name);
+      writeFileSync(pagePath, renderFlowGraphHtml(loadExampleModel(), { inlinedLibraries, verification: { checks } }));
+      return pathToFileURL(pagePath).href;
+    };
+
+    test('a graph checked against the code says so and lists each check', async () => {
+      const { page } = await openPage(writeVerifiedPage('verified.html', PASSED_CHECKS));
+      await waitForNodeCount(page, 7);
+
+      assert.equal((await page.locator('#verification-chip').textContent()).trim(), '✓Verificado contra el código');
+      assert.equal(await page.locator('#checks li.passed').count(), 6);
+    });
+
+    test('a graph whose repository checks were skipped says it was not verified, also on a phone with the filters folded', async () => {
+      const skippedChecks = PASSED_CHECKS.map((check) => (check.id === 'diff-coverage' ? { ...check, status: 'skipped' } : check));
+      const { page } = await openPage(writeVerifiedPage('unverified.html', skippedChecks), { viewport: { width: 390, height: 844 }, hasTouch: true });
+      await waitForNodeCount(page, 7);
+
+      const chip = page.locator('#verification-chip');
+      assert.equal((await chip.textContent()).trim(), '!Sin verificar contra el código');
+      assert.equal(await chip.isVisible(), true);
+      assert.equal(await page.getByRole('group', { name: 'Momento' }).isVisible(), false);
+    });
+
+    test('a page rendered without a verification record does not claim to be verified', async () => {
+      const { page } = await openPage(pageUrl);
+      await waitForNodeCount(page, 7);
+
+      assert.match(await page.locator('#verification-chip').textContent(), /Sin verificar/);
+      assert.match(await page.locator('#checks').textContent(), /Sin registro de verificación/);
+    });
+
+    test('selecting a node keeps what touches it in focus and steps the rest back', async () => {
+      const { page } = await openPage(pageUrl);
+      await waitForNodeCount(page, 7);
+
+      await page.locator('#graph .graph-node', { hasText: 'FavoritesStore' }).click();
+      const relatedNodes = await page.locator('#graph .graph-node.related .node-label').allTextContents();
+      const dimmedOpacity = await page.locator('#graph .graph-node', { hasText: 'WishlistClient' }).evaluate((node) => getComputedStyle(node).opacity);
+      const relatedEdgeCount = await page.locator('#graph .graph-edge.related').count();
+      await page.mouse.click(DESKTOP_VIEWPORT.width / 2, 420);
+
+      assert.deepEqual(relatedNodes.sort(), ['Dispatcher', 'FavoritesRepository', 'ProductDetailFragment']);
+      assert.equal(relatedEdgeCount, 3);
+      assert.ok(Number(dimmedOpacity) < 0.5, `an unrelated node keeps opacity ${dimmedOpacity}`);
+      assert.equal(await page.locator('#graph.has-focus').count(), 0, 'clicking the background gives the whole graph back');
+    });
+
+    test('the tour walks the relationships in the order of the model, by step or on its own', async () => {
+      const { page } = await openPage(pageUrl);
+      await waitForNodeCount(page, 7);
+      const caption = page.locator('#tour-caption');
+      const playButton = page.getByRole('button', { name: 'Recorrer el flujo' });
+
+      await page.getByRole('button', { name: 'Paso siguiente' }).click();
+      const firstStep = await caption.textContent();
+      await page.getByRole('button', { name: 'Paso anterior' }).click();
+      const wrappedStep = await caption.textContent();
+      await playButton.click();
+      const pressedWhilePlaying = await playButton.getAttribute('aria-pressed');
+      const stepWhilePlaying = await caption.textContent();
+      await playButton.click();
+      await page.getByRole('button', { name: 'Después' }).click();
+      await waitForNodeCount(page, 6);
+
+      assert.equal(firstStep, '1 / 7 · ProductDetailFragment → ToggleFavoriteAction: tap en favorito');
+      assert.match(wrappedStep, /^7 \/ 7 · /);
+      assert.equal(pressedWhilePlaying, 'true');
+      assert.match(stepWhilePlaying, /^1 \/ 7 · /, 'playing after the last step starts the flow over');
+      assert.equal(await playButton.getAttribute('aria-pressed'), 'false');
+      assert.equal(await caption.isVisible(), false, 'a new filter ends the tour');
+    });
+
+    test('the toggle that hides untouched elements is not offered when there is nothing to hide', async () => {
+      const { page } = await openPage(pageUrl);
+      await waitForNodeCount(page, 7);
+
+      assert.equal(await page.locator('#only-changed-toggle').isVisible(), false);
+    });
+
+    test('with motion allowed the changed relationships flow and a fit glides back; with reduced motion nothing loops', async () => {
+      const infiniteAnimationCount = (page) => page.evaluate(() => document.getAnimations().filter((animation) => animation.effect.getComputedTiming().iterations === Infinity).length);
+      const viewBox = (page) => page.locator('#graph').getAttribute('viewBox');
+      const moving = await openPage(pageUrl, { reducedMotion: 'no-preference' });
+      await waitForNodeCount(moving.page, 7);
+      const still = await openPage(pageUrl);
+      await waitForNodeCount(still.page, 7);
+
+      const fittedViewBox = await viewBox(moving.page);
+      await moving.page.getByRole('button', { name: 'Acercar' }).click();
+      await moving.page.getByRole('button', { name: 'Ajustar' }).click();
+      await moving.page.waitForFunction((expected) => document.getElementById('graph').getAttribute('viewBox') === expected, fittedViewBox);
+      await still.page.locator('#graph .graph-node', { hasText: 'FavoritesStore' }).click();
+
+      // Six relationships are added or modified; the removed one no longer flows.
+      assert.equal(await infiniteAnimationCount(moving.page), 6);
+      assert.equal(await infiniteAnimationCount(still.page), 0);
+      assert.deepEqual(moving.problems, []);
     });
   });
 

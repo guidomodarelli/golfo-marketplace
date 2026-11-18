@@ -5,51 +5,81 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Flujo del PR — __FLOW_GRAPH_TITLE__</title>
 <style>
+  /* Character of the page: warm paper and ink, with one teal "current" that marks what flows. */
   :root {
     color-scheme: light dark;
-    --page: #f6f7f9;
-    --surface: #ffffff;
-    --surface-muted: #eef0f4;
-    --text: #171a21;
-    --text-muted: #5a6272;
-    --border: #d5d9e2;
-    --accent: #3451d1;
+    --page: #f3efe6;
+    --canvas: #faf7f0;
+    --surface: #fffdf8;
+    --surface-muted: #efeadf;
+    --text: #1b2126;
+    --text-muted: #55606a;
+    --border: #dcd5c6;
+    --border-strong: #857e6f;
+    --accent: #0b6e69;
     --accent-contrast: #ffffff;
-    --added: #15803d;
-    --added-fill: #dcfce7;
-    --modified: #b45309;
-    --modified-fill: #fef3c7;
-    --removed: #b91c1c;
-    --removed-fill: #fee2e2;
-    --unchanged: #7b8494;
-    --unchanged-fill: #ffffff;
-    --group-fill: #eceff4;
-    --radius: 10px;
+    --accent-soft: #d6eeea;
+    --current-start: #0b6e69;
+    --current-end: #4338ca;
+    --added: #1a7431;
+    --added-fill: #e2f4e5;
+    --modified: #8a5200;
+    --modified-fill: #fbeecb;
+    --removed: #b3261e;
+    --removed-fill: #fbe5e2;
+    --unchanged: #6a737d;
+    --unchanged-fill: #fffdf8;
+    --warning: #8a5200;
+    --warning-fill: #fbeecb;
+    --group-fill: rgb(27 33 38 / 0.035);
+    --grid-dot: rgb(27 33 38 / 0.13);
+    --shadow: 0 1px 2px rgb(27 33 38 / 0.08), 0 6px 20px rgb(27 33 38 / 0.08);
+    --node-shadow: drop-shadow(0 1px 1.5px rgb(27 33 38 / 0.16));
+    --backdrop: rgb(20 24 28 / 0.45);
+    --radius: 12px;
+    --radius-small: 8px;
     --space-1: 0.25rem;
     --space-2: 0.5rem;
     --space-3: 0.75rem;
     --space-4: 1rem;
     --space-6: 1.5rem;
+    --state-duration: 180ms;
+    --enter-duration: 260ms;
+    --flow-duration: 1100ms;
+    --easing: cubic-bezier(0.2, 0.8, 0.2, 1);
+    --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-mono: ui-monospace, "Cascadia Code", "SF Mono", Consolas, monospace;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --page: #101319;
-      --surface: #181c24;
-      --surface-muted: #222733;
-      --text: #e9ecf2;
-      --text-muted: #a2abbb;
-      --border: #333a49;
-      --accent: #8ea2ff;
-      --accent-contrast: #101319;
-      --added: #4ade80;
-      --added-fill: #12331f;
-      --modified: #fbbf24;
-      --modified-fill: #3a2c0b;
-      --removed: #f87171;
-      --removed-fill: #3b1516;
-      --unchanged: #8a94a6;
-      --unchanged-fill: #1f2430;
-      --group-fill: #161a22;
+      --page: #0c1013;
+      --canvas: #10151a;
+      --surface: #171d23;
+      --surface-muted: #222a32;
+      --text: #e8edf0;
+      --text-muted: #a4b0ba;
+      --border: #2d3740;
+      --border-strong: #6f7c88;
+      --accent: #5fd4c8;
+      --accent-contrast: #06211e;
+      --accent-soft: #14353a;
+      --current-start: #5fd4c8;
+      --current-end: #a5b4fc;
+      --added: #6fdc8c;
+      --added-fill: #13301d;
+      --modified: #f3c969;
+      --modified-fill: #35290d;
+      --removed: #ff9d94;
+      --removed-fill: #3f191a;
+      --unchanged: #909ca7;
+      --unchanged-fill: #1b2229;
+      --warning: #f3c969;
+      --warning-fill: #35290d;
+      --group-fill: rgb(232 237 240 / 0.035);
+      --grid-dot: rgb(232 237 240 / 0.11);
+      --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px rgb(0 0 0 / 0.35);
+      --node-shadow: drop-shadow(0 1px 2px rgb(0 0 0 / 0.5));
+      --backdrop: rgb(0 0 0 / 0.6);
     }
   }
   * { box-sizing: border-box; }
@@ -61,128 +91,268 @@
     flex-direction: column;
     background: var(--page);
     color: var(--text);
-    font: 0.9375rem/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font: 0.9375rem/1.5 var(--font-ui);
   }
+  a { color: var(--accent); text-underline-offset: 0.15em; }
+  button { font: inherit; color: inherit; }
+  button:focus-visible, a:focus-visible, input:focus-visible, #graph:focus-visible, .graph-node:focus-visible, .graph-edge:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
   header {
+    position: relative;
     padding: var(--space-4) var(--space-6) var(--space-3);
     background: var(--surface);
     border-bottom: 1px solid var(--border);
   }
-  h1 { margin: 0; font-size: 1.25rem; line-height: 1.3; text-wrap: balance; }
-  .subtitle { margin: var(--space-1) 0 0; color: var(--text-muted); font-size: 0.875rem; }
-  .subtitle code { font-size: 0.8125rem; }
-  a { color: var(--accent); }
-  .toolbar {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--space-3) var(--space-6);
-    margin-top: var(--space-3);
+  /* The current: the one decorative line of the page, in the colours of the flowing edges. */
+  header::after {
+    content: "";
+    position: absolute;
+    inset: auto 0 -1px 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--current-start), var(--current-end) 55%, transparent);
   }
-  .segmented { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
-  .segmented button {
-    border: 0;
-    padding: var(--space-2) var(--space-3);
-    background: var(--surface);
+  .title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); }
+  .eyebrow {
+    margin: 0 0 var(--space-1);
+    color: var(--accent);
+    font: 600 0.6875rem/1.2 var(--font-mono);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  h1 { margin: 0; font-size: clamp(1.125rem, 0.9rem + 0.9vw, 1.5rem); font-weight: 650; line-height: 1.25; letter-spacing: -0.015em; text-wrap: balance; }
+  .subtitle { margin: var(--space-2) 0 0; color: var(--text-muted); font-size: 0.875rem; }
+  .subtitle code {
+    padding: 0.0625rem var(--space-2);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--surface-muted);
     color: var(--text);
-    font: inherit;
+    font: 0.75rem/1.6 var(--font-mono);
+  }
+  .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3) var(--space-4); margin-top: var(--space-3); }
+  .segmented { display: inline-flex; max-width: 100%; padding: 3px; gap: 2px; border-radius: var(--radius); background: var(--surface-muted); }
+  .segmented button {
+    min-width: 0;
+    border: 0;
+    padding: var(--space-1) var(--space-3);
+    border-radius: 9px;
+    background: transparent;
+    color: var(--text-muted);
+    font-weight: 500;
     cursor: pointer;
   }
-  .segmented button + button { border-left: 1px solid var(--border); }
+  .segmented button:hover { color: var(--text); }
   .segmented button[aria-pressed="true"], .segmented button[aria-selected="true"] {
-    background: var(--accent);
-    color: var(--accent-contrast);
+    background: var(--surface);
+    color: var(--text);
     font-weight: 600;
-  }
-  button:focus-visible, a:focus-visible, input:focus-visible, .graph-node:focus-visible, .graph-edge:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.14), inset 0 -2px 0 var(--accent);
   }
   .toggle { display: inline-flex; align-items: center; gap: var(--space-2); cursor: pointer; }
-  .legend { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); margin: 0; padding: 0; list-style: none; font-size: 0.8125rem; color: var(--text-muted); }
+  .toggle input { width: 1rem; height: 1rem; accent-color: var(--accent); }
+  .legend { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); margin: 0; padding: 0; list-style: none; font-size: 0.8125rem; color: var(--text-muted); }
   .legend li { display: inline-flex; align-items: center; gap: var(--space-2); }
-  .swatch { flex: none; width: 0.875rem; height: 0.875rem; border-radius: 3px; border: 2px solid; }
-  .swatch.added { background: var(--added-fill); border-color: var(--added); }
-  .swatch.modified { background: var(--modified-fill); border-color: var(--modified); }
-  .swatch.removed { background: var(--removed-fill); border-color: var(--removed); border-style: dashed; }
-  .swatch.unchanged { background: var(--unchanged-fill); border-color: var(--unchanged); }
-  .line-sample { width: 1.5rem; border-top: 2px dashed var(--text-muted); }
-  main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 22rem; }
-  .canvas-area { position: relative; min-height: 24rem; overflow: hidden; }
-  #graph { position: absolute; inset: 0; width: 100%; height: 100%; cursor: grab; touch-action: none; user-select: none; }
-  #graph.is-panning { cursor: grabbing; }
-  .zoom-controls { position: absolute; right: var(--space-4); bottom: var(--space-4); display: flex; gap: var(--space-1); }
-  .zoom-controls button {
-    min-width: 2.25rem;
-    padding: var(--space-1) var(--space-2);
+  .legend strong { color: var(--text); font-variant-numeric: tabular-nums; }
+  .swatch {
+    flex: none;
+    display: inline-grid;
+    place-items: center;
+    width: 1.125rem;
+    height: 1.125rem;
+    border: 1.5px solid;
+    border-radius: 5px;
+    font: 700 0.75rem/1 var(--font-mono);
+  }
+  .swatch.added { background: var(--added-fill); border-color: var(--added); color: var(--added); }
+  .swatch.modified { background: var(--modified-fill); border-color: var(--modified); color: var(--modified); }
+  .swatch.removed { background: var(--removed-fill); border-color: var(--removed); color: var(--removed); border-style: dashed; }
+  .swatch.unchanged { background: var(--unchanged-fill); border-color: var(--unchanged); color: var(--unchanged); }
+  .line-sample { flex: none; width: 1.5rem; border-top: 2px dashed var(--text-muted); }
+  .status-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0;
+    padding: 0.125rem var(--space-3) 0.125rem var(--space-2);
+    border: 1px solid;
+    border-radius: 999px;
+    font-size: 0.8125rem;
+    font-weight: 600;
+  }
+  .status-chip.passed { color: var(--added); border-color: var(--added); background: var(--added-fill); }
+  .status-chip.warning { color: var(--warning); border-color: var(--warning); background: var(--warning-fill); }
+  .text-button, .icon-button {
+    flex: none;
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius-small);
     background: var(--surface);
-    color: var(--text);
-    font: inherit;
     cursor: pointer;
   }
-  .graph-group rect { fill: var(--group-fill); stroke: var(--border); }
-  .graph-group text { fill: var(--text-muted); font-size: 12px; font-weight: 600; paint-order: stroke; stroke: var(--group-fill); stroke-width: 5; stroke-linejoin: round; }
+  .text-button { padding: var(--space-2) var(--space-3); font-weight: 500; }
+  .text-button:hover, .icon-button:hover { border-color: var(--border-strong); }
+  .text-button[aria-expanded="true"] { background: var(--surface-muted); font-weight: 600; }
+
+  main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 23rem; }
+  body.panel-closed main { grid-template-columns: minmax(0, 1fr); }
+  .canvas-area {
+    position: relative;
+    min-height: 24rem;
+    overflow: hidden;
+    background-color: var(--canvas);
+    /* A dot grid that moves and scales with the graph (see applyViewport), so the canvas reads as a surface. */
+    background-image: radial-gradient(circle, var(--grid-dot) 1px, transparent 1.4px);
+  }
+  #graph { position: absolute; inset: 0; width: 100%; height: 100%; cursor: grab; touch-action: none; user-select: none; }
+  #graph.is-panning { cursor: grabbing; }
+
+  .graph-group rect { fill: var(--group-fill); stroke: var(--border); stroke-dasharray: 2 5; stroke-linecap: round; }
+  .graph-group text { fill: var(--text-muted); font: 600 10.5px var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; paint-order: stroke; stroke: var(--canvas); stroke-width: 6; stroke-linejoin: round; }
   .graph-group-name { pointer-events: none; }
+
   .graph-node, .graph-edge { cursor: pointer; }
-  .graph-node rect { fill: var(--unchanged-fill); stroke: var(--unchanged); stroke-width: 2; }
-  .graph-node .node-kind { fill: var(--text-muted); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; }
-  .graph-node .node-label { fill: var(--text); font-size: 13px; font-weight: 600; }
-  .graph-node.added rect { fill: var(--added-fill); stroke: var(--added); }
-  .graph-node.modified rect { fill: var(--modified-fill); stroke: var(--modified); }
-  .graph-node.removed rect { fill: var(--removed-fill); stroke: var(--removed); stroke-dasharray: 6 4; }
+  .graph-node { color: var(--unchanged); }
+  .graph-node.added { color: var(--added); }
+  .graph-node.modified { color: var(--modified); }
+  .graph-node.removed { color: var(--removed); }
+  .graph-node rect { fill: var(--unchanged-fill); stroke: currentColor; stroke-width: 1.5; filter: var(--node-shadow); }
+  .graph-node.added rect { fill: var(--added-fill); }
+  .graph-node.modified rect { fill: var(--modified-fill); }
+  .graph-node.removed rect { fill: var(--removed-fill); stroke-dasharray: 6 4; }
+  .graph-node .node-cap, .graph-node .node-dot { fill: currentColor; }
+  .graph-node.removed .node-cap { opacity: 0.55; }
+  .graph-node .node-kind { fill: var(--text-muted); font: 600 10px var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; }
+  .graph-node .node-label { fill: var(--text); font: 600 13.5px var(--font-ui); }
+  .graph-node.removed .node-label { text-decoration: line-through; text-decoration-thickness: 1px; }
+  .graph-node .node-mark { fill: currentColor; }
+  .graph-node .node-mark-glyph { fill: var(--surface); font: 700 12px var(--font-mono); pointer-events: none; }
+  .graph-node:hover rect { stroke-width: 2.5; }
+  .graph-node.selected { color: var(--accent); }
+  .graph-node.selected rect { stroke-width: 3; stroke-dasharray: none; }
+
   .graph-edge { color: var(--unchanged); }
   .graph-edge.added { color: var(--added); }
   .graph-edge.modified { color: var(--modified); }
   .graph-edge.removed { color: var(--removed); }
-  .graph-edge .edge-line { fill: none; stroke: currentColor; stroke-width: 2; stroke-linejoin: round; }
-  .graph-edge.added .edge-line, .graph-edge.modified .edge-line, .graph-edge.removed .edge-line { stroke-width: 2.5; }
-  .graph-edge.inferred .edge-line { stroke-dasharray: 6 5; }
-  .graph-edge .edge-hit { fill: none; stroke: transparent; stroke-width: 14; }
-  .graph-edge .edge-arrow { fill: currentColor; }
-  .graph-edge text { fill: var(--text); font-size: 11px; paint-order: stroke; stroke: var(--page); stroke-width: 4; stroke-linejoin: round; }
-  .graph-node.selected rect { stroke: var(--accent); stroke-width: 4; stroke-dasharray: none; }
+  .graph-edge .edge-line { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
+  .graph-edge.added .edge-line, .graph-edge.modified .edge-line, .graph-edge.removed .edge-line { stroke-width: 2; }
+  .graph-edge.inferred .edge-line, .graph-edge.removed .edge-line { stroke-dasharray: 6 5; }
+  .graph-edge .edge-hit { fill: none; stroke: transparent; stroke-width: 16; }
+  .graph-edge .edge-arrow { fill: currentColor; stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; }
+  .graph-edge .edge-label-box { fill: var(--canvas); fill-opacity: 0.94; stroke: var(--border); }
+  .graph-edge text { fill: var(--text); font: 500 11px var(--font-ui); }
+  .graph-edge:hover .edge-line { stroke-width: 3; }
   .graph-edge.selected { color: var(--accent); }
-  .graph-edge.selected .edge-line { stroke-width: 4; }
+  .graph-edge.selected .edge-line { stroke-width: 3; }
+  .graph-edge.selected .edge-label-box { stroke: var(--accent); }
+  /* Beads that travel along a relationship, in the direction the data or the control moves. They
+     ride on the line without cutting it, so a solid (verified) line never reads as a dashed one. */
+  .graph-edge .edge-flow { display: none; fill: none; stroke: currentColor; stroke-width: 5.5; stroke-linecap: round; stroke-dasharray: 0.1 27.9; pointer-events: none; }
+  /* With something selected, everything that does not touch it steps back. */
+  #graph.has-focus .graph-node:not(.selected):not(.related), #graph.has-focus .graph-edge:not(.selected):not(.related) { opacity: 0.28; }
+
+  .floating-controls {
+    position: absolute;
+    bottom: var(--space-4);
+    display: flex;
+    gap: 2px;
+    padding: 3px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: color-mix(in srgb, var(--surface) 88%, transparent);
+    backdrop-filter: blur(8px);
+    box-shadow: var(--shadow);
+  }
+  .zoom-controls { right: var(--space-4); }
+  .tour-controls { left: var(--space-4); }
+  .floating-controls button {
+    min-width: 2.25rem;
+    min-height: 2.25rem;
+    padding: var(--space-1) var(--space-3);
+    border: 0;
+    border-radius: 9px;
+    background: transparent;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .floating-controls button:hover { background: var(--surface-muted); }
+  .floating-controls button[aria-pressed="true"] { background: var(--accent); color: var(--accent-contrast); }
+  .tour-caption {
+    position: absolute;
+    top: var(--space-4);
+    left: 50%;
+    max-width: calc(100% - 2 * var(--space-4));
+    margin: 0;
+    padding: var(--space-2) var(--space-4);
+    transform: translateX(-50%);
+    border: 1px solid var(--accent);
+    border-radius: 999px;
+    background: var(--surface);
+    box-shadow: var(--shadow);
+    font-size: 0.875rem;
+    text-align: center;
+  }
+  .tour-caption strong { color: var(--accent); font-variant-numeric: tabular-nums; }
   .canvas-message {
     position: absolute;
     inset: var(--space-6);
     display: grid;
     place-content: center;
     margin: 0;
+    max-width: 34rem;
+    margin-inline: auto;
     text-align: center;
     color: var(--text-muted);
   }
-  #formal-model { position: absolute; inset: 0; overflow: auto; padding: var(--space-6); }
+  #formal-model { position: absolute; inset: 0; overflow: auto; padding: var(--space-6); background: var(--canvas); }
   #formal-model p { margin: 0; max-width: 46rem; }
   #formal-model pre {
-    margin: var(--space-3) 0 0;
+    margin: var(--space-4) 0 0;
     padding: var(--space-4);
+    max-width: 60rem;
     background: var(--surface);
     border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
     border-radius: var(--radius);
+    box-shadow: var(--shadow);
     overflow-x: auto;
-    font: 0.8125rem/1.6 ui-monospace, "Cascadia Code", Consolas, monospace;
+    font: 0.8125rem/1.65 var(--font-mono);
+    tab-size: 2;
   }
+  .lean-keyword { color: var(--accent); font-weight: 600; }
+  .lean-comment { color: var(--text-muted); font-style: italic; }
+
   aside {
     overflow-y: auto;
     padding: var(--space-4);
     background: var(--surface);
     border-left: 1px solid var(--border);
   }
-  aside h2 { margin: 0 0 var(--space-2); font-size: 1rem; }
-  aside h3 { margin: var(--space-4) 0 var(--space-1); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
+  aside h2 { margin: 0 0 var(--space-2); font-size: 1.0625rem; line-height: 1.3; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+  aside h3 { margin: var(--space-6) 0 var(--space-2); font: 600 0.6875rem/1.2 var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); }
   aside p { margin: 0 0 var(--space-2); }
+  #detail { padding: var(--space-4); border: 1px solid var(--border); border-radius: var(--radius); background: var(--canvas); }
+  #detail h3 { margin-top: var(--space-4); }
   .placeholder { color: var(--text-muted); }
-  .badges { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-2); }
-  .badge { padding: 0 var(--space-2); border-radius: 999px; border: 1px solid var(--border); font-size: 0.75rem; }
+  .route { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); font-weight: 500; }
+  .route .arrow { color: var(--accent); font-weight: 700; }
+  .badges { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-3); }
+  .badge { display: inline-flex; align-items: center; gap: var(--space-1); padding: 0.0625rem var(--space-2); border-radius: 999px; border: 1px solid var(--border); background: var(--surface); font-size: 0.75rem; font-weight: 500; }
+  .badge .glyph { font: 700 0.75rem/1 var(--font-mono); }
   .badge.added { color: var(--added); border-color: var(--added); background: var(--added-fill); }
   .badge.modified { color: var(--modified); border-color: var(--modified); background: var(--modified-fill); }
   .badge.removed { color: var(--removed); border-color: var(--removed); background: var(--removed-fill); }
-  .evidence { margin: 0; padding: 0; list-style: none; }
-  .evidence li { overflow-wrap: anywhere; font: 0.8125rem/1.6 ui-monospace, "Cascadia Code", Consolas, monospace; }
-  .element-list { margin: 0; padding: 0; list-style: none; }
+  .badge.inferred { border-style: dashed; border-color: var(--border-strong); }
+  .evidence { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--space-2); }
+  .evidence li { overflow-wrap: anywhere; font: 0.8125rem/1.5 var(--font-mono); }
+  .evidence .evidence-directory { color: var(--text-muted); }
+  .evidence .evidence-file { font-weight: 700; }
+  .evidence .side-tag { margin-left: var(--space-2); padding: 0 var(--space-2); border-radius: 999px; background: var(--surface-muted); color: var(--text-muted); font: 500 0.6875rem/1.6 var(--font-ui); white-space: nowrap; }
+  .element-list, .checks { margin: 0; padding: 0; list-style: none; }
+  .element-list .list-heading { margin: var(--space-3) 0 var(--space-1); padding-inline: var(--space-2); color: var(--text-muted); font-size: 0.75rem; font-weight: 600; }
+  .element-list .list-heading:first-child { margin-top: 0; }
   .element-list button {
     width: 100%;
     display: flex;
@@ -190,39 +360,38 @@
     gap: var(--space-2);
     padding: var(--space-1) var(--space-2);
     border: 0;
-    border-radius: 6px;
+    border-radius: var(--radius-small);
     background: none;
-    color: inherit;
-    font: inherit;
     text-align: left;
     cursor: pointer;
   }
-  .element-list button:hover, .element-list button[aria-current="true"] { background: var(--surface-muted); }
-  .title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); }
-  .text-button {
-    flex: none;
-    padding: var(--space-2) var(--space-3);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    background: var(--surface);
-    color: var(--text);
-    font: inherit;
-    cursor: pointer;
-  }
-  .text-button[aria-expanded="true"] { background: var(--surface-muted); font-weight: 600; }
+  .element-list button:hover { background: var(--surface-muted); }
+  .element-list button[aria-current="true"] { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
+  .checks { display: grid; gap: var(--space-2); }
+  .checks li { display: grid; grid-template-columns: 1.125rem 1fr; gap: var(--space-2); font-size: 0.8125rem; }
+  .checks .check-mark { display: grid; place-items: center; width: 1.125rem; height: 1.125rem; margin-top: 0.125rem; border-radius: 50%; font: 700 0.6875rem/1 var(--font-mono); }
+  .checks .passed .check-mark { background: var(--added-fill); color: var(--added); }
+  .checks .warning .check-mark { background: var(--warning-fill); color: var(--warning); }
+  .checks .skipped .check-mark { background: var(--surface-muted); color: var(--text-muted); }
+  .checks .check-label { font-weight: 600; }
+  .checks .check-detail { display: block; color: var(--text-muted); }
+
   /* Beside the canvas the panel folds with "Detalle"; its own close button is for the drawer. */
-  .panel-header { display: none; align-items: center; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-2); }
-  .panel-header span { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
-  .backdrop { position: fixed; inset: 0; z-index: 2; background: rgb(0 0 0 / 0.45); }
-  body.panel-closed main { grid-template-columns: minmax(0, 1fr); }
+  .panel-header { display: none; align-items: center; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-3); }
+  .panel-header span { font: 600 0.6875rem/1.2 var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); }
+  .backdrop { position: fixed; inset: 0; z-index: 2; background: var(--backdrop); }
   #toggle-filters { display: none; }
+  .tour-label { margin-left: var(--space-1); }
+
   /* Phone layout: the canvas takes the whole page; filters fold away and the panel is a drawer. */
   @media (max-width: 52rem) {
     main { grid-template-columns: minmax(0, 1fr); }
     .canvas-area { min-height: 0; }
     header { padding: var(--space-3) var(--space-4) var(--space-2); }
+    .eyebrow { display: none; }
     h1 { font-size: 1.0625rem; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
     .toolbar { gap: var(--space-2) var(--space-3); margin-top: var(--space-2); }
+    .segmented button { padding-inline: var(--space-2); font-size: 0.875rem; }
     #toggle-filters { display: inline-block; }
     .panel-header { display: flex; }
     header:not(.filters-open) .collapsible { display: none; }
@@ -230,27 +399,47 @@
       position: fixed;
       inset: 0 0 0 auto;
       z-index: 3;
-      width: min(22rem, 88vw);
-      box-shadow: -8px 0 24px rgb(0 0 0 / 0.25);
-      animation: panel-in 180ms ease-out;
+      width: min(23rem, 88vw);
+      box-shadow: -8px 0 28px rgb(0 0 0 / 0.3);
     }
-    .zoom-controls button, .text-button, .segmented button { min-height: 2.75rem; }
-    .zoom-controls button { min-width: 2.75rem; }
+    .floating-controls button, .text-button, .segmented button { min-height: 2.75rem; }
+    .floating-controls button { min-width: 2.75rem; }
+    .floating-controls { bottom: var(--space-3); }
+    .zoom-controls { right: var(--space-3); }
+    .tour-controls { left: var(--space-3); }
+    .tour-label { display: none; }
+    .tour-caption { top: var(--space-3); border-radius: var(--radius); }
     .element-list button { padding-block: var(--space-2); }
   }
-  @keyframes panel-in {
-    from { transform: translateX(100%); }
-    to { transform: translateX(0); }
+
+  /* Motion explains: what entered, what was chosen, which way a relationship flows. */
+  @media (prefers-reduced-motion: no-preference) {
+    .graph-node, .graph-edge, .graph-group { animation: appear var(--enter-duration) var(--easing) backwards; transition: opacity var(--state-duration) var(--easing); }
+    .graph-node rect, .graph-edge .edge-line { transition: stroke-width var(--state-duration) var(--easing); }
+    .graph-edge.added .edge-flow, .graph-edge.modified .edge-flow, .graph-edge.selected .edge-flow, .graph-edge.related .edge-flow {
+      display: inline;
+      animation: flow var(--flow-duration) linear infinite;
+    }
+    #detail > *, .tour-caption { animation: appear var(--state-duration) var(--easing) backwards; }
+    .segmented button, .text-button, .floating-controls button, .element-list button { transition: background-color var(--state-duration) var(--easing), color var(--state-duration) var(--easing), transform 120ms var(--easing); }
+    .text-button:active, .floating-controls button:active { transform: scale(0.96); }
+    .backdrop { animation: appear var(--state-duration) ease-out; }
+    @media (max-width: 52rem) {
+      aside { animation: panel-in 220ms var(--easing); }
+    }
   }
-  @media (prefers-reduced-motion: reduce) {
-    aside { animation: none; }
-  }
+  @keyframes appear { from { opacity: 0; } }
+  @keyframes flow { from { stroke-dashoffset: 28; } to { stroke-dashoffset: 0; } }
+  @keyframes panel-in { from { transform: translateX(100%); } }
 </style>
 </head>
 <body>
 <header>
   <div class="title-row">
-    <h1 id="title">__FLOW_GRAPH_TITLE__</h1>
+    <div>
+      <p class="eyebrow">Flujo del pull request</p>
+      <h1 id="title">__FLOW_GRAPH_TITLE__</h1>
+    </div>
     <button type="button" class="text-button" id="toggle-panel" aria-controls="side-panel" aria-expanded="true">Detalle</button>
   </div>
   <p class="subtitle collapsible" id="subtitle"></p>
@@ -258,20 +447,21 @@
     <div class="segmented" role="tablist" aria-label="Vista" id="view-tabs"></div>
     <button type="button" class="text-button" id="toggle-filters" aria-expanded="false">Filtros</button>
     <div class="segmented collapsible" role="group" aria-label="Momento" id="moment-buttons"></div>
-    <label class="toggle collapsible" id="only-changed-toggle"><input type="checkbox" id="only-changed"> Solo lo que cambió</label>
-    <ul class="legend collapsible" aria-label="Referencias">
-      <li><span class="swatch added"></span>Agregado</li>
-      <li><span class="swatch modified"></span>Modificado</li>
-      <li><span class="swatch removed"></span>Eliminado</li>
-      <li><span class="swatch unchanged"></span>Sin cambios</li>
-      <li><span class="line-sample"></span>Relación inferida</li>
-    </ul>
+    <label class="toggle collapsible" id="only-changed-toggle"><input type="checkbox" id="only-changed"> <span id="only-changed-label"></span></label>
+    <ul class="legend collapsible" aria-label="Referencias y cantidades" id="legend"></ul>
+    <p class="status-chip" id="verification-chip"></p>
   </div>
 </header>
 <main>
-  <section class="canvas-area" aria-label="Grafo">
+  <section class="canvas-area" id="canvas-area" aria-label="Grafo">
     <svg id="graph" role="group" tabindex="0" aria-label="Grafo del flujo. Flechas para mover, más y menos para el zoom, cero para ajustar. La lista de elementos del panel lo describe en texto"></svg>
-    <div class="zoom-controls" id="zoom-controls">
+    <p class="tour-caption" id="tour-caption" role="status" hidden></p>
+    <div class="floating-controls tour-controls" id="tour-controls" role="group" aria-label="Recorrer el flujo paso a paso">
+      <button type="button" data-tour="previous" aria-label="Paso anterior">‹</button>
+      <button type="button" data-tour="play" aria-pressed="false" aria-label="Recorrer el flujo"><span aria-hidden="true" id="tour-play-icon">▶</span><span class="tour-label">Recorrer</span></button>
+      <button type="button" data-tour="next" aria-label="Paso siguiente">›</button>
+    </div>
+    <div class="floating-controls zoom-controls" id="zoom-controls">
       <button type="button" data-zoom="in" aria-label="Acercar">+</button>
       <button type="button" data-zoom="out" aria-label="Alejar">−</button>
       <button type="button" data-zoom="fit">Ajustar</button>
@@ -288,6 +478,8 @@
     <div id="detail" aria-live="polite"></div>
     <h3>Elementos de esta vista</h3>
     <ul class="element-list" id="element-list"></ul>
+    <h3>Qué se verificó</h3>
+    <ul class="checks" id="checks"></ul>
   </aside>
 </main>
 
@@ -301,66 +493,115 @@
   const VIEW = { changes: 'changes', business: 'business', formal: 'formal' };
   const MOMENT = { diff: 'diff', before: 'before', after: 'after' };
   const CHANGE = { added: 'added', modified: 'modified', removed: 'removed', unchanged: 'unchanged' };
+  const CHECK = { passed: 'passed', skipped: 'skipped', warning: 'warning' };
   const INFERRED = 'inferred';
+  const BASE_SIDE = 'base';
   const CHANGE_LABELS = { added: 'Agregado', modified: 'Modificado', removed: 'Eliminado', unchanged: 'Sin cambios' };
+  const CHANGE_COUNT_LABELS = { added: 'agregados', modified: 'modificados', removed: 'eliminados', unchanged: 'sin cambios' };
+  // Every change carries a glyph as well as a colour, so it reads without colour.
+  const CHANGE_GLYPHS = { added: '+', modified: '~', removed: '−', unchanged: '·' };
+  const CHECK_GLYPHS = { passed: '✓', skipped: '–', warning: '!' };
   const VIEW_LABELS = { changes: 'Flujo de cambios', business: 'Flujo de negocio', formal: 'Modelo formal' };
   const MOMENT_LABELS = { diff: 'Diferencia', before: 'Antes', after: 'Después' };
+  const LIST_HEADINGS = {
+    changes: { nodes: 'Piezas', relationships: 'Relaciones' },
+    business: { nodes: 'Estados', relationships: 'Transiciones' },
+  };
+  const VERIFICATION_CHIP = {
+    verified: { status: CHECK.passed, text: 'Verificado contra el código' },
+    unverified: { status: CHECK.warning, text: 'Sin verificar contra el código' },
+  };
+  // Checks that compare the model with the repository; the chip of the header answers for them.
+  const REPOSITORY_CHECK_IDS = ['evidence-exists', 'change-matches-diff', 'relationship-names-endpoint', 'diff-coverage'];
+  const TOUR_ICONS = { play: '▶', pause: '❚❚' };
 
-  const NODE_HEIGHT_PX = 52;
-  const NODE_MIN_WIDTH_PX = 120;
-  const NODE_HORIZONTAL_PADDING_PX = 20;
-  const NODE_CORNER_RADIUS_PX = 8;
-  const NODE_KIND_BASELINE_PX = 20;
-  const NODE_LABEL_BASELINE_PX = 38;
-  const NODE_LABEL_FONT = '600 13px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
-  const EDGE_LABEL_FONT = '11px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
-  const EDGE_LABEL_HEIGHT_PX = 16;
-  const EDGE_LABEL_BASELINE_PX = 12;
-  const EDGE_LABEL_EXTRA_WIDTH_PX = 8;
-  const GROUP_CORNER_RADIUS_PX = 12;
-  const GROUP_LABEL_BASELINE_PX = 20;
-  const GROUP_PADDING = '[top=36,left=20,bottom=20,right=20]';
-  const ARROW_LENGTH_PX = 10;
-  const ARROW_HALF_WIDTH_PX = 5;
-  const VIEWPORT_MARGIN_PX = 32;
+  const FONT_UI = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+  const FONT_MONO = 'ui-monospace, "Cascadia Code", "SF Mono", Consolas, monospace';
+  const NODE_LABEL_FONT = `600 13.5px ${FONT_UI}`;
+  const NODE_KIND_FONT = `600 10px ${FONT_MONO}`;
+  const NODE_KIND_LETTER_SPACING_PX = 0.8;
+  const EDGE_LABEL_FONT = `500 11px ${FONT_UI}`;
+  const NODE_HEIGHT_PX = 56;
+  const NODE_MIN_WIDTH_PX = 132;
+  const NODE_CORNER_RADIUS_PX = 10;
+  const NODE_TEXT_LEFT_PX = 22;
+  const NODE_TEXT_RIGHT_PX = 16;
+  const NODE_KIND_BASELINE_PX = 22;
+  const NODE_LABEL_BASELINE_PX = 41;
+  const NODE_MARK_RADIUS_PX = 9;
+  const NODE_MARK_INSET_PX = 16;
+  const NODE_MARK_SPACE_PX = 24;
+  const NODE_MARK_GLYPH_OFFSET_PX = 4;
+  const STATE_TEXT_LEFT_PX = 36;
+  const STATE_DOT_CENTER_X_PX = 22;
+  const STATE_DOT_RADIUS_PX = 4.5;
+  const EDGE_LABEL_HEIGHT_PX = 20;
+  const EDGE_LABEL_BASELINE_PX = 14;
+  const EDGE_LABEL_EXTRA_WIDTH_PX = 16;
+  const EDGE_LABEL_CORNER_RADIUS_PX = 6;
+  const EDGE_BEND_RADIUS_PX = 9;
+  const GROUP_CORNER_RADIUS_PX = 16;
+  const GROUP_LABEL_BASELINE_PX = 22;
+  const GROUP_PADDING = '[top=40,left=22,bottom=22,right=22]';
+  const ARROW_LENGTH_PX = 9;
+  const ARROW_HALF_WIDTH_PX = 4.5;
+  const VIEWPORT_MARGIN_PX = 36;
   const ZOOM_STEP = 1.25;
   const MIN_SCALE = 0.15;
   const MIN_READABLE_SCALE = 0.75;
   const MAX_SCALE = 3;
   const DRAG_THRESHOLD_PX = 4;
   const KEYBOARD_PAN_STEP_PX = 60;
+  const VIEWPORT_ANIMATION_MS = 240;
+  const TOUR_STEP_MS = 1800;
+  const GRID_SPACING_PX = 24;
+  const GRID_MIN_SPACING_PX = 14;
   // Same width as the phone layout of the stylesheet.
   const PHONE_LAYOUT_QUERY = '(max-width: 52rem)';
+  const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
   const FULL_COMMIT_HASH_PATTERN = /^[0-9a-f]{40}$/;
   const SHORT_COMMIT_HASH_LENGTH = 7;
   const PINCH_POINTER_COUNT = 2;
   const GROUP_ID_PREFIX = 'group:';
   const ROOT_ID = 'root';
+  // Comments and the words that give a Lean file its shape; the rest is left as written.
+  const LEAN_TOKEN_PATTERN = /(\/-[\s\S]*?-\/|--.*$)|\b(theorem|lemma|def|inductive|structure|where|deriving|by|cases|simp|decide|match|with|fun|namespace|end|open|import|example)\b/gm;
   const ELK_LAYOUT_OPTIONS = {
     'elk.algorithm': 'layered',
-      'elk.hierarchyHandling': 'INCLUDE_CHILDREN',
+    'elk.hierarchyHandling': 'INCLUDE_CHILDREN',
     'elk.edgeRouting': 'ORTHOGONAL',
     'elk.json.shapeCoords': 'ROOT',
     'elk.json.edgeCoords': 'ROOT',
     // Layers follow the order of the model, so the flow reads from its first element to its last.
     'elk.layered.cycleBreaking.strategy': 'MODEL_ORDER',
     'elk.layered.considerModelOrder.strategy': 'NODES_AND_EDGES',
-    'elk.layered.spacing.nodeNodeBetweenLayers': '70',
-    'elk.spacing.nodeNode': '32',
-    'elk.spacing.edgeNode': '24',
-    'elk.spacing.edgeEdge': '18',
+    'elk.layered.spacing.nodeNodeBetweenLayers': '76',
+    'elk.spacing.nodeNode': '34',
+    'elk.spacing.edgeNode': '26',
+    'elk.spacing.edgeEdge': '20',
     'elk.spacing.edgeLabel': '6',
   };
 
   const model = JSON.parse(document.getElementById('flow-graph-model').textContent);
   const KIND_LABELS = model.kindLabels;
-  const state = { view: VIEW.changes, moment: MOMENT.diff, onlyChanged: false, selectedId: null };
+  const state = { view: VIEW.changes, moment: MOMENT.diff, hideUntouched: false, selectedId: null };
   const elementsById = new Map();
+  /** Place of each drawn element in graph coordinates, to bring it into view. */
+  const boundsById = new Map();
+  let visibleRelationships = [];
+  /** First node of the flow on screen: where a graph too big for the canvas starts being read. */
+  let flowStartId = null;
   const viewport = { x: 0, y: 0, scale: 1, contentWidth: 0, contentHeight: 0 };
+  const tour = { index: -1, timerId: null };
   let layoutRequestId = 0;
+  let viewportAnimationId = 0;
 
   const svg = document.getElementById('graph');
+  const canvasArea = document.getElementById('canvas-area');
   const zoomControls = document.getElementById('zoom-controls');
+  const tourControls = document.getElementById('tour-controls');
+  const tourCaption = document.getElementById('tour-caption');
+  const tourPlayButton = tourControls.querySelector('[data-tour="play"]');
   const canvasMessage = document.getElementById('canvas-message');
   const formalModelContainer = document.getElementById('formal-model');
   const detailContainer = document.getElementById('detail');
@@ -373,6 +614,7 @@
   const closePanelButton = document.getElementById('close-panel');
   const toggleFiltersButton = document.getElementById('toggle-filters');
   const phoneLayout = window.matchMedia(PHONE_LAYOUT_QUERY);
+  const reducedMotion = window.matchMedia(REDUCED_MOTION_QUERY);
 
   const createElement = (tagName, { className, text, attributes = {} } = {}, children = []) => {
     const element = document.createElement(tagName);
@@ -390,6 +632,9 @@
     return element;
   };
 
+  /** A glyph is decoration for a sighted reader; the word next to it carries the meaning. */
+  const createGlyph = (className, glyph) => createElement('span', { className, text: glyph, attributes: { 'aria-hidden': 'true' } });
+
   const measureText = (text, font) => {
     measuringContext.font = font;
     return Math.ceil(measuringContext.measureText(text).width);
@@ -397,6 +642,8 @@
 
   const labelOf = (elementId) => elementsById.get(elementId)?.label ?? elementId;
   const relationshipLabel = (relationship) => relationship.label ?? KIND_LABELS[relationship.kind] ?? '';
+  const describeRelationship = (relationship) => `${labelOf(relationship.source)} → ${labelOf(relationship.target)}: ${relationshipLabel(relationship)}`;
+  const kindLabelOf = (node) => KIND_LABELS[node.kind] ?? '';
 
   /** In "before" and "after" the graph shows one version of the code, so nothing is highlighted. */
   const displayedChange = (element) => (state.moment === MOMENT.diff ? element.change : CHANGE.unchanged);
@@ -416,34 +663,44 @@
     return { groups: model.groups ?? [], nodes: model.nodes, relationships: model.edges ?? [] };
   }
 
-  /** Applies the moment (before/after) and the "only changed" filter. */
-  function filterElements({ groups, nodes, relationships }) {
+  /**
+   * Applies the moment (before/after) and, with `hideUntouched`, leaves out what the pull request
+   * did not touch.
+   */
+  function filterElements({ groups, nodes, relationships }, { hideUntouched = state.hideUntouched } = {}) {
     const hiddenChange = { [MOMENT.before]: CHANGE.added, [MOMENT.after]: CHANGE.removed }[state.moment];
     let visibleNodes = nodes.filter((node) => node.change !== hiddenChange);
     const visibleNodeIds = new Set(visibleNodes.map((node) => node.id));
-    let visibleRelationships = relationships.filter(
+    let relationshipsInView = relationships.filter(
       (relationship) => relationship.change !== hiddenChange && visibleNodeIds.has(relationship.source) && visibleNodeIds.has(relationship.target),
     );
 
-    if (state.onlyChanged) {
+    if (hideUntouched) {
       // Keep what changed plus its direct neighbours, so a changed piece still shows where it connects.
       const changedNodeIds = new Set(visibleNodes.filter((node) => node.change !== CHANGE.unchanged).map((node) => node.id));
-      visibleRelationships = visibleRelationships.filter(
+      relationshipsInView = relationshipsInView.filter(
         (relationship) => relationship.change !== CHANGE.unchanged || changedNodeIds.has(relationship.source) || changedNodeIds.has(relationship.target),
       );
-      const keptNodeIds = new Set([...changedNodeIds, ...visibleRelationships.flatMap((relationship) => [relationship.source, relationship.target])]);
+      const keptNodeIds = new Set([...changedNodeIds, ...relationshipsInView.flatMap((relationship) => [relationship.source, relationship.target])]);
       visibleNodes = visibleNodes.filter((node) => keptNodeIds.has(node.id));
     }
     const usedGroupIds = new Set(visibleNodes.map((node) => node.group).filter(Boolean));
-    return { groups: groups.filter((group) => usedGroupIds.has(group.id)), nodes: visibleNodes, relationships: visibleRelationships };
+    return { groups: groups.filter((group) => usedGroupIds.has(group.id)), nodes: visibleNodes, relationships: relationshipsInView };
+  }
+
+  const isBusinessView = () => state.view === VIEW.business;
+  const nodeTextLeft = () => (isBusinessView() ? STATE_TEXT_LEFT_PX : NODE_TEXT_LEFT_PX);
+  const hasChangeMark = (node) => displayedChange(node) !== CHANGE.unchanged;
+
+  function measureNodeWidth(node) {
+    const kindLabel = kindLabelOf(node).toUpperCase();
+    const kindWidth = measureText(kindLabel, NODE_KIND_FONT) + kindLabel.length * NODE_KIND_LETTER_SPACING_PX;
+    const textWidth = Math.max(measureText(node.label, NODE_LABEL_FONT), kindWidth);
+    return Math.max(NODE_MIN_WIDTH_PX, Math.ceil(nodeTextLeft() + textWidth + NODE_TEXT_RIGHT_PX + (hasChangeMark(node) ? NODE_MARK_SPACE_PX : 0)));
   }
 
   function toLayoutGraph({ groups, nodes, relationships }) {
-    const toLayoutNode = (node) => ({
-      id: node.id,
-      width: Math.max(NODE_MIN_WIDTH_PX, measureText(node.label, NODE_LABEL_FONT) + NODE_HORIZONTAL_PADDING_PX * 2),
-      height: NODE_HEIGHT_PX,
-    });
+    const toLayoutNode = (node) => ({ id: node.id, width: measureNodeWidth(node), height: NODE_HEIGHT_PX });
     const groupNodes = groups.map((group) => ({
       id: `${GROUP_ID_PREFIX}${group.id}`,
       layoutOptions: { 'elk.padding': GROUP_PADDING },
@@ -474,20 +731,46 @@
     svgElement.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
+        stopTour();
         select(elementId);
       }
     });
   }
 
+  /** Left edge of a node, filled with the colour of its change: the cap that tells nodes apart at a glance. */
+  function capPath(height) {
+    const radius = NODE_CORNER_RADIUS_PX;
+    return `M${radius} 0 A${radius} ${radius} 0 0 0 0 ${radius} V${height - radius} A${radius} ${radius} 0 0 0 ${radius} ${height} Z`;
+  }
+
   function drawNode(layoutNode) {
     const node = elementsById.get(layoutNode.id);
-    const centerX = layoutNode.width / 2;
-    const group = createSvgElement('g', { class: `graph-node ${displayedChange(node)}`, transform: `translate(${layoutNode.x} ${layoutNode.y})` }, [
-      createSvgElement('rect', { width: layoutNode.width, height: layoutNode.height, rx: NODE_CORNER_RADIUS_PX }),
-      createSvgElement('text', { class: 'node-kind', x: centerX, y: NODE_KIND_BASELINE_PX, 'text-anchor': 'middle' }, [KIND_LABELS[node.kind] ?? '']),
-      createSvgElement('text', { class: 'node-label', x: centerX, y: NODE_LABEL_BASELINE_PX, 'text-anchor': 'middle' }, [node.label]),
+    const change = displayedChange(node);
+    const textLeft = nodeTextLeft();
+    // A business state is a pill with a dot; a piece of code is a card with a coloured cap.
+    const shape = isBusinessView()
+      ? [
+          createSvgElement('rect', { width: layoutNode.width, height: layoutNode.height, rx: layoutNode.height / 2 }),
+          createSvgElement('circle', { class: 'node-dot', cx: STATE_DOT_CENTER_X_PX, cy: layoutNode.height / 2, r: STATE_DOT_RADIUS_PX }),
+        ]
+      : [
+          createSvgElement('rect', { width: layoutNode.width, height: layoutNode.height, rx: NODE_CORNER_RADIUS_PX }),
+          createSvgElement('path', { class: 'node-cap', d: capPath(layoutNode.height) }),
+        ];
+    const mark = hasChangeMark(node)
+      ? [
+          createSvgElement('circle', { class: 'node-mark', cx: layoutNode.width - NODE_MARK_INSET_PX, cy: NODE_MARK_INSET_PX, r: NODE_MARK_RADIUS_PX }),
+          createSvgElement('text', { class: 'node-mark-glyph', 'aria-hidden': 'true', x: layoutNode.width - NODE_MARK_INSET_PX, y: NODE_MARK_INSET_PX + NODE_MARK_GLYPH_OFFSET_PX, 'text-anchor': 'middle' }, [CHANGE_GLYPHS[change]]),
+        ]
+      : [];
+    const group = createSvgElement('g', { class: `graph-node ${change}`, transform: `translate(${layoutNode.x} ${layoutNode.y})` }, [
+      ...shape,
+      createSvgElement('text', { class: 'node-kind', x: textLeft, y: NODE_KIND_BASELINE_PX }, [kindLabelOf(node)]),
+      createSvgElement('text', { class: 'node-label', x: textLeft, y: NODE_LABEL_BASELINE_PX }, [node.label]),
+      ...mark,
     ]);
-    makeSelectable(group, node.id, `${KIND_LABELS[node.kind] ?? ''} ${node.label}, ${CHANGE_LABELS[node.change]}`);
+    makeSelectable(group, node.id, `${kindLabelOf(node)} ${node.label}, ${CHANGE_LABELS[node.change]}`);
+    boundsById.set(node.id, { x: layoutNode.x, y: layoutNode.y, width: layoutNode.width, height: layoutNode.height });
     return group;
   }
 
@@ -504,6 +787,27 @@
     };
   }
 
+  /** Path through the points of an edge with its right-angle bends rounded off. */
+  function roundedPath(points) {
+    const commands = [`M${points[0].x} ${points[0].y}`];
+    for (let index = 1; index < points.length - 1; index += 1) {
+      const previous = points[index - 1];
+      const corner = points[index];
+      const next = points[index + 1];
+      const lengthIn = Math.hypot(corner.x - previous.x, corner.y - previous.y);
+      const lengthOut = Math.hypot(next.x - corner.x, next.y - corner.y);
+      // Half of a short segment at most, so two bends close together do not overlap.
+      const radius = Math.min(EDGE_BEND_RADIUS_PX, lengthIn / 2, lengthOut / 2);
+      if (radius === 0) continue;
+      const entry = { x: corner.x - ((corner.x - previous.x) / lengthIn) * radius, y: corner.y - ((corner.y - previous.y) / lengthIn) * radius };
+      const exit = { x: corner.x + ((next.x - corner.x) / lengthOut) * radius, y: corner.y + ((next.y - corner.y) / lengthOut) * radius };
+      commands.push(`L${entry.x} ${entry.y}`, `Q${corner.x} ${corner.y} ${exit.x} ${exit.y}`);
+    }
+    const last = points.at(-1);
+    commands.push(`L${last.x} ${last.y}`);
+    return commands.join(' ');
+  }
+
   function drawEdge(layoutEdge) {
     const relationship = elementsById.get(layoutEdge.id);
     const points = (layoutEdge.sections ?? []).flatMap((section) => [section.startPoint, ...(section.bendPoints ?? []), section.endPoint]);
@@ -513,23 +817,33 @@
     const angle = Math.atan2(lastPoint.y - previousPoint.y, lastPoint.x - previousPoint.x);
     // The line stops at the base of the arrow head, so the head ends exactly on the node border.
     const lineEnd = { x: lastPoint.x - Math.cos(angle) * ARROW_LENGTH_PX, y: lastPoint.y - Math.sin(angle) * ARROW_LENGTH_PX };
-    const pathData = [...points.slice(0, -1), lineEnd].map((point, index) => `${index === 0 ? 'M' : 'L'}${point.x} ${point.y}`).join(' ');
+    const pathData = roundedPath([...points.slice(0, -1), lineEnd]);
     const arrow = createSvgElement('polygon', {
       class: 'edge-arrow',
       points: `0,0 ${-ARROW_LENGTH_PX},${-ARROW_HALF_WIDTH_PX} ${-ARROW_LENGTH_PX},${ARROW_HALF_WIDTH_PX}`,
       transform: `translate(${lastPoint.x} ${lastPoint.y}) rotate(${(angle * 180) / Math.PI})`,
     });
-    const labels = (layoutEdge.labels ?? []).map((label) =>
+    const labels = (layoutEdge.labels ?? []).flatMap((label) => [
+      createSvgElement('rect', { class: 'edge-label-box', x: label.x, y: label.y, width: label.width, height: label.height, rx: EDGE_LABEL_CORNER_RADIUS_PX }),
       createSvgElement('text', { x: label.x + label.width / 2, y: label.y + EDGE_LABEL_BASELINE_PX, 'text-anchor': 'middle' }, [label.text]),
-    );
+    ]);
     const confidenceClass = relationship.confidence === INFERRED ? INFERRED : '';
     const group = createSvgElement('g', { class: `graph-edge ${displayedChange(relationship)} ${confidenceClass}` }, [
       createSvgElement('path', { class: 'edge-hit', d: pathData }),
       createSvgElement('path', { class: 'edge-line', d: pathData }),
+      createSvgElement('path', { class: 'edge-flow', d: pathData }),
       arrow,
       ...labels,
     ]);
     makeSelectable(group, relationship.id, `${labelOf(relationship.source)} a ${labelOf(relationship.target)}: ${relationshipLabel(relationship)}, ${CHANGE_LABELS[relationship.change]}`);
+    const horizontal = points.map((point) => point.x);
+    const vertical = points.map((point) => point.y);
+    boundsById.set(relationship.id, {
+      x: Math.min(...horizontal),
+      y: Math.min(...vertical),
+      width: Math.max(...horizontal) - Math.min(...horizontal),
+      height: Math.max(...vertical) - Math.min(...vertical),
+    });
     return group;
   }
 
@@ -539,6 +853,7 @@
     const edgeLayer = createSvgElement('g');
     const groupNameLayer = createSvgElement('g');
     const nodeLayer = createSvgElement('g');
+    boundsById.clear();
     const visit = (layoutNode) => {
       for (const child of layoutNode.children ?? []) {
         if (groupLabels.has(child.id)) {
@@ -559,7 +874,7 @@
     svg.replaceChildren(groupLayer, edgeLayer, groupNameLayer, nodeLayer);
     viewport.contentWidth = layout.width;
     viewport.contentHeight = layout.height;
-    fitViewport({ keepReadable: phoneLayout.matches });
+    fitViewport({ keepReadable: phoneLayout.matches, animate: false });
     highlightSelection();
   }
 
@@ -567,6 +882,35 @@
     const { width, height } = svg.getBoundingClientRect();
     if (width === 0 || height === 0) return;
     svg.setAttribute('viewBox', `${viewport.x} ${viewport.y} ${width / viewport.scale} ${height / viewport.scale}`);
+    // The dot grid follows the graph. Zoomed out, the dots thin out instead of turning into a grey wash.
+    let spacing = GRID_SPACING_PX * viewport.scale;
+    while (spacing < GRID_MIN_SPACING_PX) spacing *= 2;
+    canvasArea.style.backgroundSize = `${spacing}px ${spacing}px`;
+    canvasArea.style.backgroundPosition = `${-viewport.x * viewport.scale}px ${-viewport.y * viewport.scale}px`;
+  }
+
+  /**
+   * Moves the view to `target`. A move the reader asked for with a button or a key glides there,
+   * so the eye keeps its place; direct manipulation (wheel, drag, pinch) and a first draw are
+   * instant. With reduced motion every move is instant.
+   */
+  function moveViewportTo(target, { animate = false } = {}) {
+    cancelAnimationFrame(viewportAnimationId);
+    if (!animate || reducedMotion.matches) {
+      Object.assign(viewport, target);
+      applyViewport();
+      return;
+    }
+    const origin = { x: viewport.x, y: viewport.y, scale: viewport.scale };
+    const startedAt = performance.now();
+    const step = (now) => {
+      const progress = Math.min((now - startedAt) / VIEWPORT_ANIMATION_MS, 1);
+      const eased = 1 - (1 - progress) ** 3;
+      for (const axis of ['x', 'y', 'scale']) viewport[axis] = origin[axis] + (target[axis] - origin[axis]) * eased;
+      applyViewport();
+      if (progress < 1) viewportAnimationId = requestAnimationFrame(step);
+    };
+    viewportAnimationId = requestAnimationFrame(step);
   }
 
   /**
@@ -574,35 +918,62 @@
    * labels can be read: on a small screen the graph then starts at its first elements and the
    * rest is reached by moving the canvas, instead of everything shrinking to fit.
    */
-  function fitViewport({ keepReadable = false } = {}) {
+  function fitViewport({ keepReadable = false, animate = false } = {}) {
     const { width, height } = svg.getBoundingClientRect();
     if (width === 0 || height === 0 || viewport.contentWidth === 0) return;
     const wholeGraphScale = Math.min((width - VIEWPORT_MARGIN_PX * 2) / viewport.contentWidth, (height - VIEWPORT_MARGIN_PX * 2) / viewport.contentHeight, 1);
-    viewport.scale = Math.max(keepReadable ? Math.max(wholeGraphScale, MIN_READABLE_SCALE) : wholeGraphScale, MIN_SCALE);
-    const visibleWidth = width / viewport.scale;
-    const visibleHeight = height / viewport.scale;
-    const margin = VIEWPORT_MARGIN_PX / viewport.scale;
-    // An axis that fits is centred; one that does not starts at the beginning of the flow.
-    viewport.x = viewport.contentWidth + margin * 2 > visibleWidth ? -margin : (viewport.contentWidth - visibleWidth) / 2;
-    viewport.y = viewport.contentHeight + margin * 2 > visibleHeight ? -margin : (viewport.contentHeight - visibleHeight) / 2;
-    applyViewport();
+    const scale = Math.max(keepReadable ? Math.max(wholeGraphScale, MIN_READABLE_SCALE) : wholeGraphScale, MIN_SCALE);
+    const visibleWidth = width / scale;
+    const visibleHeight = height / scale;
+    const margin = VIEWPORT_MARGIN_PX / scale;
+    const flowStart = boundsById.get(flowStartId);
+    // An axis that fits is centred; one that does not shows the first element of the flow, as close
+    // to the middle as the edges of the graph allow.
+    const placeAxis = (contentSize, visibleSize, startCenter) => {
+      if (contentSize + margin * 2 <= visibleSize) return (contentSize - visibleSize) / 2;
+      const centredOnStart = (startCenter ?? 0) - visibleSize / 2;
+      return Math.min(Math.max(centredOnStart, -margin), contentSize + margin - visibleSize);
+    };
+    moveViewportTo({
+      scale,
+      x: placeAxis(viewport.contentWidth, visibleWidth, flowStart && flowStart.x + flowStart.width / 2),
+      y: placeAxis(viewport.contentHeight, visibleHeight, flowStart && flowStart.y + flowStart.height / 2),
+    }, { animate });
   }
 
   /** Zooms keeping the point under `anchor` (in screen pixels, relative to the SVG) in place. */
-  function zoomBy(factor, anchor) {
+  function zoomBy(factor, anchor, { animate = false } = {}) {
     const { width, height } = svg.getBoundingClientRect();
     const anchorPoint = anchor ?? { x: width / 2, y: height / 2 };
-    const nextScale = Math.min(Math.max(viewport.scale * factor, MIN_SCALE), MAX_SCALE);
-    viewport.x += anchorPoint.x / viewport.scale - anchorPoint.x / nextScale;
-    viewport.y += anchorPoint.y / viewport.scale - anchorPoint.y / nextScale;
-    viewport.scale = nextScale;
-    applyViewport();
+    const scale = Math.min(Math.max(viewport.scale * factor, MIN_SCALE), MAX_SCALE);
+    moveViewportTo({
+      scale,
+      x: viewport.x + anchorPoint.x / viewport.scale - anchorPoint.x / scale,
+      y: viewport.y + anchorPoint.y / viewport.scale - anchorPoint.y / scale,
+    }, { animate });
   }
 
   function panBy(deltaX, deltaY) {
-    viewport.x += deltaX / viewport.scale;
-    viewport.y += deltaY / viewport.scale;
-    applyViewport();
+    moveViewportTo({ scale: viewport.scale, x: viewport.x + deltaX / viewport.scale, y: viewport.y + deltaY / viewport.scale });
+  }
+
+  /** Brings an element into view when part of it is off screen, keeping the zoom. */
+  function revealElement(elementId) {
+    const bounds = boundsById.get(elementId);
+    const { width, height } = svg.getBoundingClientRect();
+    if (!bounds || width === 0 || height === 0) return;
+    const visibleWidth = width / viewport.scale;
+    const visibleHeight = height / viewport.scale;
+    const margin = VIEWPORT_MARGIN_PX / viewport.scale;
+    const isInView =
+      bounds.x >= viewport.x + margin && bounds.x + bounds.width <= viewport.x + visibleWidth - margin &&
+      bounds.y >= viewport.y + margin && bounds.y + bounds.height <= viewport.y + visibleHeight - margin;
+    if (isInView) return;
+    moveViewportTo({
+      scale: viewport.scale,
+      x: bounds.x + bounds.width / 2 - visibleWidth / 2,
+      y: bounds.y + bounds.height / 2 - visibleHeight / 2,
+    }, { animate: true });
   }
 
   /** Keyboard control of the canvas: arrows move it, + and - zoom, 0 fits the whole graph. */
@@ -613,10 +984,10 @@
       ArrowRight: () => panBy(KEYBOARD_PAN_STEP_PX, 0),
       ArrowUp: () => panBy(0, -KEYBOARD_PAN_STEP_PX),
       ArrowDown: () => panBy(0, KEYBOARD_PAN_STEP_PX),
-      '+': () => zoomBy(ZOOM_STEP),
-      '=': () => zoomBy(ZOOM_STEP),
-      '-': () => zoomBy(1 / ZOOM_STEP),
-      0: () => fitViewport(),
+      '+': () => zoomBy(ZOOM_STEP, undefined, { animate: true }),
+      '=': () => zoomBy(ZOOM_STEP, undefined, { animate: true }),
+      '-': () => zoomBy(1 / ZOOM_STEP, undefined, { animate: true }),
+      0: () => fitViewport({ animate: true }),
     };
     const action = actions[event.key];
     if (!action) return;
@@ -649,6 +1020,8 @@
       };
     };
     svg.addEventListener('pointerdown', (event) => {
+      // Taking hold of the canvas stops a glide in progress: the hand wins.
+      cancelAnimationFrame(viewportAnimationId);
       activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
       wasLastGestureMove = activePointers.size > 1;
       if (activePointers.size === PINCH_POINTER_COUNT) {
@@ -707,15 +1080,16 @@
     // would land on whatever the drawer put under the finger.
     svg.addEventListener('click', (event) => {
       if (wasLastGestureMove) return;
+      stopTour();
       select(event.target.closest?.('[data-element-id]')?.dataset.elementId ?? null);
     });
     svg.addEventListener('pointerup', endDrag);
     svg.addEventListener('pointercancel', endDrag);
     zoomControls.addEventListener('click', (event) => {
       const action = event.target.closest('button')?.dataset.zoom;
-      if (action === 'in') zoomBy(ZOOM_STEP);
-      if (action === 'out') zoomBy(1 / ZOOM_STEP);
-      if (action === 'fit') fitViewport();
+      if (action === 'in') zoomBy(ZOOM_STEP, undefined, { animate: true });
+      if (action === 'out') zoomBy(1 / ZOOM_STEP, undefined, { animate: true });
+      if (action === 'fit') fitViewport({ animate: true });
     });
     // The canvas changes size when the window does and when the panel or the filters fold.
     new ResizeObserver(applyViewport).observe(svg);
@@ -724,11 +1098,16 @@
   /** `hidden` is a property of HTML elements only; an SVG element needs the attribute. */
   const setGraphHidden = (isHidden) => svg.toggleAttribute('hidden', isHidden);
 
+  function setCanvasControlsHidden(isHidden) {
+    zoomControls.hidden = isHidden;
+    tourControls.hidden = isHidden || visibleRelationships.length === 0;
+  }
+
   function showCanvasMessage(text) {
     canvasMessage.textContent = text;
     canvasMessage.hidden = !text;
     setGraphHidden(Boolean(text));
-    zoomControls.hidden = Boolean(text);
+    setCanvasControlsHidden(Boolean(text));
   }
 
   async function drawGraph(visibleElements) {
@@ -753,6 +1132,20 @@
     }
   }
 
+  function renderEvidenceItem(item) {
+    const lastSlash = item.path.lastIndexOf('/');
+    const referenceParts = [
+      createElement('span', { className: 'evidence-directory', text: item.path.slice(0, lastSlash + 1) }),
+      createElement('span', { className: 'evidence-file', text: item.path.slice(lastSlash + 1) }),
+      createElement('span', { text: `:${item.line}` }),
+    ];
+    const reference = item.href
+      ? createElement('a', { attributes: { href: item.href, target: '_blank', rel: 'noopener' } }, referenceParts)
+      : createElement('span', {}, referenceParts);
+    const sideTag = item.side === BASE_SIDE ? [createElement('span', { className: 'side-tag', text: 'antes del PR' })] : [];
+    return createElement('li', {}, [reference, ...sideTag]);
+  }
+
   function renderDetail() {
     detailContainer.replaceChildren();
     const element = elementsById.get(state.selectedId);
@@ -760,17 +1153,28 @@
       detailContainer.append(
         createElement('h2', { text: 'Detalle' }),
         createElement('p', { className: 'placeholder', text: 'Elegí un nodo o una relación del grafo, o un elemento de la lista, para ver qué es y dónde está en el código.' }),
+        createElement('p', { className: 'placeholder', text: '«Recorrer» sigue el flujo paso a paso, en el orden en que ocurre.' }),
       );
       return;
     }
     const isRelationship = Boolean(element.source);
+    const badge = (className, glyph, text) => createElement('span', { className: `badge ${className}` }, [
+      ...(glyph ? [createGlyph('glyph', glyph)] : []),
+      createElement('span', { text }),
+    ]);
     const badges = createElement('div', { className: 'badges' }, [
-      createElement('span', { className: `badge ${element.change}`, text: CHANGE_LABELS[element.change] }),
-      createElement('span', { className: 'badge', text: KIND_LABELS[element.kind] ?? 'Transición' }),
-      ...(element.confidence ? [createElement('span', { className: 'badge', text: element.confidence === INFERRED ? 'Inferida' : 'Verificada en el código' })] : []),
+      badge(element.change, CHANGE_GLYPHS[element.change], CHANGE_LABELS[element.change]),
+      badge('', '', KIND_LABELS[element.kind] ?? 'Transición'),
+      ...(element.confidence ? [element.confidence === INFERRED ? badge(INFERRED, '', 'Inferida') : badge('', CHECK_GLYPHS.passed, 'Verificada en el código')] : []),
     ]);
     detailContainer.append(createElement('h2', { text: isRelationship ? relationshipLabel(element) : element.label }), badges);
-    if (isRelationship) detailContainer.append(createElement('p', { text: `${labelOf(element.source)} → ${labelOf(element.target)}` }));
+    if (isRelationship) {
+      detailContainer.append(createElement('p', { className: 'route' }, [
+        createElement('span', { text: labelOf(element.source) }),
+        createElement('span', { className: 'arrow', text: '→' }),
+        createElement('span', { text: labelOf(element.target) }),
+      ]));
+    }
     if (element.summary) detailContainer.append(createElement('p', { text: element.summary }));
     if (element.reason) detailContainer.append(createElement('h3', { text: 'Por qué se infiere' }), createElement('p', { text: element.reason }));
     detailContainer.append(createElement('h3', { text: 'Evidencia' }));
@@ -779,53 +1183,180 @@
       detailContainer.append(createElement('p', { className: 'placeholder', text: 'Sin evidencia registrada: el PR no cambió este elemento.' }));
       return;
     }
-    detailContainer.append(
-      createElement('ul', { className: 'evidence' }, evidence.map((item) => {
-        const reference = `${item.path}:${item.line}`;
-        const content = item.href
-          ? createElement('a', { text: reference, attributes: { href: item.href, target: '_blank', rel: 'noopener' } })
-          : document.createTextNode(reference);
-        return createElement('li', {}, [content]);
-      })),
-    );
+    detailContainer.append(createElement('ul', { className: 'evidence' }, evidence.map(renderEvidenceItem)));
   }
 
   function renderElementList({ nodes, relationships }) {
     const toItem = (element, text) => {
+      const change = displayedChange(element);
       const button = createElement('button', { attributes: { type: 'button', 'data-element-id': element.id } }, [
-        createElement('span', { className: `swatch ${displayedChange(element)}` }),
+        createGlyph(`swatch ${change}`, CHANGE_GLYPHS[change]),
         createElement('span', { text }),
       ]);
-      button.addEventListener('click', () => select(element.id));
+      button.addEventListener('click', () => {
+        stopTour();
+        select(element.id);
+        revealElement(element.id);
+      });
       return createElement('li', {}, [button]);
     };
+    const headings = LIST_HEADINGS[state.view];
+    const heading = (text, count) => (count > 0 ? [createElement('li', { className: 'list-heading', text: `${text} · ${count}` })] : []);
     elementList.replaceChildren(
+      ...heading(headings.nodes, nodes.length),
       ...nodes.map((node) => toItem(node, node.label)),
-      ...relationships.map((relationship) => toItem(relationship, `${labelOf(relationship.source)} → ${labelOf(relationship.target)}: ${relationshipLabel(relationship)}`)),
+      ...heading(headings.relationships, relationships.length),
+      ...relationships.map((relationship) => toItem(relationship, describeRelationship(relationship))),
     );
+  }
+
+  const countWithLabel = (count, label) => createElement('span', {}, [createElement('strong', { text: String(count) }), ` ${label}`]);
+
+  /** The references of the graph double as its summary: each kind of change with how many there are. */
+  function renderLegend({ nodes, relationships }) {
+    const elements = [...nodes, ...relationships];
+    const inferredCount = relationships.filter((relationship) => relationship.confidence === INFERRED).length;
+    // A kind of change the view does not have is left out: a row of zeros explains nothing.
+    const items = Object.values(CHANGE).flatMap((change) => {
+      const count = elements.filter((element) => element.change === change).length;
+      return count === 0 ? [] : [createElement('li', {}, [createGlyph(`swatch ${change}`, CHANGE_GLYPHS[change]), countWithLabel(count, CHANGE_COUNT_LABELS[change])])];
+    });
+    const inferredItem = inferredCount === 0
+      ? []
+      : [createElement('li', {}, [createGlyph('line-sample', ''), countWithLabel(inferredCount, inferredCount === 1 ? 'inferida' : 'inferidas')])];
+    document.getElementById('legend').replaceChildren(...items, ...inferredItem);
+  }
+
+  /** Says, where it cannot be missed, whether the graph was checked against the code. */
+  function renderVerification() {
+    const checks = model.verification?.checks ?? [];
+    const statusById = new Map(checks.map((check) => [check.id, check.status]));
+    const isVerified = REPOSITORY_CHECK_IDS.every((checkId) => statusById.get(checkId) === CHECK.passed);
+    const chipContent = isVerified ? VERIFICATION_CHIP.verified : VERIFICATION_CHIP.unverified;
+    const chip = document.getElementById('verification-chip');
+    chip.classList.add(chipContent.status);
+    // A graph nobody checked says so even with the filters folded; a checked one can fold with them.
+    chip.classList.toggle('collapsible', isVerified);
+    chip.replaceChildren(createGlyph('glyph', CHECK_GLYPHS[chipContent.status]), createElement('span', { text: chipContent.text }));
+
+    const checkList = document.getElementById('checks');
+    if (checks.length === 0) {
+      checkList.replaceChildren(createElement('li', { className: CHECK.warning }, [
+        createGlyph('check-mark', CHECK_GLYPHS.warning),
+        createElement('span', {}, [
+          createElement('span', { className: 'check-label', text: 'Sin registro de verificación' }),
+          createElement('span', { className: 'check-detail', text: 'Esta página se generó sin pasar por las comprobaciones de render.' }),
+        ]),
+      ]));
+      return;
+    }
+    checkList.replaceChildren(...checks.map((check) => createElement('li', { className: check.status }, [
+      createGlyph('check-mark', CHECK_GLYPHS[check.status]),
+      createElement('span', {}, [
+        createElement('span', { className: 'check-label', text: check.label }),
+        createElement('span', { className: 'check-detail', text: check.detail }),
+      ]),
+    ])));
+  }
+
+  /** Lean source with its comments and structural words marked; the text itself is not changed. */
+  function highlightLean(source) {
+    const fragments = [];
+    let position = 0;
+    for (const match of source.matchAll(LEAN_TOKEN_PATTERN)) {
+      if (match.index > position) fragments.push(source.slice(position, match.index));
+      fragments.push(createElement('span', { className: match[1] ? 'lean-comment' : 'lean-keyword', text: match[0] }));
+      position = match.index + match[0].length;
+    }
+    fragments.push(source.slice(position));
+    return fragments;
   }
 
   function renderFormalModel() {
     formalModelContainer.replaceChildren(
       createElement('p', { text: 'Modelo en Lean 4 del flujo de negocio. Lean lo compiló sin errores y sin pruebas pendientes: las propiedades valen para este modelo, que es una abstracción del código escrita a partir del PR, no el código mismo.' }),
-      createElement('pre', {}, [createElement('code', { text: model.formalModel.source })]),
+      createElement('pre', {}, [createElement('code', {}, highlightLean(model.formalModel.source))]),
     );
   }
 
+  /** Marks the selection and what touches it; the rest of the graph steps back. */
   function highlightSelection() {
+    const selected = elementsById.get(state.selectedId);
+    const relatedIds = new Set();
+    if (selected?.source) {
+      relatedIds.add(selected.source).add(selected.target);
+    } else if (selected) {
+      for (const relationship of visibleRelationships) {
+        if (relationship.source === selected.id || relationship.target === selected.id) {
+          relatedIds.add(relationship.id).add(relationship.source).add(relationship.target);
+        }
+      }
+    }
+    svg.classList.toggle('has-focus', Boolean(selected));
     for (const element of document.querySelectorAll('[data-element-id]')) {
-      const isSelected = element.dataset.elementId === state.selectedId;
-      if (element instanceof SVGElement) element.classList.toggle('selected', isSelected);
-      else element.setAttribute('aria-current', String(isSelected));
+      const elementId = element.dataset.elementId;
+      const isSelected = elementId === state.selectedId;
+      if (element instanceof SVGElement) {
+        element.classList.toggle('selected', isSelected);
+        element.classList.toggle('related', !isSelected && relatedIds.has(elementId));
+      } else {
+        element.setAttribute('aria-current', String(isSelected));
+      }
     }
   }
 
-  function select(elementId) {
+  function select(elementId, { openPanel = true } = {}) {
     state.selectedId = elementId;
     highlightSelection();
     renderDetail();
     // On a phone the panel is a drawer over the canvas: choosing something is asking to read it.
-    if (elementId && phoneLayout.matches) setPanelOpen(true);
+    if (elementId && openPanel && phoneLayout.matches) setPanelOpen(true);
+  }
+
+  /** Shows one relationship of the flow, in the order the model lists them. */
+  function showTourStep(index) {
+    const stepCount = visibleRelationships.length;
+    if (stepCount === 0) return;
+    tour.index = ((index % stepCount) + stepCount) % stepCount;
+    const relationship = visibleRelationships[tour.index];
+    // The panel stays closed on a phone: the tour is watched on the canvas, and the caption says the step.
+    select(relationship.id, { openPanel: false });
+    revealElement(relationship.id);
+    tourCaption.replaceChildren(createElement('strong', { text: `${tour.index + 1} / ${stepCount}` }), ` · ${describeRelationship(relationship)}`);
+    tourCaption.hidden = false;
+  }
+
+  function setTourPlaying(isPlaying) {
+    clearInterval(tour.timerId);
+    tour.timerId = null;
+    tourPlayButton.setAttribute('aria-pressed', String(isPlaying));
+    document.getElementById('tour-play-icon').textContent = isPlaying ? TOUR_ICONS.pause : TOUR_ICONS.play;
+    if (!isPlaying) return;
+    // Starting again after the last step begins the flow over.
+    showTourStep(tour.index >= visibleRelationships.length - 1 ? 0 : tour.index + 1);
+    tour.timerId = setInterval(() => {
+      // The tour ends at the last step instead of looping: it stops moving once it has told the flow.
+      if (tour.index >= visibleRelationships.length - 1) setTourPlaying(false);
+      else showTourStep(tour.index + 1);
+    }, TOUR_STEP_MS);
+  }
+
+  /** Ends the tour and hides its caption; the selection stays. */
+  function stopTour() {
+    setTourPlaying(false);
+    tour.index = -1;
+    tourCaption.hidden = true;
+  }
+
+  function setUpTour() {
+    tourControls.addEventListener('click', (event) => {
+      const action = event.target.closest('button')?.dataset.tour;
+      if (action === 'play') setTourPlaying(tour.timerId === null);
+      if (action === 'previous' || action === 'next') {
+        setTourPlaying(false);
+        showTourStep(tour.index + (action === 'next' ? 1 : -1));
+      }
+    });
   }
 
   /**
@@ -866,14 +1397,18 @@
     const isFormalView = state.view === VIEW.formal;
     formalModelContainer.hidden = !isFormalView;
     document.getElementById('moment-buttons').hidden = isFormalView;
-    document.getElementById('only-changed-toggle').hidden = isFormalView;
+    document.getElementById('legend').hidden = isFormalView;
     elementsById.clear();
+    // The steps of a tour are the relationships on screen; a new view or filter starts it over.
+    stopTour();
 
     if (isFormalView) {
+      document.getElementById('only-changed-toggle').hidden = true;
       layoutRequestId += 1;
+      visibleRelationships = [];
       showCanvasMessage('');
       setGraphHidden(true);
-      zoomControls.hidden = true;
+      setCanvasControlsHidden(true);
       renderFormalModel();
       elementList.replaceChildren();
       state.selectedId = null;
@@ -883,11 +1418,27 @@
     const viewElements = readViewElements();
     for (const element of [...viewElements.nodes, ...viewElements.relationships]) elementsById.set(element.id, element);
     const visibleElements = filterElements(viewElements);
+    renderHideUntouchedToggle(viewElements);
+    visibleRelationships = visibleElements.relationships;
+    flowStartId = visibleElements.nodes[0]?.id ?? null;
     const visibleIds = new Set([...visibleElements.nodes, ...visibleElements.relationships].map((element) => element.id));
     if (!visibleIds.has(state.selectedId)) state.selectedId = null;
+    renderLegend(viewElements);
     renderElementList(visibleElements);
     renderDetail();
     drawGraph(visibleElements);
+  }
+
+  /**
+   * The toggle says what it does and how much: how many elements the pull request did not touch,
+   * and whether they are hidden. With nothing to hide it is not shown, because it would do nothing.
+   */
+  function renderHideUntouchedToggle(viewElements) {
+    const countElements = (elements) => elements.nodes.length + elements.relationships.length;
+    const untouchedCount =
+      countElements(filterElements(viewElements, { hideUntouched: false })) - countElements(filterElements(viewElements, { hideUntouched: true }));
+    document.getElementById('only-changed-toggle').hidden = untouchedCount === 0 && !state.hideUntouched;
+    document.getElementById('only-changed-label').textContent = `Ocultar lo que el PR no tocó (${untouchedCount})`;
   }
 
   function buildSegmentedControl(containerId, labels, stateKey, pressedAttribute) {
@@ -924,14 +1475,16 @@
     Object.entries(VIEW_LABELS).filter(([view]) => view === VIEW.changes || (view === VIEW.business && model.businessFlow) || (view === VIEW.formal && model.formalModel)),
   );
   renderSubtitle();
+  renderVerification();
   buildSegmentedControl('view-tabs', availableViewLabels, 'view', 'aria-selected');
   buildSegmentedControl('moment-buttons', MOMENT_LABELS, 'moment', 'aria-pressed');
   document.getElementById('only-changed').addEventListener('change', (event) => {
-    state.onlyChanged = event.target.checked;
+    state.hideUntouched = event.target.checked;
     render();
   });
   setUpCollapsibles();
   setUpViewportInteraction();
+  setUpTour();
   render();
 })();
 </script>

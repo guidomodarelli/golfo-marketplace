@@ -141,6 +141,7 @@
     }
   ],
   "businessFlow": {
+    "summary": "Desde el detalle de un producto se lo puede marcar como favorito; si el guardado falla, se avisa y se puede reintentar.",
     "states": [
       {
         "id": "not-favorite",

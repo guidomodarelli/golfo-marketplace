@@ -118,7 +118,35 @@ export const BROWSER_LIBRARIES = [
 export const OUTPUT_FILE_NAMES = {
   html: 'pr-flow-graph.html',
   mermaid: 'pr-flow-graph.md',
+  report: 'pr-flow-graph-report.md',
 };
+
+/** Outcome of one verification step; the page and the report show it next to the graph. */
+export const CHECK_STATUS = {
+  passed: 'passed',
+  skipped: 'skipped',
+  warning: 'warning',
+};
+
+/** Identifier of each verification step `render` records. */
+export const CHECK_ID = {
+  modelShape: 'model-shape',
+  evidenceExists: 'evidence-exists',
+  changeMatchesDiff: 'change-matches-diff',
+  relationshipNamesEndpoint: 'relationship-names-endpoint',
+  diffCoverage: 'diff-coverage',
+  formalModel: 'formal-model',
+  outputs: 'outputs',
+};
+
+/** Lines read above and below an evidence line when looking for the name of a piece of code. */
+export const EVIDENCE_CONTEXT_LINE_COUNT = 2;
+/** Shorter words of a label (`get`, `put`, `id`) appear in almost any line, so they prove nothing. */
+export const NAME_TOKEN_MIN_LENGTH = 3;
+/** From this length a word of a label also counts when it is part of a longer identifier. */
+export const NAME_TOKEN_SUBSTRING_MIN_LENGTH = 5;
+/** Files listed in one message before the rest is summarised as a count. */
+export const LISTED_FILES_LIMIT = 15;
 
 /** Placeholders of `assets/flow-graph-template.html` replaced at render time. */
 export const TEMPLATE_PLACEHOLDER = {
@@ -136,6 +164,7 @@ export const LEAN_CHECK_TIMEOUT_MS = 120_000;
 
 export const LEAN_STATUS = {
   compiled: 'compiled',
+  incomplete: 'incomplete',
   notInstalled: 'not-installed',
   unproven: 'unproven',
   failed: 'failed',

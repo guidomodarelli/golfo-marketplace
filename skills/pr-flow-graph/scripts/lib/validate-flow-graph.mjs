@@ -49,8 +49,9 @@ export function validateFlowGraph(model) {
 
   const groupIds = validateGroups(model.groups, error);
   const nodeIds = validateNodes(model.nodes, groupIds, error);
-  validateEdges(model.edges, nodeIds, error);
+  validateEdges(model.edges, model.nodes, nodeIds, error);
   validateBusinessFlow(model.businessFlow, nodeIds, error, warning);
+  validateOutOfScope(model.outOfScope, error);
   validateChangePresence(model, error);
   warnAboutIsolatedNodes(model, warning);
 
@@ -113,6 +114,9 @@ function validateNodes(nodes, groupIds, error) {
     }
     registerIdentifier(node.id, nodeIds, location, error);
     if (!isNonEmptyString(node.label)) error(`${location}.label`, 'Required non-empty string.');
+    if (node.symbol !== undefined && !isNonEmptyString(node.symbol)) {
+      error(`${location}.symbol`, 'Must be the name the code uses for this piece, or be omitted.');
+    }
     requireEnumValue(node.kind, NODE_KINDS, `${location}.kind`, error);
     requireEnumValue(node.change, CHANGE_STATUSES, `${location}.change`, error);
     if (node.group !== undefined && !groupIds.has(node.group)) {
@@ -123,13 +127,15 @@ function validateNodes(nodes, groupIds, error) {
   return nodeIds;
 }
 
-function validateEdges(edges, nodeIds, error) {
+function validateEdges(edges, nodes, nodeIds, error) {
   if (edges === undefined) return;
   if (!Array.isArray(edges)) {
     error('edges', 'Must be an array when present.');
     return;
   }
   const edgeIds = new Set();
+  const seenRelationships = new Map();
+  const changeByNodeId = readChangeById(nodes);
   edges.forEach((edge, index) => {
     const location = `edges[${index}]`;
     if (!isPlainObject(edge)) {
@@ -143,6 +149,8 @@ function validateEdges(edges, nodeIds, error) {
     requireKnownEndpoint(edge.target, nodeIds, `${location}.target`, 'node', error);
     validateConfidence(edge, location, error);
     validateEvidence(edge, location, error);
+    requireUniqueRelationship([edge.source, edge.target, edge.kind], seenRelationships, location, 'source, target and kind', error);
+    requireChangeConsistentWithEndpoints(edge, changeByNodeId, location, 'node', error);
   });
 }
 
@@ -155,6 +163,9 @@ function validateBusinessFlow(businessFlow, nodeIds, error, warning) {
   const stateIds = new Set();
   const states = Array.isArray(businessFlow.states) ? businessFlow.states : [];
   if (states.length === 0) error('businessFlow.states', 'Required non-empty array.');
+  if (!isNonEmptyString(businessFlow.summary)) {
+    error('businessFlow.summary', 'Required: one sentence, in product words, on what changes for the user. The final report quotes it.');
+  }
 
   states.forEach((state, index) => {
     const location = `businessFlow.states[${index}]`;
@@ -180,6 +191,8 @@ function validateBusinessFlow(businessFlow, nodeIds, error, warning) {
 
   const transitions = Array.isArray(businessFlow.transitions) ? businessFlow.transitions : [];
   const transitionIds = new Set();
+  const seenTransitions = new Map();
+  const changeByStateId = readChangeById(states);
   transitions.forEach((transition, index) => {
     const location = `businessFlow.transitions[${index}]`;
     if (!isPlainObject(transition)) {
@@ -195,11 +208,74 @@ function validateBusinessFlow(businessFlow, nodeIds, error, warning) {
     requireKnownEndpoint(transition.target, stateIds, `${location}.target`, 'business state', error);
     validateConfidence(transition, location, error);
     validateEvidence(transition, location, error);
+    requireUniqueRelationship(
+      [transition.source, transition.trigger, transition.guard ?? ''],
+      seenTransitions,
+      location,
+      'source, trigger and guard, so the flow would not know which one to follow',
+      error,
+    );
+    requireChangeConsistentWithEndpoints(transition, changeByStateId, location, 'business state', error);
   });
 
   if (initialStates.length === 1) {
     for (const unreachableId of findUnreachableStates(initialStates[0].id, states, transitions)) {
       warning('businessFlow.states', `State "${unreachableId}" cannot be reached from the initial state; add the missing transition or remove it.`);
+    }
+  }
+}
+
+/** Files of the pull request left out of the graph on purpose, each with the reason. */
+function validateOutOfScope(outOfScope, error) {
+  if (outOfScope === undefined) return;
+  if (!Array.isArray(outOfScope)) {
+    error('outOfScope', 'Must be an array of `{ path, reason }` when present.');
+    return;
+  }
+  outOfScope.forEach((entry, index) => {
+    const location = `outOfScope[${index}]`;
+    if (!isPlainObject(entry)) {
+      error(location, 'Must be an object with `path` and `reason`.');
+      return;
+    }
+    if (!isNonEmptyString(entry.path)) error(`${location}.path`, 'Required: a file path, a folder ending in `/` or a pattern with `*`.');
+    if (!isNonEmptyString(entry.reason)) error(`${location}.reason`, 'Required: why these files are not part of the graph.');
+  });
+}
+
+function readChangeById(elements) {
+  const changeById = new Map();
+  for (const element of Array.isArray(elements) ? elements : []) {
+    if (isPlainObject(element) && isNonEmptyString(element.id)) changeById.set(element.id, element.change);
+  }
+  return changeById;
+}
+
+/** Two relationships that say the same thing make the graph, and its counts, lie. */
+function requireUniqueRelationship(keyParts, seenRelationships, location, description, error) {
+  if (keyParts.some((part) => typeof part !== 'string')) return;
+  const key = JSON.stringify(keyParts);
+  if (seenRelationships.has(key)) {
+    error(location, `Repeats ${seenRelationships.get(key)}: same ${description}. Keep one.`);
+    return;
+  }
+  seenRelationships.set(key, location);
+}
+
+/**
+ * A relationship cannot outlive its ends: one that touches something the pull request added did
+ * not exist before, and one that touches something it removed does not exist after.
+ */
+function requireChangeConsistentWithEndpoints(relationship, changeById, location, elementName, error) {
+  for (const endpointId of [relationship.source, relationship.target]) {
+    const endpointChange = changeById.get(endpointId);
+    const isForced = endpointChange === CHANGE_STATUS.added || endpointChange === CHANGE_STATUS.removed;
+    if (isForced && relationship.change !== endpointChange) {
+      error(
+        `${location}.change`,
+        `Must be "${endpointChange}" because the ${elementName} "${endpointId}" is ${endpointChange}; received ${JSON.stringify(relationship.change)}.`,
+      );
+      return;
     }
   }
 }
