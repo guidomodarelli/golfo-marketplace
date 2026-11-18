@@ -1,12 +1,12 @@
 ---
 name: constants-refactor
-description: Analiza y refactoriza constantes, literales funcionales y contratos cross-layer en cualquier repositorio de código. Invocar siempre que se cree, modifique, elimine, mueva o revise una constante, aunque el cambio parezca puntual; también usar cuando usuario pida revisar constantes, mover valores a constants/, limpiar hardcodes, responder comentarios de PR sobre constantes, centralizar límites/códigos/rutas/regex o reducir duplicación entre capas, aunque no mencione explícitamente una carpeta constants. Mueve siempre cada constante estática a constants/, incluso si hoy tiene un solo consumidor; no uses la cantidad de referencias para decidir su ubicación. Solo distingue variables calculadas, estado mutable y resultados runtime, que no son constantes. Preserva comportamiento y aplica cambios seguros con validación completa.
+description: Analiza y refactoriza constantes, literales funcionales y contratos cross-layer en cualquier repositorio y lenguaje. Invocar siempre que se cree, modifique, elimine, mueva o revise una constante, aunque el cambio parezca puntual; también cuando usuario pida revisar constantes, mover valores a constants/ o al archivo de configuración, limpiar hardcodes, responder comentarios de PR sobre constantes, centralizar límites/códigos/rutas/regex/timeouts o reducir duplicación entre capas, aunque no mencione una carpeta constants. Da a cada valor estático una fuente canónica fuera del módulo consumidor, incluso con un solo consumidor; usa constants/ para invariantes y contratos, y el archivo de configuración del proyecto (application.yml o .properties en Kotlin y Java, appsettings.json, settings) para valores operativos o ajustables, según lenguaje y convención del repo. Distingue variables calculadas, estado mutable y resultados runtime, que no son constantes. Preserva comportamiento y valida cada cambio.
 license: MIT
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
   author: "Guido Modarelli"
   category: "refactor"
-  tags: "refactor, constants, literals, cross-layer"
+  tags: "refactor, constants, configuration, literals, cross-layer"
   command: "/constants-refactor"
 ---
 
@@ -14,7 +14,7 @@ metadata:
 
 ## Objetivo
 
-Centralizar en `constants/` toda constante estática con significado de dominio o contrato, aunque exista un solo consumidor actual. La cantidad de usos no decide la ubicación: cada valor debe tener una fuente canónica fuera del módulo consumidor. No confundir constantes con variables calculadas en runtime, estado mutable o resultados de llamadas, y no extraer literales triviales ni vocabulario estándar del lenguaje o plataforma (ver "Mantener fuera de `constants/`").
+Dar a toda constante estática con significado de dominio o contrato una fuente canónica fuera del módulo consumidor, aunque exista un solo consumidor actual. La cantidad de usos no decide la ubicación; la naturaleza del valor decide el destino: `constants/` para invariantes y contratos, y el archivo de configuración del proyecto para valores operativos o ajustables cuando el lenguaje y el repositorio tienen esa convención, como en Kotlin y Java (ver "Mover al archivo de configuración"). No confundir constantes con variables calculadas en runtime, estado mutable o resultados de llamadas, y no extraer literales triviales ni vocabulario estándar del lenguaje o plataforma (ver "Mantener fuera de `constants/`").
 
 Las rules del proyecto (`AGENTS.md`, `.agents/rules/` o equivalentes) prevalecen sobre esta skill: aplicar sus convenciones de ubicación de módulos, naming, comentarios, configuración por entorno y secretos.
 
@@ -38,18 +38,19 @@ En ambos modos, aplicar al alcance esta regla por tipo de código:
 
 ## Quick start
 
-1. Resolver repositorio, lenguaje/framework, modo y alcance exacto.
+1. Resolver repositorio, lenguaje/framework, modo y alcance exacto. Detectar el archivo de configuración del proyecto y su binding tipado ([references/config-destinations.md](references/config-destinations.md)).
 2. Modo PR: separar `git diff BASE...HEAD` de cambios no commiteados. Modo auditoría: listar archivos de producción y tooling versionados.
 3. Medir línea base (ver "Métrica objetiva").
 4. Inventariar declaraciones `const`, atoms escalares, objetos/arrays de valores fijos, enums/union literals, regex, límites, códigos, paths, timeouts y strings repetidos.
 5. Comparar inventario con `constants/`, `config/`, `permissions/`, `utils/`, tipos/interfaces, schemas y módulos de dominio existentes.
-6. Clasificar cada candidato: `mover a constants/`, `mantener como variable runtime` o `no tocar` (trivial, vocabulario estándar, copy).
+6. Clasificar cada candidato: `mover a constants/`, `mover a configuración`, `mantener como variable runtime` o `no tocar` (trivial, vocabulario estándar, copy).
 7. Implementar fuentes canónicas, migrar consumers y tests.
 8. Ejecutar validaciones, repetir la métrica y reportar bloqueos reales sin ocultarlos.
 
 ## Alcance y exclusiones
 
 - Interpretar `@constants/` como carpeta `constants/` salvo que el repositorio ya defina otro alias explícito.
+- En lenguajes que organizan por package o namespace (Kotlin, Java, C#, Go), `constants/` es el package o namespace de constantes equivalente; los ejemplos en TypeScript de esta skill se trasladan a esa forma según [references/config-destinations.md](references/config-destinations.md).
 - Preferir aliases e imports existentes; no crear un alias nuevo solo para este refactor.
 - Respetar exclusiones explícitas del usuario por dominio, módulo, ruta o PR. Si el usuario excluye un dominio, no modificar servicios, rutas, permisos, guards ni tests de ese dominio, aunque compartan strings con otro flujo.
 - No editar manualmente catálogos generados de traducciones salvo pedido explícito y workflow del repositorio.
@@ -121,7 +122,7 @@ Cuando usuario pida mover constantes de módulo o feature hacia `constants/`:
 
 1. Buscar primero archivo de dominio existente, por ejemplo `constants/<domain>/<feature>.ts`; no crear `constants.ts` genérico.
 2. Mover cada constante estática según "Clasificación": el destino lo decide la naturaleza del valor, no la cantidad de consumidores.
-3. Mantener fuera de `constants/` lo que no es constante, lo trivial, el vocabulario estándar y los valores con destino propio de "Separar destinos".
+3. Mantener fuera de `constants/` lo que no es constante, lo trivial, el vocabulario estándar y los valores con destino propio de "Mover al archivo de configuración" y "Separar destinos". Si el pedido nombra `constants/` para un valor que corresponde a configuración, moverlo a configuración y decirlo en el reporte.
 4. Separar tipos runtime de UI: constants no deben importar valores desde capas de presentación ni desde módulos que dependan de constants.
 5. Mantener specifiers públicos existentes solo cuando el barrel los soporte; no introducir un alias nuevo por uniformidad.
 
@@ -160,9 +161,32 @@ Mover siempre toda declaración que represente un valor estático con significad
 - metadata estática que no dependa del entorno (schemas, mapas estáticos, defaults);
 - runtime constants ubicadas dentro de `interfaces/` o `types/`;
 - literales con significado unitario y elementos de arrays contractuales, aunque hoy no estén repetidos;
-- msgids/claves de traducción o de mensajes, estilos, statuses HTTP, timeouts, paginación, delays y nombres de variables de entorno.
+- msgids/claves de traducción o de mensajes, estilos, statuses HTTP y nombres de variables de entorno;
+- timeouts, paginación y delays cuando son parte fija del contrato o cuando el proyecto no tiene archivo de configuración (ver sección siguiente).
 
-Esta es la regla canónica de ubicación: la cantidad de referencias y la visibilidad no cambian el destino; solo "Separar destinos" y "Mantener fuera" definen alternativas.
+Esta es la regla canónica de ubicación: la cantidad de referencias y la visibilidad no cambian el destino; solo "Mover al archivo de configuración", "Separar destinos" y "Mantener fuera" definen alternativas.
+
+### Mover al archivo de configuración
+
+No toda constante va a `constants/`. En muchos ecosistemas el destino idiomático de un valor operativo es el archivo de configuración del proyecto, leído con binding tipado. En Kotlin y Java es la norma (`application.yml` o `application.properties` más una clase de propiedades): una clase `Constants` con timeouts y URLs va contra la convención, porque obliga a recompilar y redesplegar para ajustar un valor que se espera cambiar por entorno.
+
+Decidir por la naturaleza del valor; el lenguaje define dónde queda cada destino, no cuál corresponde:
+
+| Pregunta | Destino |
+|---|---|
+| ¿Varía por entorno, deployment, site o brand, o se espera ajustarlo sin tocar la lógica de negocio? | Archivo de configuración |
+| ¿Es un invariante: si cambia, cambia el contrato o el código que lo interpreta? | `constants/` |
+
+- **Configuración**: endpoints y hosts, nombres de buckets/topics/colas, app ids, límites y cuotas de servicios externos, timeouts, reintentos y backoff, tamaños de pool, batch o página por defecto, TTL de caché, expresiones cron y feature flags.
+- **`constants/`**: códigos de error, estados, nombres de headers, fragmentos de ruta, regex de formato, msgids, valores de protocolo y todo valor que el lenguaje exige como constante de compilación (por ejemplo, argumentos de anotaciones en Java y Kotlin).
+
+Al mover un valor a configuración:
+
+1. Usar el mecanismo que el repositorio ya tiene (archivo, perfiles y clase o módulo de binding), detectado según [references/config-destinations.md](references/config-destinations.md). No sumar un segundo mecanismo ni otra librería.
+2. Si el proyecto no tiene archivo de configuración ni convención para leerlo, no crear esa infraestructura como efecto del refactor: el valor va a `constants/` y se reporta como candidato a configuración en "Riesgos o bloqueos".
+3. Conservar el valor efectivo: el literal actual pasa a ser el default, con el mismo tipo y la misma unidad. Una clave obligatoria sin default, o un perfil que ya la pisa con otro valor, cambia el comportamiento; revisar los overrides existentes y reportarlos.
+4. Leer la clave en un único binding tipado (clase de propiedades, objeto de settings) y pasarlo a los consumers. Repetir el nombre de la clave como string en cada consumer reintroduce el hardcode.
+5. En tests, fijar el valor con la configuración de test o construyendo el binding; no depender del archivo de producción.
 
 ### Mantener fuera de `constants/`
 
@@ -175,7 +199,7 @@ Esta es la regla canónica de ubicación: la cantidad de referencias y la visibi
 ### Separar destinos
 
 - autorización → módulo `permissions/`, `auth/` o equivalente del dominio, no `constants` genérico;
-- valores por entorno/deployment → `config/` o settings, no `constants`;
+- valores por entorno/deployment y valores operativos ajustables → archivo de configuración o settings, no `constants` (ver "Mover al archivo de configuración");
 - secretos, credenciales y tokens → variables de entorno o secret manager, nunca hardcodeados en `constants/` ni en `config/` versionado;
 - rutas compartidas entre capas propias → `constants/routes.ts` o equivalente;
 - paths privados de servicios externos → cliente/adapter;
@@ -223,7 +247,7 @@ Para límites compartidos, usar misma constante en schema y validación manual. 
 
 ## Implementación
 
-1. Crear o ampliar archivo de dominio cohesivo en `constants/`.
+1. Crear o ampliar archivo de dominio cohesivo en `constants/` y, para los valores de configuración, la sección del archivo de configuración y su binding tipado.
 2. Identificar todos los valores estáticos y definirlos allí; crear atoms antes de arrays/agregados contractuales cuando corresponda.
 3. Construir arrays/agregados desde atoms y verificarlos con `satisfies` contra tipos explícitos.
 4. Mantener nombre semántico; no usar nombres genéricos como `VALUE`, `LIMIT`, `DATA`.
@@ -277,7 +301,7 @@ Usar este formato salvo que usuario pida otro:
 | Momento | Hallazgos | Herramienta |
 
 ## Candidatos movidos
-| Archivo/línea | Valor | Destino | Motivo |
+| Archivo/línea | Valor | Destino (`constants/` o configuración) | Motivo |
 
 ## Valores fuera de `constants/`
 | Archivo/línea | Valor | Motivo: no constante / trivial / vocabulario estándar / copy |

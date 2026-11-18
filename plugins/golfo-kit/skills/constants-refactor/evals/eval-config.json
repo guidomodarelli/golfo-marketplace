@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "skill": "constants-refactor",
-  "description": "Verifica que la skill ubique cada constante estática en constants/ sin depender de la cantidad de consumidores, separe copy, configuración y valores runtime, y preserve comportamiento, tipos y contratos públicos.",
+  "description": "Verifica que la skill dé a cada constante estática una fuente canónica sin depender de la cantidad de consumidores (constants/ o el archivo de configuración según la naturaleza del valor y el lenguaje), separe copy y valores runtime, y preserve comportamiento, tipos y contratos públicos.",
   "test_cases": [
     {
       "id": "pr-review-constant-candidates",
@@ -271,6 +271,92 @@
             "scanner"
           ],
           "description": "Preserva contrato observable"
+        }
+      ]
+    },
+    {
+      "id": "kotlin-spring-operational-values-to-config-file",
+      "description": "En Kotlin con Spring Boot manda los valores operativos al archivo de configuración existente y deja en constants los invariantes y el valor que usa una anotación.",
+      "input": "Solo análisis, sin escribir archivos ni ejecutar comandos. Es un servicio Kotlin con Spring Boot; ya existen `src/main/resources/application.yml` y la clase `PaymentProperties`, que lee el prefijo `payment`. Clasificá cada valor de este archivo: respondé primero con una línea por valor con el formato `NOMBRE => destino` y después justificá.\n\n```kotlin\n// payment/PaymentClient.kt\nprivate const val PARTNER_TIMEOUT_MS = 5000L\nprivate const val MAX_RETRIES = 3\nprivate const val ERROR_CODE_INSUFFICIENT_FUNDS = \"INSUFFICIENT_FUNDS\"\nprivate const val MAX_REFERENCE_LENGTH = 140\n\ndata class PaymentRequest(@field:Size(max = MAX_REFERENCE_LENGTH) val reference: String)\n```",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "PARTNER_TIMEOUT_MS[^=]*=>[^=]*(application|PaymentProperties|configuraci)",
+          "description": "Manda el timeout al archivo de configuración y no a constants"
+        },
+        {
+          "type": "regex",
+          "pattern": "MAX_RETRIES[^=]*=>[^=]*(application|PaymentProperties|configuraci)",
+          "description": "Manda los reintentos al archivo de configuración"
+        },
+        {
+          "type": "regex",
+          "pattern": "ERROR_CODE_INSUFFICIENT_FUNDS[^=]*=>[^=]*[Cc]onstant",
+          "description": "Deja el código de error como constante"
+        },
+        {
+          "type": "regex",
+          "pattern": "MAX_REFERENCE_LENGTH[^=]*=>[^=]*[Cc]onstant",
+          "description": "Deja como constante el valor que usa la anotación"
+        },
+        {
+          "type": "regex",
+          "pattern": "default|por defecto|valor efectivo",
+          "description": "Conserva el valor actual como default al moverlo a configuración"
+        }
+      ]
+    },
+    {
+      "id": "java-spring-constants-class-request-redirected-to-config",
+      "description": "Ante un pedido de mover todo a una clase Constants en Java, separa lo que corresponde al archivo de configuración con un binding tipado único.",
+      "input": "Sin escribir archivos ni ejecutar comandos: en este servicio Java con Spring Boot quiero mover estos tres valores a una clase `InventoryConstants`. El repo ya tiene `src/main/resources/application.properties` con perfiles por entorno. Respondé primero con una línea por valor con el formato `NOMBRE => destino` y después explicá cómo lo leerían los consumers.\n\n```java\n// inventory/InventorySyncJob.java\nprivate static final int SYNC_BATCH_SIZE = 200;\nprivate static final String INVENTORY_TOPIC = \"inventory-events\";\nprivate static final String HEADER_TRACE_ID = \"X-Trace-Id\";\n```",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "SYNC_BATCH_SIZE[^=]*=>[^=]*(application|[Pp]ropert|configuraci)",
+          "description": "Manda el tamaño de batch al archivo de configuración aunque el pedido nombre una clase de constantes"
+        },
+        {
+          "type": "regex",
+          "pattern": "INVENTORY_TOPIC[^=]*=>[^=]*(application|[Pp]ropert|configuraci)",
+          "description": "Manda el nombre del topic al archivo de configuración"
+        },
+        {
+          "type": "regex",
+          "pattern": "HEADER_TRACE_ID[^=]*=>[^=]*[Cc]onstant",
+          "description": "Deja el nombre del header como constante"
+        },
+        {
+          "type": "contains",
+          "value": "ConfigurationProperties",
+          "description": "Lee la configuración con un binding tipado único"
+        }
+      ]
+    },
+    {
+      "id": "kotlin-library-without-config-file-keeps-constants",
+      "description": "En una librería Kotlin sin archivo de configuración no crea esa infraestructura: deja el valor operativo en constants y lo reporta como candidato.",
+      "input": "Solo análisis, sin escribir archivos. Es una librería Kotlin publicada en Maven, sin framework y sin ningún archivo de configuración: solo `src/main/kotlin`. ¿Dónde va cada valor? Respondé primero con una línea por valor con el formato `NOMBRE => destino` y después justificá.\n\n```kotlin\n// signing/RequestSigner.kt\nprivate const val RETRY_DELAY_MS = 250L\nprivate const val SIGNATURE_HEADER = \"X-Signature\"\n```",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "RETRY_DELAY_MS[^=]*=>[^=]*[Cc]onstant",
+          "description": "Deja el delay en constants porque el proyecto no tiene archivo de configuración"
+        },
+        {
+          "type": "regex",
+          "pattern": "SIGNATURE_HEADER[^=]*=>[^=]*[Cc]onstant",
+          "description": "Deja el nombre del header como constante"
+        },
+        {
+          "type": "regex",
+          "pattern": "candidat",
+          "description": "Reporta el valor operativo como candidato a configuración sin crear la infraestructura"
+        },
+        {
+          "type": "regex",
+          "pattern": "package|paquete",
+          "description": "Ubica las constantes en el package de constantes idiomático de Kotlin"
         }
       ]
     }

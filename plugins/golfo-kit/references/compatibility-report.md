@@ -547,9 +547,9 @@ Pendiente de verificar:
 
 **Identificación**
 
-- Nombre: Constants Refactor; versión: 1.0.0; SKILL.md: `plugins/golfo-kit/skills/constants-refactor/SKILL.md`.
+- Nombre: Constants Refactor; versión: 1.1.0; SKILL.md: `plugins/golfo-kit/skills/constants-refactor/SKILL.md`.
 - Propósito: Analiza y refactoriza constantes, literales funcionales y contratos cross-layer.
-- Funcionalidades principales: detección de hardcodes; movimiento a constants/; validación del refactor.
+- Funcionalidades principales: detección de hardcodes; movimiento a constants/ o al archivo de configuración según el valor y el lenguaje; validación del refactor.
 - Agentes soportados declarados: no declara.
 
 **Dependencias**
