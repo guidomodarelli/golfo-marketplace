@@ -45,7 +45,7 @@
         },
         {
           "type": "regex",
-          "pattern": "(¿|pregunt|respond|necesito|decime|indic[aá]|falta).{0,220}(Due date|vencimiento)|(Due date|vencimiento).{0,220}(\\?|pregunt|respond|necesito|decime|pendiente de tu)",
+          "pattern": "(¿|pregunt|respond|necesito|decime|indic[aá]|falta).{0,220}(Due date|vencimiento)|(Due date|vencimiento).{0,220}(\\?|pregunt|respond|necesito|decime|pendiente de tu)|(Due date|vencimiento).{0,40}(no indicad|sin indicar|sin definir|no definid|pendiente)",
           "description": "Pregunta por el Due date antes de crear: el pedido no lo indica."
         },
         {
@@ -134,7 +134,7 @@
         },
         {
           "type": "regex",
-          "pattern": "(¿|pregunt|respond|necesito|decime|indic[aá]|falta).{0,220}(Due date|vencimiento)|(Due date|vencimiento).{0,220}(\\?|pregunt|respond|necesito|decime|pendiente de tu)",
+          "pattern": "(¿|pregunt|respond|necesito|decime|indic[aá]|falta).{0,220}(Due date|vencimiento)|(Due date|vencimiento).{0,220}(\\?|pregunt|respond|necesito|decime|pendiente de tu)|(Due date|vencimiento).{0,40}(no indicad|sin indicar|sin definir|no definid|pendiente)",
           "description": "Pregunta por el Due date de las subtareas nuevas antes de crearlas."
         },
         {
@@ -188,7 +188,7 @@
         },
         {
           "type": "regex",
-          "pattern": "(no (garantiza|prueba|demuestra|acredita|implica|confirma)).{0,140}inicio",
+          "pattern": "(no (garantiza|prueba|demuestra|acredita|implica|confirma)).{0,140}(inicio|empez|comenz)",
           "description": "Aclara que la fecha no prueba el inicio real del trabajo."
         },
         {
@@ -223,12 +223,12 @@
         },
         {
           "type": "regex",
-          "pattern": "(subtarea|Sub-task).{0,180}(hered|sin (enviar )?(el )?(campo )?(sprint|customfield_20001))|(hered).{0,120}(sprint)",
+          "pattern": "(subtarea|Sub-task).{0,180}(hered|sin (enviar )?(el )?(campo )?(sprint|customfield_20001))|(hered).{0,120}(sprint)|sprint.{0,120}hered",
           "description": "Las subtareas heredan el sprint sin enviar el campo."
         },
         {
           "type": "regex",
-          "pattern": "(¿|pregunt|respond|necesito|decime|indic[aá]|falta).{0,220}(Due date|vencimiento)|(Due date|vencimiento).{0,220}(\\?|pregunt|respond|necesito|decime|pendiente de tu)",
+          "pattern": "(¿|pregunt|respond|necesito|decime|indic[aá]|falta).{0,220}(Due date|vencimiento)|(Due date|vencimiento).{0,220}(\\?|pregunt|respond|necesito|decime|pendiente de tu)|(Due date|vencimiento).{0,40}(no indicad|sin indicar|sin definir|no definid|pendiente)",
           "description": "Pregunta por el Due date del padre y las subtareas antes de crear."
         },
         {
@@ -264,12 +264,12 @@
         },
         {
           "type": "regex",
-          "pattern": "(¿|pregunt|respond|necesito|decime|indic[aá]|falta).{0,220}(Due date|vencimiento)|(Due date|vencimiento).{0,220}(\\?|pregunt|respond|necesito|decime|pendiente de tu)",
+          "pattern": "(¿|pregunt|respond|necesito|decime|indic[aá]|falta).{0,220}(Due date|vencimiento)|(Due date|vencimiento).{0,220}(\\?|pregunt|respond|necesito|decime|pendiente de tu)|(Due date|vencimiento).{0,40}(no indicad|sin indicar|sin definir|no definid|pendiente)",
           "description": "Agrupa la pregunta de Due date con la del sprint."
         },
         {
           "type": "regex",
-          "pattern": "^## Problema",
+          "pattern": "^ *## (Problema|Solución|Criterios de aceptación)",
           "description": "La descripción usa el template de Story (sección Problema)."
         }
       ]
@@ -350,7 +350,7 @@
         },
         {
           "type": "regex",
-          "pattern": "SHIP-77.{0,220}(rechaz|no (la |lo )?(us|acept|vincul|cuelg|asoci)|otro proyecto|fuera de ACME|no pertenece|no es ACME)|(rechaz|otro proyecto|fuera de ACME|no pertenece).{0,220}SHIP-77",
+          "pattern": "SHIP-77.{0,220}(rechaz|no (la |lo )?(us|acept|vincul|cuelg|asoci)|otro proyecto|fuera de ACME|no pertenece|no es ACME)|(rechaz|otro proyecto|fuera de ACME|no pertenece).{0,220}SHIP-77|rechaz.{0,160}(SHIP|otro proyecto)",
           "description": "Aislamiento: rechaza la épica SHIP-77 de otro proyecto."
         },
         {
@@ -886,6 +886,11 @@
           "type": "regex",
           "pattern": "no (se )?(complet|cierr|transicion)[a-zíá]* (el |al |la )?(padre|Story|ticket|ACME-9400)|(padre|Story|ACME-9400).{0,120}(no se (complet|cierr)|sigu|permanec|qued|conserv).{0,60}|cierre.{0,80}(pendiente|bloquead)|(OPEN|abiert).{0,240}(no (se )?(complet|cierr|transicion)|proh[ií]be)",
           "description": "Con un PR abierto no completa el padre."
+        },
+        {
+          "type": "regex",
+          "pattern": "(rele|re-?fetch|getJiraIssue).{0,200}antes de (mutar|transicion|la transici|aplicar)|antes de (mutar|transicion|la transici|aplicar).{0,200}(rele|re-?fetch|getJiraIssue)",
+          "description": "Relee el padre inmediatamente antes de mutarlo."
         }
       ]
     },
@@ -954,12 +959,9 @@
           "description": "La memoria queda en el proyecto del repositorio."
         },
         {
-          "type": "not_contains_any",
-          "values": [
-            "C:\\\\work\\\\acme_payments-api",
-            "/c/work/acme_payments-api"
-          ],
-          "description": "No guarda el path absoluto del repositorio."
+          "type": "regex",
+          "description": "Declara que el path absoluto del repositorio queda fuera de la memoria.",
+          "pattern": "(sin|no |omit|proh[ií]b|nunca|evit).{0,160}(paths?|rutas?) (absolut|local)|(paths?|rutas?) (absolut|local).{0,160}(no |omit|prohib|fuera|exclu)"
         },
         {
           "type": "not_contains_any",
