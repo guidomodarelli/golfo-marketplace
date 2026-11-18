@@ -131,7 +131,7 @@ def command_learn_episode(arguments):
         # The hook runs on every message: it stays silent unless the learning profile is in use.
         if not settings["enabled"] or not learning_episodes.learning_selected(project_root):
             return EXIT_OK
-        now = datetime.datetime.now().astimezone()
+        now = learning_episodes.current_time()
         session, started = learning_episodes.touch(project_root, arguments.session, now, settings["gap_hours"])
         if started and not arguments.json:
             sys.stdout.write(f"[agent-ready learn] Episode {session['episodeId']} started: record instructions of the "

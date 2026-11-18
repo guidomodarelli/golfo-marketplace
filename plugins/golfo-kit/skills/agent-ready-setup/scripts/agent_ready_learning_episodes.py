@@ -19,6 +19,19 @@ EPISODES_GIT_PATH = "info/agent-ready/episodes.json"
 EPISODES_VERSION = 1
 LEARNING_PROFILE = "learning"
 TIMESTAMP_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
+# A fixed clock in TIMESTAMP_FORMAT, so tests do not depend on the hour of the machine.
+CLOCK_ENVIRONMENT_VARIABLE = "AGENT_READY_LEARNING_NOW"
+
+
+def current_time():
+    """The local time of the machine, or the fixed clock of CLOCK_ENVIRONMENT_VARIABLE."""
+    fixed = os.environ.get(CLOCK_ENVIRONMENT_VARIABLE)
+    if not fixed:
+        return datetime.datetime.now().astimezone()
+    try:
+        return datetime.datetime.strptime(fixed, TIMESTAMP_FORMAT)
+    except ValueError as error:
+        raise StateError(f"{CLOCK_ENVIRONMENT_VARIABLE}={fixed!r} is not a time like 2026-01-31T12:00:00+0000") from error
 
 
 def episodes_path(project_root):

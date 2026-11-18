@@ -787,17 +787,9 @@ episodes_value() {
   PYTHONIOENCODING=utf-8 python3 -c 'import json, sys; data = json.load(open(".git/info/agent-ready/episodes.json", encoding="utf-8")); print(eval(sys.argv[1]))' "$1" | tr -d '\r'
 }
 
-# Moves the last message of a session back by some hours, as if the user had not written since.
-age_session() {
-  python3 - "$1" "$2" <<'PY'
-import datetime, json, sys
-path = ".git/info/agent-ready/episodes.json"
-state = json.load(open(path, encoding="utf-8"))
-session = state["sessions"][sys.argv[1]]
-last = datetime.datetime.strptime(session["lastUserMessageAt"], "%Y-%m-%dT%H:%M:%S%z")
-session["lastUserMessageAt"] = (last - datetime.timedelta(hours=float(sys.argv[2]))).strftime("%Y-%m-%dT%H:%M:%S%z")
-json.dump(state, open(path, "w", encoding="utf-8"))
-PY
+# Fixes the clock of agent-ready learn episode, so the hour of the machine does not change the result.
+at_time() {
+  export AGENT_READY_LEARNING_NOW="$1"
 }
 
 @test "the prompt hook does nothing while the learning profile is not in use" {
@@ -813,36 +805,41 @@ PY
 
 @test "the first message opens an episode, the next ones keep it, and a gap or another session opens another" {
   select_learning_profile
+  at_time 2026-03-10T09:00:00+0000
   agent_ready learn episode --session s1 --touch
   [ "$status" -eq 0 ]
-  [[ "$output" == "[agent-ready learn] Episode s1:"*" started: record instructions of the user with --session s1 --episode s1:"* ]]
-  first="$(episodes_value 'data["sessions"]["s1"]["episodeId"]')"
+  [ "$output" = "[agent-ready learn] Episode s1:20260310T090000 started: record instructions of the user with --session s1 --episode s1:20260310T090000." ]
   agent_ready learn episode --session s1 --touch
   [ -z "$output" ]
-  [ "$(episodes_value 'data["sessions"]["s1"]["episodeId"]')" = "$first" ]
 
-  # Within learning.episodeGapHours the same episode goes on.
-  age_session s1 3
+  # Within learning.episodeGapHours (4 by default) the same episode goes on; a longer silence opens another.
+  at_time 2026-03-10T12:00:00+0000
   agent_ready learn episode --session s1 --touch
   [ -z "$output" ]
-  age_session s1 5
+  [ "$(episodes_value 'data["sessions"]["s1"]["episodeId"]')" = "s1:20260310T090000" ]
+  at_time 2026-03-10T17:00:00+0000
   agent_ready learn episode --session s1 --touch
-  [[ "$output" == *"Episode s1:"*" started"* ]]
-  [ "$(episodes_value 'data["sessions"]["s1"]["episodeId"]')" != "$first" ]
+  [[ "$output" == *"Episode s1:20260310T170000 started"* ]]
 
   write_manifest '{"learning": {"episodeGapHours": 8}}'
-  age_session s1 5
+  at_time 2026-03-10T22:00:00+0000
   agent_ready learn episode --session s1 --touch
   [ -z "$output" ]
 
+  # Another day opens another episode, even within the gap.
+  at_time 2026-03-11T00:30:00+0000
+  agent_ready learn episode --session s1 --touch
+  [[ "$output" == *"Episode s1:20260311T003000 started"* ]]
+
   agent_ready learn episode --session s2 --touch
-  [[ "$output" == *"Episode s2:"*" started"* ]]
+  [[ "$output" == *"Episode s2:20260311T003000 started"* ]]
   agent_ready learn episode --session s2 --json
-  [ "$(printf '%s' "$output" | python3 -c 'import json, sys; print(json.load(sys.stdin)["episode"]["episodeId"].startswith("s2:"))')" = "True" ]
+  [ "$(printf '%s' "$output" | python3 -c 'import json, sys; print(json.load(sys.stdin)["episode"]["episodeId"])' | tr -d '')" = "s2:20260311T003000" ]
 }
 
 @test "one scope question per episode, and a new episode allows another" {
   select_learning_profile
+  at_time 2026-03-10T09:00:00+0000
   agent_ready learn episode --session s1 --scope-question
   [ "$status" -ne 0 ]
   [[ "$stderr" == *"session s1 has no episode yet"* ]]
@@ -853,7 +850,7 @@ PY
   agent_ready learn episode --session s1 --scope-question
   [ "$status" -ne 0 ]
   [[ "$stderr" == *"the scope question of this episode was already asked: apply the instruction to the current document only"* ]]
-  age_session s1 5
+  at_time 2026-03-10T15:00:00+0000
   agent_ready learn episode --session s1 --touch
   agent_ready learn episode --session s1 --scope-question
   [ "$status" -eq 0 ]
