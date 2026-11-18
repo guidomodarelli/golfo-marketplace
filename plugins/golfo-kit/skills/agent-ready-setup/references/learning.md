@@ -67,11 +67,44 @@ pasar en `--episode`; el resto de los mensajes no imprime nada.
 **El resumen al iniciar la sesión** (`SessionStart`, también después de compactar en Claude Code)
 corre `agent-ready learn summary`: las últimas líneas de `log.md` y los candidatos que esperan otro
 episodio, sin las citas, para que el agente cuente como segunda evidencia una instrucción que vuelve.
-No llama a ningún modelo.
+No llama a ningún modelo. `learning.hooks.sessionStart` apagado lo deja sin salida.
 
 El hook y el resumen no hacen nada mientras el repositorio no use el profile `learning` (el lockfile
 lo registra en `profileOrder`) o `learning.enabled` esté apagado, y nunca hacen fallar el prompt ni la
 sesión.
+
+### Revisión al cerrar un episodio
+
+La detección en la conversación puede perder una instrucción: el agente no la registró, o se compactó
+el contexto antes. Por eso, al cerrarse un episodio, una revisión en background lee **solo los mensajes
+del usuario** de ese episodio en el transcript local del provider y registra como candidatas, con
+`source` `session-end`, las instrucciones que deben durar. Nunca escribe una rule ni una skill: el
+agente decide en la sesión siguiente con las reglas de «La decisión», y el resumen de inicio se las
+muestra.
+
+Un episodio se cierra en cualquiera de estos momentos:
+
+- **Al cerrar el chat:** `SessionEnd` en Claude Code (`learn episode --session <id> --end`).
+- **Al empezar el siguiente episodio** del mismo chat.
+- **Al barrer desde cualquier hook:** el prompt o el inicio de sesión de cualquier chat del repositorio
+  cierra los episodios sin mensajes hace `learning.episodeGapHours` horas o de otro día.
+
+Antes de compactar (`PreCompact` en Claude Code, `--review-now`) se revisa lo que el episodio lleva
+dicho, y la revisión de su cierre empieza desde ahí. Codex no tiene esos dos eventos: sus episodios se
+cierran con el barrido.
+
+- El hook guarda en `episodes.json` el `transcript_path` y el provider del payload; la revisión corre
+  con ese provider y el modelo de las revisiones de IA, sin herramientas ni sesión.
+- Del transcript lee los mensajes del usuario y deja afuera lo que escribió el agente, los resultados de
+  herramientas y lo que agrega el harness (comandos, recordatorios, contexto del entorno).
+- Una cita que no está en los mensajes del usuario se descarta: la revisión no puede inventar evidencia.
+- Cada episodio se revisa una vez. Si el provider falla, queda en la cola para el barrido siguiente,
+  hasta tres intentos. Un episodio sin transcript se cierra sin revisión.
+- Nunca llama a un provider en CI ni en review mode: el episodio queda en la cola para la máquina del
+  usuario.
+- La revisión corre desacoplada del hook (`agent-ready learn sweep`, con su log en
+  `~/.cache/agent-ready-setup/learning-sweeps/`), así que el prompt no la espera.
+- `learning.hooks.sessionEnd` apagado cierra los episodios sin revisarlos.
 
 ## La decisión
 
@@ -165,6 +198,9 @@ agent-ready learn list --status candidate --json
 # El episodio de la sesión, y la única pregunta de alcance del episodio.
 agent-ready learn episode --session <sesión>
 agent-ready learn episode --session <sesión> --scope-question
+
+# Cerrar los episodios inactivos y revisar los cerrados, como hacen los hooks en background.
+agent-ready learn sweep
 ```
 
 `record` acepta `--date` con la fecha del mensaje, por ejemplo cuando la revisión de fin de sesión

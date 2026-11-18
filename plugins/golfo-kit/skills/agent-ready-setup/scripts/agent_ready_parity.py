@@ -18,6 +18,8 @@ PROVIDER_CODEX = "codex"
 # Hook events of the golfo-kit templates that only one provider has, on purpose, and why.
 PROVIDER_SPECIFIC_HOOK_EVENTS = {
     (PROVIDER_CLAUDE, "UserPromptSubmit"): "relinks the hard-link views of .claude, which Codex does not read",
+    (PROVIDER_CLAUDE, "PreCompact"): "reviews what the user taught before a compaction, an event Codex does not have",
+    (PROVIDER_CLAUDE, "SessionEnd"): "reviews the episode when the chat ends, an event Codex does not have",
 }
 EXAMPLE_ENVIRONMENT_FILES = (".env.example", ".env.sample", ".env.template", ".env.dist")
 ENVIRONMENT_LINE = re.compile(r"^\s*(?:export\s+)?(?P<name>[A-Z][A-Z0-9_]*)\s*=")

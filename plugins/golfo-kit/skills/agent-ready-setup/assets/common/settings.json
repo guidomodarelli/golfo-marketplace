@@ -50,6 +50,28 @@
           }
         ]
       }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .agents/hooks/learning-hook.sh --provider claude --event pre-compact",
+            "statusMessage": "Revisando lo aprendido antes de compactar…"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .agents/hooks/learning-hook.sh --provider claude --event session-end",
+            "statusMessage": "Revisando lo aprendido en el chat…"
+          }
+        ]
+      }
     ]
   }
 }

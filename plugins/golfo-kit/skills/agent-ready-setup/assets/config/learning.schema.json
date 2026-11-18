@@ -31,6 +31,23 @@
       "minimum": 1,
       "default": 4
     },
+    "hooks": {
+      "description": "Los hooks de aprendizaje de los providers que tienen esos eventos (references/learning.md, «Episodios»).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sessionEnd": {
+          "description": "Al cerrar un episodio (fin del chat, compactación, barrido de episodios inactivos), revisa en background solo los mensajes del usuario del transcript y suma como candidatas las instrucciones que deben durar. Nunca escribe rules. Apagado, el episodio se cierra sin revisión.",
+          "type": "boolean",
+          "default": true
+        },
+        "sessionStart": {
+          "description": "Al iniciar la sesión, y en Claude Code también después de compactar, muestra en pocas líneas lo aprendido hace poco y los candidatos que esperan otro episodio, sin llamar a un modelo. Apagado, no muestra nada.",
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
     "candidateTtlDays": {
       "description": "Días sin evidencia nueva después de los cuales un candidato vence. Si la instrucción vuelve, se cuenta desde cero: la evidencia vencida no suma.",
       "type": "integer",
