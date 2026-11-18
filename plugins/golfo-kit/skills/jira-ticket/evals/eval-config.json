@@ -42,6 +42,16 @@
             "issueTypeName\" *: *\"Sub-task\""
           ],
           "description": "No inventa subtareas: ningún payload Sub-task."
+        },
+        {
+          "type": "regex",
+          "pattern": "(¿|pregunt|respond|necesito|decime|indic[aá]|falta).{0,220}(Due date|vencimiento)|(Due date|vencimiento).{0,220}(\\?|pregunt|respond|necesito|decime|pendiente de tu)",
+          "description": "Pregunta por el Due date antes de crear: el pedido no lo indica."
+        },
+        {
+          "type": "regex",
+          "pattern": "^## Problema",
+          "description": "La descripción usa el template de Story (sección Problema)."
         }
       ]
     },
@@ -121,6 +131,16 @@
           "type": "regex",
           "pattern": "(reutiliz|reus|conserv|existente).{0,120}migraci|migraci.{0,120}(reutiliz|reus|ya existe|existente)",
           "description": "Reutiliza la subtarea equivalente de migración."
+        },
+        {
+          "type": "regex",
+          "pattern": "(¿|pregunt|respond|necesito|decime|indic[aá]|falta).{0,220}(Due date|vencimiento)|(Due date|vencimiento).{0,220}(\\?|pregunt|respond|necesito|decime|pendiente de tu)",
+          "description": "Pregunta por el Due date de las subtareas nuevas antes de crearlas."
+        },
+        {
+          "type": "regex",
+          "pattern": "tracking|^## Tareas",
+          "description": "Mantiene el seguimiento de los hijos en la sección de tareas (helper `tracking`)."
         }
       ]
     },
@@ -141,8 +161,13 @@
         },
         {
           "type": "regex",
-          "pattern": "conflict.{0,220}(deten|bloque|fren|no contin|no escrib|sin escrib|par[oa])|(deten|bloque|fren|par[oa]).{0,220}conflict",
-          "description": "No-mutation: ante padres distintos detiene el flujo y reporta conflicto."
+          "pattern": "se det(ien|uv)|deten(er|go|emos|ido|ci[oó]n)|det(iene|ener) el flujo|bloque|no (se )?(escrib|contin|avanz)|sin escrib",
+          "description": "No-mutation: ante padres distintos detiene el flujo sin escribir (acepta «detiene», «detuvo» y «detener», en la línea del conflicto o en otra)."
+        },
+        {
+          "type": "regex",
+          "pattern": "conflict.{0,200}ACME-7003|ACME-7003.{0,200}conflict|conflicto de padres|padres distintos",
+          "description": "Reporta el conflicto entre padres distintos."
         }
       ]
     },
@@ -200,6 +225,16 @@
           "type": "regex",
           "pattern": "(subtarea|Sub-task).{0,180}(hered|sin (enviar )?(el )?(campo )?(sprint|customfield_20001))|(hered).{0,120}(sprint)",
           "description": "Las subtareas heredan el sprint sin enviar el campo."
+        },
+        {
+          "type": "regex",
+          "pattern": "(¿|pregunt|respond|necesito|decime|indic[aá]|falta).{0,220}(Due date|vencimiento)|(Due date|vencimiento).{0,220}(\\?|pregunt|respond|necesito|decime|pendiente de tu)",
+          "description": "Pregunta por el Due date del padre y las subtareas antes de crear."
+        },
+        {
+          "type": "regex",
+          "pattern": "tracking|^## Tareas",
+          "description": "La Story lleva la sección de seguimiento de sus subtareas."
         }
       ]
     },
@@ -226,6 +261,16 @@
           "type": "regex",
           "pattern": "(pregunt|ped[ií]|pid[oa]|solicit|consult|confirm|indic(á|a|ame)|¿).{0,180}sprint",
           "description": "Pide el sprint al usuario (o confirmación para crear sin sprint) antes de crear."
+        },
+        {
+          "type": "regex",
+          "pattern": "(¿|pregunt|respond|necesito|decime|indic[aá]|falta).{0,220}(Due date|vencimiento)|(Due date|vencimiento).{0,220}(\\?|pregunt|respond|necesito|decime|pendiente de tu)",
+          "description": "Agrupa la pregunta de Due date con la del sprint."
+        },
+        {
+          "type": "regex",
+          "pattern": "^## Problema",
+          "description": "La descripción usa el template de Story (sección Problema)."
         }
       ]
     },
@@ -322,6 +367,11 @@
             "parent\"\\{0,1\\} *: *{ *\"\\{0,1\\}key\"\\{0,1\\} *: *\"ACME-610"
           ],
           "description": "No elige arbitrariamente ACME-610 como padre."
+        },
+        {
+          "type": "regex",
+          "pattern": "tracking.{0,120}epic|^## Stories",
+          "description": "La épica recibe la fila de seguimiento de la Story nueva, sin otro cambio."
         }
       ]
     },
@@ -387,31 +437,38 @@
       "assertions": [
         {
           "type": "regex",
-          "pattern": "push.{0,180}(no (lo |la |los )?(ejecut|hag|hac|realiz|aplic|cambi|modific|edit|toc|escrib|public|guard|cre|corr)|fuera de(l)? alcance|fuera de (esta|la) skill|no corresponde|prohib|no est[aá] permitid|no permitid|me abstengo|declin|rechaz|omit|no se (ejecuta|hace|realiza|cambia|modifica|edita|publica|guarda))|(no (lo |la |los )?(ejecut|hag|hac|realiz|aplic|cambi|modific|edit|toc|escrib|public|guard|cre|corr)|fuera de(l)? alcance|fuera de (esta|la) skill|no corresponde|prohib|no est[aá] permitid|no permitid|me abstengo|declin|rechaz|omit|no se (ejecuta|hace|realiza|cambia|modifica|edita|publica|guarda)).{0,80}push",
-          "description": "No ejecuta git push."
+          "pattern": "declin|rechaz|fuera de(l)? alcance|fuera de (esta|la) skill|no corresponde|me abstengo|no (lo |la |los )?(ejecut|hag|realiz)",
+          "description": "Declina los pedidos laterales en vez de planearlos."
         },
         {
           "type": "regex",
-          "pattern": "t[ií]tulo.{0,180}(no (lo |la |los )?(ejecut|hag|hac|realiz|aplic|cambi|modific|edit|toc|escrib|public|guard|cre|corr)|fuera de(l)? alcance|fuera de (esta|la) skill|no corresponde|prohib|no est[aá] permitid|no permitid|me abstengo|declin|rechaz|omit|no se (ejecuta|hace|realiza|cambia|modifica|edita|publica|guarda))|(no (lo |la |los )?(ejecut|hag|hac|realiz|aplic|cambi|modific|edit|toc|escrib|public|guard|cre|corr)|fuera de(l)? alcance|fuera de (esta|la) skill|no corresponde|prohib|no est[aá] permitid|no permitid|me abstengo|declin|rechaz|omit|no se (ejecuta|hace|realiza|cambia|modifica|edita|publica|guarda)).{0,80}t[ií]tulo",
-          "description": "No cambia el título del PR."
+          "pattern": "push|upload|(rama|branch).{0,80}(remot|forz|sub|public)|(sub|forz|public|actualiz).{0,80}(rama|branch)",
+          "description": "Nombra el pedido de subir la rama, por el comando o por su efecto."
         },
         {
           "type": "regex",
-          "pattern": "jira-notes.{0,180}(no (lo |la |los )?(ejecut|hag|hac|realiz|aplic|cambi|modific|edit|toc|escrib|public|guard|cre|corr)|fuera de(l)? alcance|fuera de (esta|la) skill|no corresponde|prohib|no est[aá] permitid|no permitid|me abstengo|declin|rechaz|omit|no se (ejecuta|hace|realiza|cambia|modifica|edita|publica|guarda))|(no (lo |la |los )?(ejecut|hag|hac|realiz|aplic|cambi|modific|edit|toc|escrib|public|guard|cre|corr)|fuera de(l)? alcance|fuera de (esta|la) skill|no corresponde|prohib|no est[aá] permitid|no permitid|me abstengo|declin|rechaz|omit|no se (ejecuta|hace|realiza|cambia|modifica|edita|publica|guarda)).{0,120}jira-notes",
-          "description": "No escribe docs/jira-notes.md en el repo."
+          "pattern": "t[ií]tulo",
+          "description": "Nombra el pedido de cambiar el título del PR."
         },
         {
           "type": "regex",
-          "pattern": "Slack.{0,180}(no (lo |la |los )?(ejecut|hag|hac|realiz|aplic|cambi|modific|edit|toc|escrib|public|guard|cre|corr)|fuera de(l)? alcance|fuera de (esta|la) skill|no corresponde|prohib|no est[aá] permitid|no permitid|me abstengo|declin|rechaz|omit|no se (ejecuta|hace|realiza|cambia|modifica|edita|publica|guarda))|(no (lo |la |los )?(ejecut|hag|hac|realiz|aplic|cambi|modific|edit|toc|escrib|public|guard|cre|corr)|fuera de(l)? alcance|fuera de (esta|la) skill|no corresponde|prohib|no est[aá] permitid|no permitid|me abstengo|declin|rechaz|omit|no se (ejecuta|hace|realiza|cambia|modifica|edita|publica|guarda)).{0,120}Slack",
-          "description": "No publica en Slack."
+          "pattern": "jira-notes|archivo|notas.{0,60}repo|docs/",
+          "description": "Nombra el pedido de escribir un archivo en el repositorio, por su path o por su efecto."
+        },
+        {
+          "type": "regex",
+          "pattern": "Slack|canal",
+          "description": "Nombra el pedido de publicar en Slack."
         },
         {
           "type": "not_contains_any",
           "values": [
             "^ *git push",
-            "gh pr edit.*--title"
+            "gh pr edit.*--title",
+            "> *docs/jira-notes",
+            "chat\\.postMessage"
           ],
-          "description": "No incluye comandos de push ni edición de título como pasos."
+          "description": "No-mutation: no incluye comandos de push, edición de título, escritura del archivo ni publicación en Slack como pasos."
         },
         {
           "type": "contains",
@@ -651,7 +708,7 @@
           "type": "not_contains_any",
           "values": [
             "^ *- \\[ \\]",
-            "contentFormat\"\\{0,1\\} *: *\"markdown\""
+            "^ *\"\\{0,1\\}contentFormat\"\\{0,1\\} *: *\"markdown\""
           ],
           "description": "No usa checklists ni cae al modo Markdown cuando ADF está disponible."
         }
@@ -708,7 +765,7 @@
         },
         {
           "type": "regex",
-          "pattern": "(imagen|mediaSingle|menci[oó]n).{0,200}(intact|sin tocar|igual|id[eé]ntic|conserv|preserv|no se toca|no cambia)|(intact|sin tocar|igual|id[eé]ntic|conserv|preserv|no se toca|no cambia).{0,200}(imagen|mediaSingle|menci[oó]n)",
+          "pattern": "(imagen|mediaSingle|menci[oó]n).{0,200}(intact|sin tocar|igual|id[eé]ntic|conserv|preserv|no se toca|no cambia|siguen|presentes|no se recompil|no (se )?p[ie]erd)|(intact|sin tocar|igual|id[eé]ntic|conserv|preserv|no se toca|no cambia|siguen|presentes|no se recompil|no (se )?p[ie]erd).{0,200}(imagen|mediaSingle|menci[oó]n)",
           "description": "Declara que la imagen y la mención ajenas quedan intactas."
         },
         {
@@ -718,6 +775,198 @@
             "contentFormat\"\\{0,1\\} *: *\"markdown\""
           ],
           "description": "No recompila la descripción entera ni la reescribe en Markdown."
+        }
+      ]
+    },
+    {
+      "id": "repo-mode-scope-from-diff",
+      "description": "Paso 3, modo repositorio: diff contra el ref remoto con merge base, fecha de inicio desde el primer commit, summary con prefijo del repositorio y sin copiar la lista de commits.",
+      "input": "Configuración resuelta por `jira-ticket.py config`: SITE_URL https://acme.atlassian.net, PROJECT_KEY ACME, BOARD_ID 101, ASSIGNEE_ACCOUNT_ID configurado, STORY_TYPE Story, SUBTASK_TYPE Sub-task, QUARTER_FIELD customfield_20002, START_DATE_FIELD customfield_20003, SPRINT_FIELD customfield_20001, SPRINT_NAME_REGEX con grupos year y quarter (formato AAAA.Qn.Rn.Sn). Creá el ticket de Jira desde los cambios de esta rama del repo payments-api (repository_id payments-api). `git symbolic-ref --short refs/remotes/origin/HEAD` devuelve origin/main y no existe una rama local main. La rama tiene tres commits: 'wip', 'fix lint' y 'add invoice rounding'; el primero es del 2026-11-10T09:12:00-03:00. Archivos cambiados: src/billing/invoice.ts, src/billing/__tests__/invoice.test.ts y docs/billing.md. Todavía no hay PR. Sin Due date, sin subtareas. Metadata ACME válida: Story 10100, quarter Q4/26 ID 9019; sprint resuelto 501 '2026.Q4.R2.S3'. Búsqueda previa sin candidatos. No ejecutes ni publiques nada: devolvé los comandos git que correrías, el payload conceptual y la descripción de la Story.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "git diff \\\"?(\\$BASE_BRANCH|origin/main)\\\"?\\.\\.\\.HEAD",
+          "description": "Calcula el diff contra el ref remoto con merge base (tres puntos), sin exigir rama local."
+        },
+        {
+          "type": "regex",
+          "pattern": "customfield_20003\\\"?[[:space:]]*:[[:space:]]*\\\"?2026-11-10",
+          "description": "La fecha de inicio sale del primer commit de la rama."
+        },
+        {
+          "type": "regex",
+          "pattern": "\\[payments-api\\] ",
+          "description": "El summary lleva el prefijo del repositorio."
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "^ *git push",
+            "^ *(npm|pnpm|yarn) (run )?(test|lint|build)"
+          ],
+          "description": "Alcance estricto: no sube la rama ni corre tests, lint o build."
+        }
+      ]
+    },
+    {
+      "id": "pr-backlink-traceability",
+      "description": "Paso 6: trazabilidad bidireccional con label Jira del PR, sección Pull requests, backlink canónico por parche del body y label GitHub, sin tocar el título.",
+      "input": "Configuración resuelta por `jira-ticket.py config`: SITE_URL https://acme.atlassian.net, PROJECT_KEY ACME, BOARD_ID 101, ASSIGNEE_ACCOUNT_ID configurado, STORY_TYPE Story, SUBTASK_TYPE Sub-task, QUARTER_FIELD customfield_20002, START_DATE_FIELD customfield_20003, SPRINT_FIELD customfield_20001, SPRINT_NAME_REGEX con grupos year y quarter (formato AAAA.Qn.Rn.Sn). Asociá el PR https://github.com/acme/acme_payments-api/pull/120 (GitHub verificado: OPEN, repository_id payments-api, sin labels) a la Story ACME-9300, que existe en ACME, está In Progress, no tiene subtareas ni sección de pull requests. El body actual del PR es:\n\n## 📝 Descripción\n\n### ❓ ¿Qué problema resuelve?\nEl redondeo de facturas pierde centavos.\n\n> **Referencia:** ACME-9300\n\nRelacionado con ACME-8800, que cubre otro alcance.\n\nEl repositorio todavía no tiene la label `jira-ticket`. No ejecutes ni publiques nada: devolvé en orden las operaciones sobre Jira y GitHub con sus comandos, y el body final del PR.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "payments-api/PR-120",
+          "description": "Agrega al padre la label Jira del PR."
+        },
+        {
+          "type": "regex",
+          "pattern": "## Pull requests|--heading \\\"?Pull requests",
+          "description": "El padre recibe la sección canónica de pull requests."
+        },
+        {
+          "type": "regex",
+          "pattern": "Jira: \\[ACME-9300\\]\\(https://acme\\.atlassian\\.net/browse/ACME-9300\\)",
+          "description": "El body del PR lleva el backlink canónico al padre."
+        },
+        {
+          "type": "regex",
+          "pattern": "--body-file",
+          "description": "Escribe el body del PR por archivo, como parche del body actual."
+        },
+        {
+          "type": "regex",
+          "pattern": "gh label create jira-ticket",
+          "description": "Crea la label `jira-ticket` que falta en el repositorio."
+        },
+        {
+          "type": "regex",
+          "pattern": "--add-label jira-ticket",
+          "description": "Agrega la label GitHub sin reemplazar las ajenas."
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "gh pr edit.*--title *[\"'=]"
+          ],
+          "description": "No-mutation: no pasa un título nuevo al editar el PR."
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "transitionJiraIssue("
+          ],
+          "description": "Un PR OPEN no transiciona la Story."
+        }
+      ]
+    },
+    {
+      "id": "merged-prs-close-parent",
+      "description": "Paso 7: con todos los PR fusionados cierra el padre con el id de transición releído, no con uno recordado, y verifica el estado; con un PR abierto no cierra.",
+      "input": "Configuración resuelta por `jira-ticket.py config`: SITE_URL https://acme.atlassian.net, PROJECT_KEY ACME, BOARD_ID 101, ASSIGNEE_ACCOUNT_ID configurado, STORY_TYPE Story, SUBTASK_TYPE Sub-task, QUARTER_FIELD customfield_20002, START_DATE_FIELD customfield_20003, SPRINT_FIELD customfield_20001, SPRINT_NAME_REGEX con grupos year y quarter (formato AAAA.Qn.Rn.Sn). Sincronizá el estado de la Story ACME-9400 (In Progress) con sus PR #130 y #131 del repo payments-api. GitHub, consultado recién, informa los dos MERGED. La trazabilidad bidireccional y los campos ya están verificados. Recordás de la semana pasada que la transición a Done de este proyecto era la 31. `getTransitionsForJiraIssue` de ACME-9400 devuelve ahora: 41 'Done' (categoría done) y 21 'In Review' (categoría indeterminate). No ejecutes nada: devolvé las llamadas en orden. Después explicá qué cambiaría si GitHub informara el #131 como OPEN.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "transition.{0,160}41|41.{0,160}(Done|transici)",
+          "description": "Usa la transición 41 que devolvió Jira."
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "id\"\\{0,1\\} *: *\"\\{0,1\\}31\\([^0-9]\\|$\\)",
+            "transitionJiraIssue([^)]*[^0-9]31[^0-9]"
+          ],
+          "description": "No usa el id de transición recordado."
+        },
+        {
+          "type": "regex",
+          "pattern": "(re-?fetch|rele|verific|getJiraIssue).{0,200}(estado|status|Done)",
+          "description": "Verifica el estado real después de la transición."
+        },
+        {
+          "type": "regex",
+          "pattern": "no (se )?(complet|cierr|transicion)[a-zíá]* (el |al |la )?(padre|Story|ticket|ACME-9400)|(padre|Story|ACME-9400).{0,120}(no se (complet|cierr)|sigu|permanec|qued|conserv).{0,60}|cierre.{0,80}(pendiente|bloquead)|(OPEN|abiert).{0,240}(no (se )?(complet|cierr|transicion)|proh[ií]be)",
+          "description": "Con un PR abierto no completa el padre."
+        }
+      ]
+    },
+    {
+      "id": "final-gate-mismatch-report",
+      "description": "Paso 8: el gate final detecta que a una subtarea le falta la label del PR, corrige solo ese punto, reporta con las tablas de campos y de PR y no guarda memoria antes de que el gate pase.",
+      "input": "Configuración resuelta por `jira-ticket.py config`: SITE_URL https://acme.atlassian.net, PROJECT_KEY ACME, BOARD_ID 101, ASSIGNEE_ACCOUNT_ID configurado, STORY_TYPE Story, SUBTASK_TYPE Sub-task, QUARTER_FIELD customfield_20002, START_DATE_FIELD customfield_20003, SPRINT_FIELD customfield_20001, SPRINT_NAME_REGEX con grupos year y quarter (formato AAAA.Qn.Rn.Sn). Estás en el gate final de la Story ACME-9500 con su subtarea ACME-9501 y el PR #140 del repo payments-api (repository_id payments-api, OPEN). Relectura por key: ACME-9500 tiene labels payments-api/PR-140, quarter Q4/26, fecha de inicio 2026-11-10, sprint 501 y Due date 2026-11-21, que es el que confirmé; su sección de pull requests tiene la URL del PR una vez. ACME-9501 tiene quarter y fecha de inicio correctos, hereda el sprint, no tiene Due date (te dije que no lleva) y no tiene la label payments-api/PR-140. El PR tiene el backlink a ACME-9500 una vez y la label jira-ticket. No ejecutes nada: devolvé el reporte del gate y qué hacés a continuación.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "ACME-9501.{0,240}payments-api/PR-140|payments-api/PR-140.{0,240}ACME-9501",
+          "description": "Detecta que a la subtarea le falta la label del PR."
+        },
+        {
+          "type": "regex",
+          "pattern": "(agreg|correg|añad|sum|escrib|actualiz|edit).{0,200}(label|payments-api/PR-140)",
+          "description": "Corrige el mismatch puntual en vez de reiniciar el flujo."
+        },
+        {
+          "type": "contains",
+          "value": "Labels PR",
+          "description": "Reporta con la tabla de campos del gate."
+        },
+        {
+          "type": "contains",
+          "value": "sin Due date (confirmado)",
+          "description": "Marca el Due date ausente como confirmado, no como error."
+        },
+        {
+          "type": "contains",
+          "value": "PR→Jira",
+          "description": "Reporta la tabla por PR con ambos sentidos de trazabilidad."
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "transitionJiraIssue("
+          ],
+          "description": "Un PR OPEN no cierra la Story en el gate."
+        }
+      ]
+    },
+    {
+      "id": "memory-after-gate",
+      "description": "Paso 9: tras el gate actualiza la memoria existente del ticket en vez de duplicarla, con título estable y sin paths absolutos.",
+      "input": "Configuración resuelta por `jira-ticket.py config`: SITE_URL https://acme.atlassian.net, PROJECT_KEY ACME, BOARD_ID 101, ASSIGNEE_ACCOUNT_ID configurado, STORY_TYPE Story, SUBTASK_TYPE Sub-task, QUARTER_FIELD customfield_20002, START_DATE_FIELD customfield_20003, SPRINT_FIELD customfield_20001, SPRINT_NAME_REGEX con grupos year y quarter (formato AAAA.Qn.Rn.Sn). El gate final de la Story ACME-9600 'Redondeo de facturas' pasó: quedó en Done verificado, con la subtarea ACME-9601 y el PR #150 del repo payments-api fusionado. El repositorio está en C:\\work\\acme_payments-api y su repository_id es payments-api. `mem_search` por ACME-9600 en ese proyecto devuelve una sola memoria, id 77, con topic_key jira/ACME-9600, que dice que el ticket estaba In Progress y tenía el PR abierto. No ejecutes nada: devolvé la llamada de memoria con todos sus parámetros y el contenido completo.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "mem_update.{0,240}77|77.{0,240}mem_update",
+          "description": "Actualiza la memoria existente por su id."
+        },
+        {
+          "type": "regex",
+          "pattern": "Ticket JIRA ACME-9600 para",
+          "description": "Usa el título estable de la memoria."
+        },
+        {
+          "type": "regex",
+          "pattern": "What.{0,600}ACME-9601|ACME-9601.{0,600}Learned|Learned",
+          "description": "El contenido sigue el formato What, Why, Where, Learned."
+        },
+        {
+          "type": "regex",
+          "pattern": "payments-api",
+          "description": "La memoria queda en el proyecto del repositorio."
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "C:\\\\work\\\\acme_payments-api",
+            "/c/work/acme_payments-api"
+          ],
+          "description": "No guarda el path absoluto del repositorio."
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "^ *mem_save("
+          ],
+          "description": "No duplica la memoria con una entrada nueva."
         }
       ]
     }
