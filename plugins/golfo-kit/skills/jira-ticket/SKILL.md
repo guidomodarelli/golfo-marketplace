@@ -142,6 +142,7 @@ Ejecutar `scripts/jira-ticket.py config`. Si informa `missing_required`, detener
 ## Invariantes bloqueantes
 
 - No crear duplicado cuando ticket ya existe.
+- No eliminar labels ajenos ni asociaciones previas porque el pedido no los mencione.
 - Padre y cada subtarea terminan con labels, quarter, fecha de inicio y sprint verificados; el sprint se asigna solo al padre y las subtareas lo heredan.
 - Ningún issue nuevo se crea sin preguntar antes por su Due date (o sin que el pedido lo indique); la respuesta se respeta tal cual, incluido "sin Due date".
 - Todo PR normalizado produce label `<repository_id>/PR-<number>` en padre y subtareas.
@@ -318,7 +319,7 @@ Consultar transiciones por subtarea antes de cambiar estado y verificar resultad
 2. Releer diff actual en modo repositorio; en tarea explícita, usar pedido y contenido actual sin incorporar cambios locales.
 3. Comparar summary, description, áreas, subtareas, cobertura, idioma y campos.
 4. Preservar labels y contenido no relacionado.
-5. Actualizar solo drift real; corregir siempre campos obligatorios faltantes. Si falta fecha de inicio del padre, aplicar la precedencia y el fallback de consenso entre subtareas de `jira-fields.md` antes de pedirla; informar el origen de una fecha de seguimiento inferida. Si el padre no tiene sprint, asignar el sprint activo resuelto; preservar uno existente salvo pedido explícito.
+5. Actualizar solo drift real; corregir siempre campos obligatorios faltantes. Si falta fecha de inicio del padre, aplicar la precedencia y el fallback de consenso entre subtareas de `jira-fields.md` antes de pedirla. Una fecha inferida así es de seguimiento: decir siempre en la respuesta que proviene de las subtareas y que no prueba el inicio real del trabajo. Si el padre no tiene sprint, asignar el sprint activo resuelto; preservar uno existente salvo pedido explícito.
 6. Ejecutar edits de issues independientes en paralelo; nunca writes concurrentes sobre mismo padre.
 7. Crear subtareas faltantes con campos heredados; antes, preguntar por su Due date si el pedido no lo indica. Preservar el Due date de issues existentes salvo pedido explícito.
 8. Mantener la tabla de seguimiento según `ticket-templates.md`: fila nueva por hijo creado y celda `Estado` por hijo que cambió de estado; nada más de la descripción cambia por eso.
@@ -411,17 +412,4 @@ Solo después de gate exitoso:
 5. Content con **What**, **Why**, **Where**, **Learned**: key, summary, subtareas, status verificado y asociaciones relevantes, sin secretos ni paths absolutos.
 6. Si la memoria no está disponible o el guardado falla, informar limitación; no usar otro sistema de memoria ni afirmar persistencia no verificada.
 
-Memoria sirve para discovery; nunca como fuente de identidad, estado o contenido actual.
-
-## Reglas finales
-
-- Nunca ejecutar upload Git.
-- Nunca crear duplicado si existe padre válido.
-- Nunca omitir campos obligatorios en padre o subtareas.
-- Nunca eliminar labels ajenos o asociaciones previas por omisión del prompt.
-- Nunca completar automáticamente padre sin colección PR no vacía y totalmente `MERGED`; cierre manual sin PR requiere confirmación explícita.
-- Nunca editar título PR desde esta skill.
-- Nunca regenerar body PR; solo backlink canónico.
-- Nunca actualizar desde memoria sin fetch de Jira/GitHub.
-- Nunca reescribir una descripción entera para cambiar una sección.
-- No cerrar tarea hasta gate final completo.
+Memoria sirve para discovery; nunca como fuente de identidad, estado o contenido actual: no actualizar desde memoria sin fetch de Jira y GitHub.
