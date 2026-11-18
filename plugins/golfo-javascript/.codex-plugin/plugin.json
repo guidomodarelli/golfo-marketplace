@@ -1,0 +1,32 @@
+{
+  "name": "golfo-javascript",
+  "version": "0.129.0",
+  "description": "Skills exclusivas de JavaScript y TypeScript, en front o back: JSDoc/TSDoc, tests con Vitest y Testing Library, y aislamiento de dependencias con puertos inyectados y nock. No aplican a otros lenguajes.",
+  "author": {
+    "name": "Guido Modarelli",
+    "email": "",
+    "url": ""
+  },
+  "repository": "https://github.com/guidomodarelli/golfo-marketplace",
+  "license": "MIT",
+  "category": "development",
+  "keywords": [
+    "golfo",
+    "javascript",
+    "typescript",
+    "jsdoc",
+    "vitest",
+    "testing"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Golfo JavaScript",
+    "shortDescription": "Skills exclusivas de JavaScript y TypeScript.",
+    "category": "Development",
+    "capabilities": [
+      "Read",
+      "Write",
+      "Bash"
+    ]
+  }
+}

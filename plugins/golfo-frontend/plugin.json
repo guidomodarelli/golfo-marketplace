@@ -1,0 +1,18 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "golfo-frontend",
+  "version": "0.129.0",
+  "description": "Skills de frontend para cualquier tecnología de UI (web, mobile nativo o React): qué mostrar en cada estado de un flujo, optimistic UI y ciclo de vida de acciones, y propuestas visuales de UI.",
+  "author": {
+    "name": "Guido Modarelli"
+  },
+  "repository": "https://github.com/guidomodarelli/golfo-marketplace",
+  "license": "MIT",
+  "keywords": [
+    "golfo",
+    "frontend",
+    "ui",
+    "ux",
+    "optimistic-ui"
+  ]
+}

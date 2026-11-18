@@ -22,7 +22,7 @@ validate() {
   run node "$repository_root/scripts/validate-compatibility-report.js" \
     --report "$report" --markdown "$markdown" \
     --schema "$references_dir/compatibility-report.schema.json" \
-    --skills-dir "$repository_root/plugins/golfo-kit/skills"
+    --plugins-dir "$repository_root/plugins"
 }
 
 # Applies a JavaScript mutation to the report object bound as `report`.

@@ -48,7 +48,7 @@ const graphemeSegmenter = new Intl.Segmenter();
 
 /**
  * Decides whether a stream may carry color, following section 1 of
- * `plugins/golfo-kit/skills/vivid-visual-output/references/terminal.md`. The tool has no
+ * `plugins/golfo-engineering/skills/vivid-visual-output/references/terminal.md`. The tool has no
  * machine output or `--color` flag, so its first two steps do not apply and the order is:
  * 1. `NO_COLOR` (non-empty) or `TERM=dumb`: plain, even with `FORCE_COLOR`.
  * 2. `FORCE_COLOR=0` or `false`: plain.

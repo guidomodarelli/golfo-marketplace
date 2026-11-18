@@ -1,0 +1,31 @@
+{
+  "name": "golfo-frontend",
+  "version": "0.129.0",
+  "description": "Skills de frontend para cualquier tecnología de UI (web, mobile nativo o React): qué mostrar en cada estado de un flujo, optimistic UI y ciclo de vida de acciones, y propuestas visuales de UI.",
+  "author": {
+    "name": "Guido Modarelli",
+    "email": "",
+    "url": ""
+  },
+  "repository": "https://github.com/guidomodarelli/golfo-marketplace",
+  "license": "MIT",
+  "category": "development",
+  "keywords": [
+    "golfo",
+    "frontend",
+    "ui",
+    "ux",
+    "optimistic-ui"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Golfo Frontend",
+    "shortDescription": "Skills de frontend para cualquier tecnología de UI.",
+    "category": "Development",
+    "capabilities": [
+      "Read",
+      "Write",
+      "Bash"
+    ]
+  }
+}

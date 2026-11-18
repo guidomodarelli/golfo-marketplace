@@ -434,7 +434,7 @@
       "id": "async-operation-error-handling",
       "name": "Async Operation Error Handling",
       "version": "1.0.0",
-      "path": "plugins/golfo-kit/skills/async-operation-error-handling/SKILL.md",
+      "path": "plugins/golfo-engineering/skills/async-operation-error-handling/SKILL.md",
       "purpose": "Diseña, implementa y revisa manejo de errores en operaciones asíncronas distribuidas (batch, jobs, polling, retries, estados terminales).",
       "main_features": [
         "clasificación de fallos parciales y upstream",
@@ -684,7 +684,7 @@
       "id": "claude-autofix-loop",
       "name": "Claude Autofix Loop",
       "version": "1.0.0",
-      "path": "plugins/golfo-kit/skills/claude-autofix-loop/SKILL.md",
+      "path": "plugins/golfo-github/skills/claude-autofix-loop/SKILL.md",
       "purpose": "Lanza el loop de auto-fix de codex-autofix-loop con el perfil de revisor claude para los hallazgos de claude[bot].",
       "main_features": [
         "perfil de revisor claude",
@@ -829,7 +829,7 @@
       "id": "codex-autofix-loop",
       "name": "Codex auto-fix loop (local, vía Claude Code)",
       "version": "1.4.0",
-      "path": "plugins/golfo-kit/skills/codex-autofix-loop/SKILL.md",
+      "path": "plugins/golfo-github/skills/codex-autofix-loop/SKILL.md",
       "purpose": "Opera el loop que auto-fixea los comentarios de Codex en un PR hasta converger y mergear con gates.",
       "main_features": [
         "escucha de eventos del PR",
@@ -1229,7 +1229,7 @@
               "alternatives_investigated": [
                 {
                   "name": "Modo D: una vuelta del prompt sin pasos 0 y 7; termina indicando cómo relanzar.",
-                  "source": "Auditoría 1.0.0 (PR #22) y plugins/golfo-kit/references/agent-capabilities.md",
+                  "source": "Auditoría 1.0.0 (PR #22) y shared/references/agent-capabilities.md",
                   "viable": true,
                   "reason": "Queda como modo opcional a pedido del usuario."
                 }
@@ -1278,7 +1278,7 @@
               "alternatives_investigated": [
                 {
                   "name": "`collaboration.spawn_agent` + `wait_agent` esperando dentro del turno.",
-                  "source": "Auditoría 1.0.0 (PR #22) y plugins/golfo-kit/references/agent-capabilities.md",
+                  "source": "Auditoría 1.0.0 (PR #22) y shared/references/agent-capabilities.md",
                   "viable": true,
                   "reason": "Herramientas presentes en la sesión; no se ejecutaron."
                 }
@@ -1337,7 +1337,7 @@
               "alternatives_investigated": [
                 {
                   "name": "Exit 5 del watcher o GUARD: termina el turno; nada queda vivo.",
-                  "source": "Auditoría 1.0.0 (PR #22) y plugins/golfo-kit/references/agent-capabilities.md",
+                  "source": "Auditoría 1.0.0 (PR #22) y shared/references/agent-capabilities.md",
                   "viable": true,
                   "reason": "No ejecutada en Codex CLI en esta auditoría."
                 }
@@ -1466,7 +1466,7 @@
               "alternatives_investigated": [
                 {
                   "name": "`scripts/wait-for-pr-event.sh` en background con aviso, rearmado hasta MAX_WATCH_CYCLES.",
-                  "source": "Auditoría 1.0.0 (PR #22) y plugins/golfo-kit/references/agent-capabilities.md",
+                  "source": "Auditoría 1.0.0 (PR #22) y shared/references/agent-capabilities.md",
                   "viable": true,
                   "reason": "Reemplaza a Monitor con un proceso acotado y supervisado."
                 }
@@ -1495,7 +1495,7 @@
               "alternatives_investigated": [
                 {
                   "name": "El timeout del watcher (exit 3) dispara la vuelta que evalúa TTLs y reintentos de merge.",
-                  "source": "Auditoría 1.0.0 (PR #22) y plugins/golfo-kit/references/agent-capabilities.md",
+                  "source": "Auditoría 1.0.0 (PR #22) y shared/references/agent-capabilities.md",
                   "viable": true,
                   "reason": "cronjob_manage corre en sesiones nuevas sin acceso a subagentes ni al watcher, así que no puede reconciliar inFlight; se descartó."
                 }
@@ -1541,7 +1541,7 @@
               "alternatives_investigated": [
                 {
                   "name": "`delegate_task` con `tasks[]`; los hijos mueren con la sesión.",
-                  "source": "Auditoría 1.0.0 (PR #22) y plugins/golfo-kit/references/agent-capabilities.md",
+                  "source": "Auditoría 1.0.0 (PR #22) y shared/references/agent-capabilities.md",
                   "viable": true,
                   "reason": "Herramienta presente; no ejecutada."
                 }
@@ -1597,7 +1597,7 @@
               "alternatives_investigated": [
                 {
                   "name": "Mata el watcher vivo.",
-                  "source": "Auditoría 1.0.0 (PR #22) y plugins/golfo-kit/references/agent-capabilities.md",
+                  "source": "Auditoría 1.0.0 (PR #22) y shared/references/agent-capabilities.md",
                   "viable": true,
                   "reason": "kill no se ejercitó en la prueba real (el watcher terminó por timeout)."
                 }
@@ -1647,11 +1647,11 @@
           "Modo C para Codex: wait-for-pr-event.sh en foreground dentro del turno con tope MAX_INTURN_CYCLES; la ronda única pasa a modo D"
         ],
         "files_modified": [
-          "plugins/golfo-kit/skills/codex-autofix-loop/SKILL.md",
-          "plugins/golfo-kit/skills/codex-autofix-loop/references/agent-modes.md",
-          "plugins/golfo-kit/skills/codex-autofix-loop/scripts/wait-for-pr-event.sh",
-          "plugins/golfo-kit/skills/codex-autofix-loop/tests/wait-for-pr-event.bats",
-          "plugins/golfo-kit/skills/codex-autofix-loop/evals/eval-config.json"
+          "plugins/golfo-github/skills/codex-autofix-loop/SKILL.md",
+          "plugins/golfo-github/skills/codex-autofix-loop/references/agent-modes.md",
+          "plugins/golfo-github/skills/codex-autofix-loop/scripts/wait-for-pr-event.sh",
+          "plugins/golfo-github/skills/codex-autofix-loop/tests/wait-for-pr-event.bats",
+          "plugins/golfo-github/skills/codex-autofix-loop/evals/eval-config.json"
         ],
         "fallback": "Modo C: una ronda por invocación, sin esperas, con instrucciones para relanzar.",
         "behavior_changes": "Ninguno en Claude Code (modo A). En Hermes la espera usa el watcher y no hay cron; en Codex no hay escucha continua ni relanzado automático."
@@ -1735,7 +1735,7 @@
           "id": "watcher-bats",
           "agent": "any",
           "kind": "bats",
-          "command": "bats plugins/golfo-kit/skills/codex-autofix-loop/tests/wait-for-pr-event.bats",
+          "command": "bats plugins/golfo-github/skills/codex-autofix-loop/tests/wait-for-pr-event.bats",
           "result": "passed",
           "evidence": "14/14: evento por head, comentario, review y checks (exit 0), tope de polls y timeout (exit 3), deadline respetado con gh lento, en el baseline y sin el ejecutable timeout (exit 3), GitHub caído (exit 4), PR cerrado (exit 5), argumentos inválidos (exit 2)."
         },
@@ -1823,7 +1823,7 @@
           "id": "eval-sim-codex-inturn-watcher",
           "agent": "codex",
           "kind": "simulated_eval",
-          "command": "run-evals <copia filtrada>/plugins/golfo-kit/skills/codex-autofix-loop --provider claude (solo los casos nuevos o modificados)",
+          "command": "run-evals <copia filtrada>/plugins/golfo-github/skills/codex-autofix-loop --provider claude (solo los casos nuevos o modificados)",
           "result": "passed",
           "evidence": "Claude (claude-sonnet-5-5) simulando el agente: codex-in-turn-foreground-watcher, codex-runs-single-round-without-waiting y codex-single-round-keeps-merge-gates (modos C y D)."
         }
@@ -1839,7 +1839,7 @@
       "id": "codex-comment-closeout",
       "name": "Cierre de comentarios de Codex",
       "version": "1.0.0",
-      "path": "plugins/golfo-kit/skills/codex-comment-closeout/SKILL.md",
+      "path": "plugins/golfo-github/skills/codex-comment-closeout/SKILL.md",
       "purpose": "Plantilla y checklist para responder, reaccionar y resolver comentarios de Codex en un PR.",
       "main_features": [
         "variantes Resuelto / Sin cambios / No pude aplicar",
@@ -1986,7 +1986,7 @@
       "id": "constants-refactor",
       "name": "Constants Refactor",
       "version": "1.1.0",
-      "path": "plugins/golfo-kit/skills/constants-refactor/SKILL.md",
+      "path": "plugins/golfo-engineering/skills/constants-refactor/SKILL.md",
       "purpose": "Analiza y refactoriza constantes, literales funcionales y contratos cross-layer.",
       "main_features": [
         "detección de hardcodes",
@@ -2111,7 +2111,7 @@
       "id": "create-issue",
       "name": "Create Issue",
       "version": "1.0.0",
-      "path": "plugins/golfo-kit/skills/create-issue/SKILL.md",
+      "path": "plugins/golfo-planning/skills/create-issue/SKILL.md",
       "purpose": "Genera la descripción estructurada de una issue a partir de la explicación del usuario.",
       "main_features": [
         "estructura de issue de planificación"
@@ -2356,7 +2356,7 @@
       "id": "enforce-jsdoc-tsdoc",
       "name": "enforce-jsdoc-tsdoc",
       "version": "1.0.0",
-      "path": "plugins/golfo-kit/skills/enforce-jsdoc-tsdoc/SKILL.md",
+      "path": "plugins/golfo-javascript/skills/enforce-jsdoc-tsdoc/SKILL.md",
       "purpose": "Agrega o actualiza JSDoc/TSDoc donde aporta a la lectura.",
       "main_features": [
         "reglas de ubicación y tags",
@@ -2480,7 +2480,7 @@
       "id": "error-observability-diagnostics",
       "name": "Error Observability Diagnostics",
       "version": null,
-      "path": "plugins/golfo-kit/skills/error-observability-diagnostics/SKILL.md",
+      "path": "plugins/golfo-engineering/skills/error-observability-diagnostics/SKILL.md",
       "purpose": "Diseña y revisa trazabilidad operativa de errores (logs estructurados, sinks, correlación).",
       "main_features": [
         "detección de sinks reales",
@@ -2605,7 +2605,7 @@
       "id": "feature-branch-pr",
       "name": "Feature Branch + Commit + Push + PR",
       "version": "1.0.0",
-      "path": "plugins/golfo-kit/skills/feature-branch-pr/SKILL.md",
+      "path": "plugins/golfo-github/skills/feature-branch-pr/SKILL.md",
       "purpose": "Lleva los cambios de la rama a un PR: rama feature/*, commit, push, PR y resumen.",
       "main_features": [
         "creación de rama",
@@ -2757,7 +2757,7 @@
       "id": "fix-in-ephemeral-clone",
       "name": "Fix Issue Efímero Clone",
       "version": "1.1.0",
-      "path": "plugins/golfo-kit/skills/fix-in-ephemeral-clone/SKILL.md",
+      "path": "plugins/golfo-git/skills/fix-in-ephemeral-clone/SKILL.md",
       "purpose": "Ejecuta fixes en un clone efímero depth-1 y publica la rama autorizada sin hacer closeout.",
       "main_features": [
         "clone efímero",
@@ -2876,7 +2876,7 @@
               "alternatives_investigated": [
                 {
                   "name": "`spawn_agent` + `wait_agent`.",
-                  "source": "Auditoría 1.0.0 (PR #22) y plugins/golfo-kit/references/agent-capabilities.md",
+                  "source": "Auditoría 1.0.0 (PR #22) y shared/references/agent-capabilities.md",
                   "viable": true,
                   "reason": "No ejecutada en Codex CLI en esta auditoría."
                 }
@@ -2927,7 +2927,7 @@
               "alternatives_investigated": [
                 {
                   "name": "`delegate_task`.",
-                  "source": "Auditoría 1.0.0 (PR #22) y plugins/golfo-kit/references/agent-capabilities.md",
+                  "source": "Auditoría 1.0.0 (PR #22) y shared/references/agent-capabilities.md",
                   "viable": true,
                   "reason": "No ejecutada en Hermes Agent en esta auditoría."
                 }
@@ -2943,7 +2943,7 @@
           "Sección «Compatibilidad entre agentes» para el modo background"
         ],
         "files_modified": [
-          "plugins/golfo-kit/skills/fix-in-ephemeral-clone/SKILL.md"
+          "plugins/golfo-git/skills/fix-in-ephemeral-clone/SKILL.md"
         ],
         "fallback": "Modo in_context.",
         "behavior_changes": "Ninguno."
@@ -2977,7 +2977,7 @@
       "id": "fix-tests-intelligently",
       "name": "fix-tests-intelligently",
       "version": "1.0.0",
-      "path": "plugins/golfo-kit/skills/fix-tests-intelligently/SKILL.md",
+      "path": "plugins/golfo-testing/skills/fix-tests-intelligently/SKILL.md",
       "purpose": "Diagnostica tests rotos o flaky sin ajustar aserciones a ciegas.",
       "main_features": [
         "decidir si el fix va en el test o en la implementación"
@@ -3100,7 +3100,7 @@
       "id": "functionality-check",
       "name": "Functionality Check",
       "version": "1.0.0",
-      "path": "plugins/golfo-kit/skills/functionality-check/SKILL.md",
+      "path": "plugins/golfo-planning/skills/functionality-check/SKILL.md",
       "purpose": "Determina si las capacidades de una spec están implementadas y alcanzables en el código.",
       "main_features": [
         "cobertura con evidencia",
@@ -3224,7 +3224,7 @@
       "id": "generate-commit-messages",
       "name": "Generate Commit Messages",
       "version": "1.0.0",
-      "path": "plugins/golfo-kit/skills/generate-commit-messages/SKILL.md",
+      "path": "plugins/golfo-git/skills/generate-commit-messages/SKILL.md",
       "purpose": "Reúne contexto, redacta y aplica el mensaje de commit.",
       "main_features": [
         "análisis del diff",
@@ -3362,7 +3362,7 @@
       "id": "improve-spec",
       "name": "Improve Spec",
       "version": "1.1.0",
-      "path": "plugins/golfo-kit/skills/improve-spec/SKILL.md",
+      "path": "plugins/golfo-planning/skills/improve-spec/SKILL.md",
       "purpose": "Mejora specs de docs/specs/ resolviendo ambigüedades, completando secciones y dejando tasks ejecutables.",
       "main_features": [
         "selección del spec",
@@ -3409,7 +3409,7 @@
               "alternatives_investigated": [
                 {
                   "name": "Fallback en texto en sesión headless; AskUserQuestion en sesiones interactivas.",
-                  "source": "Auditoría 1.0.0 (PR #22) y plugins/golfo-kit/references/agent-capabilities.md",
+                  "source": "Auditoría 1.0.0 (PR #22) y shared/references/agent-capabilities.md",
                   "viable": true,
                   "reason": "Verificado el fallback; la ruta nativa no."
                 }
@@ -3465,7 +3465,7 @@
               "alternatives_investigated": [
                 {
                   "name": "Pregunta en texto y detenerse; request_user_input solo en modo Plan.",
-                  "source": "Auditoría 1.0.0 (PR #22) y plugins/golfo-kit/references/agent-capabilities.md",
+                  "source": "Auditoría 1.0.0 (PR #22) y shared/references/agent-capabilities.md",
                   "viable": true,
                   "reason": "Verificado en Codex real."
                 }
@@ -3519,7 +3519,7 @@
               "alternatives_investigated": [
                 {
                   "name": "`clarify`; fallback en texto ante undelivered/timed_out/cancelled.",
-                  "source": "Auditoría 1.0.0 (PR #22) y plugins/golfo-kit/references/agent-capabilities.md",
+                  "source": "Auditoría 1.0.0 (PR #22) y shared/references/agent-capabilities.md",
                   "viable": true,
                   "reason": "Verificado en Hermes real."
                 }
@@ -3556,8 +3556,8 @@
           "Sección «Compatibilidad entre agentes»: herramienta de preguntas por agente y fallback en texto con detención"
         ],
         "files_modified": [
-          "plugins/golfo-kit/skills/improve-spec/SKILL.md",
-          "plugins/golfo-kit/skills/improve-spec/evals/eval-config.json"
+          "plugins/golfo-planning/skills/improve-spec/SKILL.md",
+          "plugins/golfo-planning/skills/improve-spec/evals/eval-config.json"
         ],
         "fallback": "Pregunta en texto con opciones numeradas y detención hasta la respuesta.",
         "behavior_changes": "Antes, sin AskUserQuestion la skill preguntaba en texto pero no exigía detenerse; ahora no avanza ni guarda hasta la respuesta."
@@ -3614,7 +3614,7 @@
       "id": "inline-thread-autofix",
       "name": "Inline Thread Autofix",
       "version": "1.1.0",
-      "path": "plugins/golfo-kit/skills/inline-thread-autofix/SKILL.md",
+      "path": "plugins/golfo-github/skills/inline-thread-autofix/SKILL.md",
       "purpose": "Orquesta el feedback de un hilo o review de PR: pregunta el entorno, aplica el fix y hace el closeout.",
       "main_features": [
         "pregunta del entorno",
@@ -3738,7 +3738,7 @@
               "alternatives_investigated": [
                 {
                   "name": "Texto y detención; `request_user_input` solo en modo Plan.",
-                  "source": "Auditoría 1.0.0 (PR #22) y plugins/golfo-kit/references/agent-capabilities.md",
+                  "source": "Auditoría 1.0.0 (PR #22) y shared/references/agent-capabilities.md",
                   "viable": true,
                   "reason": "No ejecutada en Codex CLI en esta auditoría."
                 }
@@ -3761,7 +3761,7 @@
               "alternatives_investigated": [
                 {
                   "name": "`spawn_agent` + `wait_agent`.",
-                  "source": "Auditoría 1.0.0 (PR #22) y plugins/golfo-kit/references/agent-capabilities.md",
+                  "source": "Auditoría 1.0.0 (PR #22) y shared/references/agent-capabilities.md",
                   "viable": true,
                   "reason": "No ejecutada en Codex CLI en esta auditoría."
                 }
@@ -3811,7 +3811,7 @@
               "alternatives_investigated": [
                 {
                   "name": "`clarify`; texto ante undelivered/timed_out/cancelled.",
-                  "source": "Auditoría 1.0.0 (PR #22) y plugins/golfo-kit/references/agent-capabilities.md",
+                  "source": "Auditoría 1.0.0 (PR #22) y shared/references/agent-capabilities.md",
                   "viable": true,
                   "reason": "No ejecutada en Hermes Agent en esta auditoría."
                 }
@@ -3834,7 +3834,7 @@
               "alternatives_investigated": [
                 {
                   "name": "`delegate_task`.",
-                  "source": "Auditoría 1.0.0 (PR #22) y plugins/golfo-kit/references/agent-capabilities.md",
+                  "source": "Auditoría 1.0.0 (PR #22) y shared/references/agent-capabilities.md",
                   "viable": true,
                   "reason": "No ejecutada en Hermes Agent en esta auditoría."
                 }
@@ -3866,7 +3866,7 @@
           "Sección «Compatibilidad entre agentes»: pregunta por agente con fallback en texto; background solo con handle real"
         ],
         "files_modified": [
-          "plugins/golfo-kit/skills/inline-thread-autofix/SKILL.md"
+          "plugins/golfo-github/skills/inline-thread-autofix/SKILL.md"
         ],
         "fallback": "Pregunta en texto con detención; modo in_context.",
         "behavior_changes": "Ninguno en Claude Code; en otros agentes la pregunta puede ser en texto."
@@ -3892,7 +3892,7 @@
       "id": "interactive-cli-design",
       "name": "Interactive CLI Design",
       "version": "1.0.0",
-      "path": "plugins/golfo-kit/skills/interactive-cli-design/SKILL.md",
+      "path": "plugins/golfo-cli/skills/interactive-cli-design/SKILL.md",
       "purpose": "Diseña e implementa CLIs con flags y modo interactivo: decisión de modo según TTY y CI, flags mínimas, paridad flag-pregunta, widget según el dato, exit codes y verificación en una pseudoconsola real.",
       "main_features": [
         "tabla de decisión de modo",
@@ -4020,7 +4020,7 @@
       "id": "jira-ticket",
       "name": "Jira Ticket",
       "version": "1.0.0",
-      "path": "plugins/golfo-kit/skills/jira-ticket/SKILL.md",
+      "path": "plugins/golfo-jira/skills/jira-ticket/SKILL.md",
       "purpose": "Crea y sincroniza Stories de Jira con subtareas reales y las enlaza en ambos sentidos con pull requests, con la organización configurada por variables JIRA_TICKET_*.",
       "main_features": [
         "creación y actualización de Story con Sub-task",
@@ -4186,7 +4186,7 @@
           "id": "helper-pytest",
           "agent": "any",
           "kind": "bats",
-          "command": "python3 -m pytest plugins/golfo-kit/skills/jira-ticket/scripts/tests",
+          "command": "python3 -m pytest plugins/golfo-jira/skills/jira-ticket/scripts/tests",
           "result": "passed",
           "evidence": "42 tests del helper con datos ficticios en Windows (Python 3.12); la versión anterior de la suite (41 tests) pasó en macOS (Python 3.12)."
         }
@@ -4201,7 +4201,7 @@
       "id": "measured-performance-optimization",
       "name": "Measured Performance Optimization",
       "version": "1.3.0",
-      "path": "plugins/golfo-kit/skills/measured-performance-optimization/SKILL.md",
+      "path": "plugins/golfo-web/skills/measured-performance-optimization/SKILL.md",
       "purpose": "Mide y optimiza rendimiento web con evidencia.",
       "main_features": [
         "medición antes/después",
@@ -4326,7 +4326,7 @@
                 },
                 {
                   "name": "Lighthouse, Chrome headless con log y Playwright por terminal",
-                  "source": "plugins/golfo-kit/references/agent-capabilities.md#verificación-en-navegador-por-terminal + corridas reales",
+                  "source": "shared/references/agent-capabilities.md#verificación-en-navegador-por-terminal + corridas reales",
                   "viable": true,
                   "reason": "Agnóstico del agente; verificado desde los tres agentes. Sin sesión del usuario: solo localhost/staging sin login o con credenciales de prueba."
                 },
@@ -4411,7 +4411,7 @@
                 },
                 {
                   "name": "Lighthouse, Chrome headless con log y Playwright por terminal",
-                  "source": "plugins/golfo-kit/references/agent-capabilities.md#verificación-en-navegador-por-terminal + corridas reales",
+                  "source": "shared/references/agent-capabilities.md#verificación-en-navegador-por-terminal + corridas reales",
                   "viable": true,
                   "reason": "Agnóstico del agente; verificado desde los tres agentes. Sin sesión del usuario: solo localhost/staging sin login o con credenciales de prueba."
                 },
@@ -4441,13 +4441,13 @@
       "implementation": {
         "adaptations": [
           "Sección «Compatibilidad entre agentes»: mecanismo por métrica según agent-capabilities.md (Lighthouse por terminal en cualquier agente; el plugin Chrome de Codex no mide), mismo mecanismo antes y después, y Limitaciones del agente en el reporte",
-          "Fila «Verificar en un navegador» y sección «Verificación en navegador por terminal» en plugins/golfo-kit/references/agent-capabilities.md (fuente única compartida)"
+          "Fila «Verificar en un navegador» y sección «Verificación en navegador por terminal» en shared/references/agent-capabilities.md (fuente única compartida)"
         ],
         "files_modified": [
-          "plugins/golfo-kit/skills/measured-performance-optimization/SKILL.md",
-          "plugins/golfo-kit/skills/measured-performance-optimization/references/measurement-tools.md",
-          "plugins/golfo-kit/skills/measured-performance-optimization/evals/eval-config.json",
-          "plugins/golfo-kit/references/agent-capabilities.md"
+          "plugins/golfo-web/skills/measured-performance-optimization/SKILL.md",
+          "plugins/golfo-web/skills/measured-performance-optimization/references/measurement-tools.md",
+          "plugins/golfo-web/skills/measured-performance-optimization/evals/eval-config.json",
+          "shared/references/agent-capabilities.md"
         ],
         "fallback": "Sin ningún mecanismo de navegador, la verificación queda BLOCKED y se reporta en Limitaciones del agente.",
         "behavior_changes": "Codex mide por terminal en lugar de intentar medir con el plugin Chrome; Hermes pasa a terminal si browser_exec no arranca. Sin ningún mecanismo aplica la detención del paso 3."
@@ -4530,7 +4530,7 @@
           "id": "eval-sim-codex-metrics-via-terminal-not-chrome-plugin",
           "agent": "codex",
           "kind": "simulated_eval",
-          "command": "run-evals <copia filtrada>/plugins/golfo-kit/skills/measured-performance-optimization --provider claude (solo los casos nuevos)",
+          "command": "run-evals <copia filtrada>/plugins/golfo-web/skills/measured-performance-optimization --provider claude (solo los casos nuevos)",
           "result": "passed",
           "evidence": "Claude (claude-sonnet-5-5) simulando el agente: codex-metrics-via-terminal-not-chrome-plugin: mide LCP con Lighthouse por terminal, explica que el plugin Chrome no expone performance, mismo mecanismo antes y después y reserva el plugin para confirmar el flujo."
         },
@@ -4538,7 +4538,7 @@
           "id": "eval-sim-hermes-browser-exec-fails-terminal-fallback",
           "agent": "hermes",
           "kind": "simulated_eval",
-          "command": "run-evals <copia filtrada>/plugins/golfo-kit/skills/measured-performance-optimization --provider claude (solo los casos nuevos)",
+          "command": "run-evals <copia filtrada>/plugins/golfo-web/skills/measured-performance-optimization --provider claude (solo los casos nuevos)",
           "result": "passed",
           "evidence": "Claude (claude-sonnet-5-5) simulando el agente: hermes-browser-exec-fails-terminal-fallback: tras dos fallos de browser_exec mide la interacción con Playwright por terminal y el Chrome instalado, con performance.mark/measure, y declara Limitaciones del agente."
         }
@@ -4555,7 +4555,7 @@
       "id": "mobile-first-responsive-layout",
       "name": "Mobile First Responsive Units",
       "version": "1.0.0",
-      "path": "plugins/golfo-kit/skills/mobile-first-responsive-layout/SKILL.md",
+      "path": "plugins/golfo-web/skills/mobile-first-responsive-layout/SKILL.md",
       "purpose": "Guía de unidades y patrones mobile-first en CSS/SCSS.",
       "main_features": [
         "unidades fluidas",
@@ -4679,7 +4679,7 @@
       "id": "mock-first-testing-design",
       "name": "Mock First Testing Design",
       "version": "2.0.0",
-      "path": "plugins/golfo-kit/skills/mock-first-testing-design/SKILL.md",
+      "path": "plugins/golfo-javascript/skills/mock-first-testing-design/SKILL.md",
       "purpose": "Decide cómo aislar dependencias en tests sin contaminar el código de producción.",
       "main_features": [
         "integración real primero",
@@ -4803,7 +4803,7 @@
       "id": "nextjs-route-ui-boundaries",
       "name": "Next.js: boundaries de UI por ruta",
       "version": "1.0.0",
-      "path": "plugins/golfo-kit/skills/nextjs-route-ui-boundaries/SKILL.md",
+      "path": "plugins/golfo-nextjs/skills/nextjs-route-ui-boundaries/SKILL.md",
       "purpose": "Decide loading, error, layouts, Suspense y server/client en Next.js App Router.",
       "main_features": [
         "boundaries por ruta",
@@ -4927,7 +4927,7 @@
       "id": "node-runtime-debugging",
       "name": "Debugging runtime de Node.js",
       "version": "1.0.0",
-      "path": "plugins/golfo-kit/skills/node-runtime-debugging/SKILL.md",
+      "path": "plugins/golfo-node-backend/skills/node-runtime-debugging/SKILL.md",
       "purpose": "Depura servidores Node.js/BFF con node --inspect y requests reales.",
       "main_features": [
         "inspección de valores runtime"
@@ -5064,7 +5064,7 @@
       "id": "optimistic-action-mutations",
       "name": "Optimistic Action Mutations",
       "version": "1.0.0",
-      "path": "plugins/golfo-kit/skills/optimistic-action-mutations/SKILL.md",
+      "path": "plugins/golfo-frontend/skills/optimistic-action-mutations/SKILL.md",
       "purpose": "Patrones de mutaciones optimistas con reconciliación y rollback.",
       "main_features": [
         "debounce y coalescing",
@@ -5188,7 +5188,7 @@
       "id": "pr-description-template",
       "name": "PR Description Template",
       "version": "1.2.0",
-      "path": "plugins/golfo-kit/skills/pr-description-template/SKILL.md",
+      "path": "plugins/golfo-github/skills/pr-description-template/SKILL.md",
       "purpose": "Define el título y la descripción estándar de PR (y el modo traceability-only), incluidas capturas de UI.",
       "main_features": [
         "título y body con plantilla",
@@ -5420,8 +5420,8 @@
           "Sección «Capture browser»: los navegadores aceptados viven en agent-capabilities.md (fuente única); la skill solo agrega las reglas propias de las capturas publicadas (pestaña nueva, aviso antes de tomar el escritorio)"
         ],
         "files_modified": [
-          "plugins/golfo-kit/skills/pr-description-template/SKILL.md",
-          "plugins/golfo-kit/skills/pr-description-template/evals/eval-config.json"
+          "plugins/golfo-github/skills/pr-description-template/SKILL.md",
+          "plugins/golfo-github/skills/pr-description-template/evals/eval-config.json"
         ],
         "fallback": "Sin navegador aceptado, omitir la captura con el motivo.",
         "behavior_changes": "Codex ya no omite las capturas: usa el Chrome real del usuario. Hermes las toma solo con navegador real y aviso previo."
@@ -5493,7 +5493,7 @@
           "id": "eval-sim-codex-chrome-capture",
           "agent": "codex",
           "kind": "simulated_eval",
-          "command": "run-evals <copia filtrada>/plugins/golfo-kit/skills/pr-description-template --provider claude (solo los casos nuevos o modificados)",
+          "command": "run-evals <copia filtrada>/plugins/golfo-github/skills/pr-description-template --provider claude (solo los casos nuevos o modificados)",
           "result": "passed",
           "evidence": "Claude (claude-sonnet-5-5) simulando el agente: codex-chrome-plugin-screenshots: usa el Chrome real vía plugin, pestaña nueva, descarta el navegador in-app."
         },
@@ -5501,7 +5501,7 @@
           "id": "eval-sim-hermes-browser-choice",
           "agent": "hermes",
           "kind": "simulated_eval",
-          "command": "run-evals <copia filtrada>/plugins/golfo-kit/skills/pr-description-template --provider claude (solo los casos nuevos o modificados)",
+          "command": "run-evals <copia filtrada>/plugins/golfo-github/skills/pr-description-template --provider claude (solo los casos nuevos o modificados)",
           "result": "passed",
           "evidence": "Claude (claude-sonnet-5-5) simulando el agente: hermes-default-browser-not-accepted: propone computer_use con aviso y rechaza browser_exec headless por defecto."
         }
@@ -5515,7 +5515,7 @@
       "id": "pr-flow-graph",
       "name": "PR Flow Graph",
       "version": "1.2.0",
-      "path": "plugins/golfo-kit/skills/pr-flow-graph/SKILL.md",
+      "path": "plugins/golfo-git/skills/pr-flow-graph/SKILL.md",
       "purpose": "Convierte un pull request, o un RFC que propone un cambio, en un grafo interactivo del flujo que toca, comprobado contra el código.",
       "main_features": [
         "grafo HTML de cambios y de negocio",
@@ -5641,7 +5641,7 @@
       "id": "pr-inline-comment-template",
       "name": "PR Inline Comment Template",
       "version": "1.0.0",
-      "path": "plugins/golfo-kit/skills/pr-inline-comment-template/SKILL.md",
+      "path": "plugins/golfo-github/skills/pr-inline-comment-template/SKILL.md",
       "purpose": "Crea, formatea y publica comentarios inline de review en PRs de GitHub.",
       "main_features": [
         "plantilla de comentario",
@@ -5779,7 +5779,7 @@
       "id": "prevent-ssr-hydration-mismatches",
       "name": "React SSR Hydration Consistency",
       "version": "1.1.0",
-      "path": "plugins/golfo-kit/skills/prevent-ssr-hydration-mismatches/SKILL.md",
+      "path": "plugins/golfo-react-web/skills/prevent-ssr-hydration-mismatches/SKILL.md",
       "purpose": "Previene y diagnostica mismatches de hidratación SSR en React.",
       "main_features": [
         "render inicial determinista"
@@ -5903,7 +5903,7 @@
                 },
                 {
                   "name": "Lighthouse, Chrome headless con log y Playwright por terminal",
-                  "source": "plugins/golfo-kit/references/agent-capabilities.md#verificación-en-navegador-por-terminal + corridas reales",
+                  "source": "shared/references/agent-capabilities.md#verificación-en-navegador-por-terminal + corridas reales",
                   "viable": true,
                   "reason": "Agnóstico del agente; verificado desde los tres agentes. Sin sesión del usuario: solo localhost/staging sin login o con credenciales de prueba."
                 },
@@ -5988,7 +5988,7 @@
                 },
                 {
                   "name": "Lighthouse, Chrome headless con log y Playwright por terminal",
-                  "source": "plugins/golfo-kit/references/agent-capabilities.md#verificación-en-navegador-por-terminal + corridas reales",
+                  "source": "shared/references/agent-capabilities.md#verificación-en-navegador-por-terminal + corridas reales",
                   "viable": true,
                   "reason": "Agnóstico del agente; verificado desde los tres agentes. Sin sesión del usuario: solo localhost/staging sin login o con credenciales de prueba."
                 },
@@ -6018,12 +6018,12 @@
       "implementation": {
         "adaptations": [
           "Sección «Agent compatibility»: captura de la consola desde la carga según el mecanismo presente (Claude in Chrome, tab.dev.logs, browser_exec con listener previo o terminal), BLOCKED si la ruta exige sesión y no hay navegador real, y Agent limitations en el reporte",
-          "Fila «Verificar en un navegador» y sección «Verificación en navegador por terminal» en plugins/golfo-kit/references/agent-capabilities.md (fuente única compartida)"
+          "Fila «Verificar en un navegador» y sección «Verificación en navegador por terminal» en shared/references/agent-capabilities.md (fuente única compartida)"
         ],
         "files_modified": [
-          "plugins/golfo-kit/skills/prevent-ssr-hydration-mismatches/SKILL.md",
-          "plugins/golfo-kit/skills/prevent-ssr-hydration-mismatches/evals/eval-config.json",
-          "plugins/golfo-kit/references/agent-capabilities.md"
+          "plugins/golfo-react-web/skills/prevent-ssr-hydration-mismatches/SKILL.md",
+          "plugins/golfo-react-web/skills/prevent-ssr-hydration-mismatches/evals/eval-config.json",
+          "shared/references/agent-capabilities.md"
         ],
         "fallback": "Sin ningún mecanismo de navegador, la verificación queda BLOCKED y se reporta en Limitaciones del agente.",
         "behavior_changes": "Codex lee la consola con tab.dev.logs; Hermes usa la terminal si browser_exec no arranca. Rutas con sesión sin navegador real quedan BLOCKED en lugar de omitirse."
@@ -6106,7 +6106,7 @@
           "id": "eval-sim-codex-hydration-console-via-dev-logs",
           "agent": "codex",
           "kind": "simulated_eval",
-          "command": "run-evals <copia filtrada>/plugins/golfo-kit/skills/prevent-ssr-hydration-mismatches --provider claude (solo los casos nuevos)",
+          "command": "run-evals <copia filtrada>/plugins/golfo-react-web/skills/prevent-ssr-hydration-mismatches --provider claude (solo los casos nuevos)",
           "result": "passed",
           "evidence": "Claude (claude-sonnet-5-5) simulando el agente: codex-hydration-console-via-dev-logs: recarga la pestaña y lee los warnings de hidratación con tab.dev.logs, con resultado PASS/FAIL/BLOCKED."
         },
@@ -6114,7 +6114,7 @@
           "id": "eval-sim-hermes-session-route-blocked",
           "agent": "hermes",
           "kind": "simulated_eval",
-          "command": "run-evals <copia filtrada>/plugins/golfo-kit/skills/prevent-ssr-hydration-mismatches --provider claude (solo los casos nuevos)",
+          "command": "run-evals <copia filtrada>/plugins/golfo-react-web/skills/prevent-ssr-hydration-mismatches --provider claude (solo los casos nuevos)",
           "result": "passed",
           "evidence": "Claude (claude-sonnet-5-5) simulando el agente: hermes-session-route-blocked: ruta con sesión, sin credenciales de prueba ni consentimiento para computer_use: reporta BLOCKED con Agent limitations y nunca PASS."
         }
@@ -6131,7 +6131,7 @@
       "id": "react-data-fetching-best-practices",
       "name": "React Data Fetching Best Practices",
       "version": "1.0.0",
-      "path": "plugins/golfo-kit/skills/react-data-fetching-best-practices/SKILL.md",
+      "path": "plugins/golfo-react-web/skills/react-data-fetching-best-practices/SKILL.md",
       "purpose": "Buenas prácticas de data fetching en React, server-first.",
       "main_features": [
         "fetch en servidor",
@@ -6255,7 +6255,7 @@
       "id": "react-render-performance-patterns",
       "name": "React Render Performance Patterns",
       "version": "1.0.0",
-      "path": "plugins/golfo-kit/skills/react-render-performance-patterns/SKILL.md",
+      "path": "plugins/golfo-react/skills/react-render-performance-patterns/SKILL.md",
       "purpose": "Patrones de rendimiento de render y prioridad de updates en React.",
       "main_features": [
         "memoización",
@@ -6379,7 +6379,7 @@
       "id": "refactor-modularize-code",
       "name": "Refactor Modularity Cohesion Deduplication",
       "version": "1.0.0",
-      "path": "plugins/golfo-kit/skills/refactor-modularize-code/SKILL.md",
+      "path": "plugins/golfo-engineering/skills/refactor-modularize-code/SKILL.md",
       "purpose": "Refactoriza límites de módulos, cohesión y duplicación sin cambiar comportamiento.",
       "main_features": [
         "extracción de módulos",
@@ -6503,7 +6503,7 @@
       "id": "refactor-ssr-data-fetching",
       "name": "React SSR y BFF Data Fetching",
       "version": "1.0.0",
-      "path": "plugins/golfo-kit/skills/refactor-ssr-data-fetching/SKILL.md",
+      "path": "plugins/golfo-react-web/skills/refactor-ssr-data-fetching/SKILL.md",
       "purpose": "Prioriza el acceso a upstream desde el servidor y el BFF same-origin en React SSR.",
       "main_features": [
         "decisión de arquitectura de red"
@@ -6626,7 +6626,7 @@
       "id": "review-fix-loop",
       "name": "Review Fix Loop",
       "version": "1.2.0",
-      "path": "plugins/golfo-kit/skills/review-fix-loop/SKILL.md",
+      "path": "plugins/golfo-git/skills/review-fix-loop/SKILL.md",
       "purpose": "Loop de review y fix multi-provider (Claude Code y Codex como reviewers CLI) sobre cambios locales o PRs.",
       "main_features": [
         "selección de provider con fallback",
@@ -6860,8 +6860,8 @@
           "Runners del filtro aislado por capacidad: Agent, claude -p de solo lectura, codex exec -s read-only donde lea, o inline"
         ],
         "files_modified": [
-          "plugins/golfo-kit/skills/review-fix-loop/SKILL.md",
-          "plugins/golfo-kit/skills/review-fix-loop/evals/eval-config.json"
+          "plugins/golfo-git/skills/review-fix-loop/SKILL.md",
+          "plugins/golfo-git/skills/review-fix-loop/evals/eval-config.json"
         ],
         "fallback": "Filtro inline.",
         "behavior_changes": "Codex y Hermes recuperan el filtro aislado cuando claude está en PATH."
@@ -6949,7 +6949,7 @@
           "id": "eval-sim-hermes-claude-filter",
           "agent": "hermes",
           "kind": "simulated_eval",
-          "command": "run-evals <copia filtrada>/plugins/golfo-kit/skills/review-fix-loop --provider claude (solo los casos nuevos o modificados)",
+          "command": "run-evals <copia filtrada>/plugins/golfo-git/skills/review-fix-loop --provider claude (solo los casos nuevos o modificados)",
           "result": "passed",
           "evidence": "Claude (claude-sonnet-5-5) simulando el agente: hermes-filter-via-claude-cli-read-only: claude -p --tools Read,Grep,Glob con timeout; descarta delegate_task."
         },
@@ -6957,7 +6957,7 @@
           "id": "eval-sim-codex-windows-inline",
           "agent": "codex",
           "kind": "simulated_eval",
-          "command": "run-evals <copia filtrada>/plugins/golfo-kit/skills/review-fix-loop --provider claude (solo los casos nuevos o modificados)",
+          "command": "run-evals <copia filtrada>/plugins/golfo-git/skills/review-fix-loop --provider claude (solo los casos nuevos o modificados)",
           "result": "passed",
           "evidence": "Claude (claude-sonnet-5-5) simulando el agente: windows-codex-only-filter-inline: sin claude en Windows filtra inline y lo reporta."
         }
@@ -6972,7 +6972,7 @@
       "id": "review-maintainability",
       "name": "Review Maintainability",
       "version": "1.0.0",
-      "path": "plugins/golfo-kit/skills/review-maintainability/SKILL.md",
+      "path": "plugins/golfo-engineering/skills/review-maintainability/SKILL.md",
       "purpose": "Revisa riesgos de mantenibilidad en el diff contra develop/main/master.",
       "main_features": [
         "concurrencia",
@@ -7111,7 +7111,7 @@
       "id": "review-performance",
       "name": "Review Performance",
       "version": "1.0.0",
-      "path": "plugins/golfo-kit/skills/review-performance/SKILL.md",
+      "path": "plugins/golfo-engineering/skills/review-performance/SKILL.md",
       "purpose": "Revisa problemas de rendimiento con impacto en producción en el diff.",
       "main_features": [
         "N+1",
@@ -7250,7 +7250,7 @@
       "id": "review-security",
       "name": "Review Security",
       "version": "1.0.0",
-      "path": "plugins/golfo-kit/skills/review-security/SKILL.md",
+      "path": "plugins/golfo-engineering/skills/review-security/SKILL.md",
       "purpose": "Revisa vulnerabilidades en el diff y en instrucciones de agentes.",
       "main_features": [
         "AppSec",
@@ -7388,7 +7388,7 @@
       "id": "semantic-html-a11y",
       "name": "Semantic HTML and Accessibility",
       "version": "1.0.0",
-      "path": "plugins/golfo-kit/skills/semantic-html-a11y/SKILL.md",
+      "path": "plugins/golfo-web/skills/semantic-html-a11y/SKILL.md",
       "purpose": "Aplica HTML semántico y accesibilidad en markup frontend.",
       "main_features": [
         "elementos nativos",
@@ -7512,7 +7512,7 @@
       "id": "sibling-worktree",
       "name": "Worktree hermano",
       "version": "1.0.0",
-      "path": "plugins/golfo-kit/skills/sibling-worktree/SKILL.md",
+      "path": "plugins/golfo-git/skills/sibling-worktree/SKILL.md",
       "purpose": "Gestiona worktrees hermanos persistentes reutilizando ramas existentes.",
       "main_features": [
         "crear, listar, remover y migrar worktrees"
@@ -7649,7 +7649,7 @@
       "id": "simplify-code",
       "name": "Simplify Code",
       "version": "1.0.0",
-      "path": "plugins/golfo-kit/skills/simplify-code/SKILL.md",
+      "path": "plugins/golfo-engineering/skills/simplify-code/SKILL.md",
       "purpose": "Revisa el diff por reuso, simplificación y eficiencia, y aplica los fixes.",
       "main_features": [
         "limpieza del diff"
@@ -7902,7 +7902,7 @@
               "alternatives_investigated": [
                 {
                   "name": "`spawn_agent` + `wait_agent`.",
-                  "source": "Auditoría 1.0.0 (PR #22) y plugins/golfo-kit/references/agent-capabilities.md",
+                  "source": "Auditoría 1.0.0 (PR #22) y shared/references/agent-capabilities.md",
                   "viable": true,
                   "reason": "No ejecutada en Codex CLI en esta auditoría."
                 }
@@ -7952,7 +7952,7 @@
               "alternatives_investigated": [
                 {
                   "name": "`delegate_task`.",
-                  "source": "Auditoría 1.0.0 (PR #22) y plugins/golfo-kit/references/agent-capabilities.md",
+                  "source": "Auditoría 1.0.0 (PR #22) y shared/references/agent-capabilities.md",
                   "viable": true,
                   "reason": "No ejecutada en Hermes Agent en esta auditoría."
                 }
@@ -8002,7 +8002,7 @@
       "id": "stacked-pr",
       "name": "Stacked PRs por responsabilidad",
       "version": "1.0.0",
-      "path": "plugins/golfo-kit/skills/stacked-pr/SKILL.md",
+      "path": "plugins/golfo-github/skills/stacked-pr/SKILL.md",
       "purpose": "Gestiona stacked PRs por responsabilidad con golden diff y CI por capa.",
       "main_features": [
         "división de PRs",
@@ -8153,7 +8153,7 @@
       "id": "test-best-practices",
       "name": "test-best-practices",
       "version": "2.0.0",
-      "path": "plugins/golfo-kit/skills/test-best-practices/SKILL.md",
+      "path": "plugins/golfo-javascript/skills/test-best-practices/SKILL.md",
       "purpose": "Estandariza tests con Vitest y Testing Library.",
       "main_features": [
         "naming y AAA",
@@ -8277,7 +8277,7 @@
       "id": "test-planning",
       "name": "Test Planning",
       "version": "1.0.0",
-      "path": "plugins/golfo-kit/skills/test-planning/SKILL.md",
+      "path": "plugins/golfo-testing/skills/test-planning/SKILL.md",
       "purpose": "Planifica casos y cobertura de tests antes de escribirlos.",
       "main_features": [
         "modo casos",
@@ -8401,7 +8401,7 @@
       "id": "typed-errors-refactor",
       "name": "Typed Errors Refactor",
       "version": "1.0.0",
-      "path": "plugins/golfo-kit/skills/typed-errors-refactor/SKILL.md",
+      "path": "plugins/golfo-engineering/skills/typed-errors-refactor/SKILL.md",
       "purpose": "Diseña y ejecuta refactors de errores tipados.",
       "main_features": [
         "jerarquía de errores",
@@ -8525,7 +8525,7 @@
       "id": "ui-ux-flow-patterns",
       "name": "UI/UX por flujo: componentes, estados y feedback",
       "version": "1.2.0",
-      "path": "plugins/golfo-kit/skills/ui-ux-flow-patterns/SKILL.md",
+      "path": "plugins/golfo-frontend/skills/ui-ux-flow-patterns/SKILL.md",
       "purpose": "Define componentes, estados y feedback por flujo de UI.",
       "main_features": [
         "estados loading/vacío/error",
@@ -8650,7 +8650,7 @@
                 },
                 {
                   "name": "Lighthouse, Chrome headless con log y Playwright por terminal",
-                  "source": "plugins/golfo-kit/references/agent-capabilities.md#verificación-en-navegador-por-terminal + corridas reales",
+                  "source": "shared/references/agent-capabilities.md#verificación-en-navegador-por-terminal + corridas reales",
                   "viable": true,
                   "reason": "Agnóstico del agente; verificado desde los tres agentes. Sin sesión del usuario: solo localhost/staging sin login o con credenciales de prueba."
                 },
@@ -8735,7 +8735,7 @@
                 },
                 {
                   "name": "Lighthouse, Chrome headless con log y Playwright por terminal",
-                  "source": "plugins/golfo-kit/references/agent-capabilities.md#verificación-en-navegador-por-terminal + corridas reales",
+                  "source": "shared/references/agent-capabilities.md#verificación-en-navegador-por-terminal + corridas reales",
                   "viable": true,
                   "reason": "Agnóstico del agente; verificado desde los tres agentes. Sin sesión del usuario: solo localhost/staging sin login o con credenciales de prueba."
                 },
@@ -8763,12 +8763,12 @@
       "implementation": {
         "adaptations": [
           "Sección «Compatibilidad entre agentes»: navegador según agent-capabilities.md por herramienta presente, aclaración de que headless no reemplaza el lector de pantalla, y Limitaciones del agente en el reporte",
-          "Fila «Verificar en un navegador» y sección «Verificación en navegador por terminal» en plugins/golfo-kit/references/agent-capabilities.md (fuente única compartida)"
+          "Fila «Verificar en un navegador» y sección «Verificación en navegador por terminal» en shared/references/agent-capabilities.md (fuente única compartida)"
         ],
         "files_modified": [
-          "plugins/golfo-kit/skills/ui-ux-flow-patterns/SKILL.md",
-          "plugins/golfo-kit/skills/ui-ux-flow-patterns/evals/eval-config.json",
-          "plugins/golfo-kit/references/agent-capabilities.md"
+          "plugins/golfo-frontend/skills/ui-ux-flow-patterns/SKILL.md",
+          "plugins/golfo-frontend/skills/ui-ux-flow-patterns/evals/eval-config.json",
+          "shared/references/agent-capabilities.md"
         ],
         "fallback": "Sin ningún mecanismo de navegador, la verificación queda BLOCKED y se reporta en Limitaciones del agente.",
         "behavior_changes": "Codex recorre los estados con el plugin Chrome; Hermes con Playwright por terminal si browser_exec no arranca. La sección Verificación dice con qué herramienta se recorrió."
@@ -8851,7 +8851,7 @@
           "id": "eval-sim-codex-walk-states-with-chrome-plugin",
           "agent": "codex",
           "kind": "simulated_eval",
-          "command": "run-evals <copia filtrada>/plugins/golfo-kit/skills/ui-ux-flow-patterns --provider claude (solo los casos nuevos)",
+          "command": "run-evals <copia filtrada>/plugins/golfo-frontend/skills/ui-ux-flow-patterns --provider claude (solo los casos nuevos)",
           "result": "passed",
           "evidence": "Claude (claude-sonnet-5-5) simulando el agente: codex-walk-states-with-chrome-plugin: recorre cada estado con clics del plugin Chrome, revisa la consola y aclara que no hubo lector de pantalla."
         },
@@ -8859,7 +8859,7 @@
           "id": "eval-sim-hermes-browser-exec-unstable-playwright-fallback",
           "agent": "hermes",
           "kind": "simulated_eval",
-          "command": "run-evals <copia filtrada>/plugins/golfo-kit/skills/ui-ux-flow-patterns --provider claude (solo los casos nuevos)",
+          "command": "run-evals <copia filtrada>/plugins/golfo-frontend/skills/ui-ux-flow-patterns --provider claude (solo los casos nuevos)",
           "result": "passed",
           "evidence": "Claude (claude-sonnet-5-5) simulando el agente: hermes-browser-exec-unstable-playwright-fallback: tras dos fallos de browser_exec recorre los estados con Playwright por terminal, descarta computer_use (no hace falta sesión) y verifica el doble clic."
         }
@@ -8876,7 +8876,7 @@
       "id": "user-manual",
       "name": "User Manual Generator",
       "version": "2.5.0",
-      "path": "plugins/golfo-kit/skills/user-manual/SKILL.md",
+      "path": "plugins/golfo-web/skills/user-manual/SKILL.md",
       "purpose": "Genera o actualiza manuales de usuario HTML autocontenidos con capturas reales de la app.",
       "main_features": [
         "preguntas de dispositivo, idiomas y repo",
@@ -9002,7 +9002,7 @@
               "alternatives_investigated": [
                 {
                   "name": "Texto y detención; `request_user_input` solo en modo Plan.",
-                  "source": "Auditoría 1.0.0 (PR #22) y plugins/golfo-kit/references/agent-capabilities.md",
+                  "source": "Auditoría 1.0.0 (PR #22) y shared/references/agent-capabilities.md",
                   "viable": true,
                   "reason": "No ejecutada en Codex CLI en esta auditoría."
                 }
@@ -9093,7 +9093,7 @@
               "alternatives_investigated": [
                 {
                   "name": "`clarify`; texto ante undelivered/timed_out/cancelled.",
-                  "source": "Auditoría 1.0.0 (PR #22) y plugins/golfo-kit/references/agent-capabilities.md",
+                  "source": "Auditoría 1.0.0 (PR #22) y shared/references/agent-capabilities.md",
                   "viable": true,
                   "reason": "No ejecutada en Hermes Agent en esta auditoría."
                 }
@@ -9162,8 +9162,8 @@
           "Tabla de la «herramienta JavaScript de navegador» por agente y fallback explícito a mockups dibujados"
         ],
         "files_modified": [
-          "plugins/golfo-kit/skills/user-manual/SKILL.md",
-          "plugins/golfo-kit/skills/user-manual/evals/eval-config.json"
+          "plugins/golfo-web/skills/user-manual/SKILL.md",
+          "plugins/golfo-web/skills/user-manual/evals/eval-config.json"
         ],
         "fallback": "Pregunta en texto con detención.",
         "behavior_changes": "Ninguno en Claude Code."
@@ -9182,7 +9182,7 @@
           "id": "design-tokens-bats",
           "agent": "any",
           "kind": "bats",
-          "command": "bats plugins/golfo-kit/skills/user-manual/tests/check-design-tokens.bats",
+          "command": "bats plugins/golfo-web/skills/user-manual/tests/check-design-tokens.bats",
           "result": "passed",
           "evidence": "Suite del chequeo de tokens de DESIGN.md (agnóstica de agente)."
         },
@@ -9190,7 +9190,7 @@
           "id": "eval-sim-codex-browser-runtime",
           "agent": "codex",
           "kind": "simulated_eval",
-          "command": "run-evals <copia filtrada>/plugins/golfo-kit/skills/user-manual --provider claude (solo los casos nuevos o modificados)",
+          "command": "run-evals <copia filtrada>/plugins/golfo-web/skills/user-manual --provider claude (solo los casos nuevos o modificados)",
           "result": "passed",
           "evidence": "Claude (claude-sonnet-5-5) simulando el agente: codex-browser-runtime-for-captures: inyecta capture-snippet.js con mcp__cua_repl.js en el Chrome del usuario."
         },
@@ -9198,7 +9198,7 @@
           "id": "eval-sim-drawn-mockups-fallback",
           "agent": "hermes",
           "kind": "simulated_eval",
-          "command": "run-evals <copia filtrada>/plugins/golfo-kit/skills/user-manual --provider claude (solo los casos nuevos o modificados)",
+          "command": "run-evals <copia filtrada>/plugins/golfo-web/skills/user-manual --provider claude (solo los casos nuevos o modificados)",
           "result": "passed",
           "evidence": "Claude (claude-sonnet-5-5) simulando el agente: no-script-browser-falls-back-to-drawn-mockups: sin navegador que evalúe scripts cae a mockups dibujados."
         }
@@ -9215,7 +9215,7 @@
       "id": "vivid-visual-output",
       "name": "Vivid Visual Output",
       "version": "1.0.0",
-      "path": "plugins/golfo-kit/skills/vivid-visual-output/SKILL.md",
+      "path": "plugins/golfo-engineering/skills/vivid-visual-output/SKILL.md",
       "purpose": "Fija un piso de calidad visual para salidas de terminal y UI: color, tablas, listas y animación con degradación a texto plano, temas, contraste AA y movimiento reducido.",
       "main_features": [
         "degradación por capacidad en terminal",
@@ -9343,7 +9343,7 @@
       "id": "widget-ui-proposals",
       "name": "Widget-driven UI/UX proposals & previews",
       "version": "1.3.0",
-      "path": "plugins/golfo-kit/skills/widget-ui-proposals/SKILL.md",
+      "path": "plugins/golfo-frontend/skills/widget-ui-proposals/SKILL.md",
       "purpose": "Muestra propuestas y previews de UI como widgets visuales interactivos antes de escribir código.",
       "main_features": [
         "Propuestas de UI como widget interactivo",
@@ -9640,8 +9640,8 @@
           "Detención con Limitaciones del agente solo sin ninguna vía de render"
         ],
         "files_modified": [
-          "plugins/golfo-kit/skills/widget-ui-proposals/SKILL.md",
-          "plugins/golfo-kit/skills/widget-ui-proposals/evals/eval-config.json"
+          "plugins/golfo-frontend/skills/widget-ui-proposals/SKILL.md",
+          "plugins/golfo-frontend/skills/widget-ui-proposals/evals/eval-config.json"
         ],
         "fallback": "Preview estático; sin shell ni navegador, detenerse y reportar.",
         "behavior_changes": "Codex: mismo flujo con otro mecanismo de render. Hermes: la vista es una imagen fija y la elección vuelve por pregunta, no por clic."
@@ -9737,7 +9737,7 @@
           "id": "eval-sim-codex-visualize",
           "agent": "codex",
           "kind": "simulated_eval",
-          "command": "run-evals <copia filtrada>/plugins/golfo-kit/skills/widget-ui-proposals --provider claude (solo los casos nuevos o modificados)",
+          "command": "run-evals <copia filtrada>/plugins/golfo-frontend/skills/widget-ui-proposals --provider claude (solo los casos nuevos o modificados)",
           "result": "passed",
           "evidence": "Claude (claude-sonnet-5-5) simulando el agente: codex-visualize-mode-without-show-widget: modo Codex con visualize{…}, .viz-carousel, sendFollowUpMessage y sin show_widget. codex-cli-falls-back-to-static-preview: en codex exec usa el preview estático."
         },
@@ -9745,7 +9745,7 @@
           "id": "eval-sim-hermes-static-preview",
           "agent": "hermes",
           "kind": "simulated_eval",
-          "command": "run-evals <copia filtrada>/plugins/golfo-kit/skills/widget-ui-proposals --provider claude (solo los casos nuevos o modificados)",
+          "command": "run-evals <copia filtrada>/plugins/golfo-frontend/skills/widget-ui-proposals --provider claude (solo los casos nuevos o modificados)",
           "result": "passed",
           "evidence": "Claude (claude-sonnet-5-5) simulando el agente: hermes-static-preview-with-clarify: PNG con --screenshot, clarify multi_select y Limitaciones del agente; no-visual-capability-blocks-with-limitations: sin vía de render se detiene sin simular."
         },

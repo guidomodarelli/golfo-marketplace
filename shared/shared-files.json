@@ -1,0 +1,22 @@
+{
+  "description": "Archivos compartidos entre plugins. La fuente canónica vive en shared/; pnpm sync-shared-files la copia a cada plugin listado y pnpm sync-shared-files --check (CI) falla si una copia difiere.",
+  "entries": [
+    {
+      "source": "references/agent-capabilities.md",
+      "plugins": ["golfo-kit", "golfo-frontend", "golfo-git", "golfo-github", "golfo-nextjs", "golfo-planning", "golfo-react-web", "golfo-web"]
+    },
+    {
+      "source": "references/review-convergence.md",
+      "plugins": ["golfo-git", "golfo-github"]
+    },
+    {
+      "source": "references/skill-coverage.md",
+      "plugins": ["golfo-frontend", "golfo-nextjs", "golfo-web"]
+    },
+    {
+      "source": "tools/skill-coverage",
+      "exclude": ["tests"],
+      "plugins": ["golfo-frontend", "golfo-nextjs", "golfo-web"]
+    }
+  ]
+}
