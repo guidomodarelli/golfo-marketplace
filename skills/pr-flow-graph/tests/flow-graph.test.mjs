@@ -76,6 +76,33 @@ describe('validateFlowGraph', () => {
     assert.ok(locationsOf(errorsOf(model)).includes('nodes[1].id'));
   });
 
+  test('rejects a relationship that shares its id with one of the things its view shows', () => {
+    const model = loadExampleModel();
+    model.edges[0].id = model.nodes[0].id;
+    model.businessFlow.transitions[0].id = model.businessFlow.states[0].id;
+
+    const errors = errorsOf(model);
+
+    assert.deepEqual(locationsOf(errors), ['edges[0].id', 'businessFlow.transitions[0].id']);
+    assert.match(errors[0].message, /also the id of a node/);
+    assert.match(errors[1].message, /also the id of a business state/);
+  });
+
+  test('rejects a changed business state without evidence and accepts an unchanged one', () => {
+    const model = loadExampleModel();
+    const changedIndex = model.businessFlow.states.findIndex((state) => state.change !== 'unchanged');
+    delete model.businessFlow.states[changedIndex].evidence;
+
+    assert.deepEqual(locationsOf(errorsOf(model)), [`businessFlow.states[${changedIndex}].evidence`]);
+  });
+
+  test('rejects malformed evidence on a business state', () => {
+    const model = loadExampleModel();
+    model.businessFlow.states[1].evidence = [{ path: '/etc/passwd', line: 0 }];
+
+    assert.deepEqual(locationsOf(errorsOf(model)), ['businessFlow.states[1].evidence[0].path', 'businessFlow.states[1].evidence[0].line']);
+  });
+
   test('rejects absolute evidence paths and non-positive lines', () => {
     const model = loadExampleModel();
     model.nodes[0].evidence = [{ path: 'C:\\repo\\File.kt', line: 0 }];
@@ -260,6 +287,23 @@ describe('HTML output', () => {
 
     assert.deepEqual(readEmbeddedModel(renderFlowGraphHtml(loadExampleModel(), { verification: { checks } })).verification, { checks });
     assert.equal(readEmbeddedModel(renderFlowGraphHtml(loadExampleModel())).verification, undefined);
+  });
+
+  test('drops a formal model, a verification record or labels written in the input model', () => {
+    const model = {
+      ...loadExampleModel(),
+      formalModel: { language: 'lean4', source: 'theorem never_checked : False := sorry' },
+      verification: { checks: [{ id: 'model-shape', label: 'Inventado', status: 'passed', detail: '' }] },
+      kindLabels: { view: 'Inventado' },
+    };
+
+    const embeddedModel = readEmbeddedModel(renderFlowGraphHtml(model));
+    const embeddedWithLean = readEmbeddedModel(renderFlowGraphHtml(model, { leanSource: 'theorem ok : True := trivial' }));
+
+    assert.equal(embeddedModel.formalModel, undefined);
+    assert.equal(embeddedModel.verification, undefined);
+    assert.notEqual(embeddedModel.kindLabels.view, 'Inventado');
+    assert.equal(embeddedWithLean.formalModel.source, 'theorem ok : True := trivial');
   });
 
   test('includes the Lean source only when it is passed', () => {

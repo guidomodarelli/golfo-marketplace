@@ -143,6 +143,7 @@ function validateEdges(edges, nodes, nodeIds, error) {
       return;
     }
     registerIdentifier(edge.id, edgeIds, location, error);
+    requireIdentifierNotSharedWith(edge.id, nodeIds, location, 'node', error);
     requireEnumValue(edge.kind, EDGE_KINDS, `${location}.kind`, error);
     requireEnumValue(edge.change, CHANGE_STATUSES, `${location}.change`, error);
     requireKnownEndpoint(edge.source, nodeIds, `${location}.source`, 'node', error);
@@ -177,6 +178,7 @@ function validateBusinessFlow(businessFlow, nodeIds, error, warning) {
     if (!isNonEmptyString(state.label)) error(`${location}.label`, 'Required non-empty string.');
     requireEnumValue(state.kind, BUSINESS_STATE_KINDS, `${location}.kind`, error);
     requireEnumValue(state.change, CHANGE_STATUSES, `${location}.change`, error);
+    validateEvidence(state, location, error);
     for (const [nodeIndex, nodeId] of (state.nodeIds ?? []).entries()) {
       requireKnownEndpoint(nodeId, nodeIds, `${location}.nodeIds[${nodeIndex}]`, 'node', error);
     }
@@ -200,6 +202,7 @@ function validateBusinessFlow(businessFlow, nodeIds, error, warning) {
       return;
     }
     registerIdentifier(transition.id, transitionIds, location, error);
+    requireIdentifierNotSharedWith(transition.id, stateIds, location, 'business state', error);
     if (!isNonEmptyString(transition.trigger)) {
       error(`${location}.trigger`, 'Required: the user action or event that fires the transition.');
     }
@@ -370,6 +373,16 @@ function registerIdentifier(identifier, knownIds, location, error) {
     return;
   }
   knownIds.add(identifier);
+}
+
+/**
+ * A view of the page selects, focuses and links its elements by id, so a relationship that
+ * shares its id with one of the things it connects would replace it there.
+ */
+function requireIdentifierNotSharedWith(identifier, otherIds, location, otherElementName, error) {
+  if (otherIds.has(identifier)) {
+    error(`${location}.id`, `"${identifier}" is also the id of a ${otherElementName}. Rename one of them: the two are shown in the same view.`);
+  }
 }
 
 function requireKnownEndpoint(identifier, knownIds, location, elementName, error) {

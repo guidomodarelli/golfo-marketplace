@@ -16,7 +16,7 @@ description: >-
   code-review).
 license: MIT
 metadata:
-  version: "1.1.0"
+  version: "1.1.1"
   author: "Guido Modarelli"
   category: "code-review"
   tags: "pull-request, graph, flow, visualization, mermaid, elk, state-machine, lean"

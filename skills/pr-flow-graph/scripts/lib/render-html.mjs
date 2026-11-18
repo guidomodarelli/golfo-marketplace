@@ -20,8 +20,11 @@ const GITHUB_DIFF_SIDE_MARKER = { [EVIDENCE_SIDE.base]: 'L', [EVIDENCE_SIDE.head
  * @returns {string} HTML document.
  */
 export function renderFlowGraphHtml(model, { leanSource, inlinedLibraries = new Map(), verification } = {}) {
+  // The page trusts these three properties, so they only ever come from this renderer: a
+  // `formalModel` written in the input JSON would be shown as a model Lean compiled.
+  const { formalModel: _ignoredFormalModel, verification: _ignoredVerification, kindLabels: _ignoredKindLabels, ...authoredModel } = model;
   const pageModel = {
-    ...withEvidenceLinks(model),
+    ...withEvidenceLinks(authoredModel),
     kindLabels: KIND_LABELS,
     ...(verification ? { verification } : {}),
     ...(leanSource ? { formalModel: { language: 'lean4', source: leanSource } } : {}),
