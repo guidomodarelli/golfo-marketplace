@@ -8,7 +8,7 @@
 ## A. Resumen ejecutivo
 
 - **Fecha de auditoría:** 2026-10-23 (generado 2026-10-23T21:00:00Z).
-- **Total de skills analizadas:** 48.
+- **Total de skills analizadas:** 49.
 - **Funcionalidades deshabilitadas:** 0.
 - **Adaptaciones implementadas:** 42; verificadas: 20.
 - **Problemas críticos pendientes:** ninguno.
@@ -43,7 +43,7 @@ Dependencias implícitas de navegador de measured-performance-optimization, prev
 | `adapted` | 0 | 1 | 1 |
 | `partial` | 0 | 0 | 0 |
 | `incompatible` | 0 | 0 | 0 |
-| `unverified` | 44 | 47 | 47 |
+| `unverified` | 45 | 48 | 48 |
 
 ### Regla de derivación del estado
 
@@ -92,6 +92,7 @@ Una funcionalidad `disabled` lista las alternativas investigadas y ninguna es vi
 | `node-runtime-debugging` | `unverified` | `unverified` | `unverified` |
 | `optimistic-action-mutations` | `unverified` | `unverified` | `unverified` |
 | `pr-description-template` | `compatible` | `unverified` | `unverified` |
+| `pr-flow-graph` | `unverified` | `unverified` | `unverified` |
 | `pr-inline-comment-template` | `unverified` | `unverified` | `unverified` |
 | `prevent-ssr-hydration-mismatches` | `unverified` | `unverified` | `unverified` |
 | `react-data-fetching-best-practices` | `unverified` | `unverified` | `unverified` |
@@ -2067,6 +2068,73 @@ Pendiente de verificar:
 
 - Codex: flujo completo antes/después + subida a pr-assets.
 - Hermes: captura con computer_use o con use_real_profile + headed.
+
+### `pr-flow-graph`
+
+**Identificación**
+
+- Nombre: PR Flow Graph; versión: 1.1.1; SKILL.md: `plugins/golfo-kit/skills/pr-flow-graph/SKILL.md`.
+- Propósito: Convierte un pull request en un grafo interactivo del flujo que toca, comprobado contra el diff.
+- Funcionalidades principales: grafo HTML de cambios y de negocio; diagramas Mermaid para el PR; modelo formal opcional en Lean 4.
+- Agentes soportados declarados: no declara.
+
+**Dependencias**
+
+Sin dependencias específicas de agente detectadas por inspección.
+
+**Compatibilidad por agente**
+
+#### pr-flow-graph / `claude_code`: `unverified`
+
+Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Claude Code durante esta auditoría, así que su funcionamiento no está verificado.
+
+- Capacidades faltantes: ninguna.
+- Alternativas investigadas: ninguna.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `core-workflow` | sí | `unverified` | `native` | Instrucciones de la skill; no usa herramientas específicas de agente. | — | Sin dependencias específicas detectadas por inspección; no ejecutada en Claude Code en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
+
+#### pr-flow-graph / `codex`: `unverified`
+
+Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Codex CLI durante esta auditoría, así que su funcionamiento no está verificado.
+
+- Capacidades faltantes: ninguna.
+- Alternativas investigadas: ninguna.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `core-workflow` | sí | `unverified` | `native` | Instrucciones de la skill; no usa herramientas específicas de agente. | — | Sin dependencias específicas detectadas por inspección; no ejecutada en Codex CLI en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
+
+#### pr-flow-graph / `hermes`: `unverified`
+
+Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Hermes Agent durante esta auditoría, así que su funcionamiento no está verificado.
+
+- Capacidades faltantes: ninguna.
+- Alternativas investigadas: ninguna.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `core-workflow` | sí | `unverified` | `native` | Instrucciones de la skill; no usa herramientas específicas de agente. | — | Sin dependencias específicas detectadas por inspección; no ejecutada en Hermes Agent en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
+
+**Implementación**
+
+- Adaptaciones: ninguna.
+- Archivos modificados: ninguno.
+- Fallback: ninguno.
+- Cambios de comportamiento respecto del original: ninguno.
+
+**Verificación**
+
+| Prueba | Agente | Tipo | Comando | Resultado | Evidencia |
+|---|---|---|---|---|---|
+| `static-inspection` | `any` | static | `grep -rE "AskUserQuestion\|request_user_input\|Monitor\|Cron(Create\|List\|Delete)\|PushNotification\|TaskStop\|Agent\|subagent\|mcp__\|claude -p\|codex exec\|~/.claude\|~/.codex\|apply_patch\|update_plan" plugins/golfo-kit/skills/<skill>` | `passed` | Inspección de SKILL.md, references y scripts del 2026-10-23; las coincidencias de "hook" son hooks de React o de git, no hooks de agente. |
+
+Pendiente de verificar:
+
+- Ejecutar la skill en Claude Code con un caso real.
+- Ejecutar la skill en Codex CLI con un caso real.
+- Ejecutar la skill en Hermes Agent con un caso real.
 
 ### `pr-inline-comment-template`
 
