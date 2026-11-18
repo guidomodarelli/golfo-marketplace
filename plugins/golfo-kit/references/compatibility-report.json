@@ -1840,12 +1840,12 @@
     {
       "id": "constants-refactor",
       "name": "Constants Refactor",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "path": "plugins/golfo-kit/skills/constants-refactor/SKILL.md",
       "purpose": "Analiza y refactoriza constantes, literales funcionales y contratos cross-layer.",
       "main_features": [
         "detección de hardcodes",
-        "movimiento a constants/",
+        "movimiento a constants/ o al archivo de configuración según el valor y el lenguaje",
         "validación del refactor"
       ],
       "declared_agents": null,
