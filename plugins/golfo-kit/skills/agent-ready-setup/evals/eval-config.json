@@ -3463,6 +3463,31 @@
           "critical": true
         }
       ]
+    },
+    {
+      "id": "learn-episodes-split-a-long-chat",
+      "description": "El hook del prompt parte un chat largo en episodios por learning.episodeGapHours; el estado vive en .git/info y no se commitea.",
+      "input": "Mi repo usa el profile learning de agent-ready-setup. El usuario me dio la misma corrección hoy a las 9 y otra vez a las 15, en el mismo chat, sin escribir nada en el medio. ¿Cuenta como un episodio o como dos? ¿Dónde guarda agent-ready los episodios, y eso se commitea? Respondé desde la skill, sin ejecutar comandos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "(dos|2) episodios|episodio (nuevo|distinto)|otro episodio|segundo episodio",
+          "description": "Seis horas sin mensajes abren un episodio nuevo: son dos",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "episodes.json",
+          "description": "Los episodios viven en .git/info/agent-ready/episodes.json",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(no|nunca)[^.]{0,40}(se )?(commitea|versiona)|(local|fuera del repo)[^.]{0,60}(no|nunca)",
+          "description": "No se commitea: es local al clon",
+          "critical": true
+        }
+      ]
     }
   ]
 }

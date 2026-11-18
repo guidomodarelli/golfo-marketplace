@@ -25,6 +25,12 @@
       "minimum": 1,
       "default": 2
     },
+    "episodeGapHours": {
+      "description": "Horas sin mensajes del usuario después de las cuales el próximo mensaje abre un episodio nuevo, aunque sea el mismo chat. Otra sesión u otro día también abren uno. La misma instrucción en dos episodios cuenta como dos evidencias.",
+      "type": "integer",
+      "minimum": 1,
+      "default": 4
+    },
     "candidateTtlDays": {
       "description": "Días sin evidencia nueva después de los cuales un candidato vence. Si la instrucción vuelve, se cuenta desde cero: la evidencia vencida no suma.",
       "type": "integer",

@@ -2879,7 +2879,7 @@ EOF
   run_bootstrap node
   [ "$status" -eq 0 ]
   jq -e '[.hooks.Stop[].hooks[].command] == ["echo current"]' .codex/hooks.json >/dev/null
-  jq -e '[.hooks.SessionStart[].hooks[]] | length == 1 and .[0].statusMessage != null' .codex/hooks.json >/dev/null
+  jq -e '[.hooks.SessionStart[].hooks[]] | length == 2 and all(.statusMessage != null)' .codex/hooks.json >/dev/null
   jq -e '.hooks.SessionStart[0].hooks[0].timeout == 123' .codex/hooks.json >/dev/null
   cp .codex/hooks.json "$test_root/expected-hooks.json"
 

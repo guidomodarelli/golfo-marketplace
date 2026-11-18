@@ -6,10 +6,12 @@ registry. None of them prints the quotes of the user, which stay in .agents/lear
 """
 
 import datetime
+import os
 import sys
 
 import agent_ready_learning as learning
 import agent_ready_learning_apply as learning_apply
+import agent_ready_learning_episodes as learning_episodes
 import agent_ready_learning_review as learning_review
 from agent_ready_cli_common import EXIT_OK, find_repository_root
 from agent_ready_common import StateError, serialize_json
@@ -19,6 +21,9 @@ LEARNING_ENABLED_KEY = "learning.enabled"
 LEARNING_MODE_KEY = "learning.mode"
 LEARNING_THRESHOLD_KEY = "learning.threshold"
 LEARNING_TTL_KEY = "learning.candidateTtlDays"
+LEARNING_GAP_KEY = "learning.episodeGapHours"
+SUMMARY_LOG_LINES = 5
+SUMMARY_CANDIDATES = 5
 MAX_STATEMENT_CHARS_KEY = "rules.maxStatementChars"
 
 DECISION_MESSAGES = {
@@ -37,6 +42,7 @@ def settings_of(project_root):
         "mode": configuration.value(LEARNING_MODE_KEY),
         "threshold": configuration.value(LEARNING_THRESHOLD_KEY),
         "ttl_days": configuration.value(LEARNING_TTL_KEY),
+        "gap_hours": configuration.value(LEARNING_GAP_KEY),
         "max_statement_chars": configuration.value(MAX_STATEMENT_CHARS_KEY),
         "today": datetime.date.today(),
     }
@@ -117,6 +123,69 @@ def command_learn_revert(arguments):
     return EXIT_OK
 
 
+def command_learn_episode(arguments):
+    """The episode of a session: with --touch, a message of the user arrived (the hook of the prompt)."""
+    project_root = find_repository_root(arguments.project)
+    settings = settings_of(project_root)
+    if arguments.touch:
+        # The hook runs on every message: it stays silent unless the learning profile is in use.
+        if not settings["enabled"] or not learning_episodes.learning_selected(project_root):
+            return EXIT_OK
+        now = learning_episodes.current_time()
+        session, started = learning_episodes.touch(project_root, arguments.session, now, settings["gap_hours"])
+        if started and not arguments.json:
+            sys.stdout.write(f"[agent-ready learn] Episode {session['episodeId']} started: record instructions of the "
+                             f"user with --session {arguments.session} --episode {session['episodeId']}.\n")
+    elif arguments.scope_question:
+        if not learning_episodes.mark_scope_question(project_root, arguments.session):
+            raise StateError(f"the scope question of this episode was already asked: apply the instruction to the "
+                             "current document only and record it without --explicit")
+        session = learning_episodes.current(project_root, arguments.session)
+    else:
+        session = learning_episodes.current(project_root, arguments.session)
+        if session is None and not arguments.json:
+            sys.stdout.write(f"Session {arguments.session} has no episode yet: its first message opens one.\n")
+            return EXIT_OK
+    if arguments.json:
+        sys.stdout.write(serialize_json({"session": arguments.session, "episode": session}))
+    elif not arguments.touch:
+        asked = "asked" if session.get("scopeQuestionAsked") else "not asked"
+        sys.stdout.write(f"{session['episodeId']}  since {session['episodeStartedAt']}, scope question {asked}\n")
+    return EXIT_OK
+
+
+def log_lines(project_root):
+    path = os.path.join(project_root, learning_apply.LOG_RELATIVE_PATH)
+    if not os.path.exists(path):
+        return []
+    with open(path, encoding="utf-8") as handle:
+        return [line.rstrip("\n") for line in handle if line.startswith("- ")]
+
+
+def command_learn_summary(arguments):
+    """A few lines for the start of a session: what was learned lately and what waits. Silent when the
+    learning profile is not in use or there is nothing to tell."""
+    project_root = find_repository_root(arguments.project)
+    settings = settings_of(project_root)
+    if not settings["enabled"] or not learning_episodes.learning_selected(project_root):
+        return EXIT_OK
+    items = learning.entries(project_root, settings["today"], settings["ttl_days"])
+    waiting = [item for item in items if item["status"] == learning.STATUS_CANDIDATE]
+    recent = log_lines(project_root)[-SUMMARY_LOG_LINES:]
+    if not waiting and not recent:
+        return EXIT_OK
+    sys.stdout.write("[agent-ready learn] What this project learned from the user (references/learning.md):\n")
+    for line in recent:
+        sys.stdout.write(f"  {line[2:]}\n")
+    if waiting:
+        sys.stdout.write("  Waiting for another episode; if the user repeats one, record it again:\n")
+        for item in waiting[:SUMMARY_CANDIDATES]:
+            sys.stdout.write(f"    {item['id']}  {item['statement']}\n")
+        if len(waiting) > SUMMARY_CANDIDATES:
+            sys.stdout.write(f"    and {len(waiting) - SUMMARY_CANDIDATES} more (agent-ready learn list --status candidate)\n")
+    return EXIT_OK
+
+
 def read_entries(arguments):
     project_root = find_repository_root(arguments.project)
     settings = settings_of(project_root)
@@ -175,7 +244,7 @@ def command_learn_list(arguments):
 
 
 def register(subparsers, new_subparser):
-    """Add learn record|apply|accept|reject|revert|status|list to the CLI parser."""
+    """Add learn record|apply|accept|reject|revert|status|list|episode|summary to the CLI parser."""
     learn = new_subparser(subparsers, "learn", "Record and read what the agent learns from the user.",
                           "  agent-ready learn status\n  agent-ready learn list --status candidate", None,
                           with_project=False)
@@ -230,3 +299,17 @@ def register(subparsers, new_subparser):
                                 command_learn_list)
     list_action.add_argument("--status", choices=learning.STATUSES, help="only the entries of this status")
     list_action.add_argument("--json", action="store_true", help="print the result as JSON")
+    episode_action = new_subparser(
+        actions, "episode", "The episode of a session, which the evidence of an instruction counts.",
+        "  agent-ready learn episode --session 3f2a\n  agent-ready learn episode --session 3f2a --scope-question",
+        command_learn_episode)
+    episode_action.add_argument("--session", required=True, help="session of the provider")
+    episode_modes = episode_action.add_mutually_exclusive_group()
+    episode_modes.add_argument("--touch", action="store_true",
+                               help="a message of the user arrived now; prints a line only when it opens an episode")
+    episode_modes.add_argument("--scope-question", action="store_true",
+                               help="record the one scope question of the episode; fails when it was already asked")
+    episode_action.add_argument("--json", action="store_true", help="print the result as JSON")
+    summary_action = new_subparser(
+        actions, "summary", "What was learned lately and what waits, in a few lines for the start of a session.",
+        "  agent-ready learn summary", command_learn_summary)

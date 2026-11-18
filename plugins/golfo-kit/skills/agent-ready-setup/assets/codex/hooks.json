@@ -8,6 +8,11 @@
             "type": "command",
             "command": "bash .agents/hooks/sync-marketplace.sh --provider codex",
             "statusMessage": "Sincronizando configuración Agent Ready con marketplace…"
+          },
+          {
+            "type": "command",
+            "command": "bash .agents/hooks/learning-hook.sh --provider codex --event session-start",
+            "statusMessage": "Leyendo lo aprendido del proyecto…"
           }
         ]
       }
@@ -20,6 +25,17 @@
             "type": "command",
             "command": "bash .agents/hooks/check-harness-consistency.sh",
             "statusMessage": "Verificando consistencia de configuración Agent Ready…"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .agents/hooks/learning-hook.sh --provider codex --event prompt",
+            "statusMessage": "Registrando el episodio de aprendizaje…"
           }
         ]
       }
