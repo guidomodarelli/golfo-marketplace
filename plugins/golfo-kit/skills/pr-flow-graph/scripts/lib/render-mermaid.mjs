@@ -1,4 +1,5 @@
 import { BUSINESS_STATE_KIND, CHANGE_STATUS, CHANGE_STATUSES, CONFIDENCE, KIND_LABELS } from './flow-graph-constants.mjs';
+import { getFlowTitle } from './flow-source.mjs';
 
 const MERMAID_INDENT = '  ';
 const VERIFIED_ARROW = '-->';
@@ -21,14 +22,14 @@ const CHANGE_MARKERS = {
 
 /**
  * Renders the model as Markdown with Mermaid diagrams, ready to paste into a pull request
- * description, where GitHub draws them.
+ * description or an RFC, where GitHub and most Markdown viewers draw them.
  *
  * @param {object} model A valid flow graph model.
  * @returns {string} Markdown document.
  */
 export function renderMermaidMarkdown(model) {
   const sections = [
-    `## Flujo de cambios — ${model.pullRequest.title}`,
+    `## Flujo de cambios — ${getFlowTitle(model)}`,
     '',
     'Verde: agregado · Ámbar: modificado · Rojo punteado: eliminado · Flecha punteada: relación inferida',
     '',

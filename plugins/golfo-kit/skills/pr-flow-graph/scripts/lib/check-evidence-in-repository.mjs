@@ -1,26 +1,31 @@
-import { spawnSync } from 'node:child_process';
-
 import {
   CHANGE_STATUS,
   CONFIDENCE,
-  EVIDENCE_CONTEXT_LINE_COUNT,
   EVIDENCE_SIDE,
   FINDING_SEVERITY,
+  FLOW_SOURCE,
   GIT_REMOTE_REF_PREFIX,
   LISTED_FILES_LIMIT,
-  NAME_TOKEN_MIN_LENGTH,
-  NAME_TOKEN_SUBSTRING_MIN_LENGTH,
 } from './flow-graph-constants.mjs';
+import { verifyRfcAgainstRepository } from './check-rfc-in-repository.mjs';
+import { getFlowSource } from './flow-source.mjs';
+import {
+  SHORT_COMMIT_LENGTH,
+  createFileReader,
+  createGitRunner,
+  isGitRepository,
+  listElementsWithLocation,
+  mentionsNode,
+  readNearbyLines,
+  resolveRef,
+} from './repository-reading.mjs';
 
-const GIT_COMMAND = 'git';
 const LINE_BREAK_PATTERN = /\r?\n/;
-const IDENTIFIER_WORD_PATTERN = /[A-Za-z_][A-Za-z0-9_]*/g;
 const HUNK_HEADER_PATTERN = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
 const OLD_FILE_HEADER_PREFIX = '--- ';
 const NEW_FILE_HEADER_PREFIX = '+++ ';
 const DIFF_PATH_PREFIX_LENGTH = 2;
 const NO_FILE_MARKER = '/dev/null';
-const SHORT_COMMIT_LENGTH = 7;
 const GLOB_ANY_FOLDERS = '**/';
 const GLOB_ANY_DEPTH = '**';
 const GLOB_ONE_SEGMENT = '*';
@@ -52,18 +57,20 @@ const FOLDER_SUFFIX = '/';
  * The base side is read at the merge base of the two refs, the same commit the pull request diff
  * starts from, so a base branch that kept moving does not shift the line numbers.
  *
+ * A model of an RFC has no diff to compare with: `check-rfc-in-repository.mjs` checks it instead.
+ *
  * @param {object} model A model that already passed `validateFlowGraph`.
  * @param {string} repositoryPath Path of a clone that has both refs of the pull request.
  * @returns {RepositoryVerification}
  */
 export function verifyModelAgainstRepository(model, repositoryPath) {
+  if (getFlowSource(model) === FLOW_SOURCE.rfc) return verifyRfcAgainstRepository(model, repositoryPath);
   const findings = [];
   const reportError = (location, message) => findings.push({ severity: FINDING_SEVERITY.error, location, message });
   const reportWarning = (location, message) => findings.push({ severity: FINDING_SEVERITY.warning, location, message });
-  const runGit = (gitArguments) =>
-    spawnSync(GIT_COMMAND, ['-C', repositoryPath, '-c', 'core.quotePath=false', ...gitArguments], { encoding: 'utf8', maxBuffer: Infinity });
+  const runGit = createGitRunner(repositoryPath);
 
-  if (runGit(['rev-parse', '--git-dir']).status !== 0) {
+  if (!isGitRepository(runGit)) {
     reportError('--repo', `${repositoryPath} is not a git repository.`);
     return { findings };
   }
@@ -118,39 +125,12 @@ export function checkEvidenceInRepository(model, repositoryPath) {
 }
 
 function resolveCommits(pullRequest, runGit) {
-  const resolveRef = (refName) => {
-    for (const candidate of [refName, `${GIT_REMOTE_REF_PREFIX}${refName}`]) {
-      const result = runGit(['rev-parse', '--verify', '--quiet', `${candidate}^{commit}`]);
-      if (result.status === 0) return result.stdout.trim();
-    }
-    return null;
-  };
-  const base = resolveRef(pullRequest.baseRef);
-  const head = resolveRef(pullRequest.headRef);
+  const base = resolveRef(pullRequest.baseRef, runGit);
+  const head = resolveRef(pullRequest.headRef, runGit);
   const unresolvedRefNames = [...new Set([[pullRequest.baseRef, base], [pullRequest.headRef, head]].filter(([, commit]) => !commit).map(([refName]) => refName))];
   if (unresolvedRefNames.length > 0) return { unresolvedRefNames };
   const mergeBaseResult = runGit(['merge-base', base, head]);
   return { unresolvedRefNames, head, mergeBase: mergeBaseResult.status === 0 ? mergeBaseResult.stdout.trim() : null };
-}
-
-/** @returns {(commit: string, filePath: string) => string[] | null} Lines of a file, or null when it is not there. */
-function createFileReader(runGit) {
-  const linesByFile = new Map();
-  return (commit, filePath) => {
-    const cacheKey = `${commit}:${filePath}`;
-    if (!linesByFile.has(cacheKey)) {
-      const result = runGit(['show', cacheKey]);
-      if (result.status !== 0) {
-        linesByFile.set(cacheKey, null);
-      } else {
-        const lines = result.stdout.split(LINE_BREAK_PATTERN);
-        // A file that ends with a line break has one empty element after its last line.
-        if (lines.at(-1) === '') lines.pop();
-        linesByFile.set(cacheKey, lines);
-      }
-    }
-    return linesByFile.get(cacheKey);
-  };
 }
 
 const sideOf = (evidence) => evidence.side ?? EVIDENCE_SIDE.head;
@@ -257,9 +237,7 @@ function checkRelationshipsNameTheirEnds(model, sides, readFileLines, reportErro
     const ends = [nodesById.get(edge.source), nodesById.get(edge.target)];
     const namesAnEnd = edge.evidence.some((evidence) => {
       const fileLines = readFileLines(sides[sideOf(evidence)].commit, evidence.path);
-      const nearbyCode = fileLines
-        .slice(Math.max(evidence.line - 1 - EVIDENCE_CONTEXT_LINE_COUNT, 0), evidence.line + EVIDENCE_CONTEXT_LINE_COUNT)
-        .join('\n');
+      const nearbyCode = readNearbyLines(fileLines, evidence.line);
       const endsElsewhere = ends.filter((node) => !ownsFile(node, evidence.path));
       // In a file that belongs to both ends, or to neither, naming either one is enough.
       const endsToName = endsElsewhere.length === 1 ? endsElsewhere : ends;
@@ -274,18 +252,6 @@ function checkRelationshipsNameTheirEnds(model, sides, readFileLines, reportErro
     }
   });
   return verifiedRelationshipCount;
-}
-
-function mentionsNode(code, node) {
-  const codeWords = new Set((code.match(IDENTIFIER_WORD_PATTERN) ?? []).map((word) => word.toLowerCase()));
-  const nameWords = ((node.symbol ?? node.label).match(IDENTIFIER_WORD_PATTERN) ?? [])
-    .map((word) => word.toLowerCase())
-    .filter((word) => word.length >= NAME_TOKEN_MIN_LENGTH);
-  return nameWords.some(
-    (nameWord) =>
-      codeWords.has(nameWord) ||
-      (nameWord.length >= NAME_TOKEN_SUBSTRING_MIN_LENGTH && [...codeWords].some((codeWord) => codeWord.includes(nameWord))),
-  );
 }
 
 /** @returns {number} Changed files the model declares out of the graph. */
@@ -336,14 +302,4 @@ function createPathMatcher(pattern) {
     .join('(?:.*/)?');
   const matcher = new RegExp(`^${expression}$`);
   return (filePath) => matcher.test(filePath);
-}
-
-function listElementsWithLocation(model) {
-  const withLocation = (elements, listLocation) => (elements ?? []).map((element, index) => ({ element, location: `${listLocation}[${index}]` }));
-  return [
-    ...withLocation(model.nodes, 'nodes'),
-    ...withLocation(model.edges, 'edges'),
-    ...withLocation(model.businessFlow?.states, 'businessFlow.states'),
-    ...withLocation(model.businessFlow?.transitions, 'businessFlow.transitions'),
-  ];
 }

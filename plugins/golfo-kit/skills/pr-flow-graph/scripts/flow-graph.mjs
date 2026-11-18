@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
 /**
- * CLI of the pr-flow-graph skill: validates a flow graph model and renders it.
+ * CLI of the pr-flow-graph skill: validates a flow graph model, of a pull request or of an RFC,
+ * and renders it.
  *
  * Usage:
  *   node flow-graph.mjs validate <model.json> [--repo <dir>]
@@ -20,9 +21,11 @@ import {
   CHECK_STATUS,
   EXIT_CODE,
   FINDING_SEVERITY,
+  FLOW_SOURCE,
   LEAN_STATUS,
   OUTPUT_FILE_NAMES,
 } from './lib/flow-graph-constants.mjs';
+import { getFlowSource } from './lib/flow-source.mjs';
 import { renderFlowGraphHtml } from './lib/render-html.mjs';
 import { renderMermaidMarkdown } from './lib/render-mermaid.mjs';
 import { buildVerificationChecks, findOutputMismatches, renderReport } from './lib/render-report.mjs';
@@ -32,14 +35,15 @@ import { hasBlockingFindings, validateFlowGraph } from './lib/validate-flow-grap
 const COMMAND = { validate: 'validate', render: 'render' };
 const CHECK_SUMMARY_MARKS = { [CHECK_STATUS.passed]: '✓', [CHECK_STATUS.skipped]: '–', [CHECK_STATUS.warning]: '!' };
 const RENDER_STEP_COUNT = 4;
-const USAGE = `pr-flow-graph — valida y dibuja el modelo de flujo de un pull request
+const USAGE = `pr-flow-graph — valida y dibuja el modelo de flujo de un pull request o de un RFC
 
 Uso:
   node flow-graph.mjs validate <model.json> [--repo <dir>]
   node flow-graph.mjs render <model.json> --repo <dir> [opciones]
 
 Opciones:
-  --repo <dir>         Clon del repo: comprueba el modelo contra el código y el diff del PR
+  --repo <dir>         Clon del repo: comprueba el modelo contra el código y el diff del PR,
+                       o contra el código y el texto del RFC
                        (obligatorio en render, salvo con --skip-repo-check)
   --skip-repo-check    Genera sin comprobar contra el repo; el grafo y el reporte lo avisan
   --out <dir>          Carpeta de salida (por defecto, la del modelo)
@@ -91,7 +95,9 @@ async function render(ui, model, modelPath, options) {
   if (!reportFindings(ui, findings, modelPath)) return EXIT_CODE.invalidModel;
 
   ui.step(2, RENDER_STEP_COUNT, 'Comprobar contra el repo');
-  if (repositoryStatistics) {
+  if (repositoryStatistics && getFlowSource(model) === FLOW_SOURCE.rfc) {
+    ui.done(`${repositoryStatistics.codeEvidenceCount} líneas de código (${repositoryStatistics.codeCommit}), ${repositoryStatistics.rfcEvidenceCount} del RFC y ${repositoryStatistics.sectionCount} secciones comprobadas.`);
+  } else if (repositoryStatistics) {
     ui.done(`${repositoryStatistics.evidenceCount} evidencias y ${repositoryStatistics.changedFileCount} archivos del diff comprobados (${repositoryStatistics.baseCommit} → ${repositoryStatistics.headCommit}).`);
   } else {
     ui.warning('Evidencia sin comprobar contra el repo: el grafo y el reporte lo avisan. Pasá --repo <dir> para verificarla.');

@@ -6,13 +6,21 @@ import {
   CONFIDENCE,
   CONFIDENCE_LEVELS,
   EDGE_KINDS,
-  EVIDENCE_SIDES,
+  EVIDENCE_SIDE,
+  EVIDENCE_SIDES_BY_SOURCE,
   FINDING_SEVERITY,
   FLOW_GRAPH_SCHEMA_VERSION,
+  FLOW_SOURCE,
   GITHUB_PULL_REQUEST_URL_PATTERN,
+  HTTPS_URL_PATTERN,
   IDENTIFIER_PATTERN,
   NODE_KINDS,
 } from './flow-graph-constants.mjs';
+import { getEvidenceSide } from './flow-source.mjs';
+
+const ABSOLUTE_PATH_PATTERN = /^([a-zA-Z]:)?[\\/]/;
+const PATH_SEPARATOR_PATTERN = /[\\/]/;
+const PARENT_FOLDER_SEGMENT = '..';
 
 /**
  * @typedef {object} Finding
@@ -25,7 +33,8 @@ import {
  * Validates a flow graph model against the contract of `references/flow-graph-schema.md`.
  *
  * The rules exist to keep the graph honest: every element the pull request changed points at the
- * code that proves it, and every relationship the agent deduced says so and says why.
+ * code that proves it, and every relationship the agent deduced says so and says why. A model of an
+ * RFC follows the same rules, with the RFC as the proof of what it proposes (`validateRfcEvidence`).
  *
  * @param {unknown} model Parsed content of the model file.
  * @returns {Finding[]} Findings, errors first. Empty when the model is valid.
@@ -45,13 +54,14 @@ export function validateFlowGraph(model) {
     error('schemaVersion', `Expected ${FLOW_GRAPH_SCHEMA_VERSION}, received ${JSON.stringify(model.schemaVersion)}.`);
   }
 
-  validatePullRequest(model.pullRequest, error);
+  const source = validateSource(model, error);
+  const context = { source, rfcDocument: model.rfc?.document };
 
   const groupIds = validateGroups(model.groups, error);
-  const nodeIds = validateNodes(model.nodes, groupIds, error);
-  validateEdges(model.edges, model.nodes, nodeIds, error);
-  validateBusinessFlow(model.businessFlow, nodeIds, error, warning);
-  validateOutOfScope(model.outOfScope, error);
+  const nodeIds = validateNodes(model.nodes, groupIds, context, error);
+  validateEdges(model.edges, model.nodes, nodeIds, context, error);
+  validateBusinessFlow(model.businessFlow, nodeIds, context, error, warning);
+  validateOutOfScope(model.outOfScope, source, error);
   validateChangePresence(model, error);
   warnAboutIsolatedNodes(model, warning);
 
@@ -64,6 +74,45 @@ export function validateFlowGraph(model) {
  */
 export function hasBlockingFindings(findings) {
   return findings.some((finding) => finding.severity === FINDING_SEVERITY.error);
+}
+
+/**
+ * A model describes either a pull request or an RFC, never both: the two read their evidence from
+ * different places.
+ *
+ * @returns {'pull-request' | 'rfc'} Source the rest of the model is validated against.
+ */
+function validateSource(model, error) {
+  const hasPullRequest = model.pullRequest !== undefined;
+  const hasRfc = model.rfc !== undefined;
+  if (hasPullRequest && hasRfc) {
+    error('(root)', 'Has both `pullRequest` and `rfc`. A model graphs one pull request or one RFC: keep the one it describes.');
+  } else if (!hasPullRequest && !hasRfc) {
+    error('(root)', 'Required: `pullRequest` for a pull request, or `rfc` for the change an RFC proposes.');
+    return FLOW_SOURCE.pullRequest;
+  }
+  if (hasPullRequest) {
+    validatePullRequest(model.pullRequest, error);
+    return FLOW_SOURCE.pullRequest;
+  }
+  validateRfc(model.rfc, error);
+  return FLOW_SOURCE.rfc;
+}
+
+function validateRfc(rfc, error) {
+  if (!isPlainObject(rfc)) {
+    error('rfc', 'Required object with `title`, `document` and `codeRef`.');
+    return;
+  }
+  for (const field of ['title', 'codeRef']) {
+    if (!isNonEmptyString(rfc[field])) error(`rfc.${field}`, 'Required non-empty string.');
+  }
+  if (!isRelativePath(rfc.document)) {
+    error('rfc.document', 'Required: path of the RFC text, relative to the repository root, with forward slashes and no `..`.');
+  }
+  if (rfc.url !== undefined && !HTTPS_URL_PATTERN.test(String(rfc.url))) {
+    error('rfc.url', 'Must be an https:// URL where people read the RFC, or be omitted.');
+  }
 }
 
 function validatePullRequest(pullRequest, error) {
@@ -100,7 +149,7 @@ function validateGroups(groups, error) {
   return groupIds;
 }
 
-function validateNodes(nodes, groupIds, error) {
+function validateNodes(nodes, groupIds, context, error) {
   const nodeIds = new Set();
   if (!Array.isArray(nodes) || nodes.length === 0) {
     error('nodes', 'Required non-empty array.');
@@ -122,12 +171,12 @@ function validateNodes(nodes, groupIds, error) {
     if (node.group !== undefined && !groupIds.has(node.group)) {
       error(`${location}.group`, `Unknown group ${JSON.stringify(node.group)}; declare it in \`groups\`.`);
     }
-    validateEvidence(node, location, error);
+    validateEvidence(node, location, context, error);
   });
   return nodeIds;
 }
 
-function validateEdges(edges, nodes, nodeIds, error) {
+function validateEdges(edges, nodes, nodeIds, context, error) {
   if (edges === undefined) return;
   if (!Array.isArray(edges)) {
     error('edges', 'Must be an array when present.');
@@ -149,13 +198,13 @@ function validateEdges(edges, nodes, nodeIds, error) {
     requireKnownEndpoint(edge.source, nodeIds, `${location}.source`, 'node', error);
     requireKnownEndpoint(edge.target, nodeIds, `${location}.target`, 'node', error);
     validateConfidence(edge, location, error);
-    validateEvidence(edge, location, error);
+    validateEvidence(edge, location, context, error);
     requireUniqueRelationship([edge.source, edge.target, edge.kind], seenRelationships, location, 'source, target and kind', error);
     requireChangeConsistentWithEndpoints(edge, changeByNodeId, location, 'node', error);
   });
 }
 
-function validateBusinessFlow(businessFlow, nodeIds, error, warning) {
+function validateBusinessFlow(businessFlow, nodeIds, context, error, warning) {
   if (businessFlow === undefined) return;
   if (!isPlainObject(businessFlow)) {
     error('businessFlow', 'Must be an object with `states` and `transitions` when present.');
@@ -178,7 +227,7 @@ function validateBusinessFlow(businessFlow, nodeIds, error, warning) {
     if (!isNonEmptyString(state.label)) error(`${location}.label`, 'Required non-empty string.');
     requireEnumValue(state.kind, BUSINESS_STATE_KINDS, `${location}.kind`, error);
     requireEnumValue(state.change, CHANGE_STATUSES, `${location}.change`, error);
-    validateEvidence(state, location, error);
+    validateEvidence(state, location, context, error);
     for (const [nodeIndex, nodeId] of (state.nodeIds ?? []).entries()) {
       requireKnownEndpoint(nodeId, nodeIds, `${location}.nodeIds[${nodeIndex}]`, 'node', error);
     }
@@ -188,7 +237,7 @@ function validateBusinessFlow(businessFlow, nodeIds, error, warning) {
     (state) => isPlainObject(state) && state.kind === BUSINESS_STATE_KIND.initial && state.change !== CHANGE_STATUS.removed,
   );
   if (states.length > 0 && initialStates.length !== 1) {
-    error('businessFlow.states', `Exactly one state of kind "initial" must exist after the pull request; found ${initialStates.length}.`);
+    error('businessFlow.states', `Exactly one state of kind "initial" must exist after the change; found ${initialStates.length}.`);
   }
 
   const transitions = Array.isArray(businessFlow.transitions) ? businessFlow.transitions : [];
@@ -210,7 +259,7 @@ function validateBusinessFlow(businessFlow, nodeIds, error, warning) {
     requireKnownEndpoint(transition.source, stateIds, `${location}.source`, 'business state', error);
     requireKnownEndpoint(transition.target, stateIds, `${location}.target`, 'business state', error);
     validateConfidence(transition, location, error);
-    validateEvidence(transition, location, error);
+    validateEvidence(transition, location, context, error);
     requireUniqueRelationship(
       [transition.source, transition.trigger, transition.guard ?? ''],
       seenTransitions,
@@ -228,17 +277,27 @@ function validateBusinessFlow(businessFlow, nodeIds, error, warning) {
   }
 }
 
-/** Files of the pull request left out of the graph on purpose, each with the reason. */
-function validateOutOfScope(outOfScope, error) {
+/**
+ * What the graph leaves out on purpose, each with the reason: files of a pull request, or `##`
+ * sections of an RFC.
+ */
+function validateOutOfScope(outOfScope, source, error) {
   if (outOfScope === undefined) return;
+  const field = source === FLOW_SOURCE.rfc ? 'section' : 'path';
   if (!Array.isArray(outOfScope)) {
-    error('outOfScope', 'Must be an array of `{ path, reason }` when present.');
+    error('outOfScope', `Must be an array of \`{ ${field}, reason }\` when present.`);
     return;
   }
   outOfScope.forEach((entry, index) => {
     const location = `outOfScope[${index}]`;
     if (!isPlainObject(entry)) {
-      error(location, 'Must be an object with `path` and `reason`.');
+      error(location, `Must be an object with \`${field}\` and \`reason\`.`);
+      return;
+    }
+    if (source === FLOW_SOURCE.rfc) {
+      if (!isNonEmptyString(entry.section)) error(`${location}.section`, 'Required: the title of a `##` section of the RFC, as the RFC writes it.');
+      if (entry.path !== undefined) error(`${location}.path`, 'An RFC leaves out sections, not files: use `section` with the title of the section.');
+      if (!isNonEmptyString(entry.reason)) error(`${location}.reason`, 'Required: why this section is not part of the graph.');
       return;
     }
     if (!isNonEmptyString(entry.path)) error(`${location}.path`, 'Required: a file path, a folder ending in `/` or a pattern with `*`.');
@@ -283,7 +342,7 @@ function requireChangeConsistentWithEndpoints(relationship, changeById, location
   }
 }
 
-/** A graph of a pull request with no changed element describes the app, not the pull request. */
+/** A graph with no changed element describes the app, not the pull request or the RFC. */
 function validateChangePresence(model, error) {
   const elements = [
     ...(Array.isArray(model.nodes) ? model.nodes : []),
@@ -293,7 +352,7 @@ function validateChangePresence(model, error) {
   ];
   const hasChange = elements.some((element) => isPlainObject(element) && element.change !== CHANGE_STATUS.unchanged);
   if (elements.length > 0 && !hasChange) {
-    error('nodes', 'No element is marked added, modified or removed, so the graph does not show what the pull request changed.');
+    error('nodes', 'No element is marked added, modified or removed, so the graph does not show what changes.');
   }
 }
 
@@ -311,7 +370,7 @@ function warnAboutIsolatedNodes(model, warning) {
  * A changed element without evidence is a claim nobody can check, and a verified relationship
  * without evidence is not verified.
  */
-function validateEvidence(element, location, error) {
+function validateEvidence(element, location, context, error) {
   const evidence = element.evidence ?? [];
   if (!Array.isArray(evidence)) {
     error(`${location}.evidence`, 'Must be an array of `{ path, line }`.');
@@ -323,20 +382,60 @@ function validateEvidence(element, location, error) {
     const reason = isChanged ? `it is marked "${element.change}"` : 'it is marked "verified"';
     error(`${location}.evidence`, `At least one \`{ path, line }\` is required because ${reason}.`);
   }
+  const allowedSides = EVIDENCE_SIDES_BY_SOURCE[context.source];
   evidence.forEach((item, index) => {
     const itemLocation = `${location}.evidence[${index}]`;
     if (!isPlainObject(item)) {
       error(itemLocation, 'Must be an object with `path` and `line`.');
       return;
     }
-    if (!isNonEmptyString(item.path) || /^([a-zA-Z]:)?[\\/]/.test(item.path)) {
+    if (item.side !== undefined && !allowedSides.includes(item.side)) {
+      const sourceName = context.source === FLOW_SOURCE.rfc ? 'an RFC' : 'a pull request';
+      error(`${itemLocation}.side`, `In ${sourceName}, expected one of ${allowedSides.join(', ')}; received ${JSON.stringify(item.side)}.`);
+    }
+    const isRfcLine = context.source === FLOW_SOURCE.rfc && item.side === EVIDENCE_SIDE.rfc;
+    if (isRfcLine) {
+      if (item.path !== undefined && item.path !== context.rfcDocument) {
+        error(`${itemLocation}.path`, 'An RFC line needs only `line`: omit `path`, or make it the same as `rfc.document`.');
+      }
+    } else if (!isRelativePath(item.path)) {
       error(`${itemLocation}.path`, 'Required path relative to the repository root, with forward slashes.');
     }
     if (!Number.isInteger(item.line) || item.line < 1) {
       error(`${itemLocation}.line`, 'Required line number, an integer starting at 1.');
     }
-    if (item.side !== undefined) requireEnumValue(item.side, EVIDENCE_SIDES, `${itemLocation}.side`, error);
   });
+  if (context.source === FLOW_SOURCE.rfc && evidence.every(isPlainObject)) validateRfcEvidence(element, evidence, location, error);
+}
+
+/**
+ * In an RFC nothing is in the code yet, so a change is proved by the line of the RFC that proposes
+ * it, and what exists today by its line in the code:
+ *
+ * - `added`: at least one RFC line, and no code line, because it does not exist yet.
+ * - `modified` and `removed`: at least one RFC line and at least one code line.
+ * - a `verified` relationship the RFC does not change: a code line, because the code writes it.
+ */
+function validateRfcEvidence(element, evidence, location, error) {
+  const countBySide = (side) => evidence.filter((item) => getEvidenceSide(item, FLOW_SOURCE.rfc) === side).length;
+  const rfcLineCount = countBySide(EVIDENCE_SIDE.rfc);
+  const codeLineCount = countBySide(EVIDENCE_SIDE.code);
+  const evidenceLocation = `${location}.evidence`;
+  if (evidence.length === 0) return;
+
+  if (element.change !== CHANGE_STATUS.unchanged && rfcLineCount === 0) {
+    error(evidenceLocation, `Marked "${element.change}", but none of its evidence is a line of the RFC. Add { "side": "rfc", "line": N } pointing at the line that proposes it, or mark it "unchanged".`);
+  }
+  if (element.change === CHANGE_STATUS.added && codeLineCount > 0) {
+    error(evidenceLocation, 'Marked "added", so it does not exist in the code yet: keep only its RFC lines. If it already exists, it is "modified" or "unchanged".');
+  }
+  const existsToday = element.change === CHANGE_STATUS.modified || element.change === CHANGE_STATUS.removed;
+  if (existsToday && codeLineCount === 0) {
+    error(evidenceLocation, `Marked "${element.change}", so it exists today: add the line of code where it is, besides the RFC line.`);
+  }
+  if (element.confidence === CONFIDENCE.verified && element.change === CHANGE_STATUS.unchanged && codeLineCount === 0) {
+    error(evidenceLocation, 'Marked "verified" and "unchanged", so the code writes it today: point at that line of code, or mark it "inferred" with a `reason`.');
+  }
 }
 
 function validateConfidence(relationship, location, error) {
@@ -404,6 +503,10 @@ function compareBySeverity(first, second) {
 
 function isPlainObject(value) {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isRelativePath(value) {
+  return isNonEmptyString(value) && !ABSOLUTE_PATH_PATTERN.test(value) && !value.split(PATH_SEPARATOR_PATTERN).includes(PARENT_FOLDER_SEGMENT);
 }
 
 function isNonEmptyString(value) {

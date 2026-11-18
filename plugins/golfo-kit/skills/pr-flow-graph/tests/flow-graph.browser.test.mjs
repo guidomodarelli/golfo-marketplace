@@ -19,7 +19,7 @@ import { pathToFileURL } from 'node:url';
 import { checkLeanModel } from '../scripts/lib/check-lean-model.mjs';
 import { BROWSER_LIBRARIES } from '../scripts/lib/flow-graph-constants.mjs';
 import { renderFlowGraphHtml } from '../scripts/lib/render-html.mjs';
-import { FIXTURES_DIRECTORY, loadExampleModel } from './support/example-model.mjs';
+import { FIXTURES_DIRECTORY, loadExampleModel, loadExampleRfcModel } from './support/example-model.mjs';
 
 const require = createRequire(import.meta.url);
 const PLAYWRIGHT_CANDIDATES = [process.env.PLAYWRIGHT_MODULE, 'playwright', 'playwright-core'].filter(Boolean);
@@ -46,6 +46,7 @@ describe('rendered page in a real browser', { skip: playwright ? false : missing
   let browser;
   let workDirectory;
   let pageUrl;
+  let rfcPageUrl;
   let offlinePageUrl;
 
   const openPage = async (url, contextOptions = {}) => {
@@ -77,6 +78,10 @@ describe('rendered page in a real browser', { skip: playwright ? false : missing
     const pagePath = path.join(workDirectory, 'graph.html');
     writeFileSync(pagePath, renderFlowGraphHtml(loadExampleModel(), { inlinedLibraries, leanSource: leanCheck.source }));
     pageUrl = pathToFileURL(pagePath).href;
+
+    const rfcPagePath = path.join(workDirectory, 'rfc-graph.html');
+    writeFileSync(rfcPagePath, renderFlowGraphHtml(loadExampleRfcModel(), { inlinedLibraries }));
+    rfcPageUrl = pathToFileURL(rfcPagePath).href;
 
     const offlinePagePath = path.join(workDirectory, 'offline.html');
     writeFileSync(offlinePagePath, renderFlowGraphHtml(loadExampleModel()));
@@ -175,6 +180,34 @@ describe('rendered page in a real browser', { skip: playwright ? false : missing
     const evidenceLink = detail.getByRole('link', { name: 'app/src/main/java/shop/favorites/FavoritesStore.kt:21' });
     assert.match(await evidenceLink.getAttribute('href'), /\/pull\/128\/files#diff-[0-9a-f]{64}R21$/);
     assert.equal(await page.locator('#graph .graph-node.selected').count(), 1);
+  });
+
+  test('an RFC graph speaks of today and of the RFC, and points the proposal at the RFC lines', async () => {
+    const { page, problems } = await openPage(rfcPageUrl);
+    await waitForNodeCount(page, 4);
+
+    assert.equal(await page.title(), 'Flujo del RFC — RFC 0042: Cancelar un pedido antes del envío');
+    assert.equal(await page.locator('#eyebrow').textContent(), 'Flujo propuesto en un RFC');
+    assert.match(await page.locator('#subtitle').textContent(), /RFC docs\/rfcs\/0042-cancel-order\.md sobre el código de main/);
+
+    // "Hoy" is the code as it is: what the RFC adds is not there yet.
+    await page.getByRole('button', { name: 'Hoy' }).click();
+    await waitForNodeCount(page, 3);
+    assert.ok(!(await nodeLabels(page)).includes('cancelOrder'));
+    await page.getByRole('button', { name: 'Con el RFC' }).click();
+    await waitForNodeCount(page, 4);
+
+    await page.locator('#graph .graph-node', { hasText: 'cancelOrder' }).click();
+    const detail = page.locator('#detail');
+    await detail.getByRole('heading', { name: 'cancelOrder' }).waitFor();
+    const evidenceItem = detail.locator('.evidence li');
+    assert.equal(await evidenceItem.count(), 1);
+    assert.equal(await evidenceItem.textContent(), 'docs/rfcs/0042-cancel-order.md:11en el RFC');
+    assert.equal(await evidenceItem.getByRole('link').count(), 0, 'an RFC has no diff to link to');
+
+    await page.getByRole('button', { name: 'orderRoutes → cancelOrder: POST /orders/:id/cancel' }).click();
+    await detail.getByText('Verificada en el RFC', { exact: true }).waitFor();
+    assert.deepEqual(problems, []);
   });
 
   test('selecting an inferred relationship from the list with the keyboard explains why it is inferred', async () => {

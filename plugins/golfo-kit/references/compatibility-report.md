@@ -2073,9 +2073,9 @@ Pendiente de verificar:
 
 **Identificación**
 
-- Nombre: PR Flow Graph; versión: 1.1.1; SKILL.md: `plugins/golfo-kit/skills/pr-flow-graph/SKILL.md`.
-- Propósito: Convierte un pull request en un grafo interactivo del flujo que toca, comprobado contra el diff.
-- Funcionalidades principales: grafo HTML de cambios y de negocio; diagramas Mermaid para el PR; modelo formal opcional en Lean 4.
+- Nombre: PR Flow Graph; versión: 1.2.0; SKILL.md: `plugins/golfo-kit/skills/pr-flow-graph/SKILL.md`.
+- Propósito: Convierte un pull request, o un RFC que propone un cambio, en un grafo interactivo del flujo que toca, comprobado contra el código.
+- Funcionalidades principales: grafo HTML de cambios y de negocio; modo RFC: lo propuesto se prueba con líneas del RFC; diagramas Mermaid para el PR o el RFC; modelo formal opcional en Lean 4.
 - Agentes soportados declarados: no declara.
 
 **Dependencias**

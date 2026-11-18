@@ -20,6 +20,7 @@ Contrato del modelo intermedio. `scripts/lib/validate-flow-graph.mjs` lo valida 
 - `pullRequest.url` es opcional. Con una URL de GitHub, cada evidencia del grafo enlaza a esa línea en «Files changed».
 - `architecture` es texto libre: el nombre del perfil de `architecture-profiles.md` o una descripción corta.
 - `groups`, `edges`, `businessFlow` y `outOfScope` son opcionales.
+- Un RFC lleva `rfc` en lugar de `pullRequest`: ver «Modelo de un RFC» al final.
 - Los `id` van en kebab-case y son únicos dentro de su lista. Además, una relación no repite el `id` de un nodo, ni una transición el de un estado: la página los muestra en la misma vista.
 
 ## Nodos
@@ -148,3 +149,50 @@ Avisos (se informan y no bloquean):
 - Un nodo sin ninguna relación.
 - Un estado de negocio al que no se llega desde el inicial.
 - Una entrada de `outOfScope` que no coincide con ningún archivo del PR.
+
+## Modelo de un RFC
+
+Un modelo describe un PR o un RFC, nunca los dos: en lugar de `pullRequest` lleva `rfc`. Todo lo demás (nodos, relaciones, flujo de negocio) tiene la misma forma. El procedimiento para escribirlo está en [rfc.md](rfc.md).
+
+```json
+"rfc": {
+  "title": "RFC 0042: Cancelar un pedido antes del envío",
+  "document": "docs/rfcs/0042-cancel-order.md",
+  "codeRef": "main",
+  "url": "https://wiki.example.com/rfcs/0042"
+}
+```
+
+| Campo | Valores |
+|---|---|
+| `title` | Título del RFC. |
+| `document` | Ruta del texto del RFC, relativa a la raíz del repo y sin `..`. Se lee del working tree, así que puede no estar commiteado. |
+| `codeRef` | Ref del código que el RFC propone cambiar; la evidencia de código se lee ahí. |
+| `url` | Dónde se lee el RFC (opcional, `https://`). La página la enlaza. |
+
+`change` es lo que propone el RFC. La evidencia tiene dos lados:
+
+- `code` (por defecto): `{ "path", "line" }` del código en `codeRef`, lo que existe hoy.
+- `rfc`: `{ "side": "rfc", "line": N }`, una línea del documento. No lleva `path`; si lo lleva, tiene que ser igual a `document`.
+
+`base` y `head` no valen en un RFC, ni `code` y `rfc` en un PR.
+
+`outOfScope` deja fuera secciones `##` del RFC, no archivos: `{ "section": "<título como lo escribe el RFC>", "reason": "…" }`. Lo que está antes del primer `##` (título, autores, estado) no es una sección, y un `##` dentro de un bloque de código tampoco.
+
+Errores que el validador suma en un RFC:
+
+- Tener `pullRequest` y `rfc` a la vez, o ninguno de los dos.
+- Un elemento cambiado sin ninguna línea del RFC.
+- Un elemento `added` con alguna línea de código: todavía no existe.
+- Un elemento `modified` o `removed` sin su línea de código.
+- Una relación `verified` y `unchanged` sin su línea de código.
+- Una entrada de `outOfScope` con `path` o sin `section`.
+
+Con `--repo <dir>` es error, además:
+
+- La ref `codeRef` no está en el clon, o `document` no se puede leer.
+- Una línea de código que no existe en `codeRef`, o una línea del RFC que pasa el final del documento o está en blanco.
+- Una relación `verified` que ya existe cuya línea de código, con dos líneas de contexto, no nombra al otro extremo; o una que el RFC agrega cuya línea del RFC, con su contexto, no nombra a los dos.
+- Una sección `##` del RFC sin ninguna línea como evidencia y sin entrada en `outOfScope`.
+
+Es aviso una entrada de `outOfScope` que no coincide con ninguna sección, y un RFC sin secciones `##`, porque su cobertura no se puede comprobar por sección.

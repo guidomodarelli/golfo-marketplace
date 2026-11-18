@@ -4,7 +4,7 @@ Opcional: solo cuando el pedido incluye `--lean` o habla de un modelo formal.
 
 ## Qué prueba y qué no
 
-El modelo es una abstracción del flujo de negocio escrita a mano a partir del PR. Lo que Lean demuestra vale para ese modelo. No demuestra que el código Kotlin, TypeScript o el que sea se comporte igual: entre el código y el modelo hay un paso que hizo el agente, y ese paso puede estar mal. Decilo así en el reporte.
+El modelo es una abstracción del flujo de negocio escrita a mano a partir del PR o del RFC. Lo que Lean demuestra vale para ese modelo. No demuestra que el código Kotlin, TypeScript o el que sea se comporte igual: entre el código y el modelo hay un paso que hizo el agente, y ese paso puede estar mal. Decilo así en el reporte.
 
 Sirve para dos cosas concretas: obliga a enumerar todos los estados y eventos (los casos olvidados aparecen como `match` incompletos) y deja propiedades escritas que un revisor puede leer y discutir.
 

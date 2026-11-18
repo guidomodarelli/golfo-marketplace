@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-import { BROWSER_LIBRARIES, EVIDENCE_SIDE, KIND_LABELS, TEMPLATE_PLACEHOLDER } from './flow-graph-constants.mjs';
+import { BROWSER_LIBRARIES, EVIDENCE_SIDE, FLOW_SOURCE, KIND_LABELS, SOURCE_WORDING, TEMPLATE_PLACEHOLDER } from './flow-graph-constants.mjs';
+import { getFlowSource, getFlowTitle } from './flow-source.mjs';
 
 const TEMPLATE_PATH = fileURLToPath(new URL('../../assets/flow-graph-template.html', import.meta.url));
 const GITHUB_DIFF_SIDE_MARKER = { [EVIDENCE_SIDE.base]: 'L', [EVIDENCE_SIDE.head]: 'R' };
@@ -29,9 +30,11 @@ export function renderFlowGraphHtml(model, { leanSource, inlinedLibraries = new 
     ...(verification ? { verification } : {}),
     ...(leanSource ? { formalModel: { language: 'lean4', source: leanSource } } : {}),
   };
+  const title = getFlowTitle(model);
   // Function replacers: the replacement text may contain `$`, which a string replacement expands.
   return readFileSync(TEMPLATE_PATH, 'utf8')
-    .replaceAll(TEMPLATE_PLACEHOLDER.title, () => escapeHtml(model.pullRequest.title))
+    .replaceAll(TEMPLATE_PLACEHOLDER.documentTitle, () => escapeHtml(`${SOURCE_WORDING[getFlowSource(model)].pageTitlePrefix} — ${title}`))
+    .replaceAll(TEMPLATE_PLACEHOLDER.title, () => escapeHtml(title))
     .replace(TEMPLATE_PLACEHOLDER.libraries, () => renderLibraryTags(inlinedLibraries))
     .replace(TEMPLATE_PLACEHOLDER.model, () => serializeForScriptTag(pageModel));
 }
@@ -49,7 +52,9 @@ export function buildGithubDiffUrl(pullRequestUrl, evidence) {
   return `${pullRequestUrl}/files#diff-${fileAnchor}${sideMarker}${evidence.line}`;
 }
 
+/** Links each evidence line to the diff of the pull request; an RFC has no diff to link to yet. */
 function withEvidenceLinks(model) {
+  if (getFlowSource(model) === FLOW_SOURCE.rfc) return model;
   const pullRequestUrl = model.pullRequest.url;
   if (!pullRequestUrl) return model;
   const linkEvidence = (element) => ({

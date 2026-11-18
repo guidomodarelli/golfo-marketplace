@@ -1,4 +1,5 @@
-import { CHANGE_STATUS, CHECK_ID, CHECK_STATUS, CONFIDENCE, KIND_LABELS } from './flow-graph-constants.mjs';
+import { CHANGE_STATUS, CHECK_ID, CHECK_STATUS, CONFIDENCE, FLOW_SOURCE, KIND_LABELS, SOURCE_WORDING } from './flow-graph-constants.mjs';
+import { getFlowSource } from './flow-source.mjs';
 
 const CHECK_STATUS_MARKS = {
   [CHECK_STATUS.passed]: '✓',
@@ -41,6 +42,31 @@ export function buildVerificationChecks({ model, repositoryStatistics, leanOutco
     detail: repositoryStatistics ? describe(repositoryStatistics) : skippedDetail,
   });
   const leanStatus = leanOutcome.included ? CHECK_STATUS.passed : leanOutcome.requested ? CHECK_STATUS.warning : CHECK_STATUS.skipped;
+  const isRfc = getFlowSource(model) === FLOW_SOURCE.rfc;
+  const coverageLabel = SOURCE_WORDING[getFlowSource(model)].coverageLabel;
+
+  // An RFC has no diff: its changes are checked against the RFC and what exists today against the code.
+  const repositoryChecks = isRfc
+    ? [
+        repositoryCheck(CHECK_ID.evidenceExists, 'Cada evidencia existe en el código o en el RFC', (statistics) =>
+          `${statistics.codeEvidenceCount} líneas de código en ${statistics.codeCommit} y ${statistics.rfcEvidenceCount} líneas de ${statistics.document}.`),
+        repositoryCheck(CHECK_ID.changeMatchesDiff, 'Cada cambio propuesto sale del RFC', (statistics) =>
+          `${statistics.changedElementCount} elementos: cada uno apunta a la línea del RFC que lo propone, y lo que ya existe, también a su código.`),
+        repositoryCheck(CHECK_ID.relationshipNamesEndpoint, 'Cada relación verificada nombra a sus extremos', (statistics) =>
+          `${statistics.verifiedRelationshipCount} relaciones: las que existen, leídas en el código; las que agrega el RFC, en el RFC.`),
+        repositoryCheck(CHECK_ID.diffCoverage, coverageLabel, (statistics) =>
+          `${statistics.sectionCount} secciones: ${statistics.sectionCount - statistics.outOfScopeSectionCount} en el grafo y ${statistics.outOfScopeSectionCount} declaradas fuera.`),
+      ]
+    : [
+        repositoryCheck(CHECK_ID.evidenceExists, 'Cada evidencia existe en el código', (statistics) =>
+          `${statistics.evidenceCount} líneas abiertas entre ${statistics.baseCommit} (antes) y ${statistics.headCommit} (después).`),
+        repositoryCheck(CHECK_ID.changeMatchesDiff, 'Cada cambio coincide con el diff', (statistics) =>
+          `${statistics.changedElementCount} elementos: lo agregado apunta a una línea agregada y lo eliminado a una eliminada.`),
+        repositoryCheck(CHECK_ID.relationshipNamesEndpoint, 'Cada relación verificada nombra a su otro extremo', (statistics) =>
+          `${statistics.verifiedRelationshipCount} relaciones leídas en el código.`),
+        repositoryCheck(CHECK_ID.diffCoverage, coverageLabel, (statistics) =>
+          `${statistics.changedFileCount} archivos cambiados: ${statistics.changedFileCount - statistics.outOfScopeFileCount} en el grafo y ${statistics.outOfScopeFileCount} declarados fuera.`),
+      ];
 
   return [
     {
@@ -49,14 +75,7 @@ export function buildVerificationChecks({ model, repositoryStatistics, leanOutco
       status: CHECK_STATUS.passed,
       detail: `${model.nodes.length} piezas, ${(model.edges ?? []).length} relaciones, ${model.businessFlow?.states.length ?? 0} estados de negocio.`,
     },
-    repositoryCheck(CHECK_ID.evidenceExists, 'Cada evidencia existe en el código', (statistics) =>
-      `${statistics.evidenceCount} líneas abiertas entre ${statistics.baseCommit} (antes) y ${statistics.headCommit} (después).`),
-    repositoryCheck(CHECK_ID.changeMatchesDiff, 'Cada cambio coincide con el diff', (statistics) =>
-      `${statistics.changedElementCount} elementos: lo agregado apunta a una línea agregada y lo eliminado a una eliminada.`),
-    repositoryCheck(CHECK_ID.relationshipNamesEndpoint, 'Cada relación verificada nombra a su otro extremo', (statistics) =>
-      `${statistics.verifiedRelationshipCount} relaciones leídas en el código.`),
-    repositoryCheck(CHECK_ID.diffCoverage, 'Ningún archivo del PR quedó sin explicar', (statistics) =>
-      `${statistics.changedFileCount} archivos cambiados: ${statistics.changedFileCount - statistics.outOfScopeFileCount} en el grafo y ${statistics.outOfScopeFileCount} declarados fuera.`),
+    ...repositoryChecks,
     { id: CHECK_ID.formalModel, label: 'Modelo formal compilado por Lean', status: leanStatus, detail: leanOutcome.detail },
     {
       id: CHECK_ID.outputs,
@@ -128,14 +147,17 @@ export function renderReport({ model, paths, checks, leanOutcome }) {
   // A value that is a nested list starts on the next line, so the label is not followed by a space.
   const field = (label, value) => `- **${label}:**${value.startsWith('\n') ? '' : ' '}${value}`;
 
+  const source = getFlowSource(model);
+  const describeOutOfScope = (entry) => (source === FLOW_SOURCE.rfc ? `sección «${entry.section}»` : `\`${entry.path}\``);
+
   const lines = [
     `**Grafo:** ${paths.html}`,
-    `**Mermaid para el PR:** ${paths.mermaid}`,
+    `**${SOURCE_WORDING[source].mermaidHeading}:** ${paths.mermaid}`,
     '',
     field('Cambios', `${countOf(CHANGE_STATUS.added, 'agregado')}, ${countOf(CHANGE_STATUS.modified, 'modificado')}, ${countOf(CHANGE_STATUS.removed, 'eliminado')} (piezas y relaciones)${model.architecture ? ` en ${model.architecture}` : ''}`),
     field('Flujo de negocio', model.businessFlow ? model.businessFlow.summary : 'sin cambios observables'),
     field('Relaciones inferidas', inferredRelationships.length === 0 ? 'ninguna' : `${inferredRelationships.length}, conviene que una persona las confirme${nestedList(inferredRelationships.map(describeRelationship))}`),
-    field('Fuera del grafo', outOfScope.length === 0 ? 'nada declarado' : nestedList(outOfScope.map((entry) => `\`${entry.path}\`: ${entry.reason}`))),
+    field('Fuera del grafo', outOfScope.length === 0 ? 'nada declarado' : nestedList(outOfScope.map((entry) => `${describeOutOfScope(entry)}: ${entry.reason}`))),
     field('Modelo formal', formalModel),
     field('Verificación', nestedList(checks.map((check) => `${CHECK_STATUS_MARKS[check.status]} ${check.label}. ${check.detail}`))),
   ];
