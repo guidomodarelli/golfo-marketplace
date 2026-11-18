@@ -44,7 +44,7 @@
     }
   ],
   "summary": {
-    "total_skills": 49,
+    "total_skills": 50,
     "agents": [
       "claude_code",
       "codex",
@@ -56,21 +56,21 @@
         "adapted": 0,
         "partial": 0,
         "incompatible": 0,
-        "unverified": 45
+        "unverified": 46
       },
       "codex": {
         "compatible": 0,
         "adapted": 1,
         "partial": 0,
         "incompatible": 0,
-        "unverified": 48
+        "unverified": 49
       },
       "hermes": {
         "compatible": 0,
         "adapted": 1,
         "partial": 0,
         "incompatible": 0,
-        "unverified": 48
+        "unverified": 49
       }
     },
     "disabled_features": 0,
@@ -672,6 +672,151 @@
           "command": "grep -rE \"AskUserQuestion|request_user_input|Monitor|Cron(Create|List|Delete)|PushNotification|TaskStop|Agent|subagent|mcp__|claude -p|codex exec|~/.claude|~/.codex|apply_patch|update_plan\" plugins/golfo-kit/skills/<skill>",
           "result": "passed",
           "evidence": "Inspección de SKILL.md y evals del 2026-10-30: la skill solo produce texto y no usa herramientas específicas de agente."
+        }
+      ],
+      "pending_verification": [
+        "Ejecutar la skill en Claude Code con un caso real.",
+        "Ejecutar la skill en Codex CLI con un caso real.",
+        "Ejecutar la skill en Hermes Agent con un caso real."
+      ]
+    },
+    {
+      "id": "claude-autofix-loop",
+      "name": "Claude Autofix Loop",
+      "version": "1.0.0",
+      "path": "plugins/golfo-kit/skills/claude-autofix-loop/SKILL.md",
+      "purpose": "Lanza el loop de auto-fix de codex-autofix-loop con el perfil de revisor claude para los hallazgos de claude[bot].",
+      "main_features": [
+        "perfil de revisor claude",
+        "punto de entrada /claude-autofix-loop"
+      ],
+      "declared_agents": null,
+      "dependencies": [
+        {
+          "name": "codex-autofix-loop (perfil claude), codex-comment-closeout",
+          "kind": "skill",
+          "required": true,
+          "agents": [
+            "claude_code",
+            "codex",
+            "hermes"
+          ]
+        },
+        {
+          "name": "`gh` y `git` en PATH",
+          "kind": "command",
+          "required": true,
+          "agents": [
+            "claude_code",
+            "codex",
+            "hermes"
+          ]
+        }
+      ],
+      "agents": {
+        "claude_code": {
+          "status": "unverified",
+          "summary": "Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Claude Code durante esta auditoría, así que su funcionamiento no está verificado.",
+          "missing_capabilities": [],
+          "alternatives_investigated": [],
+          "features": [
+            {
+              "id": "core-workflow",
+              "status": "unverified",
+              "resolution": "native",
+              "required": true,
+              "adaptation": false,
+              "required_capabilities": [
+                "lectura y edición de archivos",
+                "shell"
+              ],
+              "implementation": "Instrucciones de la skill; las capacidades por agente (monitor, cron, subagentes) las resuelve codex-autofix-loop con sus modos A-D.",
+              "fallback": "",
+              "reason": "Sin dependencias específicas detectadas por inspección; no ejecutada en Claude Code en esta auditoría.",
+              "alternatives_investigated": [],
+              "evidence": [
+                "Inspección estática (prueba static-inspection)."
+              ],
+              "tests": [
+                "static-inspection"
+              ]
+            }
+          ]
+        },
+        "codex": {
+          "status": "unverified",
+          "summary": "Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Codex CLI durante esta auditoría, así que su funcionamiento no está verificado.",
+          "missing_capabilities": [],
+          "alternatives_investigated": [],
+          "features": [
+            {
+              "id": "core-workflow",
+              "status": "unverified",
+              "resolution": "native",
+              "required": true,
+              "adaptation": false,
+              "required_capabilities": [
+                "lectura y edición de archivos",
+                "shell"
+              ],
+              "implementation": "Instrucciones de la skill; las capacidades por agente (monitor, cron, subagentes) las resuelve codex-autofix-loop con sus modos A-D.",
+              "fallback": "",
+              "reason": "Sin dependencias específicas detectadas por inspección; no ejecutada en Codex CLI en esta auditoría.",
+              "alternatives_investigated": [],
+              "evidence": [
+                "Inspección estática (prueba static-inspection)."
+              ],
+              "tests": [
+                "static-inspection"
+              ]
+            }
+          ]
+        },
+        "hermes": {
+          "status": "unverified",
+          "summary": "Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Hermes Agent durante esta auditoría, así que su funcionamiento no está verificado.",
+          "missing_capabilities": [],
+          "alternatives_investigated": [],
+          "features": [
+            {
+              "id": "core-workflow",
+              "status": "unverified",
+              "resolution": "native",
+              "required": true,
+              "adaptation": false,
+              "required_capabilities": [
+                "lectura y edición de archivos",
+                "shell"
+              ],
+              "implementation": "Instrucciones de la skill; las capacidades por agente (monitor, cron, subagentes) las resuelve codex-autofix-loop con sus modos A-D.",
+              "fallback": "",
+              "reason": "Sin dependencias específicas detectadas por inspección; no ejecutada en Hermes Agent en esta auditoría.",
+              "alternatives_investigated": [],
+              "evidence": [
+                "Inspección estática (prueba static-inspection)."
+              ],
+              "tests": [
+                "static-inspection"
+              ]
+            }
+          ]
+        }
+      },
+      "implementation": {
+        "adaptations": [],
+        "files_modified": [],
+        "fallback": "",
+        "behavior_changes": ""
+      },
+      "issues": [],
+      "tests": [
+        {
+          "id": "static-inspection",
+          "agent": "any",
+          "kind": "static",
+          "command": "grep -rE \"AskUserQuestion|request_user_input|Monitor|Cron(Create|List|Delete)|PushNotification|TaskStop|Agent|subagent|mcp__|claude -p|codex exec|~/.claude|~/.codex|apply_patch|update_plan\" plugins/golfo-kit/skills/<skill>",
+          "result": "passed",
+          "evidence": "Inspección de SKILL.md, references y scripts del 2026-10-23; las coincidencias de \"hook\" son hooks de React o de git, no hooks de agente."
         }
       ],
       "pending_verification": [

@@ -50,6 +50,23 @@ FAKE_GH
   [[ "$published" == *'<sub>🤖 Fix automático en respuesta a este comentario de Codex</sub>' ]]
 }
 
+@test "names Claude in the footer when the closed comment comes from the Claude reviewer" {
+  run bash "$CLOSEOUT" --repo acme/docs --pr 7 --comment 55 --kind inline --variant resolved --sha "$SHA" --summary "fix" --reviewer claude
+
+  [ "$status" -eq 0 ]
+  published=$(cat "$FAKE_DIR/published")
+  [[ "$published" == *'<sub>🤖 Fix automático en respuesta a este comentario de Claude</sub>' ]]
+  [[ "$published" != *'Codex'* ]]
+}
+
+@test "rejects an unknown reviewer before calling GitHub" {
+  run bash "$CLOSEOUT" --repo acme/docs --pr 7 --comment 55 --kind inline --variant failed --reviewer gemini
+
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"--reviewer must be codex or claude, got 'gemini'"* ]]
+  [ ! -s "$FAKE_DIR/calls" ]
+}
+
 @test "waits until the commit reaches the PR head before replying" {
   printf 'behind\nbehind\nidentical\n' > "$FAKE_DIR/compare"
 

@@ -13,6 +13,7 @@ setup() {
   cat > "$fake_bin/gh" <<'FAKE_GH'
 #!/usr/bin/env bash
 # Picks the answer file by request kind; line N answers the N-th call (last line repeats).
+printf '%s\n' "$*" >> "$FAKE_GH_DIR/calls.log"
 case "$*" in
   "pr view"*) kind=pr-view ;;
   "pr checks"*) kind=checks ;;
@@ -89,6 +90,18 @@ run_watcher_without_timeout() {
 
   [ "$status" -eq 0 ]
   [[ "$output" == *"EVENT comment 987"* ]]
+}
+
+@test "with --bot claude[bot] it watches the Claude reviewer instead of Codex" {
+  printf 'EMPTY\nEVENT comment 654\n' > "$FAKE_GH_DIR/pull-comments"
+
+  run_watcher --timeout-seconds 10 --max-polls 3 --bot 'claude[bot]'
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"EVENT comment 654"* ]]
+  grep -q 'pulls/42/comments.*select(.user.login=="claude\[bot\]")' "$FAKE_GH_DIR/calls.log"
+  grep -q 'pulls/42/reviews.*select(.user.login=="claude\[bot\]")' "$FAKE_GH_DIR/calls.log"
+  ! grep -q 'chatgpt-codex-connector' "$FAKE_GH_DIR/calls.log"
 }
 
 @test "exits 0 when Codex submits a new review or checks change" {

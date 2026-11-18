@@ -4,4 +4,4 @@
 
 **Qué cambió:** {{resumen}}
 
-<sub>🤖 Fix automático en respuesta a esta review de Codex · [run]({{run_url}})</sub>
+<sub>🤖 Fix automático en respuesta a esta review de {{revisor}} · [run]({{run_url}})</sub>

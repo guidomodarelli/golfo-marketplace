@@ -2,4 +2,4 @@
 
 **Qué cambió:** {{resumen}}
 
-<sub>🤖 Fix automático en respuesta a este comentario de Codex · [run]({{run_url}})</sub>
+<sub>🤖 Fix automático en respuesta a este comentario de {{revisor}} · [run]({{run_url}})</sub>

@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "skill": "codex-autofix-loop",
-  "description": "Evalúa el tope de rondas de solo tests del loop de auto-fix de Codex: `testOnlyRounds` cuenta rondas consecutivas cuyo rango `lastReviewedSha..HEAD` solo toca tests o evals, se resetea a 0 ante cualquier archivo fuera de esos patrones, y al llegar a 3 no pide otro `@codex review`, pasa el gate de CI y mergea con squash, reintentando en las vueltas siguientes si la CI está pendiente o el merge falla, aunque `MAX_REVIEW_ROUNDS` esté subido. También evalúa el tope general de rondas: al lanzar el loop no pregunta nada y usa 3 rondas por defecto, salvo que el pedido indique otro tope, y con `sin límite` no corta por rondas. Además evalúa que, al terminar la última ronda permitida, el loop no pide otra review y mergea sin preguntar tras el gate de CI (reintentando con `finalMergePending` si la CI está pendiente), y que se lanza solo al abrir un PR hacia la rama de integración, salvo capas intermedias de un stack. Por último evalúa el timeout de ronda: si Codex no publica la review de `lastReviewedSha` a tiempo, repostea `@codex review` una vez sin consumir el tope de rondas, al segundo vencimiento avisa y se auto-cancela sin mergear, y relanzar le da a la ronda un reintento más. También evalúa la review `failed`: cuenta como una review que no llegó, usa el mismo reintento, se auto-cancela sin mergear si vuelve a fallar y no confunde el estado viejo del resumen con una falla nueva.",
+  "description": "Evalúa el tope de rondas de solo tests del loop de auto-fix de Codex: `testOnlyRounds` cuenta rondas consecutivas cuyo rango `lastReviewedSha..HEAD` solo toca tests o evals, se resetea a 0 ante cualquier archivo fuera de esos patrones, y al llegar a 3 no pide otro `@codex review`, pasa el gate de CI y mergea con squash, reintentando en las vueltas siguientes si la CI está pendiente o el merge falla, aunque `MAX_REVIEW_ROUNDS` esté subido. También evalúa el tope general de rondas: al lanzar el loop no pregunta nada y usa 3 rondas por defecto, salvo que el pedido indique otro tope, y con `sin límite` no corta por rondas. Además evalúa que, al terminar la última ronda permitida, el loop no pide otra review y mergea sin preguntar tras el gate de CI (reintentando con `finalMergePending` si la CI está pendiente), y que se lanza solo al abrir un PR hacia la rama de integración, salvo capas intermedias de un stack. Por último evalúa el timeout de ronda: si Codex no publica la review de `lastReviewedSha` a tiempo, repostea `@codex review` una vez sin consumir el tope de rondas, al segundo vencimiento avisa y se auto-cancela sin mergear, y relanzar le da a la ronda un reintento más. También evalúa la review `failed`: cuenta como una review que no llegó, usa el mismo reintento, se auto-cancela sin mergear si vuelve a fallar y no confunde el estado viejo del resumen con una falla nueva. Con el perfil de revisor `claude`, evalúa que no postea `@codex review` (el push pide la ronda), reintenta un run fallido con `gh run rerun`, mergea tras una review limpia silenciosa y solo trata como hallazgos los inline de `claude[bot]`.",
   "test_cases": [
     {
       "id": "third-test-only-round-merges",
@@ -1419,6 +1419,117 @@
             "mergeo el PR ahora"
           ],
           "description": "No mergea por una review `failed`"
+        }
+      ]
+    },
+    {
+      "id": "claude-profile-silent-review-merges",
+      "description": "Perfil claude: el run del workflow de review terminó success sobre el head sin publicar nada nuevo y la CI está verde. Es una review limpia silenciosa: mergea sin postear `@codex review` y lo dice en el aviso.",
+      "input": "Usando codex-autofix-loop con el perfil de revisor `claude` en el PR #77 de `acme/widgets` (rama `feature/x`). Estado en `.codex-autofix/processed-claude-77.json`: `reviewRounds: 1`, `lastReviewedSha: 9f8e7d6`, sin ids en `inFlight`, todos los hallazgos inline de `claude[bot]` cerrados. El head actual es `9f8e7d6`. El run más nuevo del workflow `Claude Code Review` para ese head está `completed` con `conclusion: success`, y desde su `startedAt` `claude[bot]` no publicó ningún comentario (ni inline ni general). `gh pr checks` da exit 0 y no falta ningún workflow esperado. El repo permite merge commits. No ejecutes nada: describí qué hace esta vuelta.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "silenciosa|sin publicar|no public[oó] nada|silent",
+          "description": "Reconoce la review limpia silenciosa del perfil claude"
+        },
+        {
+          "type": "regex",
+          "pattern": "gh pr merge 77",
+          "description": "Mergea el PR tras el gate de CI"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "posteo @codex review",
+            "postearía @codex review",
+            "gh pr comment 77 --repo acme/widgets --body \"@codex review\""
+          ],
+          "description": "No pide la review a Codex con el perfil claude"
+        }
+      ]
+    },
+    {
+      "id": "claude-profile-new-round-without-trigger-comment",
+      "description": "Perfil claude: la vuelta pusheó fixes. La nueva ronda la pide el propio push (el workflow corre en synchronize): no postea ningún comentario y aplica la unidad de estado de la ronda.",
+      "input": "Loop de auto-fix con perfil `claude` (codex-autofix-loop) en el PR #78 de `acme/widgets`. En esta vuelta dos subagentes pushearon fixes de dos hallazgos inline de `claude[bot]`, ya cerrados con closeout. No quedan ids en `inFlight`. `reviewRounds` vale 0, el tope es 3 y `testOnlyRounds` es 0; los commits tocan `src/cart.ts`. No ejecutes nada: describí el paso de cierre de la vuelta (cómo se pide la próxima review y qué estado guardás).",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "push[^.]{0,120}(dispar|ped|pide|lanza|corre|arranca)|synchronize",
+          "description": "Explica que el push ya dispara la review del workflow"
+        },
+        {
+          "type": "regex",
+          "pattern": "reviewRounds[^.]{0,40}(1|\\+= ?1|sum)",
+          "description": "Suma la ronda en el estado"
+        },
+        {
+          "type": "regex",
+          "pattern": "reviewRequestedAt",
+          "description": "Arranca el reloj de la ronda"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "posteo @codex review",
+            "posteo `@codex review`",
+            "postear @codex review",
+            "--body \"@codex review\""
+          ],
+          "description": "No postea `@codex review`"
+        }
+      ]
+    },
+    {
+      "id": "claude-profile-failed-run-reruns-once",
+      "description": "Perfil claude: el run de review del head terminó en failure por primera vez. Lo reintenta con `gh run rerun`, sin sumar a `reviewRounds` y sin mergear.",
+      "input": "codex-autofix-loop, perfil `claude`, PR #79 de `acme/widgets`. `reviewRequestedAt` es de hace 8 minutos, `reviewTimeoutRetries: 0`, `reviewRounds: 1`. El run más nuevo del workflow `Claude Code Review` para el head actual (id 5550001) arrancó después de `reviewRequestedAt` y terminó `completed` con `conclusion: failure`; no hay otro run más nuevo de ese head. La CI de tests está verde y no hay hallazgos abiertos. No ejecutes nada: describí qué hace esta vuelta.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "gh run rerun 5550001",
+          "description": "Reintenta el run del workflow de review"
+        },
+        {
+          "type": "regex",
+          "pattern": "reviewTimeoutRetries[^.]{0,40}(1|\\+= ?1|sum)",
+          "description": "Cuenta el reintento"
+        },
+        {
+          "type": "regex",
+          "pattern": "(no|sin|nunca) (mergeo|mergear|mergea|hago (el )?merge)|sin mergear",
+          "description": "No mergea por una review fallida"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "reviewRounds: 2",
+            "reviewRounds = 2",
+            "reviewRounds pasa a 2"
+          ],
+          "description": "No consume el tope de rondas"
+        }
+      ]
+    },
+    {
+      "id": "claude-profile-ignores-non-finding-comments",
+      "description": "Perfil claude: entre los comentarios de claude[bot] hay un `No issues found` viejo y una respuesta a una mención `@claude`. Ninguno es hallazgo; solo el inline sin reply lo es.",
+      "input": "Estoy corriendo codex-autofix-loop con el perfil `claude` en el PR #80 de `acme/widgets`. `claude[bot]` tiene en el PR: (a) un comentario general `## Code review\\n\\nNo issues found. Checked for bugs and CLAUDE.md compliance.`; (b) un comentario general `**Claude finished @ana's task** — agregué el README que pediste`; (c) un comentario inline en `src/api.ts` línea 40 sin `in_reply_to_id` que dice que el `await` falta en la llamada a `save()`. `processedCommentIds` está vacío. No ejecutes nada: decime cuáles tratás como hallazgos, cuáles no y con qué comando cerrás el que corresponda después del fix.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "(\\(a\\)|No issues found).{0,300}([Nn]o (se |lo )?(es |son |cuenta|trat|reaccion|marc|respond)|ignor|descart|sin hallazgos)",
+          "description": "Descarta el `No issues found` como hallazgo"
+        },
+        {
+          "type": "regex",
+          "pattern": "(\\(b\\)|Claude finished|menci[oó]n)[^\\n]{0,160}(no (es|son|cuenta|lo trato)|ignor|descart)",
+          "description": "Descarta la respuesta a la mención `@claude`"
+        },
+        {
+          "type": "regex",
+          "pattern": "--reviewer claude",
+          "description": "Cierra con el closeout del perfil claude"
         }
       ]
     }
