@@ -1,39 +1,41 @@
 ---
 name: pr-flow-graph
 description: >-
-  Convierte un pull request en un grafo visual e interactivo del flujo que
-  toca: qué piezas de la arquitectura agregó, modificó o eliminó (vistas,
-  acciones, dispatcher, stores, servicios) y cómo cambia el flujo de negocio
-  (estados y transiciones). Genera un HTML con vistas de cambios y de negocio,
-  antes y después, y evidencia archivo:línea comprobada contra el diff, más
-  diagramas Mermaid para la descripción del PR y, si se pide, un modelo formal
-  en Lean 4 que solo se muestra si compila. Usar con /pr-flow-graph o al pedir
-  "graficá este PR", "grafo del flujo del PR", "diagrama de lo que cambia esta
-  branch", "visualizá el flujo de estos cambios", "mostrame cómo queda el flujo
-  con este PR" o "modelo formal del flujo", en cualquier stack (Android con
-  Flux o MVVM, Redux, backend). No sirve para diagramas de toda la
-  arquitectura sin un PR o diff, ni para revisar bugs del PR (eso es
-  code-review).
+  Convierte un pull request, o un RFC que propone un cambio, en un grafo
+  visual e interactivo del flujo que toca: qué piezas de la arquitectura
+  agrega, modifica o elimina (vistas, acciones, dispatcher, stores, servicios)
+  y cómo cambia el flujo de negocio (estados y transiciones). Genera un HTML
+  con vistas de cambios y de negocio, antes y después, con evidencia
+  archivo:línea comprobada contra el diff, o contra el código actual y las
+  líneas del RFC, más diagramas Mermaid y, si se pide, un modelo formal en
+  Lean 4 que solo se muestra si compila. Usar con /pr-flow-graph o al pedir
+  "graficá este PR", "diagrama de lo que cambia esta branch", "mostrame cómo
+  queda el flujo con este PR", "graficá este RFC", "cómo cambia el flujo con
+  esta propuesta", "visualizá el design doc" o "modelo formal del flujo", en
+  cualquier stack (Android con Flux o MVVM, Redux, backend). No sirve para
+  diagramas de toda la arquitectura sin un PR ni un RFC, ni para revisar bugs
+  o la calidad de la propuesta (eso es code-review).
 license: MIT
 metadata:
-  version: "1.1.1"
+  version: "1.2.0"
   author: "Guido Modarelli"
   category: "code-review"
-  tags: "pull-request, graph, flow, visualization, mermaid, elk, state-machine, lean"
+  tags: "pull-request, rfc, design-doc, graph, flow, visualization, mermaid, elk, state-machine, lean"
   command: "/pr-flow-graph"
 ---
 
 # PR Flow Graph
 
-Un PR se revisa archivo por archivo, pero se entiende como flujo. Esta skill arma ese flujo una sola vez, en un modelo JSON, y de ahí salen todas las vistas: el grafo interactivo, los diagramas Mermaid, el modelo formal y el reporte final.
+Un PR se revisa archivo por archivo, pero se entiende como flujo. Esta skill arma ese flujo una sola vez, en un modelo JSON, y de ahí salen todas las vistas: el grafo interactivo, los diagramas Mermaid, el modelo formal y el reporte final. Sirve igual para un RFC (o design doc): el cambio todavía no está en el código, pero se grafica el mismo flujo, con lo que existe hoy y lo que el RFC propone.
 
-Tu trabajo es escribir el modelo. Todo lo demás lo hace y lo comprueba `scripts/flow-graph.mjs`: abre cada línea de evidencia, la compara con el diff, cuenta los cambios y escribe el reporte. Por eso el modelo no se da por bueno hasta que el script lo acepta, y ningún número del reporte lo calculás vos.
+Tu trabajo es escribir el modelo. Todo lo demás lo hace y lo comprueba `scripts/flow-graph.mjs`: abre cada línea de evidencia, la compara con el diff (o con el código actual y el texto del RFC), cuenta los cambios y escribe el reporte. Por eso el modelo no se da por bueno hasta que el script lo acepta, y ningún número del reporte lo calculás vos.
 
 ## Entrada
 
-1. El PR es lo que sigue a `/pr-flow-graph`: un número, una URL de GitHub o una branch.
-2. Sin argumento, usá la branch actual contra su base (`gh pr view --json baseRefName,headRefName,title,url` si tiene PR; si no, la base por defecto del repo).
-3. Si no hay diff contra la base, decilo en una línea y terminá: sin cambios no hay grafo de PR.
+1. Lo que sigue a `/pr-flow-graph` es un PR (un número, una URL de GitHub o una branch) o un RFC (la ruta de su archivo, una URL o el texto pegado en el pedido).
+2. **Si es un RFC**, seguí [references/rfc.md](references/rfc.md) en lugar de los pasos 1 y 3 de abajo: ahí está cómo guardar su texto, de qué código partir y qué evidencia lleva cada elemento. Los pasos 2, 4, 5 y 6 son los mismos.
+3. Sin argumento, usá la branch actual contra su base (`gh pr view --json baseRefName,headRefName,title,url` si tiene PR; si no, la base por defecto del repo).
+4. Si no hay diff contra la base, decilo en una línea y terminá: sin cambios no hay grafo de PR. Lo mismo con un RFC cuyo texto no podés leer: no lo reconstruyas de memoria.
 
 Flags opcionales en el pedido: `--lean` (o "con modelo formal") agrega el modelo en Lean 4; `--offline` embebe la librería en el HTML.
 
@@ -86,6 +88,7 @@ node <skill>/scripts/flow-graph.mjs render pr-flow-graph/flow-graph.json --repo 
 | `does not name the other end` | Apuntá a la línea que escribe la relación. Si el código usa otro nombre para la pieza, ponelo en `symbol` del nodo. Si no existe tal línea, la relación es `inferred` con `reason`. |
 | `changed N file(s) that the model does not account for` | Agregá cada archivo como evidencia de un elemento, o listalo en `outOfScope` con su motivo. |
 | `Must be "added" because the node … is added` | Una relación que toca algo agregado es agregada; una que toca algo eliminado es eliminada. |
+| Errores que nombran el RFC (`line of the RFC`, `section(s)`, `does not exist in the code yet`) | Los explica la tabla de errores de [references/rfc.md](references/rfc.md). |
 
 No edites los archivos generados, no saltees un error y no uses `--skip-repo-check` para esquivar uno: esa opción existe solo para cuando no hay clon, y deja el grafo marcado como «sin verificar».
 
@@ -101,7 +104,7 @@ Leé `pr-flow-graph/pr-flow-graph-report.md` y pegá su contenido **tal cual** c
 
 Después del reporte podés agregar, como máximo, dos líneas propias: algo que viste en el PR y que el grafo no muestra, o una relación inferida que conviene confirmar primero.
 
-No pegues el Mermaid en el PR ni publiques nada por tu cuenta: ofrecé hacerlo y esperá la confirmación.
+No pegues el Mermaid en el PR o en el RFC ni publiques nada por tu cuenta: ofrecé hacerlo y esperá la confirmación.
 
 ## Antes de terminar
 

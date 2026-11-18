@@ -115,7 +115,7 @@ describe('validateFlowGraph', () => {
     delete model.businessFlow;
     for (const element of [...model.nodes, ...model.edges]) element.change = 'unchanged';
 
-    assert.ok(errorsOf(model).some((finding) => /does not show what the pull request changed/.test(finding.message)));
+    assert.ok(errorsOf(model).some((finding) => /does not show what changes/.test(finding.message)));
   });
 
   test('requires exactly one initial business state', () => {

@@ -81,12 +81,34 @@ export const BUSINESS_STATE_KIND = {
 };
 export const BUSINESS_STATE_KINDS = Object.values(BUSINESS_STATE_KIND);
 
-/** Side of the diff an evidence line belongs to: `base` is before the pull request, `head` after. */
+/** What the graph describes: a pull request already in the code, or an RFC that proposes a change. */
+export const FLOW_SOURCE = {
+  pullRequest: 'pull-request',
+  rfc: 'rfc',
+};
+
+/**
+ * Where an evidence line lives. In a pull request, `base` is before it and `head` after it. In an
+ * RFC, `code` is the code the RFC proposes to change and `rfc` is a line of the RFC document.
+ */
 export const EVIDENCE_SIDE = {
   base: 'base',
   head: 'head',
+  code: 'code',
+  rfc: 'rfc',
 };
 export const EVIDENCE_SIDES = Object.values(EVIDENCE_SIDE);
+/** Sides allowed by each source, the first one being the default when `side` is omitted. */
+export const EVIDENCE_SIDES_BY_SOURCE = {
+  [FLOW_SOURCE.pullRequest]: [EVIDENCE_SIDE.head, EVIDENCE_SIDE.base],
+  [FLOW_SOURCE.rfc]: [EVIDENCE_SIDE.code, EVIDENCE_SIDE.rfc],
+};
+
+/** Markdown heading level that splits an RFC into the sections the coverage check walks. */
+export const RFC_SECTION_HEADING_PATTERN = /^##\s+(.+?)\s*#*\s*$/;
+/** Lines that open or close a fenced code block; a `##` inside one is code, not a section. */
+export const MARKDOWN_FENCE_PATTERN = /^\s*(```|~~~)/;
+export const HTTPS_URL_PATTERN = /^https:\/\/\S+$/;
 
 /** Where a ref of the pull request is looked up when the clone has no local branch for it. */
 export const GIT_REMOTE_REF_PREFIX = 'origin/';
@@ -148,8 +170,15 @@ export const NAME_TOKEN_SUBSTRING_MIN_LENGTH = 5;
 /** Files listed in one message before the rest is summarised as a count. */
 export const LISTED_FILES_LIMIT = 15;
 
+/** Reader-facing words that change with the source of the graph. */
+export const SOURCE_WORDING = {
+  [FLOW_SOURCE.pullRequest]: { pageTitlePrefix: 'Flujo del PR', mermaidHeading: 'Mermaid para el PR', coverageLabel: 'Ningún archivo del PR quedó sin explicar' },
+  [FLOW_SOURCE.rfc]: { pageTitlePrefix: 'Flujo del RFC', mermaidHeading: 'Mermaid para el RFC', coverageLabel: 'Ninguna sección del RFC quedó sin explicar' },
+};
+
 /** Placeholders of `assets/flow-graph-template.html` replaced at render time. */
 export const TEMPLATE_PLACEHOLDER = {
+  documentTitle: '__FLOW_GRAPH_DOCUMENT_TITLE__',
   title: '__FLOW_GRAPH_TITLE__',
   model: '__FLOW_GRAPH_MODEL_JSON__',
   libraries: '<!-- __FLOW_GRAPH_LIBRARIES__ -->',

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Flujo del PR — __FLOW_GRAPH_TITLE__</title>
+<title>__FLOW_GRAPH_DOCUMENT_TITLE__</title>
 <style>
   /* Character of the page: warm paper and ink, with one teal "current" that marks what flows. */
   :root {
@@ -437,7 +437,7 @@
 <header>
   <div class="title-row">
     <div>
-      <p class="eyebrow">Flujo del pull request</p>
+      <p class="eyebrow" id="eyebrow"></p>
       <h1 id="title">__FLOW_GRAPH_TITLE__</h1>
     </div>
     <button type="button" class="text-button" id="toggle-panel" aria-controls="side-panel" aria-expanded="true">Detalle</button>
@@ -495,22 +495,46 @@
   const CHANGE = { added: 'added', modified: 'modified', removed: 'removed', unchanged: 'unchanged' };
   const CHECK = { passed: 'passed', skipped: 'skipped', warning: 'warning' };
   const INFERRED = 'inferred';
-  const BASE_SIDE = 'base';
   const CHANGE_LABELS = { added: 'Agregado', modified: 'Modificado', removed: 'Eliminado', unchanged: 'Sin cambios' };
   const CHANGE_COUNT_LABELS = { added: 'agregados', modified: 'modificados', removed: 'eliminados', unchanged: 'sin cambios' };
   // Every change carries a glyph as well as a colour, so it reads without colour.
   const CHANGE_GLYPHS = { added: '+', modified: '~', removed: '−', unchanged: '·' };
   const CHECK_GLYPHS = { passed: '✓', skipped: '–', warning: '!' };
   const VIEW_LABELS = { changes: 'Flujo de cambios', business: 'Flujo de negocio', formal: 'Modelo formal' };
-  const MOMENT_LABELS = { diff: 'Diferencia', before: 'Antes', after: 'Después' };
   const LIST_HEADINGS = {
     changes: { nodes: 'Piezas', relationships: 'Relaciones' },
     business: { nodes: 'Estados', relationships: 'Transiciones' },
   };
-  const VERIFICATION_CHIP = {
-    verified: { status: CHECK.passed, text: 'Verificado contra el código' },
-    unverified: { status: CHECK.warning, text: 'Sin verificar contra el código' },
+  /**
+   * Words that change with what the graph describes: a pull request, whose change is already in the
+   * code, or an RFC, whose change is only proposed. `before` and `after` keep their meaning: without
+   * what is added, and without what is removed.
+   */
+  const SOURCE_WORDING = {
+    pullRequest: {
+      eyebrow: 'Flujo del pull request',
+      moments: { diff: 'Diferencia', before: 'Antes', after: 'Después' },
+      sideTags: { base: 'antes del PR' },
+      verifiedRelationship: { code: 'Verificada en el código' },
+      noEvidence: 'Sin evidencia registrada: el PR no cambió este elemento.',
+      hideUntouched: 'Ocultar lo que el PR no tocó',
+      formalModelSource: 'a partir del PR',
+      verifiedChip: 'Verificado contra el código',
+      unverifiedChip: 'Sin verificar contra el código',
+    },
+    rfc: {
+      eyebrow: 'Flujo propuesto en un RFC',
+      moments: { diff: 'Diferencia', before: 'Hoy', after: 'Con el RFC' },
+      sideTags: { rfc: 'en el RFC' },
+      verifiedRelationship: { code: 'Verificada en el código', rfc: 'Verificada en el RFC' },
+      noEvidence: 'Sin evidencia registrada: el RFC no cambia este elemento.',
+      hideUntouched: 'Ocultar lo que el RFC no toca',
+      formalModelSource: 'a partir del RFC',
+      verifiedChip: 'Verificado contra el código y el RFC',
+      unverifiedChip: 'Sin verificar contra el código ni el RFC',
+    },
   };
+  const RFC_SIDE = 'rfc';
   // Checks that compare the model with the repository; the chip of the header answers for them.
   const REPOSITORY_CHECK_IDS = ['evidence-exists', 'change-matches-diff', 'relationship-names-endpoint', 'diff-coverage'];
   const TOUR_ICONS = { play: '▶', pause: '❚❚' };
@@ -584,6 +608,11 @@
 
   const model = JSON.parse(document.getElementById('flow-graph-model').textContent);
   const KIND_LABELS = model.kindLabels;
+  const WORDING = model.rfc ? SOURCE_WORDING.rfc : SOURCE_WORDING.pullRequest;
+  const VERIFICATION_CHIP = {
+    verified: { status: CHECK.passed, text: WORDING.verifiedChip },
+    unverified: { status: CHECK.warning, text: WORDING.unverifiedChip },
+  };
   const state = { view: VIEW.changes, moment: MOMENT.diff, hideUntouched: false, selectedId: null };
   const elementsById = new Map();
   /** Place of each drawn element in graph coordinates, to bring it into view. */
@@ -1133,17 +1162,25 @@
   }
 
   function renderEvidenceItem(item) {
-    const lastSlash = item.path.lastIndexOf('/');
+    // A line of the RFC names only its line: the file is the RFC document.
+    const itemPath = item.side === RFC_SIDE ? model.rfc.document : item.path;
+    const lastSlash = itemPath.lastIndexOf('/');
     const referenceParts = [
-      createElement('span', { className: 'evidence-directory', text: item.path.slice(0, lastSlash + 1) }),
-      createElement('span', { className: 'evidence-file', text: item.path.slice(lastSlash + 1) }),
+      createElement('span', { className: 'evidence-directory', text: itemPath.slice(0, lastSlash + 1) }),
+      createElement('span', { className: 'evidence-file', text: itemPath.slice(lastSlash + 1) }),
       createElement('span', { text: `:${item.line}` }),
     ];
     const reference = item.href
       ? createElement('a', { attributes: { href: item.href, target: '_blank', rel: 'noopener' } }, referenceParts)
       : createElement('span', {}, referenceParts);
-    const sideTag = item.side === BASE_SIDE ? [createElement('span', { className: 'side-tag', text: 'antes del PR' })] : [];
+    const sideTagText = WORDING.sideTags[item.side];
+    const sideTag = sideTagText ? [createElement('span', { className: 'side-tag', text: sideTagText })] : [];
     return createElement('li', {}, [reference, ...sideTag]);
+  }
+
+  /** In an RFC, a relationship it adds is proved by the RFC, because no code writes it yet. */
+  function verifiedRelationshipText(element) {
+    return element.change === CHANGE.added && WORDING.verifiedRelationship.rfc ? WORDING.verifiedRelationship.rfc : WORDING.verifiedRelationship.code;
   }
 
   function renderDetail() {
@@ -1165,7 +1202,7 @@
     const badges = createElement('div', { className: 'badges' }, [
       badge(element.change, CHANGE_GLYPHS[element.change], CHANGE_LABELS[element.change]),
       badge('', '', KIND_LABELS[element.kind] ?? 'Transición'),
-      ...(element.confidence ? [element.confidence === INFERRED ? badge(INFERRED, '', 'Inferida') : badge('', CHECK_GLYPHS.passed, 'Verificada en el código')] : []),
+      ...(element.confidence ? [element.confidence === INFERRED ? badge(INFERRED, '', 'Inferida') : badge('', CHECK_GLYPHS.passed, verifiedRelationshipText(element))] : []),
     ]);
     detailContainer.append(createElement('h2', { text: isRelationship ? relationshipLabel(element) : element.label }), badges);
     if (isRelationship) {
@@ -1180,7 +1217,7 @@
     detailContainer.append(createElement('h3', { text: 'Evidencia' }));
     const evidence = element.evidence ?? [];
     if (evidence.length === 0) {
-      detailContainer.append(createElement('p', { className: 'placeholder', text: 'Sin evidencia registrada: el PR no cambió este elemento.' }));
+      detailContainer.append(createElement('p', { className: 'placeholder', text: WORDING.noEvidence }));
       return;
     }
     detailContainer.append(createElement('ul', { className: 'evidence' }, evidence.map(renderEvidenceItem)));
@@ -1274,7 +1311,7 @@
 
   function renderFormalModel() {
     formalModelContainer.replaceChildren(
-      createElement('p', { text: 'Modelo en Lean 4 del flujo de negocio. Lean lo compiló sin errores y sin pruebas pendientes: las propiedades valen para este modelo, que es una abstracción del código escrita a partir del PR, no el código mismo.' }),
+      createElement('p', { text: `Modelo en Lean 4 del flujo de negocio. Lean lo compiló sin errores y sin pruebas pendientes: las propiedades valen para este modelo, que es una abstracción del flujo escrita ${WORDING.formalModelSource}, no el código mismo.` }),
       createElement('pre', {}, [createElement('code', {}, highlightLean(model.formalModel.source))]),
     );
   }
@@ -1438,7 +1475,7 @@
     const untouchedCount =
       countElements(filterElements(viewElements, { hideUntouched: false })) - countElements(filterElements(viewElements, { hideUntouched: true }));
     document.getElementById('only-changed-toggle').hidden = untouchedCount === 0 && !state.hideUntouched;
-    document.getElementById('only-changed-label').textContent = `Ocultar lo que el PR no tocó (${untouchedCount})`;
+    document.getElementById('only-changed-label').textContent = `${WORDING.hideUntouched} (${untouchedCount})`;
   }
 
   function buildSegmentedControl(containerId, labels, stateKey, pressedAttribute) {
@@ -1460,15 +1497,25 @@
   const shortRef = (ref) => (FULL_COMMIT_HASH_PATTERN.test(ref) ? ref.slice(0, SHORT_COMMIT_HASH_LENGTH) : ref);
 
   function renderSubtitle() {
-    const { pullRequest } = model;
+    document.getElementById('eyebrow').textContent = WORDING.eyebrow;
     const subtitle = document.getElementById('subtitle');
+    const architecture = model.architecture ? [` · Arquitectura: ${model.architecture}`] : [];
+    const externalLink = (text, href) => [' · ', createElement('a', { text, attributes: { href, target: '_blank', rel: 'noopener' } })];
+    if (model.rfc) {
+      const { rfc } = model;
+      subtitle.append(
+        'RFC ', createElement('code', { text: rfc.document }), ' sobre el código de ', createElement('code', { text: shortRef(rfc.codeRef) }),
+        ...architecture,
+        ...(rfc.url ? externalLink('Ver el RFC', rfc.url) : []),
+      );
+      return;
+    }
+    const { pullRequest } = model;
     subtitle.append(
       createElement('code', { text: shortRef(pullRequest.headRef) }), ' → ', createElement('code', { text: shortRef(pullRequest.baseRef) }),
-      ...(model.architecture ? [` · Arquitectura: ${model.architecture}`] : []),
+      ...architecture,
+      ...(pullRequest.url ? externalLink('Ver el pull request', pullRequest.url) : []),
     );
-    if (pullRequest.url) {
-      subtitle.append(' · ', createElement('a', { text: 'Ver el pull request', attributes: { href: pullRequest.url, target: '_blank', rel: 'noopener' } }));
-    }
   }
 
   const availableViewLabels = Object.fromEntries(
@@ -1477,7 +1524,7 @@
   renderSubtitle();
   renderVerification();
   buildSegmentedControl('view-tabs', availableViewLabels, 'view', 'aria-selected');
-  buildSegmentedControl('moment-buttons', MOMENT_LABELS, 'moment', 'aria-pressed');
+  buildSegmentedControl('moment-buttons', WORDING.moments, 'moment', 'aria-pressed');
   document.getElementById('only-changed').addEventListener('change', (event) => {
     state.hideUntouched = event.target.checked;
     render();
