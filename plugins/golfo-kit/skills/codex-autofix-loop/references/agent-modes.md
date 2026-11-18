@@ -17,7 +17,7 @@ Si falta una sola herramienta de un modo, ese modo no aplica: bajá al siguiente
 
 ## Garantías que se mantienen en todos los modos
 
-Viven en el estado del PR (`.codex-autofix/processed-<PR>.json`) y en comprobaciones síncronas contra GitHub, así que no dependen del mecanismo de espera:
+Viven en el estado del PR (`{{STATE_FILE}}`: `.codex-autofix/processed-<PR>.json` con Codex, `processed-claude-<PR>.json` con Claude) y en comprobaciones síncronas contra GitHub, así que no dependen del mecanismo de espera:
 
 - **Dedup por PR**: `processedCommentIds`, `inFlight`, `delegationReplyIds` y `outcomes` se leen y escriben igual. El loop principal sigue siendo el único escritor.
 - **Tope de rondas** (`reviewRounds` contra `{{MAX_REVIEW_ROUNDS}}`) y **tope de solo tests** (`testOnlyRounds`): persisten entre invocaciones, así que relanzar no los resetea.
@@ -34,7 +34,7 @@ El prompt tal cual, sin cambios.
 Reemplaza el paso (0) y el cron de respaldo por ciclos de un watcher acotado:
 
 1. **Armar**: lanzá en background, con aviso al terminar, el script de esta skill
-   `bash <skill-dir>/scripts/wait-for-pr-event.sh --repo {{OWNER}}/{{REPO}} --pr {{PR}} --poll-seconds {{MONITOR_POLL_SEC}} --timeout-seconds {{WATCH_TIMEOUT_SEC}}`
+   `bash <skill-dir>/scripts/wait-for-pr-event.sh --repo {{OWNER}}/{{REPO}} --pr {{PR}} --bot "{{REVIEWER_BOT}}" --poll-seconds {{MONITOR_POLL_SEC}} --timeout-seconds {{WATCH_TIMEOUT_SEC}}`
    (en Hermes: `terminal(command=..., background=true, notify=true)`; usá el nombre de parámetro que muestre el schema). Guardá el `session_id` del proceso. Debe haber **un solo** watcher vivo por PR: antes de armar otro, listá los procesos y reutilizá el existente.
 2. **Al recibir el aviso** (o con `process wait` y `timeout` ≤ `{{WATCH_TIMEOUT_SEC}}`), leé el código de salida:
    - `0` (evento) o `3` (timeout): corré **una** iteración completa del prompt desde el GUARD. El timeout cumple el rol del cron de respaldo: en esa vuelta se evalúan los TTL (`{{CODEX_ACK_TIMEOUT_MIN}}`, `{{CODEX_FIX_TTL_MIN}}`, `{{INFLIGHT_TTL_MIN}}`), el timeout de ronda (`{{REVIEW_ROUND_TIMEOUT_MIN}}`) y los reintentos de merge. Si Codex nunca publica la review, el watcher solo sale con `3`, y es esa vuelta la que hace vencer la ronda.
@@ -52,7 +52,7 @@ No uses `cronjob` como respaldo: cada disparo corre en una sesión nueva sin acc
 Mismo watcher que el modo B, pero esperado en primer plano: el turno queda ocupado por el loop y nada sobrevive al turno.
 
 1. **Esperar el evento**: corré en foreground
-   `bash <skill-dir>/scripts/wait-for-pr-event.sh --repo {{OWNER}}/{{REPO}} --pr {{PR}} --poll-seconds {{MONITOR_POLL_SEC}} --timeout-seconds {{WATCH_TIMEOUT_SEC}}`.
+   `bash <skill-dir>/scripts/wait-for-pr-event.sh --repo {{OWNER}}/{{REPO}} --pr {{PR}} --bot "{{REVIEWER_BOT}}" --poll-seconds {{MONITOR_POLL_SEC}} --timeout-seconds {{WATCH_TIMEOUT_SEC}}`.
    En Codex, con `exec_command` y un `yield_time_ms` corto: si devuelve un `session_id` porque sigue corriendo, seguí leyendo con `write_stdin` (entrada vacía) hasta obtener el código de salida, sin lanzar otro watcher. Un solo watcher vivo por PR.
 2. **Según el código de salida**, igual que el modo B: `0` o `3` → **una** iteración completa del prompt desde el GUARD (el `3` cumple el rol del cron de respaldo y evalúa TTLs, timeout de ronda y reintentos de merge); `5` → auto-cancelar y terminar; `4` o `2` → reportar la salida del script y terminar.
 3. **Repetir** tras cada iteración, contando ciclos, hasta `{{MAX_INTURN_CYCLES}}`. Así se cubre el relanzado tras `@codex review` (paso 7): el ciclo siguiente detecta la respuesta de Codex y sigue sin intervención. Con checks pendientes, el merge espera al ciclo en que la CI termine; nunca se mergea antes.

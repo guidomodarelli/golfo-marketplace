@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# Closes one Codex comment with the template of codex-comment-closeout/SKILL.md: reaction, reply with
-# the variant's template, check of the published body, and resolution of the inline thread.
+# Closes one reviewer comment (Codex or Claude) with the template of codex-comment-closeout/SKILL.md:
+# reaction, reply with the variant's template, check of the published body, and resolution of the
+# inline thread.
 #
 # Usage:
 #   closeout.sh --repo OWNER/REPO --pr N --comment ID --kind inline|general|review
 #               --variant resolved|no-change|failed [--sha SHA] [--summary TEXT] [--reason TEXT]
-#               [--review-node-id NODE_ID]
+#               [--review-node-id NODE_ID] [--reviewer codex|claude]
 #
+#   --reviewer           the bot whose comment is closed (default codex); it names the bot in the footer.
 #   --variant resolved   needs --sha (full commit sha) and --summary; waits until that commit is in the
 #                        PR head before publishing, so the link never points to a commit GitHub hides.
 #   --variant no-change  takes --reason (one line); reacts 👎 and resolves an inline thread.
@@ -20,6 +22,7 @@ set -euo pipefail
 readonly EXIT_FAILURE=1
 readonly EXIT_USAGE=2
 readonly SHORT_SHA_LENGTH=7
+readonly DEFAULT_REVIEWER=codex
 # The templates of SKILL.md live in these files, the single source for the skill and this script.
 TEMPLATE_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")/../templates" && pwd)"
 readonly TEMPLATE_DIRECTORY
@@ -27,6 +30,7 @@ wait_attempts="${CLOSEOUT_WAIT_ATTEMPTS:-12}"
 wait_seconds="${CLOSEOUT_WAIT_SECONDS:-5}"
 
 repo="" pr="" comment="" kind="" variant="" sha="" summary="" reason="" review_node_id=""
+reviewer="$DEFAULT_REVIEWER"
 
 fail() { printf 'closeout: %s\n' "$1" >&2; exit "${2:-$EXIT_FAILURE}"; }
 
@@ -41,6 +45,7 @@ while [ $# -gt 0 ]; do
     --summary) summary="${2:-}"; shift 2 ;;
     --reason) reason="${2:-}"; shift 2 ;;
     --review-node-id) review_node_id="${2:-}"; shift 2 ;;
+    --reviewer) reviewer="${2:-}"; shift 2 ;;
     *) fail "unexpected argument $1" "$EXIT_USAGE" ;;
   esac
 done
@@ -48,6 +53,12 @@ done
 [ -n "$repo" ] && [ -n "$pr" ] && [ -n "$comment" ] || fail "--repo, --pr and --comment are required" "$EXIT_USAGE"
 case "$kind" in inline|general|review) ;; *) fail "--kind must be inline, general or review" "$EXIT_USAGE" ;; esac
 case "$variant" in resolved|no-change|failed) ;; *) fail "--variant must be resolved, no-change or failed" "$EXIT_USAGE" ;; esac
+# Name the footer of the templates gives the reviewer bot.
+case "$reviewer" in
+  codex) reviewer_name="Codex" ;;
+  claude) reviewer_name="Claude" ;;
+  *) fail "--reviewer must be codex or claude, got '$reviewer'" "$EXIT_USAGE" ;;
+esac
 if [ "$variant" = "resolved" ]; then
   [ -n "$sha" ] && [ -n "$summary" ] || fail "--variant resolved needs --sha and --summary" "$EXIT_USAGE"
 fi
@@ -87,11 +98,12 @@ build_body() {
   fi
   CLOSEOUT_SHORT_SHA="${sha:0:$SHORT_SHA_LENGTH}" CLOSEOUT_COMMIT_URL="https://github.com/$repo/commit/$sha" \
     CLOSEOUT_SUMMARY="$summary" CLOSEOUT_REASON="$reason" CLOSEOUT_QUOTE="$quote" CLOSEOUT_RUN_URL="${CLOSEOUT_RUN_URL:-}" \
+    CLOSEOUT_REVIEWER_NAME="$reviewer_name" \
     awk '
       BEGIN {
         values["sha_corto"] = ENVIRON["CLOSEOUT_SHORT_SHA"]; values["commit_url"] = ENVIRON["CLOSEOUT_COMMIT_URL"]
         values["resumen"] = ENVIRON["CLOSEOUT_SUMMARY"]; values["motivo"] = ENVIRON["CLOSEOUT_REASON"]
-        values["run_url"] = ENVIRON["CLOSEOUT_RUN_URL"]
+        values["run_url"] = ENVIRON["CLOSEOUT_RUN_URL"]; values["revisor"] = ENVIRON["CLOSEOUT_REVIEWER_NAME"]
       }
       # One left-to-right pass over the template line: an inserted value is never scanned again, so a
       # summary or reason that mentions "{{motivo}}" stays literal instead of expanding forever.

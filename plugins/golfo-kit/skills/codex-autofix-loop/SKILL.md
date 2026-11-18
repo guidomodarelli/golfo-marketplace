@@ -1,16 +1,21 @@
 ---
 name: codex-autofix-loop
-description: "Lanza y opera el loop que auto-fixea comentarios de Codex (chatgpt-codex-connector[bot]) en un PR: clone efímero → fix → push → closeout del hilo, o `@codex fix` en el propio hilo (modos `codex`/`auto` con fallback local), con dedup por PR, tope de rondas, timeout por ronda, guard de auto-cancelación y merge sin preguntar ni esperar revisión humana tras el gate de CI, también al terminar la última ronda. Lanzarlo solo, sin que lo pidan, apenas el agente abre un PR con `gh pr create`. Adapta la espera a cada agente (Monitor en Claude Code, watcher en background en Hermes, en foreground en Codex, o una ronda por invocación). Para un solo comentario de Codex alcanza con `codex-comment-closeout`. Use when the user asks to relaunch/start the Codex auto-fix loop for a PR, right after the agent opens a pull request (gh pr create) even if nobody asked, set up Codex comment auto-fixing, mentions docs/codex-autofix-loop.md, processed-PR.json, or the codex-autofix workflow."
+description: "Lanza y opera el loop que auto-fixea los comentarios de un revisor bot en un PR, Codex (chatgpt-codex-connector[bot], default) o Claude (claude[bot], perfil `claude`): clone efímero → fix → push → closeout del hilo, o `@codex fix` en el hilo (modos `codex`/`auto`), con dedup por PR, tope de rondas, timeout por ronda, guard de auto-cancelación y merge sin preguntar ni esperar revisión humana tras el gate de CI, también al terminar la última ronda. Lanzarlo solo, sin que lo pidan, apenas el agente abre un PR con `gh pr create`. Adapta la espera a cada agente (Monitor en Claude Code, watcher en Hermes o Codex, o una ronda por invocación). Para un solo comentario alcanza con `codex-comment-closeout`. Use when the user asks to relaunch/start the Codex or Claude auto-fix loop for a PR, right after the agent opens a pull request (gh pr create) even if nobody asked, set up reviewer comment auto-fixing, mentions docs/codex-autofix-loop.md, processed-PR.json, or the codex-autofix workflow."
 license: MIT
 metadata:
-  version: "1.8.1"
+  version: "1.9.0"
   author: "Guido Modarelli"
   category: "code-review"
-  tags: "code-review, codex, pull-request, autofix, convergence"
+  tags: "code-review, codex, claude, pull-request, autofix, convergence"
   command: "/codex-autofix-loop"
 ---
 
-# Codex auto-fix loop (local, vía Claude Code)
+# Auto-fix loop de revisores bot (Codex y Claude)
+
+> El texto de este skill nombra a Codex porque es el perfil de revisor default. Con otro revisor
+> (por ejemplo Claude, vía `claude-autofix-loop`), las reglas son las mismas y solo cambian los
+> puntos de «Perfiles de revisor»: donde dice Codex, `@codex review` o su estado JSON, usá lo que
+> define el perfil.
 
 Loop local que escucha comentarios de **Codex** (`chatgpt-codex-connector[bot]`)
 en un PR y **spawnea subagentes en paralelo** (uno por GRUPO de archivo, tantos
@@ -37,6 +42,37 @@ Cubre **tres fuentes** de comentarios de Codex:
 1. **Inline** (`pulls/{pr}/comments`): atados a un `path` + `line`; closeout = 👍 + reply en el hilo + resolver el hilo.
 2. **Generales** (`issues/{pr}/comments`): comentarios sueltos del PR; closeout = 👍 + reply.
 3. **Review-body de primer nivel** (`pulls/{pr}/reviews`, anchor `#pullrequestreview-…`): el resumen que Codex postea al enviar una review. Se procesa **solo cuando el body trae una sugerencia accionable real** (no un mero resumen). Closeout = 👍 + **quote reply** (citando el body). Cuando el review-body **y todos sus comments inline** quedan resueltos, se **minimiza la review con estado `RESOLVED`** (queda oculta/colapsada). `PullRequestReview` implementa `Reactable` y `Minimizable`, así que reacción y minimize van por GraphQL sobre su `node_id`.
+
+## Perfiles de revisor
+
+El flujo de este loop es uno solo para cualquier revisor bot: triage, fan-out, closeout, topes,
+gate de CI y merge viven en este `SKILL.md` y en `references/prompt-template.md`. Lo que cambia de
+un revisor a otro son estos **puntos de variación**, y cada perfil los define en
+`references/reviewers/<perfil>.md`:
+
+| Punto de variación | Qué define el perfil |
+|---|---|
+| Bot | `{{REVIEWER_BOT}}`, el login cuyos comentarios se procesan |
+| Estado y monitor | `{{STATE_FILE}}` y `{{MONITOR_LABEL}}`, uno por perfil para que dos loops no compartan dedup |
+| Fuentes de hallazgos | Qué comentarios son hallazgos y cuáles se descartan (resúmenes, receipts, respuestas) |
+| Pedido de review y ack | Cómo se pide la review de una ronda y qué prueba que el revisor la tomó |
+| Review terminada, fallida y limpia | La evidencia que usan el timeout de ronda, el fin de la última ronda y la terminación por review limpia |
+| Severidad | Cómo leer la severidad para el triage |
+| Modos de fix | Qué valores de `{{FIX_MODE}}` admite |
+| Cierre | `closeout.sh --reviewer <perfil>` |
+
+Perfiles:
+
+- **`codex`** (default): [references/reviewers/codex.md](references/reviewers/codex.md). Es el
+  perfil con el que está escrito el prompt.
+- **`claude`**: [references/reviewers/claude.md](references/reviewers/claude.md). Procesa los
+  hallazgos de `claude[bot]` que publica el workflow de `anthropics/claude-code-action` con el
+  plugin `code-review --comment`. Lo lanza la skill
+  [`claude-autofix-loop`](../claude-autofix-loop/SKILL.md). Leé su perfil antes de la primera vuelta.
+
+Un perfil nuevo es otro archivo en `references/reviewers/` que completa la tabla; el flujo no se
+copia. Un PR tiene **un solo loop vivo**, sea del revisor que sea: si ya corre el de otro perfil, no
+armes otro y decilo en una línea, porque dos loops mergeando el mismo PR compiten.
 
 ## Cierre de cada comentario
 
@@ -262,9 +298,10 @@ esperando la review de Codex sin nadie que procese sus comentarios.
 1. Leé el PR recién creado con `gh pr view <url-devuelta> --json number,headRefName,baseRefName,isDraft`
    y tomá de ahí `{{OWNER}}/{{REPO}}`, `{{PR}}` y `{{BRANCH}}`.
 2. Seguí «Cómo relanzarlo» con el tope del paso 0 (por defecto
-   `{{DEFAULT_MAX_REVIEW_ROUNDS}}`) y el modo de «Compatibilidad entre agentes». Si Codex
-   no hace la review automática, el paso (2-ter) del prompt la pide.
-3. En el cierre del flujo que abrió el PR, reportá una línea: «Loop de Codex lanzado
+   `{{DEFAULT_MAX_REVIEW_ROUNDS}}`), el perfil del paso 0-ter y el modo de «Compatibilidad
+   entre agentes». Si el revisor no hace la review automática, el paso (2-ter) del prompt la
+   pide o arranca su reloj.
+3. En el cierre del flujo que abrió el PR, reportá una línea: «Loop de <revisor> lanzado
    para el PR #N (tope R rondas)».
 
 No lo lances, y decí en una línea por qué, cuando:
@@ -302,12 +339,20 @@ No lo lances, y decí en una línea por qué, cuando:
      (con los métodos del repo y de las reglas). Al llegar al merge se trata como un merge
      fallido: aviso una vez y loop vivo. No cambies la configuración del repo sin que el usuario
      lo pida.
+0-ter. Definí `{{REVIEWER}}`, también **sin preguntar**, en este orden:
+   - El que pida el usuario o la skill que lanzó el loop (`claude-autofix-loop` fija `claude`).
+   - Si no, el que realmente revisa el repo: `claude` si `.github/workflows/` del head tiene el
+     workflow de `anthropics/claude-code-action` con `code-review` (perfil `claude`) y ningún PR
+     reciente del repo tiene comentarios de `chatgpt-codex-connector[bot]`; si no, `codex`.
+   - Con el perfil elegido, completá sus valores derivados: `{{REVIEWER_NAME}}` (`Codex` o
+     `Claude`), `{{REVIEWER_BOT}}`, `{{STATE_FILE}}` y `{{MONITOR_LABEL}}` (tabla del perfil) y, con
+     `claude`, `{{CLAUDE_REVIEW_WORKFLOW}}`. Leé el archivo del perfil si no es `codex`.
 1. Reemplazá los placeholders del prompt de `references/prompt-template.md` (`{{OWNER}}`, `{{REPO}}`,
-   `{{PR}}`, `{{BRANCH}}`, `{{MERGE_FLAG}}`) por los del PR objetivo.
-2. Inicializá el estado de dedup del PR (vacío procesa todo el backlog; con ids
+   `{{PR}}`, `{{BRANCH}}`, `{{MERGE_FLAG}}` y los del perfil) por los del PR objetivo.
+2. Inicializá el estado de dedup del PR en `{{STATE_FILE}}` (vacío procesa todo el backlog; con ids
    ya cargados procesa solo los nuevos):
    ```
-   .codex-autofix/processed-{{PR}}.json  ->  {"pr":{{PR}},"processedCommentIds":[],"inFlight":{},"codexAttempts":{},"delegationReplyIds":[],"reviewRounds":0,"testOnlyRounds":0,"testOnlyHeadSha":null,"lastReviewedSha":null,"reviewRequestedAt":null,"reviewTimeoutRetries":0,"reviewTimedOut":false,"finalMergePending":false,"awaitingUser":null,"outcomes":{}}
+   {{STATE_FILE}}  ->  {"pr":{{PR}},"processedCommentIds":[],"inFlight":{},"codexAttempts":{},"delegationReplyIds":[],"reviewRounds":0,"testOnlyRounds":0,"testOnlyHeadSha":null,"lastReviewedSha":null,"reviewRequestedAt":null,"reviewTimeoutRetries":0,"reviewTimedOut":false,"finalMergePending":false,"awaitingUser":null,"outcomes":{}}
    ```
    (`inFlight` registra los comentarios que tienen un subagente o un pedido
    `@codex fix` trabajando; `codexAttempts` cuenta los pedidos a Codex por comment id;
@@ -342,6 +387,11 @@ No lo lances, y decí en una línea por qué, cuando:
 
 > **Variables globales del loop** (única fuente de verdad — cambiá SOLO estos
 > números y se propagan a todo el documento):
+> - `{{REVIEWER}}` = `codex` (default) o `claude` — perfil de revisor (paso 0-ter de «Cómo
+>   relanzarlo» y «Perfiles de revisor»). De él salen `{{REVIEWER_NAME}}`, `{{REVIEWER_BOT}}`,
+>   `{{STATE_FILE}}` y `{{MONITOR_LABEL}}`, que no se editan a mano.
+> - `{{CLAUDE_REVIEW_WORKFLOW}}` = `Claude Code Review` — `name:` del workflow que revisa con
+>   Claude; solo lo usa el perfil `claude`, que lo detecta en el repo al lanzar.
 > - `{{INTERVAL_MIN}}` = `3` — minutos entre corridas del cron de respaldo (el disparador principal es el Monitor del PR).
 > - Costo estimado de UN subagente (clone efímero + install + tests), usado para
 >   calcular cuántos caben en paralelo según recursos libres:

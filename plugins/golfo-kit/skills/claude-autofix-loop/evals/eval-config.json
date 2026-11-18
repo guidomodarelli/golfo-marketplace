@@ -1,0 +1,85 @@
+{
+  "schema_version": 2,
+  "skill": "claude-autofix-loop",
+  "description": "Evalúa que claude-autofix-loop lance el loop centralizado de codex-autofix-loop con el perfil de revisor `claude`: estado y monitor propios, closeout con `--reviewer claude`, sin `@codex review`, fix solo local, que un link a un comentario de claude[bot] identifique el PR completo, y que no lance el loop si el repo no tiene el workflow de review de Claude.",
+  "test_cases": [
+    {
+      "id": "launch-from-comment-link-uses-claude-profile",
+      "description": "Con un link a un comentario `## Code review` de claude[bot], lanza el loop del PR entero con el perfil claude: estado processed-claude, monitor claude-autofix y closeout con --reviewer claude.",
+      "input": "Corré /claude-autofix-loop y fixeá los comments de claude https://github.com/acme/widgets/pull/211#issuecomment-6981654829 . El repo tiene `.github/workflows/claude-code-review.yml` con `name: Claude Code Review`, que corre `anthropics/claude-code-action@v1` con `prompt: \"/code-review:code-review --comment ...\"`. El PR #211 está abierto, base `main`, rama `feature/config`. No ejecutes nada: describí el setup del loop que harías (estado, monitor, cómo se piden las reviews y cómo cerrás cada hallazgo).",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "processed-claude-211",
+          "description": "Usa el archivo de estado del perfil claude"
+        },
+        {
+          "type": "regex",
+          "pattern": "claude-autofix PR #211",
+          "description": "Arma el monitor con la etiqueta del perfil claude"
+        },
+        {
+          "type": "regex",
+          "pattern": "--reviewer claude",
+          "description": "Cierra los hallazgos con el closeout del perfil claude"
+        },
+        {
+          "type": "regex",
+          "pattern": "(todos|todas|backlog|pendientes)[^.]{0,80}(hallazgos|comentarios)|no solo (ese|el) comentario",
+          "description": "Procesa todos los hallazgos pendientes del PR, no solo el comentario linkeado"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "gh pr comment 211 --repo acme/widgets --body \"@codex review\"",
+            "posteo @codex review",
+            "postear @codex review"
+          ],
+          "description": "No pide reviews a Codex"
+        }
+      ]
+    },
+    {
+      "id": "no-claude-review-workflow-does-not-launch",
+      "description": "Sin workflow de review de Claude en el repo, no lanza el loop y lo dice.",
+      "input": "Corré /claude-autofix-loop en el PR #45 de `acme/billing`. En `.github/workflows/` solo están `tests.yml` y `release.yml`; ninguno usa `anthropics/claude-code-action`. No ejecutes nada: decime qué harías.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "(no (lanzo|lanzaría|arranco|arrancaría|armo|armaría|voy a lanzar)|sin lanzar)[^.]{0,80}loop|no (hay|tiene)[^.]{0,80}(workflow|claude-code-action)",
+          "description": "Declara que no lanza el loop por falta del workflow de review"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "CronCreate",
+            "processed-claude-45.json  ->"
+          ],
+          "description": "No arma cron ni estado"
+        }
+      ]
+    },
+    {
+      "id": "fix-mode-delegation-falls-back-to-local",
+      "description": "Si piden delegar los fixes con menciones, el perfil claude usa fix local y lo avisa.",
+      "input": "Lanzá claude-autofix-loop en el PR #12 de `acme/web` (tiene el workflow `Claude Code Review` con el plugin code-review y otro `claude.yml` que responde a menciones @claude con permiso de escritura). Quiero FIX_MODE auto, que le pidas a Claude por mención que fixee cada hallazgo. No ejecutes nada: describí cómo aplicarías los fixes.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "local",
+          "description": "Aplica los fixes con el modo local"
+        },
+        {
+          "type": "regex",
+          "pattern": "fix-in-ephemeral-clone|clone ef[ií]mero",
+          "description": "Usa el clone efímero para cada fix"
+        },
+        {
+          "type": "regex",
+          "pattern": "(solo|sólo|únicamente) (admite|soporta|acepta|permite)[^.]{0,40}local|no (admite|soporta|acepta|permite)[^.]{0,60}(auto|menci|delega)",
+          "description": "Avisa que el perfil claude solo admite fix local"
+        }
+      ]
+    }
+  ]
+}

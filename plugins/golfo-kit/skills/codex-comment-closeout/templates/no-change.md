@@ -2,4 +2,4 @@
 
 **Motivo:** {{motivo}}
 
-<sub>🤖 Auto-fix de Codex · [run]({{run_url}})</sub>
+<sub>🤖 Auto-fix de {{revisor}} · [run]({{run_url}})</sub>
