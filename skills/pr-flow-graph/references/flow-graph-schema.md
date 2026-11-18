@@ -20,7 +20,7 @@ Contrato del modelo intermedio. `scripts/lib/validate-flow-graph.mjs` lo valida 
 - `pullRequest.url` es opcional. Con una URL de GitHub, cada evidencia del grafo enlaza a esa línea en «Files changed».
 - `architecture` es texto libre: el nombre del perfil de `architecture-profiles.md` o una descripción corta.
 - `groups`, `edges`, `businessFlow` y `outOfScope` son opcionales.
-- Los `id` van en kebab-case y son únicos dentro de su lista.
+- Los `id` van en kebab-case y son únicos dentro de su lista. Además, una relación no repite el `id` de un nodo, ni una transición el de un estado: la página los muestra en la misma vista.
 
 ## Nodos
 
@@ -127,7 +127,7 @@ Los `label` y `trigger` se escriben como los diría alguien de producto, sin nom
 
 Errores (bloquean el render):
 
-- Identificadores duplicados, mal formados o referencias a nodos, grupos o estados que no existen.
+- Identificadores duplicados, mal formados, compartidos entre una relación y un nodo (o entre una transición y un estado), o referencias a nodos, grupos o estados que no existen.
 - Un elemento cambiado, o una relación `verified`, sin evidencia.
 - Una relación `inferred` sin `reason`.
 - Ningún elemento marcado como agregado, modificado o eliminado.
