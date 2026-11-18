@@ -464,11 +464,39 @@
           "type": "not_contains_any",
           "values": [
             "^ *git push",
-            "gh pr edit.*--title",
+            "gh pr edit.*--title *[\"'=]",
             "> *docs/jira-notes",
             "chat\\.postMessage"
           ],
           "description": "No-mutation: no incluye comandos de push, edición de título, escritura del archivo ni publicación en Slack como pasos."
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "^[ >*#0-9.)-]*\\(Pusheo\\|Hago \\(el \\|un \\)\\{0,1\\}push\\|Subo la rama\\|Actualizo la rama\\|Fuerzo \\)"
+          ],
+          "description": "No-mutation: no planea subir o forzar la rama como paso propio."
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "^[ >*#0-9.)-]*\\(Cambio\\|Actualizo\\|Edito\\|Renombro\\) \\(el \\)\\{0,1\\}t[ií]tulo"
+          ],
+          "description": "No-mutation: no planea cambiar el título del PR como paso propio."
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "^[ >*#0-9.)-]*\\(Guardo\\|Escribo\\|Creo\\|Agrego\\) .*\\(jira-notes\\|resumen en \\)"
+          ],
+          "description": "No-mutation: no planea escribir el archivo del repositorio como paso propio."
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "^[ >*#0-9.)-]*\\(Publico\\|Env[ií]o\\|Posteo\\|Comparto\\) .*\\(Slack\\|canal\\)"
+          ],
+          "description": "No-mutation: no planea publicar en Slack como paso propio."
         },
         {
           "type": "contains",
