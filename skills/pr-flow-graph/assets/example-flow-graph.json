@@ -1,0 +1,226 @@
+{
+  "schemaVersion": 1,
+  "pullRequest": {
+    "title": "Agregar productos a favoritos desde el detalle",
+    "url": "https://github.com/example-org/shop-android/pull/128",
+    "baseRef": "main",
+    "headRef": "feature/favorites-from-detail"
+  },
+  "architecture": "flux-unidirectional",
+  "groups": [
+    { "id": "ui", "label": "UI" },
+    { "id": "flux", "label": "Flux" },
+    { "id": "data", "label": "Datos" }
+  ],
+  "nodes": [
+    {
+      "id": "product-detail-screen",
+      "label": "ProductDetailFragment",
+      "kind": "view",
+      "group": "ui",
+      "change": "modified",
+      "summary": "Muestra el botón de favorito y refleja su estado.",
+      "evidence": [{ "path": "app/src/main/java/shop/detail/ProductDetailFragment.kt", "line": 74 }]
+    },
+    {
+      "id": "toggle-favorite-action",
+      "label": "ToggleFavoriteAction",
+      "kind": "action",
+      "group": "flux",
+      "change": "added",
+      "summary": "Pide marcar o desmarcar un producto como favorito.",
+      "evidence": [{ "path": "app/src/main/java/shop/favorites/FavoritesActions.kt", "line": 12 }]
+    },
+    {
+      "id": "dispatcher",
+      "label": "Dispatcher",
+      "kind": "dispatcher",
+      "group": "flux",
+      "change": "unchanged"
+    },
+    {
+      "id": "favorites-store",
+      "label": "FavoritesStore",
+      "kind": "store",
+      "group": "flux",
+      "change": "added",
+      "summary": "Guarda qué productos son favoritos y el estado de la última operación.",
+      "evidence": [{ "path": "app/src/main/java/shop/favorites/FavoritesStore.kt", "line": 21 }]
+    },
+    {
+      "id": "favorites-repository",
+      "label": "FavoritesRepository",
+      "kind": "service",
+      "group": "data",
+      "change": "added",
+      "evidence": [{ "path": "app/src/main/java/shop/favorites/FavoritesRepository.kt", "line": 9 }]
+    },
+    {
+      "id": "favorites-api",
+      "label": "PUT /favorites/{productId}",
+      "kind": "external",
+      "group": "data",
+      "change": "unchanged"
+    },
+    {
+      "id": "legacy-wishlist-client",
+      "label": "WishlistClient",
+      "kind": "service",
+      "group": "data",
+      "change": "removed",
+      "summary": "Cliente anterior que el detalle llamaba sin pasar por el store.",
+      "evidence": [{ "path": "app/src/main/java/shop/wishlist/WishlistClient.kt", "line": 1, "side": "base" }]
+    }
+  ],
+  "edges": [
+    {
+      "id": "screen-dispatches-toggle",
+      "source": "product-detail-screen",
+      "target": "toggle-favorite-action",
+      "kind": "dispatches",
+      "label": "tap en favorito",
+      "change": "added",
+      "confidence": "verified",
+      "evidence": [{ "path": "app/src/main/java/shop/detail/ProductDetailFragment.kt", "line": 91 }]
+    },
+    {
+      "id": "action-reaches-dispatcher",
+      "source": "toggle-favorite-action",
+      "target": "dispatcher",
+      "kind": "dispatches",
+      "change": "added",
+      "confidence": "verified",
+      "evidence": [{ "path": "app/src/main/java/shop/favorites/FavoritesActions.kt", "line": 18 }]
+    },
+    {
+      "id": "dispatcher-notifies-store",
+      "source": "dispatcher",
+      "target": "favorites-store",
+      "kind": "updates",
+      "change": "added",
+      "confidence": "inferred",
+      "reason": "El store se registra en el dispatcher por inyección de dependencias; no hay una llamada directa en el diff.",
+      "evidence": [{ "path": "app/src/main/java/shop/di/StoreModule.kt", "line": 33 }]
+    },
+    {
+      "id": "store-calls-repository",
+      "source": "favorites-store",
+      "target": "favorites-repository",
+      "kind": "calls",
+      "change": "added",
+      "confidence": "verified",
+      "evidence": [{ "path": "app/src/main/java/shop/favorites/FavoritesStore.kt", "line": 40 }]
+    },
+    {
+      "id": "repository-requests-api",
+      "source": "favorites-repository",
+      "target": "favorites-api",
+      "kind": "requests",
+      "change": "added",
+      "confidence": "verified",
+      "evidence": [{ "path": "app/src/main/java/shop/favorites/FavoritesRepository.kt", "line": 15 }]
+    },
+    {
+      "id": "screen-observes-store",
+      "source": "favorites-store",
+      "target": "product-detail-screen",
+      "kind": "observes",
+      "label": "emite el estado",
+      "change": "added",
+      "confidence": "verified",
+      "evidence": [{ "path": "app/src/main/java/shop/detail/ProductDetailFragment.kt", "line": 58 }]
+    },
+    {
+      "id": "screen-calls-wishlist",
+      "source": "product-detail-screen",
+      "target": "legacy-wishlist-client",
+      "kind": "calls",
+      "change": "removed",
+      "confidence": "verified",
+      "evidence": [{ "path": "app/src/main/java/shop/detail/ProductDetailFragment.kt", "line": 83, "side": "base" }]
+    }
+  ],
+  "businessFlow": {
+    "summary": "Desde el detalle de un producto se lo puede marcar como favorito; si el guardado falla, se avisa y se puede reintentar.",
+    "states": [
+      {
+        "id": "not-favorite",
+        "label": "No es favorito",
+        "kind": "initial",
+        "change": "unchanged",
+        "nodeIds": ["product-detail-screen"]
+      },
+      {
+        "id": "saving",
+        "label": "Guardando",
+        "kind": "normal",
+        "change": "added",
+        "nodeIds": ["favorites-store"],
+        "evidence": [{ "path": "app/src/main/java/shop/favorites/FavoritesStore.kt", "line": 36 }]
+      },
+      {
+        "id": "favorite",
+        "label": "Es favorito",
+        "kind": "success",
+        "change": "modified",
+        "evidence": [{ "path": "app/src/main/java/shop/favorites/FavoritesStore.kt", "line": 47 }]
+      },
+      {
+        "id": "save-failed",
+        "label": "No se pudo guardar",
+        "kind": "error",
+        "change": "added",
+        "evidence": [{ "path": "app/src/main/java/shop/favorites/FavoritesStore.kt", "line": 52 }]
+      }
+    ],
+    "transitions": [
+      {
+        "id": "tap-favorite",
+        "source": "not-favorite",
+        "target": "saving",
+        "trigger": "Tocar el corazón",
+        "change": "added",
+        "confidence": "verified",
+        "evidence": [{ "path": "app/src/main/java/shop/detail/ProductDetailFragment.kt", "line": 91 }]
+      },
+      {
+        "id": "save-succeeds",
+        "source": "saving",
+        "target": "favorite",
+        "trigger": "La API responde 200",
+        "change": "added",
+        "confidence": "verified",
+        "evidence": [{ "path": "app/src/main/java/shop/favorites/FavoritesStore.kt", "line": 47 }]
+      },
+      {
+        "id": "save-fails",
+        "source": "saving",
+        "target": "save-failed",
+        "trigger": "La API falla",
+        "guard": "sin red o 5xx",
+        "change": "added",
+        "confidence": "verified",
+        "evidence": [{ "path": "app/src/main/java/shop/favorites/FavoritesStore.kt", "line": 52 }]
+      },
+      {
+        "id": "retry-save",
+        "source": "save-failed",
+        "target": "saving",
+        "trigger": "Reintentar",
+        "change": "added",
+        "confidence": "inferred",
+        "reason": "El snackbar de error muestra la acción «Reintentar», pero su handler está en un archivo que el diff no incluye.",
+        "evidence": [{ "path": "app/src/main/res/values/strings.xml", "line": 112 }]
+      },
+      {
+        "id": "untap-favorite",
+        "source": "favorite",
+        "target": "not-favorite",
+        "trigger": "Tocar el corazón de nuevo",
+        "change": "unchanged",
+        "confidence": "verified",
+        "evidence": [{ "path": "app/src/main/java/shop/detail/ProductDetailFragment.kt", "line": 96 }]
+      }
+    ]
+  }
+}

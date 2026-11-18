@@ -70,10 +70,12 @@ jobs:
         run: |
           python3 -m pip install --user pytest
           pnpm run test:jira-ticket
-      - name: Install Chromium for the user-manual browser suite
+      - name: Install Chromium for the user-manual and pr-flow-graph browser suites
         run: pnpm exec playwright-core install --with-deps chromium
       - name: User manual suites (validators and real browser)
         run: pnpm run test:user-manual
+      - name: PR flow graph suites (model, renderers and real browser)
+        run: pnpm run test:pr-flow-graph
 
   agent-ready-linux:
     name: Agent Ready (ubuntu-latest)
