@@ -14,6 +14,11 @@
             "type": "command",
             "command": "bash .agents/hooks/sync-marketplace.sh --provider claude",
             "statusMessage": "Sincronizando configuración Agent Ready con marketplace…"
+          },
+          {
+            "type": "command",
+            "command": "bash .agents/hooks/learning-hook.sh --provider claude --event session-start",
+            "statusMessage": "Leyendo lo aprendido del proyecto…"
           }
         ]
       }
@@ -25,6 +30,11 @@
             "type": "command",
             "command": "sh .agents/hooks/relink-hard-link-views.sh",
             "statusMessage": "Reenlazando vistas de .claude…"
+          },
+          {
+            "type": "command",
+            "command": "bash .agents/hooks/learning-hook.sh --provider claude --event prompt",
+            "statusMessage": "Registrando el episodio de aprendizaje…"
           }
         ]
       }

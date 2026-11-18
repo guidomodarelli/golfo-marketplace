@@ -775,3 +775,117 @@ managed_rule() {
   [ "$status" -eq 0 ]
   [ ! -e .agents/rules/learned.md ]
 }
+
+# 156e: episodes and the summary at the start of a session.
+
+select_learning_profile() {
+  mkdir -p .agents
+  printf '%s\n' '{"assets": {}, "profileOrder": ["software-development", "learning"]}' > .agents/agent-ready.lock.json
+}
+
+episodes_value() {
+  PYTHONIOENCODING=utf-8 python3 -c 'import json, sys; data = json.load(open(".git/info/agent-ready/episodes.json", encoding="utf-8")); print(eval(sys.argv[1]))' "$1" | tr -d '\r'
+}
+
+# Moves the last message of a session back by some hours, as if the user had not written since.
+age_session() {
+  python3 - "$1" "$2" <<'PY'
+import datetime, json, sys
+path = ".git/info/agent-ready/episodes.json"
+state = json.load(open(path, encoding="utf-8"))
+session = state["sessions"][sys.argv[1]]
+last = datetime.datetime.strptime(session["lastUserMessageAt"], "%Y-%m-%dT%H:%M:%S%z")
+session["lastUserMessageAt"] = (last - datetime.timedelta(hours=float(sys.argv[2]))).strftime("%Y-%m-%dT%H:%M:%S%z")
+json.dump(state, open(path, "w", encoding="utf-8"))
+PY
+}
+
+@test "the prompt hook does nothing while the learning profile is not in use" {
+  agent_ready learn episode --session s1 --touch
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  mkdir -p .agents
+  printf '%s\n' '{"assets": {}, "profileOrder": ["software-development"]}' > .agents/agent-ready.lock.json
+  agent_ready learn episode --session s1 --touch
+  [ -z "$output" ]
+  [ ! -e .git/info/agent-ready/episodes.json ]
+}
+
+@test "the first message opens an episode, the next ones keep it, and a gap or another session opens another" {
+  select_learning_profile
+  agent_ready learn episode --session s1 --touch
+  [ "$status" -eq 0 ]
+  [[ "$output" == "[agent-ready learn] Episode s1:"*" started: record instructions of the user with --session s1 --episode s1:"* ]]
+  first="$(episodes_value 'data["sessions"]["s1"]["episodeId"]')"
+  agent_ready learn episode --session s1 --touch
+  [ -z "$output" ]
+  [ "$(episodes_value 'data["sessions"]["s1"]["episodeId"]')" = "$first" ]
+
+  # Within learning.episodeGapHours the same episode goes on.
+  age_session s1 3
+  agent_ready learn episode --session s1 --touch
+  [ -z "$output" ]
+  age_session s1 5
+  agent_ready learn episode --session s1 --touch
+  [[ "$output" == *"Episode s1:"*" started"* ]]
+  [ "$(episodes_value 'data["sessions"]["s1"]["episodeId"]')" != "$first" ]
+
+  write_manifest '{"learning": {"episodeGapHours": 8}}'
+  age_session s1 5
+  agent_ready learn episode --session s1 --touch
+  [ -z "$output" ]
+
+  agent_ready learn episode --session s2 --touch
+  [[ "$output" == *"Episode s2:"*" started"* ]]
+  agent_ready learn episode --session s2 --json
+  [ "$(printf '%s' "$output" | python3 -c 'import json, sys; print(json.load(sys.stdin)["episode"]["episodeId"].startswith("s2:"))')" = "True" ]
+}
+
+@test "one scope question per episode, and a new episode allows another" {
+  select_learning_profile
+  agent_ready learn episode --session s1 --scope-question
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"session s1 has no episode yet"* ]]
+  agent_ready learn episode --session s1 --touch
+  agent_ready learn episode --session s1 --scope-question
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"scope question asked"* ]]
+  agent_ready learn episode --session s1 --scope-question
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"the scope question of this episode was already asked: apply the instruction to the current document only"* ]]
+  age_session s1 5
+  agent_ready learn episode --session s1 --touch
+  agent_ready learn episode --session s1 --scope-question
+  [ "$status" -eq 0 ]
+}
+
+@test "the summary tells what was learned lately and what waits, and nothing while there is none" {
+  commit_identity
+  select_learning_profile
+  agent_ready learn summary
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  header_rule --quote "de ahora en más, número arriba" --explicit --session s1
+  agent_ready learn apply "$(id_of 'header')"
+  agent_ready learn record --kind rule --statement "Reports end with the sources." --quote "las fuentes al final" --session s1
+  agent_ready learn summary
+  [[ "$output" == "[agent-ready learn] What this project learned from the user"* ]]
+  [[ "$output" == *"create learn-"*"(learned/records-header): Records carry the case number in the header."* ]]
+  [[ "$output" == *"Waiting for another episode"*"Reports end with the sources."* ]]
+  # The quotes of the user stay in the registry.
+  [[ "$output" != *"las fuentes al final"* ]]
+}
+
+@test "the learning hook reads the session of the payload, and never fails the prompt" {
+  select_learning_profile
+  hook="$skill_dir/assets/common/hooks/learning-hook.sh"
+  run --separate-stderr env AGENT_READY_SETUP_SKILL_DIR="$skill_dir" bash "$hook" --provider claude --event prompt \
+    <<< '{"session_id": "abc-123", "prompt": "hola"}'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Episode abc-123:"*" started"* ]]
+  run --separate-stderr env AGENT_READY_SETUP_SKILL_DIR="$skill_dir" bash "$hook" --provider codex --event prompt <<< 'not json'
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  run --separate-stderr env AGENT_READY_SETUP_SKILL_DIR="$skill_dir" bash "$hook" --provider claude --event session-start <<< '{}'
+  [ "$status" -eq 0 ]
+}

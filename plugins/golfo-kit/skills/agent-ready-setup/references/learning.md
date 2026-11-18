@@ -50,6 +50,29 @@ episodio es una sola evidencia.
 - Sin `--episode`, otra sesión o otro día empiezan un episodio nuevo: el episodio es la sesión más la
   fecha del mensaje.
 
+**El hook del prompt** (`UserPromptSubmit` en Claude Code y en Codex, con
+`.agents/hooks/learning-hook.sh`) corre `agent-ready learn episode --session <id> --touch` en cada
+mensaje del usuario. Guarda por sesión, en `.git/info/agent-ready/episodes.json` (local, nunca
+versionado), el episodio, cuándo empezó y la hora del último mensaje. El mensaje siguiente abre un
+episodio nuevo si es de otro día de la máquina o si pasaron `learning.episodeGapHours` horas (4 por
+defecto) sin mensajes. Así un chat largo cuenta varios episodios. Nada corre entre mensajes: el corte
+se calcula cuando llega el próximo. Al abrir un episodio, el hook le dice al agente el id que tiene que
+pasar en `--episode`; el resto de los mensajes no imprime nada.
+
+- `agent-ready learn episode --session <id>` muestra el episodio actual de la sesión.
+- `agent-ready learn episode --session <id> --scope-question` registra la única pregunta de alcance
+  del episodio, y falla si ya se hizo: ahí el agente aplica la instrucción solo al documento actual y la
+  registra sin `--explicit`.
+
+**El resumen al iniciar la sesión** (`SessionStart`, también después de compactar en Claude Code)
+corre `agent-ready learn summary`: las últimas líneas de `log.md` y los candidatos que esperan otro
+episodio, sin las citas, para que el agente cuente como segunda evidencia una instrucción que vuelve.
+No llama a ningún modelo.
+
+El hook y el resumen no hacen nada mientras el repositorio no use el profile `learning` (el lockfile
+lo registra en `profileOrder`) o `learning.enabled` esté apagado, y nunca hacen fallar el prompt ni la
+sesión.
+
 ## La decisión
 
 `agent-ready learn record` suma la evidencia y dice qué hacer con la instrucción:
@@ -138,6 +161,10 @@ agent-ready learn status
 
 # Todo el registro, o solo un estado, sin las citas.
 agent-ready learn list --status candidate --json
+
+# El episodio de la sesión, y la única pregunta de alcance del episodio.
+agent-ready learn episode --session <sesión>
+agent-ready learn episode --session <sesión> --scope-question
 ```
 
 `record` acepta `--date` con la fecha del mensaje, por ejemplo cuando la revisión de fin de sesión
