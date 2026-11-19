@@ -12,6 +12,7 @@ import sys
 import agent_ready_blocks as managed_blocks
 import agent_ready_conflicts as conflicts_review
 import agent_ready_content
+import agent_ready_learning_schedule as learning_schedule
 import agent_ready_nested as nested
 import agent_ready_pack_clis as pack_clis
 import agent_ready_pack_mcp as pack_mcp
@@ -52,10 +53,13 @@ REMOVAL_SYMBOLS = {REMOVAL_REMOVE: "-", REMOVAL_EDIT: "~", REMOVAL_KEEP: "="}
 REMOVAL_COLORS = {REMOVAL_REMOVE: "retire", REMOVAL_EDIT: "update", REMOVAL_KEEP: "muted"}
 # What each entry is, in the order a removal runs: the lockfile goes last, so an
 # interrupted removal can run again and finish.
-REMOVAL_KINDS = ("pack-mcp", "pack-cli", "browser", "git-config", "git-hook", "review-cache", "view", "asset", "block",
+REMOVAL_KINDS = ("pack-mcp", "pack-cli", "learning-sweep", "browser", "git-config", "git-hook", "review-cache", "view", "asset", "block",
                  "instructions", "settings", "state", "config")
 # Not a project path: the CLIs live in the cache of the user, shared by the repositories of the machine.
 PACK_CLI_REMOVAL_LABEL = "CLIs of profile packs (cache of the user)"
+# Not a project path either: a task of the user in the scheduler of the system.
+LEARNING_SWEEP_REMOVAL_LABEL = "scheduled learning sweep (scheduler of the user)"
+CLI_RELATIVE_PATH = os.path.join("scripts", "agent-ready")
 # Same values as asset-sync-common.sh, which writes them.
 HARD_LINK_VIEWS_MANIFEST = ".claude/.agent-ready-hard-link-views"
 GIT_HOOK_SECTION = "hook.agent-ready-relink"
@@ -392,6 +396,32 @@ def pack_cli_removal_entries(project_root, lock):
                           "pack-cli")]
 
 
+def learning_sweep_removal_entries(project_root):
+    """The scheduled learning sweep, when this repository registered for it; the task stays for the others."""
+    if learning_schedule.read_project_record(project_root) is None:
+        return []
+    return [removal_entry(LEARNING_SWEEP_REMOVAL_LABEL, REMOVAL_EDIT,
+                          "stops sweeping this repository; the task goes when no other repository uses it",
+                          "learning-sweep")]
+
+
+def unschedule_learning_sweep(project_root, skill_dir, report):
+    """This repository leaves the scheduled sweep; the scheduler drops the task with the last repository."""
+    from agent_ready_cli_learning import schedule_blocked  # Lazy: the CLI of learning imports far more.
+    blocked = schedule_blocked()
+    if blocked:
+        report["kept"].append(f"{LEARNING_SWEEP_REMOVAL_LABEL}: {blocked}")
+        return
+    try:
+        result = learning_schedule.unregister(project_root, os.path.join(skill_dir, CLI_RELATIVE_PATH))
+    except StateError as problem:
+        result = {"status": learning_schedule.STATUS_FAILED, "detail": str(problem)}
+    if result["status"] == learning_schedule.STATUS_FAILED:
+        report["failed"].append(f"{LEARNING_SWEEP_REMOVAL_LABEL}: {result['detail']}")
+        return
+    report["edited"].append(LEARNING_SWEEP_REMOVAL_LABEL)
+
+
 def browser_removal_entries(project_root):
     """Browser MCP servers that agent-ready registered, and the metadata of this machine."""
     entries = []
@@ -507,6 +537,7 @@ def plan_removal(project_root, skill_dir, load_catalog):
     entries = (
         pack_mcp_removal_entries(project_root, lock)
         + pack_cli_removal_entries(project_root, lock)
+        + learning_sweep_removal_entries(project_root)
         + browser_removal_entries(project_root)
         + local_removal_entries(project_root)
         + view_removal_entries(project_root, locked_assets)
@@ -675,6 +706,9 @@ def apply_removal(project_root, skill_dir, plan):
             uninstall_pack_clis(project_root, report)
             # The lock says which CLIs the repository used: it stays for a retry.
             inventory_left = inventory_left or len(report["failed"]) > failures_before
+            continue
+        if entry["kind"] == "learning-sweep":
+            unschedule_learning_sweep(project_root, skill_dir, report)
             continue
         if entry["kind"] == "browser":
             if not browser_done:

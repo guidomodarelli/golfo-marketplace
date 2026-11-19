@@ -310,9 +310,32 @@ def finalize(project_root, skill_dir, plan, updates):
     record_review_settings(project_root)
     # The update the last plan reviewed is on disk now: its conflicts are the current ones.
     conflicts_review.record_pending(project_root, [])
+    # After the lockfile: the sweep follows the profiles it records and the settings of learning.
+    sweep_report = schedule_learning_sweep(project_root)
 
     return {"removed": removed, "retireConflicts": retire_conflicts, "failed": failed, "conflicts": conflicts,
-            "blocks": block_report, "mcpServers": mcp_report, "clis": cli_report, "scripts": script_report}
+            "blocks": block_report, "mcpServers": mcp_report, "clis": cli_report, "scripts": script_report,
+            "learningSweep": sweep_report}
+
+
+def schedule_learning_sweep(project_root):
+    """Register the repository for the scheduled learning sweep, or drop it; a refused task never fails the apply."""
+    # Imported here: the CLI of learning pulls the whole learning engine, which most applies never use.
+    from agent_ready_cli_learning import schedule_sweep
+
+    return schedule_sweep(project_root)
+
+
+def print_learning_sweep_report(report, stream):
+    """One line when the scheduled sweep changed or could not be registered."""
+    if not report or report["status"] in ("unchanged", "skipped"):
+        return
+    if report["status"] == "failed":
+        write_line(paint(f"  ! Scheduled learning sweep not registered: {report['detail']}. "
+                         "The episodes still close when a chat ends or from another hook; "
+                         "agent-ready doctor reports it.", "warning", stream), stream)
+        return
+    write_line(f"Scheduled learning sweep {report['status']}: {report['detail']}", stream)
 
 
 def run_pack_scripts(project_root, plan, previous_lock):
@@ -488,6 +511,7 @@ def print_finalize_report(report):
     print_pack_mcp_report(report.get("mcpServers"), stream)
     print_pack_cli_report(report.get("clis"), stream)
     print_pack_script_report(report.get("scripts"), stream)
+    print_learning_sweep_report(report.get("learningSweep"), stream)
     if report["failed"]:
         result = "partial: some managed assets could not be applied"
     elif (report.get("scripts") or {}).get("failed"):

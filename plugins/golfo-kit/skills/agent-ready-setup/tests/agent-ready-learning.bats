@@ -19,6 +19,8 @@ setup() {
   export HOME="$test_root/home"
   mkdir -p "$HOME"
   export AGENT_READY_SETUP_ORGANIZATION_CONFIG="$test_root/organization.json"
+  # No test reaches the scheduler of the machine: the ones of the scheduled sweep use a fake one.
+  export AGENT_READY_LEARNING_SCHEDULER=none
   git -C "$project_dir" -c init.defaultBranch=main init -q
   cd "$project_dir"
 }
@@ -1267,4 +1269,209 @@ PY
   agent_ready learn sweep
   [ "$(registry_value 'len(data["candidates"])')" = "1" ]
   [ "$(episodes_value 'len(data["pendingReviews"])')" = "0" ]
+}
+
+# 156f2: the scheduled sweep.
+
+source "$BATS_TEST_DIRNAME/fake-scheduler.bash"
+
+sweep_lines() {
+  grep -c "# agent-ready learning sweep" "$FAKE_SCHEDULER_STATE/crontab.txt" 2>/dev/null || true
+}
+
+@test "learn schedule registers one task of the user, shared by every repository at the most frequent interval" {
+  fake_scheduler crontab
+  select_learning_profile
+  agent_ready learn schedule
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Scheduled learning sweep: registered: every 60 minutes (crontab)"* ]]
+  [ "$(sweep_lines)" = "1" ]
+  grep -q "^0 \*/1 \* \* \* .*run-sweep.py' # agent-ready learning sweep$\|^0 \*/1 \* \* \* .*run-sweep.py # agent-ready learning sweep$" "$FAKE_SCHEDULER_STATE/crontab.txt"
+
+  # Another repository asks every 15 minutes: still one task, now every 15 minutes.
+  second="$test_root/second"
+  git -C "$test_root" -c init.defaultBranch=main init -q second
+  (cd "$second" && select_learning_profile && write_manifest '{"learning": {"sweep": {"intervalMinutes": 15}}}' \
+    && python3 -B "$cli" learn schedule > /dev/null)
+  [ "$(sweep_lines)" = "1" ]
+  grep -q '^\*/15 \* \* \* \* ' "$FAKE_SCHEDULER_STATE/crontab.txt"
+
+  # Again with nothing new: the scheduler is only read.
+  agent_ready learn schedule
+  [[ "$output" == *"unchanged"* ]]
+
+  # The first one turns the sweep off: the task stays for the second one.
+  write_manifest '{"learning": {"sweep": {"intervalMinutes": 0}}}'
+  agent_ready learn schedule
+  [[ "$output" == *"removed"* ]]
+  [ "$(sweep_lines)" = "1" ]
+  # The second one leaves learning: the task goes with it.
+  (cd "$second" && printf '%s\n' '{"assets": {}, "profileOrder": ["software-development"]}' > .agents/agent-ready.lock.json \
+    && python3 -B "$cli" learn schedule > /dev/null)
+  [ "$(sweep_lines)" = "0" ]
+}
+
+@test "on Windows the sweep is a task of the current user in the Task Scheduler, never of SYSTEM" {
+  fake_scheduler schtasks
+  select_learning_profile
+  agent_ready learn schedule
+  [ "$status" -eq 0 ]
+  grep -q '^/Create /F /SC MINUTE /MO 60 /TN \\agent-ready\\learning-sweep /TR .*run-sweep.py' "$FAKE_SCHEDULER_STATE/schtasks.txt"
+  ! grep -q "/RU" "$FAKE_SCHEDULER_STATE/schtasks.txt"
+  write_manifest '{"learning": {"sweep": {"intervalMinutes": 0}}}'
+  agent_ready learn schedule
+  [ ! -e "$FAKE_SCHEDULER_STATE/schtasks.txt" ]
+}
+
+@test "on macOS the sweep is a LaunchAgent of the user, never a LaunchDaemon" {
+  case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) skip "launchctl takes the uid of a POSIX user" ;; esac
+  fake_scheduler launchd
+  select_learning_profile
+  agent_ready learn schedule
+  [ "$status" -eq 0 ]
+  plist="$HOME/Library/LaunchAgents/com.golfo.agent-ready.learning-sweep.plist"
+  grep -q "<integer>3600</integer>" "$plist"
+  grep -q "run-sweep.py" "$plist"
+  grep -q "^launchctl bootstrap gui/" "$FAKE_SCHEDULER_STATE/calls.log"
+  write_manifest '{"learning": {"sweep": {"intervalMinutes": 0}}}'
+  agent_ready learn schedule
+  [ ! -e "$plist" ]
+}
+
+@test "a scheduler that refuses the task never fails, and status and doctor report the missing sweep" {
+  fake_scheduler crontab
+  select_learning_profile
+  touch "$FAKE_SCHEDULER_STATE/refuse"
+  agent_ready learn schedule
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"Scheduled learning sweep: failed: crontab -l failed (exit 1): access denied by a policy of the machine"* ]]
+  agent_ready doctor --offline
+  [[ "$output" == *"learning sweep"*"no scheduled task: the scheduler refused the task"* ]]
+  [[ "$output" == *"fix: agent-ready learn schedule"* ]]
+
+  # Once the policy allows it, the next schedule registers it and doctor is happy with it.
+  rm "$FAKE_SCHEDULER_STATE/refuse"
+  agent_ready learn schedule
+  agent_ready doctor --offline
+  [[ "$output" == *"learning sweep"*"scheduled every 60 minutes (crontab)"* ]]
+}
+
+@test "the scheduled task sweeps every registered repository, and forgets the ones gone from the disk" {
+  fake_scheduler crontab
+  select_learning_profile
+  fake_provider
+  claude_transcript "user|2026-03-10T09:00:00Z|Siempre en castellano."
+  at_time 2026-03-10T09:00:00+0000
+  agent_ready learn episode --session s1 --touch --provider claude --transcript "$test_root/transcript.jsonl"
+  agent_ready learn schedule
+  gone="$test_root/gone"
+  git -C "$test_root" -c init.defaultBranch=main init -q gone
+  (cd "$gone" && select_learning_profile && python3 -B "$cli" learn schedule > /dev/null)
+  rm -rf "$gone"
+  # The scheduler refuses to follow the change: the sweep of the others still runs.
+  touch "$FAKE_SCHEDULER_STATE/refuse"
+
+  # Nobody writes again: hours later, the task closes the idle episode and reviews it, from anywhere.
+  at_time 2026-03-10T14:00:00+0000
+  run --separate-stderr bash -c 'cd / && python3 -B "$1" learn sweep --registered' _ "$cli"
+  [ "$status" -eq 0 ]
+  [[ "$output$stderr" == *"scheduled sweep: "*"access denied by a policy of the machine"* ]]
+  [[ "$output" == *"episode s1:20260310T090000: 0 instructions recorded"* ]]
+  grep -q "Siempre en castellano." "$FAKE_INPUTS/1.txt"
+  [ "$(ls "$XDG_CACHE_HOME/agent-ready-setup/learning-schedule/projects" | wc -l)" -eq 1 ]
+}
+
+@test "the runner finds the records and the provider of the apply, even from the bare environment of the scheduler" {
+  fake_scheduler crontab
+  select_learning_profile
+  fake_provider
+  claude_transcript "user|2026-03-10T09:00:00Z|Siempre en castellano."
+  at_time 2026-03-10T09:00:00+0000
+  agent_ready learn episode --session s1 --touch --provider claude --transcript "$test_root/transcript.jsonl"
+  agent_ready learn schedule
+  runner="$XDG_CACHE_HOME/agent-ready-setup/learning-schedule/run-sweep.py"
+  python="$(command -v python3)"
+
+  # pythonw.exe on Windows: no PATH of the shell, no XDG_CACHE_HOME and no output streams.
+  at_time 2026-03-10T14:00:00+0000
+  run env -u XDG_CACHE_HOME HOME="$test_root/elsewhere" PATH=/usr/bin:/bin "$python" -c \
+    'import runpy, sys; sys.stdout = sys.stderr = None; runpy.run_path(sys.argv[1], run_name="__main__")' "$runner"
+  [ "$status" -eq 0 ]
+  grep -q "Siempre en castellano." "$FAKE_INPUTS/1.txt"
+  grep -q "episode s1:20260310T090000: 0 instructions recorded" \
+    "$XDG_CACHE_HOME/agent-ready-setup/learning-schedule/last-sweep.log"
+}
+
+@test "registering again with nothing new rewrites neither the record nor the runner" {
+  fake_scheduler crontab
+  select_learning_profile
+  agent_ready learn schedule
+  schedule="$XDG_CACHE_HOME/agent-ready-setup/learning-schedule"
+  # touch -t and find -newer behave the same in GNU and BSD (macOS).
+  touch -t 200101010000 "$schedule/run-sweep.py" "$schedule/projects/"*.json
+  touch -t 200201010000 "$test_root/reference"
+  agent_ready learn schedule
+  [[ "$output" == *"unchanged"* ]]
+  [ -z "$(find "$schedule/run-sweep.py" "$schedule/projects" -name '*.*' -newer "$test_root/reference")" ]
+}
+
+@test "a removal the scheduler refused is tried again by the next schedule" {
+  fake_scheduler crontab
+  select_learning_profile
+  agent_ready learn schedule
+  [ "$(sweep_lines)" = "1" ]
+  write_manifest '{"learning": {"sweep": {"intervalMinutes": 0}}}'
+  touch "$FAKE_SCHEDULER_STATE/refuse"
+  agent_ready learn schedule
+  [[ "$stderr" == *"failed"* ]]
+  [ "$(sweep_lines)" = "1" ]
+
+  rm "$FAKE_SCHEDULER_STATE/refuse"
+  agent_ready learn schedule
+  [[ "$output" == *"removed"* ]]
+  [ "$(sweep_lines)" = "0" ]
+}
+
+@test "in CI or a review the scheduler is never touched" {
+  fake_scheduler crontab
+  select_learning_profile
+  CI=true agent_ready learn schedule
+  [[ "$output" == *"skipped: no scheduled task under CI"* ]]
+  AGENT_READY_SETUP_REVIEW_MODE=1 agent_ready learn schedule
+  [[ "$output" == *"skipped: no scheduled task under review mode"* ]]
+  [ ! -e "$FAKE_SCHEDULER_STATE/calls.log" ]
+
+  # Neither does a remove: the task of the user stays as the apply left it.
+  agent_ready learn schedule
+  [ "$(sweep_lines)" = "1" ]
+  rm "$FAKE_SCHEDULER_STATE/calls.log"
+  CI=true agent_ready remove --yes
+  [ "$status" -eq 0 ]
+  [ "$(sweep_lines)" = "1" ]
+  [ ! -e "$FAKE_SCHEDULER_STATE/calls.log" ]
+  [ -e "$XDG_CACHE_HOME/agent-ready-setup/learning-schedule/projects/"*.json ]
+
+  # A sweep of the registered repositories forgets no gone repository there either.
+  gone="$test_root/gone"
+  git -C "$test_root" -c init.defaultBranch=main init -q gone
+  (cd "$gone" && select_learning_profile && python3 -B "$cli" learn schedule > /dev/null)
+  rm -rf "$gone"
+  rm "$FAKE_SCHEDULER_STATE/calls.log"
+  CI=true run --separate-stderr python3 -B "$cli" learn sweep --registered
+  [ "$status" -eq 0 ]
+  [ ! -e "$FAKE_SCHEDULER_STATE/calls.log" ]
+  [ "$(ls "$XDG_CACHE_HOME/agent-ready-setup/learning-schedule/projects" | wc -l)" -eq 2 ]
+}
+
+@test "agent-ready remove takes the repository out of the scheduled sweep" {
+  fake_scheduler crontab
+  select_learning_profile
+  agent_ready learn schedule
+  [ "$(sweep_lines)" = "1" ]
+  agent_ready remove --dry-run
+  [[ "$output" == *"scheduled learning sweep (scheduler of the user)"* ]]
+  agent_ready remove --yes
+  [ "$status" -eq 0 ]
+  [ "$(sweep_lines)" = "0" ]
+  [ ! -e "$XDG_CACHE_HOME/agent-ready-setup/learning-schedule/projects/"*.json ]
 }

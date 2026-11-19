@@ -786,3 +786,24 @@ PY
   [ "$status" -eq 0 ]
   [ -z "$(git config --get hook.agent-ready-relink.command)" ]
 }
+
+@test "an apply that leaves the learning profile takes the repository out of the scheduled sweep" {
+  source "$BATS_TEST_DIRNAME/fake-scheduler.bash"
+  fake_scheduler crontab
+  mkdir -p .agents
+  printf '%s\n' '{"assets": {}, "profileOrder": ["node", "learning"]}' > .agents/agent-ready.lock.json
+  run_cli learn schedule
+  [ "$status" -eq 0 ]
+  grep -q "# agent-ready learning sweep" "$FAKE_SCHEDULER_STATE/crontab.txt"
+
+  run_cli apply --profiles node
+  [ "$status" -eq 0 ]
+  [[ "$output$stderr" == *"Scheduled learning sweep removed: this repository no longer asks for the scheduled sweep"* ]]
+  ! grep -q "# agent-ready learning sweep" "$FAKE_SCHEDULER_STATE/crontab.txt"
+
+  # Without learning, later applies never touch the scheduler.
+  : > "$FAKE_SCHEDULER_STATE/calls.log"
+  run_cli apply --profiles node
+  [ "$status" -eq 0 ]
+  [ ! -s "$FAKE_SCHEDULER_STATE/calls.log" ]
+}
