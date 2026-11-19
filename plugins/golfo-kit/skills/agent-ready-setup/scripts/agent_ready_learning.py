@@ -115,6 +115,10 @@ def write_registry(project_root, registry):
     write_text_atomically(candidates_path(project_root), serialize_json(registry))
 
 
+class RegistryLockedError(StateError):
+    """Another process held the registry past LOCK_WAIT_SECONDS: the write can be retried later."""
+
+
 class RegistryLock:
     """One writer at a time per project: two sessions may record at once. The lock lives in the cache
     of the user, never in the repository."""
@@ -126,7 +130,7 @@ class RegistryLock:
         deadline = time.monotonic() + LOCK_WAIT_SECONDS
         while not acquire_directory_lock(self.path):
             if time.monotonic() > deadline:
-                raise StateError(f"the learning registry is locked by another process ({self.path})")
+                raise RegistryLockedError(f"the learning registry is locked by another process ({self.path})")
             time.sleep(LOCK_POLL_SECONDS)
         return self
 

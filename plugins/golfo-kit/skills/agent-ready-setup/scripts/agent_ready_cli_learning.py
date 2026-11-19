@@ -13,7 +13,8 @@ import agent_ready_learning as learning
 import agent_ready_learning_apply as learning_apply
 import agent_ready_learning_episodes as learning_episodes
 import agent_ready_learning_review as learning_review
-from agent_ready_cli_common import EXIT_OK, find_repository_root
+import agent_ready_learning_session_review as session_review
+from agent_ready_cli_common import EXIT_OK, SCRIPT_DIRECTORY, find_repository_root
 from agent_ready_common import StateError, serialize_json
 from agent_ready_config import resolve_configuration
 
@@ -22,6 +23,10 @@ LEARNING_MODE_KEY = "learning.mode"
 LEARNING_THRESHOLD_KEY = "learning.threshold"
 LEARNING_TTL_KEY = "learning.candidateTtlDays"
 LEARNING_GAP_KEY = "learning.episodeGapHours"
+LEARNING_SESSION_END_KEY = "learning.hooks.sessionEnd"
+LEARNING_SESSION_START_KEY = "learning.hooks.sessionStart"
+CLI_PATH = os.path.join(SCRIPT_DIRECTORY, "agent-ready")
+PROVIDERS = ("claude", "codex")
 SUMMARY_LOG_LINES = 5
 SUMMARY_CANDIDATES = 5
 MAX_STATEMENT_CHARS_KEY = "rules.maxStatementChars"
@@ -43,6 +48,8 @@ def settings_of(project_root):
         "threshold": configuration.value(LEARNING_THRESHOLD_KEY),
         "ttl_days": configuration.value(LEARNING_TTL_KEY),
         "gap_hours": configuration.value(LEARNING_GAP_KEY),
+        "session_review": configuration.value(LEARNING_SESSION_END_KEY),
+        "session_start": configuration.value(LEARNING_SESSION_START_KEY),
         "max_statement_chars": configuration.value(MAX_STATEMENT_CHARS_KEY),
         "today": datetime.date.today(),
     }
@@ -123,19 +130,54 @@ def command_learn_revert(arguments):
     return EXIT_OK
 
 
+def learning_active(project_root, settings):
+    """The hooks stay silent unless the learning profile is in use and learning.enabled is on."""
+    return settings["enabled"] and learning_episodes.learning_selected(project_root)
+
+
+def start_sweep_when_needed(project_root, settings, now):
+    """Start the sweep in the background when an episode waits for its review: hooks must not wait for it.
+
+    With learning.hooks.sessionEnd off the sweep calls no provider, so it runs here and only drops the queue.
+    """
+    if not learning_episodes.needs_sweep(project_root, now, settings["gap_hours"]):
+        return
+    if not settings["session_review"]:
+        session_review.sweep(project_root, settings, lambda line: None)
+        return
+    session_review.start_sweep(project_root, CLI_PATH,
+                               lambda: session_review.sweep(project_root, settings, write_sweep_line))
+
+
+def write_sweep_line(line):
+    sys.stdout.write(f"[agent-ready learn sweep] {line}\n")
+
+
 def command_learn_episode(arguments):
-    """The episode of a session: with --touch, a message of the user arrived (the hook of the prompt)."""
+    """The episode of a session: with --touch, a message of the user arrived (the hook of the prompt);
+    with --end, the chat ended (SessionEnd); with --review-now, the context is about to be compacted."""
     project_root = find_repository_root(arguments.project)
     settings = settings_of(project_root)
-    if arguments.touch:
-        # The hook runs on every message: it stays silent unless the learning profile is in use.
-        if not settings["enabled"] or not learning_episodes.learning_selected(project_root):
+    hook_modes = arguments.touch or arguments.end or arguments.review_now
+    if hook_modes:
+        # The hooks run on every message: they stay silent unless the learning profile is in use.
+        if not learning_active(project_root, settings):
             return EXIT_OK
         now = learning_episodes.current_time()
-        session, started = learning_episodes.touch(project_root, arguments.session, now, settings["gap_hours"])
-        if started and not arguments.json:
-            sys.stdout.write(f"[agent-ready learn] Episode {session['episodeId']} started: record instructions of the "
-                             f"user with --session {arguments.session} --episode {session['episodeId']}.\n")
+        transcript = os.path.abspath(arguments.transcript) if arguments.transcript else None
+        if arguments.touch:
+            session, started = learning_episodes.touch(project_root, arguments.session, now, settings["gap_hours"],
+                                                       transcript, arguments.provider)
+            if started and not arguments.json:
+                sys.stdout.write(f"[agent-ready learn] Episode {session['episodeId']} started: record instructions of "
+                                 f"the user with --session {arguments.session} --episode {session['episodeId']}.\n")
+        elif arguments.end:
+            learning_episodes.end(project_root, arguments.session, now, settings["gap_hours"], transcript)
+        else:
+            learning_episodes.review_now(project_root, arguments.session, now, transcript)
+        start_sweep_when_needed(project_root, settings, now)
+        if not arguments.touch:
+            return EXIT_OK
     elif arguments.scope_question:
         if not learning_episodes.mark_scope_question(project_root, arguments.session):
             raise StateError(f"the scope question of this episode was already asked: apply the instruction to the "
@@ -148,7 +190,7 @@ def command_learn_episode(arguments):
             return EXIT_OK
     if arguments.json:
         sys.stdout.write(serialize_json({"session": arguments.session, "episode": session}))
-    elif not arguments.touch:
+    elif not hook_modes:
         asked = "asked" if session.get("scopeQuestionAsked") else "not asked"
         sys.stdout.write(f"{session['episodeId']}  since {session['episodeStartedAt']}, scope question {asked}\n")
     return EXIT_OK
@@ -167,7 +209,11 @@ def command_learn_summary(arguments):
     learning profile is not in use or there is nothing to tell."""
     project_root = find_repository_root(arguments.project)
     settings = settings_of(project_root)
-    if not settings["enabled"] or not learning_episodes.learning_selected(project_root):
+    if not learning_active(project_root, settings):
+        return EXIT_OK
+    # The start of a session also sweeps: the episodes other chats left idle get their review.
+    start_sweep_when_needed(project_root, settings, learning_episodes.current_time())
+    if not settings["session_start"]:
         return EXIT_OK
     items = learning.entries(project_root, settings["today"], settings["ttl_days"])
     waiting = [item for item in items if item["status"] == learning.STATUS_CANDIDATE]
@@ -183,6 +229,16 @@ def command_learn_summary(arguments):
             sys.stdout.write(f"    {item['id']}  {item['statement']}\n")
         if len(waiting) > SUMMARY_CANDIDATES:
             sys.stdout.write(f"    and {len(waiting) - SUMMARY_CANDIDATES} more (agent-ready learn list --status candidate)\n")
+    return EXIT_OK
+
+
+def command_learn_sweep(arguments):
+    """What the hooks start in the background: close idle episodes and record what their review finds."""
+    project_root = find_repository_root(arguments.project)
+    settings = settings_of(project_root)
+    if not learning_active(project_root, settings):
+        return EXIT_OK
+    session_review.sweep(project_root, settings, write_sweep_line)
     return EXIT_OK
 
 
@@ -309,7 +365,16 @@ def register(subparsers, new_subparser):
                                help="a message of the user arrived now; prints a line only when it opens an episode")
     episode_modes.add_argument("--scope-question", action="store_true",
                                help="record the one scope question of the episode; fails when it was already asked")
+    episode_modes.add_argument("--end", action="store_true",
+                               help="the chat ended: close its episode and review it in the background")
+    episode_modes.add_argument("--review-now", action="store_true",
+                               help="the context is about to be compacted: review the episode so far in the background")
+    episode_action.add_argument("--transcript", help="transcript of the session, from the payload of the hook")
+    episode_action.add_argument("--provider", choices=PROVIDERS, help="provider of the session, which reviews it")
     episode_action.add_argument("--json", action="store_true", help="print the result as JSON")
     summary_action = new_subparser(
         actions, "summary", "What was learned lately and what waits, in a few lines for the start of a session.",
         "  agent-ready learn summary", command_learn_summary)
+    sweep_action = new_subparser(
+        actions, "sweep", "Close the idle episodes and review the messages of the user of the closed ones.",
+        "  agent-ready learn sweep", command_learn_sweep)

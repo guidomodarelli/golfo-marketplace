@@ -81,6 +81,8 @@ agent-ready learn registra las instrucciones del usuario que pueden quedar como 
 | `learning.mode` | `auto` \| `developer-review` | `"auto"` | todas | — | `auto` < `developer-review` | auto: una instrucción que cumple las reglas de evidencia se aprende en el momento. developer-review: queda como propuesta para el desarrollador y el agente no escribe nada. |
 | `learning.threshold` | integer | `2` | todas | — | — | Episodios distintos en los que tiene que aparecer una instrucción implícita (una corrección o una preferencia sin «siempre») para aprenderla. Una explícita se aprende con uno. |
 | `learning.episodeGapHours` | integer | `4` | todas | — | — | Horas sin mensajes del usuario después de las cuales el próximo mensaje abre un episodio nuevo, aunque sea el mismo chat. Otra sesión u otro día también abren uno. La misma instrucción en dos episodios cuenta como dos evidencias. |
+| `learning.hooks.sessionEnd` | boolean | `true` | todas | — | — | Al cerrar un episodio (fin del chat, compactación, barrido de episodios inactivos), revisa en background solo los mensajes del usuario del transcript y suma como candidatas las instrucciones que deben durar. Nunca escribe rules. Apagado, el episodio se cierra sin revisión. |
+| `learning.hooks.sessionStart` | boolean | `true` | todas | — | — | Al iniciar la sesión, y en Claude Code también después de compactar, muestra en pocas líneas lo aprendido hace poco y los candidatos que esperan otro episodio, sin llamar a un modelo. Apagado, no muestra nada. |
 | `learning.candidateTtlDays` | integer | `90` | todas | — | — | Días sin evidencia nueva después de los cuales un candidato vence. Si la instrucción vuelve, se cuenta desde cero: la evidencia vencida no suma. |
 
 ## `nested`: AGENTS.md anidados

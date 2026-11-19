@@ -3488,6 +3488,37 @@
           "critical": true
         }
       ]
+    },
+    {
+      "id": "learn-session-review-records-only",
+      "description": "La revisión al cerrar un episodio lee solo los mensajes del usuario del transcript y registra candidatas; nunca escribe rules ni llama al provider en CI.",
+      "input": "Mi repo usa el profile learning de agent-ready-setup. El usuario cerró el chat en Claude Code sin que yo registrara una corrección que me hizo. ¿Qué pasa con esa corrección al cerrar el chat? ¿La revisión lee también mis respuestas y la salida de las herramientas? ¿Escribe la rule ella misma? ¿Y si eso pasa en CI? Respondé desde la skill, sin ejecutar comandos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "solo[^.]{0,40}mensajes del usuario|únicamente[^.]{0,40}mensajes del usuario|mensajes del usuario[^.]{0,60}(solo|únicamente)",
+          "description": "La revisión lee solo los mensajes del usuario",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "candidat",
+          "description": "Lo que encuentra queda como candidata",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(no|nunca)[^.]{0,50}(escribe|crea|commitea)[^.]{0,30}(rule|regla)",
+          "description": "No escribe la rule por su cuenta",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "CI[^.]{0,80}(no|nunca)[^.]{0,40}(llama|provider|modelo|revis)|(no|nunca)[^.]{0,60}(llama|provider|modelo)[^.]{0,40}CI",
+          "description": "En CI no llama a ningún provider",
+          "critical": true
+        }
+      ]
     }
   ]
 }

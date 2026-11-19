@@ -1,12 +1,13 @@
 #!/bin/bash
 # learning-hook.sh
 # The hooks of learning (references/learning.md of agent-ready-setup): on every prompt of the user it
-# touches the episode of the session, and at the start of a session (also after a compaction) it
-# prints what the project learned lately. The provider passes its payload as JSON on stdin; only its
-# session_id is read. It prints nothing while the learning profile is not in use, and never fails the
-# prompt or the session: any problem ends it silently.
+# touches the episode of the session, at the start of a session (also after a compaction) it prints
+# what the project learned lately, and at the end of a chat or before a compaction it hands the
+# episode to the review in the background. The provider passes its payload as JSON on stdin; only its
+# session_id and transcript_path are read. It prints nothing while the learning profile is not in use,
+# and never fails the prompt or the session: any problem ends it silently.
 #
-# Usage: learning-hook.sh --provider claude|codex --event prompt|session-start
+# Usage: learning-hook.sh --provider claude|codex --event prompt|session-start|session-end|pre-compact
 
 set -uo pipefail
 
@@ -24,12 +25,13 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --event)
-      [[ $# -ge 2 && ( "$2" == prompt || "$2" == session-start ) ]] || { printf 'ERROR: --event requires prompt or session-start\n' >&2; exit 2; }
+      [[ $# -ge 2 && ( "$2" == prompt || "$2" == session-start || "$2" == session-end || "$2" == pre-compact ) ]] \
+        || { printf 'ERROR: --event requires prompt, session-start, session-end or pre-compact\n' >&2; exit 2; }
       event="$2"
       shift 2
       ;;
     -h|--help)
-      printf 'Usage: %s --provider claude|codex --event prompt|session-start\n' "${0##*/}"
+      printf 'Usage: %s --provider claude|codex --event prompt|session-start|session-end|pre-compact\n' "${0##*/}"
       exit 0
       ;;
     *)
@@ -59,11 +61,24 @@ if [[ "$event" == session-start ]]; then
   python3 "$cli" learn summary --project . 2>/dev/null || true
   exit 0
 fi
-session_id="$(printf '%s' "$payload" | python3 -c 'import json, sys
+# The session and the transcript, one per line; a payload that is not JSON gives two empty lines.
+fields="$(printf '%s' "$payload" | python3 -c 'import json, sys
 try:
-    print(json.load(sys.stdin).get("session_id") or "")
+    payload = json.load(sys.stdin)
 except ValueError:
-    print("")' 2>/dev/null | tr -d '\r')"
+    payload = {}
+payload = payload if isinstance(payload, dict) else {}
+print(payload.get("session_id") or "")
+print(payload.get("transcript_path") or "")' 2>/dev/null | tr -d '\r')"
+session_id="$(printf '%s\n' "$fields" | sed -n 1p)"
+transcript="$(printf '%s\n' "$fields" | sed -n 2p)"
 [[ -n "$session_id" ]] || exit 0
-python3 "$cli" learn episode --project . --session "$session_id" --touch 2>/dev/null || true
+case "$event" in
+  prompt) mode=--touch ;;
+  session-end) mode=--end ;;
+  pre-compact) mode=--review-now ;;
+esac
+arguments=(learn episode --project . --session "$session_id" "$mode" --provider "$provider")
+[[ -n "$transcript" ]] && arguments+=(--transcript "$transcript")
+python3 "$cli" "${arguments[@]}" 2>/dev/null || true
 exit 0
