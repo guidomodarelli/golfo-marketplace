@@ -36,6 +36,10 @@ TABLE_SEPARATOR_REGEX = re.compile(r"^\|(\s*:?-{3,}:?\s*\|)+\s*$")
 DETAILS_OPEN_REGEX = re.compile(r"^<details>\s*(?:<summary>(?P<title>.*?)</summary>)?\s*$")
 SUMMARY_REGEX = re.compile(r"^<summary>(?P<title>.*?)</summary>\s*$")
 DETAILS_CLOSE = "</details>"
+BARE_URL_REGEX = re.compile(r"https?://\S+")
+SMART_LINK_TYPES = ("inlineCard", "blockCard", "embedCard")
+CODE_BLOCK_TYPE = "codeBlock"
+CODE_MARK_TYPE = "code"
 INLINE_TOKEN_REGEX = re.compile(
     r"(?P<code>`(?P<code_text>[^`]+)`)"
     r"|(?P<status>\{status:(?:(?P<status_color>[a-z]+):)?(?P<status_text>[^:}][^}]*)\})"
@@ -252,6 +256,29 @@ def _starts_block(line: str, next_line: str | None) -> bool:
     )
 
 
+def _first_link(nodes: list[dict[str, Any]]) -> str | None:
+    """Primer link de los nodos (marca `link`, smart link o URL suelta en el texto), o `None` si no hay.
+
+    Una URL escrita como código (marca `code` o bloque de código) es un literal
+    que Jira nunca vuelve clickeable, así que no cuenta como link.
+    """
+    for node in nodes:
+        if node.get("type") == CODE_BLOCK_TYPE:
+            continue
+        if node.get("type") in SMART_LINK_TYPES:
+            return str((node.get("attrs") or {}).get("url") or node.get("type"))
+        marks = node.get("marks") or []
+        for mark in marks:
+            if mark.get("type") == "link":
+                return str((mark.get("attrs") or {}).get("href") or node.get("text") or "")
+        is_code_text = any(mark.get("type") == CODE_MARK_TYPE for mark in marks)
+        if node.get("type") == "text" and not is_code_text and (bare := BARE_URL_REGEX.search(node.get("text") or "")):
+            return bare.group(0)
+        if found := _first_link(node.get("content") or []):
+            return found
+    return None
+
+
 def _blocks(lines: list[str]) -> list[dict[str, Any]]:
     nodes: list[dict[str, Any]] = []
     index = 0
@@ -277,6 +304,11 @@ def _blocks(lines: list[str]) -> list[dict[str, Any]]:
             content = _blocks(body)
             if not title or not content:
                 raise AdfError("jira-ticket: un bloque <details> necesita <summary> con título y contenido")
+            if link := _first_link(content):
+                raise AdfError(
+                    f"jira-ticket: el expand '{title.strip()[:ERROR_EXCERPT_LENGTH]}' contiene el link '{link[:ERROR_EXCERPT_LENGTH]}': "
+                    "Jira no lo vuelve clickeable dentro de un expand; moverlo fuera del bloque <details>"
+                )
             nodes.append({"type": "expand", "attrs": {"title": title.strip()}, "content": content})
             index = end + 1
         elif heading_match := HEADING_REGEX.match(line):

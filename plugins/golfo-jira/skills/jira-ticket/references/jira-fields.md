@@ -144,7 +144,7 @@ Una épica nueva se crea solo por pedido explícito y antes que sus Stories, con
 | Sprint | No se envía: una épica no se planifica en sprints |
 | Responsable y Due date | Mismas reglas que el padre, incluida la pregunta por Due date |
 
-Una épica existente no se edita por colgarle una Story: sus campos se preservan y su descripción solo recibe la fila de seguimiento de `ticket-templates.md`.
+Una épica existente no se edita por colgarle una Story: sus campos y su descripción se preservan, y el panel de hijos de Jira muestra la Story nueva (`Agregar un hijo a un padre existente` en `ticket-templates.md`).
 
 ## Payloads conceptuales
 
