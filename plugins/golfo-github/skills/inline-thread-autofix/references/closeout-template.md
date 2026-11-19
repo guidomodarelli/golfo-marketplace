@@ -105,13 +105,12 @@ Agregar este bloque al body original, sin reemplazarlo:
 
 ## Comentario general del PR
 
-Publicar como comentario nuevo en `repos/{{owner}}/{{repo}}/issues/{{pull_request_number}}/comments`. La respuesta a un comentario general siempre empieza con el link explícito al original (primera línea, para verlo rápido) y sigue con un quote reply de su texto, como el botón *Quote reply* de GitHub: cada línea con `> `. Se cita el body completo; si es muy largo, solo las partes de cada pedido, marcando el recorte con `> …`. Del quote se quitan los comentarios HTML (markers de corridas anteriores) y los back-links agregados por esta skill. Después de verificar la respuesta, se edita el original para agregarle al final, sin tocar su texto, un back-link a la respuesta (variante `Back-link en el comentario original`). Una fila por pedido del comentario, en el mismo orden en que aparecen:
+Publicar como comentario nuevo en `repos/{{owner}}/{{repo}}/issues/{{pull_request_number}}/comments`. La respuesta a un comentario general siempre empieza con el link explícito al original (primera línea, para verlo rápido), seguido de una línea en blanco, una línea divisoria (`---`) y otra línea en blanco antes del resto de la respuesta. No se cita el texto del original (ni quote reply ni `> ` con sus líneas): el link ya lleva al hallazgo completo y la cita alarga la respuesta sin aportar. La línea en blanco antes de `---` es obligatoria, porque sin ella GitHub convierte la primera línea en un heading. Después de verificar la respuesta, se edita el original para agregarle al final, sin tocar su texto, un back-link a la respuesta (variante `Back-link en el comentario original`). Una fila por pedido del comentario, en el mismo orden en que aparecen:
 
 ```markdown
-↩️ En respuesta a [este comentario]({{source_comment_url}}) de {{mencion_autor}}:
+↩️ En respuesta a [este comentario]({{source_comment_url}}) de {{mencion_autor}}.
 
-> {{linea_1_del_comentario_original}}
-> {{linea_2_del_comentario_original}}
+---
 
 ✅ **Fix aplicado** en [`{{sha_corto}}`]({{commit_url}}).
 
@@ -137,10 +136,10 @@ Publicar como comentario nuevo en `repos/{{owner}}/{{repo}}/issues/{{pull_reques
 Un comentario general tiene una sola respuesta, y esa respuesta muestra solo el análisis actual. Si al retomarlo ya existe una respuesta propia con su marker (`issuecomment:`, `answer:issuecomment:` o `declined:issuecomment:` con el mismo `{{comment_id}}`), no publicar otra ni conservarla como está: rehacer el análisis de cada pedido contra el head actual del PR y reescribir esa respuesta en el lugar con `PATCH repos/{{owner}}/{{repo}}/issues/comments/{{reply_id}}`, usando el template vigente de esta sección (o de `Respuesta a una pregunta`). Quien lee el PR necesita saber qué estado tiene hoy cada pedido, no la crónica de corridas anteriores.
 
 - El body nuevo reemplaza al anterior por completo: no conservar el texto previo, ni tachado, ni en `<details>`, ni como sección `Actualización` o `Historial`, ni la tabla vieja al lado de la nueva.
-- Un formato viejo (sin link inicial, sin quote, sin tabla o sin emojis) se migra al template vigente en la misma edición.
+- Un formato viejo (sin link inicial, con quote reply del original, sin línea divisoria, sin tabla o sin emojis) se migra al template vigente en la misma edición.
 - Para un pedido ya implementado en una corrida anterior, reutilizar su commit solo si se verifica que el cambio sigue en el head; no crear otro commit para reescribir la respuesta.
 - Mantener el marker exacto: la URL de la respuesta no cambia, así que el back-link del original sigue válido.
-- Releer la respuesta justo antes del `PATCH` y verificar después el body publicado (link, quote, tabla, SHA si hay commit y marker). Si hay más de una respuesta propia con el marker, reescribir la más antigua y reportar las otras sin borrarlas.
+- Releer la respuesta justo antes del `PATCH` y verificar después el body publicado (link, línea divisoria, tabla, SHA si hay commit y marker). Si hay más de una respuesta propia con el marker, reescribir la más antigua y reportar las otras sin borrarlas.
 - Si el `PATCH` devuelve `403`/`404` o no verifica, no publicar una respuesta nueva y dejar el ítem en `CLOSEOUT_INCOMPLETE`: no agregar el back-link, no ocultar el original y no cerrar la issue que dependa de esa respuesta, porque un comentario oculto se descarta en las corridas siguientes y ya no se podría recuperar la respuesta vigente. Reportar `respuesta: no reescrita` y seguir solo con los demás ítems independientes.
 
 ## Back-link en el comentario original
@@ -157,7 +156,7 @@ Después de publicar y verificar la respuesta a un comentario general, editar el
 
 Reglas:
 
-- Releer el original justo antes del `PATCH`; si su body cambió desde que se citó, reconstruir con el body nuevo y no pisar la edición ajena.
+- Releer el original justo antes del `PATCH`; si su body cambió desde que se leyó, reconstruir con el body nuevo y no pisar la edición ajena.
 - Si el marker `issuecomment-backlink:{{comment_id}}` ya está en el body, no agregar otro.
 - Verificar después que el body empieza con el texto original completo y termina con el bloque.
 - Si el `PATCH` devuelve `403`/`404` o no verifica, la respuesta publicada sigue valiendo: reportar `back-link: no agregado` y seguir; no reintentar en loop.
@@ -165,10 +164,12 @@ Reglas:
 
 ## Respuesta a una pregunta
 
-Para un thread inline o un comentario general que pregunta algo sin pedir cambios. En inline va como reply con `in_reply_to`, sin quote. En comentario general va como comentario nuevo con el mismo encabezado de link y quote reply de la variante anterior (y back-link en el original):
+Para un thread inline o un comentario general que pregunta algo sin pedir cambios. En inline va como reply con `in_reply_to`, sin quote. En comentario general va como comentario nuevo con la misma estructura de la variante anterior: el encabezado con el link en la primera línea, una línea en blanco, `---`, otra línea en blanco y la respuesta, sin citar el original (y back-link en el original). En inline se omiten la línea divisoria y sus líneas en blanco:
 
 ```markdown
 💬 **Respuesta** a [este comentario]({{source_comment_url}}).
+
+---
 
 {{respuesta_breve}}
 
