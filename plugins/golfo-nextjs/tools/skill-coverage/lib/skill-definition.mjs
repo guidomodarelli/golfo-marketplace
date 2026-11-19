@@ -17,32 +17,77 @@ export const SKILLS_DIRECTORY_ENVIRONMENT_VARIABLE = 'GOLFO_COVERAGE_SKILLS_DIR'
 /** Root of the plugin that carries this copy of the tool (`<plugin>/tools/skill-coverage/lib` → `<plugin>`). */
 const OWN_PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const DEFAULT_SKILLS_DIRECTORY = path.join(OWN_PLUGIN_ROOT, 'skills');
+/**
+ * Claude Code registry of the active installation of each plugin. It sits two levels above
+ * the cache of a marketplace: `<plugins>/installed_plugins.json` next to
+ * `<plugins>/cache/<marketplace>/<plugin>/<version>`.
+ */
+const CLAUDE_INSTALLED_PLUGINS_FILE = 'installed_plugins.json';
+
+/**
+ * @param {string} directory
+ * @returns {string[]} Absolute paths of its subdirectories; empty when it cannot be read.
+ */
+function childDirectories(directory) {
+  try {
+    return fs.readdirSync(directory, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => path.join(directory, entry.name));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Reads the install paths Claude Code marks as active.
+ *
+ * @param {string} cacheDirectory `<plugins>/cache`.
+ * @returns {Set<string> | null} Normalized active install paths, or null when the registry is missing or unreadable.
+ */
+function readActiveInstallPaths(cacheDirectory) {
+  const registryFile = path.join(path.dirname(cacheDirectory), CLAUDE_INSTALLED_PLUGINS_FILE);
+  try {
+    const registry = JSON.parse(fs.readFileSync(registryFile, 'utf8'));
+    const installPaths = Object.values(registry.plugins ?? {})
+      .flat()
+      .map((installation) => installation?.installPath)
+      .filter((installPath) => typeof installPath === 'string')
+      .map((installPath) => path.resolve(installPath));
+    return new Set(installPaths);
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Lists the `skills/` directories of the plugins installed next to this one, so a skill
  * that lives in another golfo plugin is still found. Covers the repository and Hermes
  * layout (`<plugins>/<plugin>/skills`) and the Claude Code cache layout
- * (`<marketplace>/<plugin>/<version>/skills`).
+ * (`<marketplace>/<plugin>/<version>/skills`). The cache keeps old versions, so for each
+ * cached plugin only its active version counts: the one `installed_plugins.json` names, or
+ * the only version present. A plugin with several cached versions and no way to tell the
+ * active one is left out, so the CLI reports the definition as not installed instead of
+ * hashing outdated rules.
  *
  * @returns {string[]} Existing sibling skills directories, own plugin excluded.
  */
 function siblingSkillsDirectories() {
   const parent = path.dirname(OWN_PLUGIN_ROOT);
   const candidates = [];
-  const childDirectories = (directory) => {
-    try {
-      return fs.readdirSync(directory, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => path.join(directory, entry.name));
-    } catch {
-      return [];
-    }
-  };
   for (const pluginDirectory of childDirectories(parent)) {
     if (pluginDirectory !== OWN_PLUGIN_ROOT) candidates.push(path.join(pluginDirectory, 'skills'));
   }
-  for (const pluginDirectory of childDirectories(path.dirname(parent))) {
-    for (const versionDirectory of childDirectories(pluginDirectory)) {
-      if (versionDirectory !== OWN_PLUGIN_ROOT) candidates.push(path.join(versionDirectory, 'skills'));
+  const marketplaceDirectory = path.dirname(parent);
+  let activeInstallPaths;
+  for (const pluginDirectory of childDirectories(marketplaceDirectory)) {
+    if (pluginDirectory === parent) continue;
+    const versionDirectories = childDirectories(pluginDirectory).filter((directory) => fs.existsSync(path.join(directory, 'skills')));
+    if (versionDirectories.length === 0) continue;
+    if (versionDirectories.length === 1) {
+      candidates.push(path.join(versionDirectories[0], 'skills'));
+      continue;
     }
+    activeInstallPaths ??= readActiveInstallPaths(path.dirname(marketplaceDirectory));
+    const activeVersions = versionDirectories.filter((directory) => activeInstallPaths?.has(path.resolve(directory)));
+    if (activeVersions.length === 1) candidates.push(path.join(activeVersions[0], 'skills'));
   }
   return candidates.filter((directory) => fs.existsSync(directory));
 }

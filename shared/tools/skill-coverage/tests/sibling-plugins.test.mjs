@@ -70,6 +70,33 @@ describe('skill definitions across sibling plugins', () => {
     assert.equal(resolveFromCopy(webPlugin), path.join(root, 'cache', 'golfo-marketplace', 'golfo-frontend', '0.129.0', 'skills', SKILL_NAME));
   });
 
+  test('with several cached versions of a sibling, the one installed_plugins.json marks active wins', () => {
+    const marketplace = path.join(root, 'plugins', 'cache', 'golfo-marketplace');
+    const webPlugin = path.join(marketplace, 'golfo-web', '0.130.0');
+    installToolCopy(webPlugin);
+    const oldFrontend = path.join(marketplace, 'golfo-frontend', '0.129.0');
+    const activeFrontend = path.join(marketplace, 'golfo-frontend', '0.130.0');
+    writeSkill(path.join(oldFrontend, 'skills'), 'old rules');
+    writeSkill(path.join(activeFrontend, 'skills'), 'active rules');
+    fs.writeFileSync(path.join(root, 'plugins', 'installed_plugins.json'), JSON.stringify({
+      version: 2,
+      plugins: {
+        'golfo-web@golfo-marketplace': [{ scope: 'user', installPath: webPlugin, version: '0.130.0' }],
+        'golfo-frontend@golfo-marketplace': [{ scope: 'user', installPath: activeFrontend, version: '0.130.0' }],
+      },
+    }));
+    assert.equal(resolveFromCopy(webPlugin), path.join(activeFrontend, 'skills', SKILL_NAME));
+  });
+
+  test('several cached versions of a sibling and no registry leave the skill unresolved instead of using an old copy', () => {
+    const marketplace = path.join(root, 'plugins', 'cache', 'golfo-marketplace');
+    const webPlugin = path.join(marketplace, 'golfo-web', '0.130.0');
+    installToolCopy(webPlugin);
+    writeSkill(path.join(marketplace, 'golfo-frontend', '0.129.0', 'skills'), 'old rules');
+    writeSkill(path.join(marketplace, 'golfo-frontend', '0.130.0', 'skills'), 'new rules');
+    assert.equal(resolveFromCopy(webPlugin), path.join(webPlugin, 'skills', SKILL_NAME));
+  });
+
   test('the skill of the plugin that carries the tool wins over a sibling copy', () => {
     const webPlugin = path.join(root, 'plugins', 'golfo-web');
     installToolCopy(webPlugin);
