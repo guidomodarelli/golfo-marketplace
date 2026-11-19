@@ -54,6 +54,7 @@ Corré cada comando que autentica en background con `--auth-type=web` (con pseud
 4. El éxito es `conclusion=success` del run más el deploy `Ready` con los alias de producción. Sacá la URL y el alias del log sin bajarlo entero: `gh run view <id> --log | grep -E 'Production|Aliased'`. Si hace falta, confirmá con `vercel inspect <deployment-url>` desde un dir cualquiera. No hay GitHub Release: `gh release view vX.Y.Z` devuelve «not found» y es normal.
 5. Si el release de un tag falla por el workflow (p. ej. una herramienta que `pnpm run ci` necesita y `release.yml` no instala), arreglá `release.yml` en `main` por PR y reenviá el mismo tag con el workflow de `main`: `gh workflow run release.yml --ref main -f version=X.Y.Z -f tag=vX.Y.Z -f sha=$(git rev-parse 'vX.Y.Z^{commit}')`. La verificación de identidad sigue exigiendo tag, SHA y ancestro de `main`, así que no hace falta otro bump.
 6. Los repos golfo (TuTribu, golfo-ui) no permiten squash: mergeá con `gh pr merge --merge --delete-branch --match-head-commit <head>`. Ante la duda, mirá la estrategia permitida como en el paso 1.
+7. Las env vars de Vercel cambiadas antes del release quedan aplicadas recién con ese deploy: mencionalo en el reporte si el usuario acababa de cargar alguna.
 
 ## Release encadenado: librería → app que la consume
 
@@ -71,7 +72,6 @@ Si falla un job, leé el log (`gh run view <run> --job <job> --log-failed`, sin 
 ## `main` abierto en otro worktree
 
 Si `git switch main` falla porque `main` está en otro worktree, no lo muevas: corré el release desde ese worktree (`git status` limpio, `git pull --ff-only`, `pnpm install --frozen-lockfile`, después `create-version`). Dejá el checkout principal en `origin/main` sin rama (detached) y avisá al usuario dónde quedó `main`.
-7. Las env vars de Vercel cambiadas antes del release quedan aplicadas recién con ese deploy: mencionalo en el reporte si el usuario acababa de cargar alguna.
 
 ## Si el release por OIDC falla con `ENEEDAUTH`
 

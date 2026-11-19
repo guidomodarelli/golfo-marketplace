@@ -39,5 +39,9 @@
   fallback: `push` devuelve `undefined` y dispara el fallback, que recarga la página) y demorar solo las respuestas
   RSC con `page.route("**/*", …)` cuando `request.headers()["rsc"] === "1"`; así CSS/JS cargan y el skeleton
   aparece estilado. El throttling de red global deja el skeleton sin estilos.
-- Antes/después de un cambio de CSS sin otro checkout: `git checkout origin/main -- <archivos>`, medir,
-  `git checkout HEAD -- <archivos>`.
+- Antes/después de un cambio de CSS sin otro checkout: `git checkout origin/main -- <archivos>` pisa el árbol de
+  trabajo sin guardarlo, así que el fix tiene que estar a salvo antes. Con el fix commiteado (`git status --short
+  <archivos>` vacío): `git checkout origin/main -- <archivos>`, medir y `git checkout HEAD -- <archivos>`. Con el fix
+  sin commitear: `git stash push -- <archivos>`, `git checkout origin/main -- <archivos>`, medir,
+  `git checkout HEAD -- <archivos>` y `git stash pop`. Si eso no aplica limpio, medí el antes en un worktree de
+  `origin/main` (`git worktree add --detach <dir> origin/main`).

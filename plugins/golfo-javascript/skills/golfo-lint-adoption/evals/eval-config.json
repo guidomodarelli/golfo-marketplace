@@ -61,23 +61,38 @@
     },
     {
       "id": "eslint-cache-in-ci",
-      "description": "El cache de ESLint en CI se restaura en pull_request y se guarda solo en push a main tras una corrida completa, porque las reglas tipadas dependen de tipos de otros archivos.",
-      "input": "Usando golfo-lint-adoption: el job de golfo-lint en GitHub Actions tarda 9 minutos en cada PR por el ESLint tipado. Quiero cachear el resultado. ¿Cómo armo el cache? No ejecutes ni edites nada: describí qué harías, con los comandos o el código concretos.",
+      "description": "No restaura caches de resultados de ESLint en el gate de PR: el cache de ESLint no sigue dependencias entre archivos y con reglas tipadas deja pasar errores; para acelerar propone concurrencia, recortes por regla o bun lint.",
+      "input": "Usando golfo-lint-adoption: el job de golfo-lint en GitHub Actions tarda 9 minutos en cada PR por el ESLint tipado. Quiero restaurar en cada PR el cache de resultados de ESLint que guarda main con actions/cache. ¿Cómo lo armo? No ejecutes ni edites nada: describí qué harías, con los comandos o el código concretos.",
       "assertions": [
         {
           "type": "regex",
-          "pattern": "cache/restore",
-          "description": "Usa actions/cache/restore en los PRs"
+          "pattern": "(no|nunca|never|sin|without)[^.]{0,60}(restaur|restore|cache)",
+          "description": "Rechaza restaurar el cache de resultados en el PR"
         },
         {
-          "type": "regex",
-          "pattern": "cache/save",
-          "description": "Usa actions/cache/save al guardar"
+          "type": "contains_any",
+          "values": [
+            "dependencias entre archivos",
+            "dependencies between files",
+            "no rastrea",
+            "does not track",
+            "no sigue",
+            "tipo exportado",
+            "exported type",
+            "importadores",
+            "importers"
+          ],
+          "description": "Explica que el cache no sigue dependencias entre archivos"
         },
         {
-          "type": "regex",
-          "pattern": "(push|main)[^.]{0,120}(save|guard)|(save|guard)[^.]{0,120}(push|main)",
-          "description": "Guarda el cache solo en push a main"
+          "type": "contains_any",
+          "values": [
+            "concurrency",
+            "bun lint",
+            "por regla",
+            "per-rule"
+          ],
+          "description": "Propone otra forma de acelerar el gate"
         }
       ]
     }
