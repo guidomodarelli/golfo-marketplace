@@ -742,6 +742,22 @@ def test_adf_rejects_links_inside_expand_because_jira_does_not_make_them_clickab
     assert jira_ticket.adf.markdown_to_plain(markdown).count("https://") == 1
 
 
+@pytest.mark.parametrize(
+    "body",
+    [
+        "```bash\ncurl https://api.example.com/health\n```",
+        "- Endpoint: `https://api.example.com/health`",
+    ],
+)
+def test_adf_keeps_urls_written_as_code_inside_expand(body):
+    markdown = f"## Solución\nTexto.\n\n<details><summary>Detalle técnico</summary>\n\n{body}\n\n</details>\n"
+    doc = jira_ticket.adf.markdown_to_document(markdown)
+    expand = doc["content"][-1]
+    assert expand["type"] == "expand" and "https://api.example.com/health" in jira_ticket.adf.node_text(expand)
+    with pytest.raises(jira_ticket.adf.AdfError):
+        jira_ticket.adf.markdown_to_document(markdown.replace(body, body + "\n\n- Ver [doc](https://acme.atlassian.net/wiki/x)"))
+
+
 # --- adf: Markdown enriquecido → ADF ------------------------------------------
 
 

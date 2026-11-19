@@ -38,6 +38,8 @@ SUMMARY_REGEX = re.compile(r"^<summary>(?P<title>.*?)</summary>\s*$")
 DETAILS_CLOSE = "</details>"
 BARE_URL_REGEX = re.compile(r"https?://\S+")
 SMART_LINK_TYPES = ("inlineCard", "blockCard", "embedCard")
+CODE_BLOCK_TYPE = "codeBlock"
+CODE_MARK_TYPE = "code"
 INLINE_TOKEN_REGEX = re.compile(
     r"(?P<code>`(?P<code_text>[^`]+)`)"
     r"|(?P<status>\{status:(?:(?P<status_color>[a-z]+):)?(?P<status_text>[^:}][^}]*)\})"
@@ -255,14 +257,22 @@ def _starts_block(line: str, next_line: str | None) -> bool:
 
 
 def _first_link(nodes: list[dict[str, Any]]) -> str | None:
-    """Primer link de los nodos (marca `link`, smart link o URL suelta en el texto), o `None` si no hay."""
+    """Primer link de los nodos (marca `link`, smart link o URL suelta en el texto), o `None` si no hay.
+
+    Una URL escrita como código (marca `code` o bloque de código) es un literal
+    que Jira nunca vuelve clickeable, así que no cuenta como link.
+    """
     for node in nodes:
+        if node.get("type") == CODE_BLOCK_TYPE:
+            continue
         if node.get("type") in SMART_LINK_TYPES:
             return str((node.get("attrs") or {}).get("url") or node.get("type"))
-        for mark in node.get("marks") or []:
+        marks = node.get("marks") or []
+        for mark in marks:
             if mark.get("type") == "link":
                 return str((mark.get("attrs") or {}).get("href") or node.get("text") or "")
-        if node.get("type") == "text" and (bare := BARE_URL_REGEX.search(node.get("text") or "")):
+        is_code_text = any(mark.get("type") == CODE_MARK_TYPE for mark in marks)
+        if node.get("type") == "text" and not is_code_text and (bare := BARE_URL_REGEX.search(node.get("text") or "")):
             return bare.group(0)
         if found := _first_link(node.get("content") or []):
             return found
