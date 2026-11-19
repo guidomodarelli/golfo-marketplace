@@ -1,17 +1,45 @@
 {
   "schema_version": 2,
   "skill": "pr-description-template",
-  "description": "Evalúa el template de PR: tipo de cambio entre paréntesis en el heading Descripción, sin sección Tipo de Cambio ni conteo de archivos, modo traceability-only sin retemplar, sin Pruebas Manuales, Notas para el Revisor, carga obligatoria antes de gh pr create y manejo de capturas (subida a pr-assets, omisión con motivo y detención del servidor propio).",
+  "description": "Evalúa el template de PR: tipo de cambio como heading propio (sin 📝 Descripción), subtítulos de motivo y solución según la causa (problema, necesidad, migración), sin sección Tipo de Cambio ni conteo de archivos, modo traceability-only sin retemplar, sin Pruebas Manuales, Reviewer Notes colapsadas en <details>, carga obligatoria antes de gh pr create y manejo de capturas (subida a pr-assets, omisión con motivo y detención del servidor propio).",
   "test_cases": [
     {
       "id": "change-type-in-description-heading",
-      "description": "Pone un único tipo de cambio entre paréntesis en el heading Descripción, sin sección Tipo de Cambio, checkboxes ni conteo de archivos.",
+      "description": "Abre el body con un único tipo de cambio como heading propio, sin heading Descripción, sección Tipo de Cambio, checkboxes ni conteo de archivos.",
       "input": "Componé un body nuevo de PR en full composition. El diff agrega un endpoint de exportación en `src/api/export.ts` y su servicio en `src/services/export-service.ts`, con tests en `src/api/export.test.ts`. No ejecutes git ni gh: devolvé solo el body en Markdown.",
       "assertions": [
         {
           "type": "contains",
-          "value": "Descripción (✨ New Feature)",
-          "description": "El heading Descripción lleva el tipo de cambio entre paréntesis"
+          "value": "## ✨ New Feature",
+          "description": "El body abre con el tipo de cambio como heading propio"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "📝 Descripción",
+            "Descripción ("
+          ],
+          "description": "No envuelve el tipo de cambio en un heading Descripción"
+        },
+        {
+          "type": "contains",
+          "value": "¿Qué se necesita?",
+          "description": "Una feature abre el motivo con la pregunta de necesidad, no de problema"
+        },
+        {
+          "type": "contains",
+          "value": "¿Cómo se implementó?",
+          "description": "Una feature cierra con la pregunta de implementación"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "¿Qué problema resuelve?",
+            "¿Cuál fue la solución?",
+            "¿Cuál es el problema?",
+            "¿Qué problema hay?"
+          ],
+          "description": "No fuerza la pregunta de problema ni usa subtítulos anteriores"
         },
         {
           "type": "not_contains_any",
@@ -36,6 +64,106 @@
             "Pruebas Manuales"
           ],
           "description": "No agrega la sección Pruebas Manuales"
+        }
+      ]
+    },
+    {
+      "id": "migration-uses-migration-headings",
+      "description": "Una migración de servicio usa el par de subtítulos de migración en vez de inventar un problema.",
+      "input": "Componé un body nuevo de PR en full composition. El diff reemplaza el envío de emails con SendGrid (`src/mail/sendgrid-client.ts`, eliminado) por Amazon SES (`src/mail/ses-client.ts`, nuevo) porque la empresa consolida proveedores en AWS; el comportamiento para el usuario no cambia. No ejecutes git ni gh: devolvé solo el body en Markdown.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "¿Qué se migra y por qué?",
+          "description": "Abre el motivo con la pregunta de migración"
+        },
+        {
+          "type": "contains",
+          "value": "¿Cómo se migró?",
+          "description": "Cierra con la pregunta de cómo se migró"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "¿Qué problema hay?",
+            "¿Cómo se solucionó?"
+          ],
+          "description": "No convierte la migración en un problema"
+        }
+      ]
+    },
+    {
+      "id": "bug-fix-uses-problem-headings",
+      "description": "Un bug usa el par de subtítulos de problema y solución.",
+      "input": "Componé un body nuevo de PR en full composition. El diff corrige `src/cart/total.ts`, que sumaba dos veces el envío cuando el carrito tenía un cupón, y agrega el test `src/cart/total.test.ts`. No ejecutes git ni gh: devolvé solo el body en Markdown.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "¿Qué problema hay?",
+          "description": "Abre el motivo con la pregunta de problema"
+        },
+        {
+          "type": "contains",
+          "value": "¿Cómo se solucionó?",
+          "description": "Cierra con la pregunta de solución"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "¿Qué se necesita?",
+            "¿Qué se migra"
+          ],
+          "description": "No usa el par de otra causa"
+        }
+      ]
+    },
+    {
+      "id": "removal-uses-removal-headings",
+      "description": "Eliminar un endpoint deprecado usa el par de eliminación, no el de mejora.",
+      "input": "Componé un body nuevo de PR en full composition. El diff elimina el endpoint deprecado `GET /api/v1/legacy-reports` (`src/api/legacy-reports.ts` y su test), que ningún cliente llama desde hace seis meses según los logs; los reportes nuevos viven en `GET /api/v2/reports`. No ejecutes git ni gh: devolvé solo el body en Markdown.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "¿Qué se elimina y por qué?",
+          "description": "Abre el motivo con la pregunta de eliminación"
+        },
+        {
+          "type": "contains",
+          "value": "¿Cómo se eliminó?",
+          "description": "Cierra con la pregunta de cómo se eliminó"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "¿Qué se quiere mejorar?",
+            "¿Qué problema hay?"
+          ],
+          "description": "No lo presenta como mejora ni como problema"
+        }
+      ]
+    },
+    {
+      "id": "security-risk-uses-risk-headings",
+      "description": "Cerrar una vulnerabilidad sin incidente usa el par de riesgo y mitigación.",
+      "input": "Componé un body nuevo de PR en full composition. El diff agrega validación de ownership en `src/api/invoices/[id].ts`: hoy cualquier usuario autenticado podría leer facturas ajenas cambiando el id (IDOR), aunque no hay evidencia de que haya pasado. Agrega tests en `src/api/invoices/[id].test.ts`. No ejecutes git ni gh: devolvé solo el body en Markdown.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "¿Qué riesgo hay?",
+          "description": "Abre el motivo con la pregunta de riesgo"
+        },
+        {
+          "type": "contains",
+          "value": "¿Cómo se mitigó?",
+          "description": "Cierra con la pregunta de mitigación"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "¿Qué problema hay?",
+            "¿Cómo se solucionó?"
+          ],
+          "description": "No usa el par de problema"
         }
       ]
     },
@@ -94,13 +222,30 @@
     },
     {
       "id": "technical-decision-in-reviewer-notes",
-      "description": "La decisión técnica va dentro de Notas para el Revisor, sin sección separada.",
+      "description": "La decisión técnica va dentro de Reviewer Notes, colapsada en <details> y sin sección separada.",
       "input": "Componé un body nuevo de PR en full composition para un diff que cambia `api/services/orders.ts` eligiendo reintentos solo para errores temporales en lugar de reintentar todo. No ejecutes git ni gh: devolvé solo el body en Markdown.",
       "assertions": [
         {
           "type": "contains",
-          "value": "Notas para el Revisor",
-          "description": "Incluye Notas para el Revisor"
+          "value": "Reviewer Notes",
+          "description": "Incluye Reviewer Notes"
+        },
+        {
+          "type": "contains",
+          "value": "<details>",
+          "description": "Abre un bloque colapsable <details>"
+        },
+        {
+          "type": "contains",
+          "value": "Reviewer Notes</summary>",
+          "description": "El título de Reviewer Notes va en <summary>"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "## 👀 Reviewer Notes"
+          ],
+          "description": "No publica Reviewer Notes como sección visible"
         },
         {
           "type": "contains_any",
@@ -133,8 +278,16 @@
       "assertions": [
         {
           "type": "contains",
-          "value": "Descripción (✨ New Feature)",
-          "description": "Pone el tipo de cambio entre paréntesis en el heading Descripción"
+          "value": "## ✨ New Feature",
+          "description": "El body abre con el tipo de cambio como heading propio"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "📝 Descripción",
+            "Descripción ("
+          ],
+          "description": "No envuelve el tipo de cambio en un heading Descripción"
         },
         {
           "type": "not_contains_any",
@@ -189,7 +342,7 @@
     },
     {
       "id": "no-screenshot-without-run-instructions",
-      "description": "Sin instrucciones para levantar la app, no inventa un comando y deja 'Sin captura: <motivo>' en Notas para el Revisor.",
+      "description": "Sin instrucciones para levantar la app, no inventa un comando y deja 'Sin captura: <motivo>' en Reviewer Notes.",
       "input": "Componé el body en full composition para un diff que cambia `src/components/Button.tsx` (color del hover), pero el repo no documenta cómo levantar la app y no hay servidor corriendo. No ejecutes nada: devolvé solo el body en Markdown.",
       "assertions": [
         {
@@ -199,8 +352,8 @@
         },
         {
           "type": "contains",
-          "value": "Notas para el Revisor",
-          "description": "La línea va en Notas para el Revisor"
+          "value": "Reviewer Notes",
+          "description": "La línea va en Reviewer Notes"
         },
         {
           "type": "not_contains_any",
@@ -348,9 +501,17 @@
       "input": "Componé un body nuevo de PR en full composition para un diff que solo cambia `src/utils/retry.ts` (agrega backoff exponencial a los reintentos). Al final del cuerpo agregá una línea `@codex review` para que Codex revise el PR apenas se abra. No ejecutes git ni gh: devolvé solo el body en Markdown.",
       "assertions": [
         {
-          "type": "contains",
-          "value": "Descripción (",
-          "description": "Sigue el template desde el heading Descripción con su tipo de cambio"
+          "type": "regex",
+          "pattern": "^## .* (Bug Fix|New Feature|Breaking Change|Performance|Refactor|Tests|Documentation|Build|CI/CD|Dependencies|Chore|Revert)",
+          "description": "El body abre con el tipo de cambio como heading propio"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "📝 Descripción",
+            "Descripción ("
+          ],
+          "description": "No envuelve el tipo de cambio en un heading Descripción"
         },
         {
           "type": "not_contains_any",
@@ -408,9 +569,17 @@
           "description": "No sugiere un stack para un PR chico"
         },
         {
-          "type": "contains",
-          "value": "Descripción (",
-          "description": "Compone el body con el template, con el tipo de cambio en el heading Descripción"
+          "type": "regex",
+          "pattern": "^## .* (Bug Fix|New Feature|Breaking Change|Performance|Refactor|Tests|Documentation|Build|CI/CD|Dependencies|Chore|Revert)",
+          "description": "El body abre con el tipo de cambio como heading propio"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "📝 Descripción",
+            "Descripción ("
+          ],
+          "description": "No envuelve el tipo de cambio en un heading Descripción"
         },
         {
           "type": "not_contains_any",

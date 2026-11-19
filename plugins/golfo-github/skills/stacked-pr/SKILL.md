@@ -4,7 +4,7 @@ description: "Gestiona stacked Pull Requests de GitHub con ramas feature/*: divi
 allowed-tools: Bash Read Write Edit
 license: MIT
 metadata:
-  version: "1.3.0"
+  version: "1.3.2"
   author: "Guido Modarelli"
   category: "git-workflow"
   tags: "git, pull-request, stacked-pr, stack"
@@ -219,7 +219,7 @@ En ambos casos, la capa de refactor no cambia comportamiento: su CI tiene que pa
 
 ## Publicar cada PR
 
-Antes de cada `gh pr create` o `gh pr edit --body`, cargá `pr-description-template` (este mismo plugin) y armá título y body con esa plantilla a partir del diff de la capa contra su base inmediata. En **Notas para el Revisor** agregá la navegación del stack, porque es lo primero que necesita quien revisa:
+Antes de cada `gh pr create` o `gh pr edit --body`, cargá `pr-description-template` (este mismo plugin) y armá título y body con esa plantilla a partir del diff de la capa contra su base inmediata. En **Reviewer Notes** agregá la navegación del stack, porque es lo primero que necesita quien revisa:
 
 ```markdown
 **Stack** (capa 2/4) · base: #201 · sigue: #203
@@ -233,10 +233,10 @@ Antes de cada `gh pr create` o `gh pr edit --body`, cargá `pr-description-templ
 gh pr create --base <parent-branch> --head feature/<slug>-<layer> --title "<título>" --body-file <body.md>
 ```
 
-Cuando se crean, reordenan o mergean capas, actualizá ese bloque en los PRs ya publicados con un patch body-only propio de esta skill (el modo traceability-only de la plantilla no cubre **Notas para el Revisor**):
+Cuando se crean, reordenan o mergean capas, actualizá ese bloque en los PRs ya publicados con un patch body-only propio de esta skill (el modo traceability-only de la plantilla no cubre **Reviewer Notes**):
 
 1. Releé el body justo antes de escribir: `gh pr view <url> --json body -q .body > <body.md>`.
-2. Reemplazá solo el bloque que empieza en `**Stack**` hasta la última línea de la lista numerada; si no existe, agregalo al final de **Notas para el Revisor** (o creá esa sección antes de la línea de atribución). No toques título ni otras secciones.
+2. Reemplazá solo el bloque que empieza en `**Stack**` hasta la última línea de la lista numerada; si no existe, agregalo al final de **Reviewer Notes**, antes de su `</details>` (o creá ese bloque colapsado, como en la plantilla, antes de la línea de atribución). No toques título ni otras secciones.
 3. Aplicá con `gh pr edit <url> --body-file <body.md>`, sin `--title`.
 4. Releé con `gh pr view <url> --json title,body` y verificá que el bloque es el nuevo y que el resto del body quedó idéntico.
 

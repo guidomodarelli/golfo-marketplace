@@ -102,7 +102,7 @@
 | Pertenencia | `issue_url` termina en `/repos/<owner>/<repo>/issues/<PR>` del PR indicado |
 | Pedidos | cada pedido separado con su anchor; los ambiguos quedan `FINDING_ANCHOR_AMBIGUOUS` sin bloquear al resto |
 | Alcance | pedidos que no son código del PR (labels, merge, reviewers, otro PR) quedan `⏸️ Pendiente` hasta confirmación del usuario |
-| Duplicados | ningún comentario general contiene marker `issuecomment:<comment_id>` |
+| Duplicados | a lo sumo una respuesta propia con marker `issuecomment:<comment_id>`; si ya existía, se reescribió en el lugar (`PATCH`) con el análisis actual y el template vigente, sin conservar el texto previo |
 | Respuesta | comentario nuevo en `issues/<PR>/comments` cuya primera línea enlaza el original, seguida del quote reply (`> `) de su texto, tabla de pedidos, SHA si hubo commit y marker |
 | Original | no borrado; la única edición es el back-link agregado al final, con el body previo completo al principio y marker `issuecomment-backlink:<comment_id>` sin duplicar; si el `PATCH` falla se reporta `back-link: no agregado` |
 | Ocultar | tras verificar la respuesta, `minimizeComment` `classifier: RESOLVED` solo sobre el `node_id` del original; releer `isMinimized: true` y `minimizedReason` `resolved`; si el autor es el usuario autenticado, no se oculta |
