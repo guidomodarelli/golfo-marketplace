@@ -1,0 +1,30 @@
+{
+  "name": "golfo-cli",
+  "version": "0.129.0",
+  "description": "Skills exclusivas de herramientas de línea de comandos, en cualquier lenguaje: diseño de CLIs con flags, modo interactivo, modo agente y salida --json.",
+  "author": {
+    "name": "Guido Modarelli",
+    "email": "",
+    "url": ""
+  },
+  "repository": "https://github.com/guidomodarelli/golfo-marketplace",
+  "license": "MIT",
+  "category": "development",
+  "keywords": [
+    "golfo",
+    "cli",
+    "terminal",
+    "interactive"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Golfo CLI",
+    "shortDescription": "Skills exclusivas de CLIs.",
+    "category": "Development",
+    "capabilities": [
+      "Read",
+      "Write",
+      "Bash"
+    ]
+  }
+}

@@ -499,10 +499,56 @@ create_isolated_skill_view() {
             mirror_root="$view_root"
         fi
     fi
+    if [ "$copy_root" = "$grandparent_path" ]; then
+        copy_plugin_dependency_skills "$source_path" "$view_root/$parent_name" "$view_root"
+    fi
     case "$config_file" in
         "$copy_root"/*) rm -f "$mirror_root/${config_file#"$copy_root"/}" ;;
     esac
     echo "$view_path"
+}
+
+# Prints, one per line, the plugins a skill declares in `metadata.plugin-dependencies` of its
+# SKILL.md frontmatter (a comma-separated string).
+read_plugin_dependencies() {
+    local skill_file="$1/SKILL.md"
+    [ -f "$skill_file" ] || return 0
+    awk '
+        NR == 1 && $0 == "---" { in_frontmatter = 1; next }
+        in_frontmatter && $0 == "---" { exit }
+        in_frontmatter && /^[[:space:]]+plugin-dependencies:/ {
+            sub(/^[^:]*:[[:space:]]*/, "")
+            gsub(/["\047]/, "")
+            count = split($0, names, ",")
+            for (index_name = 1; index_name <= count; index_name++) {
+                name = names[index_name]
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", name)
+                if (name != "") print name
+            }
+        }
+    ' "$skill_file"
+}
+
+# Each plugin is installed on its own, so a skill names the skills of other plugins instead of
+# linking them, and declares those plugins in metadata.plugin-dependencies. Copies the skills of
+# every declared plugin found next to the skill's plugin into the view's skills directory, each
+# without its evals/, so the agent sees the companions an installation would have.
+copy_plugin_dependency_skills() {
+    local source_path="$1"
+    local view_skills_dir="$2"
+    local view_root="$3"
+    local plugins_dir dependency dependency_skill dependency_name
+    plugins_dir=$(dirname "$(dirname "$(dirname "$source_path")")")
+    while IFS= read -r dependency; do
+        [ -d "$plugins_dir/$dependency/skills" ] || continue
+        for dependency_skill in "$plugins_dir/$dependency/skills"/*; do
+            [ -f "$dependency_skill/SKILL.md" ] || continue
+            dependency_name=$(basename "$dependency_skill")
+            [ -e "$view_skills_dir/$dependency_name" ] && continue
+            mkdir -p "$view_skills_dir/$dependency_name"
+            copy_view_entries "$dependency_skill" "$view_skills_dir/$dependency_name" "evals" "$view_root"
+        done
+    done < <(read_plugin_dependencies "$source_path")
 }
 
 find_eval_config() {

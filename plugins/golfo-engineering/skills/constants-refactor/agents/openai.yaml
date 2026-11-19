@@ -1,0 +1,4 @@
+interface:
+  display_name: "Constants Refactor"
+  short_description: "Centralize shared constants and config values"
+  default_prompt: "Use $constants-refactor to centralize the shared constants, contracts and magic literals in the scope I name."

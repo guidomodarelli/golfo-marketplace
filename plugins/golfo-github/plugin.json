@@ -1,0 +1,19 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "golfo-github",
+  "version": "0.129.0",
+  "description": "Skills exclusivas de GitHub: pull requests y su descripción, stacked PRs, comentarios inline y los loops que auto-fixean los comentarios de Codex y Claude. No aplican a GitLab ni a otros hosts.",
+  "author": {
+    "name": "Guido Modarelli"
+  },
+  "repository": "https://github.com/guidomodarelli/golfo-marketplace",
+  "license": "MIT",
+  "keywords": [
+    "golfo",
+    "github",
+    "pull-request",
+    "code-review",
+    "codex",
+    "autofix"
+  ]
+}

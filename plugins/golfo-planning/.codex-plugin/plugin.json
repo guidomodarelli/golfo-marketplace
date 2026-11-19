@@ -1,0 +1,30 @@
+{
+  "name": "golfo-planning",
+  "version": "0.129.0",
+  "description": "Skills de planificación y producto para cualquier herramienta: issues, specs listos para implementar y chequeo de funcionalidades contra el código.",
+  "author": {
+    "name": "Guido Modarelli",
+    "email": "",
+    "url": ""
+  },
+  "repository": "https://github.com/guidomodarelli/golfo-marketplace",
+  "license": "MIT",
+  "category": "productivity",
+  "keywords": [
+    "golfo",
+    "planning",
+    "issues",
+    "specs"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Golfo Planning",
+    "shortDescription": "Skills de planificación para cualquier herramienta.",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write",
+      "Bash"
+    ]
+  }
+}

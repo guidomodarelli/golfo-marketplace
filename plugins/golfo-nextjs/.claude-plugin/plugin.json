@@ -1,0 +1,17 @@
+{
+  "name": "golfo-nextjs",
+  "description": "Skills exclusivas de Next.js App Router: loading y error boundaries, layouts, Suspense y división entre server y client components.",
+  "version": "0.129.0",
+  "author": {
+    "name": "Guido Modarelli"
+  },
+  "repository": "https://github.com/guidomodarelli/golfo-marketplace",
+  "license": "MIT",
+  "category": "development",
+  "keywords": [
+    "golfo",
+    "nextjs",
+    "app-router",
+    "react"
+  ]
+}

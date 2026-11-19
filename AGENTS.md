@@ -2,7 +2,8 @@
 
 A multi-provider marketplace of skills and plugins for AI agents. No application code — only skill definitions (SKILL.md), reference docs, eval configs, and installer scripts. Supports multiple providers: **Claude Code**, **Codex** and **Hermes** (through the portable Agent Plugins v1 package).
 
-- `plugins/` — Production-ready plugins for marketplace distribution. Each plugin has provider spec directories (`.claude-plugin/`, `.codex-plugin/`), a portable root `plugin.json` (Hermes) + `skills/` directory.
+- `plugins/` — Production-ready plugins for marketplace distribution, one per scope (platform or technology; see **Plugin Scopes**). Each plugin has provider spec directories (`.claude-plugin/`, `.codex-plugin/`), a portable root `plugin.json` (Hermes) + `skills/` directory.
+- `shared/` — Canonical source of the files several plugins carry (references and the `skill-coverage` CLI). `pnpm sync-shared-files` copies them into each plugin listed in `shared/shared-files.json`; see **Plugin Scopes**.
 - `skills/` — Standalone skills for prototyping. Same internal structure, lighter packaging.
 - `skill-eval-runner/` — Central eval runner. Skills only need `evals/eval-config.json`; the runner handles execution, assertions, and reporting. Provider-agnostic.
 - `packages/` — npm packages published from this repo. `packages/agent-ready/` is `@golfo/agent-ready`, the launcher that runs the agent-ready-setup CLI of the installed golfo-kit plugin; it never ships a copy of the engine. `.github/workflows/release.yml` publishes it by hand from `main` through npm trusted publishing.
@@ -33,6 +34,16 @@ For local development, skills symlink into each provider's own skills folder (`~
 - **Skills EXECUTE actions** — they write files, run installations, produce reports. They don't just show instructions.
 - **Start in `skills/`, promote to `plugins/`** when production-ready.
 
+## Plugin Scopes
+
+Every plugin covers one scope, and its name says where it does not apply (`golfo-node-backend` is not for a Java backend, `golfo-react` is not for native Android UI). The catalog with every plugin and its skills lives in [`README.md` → “Plugins”](README.md#-plugins).
+
+- **Where a new skill goes**: in the exclusive plugin of the only scope where it works; if it works in several scopes, in the shared plugin that covers all of them (a skill for web and native mobile goes to `golfo-frontend`, one for React web and React Native to `golfo-react`, one for any language to `golfo-engineering`). Decide it from what the skill really needs (APIs, tools, runtime), not from the examples it uses. Create a new scope plugin when a skill fits none, even if it is the only one.
+- **No links across plugins**: each plugin is installed on its own, so a relative link into another plugin breaks once installed. Name the skill and its plugin instead, e.g. “`async-operation-error-handling` (plugin `golfo-engineering`)”.
+- **Plugin dependencies**: a skill that names a skill of another plugin lists that plugin in `metadata.plugin-dependencies` of its `SKILL.md`, as a comma-separated string (`plugin-dependencies: "golfo-engineering, golfo-nextjs"`).
+- **Shared files**: a reference or tool used by several plugins lives once in `shared/`. Declare which plugins carry it in `shared/shared-files.json`, edit only the source and run `pnpm sync-shared-files`; never edit the copies under `plugins/`. Bump the version of every plugin whose copy changed.
+- `pnpm check-plugin-boundaries` (`scripts/check-plugin-boundaries.js`) and `pnpm sync-shared-files --check` (`scripts/sync-shared-files.js`) run in CI and enforce all of this; run both after moving a skill, changing a link between skills or editing `shared/`.
+
 ## Plugin Structure
 
 A plugin root (`plugins/<name>/`) contains provider-specific spec directories alongside the shared `skills/` directory:
@@ -44,7 +55,7 @@ plugins/<name>/
   plugin.json                   ← Agent Plugins v1 portable manifest (required for Hermes)
   skills/                       ← Shared skill implementations
   references/                   ← Docs shared by several skills (optional)
-  tools/                        ← Executable tooling shared by several skills (optional), e.g. golfo-kit `tools/skill-coverage`
+  tools/                        ← Executable tooling shared by several skills (optional), e.g. `tools/skill-coverage` (a copy of `shared/tools/skill-coverage`)
 ```
 
 **Portable** `plugin.json` (Agent Plugins v1, installed by Hermes with `hermes plugins install guidomodarelli/golfo-marketplace#plugins/<name>`) may only contain the spec fields (`$schema`, `name`, `version`, `description`, `author`, `homepage`, `repository`, `license`, `keywords`, `extensions`); `$schema` must be `https://agent-plugins.org/schemas/1.0.0/plugin.schema.json`, `name` must equal the plugin directory and `version` must match `.claude-plugin/plugin.json`. Portable runtimes silently drop any skill whose frontmatter `name` differs from its directory or whose `description` is empty or longer than 1024 characters. Hermes also walks `skills/` recursively and installs every nested `SKILL.md` as a skill of its own, except inside the `assets/`, `references/`, `templates/` and `scripts/` directories of a skill: templates and examples that contain a `SKILL.md` go under one of those. `pnpm validate-portable-plugins` (`scripts/validate-portable-plugins.js`, run in CI) enforces all of this; run it after changing a manifest or a skill frontmatter.
@@ -215,7 +226,7 @@ run-evals plugins/<plugin-name>/skills/<skill-name> --config /path/to/held-out/e
 export GOLFO_MARKETPLACE_EVAL_PROVIDER=codex
 ```
 
-The agent under evaluation reads a copy of the skill without its `evals/` directory (sibling skills and the plugin folders two levels up are copied with it), so it cannot see the assertions it is graded against. With Claude, the agent may read only its working directory and that copy, and the no-skill baseline only its empty directory, so installed copies of the skill (plugin caches, the marketplace clone) stay out of reach; each read Claude denies counts in `usage.permission_denials`. Codex runs with `--sandbox read-only`, which can read any path. Unknown assertion types make the config invalid instead of passing unchecked. Assertions are graded under a UTF-8 locale when the machine has one (`C.UTF-8` or `en_US.UTF-8`), so an accented bracket such as `[oó]` and case folding of `Ó` work the same in Git Bash, whose default locale is `C`.
+The agent under evaluation reads a copy of the skill without its `evals/` directory (sibling skills, the plugin folders two levels up and the skills of the plugins declared in `metadata.plugin-dependencies`, each without its `evals/`, are copied with it), so it cannot see the assertions it is graded against. With Claude, the agent may read only its working directory and that copy, and the no-skill baseline only its empty directory, so installed copies of the skill (plugin caches, the marketplace clone) stay out of reach; each read Claude denies counts in `usage.permission_denials`. Codex runs with `--sandbox read-only`, which can read any path. Unknown assertion types make the config invalid instead of passing unchecked. Assertions are graded under a UTF-8 locale when the machine has one (`C.UTF-8` or `en_US.UTF-8`), so an accented bracket such as `[oó]` and case folding of `Ó` work the same in Git Bash, whose default locale is `C`.
 
 ## Bumping a plugin version
 

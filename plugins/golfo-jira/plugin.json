@@ -1,0 +1,17 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "golfo-jira",
+  "version": "0.130.0",
+  "description": "Skills exclusivas de Jira: stories con subtareas, sprint, fechas y enlace con pull requests. No aplican a otros trackers.",
+  "author": {
+    "name": "Guido Modarelli"
+  },
+  "repository": "https://github.com/guidomodarelli/golfo-marketplace",
+  "license": "MIT",
+  "keywords": [
+    "golfo",
+    "jira",
+    "tickets",
+    "planning"
+  ]
+}

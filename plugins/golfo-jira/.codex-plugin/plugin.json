@@ -1,0 +1,30 @@
+{
+  "name": "golfo-jira",
+  "version": "0.130.0",
+  "description": "Skills exclusivas de Jira: stories con subtareas, sprint, fechas y enlace con pull requests. No aplican a otros trackers.",
+  "author": {
+    "name": "Guido Modarelli",
+    "email": "",
+    "url": ""
+  },
+  "repository": "https://github.com/guidomodarelli/golfo-marketplace",
+  "license": "MIT",
+  "category": "productivity",
+  "keywords": [
+    "golfo",
+    "jira",
+    "tickets",
+    "planning"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Golfo Jira",
+    "shortDescription": "Skills exclusivas de Jira.",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write",
+      "Bash"
+    ]
+  }
+}

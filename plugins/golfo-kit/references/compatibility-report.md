@@ -1,4 +1,4 @@
-# Reporte de compatibilidad entre agentes: golfo-kit
+# Reporte de compatibilidad entre agentes: plugins golfo
 
 <!-- Generado desde compatibility-report.json con `pnpm compat:render`. No editar a mano: editá el JSON y regenerá. -->
 
@@ -8,7 +8,7 @@
 ## A. Resumen ejecutivo
 
 - **Fecha de auditoría:** 2026-10-23 (generado 2026-10-23T21:00:00Z).
-- **Total de skills analizadas:** 48.
+- **Total de skills analizadas:** 50.
 - **Funcionalidades deshabilitadas:** 0.
 - **Adaptaciones implementadas:** 42; verificadas: 20.
 - **Problemas críticos pendientes:** ninguno.
@@ -43,7 +43,7 @@ Dependencias implícitas de navegador de measured-performance-optimization, prev
 | `adapted` | 0 | 1 | 1 |
 | `partial` | 0 | 0 | 0 |
 | `incompatible` | 0 | 0 | 0 |
-| `unverified` | 44 | 47 | 47 |
+| `unverified` | 46 | 49 | 49 |
 
 ### Regla de derivación del estado
 
@@ -69,6 +69,7 @@ Una funcionalidad `disabled` lista las alternativas investigadas y ninguna es vi
 | `agent-ready-setup` | `unverified` | `unverified` | `unverified` |
 | `async-operation-error-handling` | `unverified` | `unverified` | `unverified` |
 | `be-ambitious` | `unverified` | `unverified` | `unverified` |
+| `claude-autofix-loop` | `unverified` | `unverified` | `unverified` |
 | `codex-autofix-loop` | `unverified` | `unverified` | `unverified` |
 | `codex-comment-closeout` | `compatible` | `unverified` | `unverified` |
 | `constants-refactor` | `unverified` | `unverified` | `unverified` |
@@ -92,6 +93,7 @@ Una funcionalidad `disabled` lista las alternativas investigadas y ninguna es vi
 | `node-runtime-debugging` | `unverified` | `unverified` | `unverified` |
 | `optimistic-action-mutations` | `unverified` | `unverified` | `unverified` |
 | `pr-description-template` | `compatible` | `unverified` | `unverified` |
+| `pr-flow-graph` | `unverified` | `unverified` | `unverified` |
 | `pr-inline-comment-template` | `unverified` | `unverified` | `unverified` |
 | `prevent-ssr-hydration-mismatches` | `unverified` | `unverified` | `unverified` |
 | `react-data-fetching-best-practices` | `unverified` | `unverified` | `unverified` |
@@ -202,7 +204,7 @@ Pendiente de verificar:
 
 **Identificación**
 
-- Nombre: Async Operation Error Handling; versión: 1.0.0; SKILL.md: `plugins/golfo-kit/skills/async-operation-error-handling/SKILL.md`.
+- Nombre: Async Operation Error Handling; versión: 1.0.0; SKILL.md: `plugins/golfo-engineering/skills/async-operation-error-handling/SKILL.md`.
 - Propósito: Diseña, implementa y revisa manejo de errores en operaciones asíncronas distribuidas (batch, jobs, polling, retries, estados terminales).
 - Funcionalidades principales: clasificación de fallos parciales y upstream; preservación de progreso y reintentos; traducción de errores a copy localizado.
 - Agentes soportados declarados: no declara.
@@ -332,11 +334,81 @@ Pendiente de verificar:
 - Ejecutar la skill en Codex CLI con un caso real.
 - Ejecutar la skill en Hermes Agent con un caso real.
 
+### `claude-autofix-loop`
+
+**Identificación**
+
+- Nombre: Claude Autofix Loop; versión: 1.0.0; SKILL.md: `plugins/golfo-github/skills/claude-autofix-loop/SKILL.md`.
+- Propósito: Lanza el loop de auto-fix de codex-autofix-loop con el perfil de revisor claude para los hallazgos de claude[bot].
+- Funcionalidades principales: perfil de revisor claude; punto de entrada /claude-autofix-loop.
+- Agentes soportados declarados: no declara.
+
+**Dependencias**
+
+| Dependencia | Tipo | Obligatoria | Agentes que la tienen |
+|---|---|---|---|
+| codex-autofix-loop (perfil claude), codex-comment-closeout | skill | sí | `claude_code`; `codex`; `hermes` |
+| `gh` y `git` en PATH | command | sí | `claude_code`; `codex`; `hermes` |
+
+**Compatibilidad por agente**
+
+#### claude-autofix-loop / `claude_code`: `unverified`
+
+Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Claude Code durante esta auditoría, así que su funcionamiento no está verificado.
+
+- Capacidades faltantes: ninguna.
+- Alternativas investigadas: ninguna.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `core-workflow` | sí | `unverified` | `native` | Instrucciones de la skill; las capacidades por agente (monitor, cron, subagentes) las resuelve codex-autofix-loop con sus modos A-D. | — | Sin dependencias específicas detectadas por inspección; no ejecutada en Claude Code en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
+
+#### claude-autofix-loop / `codex`: `unverified`
+
+Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Codex CLI durante esta auditoría, así que su funcionamiento no está verificado.
+
+- Capacidades faltantes: ninguna.
+- Alternativas investigadas: ninguna.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `core-workflow` | sí | `unverified` | `native` | Instrucciones de la skill; las capacidades por agente (monitor, cron, subagentes) las resuelve codex-autofix-loop con sus modos A-D. | — | Sin dependencias específicas detectadas por inspección; no ejecutada en Codex CLI en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
+
+#### claude-autofix-loop / `hermes`: `unverified`
+
+Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Hermes Agent durante esta auditoría, así que su funcionamiento no está verificado.
+
+- Capacidades faltantes: ninguna.
+- Alternativas investigadas: ninguna.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `core-workflow` | sí | `unverified` | `native` | Instrucciones de la skill; las capacidades por agente (monitor, cron, subagentes) las resuelve codex-autofix-loop con sus modos A-D. | — | Sin dependencias específicas detectadas por inspección; no ejecutada en Hermes Agent en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
+
+**Implementación**
+
+- Adaptaciones: ninguna.
+- Archivos modificados: ninguno.
+- Fallback: ninguno.
+- Cambios de comportamiento respecto del original: ninguno.
+
+**Verificación**
+
+| Prueba | Agente | Tipo | Comando | Resultado | Evidencia |
+|---|---|---|---|---|---|
+| `static-inspection` | `any` | static | `grep -rE "AskUserQuestion\|request_user_input\|Monitor\|Cron(Create\|List\|Delete)\|PushNotification\|TaskStop\|Agent\|subagent\|mcp__\|claude -p\|codex exec\|~/.claude\|~/.codex\|apply_patch\|update_plan" plugins/golfo-kit/skills/<skill>` | `passed` | Inspección de SKILL.md, references y scripts del 2026-10-23; las coincidencias de "hook" son hooks de React o de git, no hooks de agente. |
+
+Pendiente de verificar:
+
+- Ejecutar la skill en Claude Code con un caso real.
+- Ejecutar la skill en Codex CLI con un caso real.
+- Ejecutar la skill en Hermes Agent con un caso real.
+
 ### `codex-autofix-loop`
 
 **Identificación**
 
-- Nombre: Codex auto-fix loop (local, vía Claude Code); versión: 1.4.0; SKILL.md: `plugins/golfo-kit/skills/codex-autofix-loop/SKILL.md`.
+- Nombre: Codex auto-fix loop (local, vía Claude Code); versión: 1.4.0; SKILL.md: `plugins/golfo-github/skills/codex-autofix-loop/SKILL.md`.
 - Propósito: Opera el loop que auto-fixea los comentarios de Codex en un PR hasta converger y mergear con gates.
 - Funcionalidades principales: escucha de eventos del PR; triage y fix en clones efímeros; closeout de hilos; dedup y topes de rondas; merge con gates de CI y review limpia; auto-cancelación.
 - Agentes soportados declarados: no declara.
@@ -404,9 +476,9 @@ Modo C: watcher en foreground dentro del turno que cubre la escucha del PR, el r
 | `pr-event-watch` | Workflow codex-autofix.yml (GitHub Actions) | SKILL.md | sí | Persistencia 24/7 fuera de la sesión; complemento, no reemplazo de la escucha local. |
 | `backup-schedule` | Timeout del watcher como respaldo | corrida real | sí | Exit 3 observado. |
 | `backup-schedule` | Automatizaciones de la app (codex_app) | codex-app-tools | no | Solo app de escritorio; no verificadas. |
-| `single-round` | Modo D: una vuelta del prompt sin pasos 0 y 7; termina indicando cómo relanzar. | Auditoría 1.0.0 (PR #22) y plugins/golfo-kit/references/agent-capabilities.md | sí | Queda como modo opcional a pedido del usuario. |
-| `parallel-subagents` | `collaboration.spawn_agent` + `wait_agent` esperando dentro del turno. | Auditoría 1.0.0 (PR #22) y plugins/golfo-kit/references/agent-capabilities.md | sí | Herramientas presentes en la sesión; no se ejecutaron. |
-| `auto-cancel` | Exit 5 del watcher o GUARD: termina el turno; nada queda vivo. | Auditoría 1.0.0 (PR #22) y plugins/golfo-kit/references/agent-capabilities.md | sí | No ejecutada en Codex CLI en esta auditoría. |
+| `single-round` | Modo D: una vuelta del prompt sin pasos 0 y 7; termina indicando cómo relanzar. | Auditoría 1.0.0 (PR #22) y shared/references/agent-capabilities.md | sí | Queda como modo opcional a pedido del usuario. |
+| `parallel-subagents` | `collaboration.spawn_agent` + `wait_agent` esperando dentro del turno. | Auditoría 1.0.0 (PR #22) y shared/references/agent-capabilities.md | sí | Herramientas presentes en la sesión; no se ejecutaron. |
+| `auto-cancel` | Exit 5 del watcher o GUARD: termina el turno; nada queda vivo. | Auditoría 1.0.0 (PR #22) y shared/references/agent-capabilities.md | sí | No ejecutada en Codex CLI en esta auditoría. |
 | `notifications` | Línea en el mensaje final | agent-modes.md | sí | Siempre disponible. |
 | `notifications` | notify de config.toml | $CODEX_HOME/config.toml | no | Se dispara al terminar cada turno, no a pedido de la skill. |
 | `auto-relaunch` | Watcher en foreground dentro del turno | agent-modes.md | sí | Cubre la espera de la respuesta mientras dura el turno. |
@@ -434,17 +506,17 @@ Modo B (watcher en background). El watcher y la elección del modo funcionaron e
 
 | Funcionalidad | Alternativa investigada | Fuente | Viable | Motivo |
 |---|---|---|---|---|
-| `pr-event-watch` | `scripts/wait-for-pr-event.sh` en background con aviso, rearmado hasta MAX_WATCH_CYCLES. | Auditoría 1.0.0 (PR #22) y plugins/golfo-kit/references/agent-capabilities.md | sí | Reemplaza a Monitor con un proceso acotado y supervisado. |
-| `backup-schedule` | El timeout del watcher (exit 3) dispara la vuelta que evalúa TTLs y reintentos de merge. | Auditoría 1.0.0 (PR #22) y plugins/golfo-kit/references/agent-capabilities.md | sí | cronjob_manage corre en sesiones nuevas sin acceso a subagentes ni al watcher, así que no puede reconciliar inFlight; se descartó. |
-| `parallel-subagents` | `delegate_task` con `tasks[]`; los hijos mueren con la sesión. | Auditoría 1.0.0 (PR #22) y plugins/golfo-kit/references/agent-capabilities.md | sí | Herramienta presente; no ejecutada. |
-| `auto-cancel` | Mata el watcher vivo. | Auditoría 1.0.0 (PR #22) y plugins/golfo-kit/references/agent-capabilities.md | sí | kill no se ejercitó en la prueba real (el watcher terminó por timeout). |
+| `pr-event-watch` | `scripts/wait-for-pr-event.sh` en background con aviso, rearmado hasta MAX_WATCH_CYCLES. | Auditoría 1.0.0 (PR #22) y shared/references/agent-capabilities.md | sí | Reemplaza a Monitor con un proceso acotado y supervisado. |
+| `backup-schedule` | El timeout del watcher (exit 3) dispara la vuelta que evalúa TTLs y reintentos de merge. | Auditoría 1.0.0 (PR #22) y shared/references/agent-capabilities.md | sí | cronjob_manage corre en sesiones nuevas sin acceso a subagentes ni al watcher, así que no puede reconciliar inFlight; se descartó. |
+| `parallel-subagents` | `delegate_task` con `tasks[]`; los hijos mueren con la sesión. | Auditoría 1.0.0 (PR #22) y shared/references/agent-capabilities.md | sí | Herramienta presente; no ejecutada. |
+| `auto-cancel` | Mata el watcher vivo. | Auditoría 1.0.0 (PR #22) y shared/references/agent-capabilities.md | sí | kill no se ejercitó en la prueba real (el watcher terminó por timeout). |
 | `notifications` | Mensaje en el chat del gateway | variables HERMES_SESSION_PLATFORM=telegram | sí | En el gateway el propio mensaje es el aviso. |
 | `notifications` | hermes send --to telegram | hermes send --help y --list | sí | Envía sin agente; no se envió nada en la auditoría. |
 
 **Implementación**
 
 - Adaptaciones: Selección de modo por capacidades (A/B/C); Script portable `wait-for-pr-event.sh` con timeout, tope de polls y códigos de salida; Modo B para Hermes con rearmado acotado (MAX_WATCH_CYCLES); Modo C de una ronda por invocación; Casos de eval por agente; Modo C para Codex: wait-for-pr-event.sh en foreground dentro del turno con tope MAX_INTURN_CYCLES; la ronda única pasa a modo D.
-- Archivos modificados: `plugins/golfo-kit/skills/codex-autofix-loop/SKILL.md`, `plugins/golfo-kit/skills/codex-autofix-loop/references/agent-modes.md`, `plugins/golfo-kit/skills/codex-autofix-loop/scripts/wait-for-pr-event.sh`, `plugins/golfo-kit/skills/codex-autofix-loop/tests/wait-for-pr-event.bats`, `plugins/golfo-kit/skills/codex-autofix-loop/evals/eval-config.json`.
+- Archivos modificados: `plugins/golfo-github/skills/codex-autofix-loop/SKILL.md`, `plugins/golfo-github/skills/codex-autofix-loop/references/agent-modes.md`, `plugins/golfo-github/skills/codex-autofix-loop/scripts/wait-for-pr-event.sh`, `plugins/golfo-github/skills/codex-autofix-loop/tests/wait-for-pr-event.bats`, `plugins/golfo-github/skills/codex-autofix-loop/evals/eval-config.json`.
 - Fallback: Modo C: una ronda por invocación, sin esperas, con instrucciones para relanzar..
 - Cambios de comportamiento respecto del original: Ninguno en Claude Code (modo A). En Hermes la espera usa el watcher y no hay cron; en Codex no hay escucha continua ni relanzado automático..
 
@@ -452,7 +524,7 @@ Modo B (watcher en background). El watcher y la elección del modo funcionaron e
 
 | Prueba | Agente | Tipo | Comando | Resultado | Evidencia |
 |---|---|---|---|---|---|
-| `watcher-bats` | `any` | bats | `bats plugins/golfo-kit/skills/codex-autofix-loop/tests/wait-for-pr-event.bats` | `passed` | 14/14: evento por head, comentario, review y checks (exit 0), tope de polls y timeout (exit 3), deadline respetado con gh lento, en el baseline y sin el ejecutable timeout (exit 3), GitHub caído (exit 4), PR cerrado (exit 5), argumentos inválidos (exit 2). |
+| `watcher-bats` | `any` | bats | `bats plugins/golfo-github/skills/codex-autofix-loop/tests/wait-for-pr-event.bats` | `passed` | 14/14: evento por head, comentario, review y checks (exit 0), tope de polls y timeout (exit 3), deadline respetado con gh lento, en el baseline y sin el ejecutable timeout (exit 3), GitHub caído (exit 4), PR cerrado (exit 5), argumentos inválidos (exit 2). |
 | `eval-claude-mode-a` | `claude_code` | eval | `run-evals <copia con solo claude-with-monitor-keeps-original-mode> --provider claude` | `passed` | Con Monitor y cron en la sesión elige el modo A: Monitor como disparador y /loop como respaldo (3/3 aserciones). |
 | `eval-sim-hermes-mode-b` | `hermes` | simulated_eval | `run-evals <copia con solo hermes-without-monitor-uses-background-watcher> --provider claude` | `passed` | Claude simulando una sesión Hermes: usa wait-for-pr-event.sh en background con aviso, tope de ciclos y kill; no planea Monitor ni CronCreate (6/6). No cuenta como evidencia en Hermes. |
 | `eval-sim-codex-single-round` | `codex` | simulated_eval | `run-evals <copia con solo codex-runs-single-round-without-waiting> --provider claude` | `passed` | Claude simulando Codex: una ronda, sin esperar y con instrucciones para relanzar (4/4). No cuenta como evidencia en Codex. |
@@ -463,7 +535,7 @@ Modo B (watcher en background). El watcher y la elección del modo funcionaron e
 | `hermes-real-mode-selection` | `hermes` | real_run | `hermes chat -Q -q "<leer SKILL.md y referencias; describir modo y herramientas sin tocar GitHub>"` | `passed` | Hermes eligió el modo B (mcp__terminal background+notify, process_manage diferido), propuso delegate_task con tasks[], kill del watcher y delegate_task stop para cancelar, avisos en el chat, sin cronjob_manage; no mencionó invocar Monitor ni CronCreate. |
 | `claude-real-loop-pr22` | `claude_code` | real_run | `Loop en modo A sobre el PR #22 (Monitor + CronCreate */3 + Agent + codex-comment-closeout)` | `passed` | Claude Code 2.1.309 operó el loop sobre el PR #22: el Monitor entregó 8 eventos (checks, comentario y review de Codex, head nuevo) y se rearmó al vencer; CronCreate creó el job f5c08f73 (*/3); el inline 4362278361 (P2) se clasificó como realista, se registró en inFlight y lo fixeó un subagente Agent con fix-in-ephemeral-clone (commit f0bd513, 14/14 bats); el closeout publicó 👍, reply con plantilla (4362346998) verificado y resolvió el hilo; la review 5631925162 se minimizó como RESOLVED; processed-22.json registró el id y el outcome fixed. |
 | `codex-real-inturn-watcher` | `codex` | real_run | `codex exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check "<leer agent-modes.md, elegir modo y correr solo wait-for-pr-event.sh en foreground sobre #21 y #22>"` | `passed` | Codex eligió el modo C por tener exec_command + write_stdin, corrió el watcher en foreground siguiendo la salida con write_stdin: PR #21 → exit 3 'TIMEOUT no event on PR #21 after 3 polls' (dispararía la iteración de respaldo), PR #22 → exit 5 'PR_NOT_OPEN MERGED' (auto-cancelar). No ejecutó iteraciones, comentarios ni merges. |
-| `eval-sim-codex-inturn-watcher` | `codex` | simulated_eval | `run-evals <copia filtrada>/plugins/golfo-kit/skills/codex-autofix-loop --provider claude (solo los casos nuevos o modificados)` | `passed` | Claude (claude-sonnet-5-5) simulando el agente: codex-in-turn-foreground-watcher, codex-runs-single-round-without-waiting y codex-single-round-keeps-merge-gates (modos C y D). |
+| `eval-sim-codex-inturn-watcher` | `codex` | simulated_eval | `run-evals <copia filtrada>/plugins/golfo-github/skills/codex-autofix-loop --provider claude (solo los casos nuevos o modificados)` | `passed` | Claude (claude-sonnet-5-5) simulando el agente: codex-in-turn-foreground-watcher, codex-runs-single-round-without-waiting y codex-single-round-keeps-merge-gates (modos C y D). |
 
 Pendiente de verificar:
 
@@ -476,7 +548,7 @@ Pendiente de verificar:
 
 **Identificación**
 
-- Nombre: Cierre de comentarios de Codex; versión: 1.0.0; SKILL.md: `plugins/golfo-kit/skills/codex-comment-closeout/SKILL.md`.
+- Nombre: Cierre de comentarios de Codex; versión: 1.0.0; SKILL.md: `plugins/golfo-github/skills/codex-comment-closeout/SKILL.md`.
 - Propósito: Plantilla y checklist para responder, reaccionar y resolver comentarios de Codex en un PR.
 - Funcionalidades principales: variantes Resuelto / Sin cambios / No pude aplicar; reacción y resolución del hilo; verificación del body publicado.
 - Agentes soportados declarados: no declara.
@@ -546,9 +618,9 @@ Pendiente de verificar:
 
 **Identificación**
 
-- Nombre: Constants Refactor; versión: 1.0.0; SKILL.md: `plugins/golfo-kit/skills/constants-refactor/SKILL.md`.
+- Nombre: Constants Refactor; versión: 1.1.0; SKILL.md: `plugins/golfo-engineering/skills/constants-refactor/SKILL.md`.
 - Propósito: Analiza y refactoriza constantes, literales funcionales y contratos cross-layer.
-- Funcionalidades principales: detección de hardcodes; movimiento a constants/; validación del refactor.
+- Funcionalidades principales: detección de hardcodes; movimiento a constants/ o al archivo de configuración según el valor y el lenguaje; validación del refactor.
 - Agentes soportados declarados: no declara.
 
 **Dependencias**
@@ -613,7 +685,7 @@ Pendiente de verificar:
 
 **Identificación**
 
-- Nombre: Create Issue; versión: 1.0.0; SKILL.md: `plugins/golfo-kit/skills/create-issue/SKILL.md`.
+- Nombre: Create Issue; versión: 1.0.0; SKILL.md: `plugins/golfo-planning/skills/create-issue/SKILL.md`.
 - Propósito: Genera la descripción estructurada de una issue a partir de la explicación del usuario.
 - Funcionalidades principales: estructura de issue de planificación.
 - Agentes soportados declarados: no declara.
@@ -747,7 +819,7 @@ Pendiente de verificar:
 
 **Identificación**
 
-- Nombre: enforce-jsdoc-tsdoc; versión: 1.0.0; SKILL.md: `plugins/golfo-kit/skills/enforce-jsdoc-tsdoc/SKILL.md`.
+- Nombre: enforce-jsdoc-tsdoc; versión: 1.0.0; SKILL.md: `plugins/golfo-javascript/skills/enforce-jsdoc-tsdoc/SKILL.md`.
 - Propósito: Agrega o actualiza JSDoc/TSDoc donde aporta a la lectura.
 - Funcionalidades principales: reglas de ubicación y tags; omisión de documentación redundante.
 - Agentes soportados declarados: no declara.
@@ -814,7 +886,7 @@ Pendiente de verificar:
 
 **Identificación**
 
-- Nombre: Error Observability Diagnostics; versión: sin versión declarada; SKILL.md: `plugins/golfo-kit/skills/error-observability-diagnostics/SKILL.md`.
+- Nombre: Error Observability Diagnostics; versión: sin versión declarada; SKILL.md: `plugins/golfo-engineering/skills/error-observability-diagnostics/SKILL.md`.
 - Propósito: Diseña y revisa trazabilidad operativa de errores (logs estructurados, sinks, correlación).
 - Funcionalidades principales: detección de sinks reales; feedback con reporte; redacción segura.
 - Agentes soportados declarados: no declara.
@@ -881,7 +953,7 @@ Pendiente de verificar:
 
 **Identificación**
 
-- Nombre: Feature Branch + Commit + Push + PR; versión: 1.0.0; SKILL.md: `plugins/golfo-kit/skills/feature-branch-pr/SKILL.md`.
+- Nombre: Feature Branch + Commit + Push + PR; versión: 1.0.0; SKILL.md: `plugins/golfo-github/skills/feature-branch-pr/SKILL.md`.
 - Propósito: Lleva los cambios de la rama a un PR: rama feature/*, commit, push, PR y resumen.
 - Funcionalidades principales: creación de rama; commit y push; apertura del PR con pr-description-template.
 - Agentes soportados declarados: no declara.
@@ -951,7 +1023,7 @@ Pendiente de verificar:
 
 **Identificación**
 
-- Nombre: Fix Issue Efímero Clone; versión: 1.1.0; SKILL.md: `plugins/golfo-kit/skills/fix-in-ephemeral-clone/SKILL.md`.
+- Nombre: Fix Issue Efímero Clone; versión: 1.1.0; SKILL.md: `plugins/golfo-git/skills/fix-in-ephemeral-clone/SKILL.md`.
 - Propósito: Ejecuta fixes en un clone efímero depth-1 y publica la rama autorizada sin hacer closeout.
 - Funcionalidades principales: clone efímero; fix y validación; commit y push con reintegración; cleanup.
 - Agentes soportados declarados: no declara.
@@ -991,7 +1063,7 @@ Clone, validación y push usan solo git y shell; el modo background depende de u
 
 | Funcionalidad | Alternativa investigada | Fuente | Viable | Motivo |
 |---|---|---|---|---|
-| `background-mode` | `spawn_agent` + `wait_agent`. | Auditoría 1.0.0 (PR #22) y plugins/golfo-kit/references/agent-capabilities.md | sí | No ejecutada en Codex CLI en esta auditoría. |
+| `background-mode` | `spawn_agent` + `wait_agent`. | Auditoría 1.0.0 (PR #22) y shared/references/agent-capabilities.md | sí | No ejecutada en Codex CLI en esta auditoría. |
 
 #### fix-in-ephemeral-clone / `hermes`: `unverified`
 
@@ -1007,12 +1079,12 @@ Clone, validación y push usan solo git y shell; el modo background depende de u
 
 | Funcionalidad | Alternativa investigada | Fuente | Viable | Motivo |
 |---|---|---|---|---|
-| `background-mode` | `delegate_task`. | Auditoría 1.0.0 (PR #22) y plugins/golfo-kit/references/agent-capabilities.md | sí | No ejecutada en Hermes Agent en esta auditoría. |
+| `background-mode` | `delegate_task`. | Auditoría 1.0.0 (PR #22) y shared/references/agent-capabilities.md | sí | No ejecutada en Hermes Agent en esta auditoría. |
 
 **Implementación**
 
 - Adaptaciones: Sección «Compatibilidad entre agentes» para el modo background.
-- Archivos modificados: `plugins/golfo-kit/skills/fix-in-ephemeral-clone/SKILL.md`.
+- Archivos modificados: `plugins/golfo-git/skills/fix-in-ephemeral-clone/SKILL.md`.
 - Fallback: Modo in_context..
 - Cambios de comportamiento respecto del original: Ninguno..
 
@@ -1033,7 +1105,7 @@ Pendiente de verificar:
 
 **Identificación**
 
-- Nombre: fix-tests-intelligently; versión: 1.0.0; SKILL.md: `plugins/golfo-kit/skills/fix-tests-intelligently/SKILL.md`.
+- Nombre: fix-tests-intelligently; versión: 1.0.0; SKILL.md: `plugins/golfo-testing/skills/fix-tests-intelligently/SKILL.md`.
 - Propósito: Diagnostica tests rotos o flaky sin ajustar aserciones a ciegas.
 - Funcionalidades principales: decidir si el fix va en el test o en la implementación.
 - Agentes soportados declarados: no declara.
@@ -1100,7 +1172,7 @@ Pendiente de verificar:
 
 **Identificación**
 
-- Nombre: Functionality Check; versión: 1.0.0; SKILL.md: `plugins/golfo-kit/skills/functionality-check/SKILL.md`.
+- Nombre: Functionality Check; versión: 1.0.0; SKILL.md: `plugins/golfo-planning/skills/functionality-check/SKILL.md`.
 - Propósito: Determina si las capacidades de una spec están implementadas y alcanzables en el código.
 - Funcionalidades principales: cobertura con evidencia; gaps exactos.
 - Agentes soportados declarados: no declara.
@@ -1167,7 +1239,7 @@ Pendiente de verificar:
 
 **Identificación**
 
-- Nombre: Generate Commit Messages; versión: 1.0.0; SKILL.md: `plugins/golfo-kit/skills/generate-commit-messages/SKILL.md`.
+- Nombre: Generate Commit Messages; versión: 1.0.0; SKILL.md: `plugins/golfo-git/skills/generate-commit-messages/SKILL.md`.
 - Propósito: Reúne contexto, redacta y aplica el mensaje de commit.
 - Funcionalidades principales: análisis del diff; commit.
 - Agentes soportados declarados: no declara.
@@ -1236,7 +1308,7 @@ Pendiente de verificar:
 
 **Identificación**
 
-- Nombre: Improve Spec; versión: 1.1.0; SKILL.md: `plugins/golfo-kit/skills/improve-spec/SKILL.md`.
+- Nombre: Improve Spec; versión: 1.1.0; SKILL.md: `plugins/golfo-planning/skills/improve-spec/SKILL.md`.
 - Propósito: Mejora specs de docs/specs/ resolviendo ambigüedades, completando secciones y dejando tasks ejecutables.
 - Funcionalidades principales: selección del spec; preguntas de ambigüedad; exploración del codebase; aprobación y guardado.
 - Agentes soportados declarados: no declara.
@@ -1263,7 +1335,7 @@ La pregunta en texto se verificó en una sesión headless sin AskUserQuestion; l
 
 | Funcionalidad | Alternativa investigada | Fuente | Viable | Motivo |
 |---|---|---|---|---|
-| `ask-user-choices` | Fallback en texto en sesión headless; AskUserQuestion en sesiones interactivas. | Auditoría 1.0.0 (PR #22) y plugins/golfo-kit/references/agent-capabilities.md | sí | Verificado el fallback; la ruta nativa no. |
+| `ask-user-choices` | Fallback en texto en sesión headless; AskUserQuestion en sesiones interactivas. | Auditoría 1.0.0 (PR #22) y shared/references/agent-capabilities.md | sí | Verificado el fallback; la ruta nativa no. |
 
 #### improve-spec / `codex`: `unverified`
 
@@ -1279,7 +1351,7 @@ Pregunta en texto y se detiene (request_user_input solo existe en modo Plan); ve
 
 | Funcionalidad | Alternativa investigada | Fuente | Viable | Motivo |
 |---|---|---|---|---|
-| `ask-user-choices` | Pregunta en texto y detenerse; request_user_input solo en modo Plan. | Auditoría 1.0.0 (PR #22) y plugins/golfo-kit/references/agent-capabilities.md | sí | Verificado en Codex real. |
+| `ask-user-choices` | Pregunta en texto y detenerse; request_user_input solo en modo Plan. | Auditoría 1.0.0 (PR #22) y shared/references/agent-capabilities.md | sí | Verificado en Codex real. |
 
 #### improve-spec / `hermes`: `unverified`
 
@@ -1295,12 +1367,12 @@ Usa clarify; si devuelve undelivered (por ejemplo en `hermes chat -Q -q`) pregun
 
 | Funcionalidad | Alternativa investigada | Fuente | Viable | Motivo |
 |---|---|---|---|---|
-| `ask-user-choices` | `clarify`; fallback en texto ante undelivered/timed_out/cancelled. | Auditoría 1.0.0 (PR #22) y plugins/golfo-kit/references/agent-capabilities.md | sí | Verificado en Hermes real. |
+| `ask-user-choices` | `clarify`; fallback en texto ante undelivered/timed_out/cancelled. | Auditoría 1.0.0 (PR #22) y shared/references/agent-capabilities.md | sí | Verificado en Hermes real. |
 
 **Implementación**
 
 - Adaptaciones: Sección «Compatibilidad entre agentes»: herramienta de preguntas por agente y fallback en texto con detención.
-- Archivos modificados: `plugins/golfo-kit/skills/improve-spec/SKILL.md`, `plugins/golfo-kit/skills/improve-spec/evals/eval-config.json`.
+- Archivos modificados: `plugins/golfo-planning/skills/improve-spec/SKILL.md`, `plugins/golfo-planning/skills/improve-spec/evals/eval-config.json`.
 - Fallback: Pregunta en texto con opciones numeradas y detención hasta la respuesta..
 - Cambios de comportamiento respecto del original: Antes, sin AskUserQuestion la skill preguntaba en texto pero no exigía detenerse; ahora no avanza ni guarda hasta la respuesta..
 
@@ -1323,7 +1395,7 @@ Pendiente de verificar:
 
 **Identificación**
 
-- Nombre: Inline Thread Autofix; versión: 1.1.0; SKILL.md: `plugins/golfo-kit/skills/inline-thread-autofix/SKILL.md`.
+- Nombre: Inline Thread Autofix; versión: 1.1.0; SKILL.md: `plugins/golfo-github/skills/inline-thread-autofix/SKILL.md`.
 - Propósito: Orquesta el feedback de un hilo o review de PR: pregunta el entorno, aplica el fix y hace el closeout.
 - Funcionalidades principales: pregunta del entorno; preflight y stack; handoff a fix-in-ephemeral-clone o sibling-worktree; closeout del hilo.
 - Agentes soportados declarados: no declara.
@@ -1366,8 +1438,8 @@ Adaptaciones documentadas para la pregunta del entorno y el modo background; no 
 
 | Funcionalidad | Alternativa investigada | Fuente | Viable | Motivo |
 |---|---|---|---|---|
-| `ask-environment` | Texto y detención; `request_user_input` solo en modo Plan. | Auditoría 1.0.0 (PR #22) y plugins/golfo-kit/references/agent-capabilities.md | sí | No ejecutada en Codex CLI en esta auditoría. |
-| `background-handoff` | `spawn_agent` + `wait_agent`. | Auditoría 1.0.0 (PR #22) y plugins/golfo-kit/references/agent-capabilities.md | sí | No ejecutada en Codex CLI en esta auditoría. |
+| `ask-environment` | Texto y detención; `request_user_input` solo en modo Plan. | Auditoría 1.0.0 (PR #22) y shared/references/agent-capabilities.md | sí | No ejecutada en Codex CLI en esta auditoría. |
+| `background-handoff` | `spawn_agent` + `wait_agent`. | Auditoría 1.0.0 (PR #22) y shared/references/agent-capabilities.md | sí | No ejecutada en Codex CLI en esta auditoría. |
 
 #### inline-thread-autofix / `hermes`: `unverified`
 
@@ -1384,13 +1456,13 @@ Adaptaciones documentadas para la pregunta del entorno y el modo background; no 
 
 | Funcionalidad | Alternativa investigada | Fuente | Viable | Motivo |
 |---|---|---|---|---|
-| `ask-environment` | `clarify`; texto ante undelivered/timed_out/cancelled. | Auditoría 1.0.0 (PR #22) y plugins/golfo-kit/references/agent-capabilities.md | sí | No ejecutada en Hermes Agent en esta auditoría. |
-| `background-handoff` | `delegate_task`. | Auditoría 1.0.0 (PR #22) y plugins/golfo-kit/references/agent-capabilities.md | sí | No ejecutada en Hermes Agent en esta auditoría. |
+| `ask-environment` | `clarify`; texto ante undelivered/timed_out/cancelled. | Auditoría 1.0.0 (PR #22) y shared/references/agent-capabilities.md | sí | No ejecutada en Hermes Agent en esta auditoría. |
+| `background-handoff` | `delegate_task`. | Auditoría 1.0.0 (PR #22) y shared/references/agent-capabilities.md | sí | No ejecutada en Hermes Agent en esta auditoría. |
 
 **Implementación**
 
 - Adaptaciones: Sección «Compatibilidad entre agentes»: pregunta por agente con fallback en texto; background solo con handle real.
-- Archivos modificados: `plugins/golfo-kit/skills/inline-thread-autofix/SKILL.md`.
+- Archivos modificados: `plugins/golfo-github/skills/inline-thread-autofix/SKILL.md`.
 - Fallback: Pregunta en texto con detención; modo in_context..
 - Cambios de comportamiento respecto del original: Ninguno en Claude Code; en otros agentes la pregunta puede ser en texto..
 
@@ -1410,7 +1482,7 @@ Pendiente de verificar:
 
 **Identificación**
 
-- Nombre: Interactive CLI Design; versión: 1.0.0; SKILL.md: `plugins/golfo-kit/skills/interactive-cli-design/SKILL.md`.
+- Nombre: Interactive CLI Design; versión: 1.0.0; SKILL.md: `plugins/golfo-cli/skills/interactive-cli-design/SKILL.md`.
 - Propósito: Diseña e implementa CLIs con flags y modo interactivo: decisión de modo según TTY y CI, flags mínimas, paridad flag-pregunta, widget según el dato, exit codes y verificación en una pseudoconsola real.
 - Funcionalidades principales: tabla de decisión de modo; flags universales y condicionales; paridad y comando equivalente; widget según el dato; referencias por stack; matriz de verificación en pseudoconsola.
 - Agentes soportados declarados: no declara.
@@ -1477,7 +1549,7 @@ Pendiente de verificar:
 
 **Identificación**
 
-- Nombre: Jira Ticket; versión: 1.0.0; SKILL.md: `plugins/golfo-kit/skills/jira-ticket/SKILL.md`.
+- Nombre: Jira Ticket; versión: 1.0.0; SKILL.md: `plugins/golfo-jira/skills/jira-ticket/SKILL.md`.
 - Propósito: Crea y sincroniza Stories de Jira con subtareas reales y las enlaza en ambos sentidos con pull requests, con la organización configurada por variables JIRA_TICKET_*.
 - Funcionalidades principales: creación y actualización de Story con Sub-task; trazabilidad Jira↔PR; cierre por merge; configuración por variables de entorno.
 - Agentes soportados declarados: no declara.
@@ -1538,7 +1610,7 @@ Depende del MCP de Atlassian y de `gh` para los PRs; sin herramientas específic
 | Prueba | Agente | Tipo | Comando | Resultado | Evidencia |
 |---|---|---|---|---|---|
 | `static-inspection` | `any` | static | `grep -rE "AskUserQuestion\|request_user_input\|Monitor\|Cron(Create\|List\|Delete)\|PushNotification\|TaskStop\|Agent\|subagent\|mcp__\|claude -p\|codex exec\|~/.claude\|~/.codex\|apply_patch\|update_plan" plugins/golfo-kit/skills/<skill>` | `passed` | Inspección de SKILL.md, references y scripts del 2026-11-13: solo usa herramientas MCP de Atlassian y `gh`, sin herramientas exclusivas de un agente. |
-| `helper-pytest` | `any` | bats | `python3 -m pytest plugins/golfo-kit/skills/jira-ticket/scripts/tests` | `passed` | 42 tests del helper con datos ficticios en Windows (Python 3.12); la versión anterior de la suite (41 tests) pasó en macOS (Python 3.12). |
+| `helper-pytest` | `any` | bats | `python3 -m pytest plugins/golfo-jira/skills/jira-ticket/scripts/tests` | `passed` | 42 tests del helper con datos ficticios en Windows (Python 3.12); la versión anterior de la suite (41 tests) pasó en macOS (Python 3.12). |
 
 Pendiente de verificar:
 
@@ -1550,7 +1622,7 @@ Pendiente de verificar:
 
 **Identificación**
 
-- Nombre: Measured Performance Optimization; versión: 1.3.0; SKILL.md: `plugins/golfo-kit/skills/measured-performance-optimization/SKILL.md`.
+- Nombre: Measured Performance Optimization; versión: 1.3.0; SKILL.md: `plugins/golfo-web/skills/measured-performance-optimization/SKILL.md`.
 - Propósito: Mide y optimiza rendimiento web con evidencia.
 - Funcionalidades principales: medición antes/después; optimizaciones de bundle, renders, caching, N+1, memoria y leaks, SSR/TTFB y streaming, main thread y long tasks, y listas/DOM grande.
 - Agentes soportados declarados: no declara.
@@ -1590,7 +1662,7 @@ Verificación en navegador adaptada y verificada: Métricas con Lighthouse o Pla
 | Funcionalidad | Alternativa investigada | Fuente | Viable | Motivo |
 |---|---|---|---|---|
 | `browser-verification` | Plugin chrome@openai-bundled | docs/api.json del plugin + corrida real codex-real-chrome-console-states | sí | Sirve para confirmar el flujo; no para medir, porque su evaluate no expone performance. |
-| `browser-verification` | Lighthouse, Chrome headless con log y Playwright por terminal | plugins/golfo-kit/references/agent-capabilities.md#verificación-en-navegador-por-terminal + corridas reales | sí | Agnóstico del agente; verificado desde los tres agentes. Sin sesión del usuario: solo localhost/staging sin login o con credenciales de prueba. |
+| `browser-verification` | Lighthouse, Chrome headless con log y Playwright por terminal | shared/references/agent-capabilities.md#verificación-en-navegador-por-terminal + corridas reales | sí | Agnóstico del agente; verificado desde los tres agentes. Sin sesión del usuario: solo localhost/staging sin login o con credenciales de prueba. |
 | `browser-verification` | Plugin browser@openai-bundled / browser-use (iab) | plugin.json y docs del plugin | sí | Navegador in-app para localhost; solo en la app de escritorio, no probado desde el CLI. |
 | `browser-verification` | computer-use@openai-bundled | plugin.json | no | Toma el escritorio; el plugin Chrome cubre el mismo caso sin hacerlo. |
 
@@ -1609,13 +1681,13 @@ Verificación en navegador adaptada y verificada por terminal: browser_exec si a
 | Funcionalidad | Alternativa investigada | Fuente | Viable | Motivo |
 |---|---|---|---|---|
 | `browser-verification` | browser_exec (Chromium headless, perfil descartable) | corrida real hermes-real-browser-exec-probe + doc browser | sí | Sirve para localhost sin login cuando arranca; en esta máquina falló 7 de 9 veces, así que la skill pasa a terminal tras dos fallos. |
-| `browser-verification` | Lighthouse, Chrome headless con log y Playwright por terminal | plugins/golfo-kit/references/agent-capabilities.md#verificación-en-navegador-por-terminal + corridas reales | sí | Agnóstico del agente; verificado desde los tres agentes. Sin sesión del usuario: solo localhost/staging sin login o con credenciales de prueba. |
+| `browser-verification` | Lighthouse, Chrome headless con log y Playwright por terminal | shared/references/agent-capabilities.md#verificación-en-navegador-por-terminal + corridas reales | sí | Agnóstico del agente; verificado desde los tres agentes. Sin sesión del usuario: solo localhost/staging sin login o con credenciales de prueba. |
 | `browser-verification` | computer_use sobre el Chrome real | lista de herramientas + doc computer-use | sí | Único camino para pantallas que necesitan la sesión del usuario; requiere aviso y consentimiento. No ejecutado. |
 
 **Implementación**
 
-- Adaptaciones: Sección «Compatibilidad entre agentes»: mecanismo por métrica según agent-capabilities.md (Lighthouse por terminal en cualquier agente; el plugin Chrome de Codex no mide), mismo mecanismo antes y después, y Limitaciones del agente en el reporte; Fila «Verificar en un navegador» y sección «Verificación en navegador por terminal» en plugins/golfo-kit/references/agent-capabilities.md (fuente única compartida).
-- Archivos modificados: `plugins/golfo-kit/skills/measured-performance-optimization/SKILL.md`, `plugins/golfo-kit/skills/measured-performance-optimization/references/measurement-tools.md`, `plugins/golfo-kit/skills/measured-performance-optimization/evals/eval-config.json`, `plugins/golfo-kit/references/agent-capabilities.md`.
+- Adaptaciones: Sección «Compatibilidad entre agentes»: mecanismo por métrica según agent-capabilities.md (Lighthouse por terminal en cualquier agente; el plugin Chrome de Codex no mide), mismo mecanismo antes y después, y Limitaciones del agente en el reporte; Fila «Verificar en un navegador» y sección «Verificación en navegador por terminal» en shared/references/agent-capabilities.md (fuente única compartida).
+- Archivos modificados: `plugins/golfo-web/skills/measured-performance-optimization/SKILL.md`, `plugins/golfo-web/skills/measured-performance-optimization/references/measurement-tools.md`, `plugins/golfo-web/skills/measured-performance-optimization/evals/eval-config.json`, `shared/references/agent-capabilities.md`.
 - Fallback: Sin ningún mecanismo de navegador, la verificación queda BLOCKED y se reporta en Limitaciones del agente..
 - Cambios de comportamiento respecto del original: Codex mide por terminal en lugar de intentar medir con el plugin Chrome; Hermes pasa a terminal si browser_exec no arranca. Sin ningún mecanismo aplica la detención del paso 3..
 
@@ -1630,8 +1702,8 @@ Verificación en navegador adaptada y verificada por terminal: browser_exec si a
 | `hermes-real-browser-exec-probe` | `hermes` | real_run | `hermes chat -Q -q "<browser_exec: listener de consola antes de navegar, recarga, performance y clic en cada estado de http://127.0.0.1:8793/>"` | `failed` | browser_exec falló al arrancar 7 de 9 veces ('Chrome exited early … without writing DevToolsActivePort'); las dos que arrancaron eran HeadlessChrome/145 sobre about:blank. Había unos 24 Chromium huérfanos con user-data-dir agent-browser-chrome-<uuid> en Temp, que no se mataron. Ninguna verificación de la página se completó con browser_exec. |
 | `hermes-real-terminal-console-metrics` | `hermes` | real_run | `hermes chat -Q -q "<solo terminal: Chrome headless con --enable-logging --log-file y npx -y lighthouse@12 sobre http://127.0.0.1:8793/>"` | `passed` | Hermes encontró Chrome y npx; el log tuvo la línea CONSOLE del warning de hidratación simulado; Lighthouse 12.8.2: LCP 1.1 s, CLS 0, TBT 0 ms, FCP 1.1 s (hermes-lh.json de 192 KB). |
 | `hermes-real-playwright-states` | `hermes` | real_run | `hermes chat -Q -q "<solo terminal: node walk-states.mjs http://127.0.0.1:8793/ (playwright-core, channel chrome, headless)>"` | `passed` | Salida del script desde Hermes: console.error de hidratación simulado, navegación 175 ms y data-current loading/empty/data/error tras cada clic; exitCode 0. |
-| `eval-sim-codex-metrics-via-terminal-not-chrome-plugin` | `codex` | simulated_eval | `run-evals <copia filtrada>/plugins/golfo-kit/skills/measured-performance-optimization --provider claude (solo los casos nuevos)` | `passed` | Claude (claude-sonnet-5-5) simulando el agente: codex-metrics-via-terminal-not-chrome-plugin: mide LCP con Lighthouse por terminal, explica que el plugin Chrome no expone performance, mismo mecanismo antes y después y reserva el plugin para confirmar el flujo. |
-| `eval-sim-hermes-browser-exec-fails-terminal-fallback` | `hermes` | simulated_eval | `run-evals <copia filtrada>/plugins/golfo-kit/skills/measured-performance-optimization --provider claude (solo los casos nuevos)` | `passed` | Claude (claude-sonnet-5-5) simulando el agente: hermes-browser-exec-fails-terminal-fallback: tras dos fallos de browser_exec mide la interacción con Playwright por terminal y el Chrome instalado, con performance.mark/measure, y declara Limitaciones del agente. |
+| `eval-sim-codex-metrics-via-terminal-not-chrome-plugin` | `codex` | simulated_eval | `run-evals <copia filtrada>/plugins/golfo-web/skills/measured-performance-optimization --provider claude (solo los casos nuevos)` | `passed` | Claude (claude-sonnet-5-5) simulando el agente: codex-metrics-via-terminal-not-chrome-plugin: mide LCP con Lighthouse por terminal, explica que el plugin Chrome no expone performance, mismo mecanismo antes y después y reserva el plugin para confirmar el flujo. |
+| `eval-sim-hermes-browser-exec-fails-terminal-fallback` | `hermes` | simulated_eval | `run-evals <copia filtrada>/plugins/golfo-web/skills/measured-performance-optimization --provider claude (solo los casos nuevos)` | `passed` | Claude (claude-sonnet-5-5) simulando el agente: hermes-browser-exec-fails-terminal-fallback: tras dos fallos de browser_exec mide la interacción con Playwright por terminal y el Chrome instalado, con performance.mark/measure, y declara Limitaciones del agente. |
 
 Pendiente de verificar:
 
@@ -1645,7 +1717,7 @@ Pendiente de verificar:
 
 **Identificación**
 
-- Nombre: Mobile First Responsive Units; versión: 1.0.0; SKILL.md: `plugins/golfo-kit/skills/mobile-first-responsive-layout/SKILL.md`.
+- Nombre: Mobile First Responsive Units; versión: 1.0.0; SKILL.md: `plugins/golfo-web/skills/mobile-first-responsive-layout/SKILL.md`.
 - Propósito: Guía de unidades y patrones mobile-first en CSS/SCSS.
 - Funcionalidades principales: unidades fluidas; breakpoints.
 - Agentes soportados declarados: no declara.
@@ -1712,7 +1784,7 @@ Pendiente de verificar:
 
 **Identificación**
 
-- Nombre: Mock First Testing Design; versión: 2.0.0; SKILL.md: `plugins/golfo-kit/skills/mock-first-testing-design/SKILL.md`.
+- Nombre: Mock First Testing Design; versión: 2.0.0; SKILL.md: `plugins/golfo-javascript/skills/mock-first-testing-design/SKILL.md`.
 - Propósito: Decide cómo aislar dependencias en tests sin contaminar el código de producción.
 - Funcionalidades principales: integración real primero; dobles solo en puertos de dominio.
 - Agentes soportados declarados: no declara.
@@ -1779,7 +1851,7 @@ Pendiente de verificar:
 
 **Identificación**
 
-- Nombre: Next.js: boundaries de UI por ruta; versión: 1.0.0; SKILL.md: `plugins/golfo-kit/skills/nextjs-route-ui-boundaries/SKILL.md`.
+- Nombre: Next.js: boundaries de UI por ruta; versión: 1.0.0; SKILL.md: `plugins/golfo-nextjs/skills/nextjs-route-ui-boundaries/SKILL.md`.
 - Propósito: Decide loading, error, layouts, Suspense y server/client en Next.js App Router.
 - Funcionalidades principales: boundaries por ruta; APIs de Next.js.
 - Agentes soportados declarados: no declara.
@@ -1846,7 +1918,7 @@ Pendiente de verificar:
 
 **Identificación**
 
-- Nombre: Debugging runtime de Node.js; versión: 1.0.0; SKILL.md: `plugins/golfo-kit/skills/node-runtime-debugging/SKILL.md`.
+- Nombre: Debugging runtime de Node.js; versión: 1.0.0; SKILL.md: `plugins/golfo-node-backend/skills/node-runtime-debugging/SKILL.md`.
 - Propósito: Depura servidores Node.js/BFF con node --inspect y requests reales.
 - Funcionalidades principales: inspección de valores runtime.
 - Agentes soportados declarados: no declara.
@@ -1915,7 +1987,7 @@ Pendiente de verificar:
 
 **Identificación**
 
-- Nombre: Optimistic Action Mutations; versión: 1.0.0; SKILL.md: `plugins/golfo-kit/skills/optimistic-action-mutations/SKILL.md`.
+- Nombre: Optimistic Action Mutations; versión: 1.0.0; SKILL.md: `plugins/golfo-frontend/skills/optimistic-action-mutations/SKILL.md`.
 - Propósito: Patrones de mutaciones optimistas con reconciliación y rollback.
 - Funcionalidades principales: debounce y coalescing; rollback seguro.
 - Agentes soportados declarados: no declara.
@@ -1982,7 +2054,7 @@ Pendiente de verificar:
 
 **Identificación**
 
-- Nombre: PR Description Template; versión: 1.2.0; SKILL.md: `plugins/golfo-kit/skills/pr-description-template/SKILL.md`.
+- Nombre: PR Description Template; versión: 1.2.0; SKILL.md: `plugins/golfo-github/skills/pr-description-template/SKILL.md`.
 - Propósito: Define el título y la descripción estándar de PR (y el modo traceability-only), incluidas capturas de UI.
 - Funcionalidades principales: título y body con plantilla; conteo de archivos; capturas de UI desde el navegador del usuario; modo traceability-only.
 - Agentes soportados declarados: no declara.
@@ -2048,7 +2120,7 @@ Plantilla y body por gh; capturas con computer_use sobre el Chrome real o browse
 **Implementación**
 
 - Adaptaciones: Sección «Capture browser»: los navegadores aceptados viven en agent-capabilities.md (fuente única); la skill solo agrega las reglas propias de las capturas publicadas (pestaña nueva, aviso antes de tomar el escritorio).
-- Archivos modificados: `plugins/golfo-kit/skills/pr-description-template/SKILL.md`, `plugins/golfo-kit/skills/pr-description-template/evals/eval-config.json`.
+- Archivos modificados: `plugins/golfo-github/skills/pr-description-template/SKILL.md`, `plugins/golfo-github/skills/pr-description-template/evals/eval-config.json`.
 - Fallback: Sin navegador aceptado, omitir la captura con el motivo..
 - Cambios de comportamiento respecto del original: Codex ya no omite las capturas: usa el Chrome real del usuario. Hermes las toma solo con navegador real y aviso previo..
 
@@ -2060,19 +2132,86 @@ Plantilla y body por gh; capturas con computer_use sobre el Chrome real o browse
 | `claude-real-pr22` | `claude_code` | real_run | `gh pr create --body-file <plantilla> (PR #22)` | `passed` | Conteo con count-reviewable-files.sh (4), plantilla completa en español, verificado con gh pr view (https://github.com/guidomodarelli/golfo-marketplace/pull/22). |
 | `codex-real-chrome-capture` | `codex` | real_run | `codex exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check "<abrir http://127.0.0.1:8791/ en el Chrome del usuario vía mcp__cua_repl.js, capturar y cerrar la pestaña>"` | `passed` | agent.browsers.list() devolvió {type: extension, family: chrome, profileName: Guido}; abrió la página local en una pestaña nueva del Chrome real (webdriver=false, Chrome/156), guardó chrome-shot.jpg (28 101 bytes, revisada: página completa con estilos) y cerró la pestaña. Prueba de la capacidad de captura que usa la skill; el flujo completo de antes/después y subida a pr-assets no se ejecutó en Codex. |
 | `hermes-real-browser-probe` | `hermes` | real_run | `hermes chat -Q -q "<abrir http://127.0.0.1:8791/ con browser_exec, capturar e identificar el navegador>"` | `failed` | browser_exec lanzó el Chromium propio de Hermes con --headless=new y --user-data-dir en Temp (perfil descartable, sin sesiones ni extensiones) y falló al arrancar 4 de 5 veces ('Chrome exited early … without writing DevToolsActivePort'); no produjo captura. Confirma que el navegador por defecto no sirve para capturas publicadas. |
-| `eval-sim-codex-chrome-capture` | `codex` | simulated_eval | `run-evals <copia filtrada>/plugins/golfo-kit/skills/pr-description-template --provider claude (solo los casos nuevos o modificados)` | `passed` | Claude (claude-sonnet-5-5) simulando el agente: codex-chrome-plugin-screenshots: usa el Chrome real vía plugin, pestaña nueva, descarta el navegador in-app. |
-| `eval-sim-hermes-browser-choice` | `hermes` | simulated_eval | `run-evals <copia filtrada>/plugins/golfo-kit/skills/pr-description-template --provider claude (solo los casos nuevos o modificados)` | `passed` | Claude (claude-sonnet-5-5) simulando el agente: hermes-default-browser-not-accepted: propone computer_use con aviso y rechaza browser_exec headless por defecto. |
+| `eval-sim-codex-chrome-capture` | `codex` | simulated_eval | `run-evals <copia filtrada>/plugins/golfo-github/skills/pr-description-template --provider claude (solo los casos nuevos o modificados)` | `passed` | Claude (claude-sonnet-5-5) simulando el agente: codex-chrome-plugin-screenshots: usa el Chrome real vía plugin, pestaña nueva, descarta el navegador in-app. |
+| `eval-sim-hermes-browser-choice` | `hermes` | simulated_eval | `run-evals <copia filtrada>/plugins/golfo-github/skills/pr-description-template --provider claude (solo los casos nuevos o modificados)` | `passed` | Claude (claude-sonnet-5-5) simulando el agente: hermes-default-browser-not-accepted: propone computer_use con aviso y rechaza browser_exec headless por defecto. |
 
 Pendiente de verificar:
 
 - Codex: flujo completo antes/después + subida a pr-assets.
 - Hermes: captura con computer_use o con use_real_profile + headed.
 
+### `pr-flow-graph`
+
+**Identificación**
+
+- Nombre: PR Flow Graph; versión: 1.2.0; SKILL.md: `plugins/golfo-git/skills/pr-flow-graph/SKILL.md`.
+- Propósito: Convierte un pull request, o un RFC que propone un cambio, en un grafo interactivo del flujo que toca, comprobado contra el código.
+- Funcionalidades principales: grafo HTML de cambios y de negocio; modo RFC: lo propuesto se prueba con líneas del RFC; diagramas Mermaid para el PR o el RFC; modelo formal opcional en Lean 4.
+- Agentes soportados declarados: no declara.
+
+**Dependencias**
+
+Sin dependencias específicas de agente detectadas por inspección.
+
+**Compatibilidad por agente**
+
+#### pr-flow-graph / `claude_code`: `unverified`
+
+Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Claude Code durante esta auditoría, así que su funcionamiento no está verificado.
+
+- Capacidades faltantes: ninguna.
+- Alternativas investigadas: ninguna.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `core-workflow` | sí | `unverified` | `native` | Instrucciones de la skill; no usa herramientas específicas de agente. | — | Sin dependencias específicas detectadas por inspección; no ejecutada en Claude Code en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
+
+#### pr-flow-graph / `codex`: `unverified`
+
+Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Codex CLI durante esta auditoría, así que su funcionamiento no está verificado.
+
+- Capacidades faltantes: ninguna.
+- Alternativas investigadas: ninguna.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `core-workflow` | sí | `unverified` | `native` | Instrucciones de la skill; no usa herramientas específicas de agente. | — | Sin dependencias específicas detectadas por inspección; no ejecutada en Codex CLI en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
+
+#### pr-flow-graph / `hermes`: `unverified`
+
+Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Hermes Agent durante esta auditoría, así que su funcionamiento no está verificado.
+
+- Capacidades faltantes: ninguna.
+- Alternativas investigadas: ninguna.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `core-workflow` | sí | `unverified` | `native` | Instrucciones de la skill; no usa herramientas específicas de agente. | — | Sin dependencias específicas detectadas por inspección; no ejecutada en Hermes Agent en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
+
+**Implementación**
+
+- Adaptaciones: ninguna.
+- Archivos modificados: ninguno.
+- Fallback: ninguno.
+- Cambios de comportamiento respecto del original: ninguno.
+
+**Verificación**
+
+| Prueba | Agente | Tipo | Comando | Resultado | Evidencia |
+|---|---|---|---|---|---|
+| `static-inspection` | `any` | static | `grep -rE "AskUserQuestion\|request_user_input\|Monitor\|Cron(Create\|List\|Delete)\|PushNotification\|TaskStop\|Agent\|subagent\|mcp__\|claude -p\|codex exec\|~/.claude\|~/.codex\|apply_patch\|update_plan" plugins/golfo-kit/skills/<skill>` | `passed` | Inspección de SKILL.md, references y scripts del 2026-10-23; las coincidencias de "hook" son hooks de React o de git, no hooks de agente. |
+
+Pendiente de verificar:
+
+- Ejecutar la skill en Claude Code con un caso real.
+- Ejecutar la skill en Codex CLI con un caso real.
+- Ejecutar la skill en Hermes Agent con un caso real.
+
 ### `pr-inline-comment-template`
 
 **Identificación**
 
-- Nombre: PR Inline Comment Template; versión: 1.0.0; SKILL.md: `plugins/golfo-kit/skills/pr-inline-comment-template/SKILL.md`.
+- Nombre: PR Inline Comment Template; versión: 1.0.0; SKILL.md: `plugins/golfo-github/skills/pr-inline-comment-template/SKILL.md`.
 - Propósito: Crea, formatea y publica comentarios inline de review en PRs de GitHub.
 - Funcionalidades principales: plantilla de comentario; publicación inline.
 - Agentes soportados declarados: no declara.
@@ -2141,7 +2280,7 @@ Pendiente de verificar:
 
 **Identificación**
 
-- Nombre: React SSR Hydration Consistency; versión: 1.1.0; SKILL.md: `plugins/golfo-kit/skills/prevent-ssr-hydration-mismatches/SKILL.md`.
+- Nombre: React SSR Hydration Consistency; versión: 1.1.0; SKILL.md: `plugins/golfo-react-web/skills/prevent-ssr-hydration-mismatches/SKILL.md`.
 - Propósito: Previene y diagnostica mismatches de hidratación SSR en React.
 - Funcionalidades principales: render inicial determinista.
 - Agentes soportados declarados: no declara.
@@ -2181,7 +2320,7 @@ Verificación en navegador adaptada y verificada: tab.reload() y tab.dev.logs({ 
 | Funcionalidad | Alternativa investigada | Fuente | Viable | Motivo |
 |---|---|---|---|---|
 | `browser-verification` | Plugin chrome@openai-bundled | docs/api.json del plugin + corrida real codex-real-chrome-console-states | sí | Chrome real del usuario: tab.dev.logs lee la consola de la carga y getByRole().click() recorre estados. |
-| `browser-verification` | Lighthouse, Chrome headless con log y Playwright por terminal | plugins/golfo-kit/references/agent-capabilities.md#verificación-en-navegador-por-terminal + corridas reales | sí | Agnóstico del agente; verificado desde los tres agentes. Sin sesión del usuario: solo localhost/staging sin login o con credenciales de prueba. |
+| `browser-verification` | Lighthouse, Chrome headless con log y Playwright por terminal | shared/references/agent-capabilities.md#verificación-en-navegador-por-terminal + corridas reales | sí | Agnóstico del agente; verificado desde los tres agentes. Sin sesión del usuario: solo localhost/staging sin login o con credenciales de prueba. |
 | `browser-verification` | Plugin browser@openai-bundled / browser-use (iab) | plugin.json y docs del plugin | sí | Navegador in-app para localhost; solo en la app de escritorio, no probado desde el CLI. |
 | `browser-verification` | computer-use@openai-bundled | plugin.json | no | Toma el escritorio; el plugin Chrome cubre el mismo caso sin hacerlo. |
 
@@ -2200,13 +2339,13 @@ Verificación en navegador adaptada y verificada por terminal: browser_exec con 
 | Funcionalidad | Alternativa investigada | Fuente | Viable | Motivo |
 |---|---|---|---|---|
 | `browser-verification` | browser_exec (Chromium headless, perfil descartable) | corrida real hermes-real-browser-exec-probe + doc browser | sí | Sirve para localhost sin login cuando arranca; en esta máquina falló 7 de 9 veces, así que la skill pasa a terminal tras dos fallos. |
-| `browser-verification` | Lighthouse, Chrome headless con log y Playwright por terminal | plugins/golfo-kit/references/agent-capabilities.md#verificación-en-navegador-por-terminal + corridas reales | sí | Agnóstico del agente; verificado desde los tres agentes. Sin sesión del usuario: solo localhost/staging sin login o con credenciales de prueba. |
+| `browser-verification` | Lighthouse, Chrome headless con log y Playwright por terminal | shared/references/agent-capabilities.md#verificación-en-navegador-por-terminal + corridas reales | sí | Agnóstico del agente; verificado desde los tres agentes. Sin sesión del usuario: solo localhost/staging sin login o con credenciales de prueba. |
 | `browser-verification` | computer_use sobre el Chrome real | lista de herramientas + doc computer-use | sí | Único camino para pantallas que necesitan la sesión del usuario; requiere aviso y consentimiento. No ejecutado. |
 
 **Implementación**
 
-- Adaptaciones: Sección «Agent compatibility»: captura de la consola desde la carga según el mecanismo presente (Claude in Chrome, tab.dev.logs, browser_exec con listener previo o terminal), BLOCKED si la ruta exige sesión y no hay navegador real, y Agent limitations en el reporte; Fila «Verificar en un navegador» y sección «Verificación en navegador por terminal» en plugins/golfo-kit/references/agent-capabilities.md (fuente única compartida).
-- Archivos modificados: `plugins/golfo-kit/skills/prevent-ssr-hydration-mismatches/SKILL.md`, `plugins/golfo-kit/skills/prevent-ssr-hydration-mismatches/evals/eval-config.json`, `plugins/golfo-kit/references/agent-capabilities.md`.
+- Adaptaciones: Sección «Agent compatibility»: captura de la consola desde la carga según el mecanismo presente (Claude in Chrome, tab.dev.logs, browser_exec con listener previo o terminal), BLOCKED si la ruta exige sesión y no hay navegador real, y Agent limitations en el reporte; Fila «Verificar en un navegador» y sección «Verificación en navegador por terminal» en shared/references/agent-capabilities.md (fuente única compartida).
+- Archivos modificados: `plugins/golfo-react-web/skills/prevent-ssr-hydration-mismatches/SKILL.md`, `plugins/golfo-react-web/skills/prevent-ssr-hydration-mismatches/evals/eval-config.json`, `shared/references/agent-capabilities.md`.
 - Fallback: Sin ningún mecanismo de navegador, la verificación queda BLOCKED y se reporta en Limitaciones del agente..
 - Cambios de comportamiento respecto del original: Codex lee la consola con tab.dev.logs; Hermes usa la terminal si browser_exec no arranca. Rutas con sesión sin navegador real quedan BLOCKED en lugar de omitirse..
 
@@ -2221,8 +2360,8 @@ Verificación en navegador adaptada y verificada por terminal: browser_exec con 
 | `hermes-real-browser-exec-probe` | `hermes` | real_run | `hermes chat -Q -q "<browser_exec: listener de consola antes de navegar, recarga, performance y clic en cada estado de http://127.0.0.1:8793/>"` | `failed` | browser_exec falló al arrancar 7 de 9 veces ('Chrome exited early … without writing DevToolsActivePort'); las dos que arrancaron eran HeadlessChrome/145 sobre about:blank. Había unos 24 Chromium huérfanos con user-data-dir agent-browser-chrome-<uuid> en Temp, que no se mataron. Ninguna verificación de la página se completó con browser_exec. |
 | `hermes-real-terminal-console-metrics` | `hermes` | real_run | `hermes chat -Q -q "<solo terminal: Chrome headless con --enable-logging --log-file y npx -y lighthouse@12 sobre http://127.0.0.1:8793/>"` | `passed` | Hermes encontró Chrome y npx; el log tuvo la línea CONSOLE del warning de hidratación simulado; Lighthouse 12.8.2: LCP 1.1 s, CLS 0, TBT 0 ms, FCP 1.1 s (hermes-lh.json de 192 KB). |
 | `hermes-real-playwright-states` | `hermes` | real_run | `hermes chat -Q -q "<solo terminal: node walk-states.mjs http://127.0.0.1:8793/ (playwright-core, channel chrome, headless)>"` | `passed` | Salida del script desde Hermes: console.error de hidratación simulado, navegación 175 ms y data-current loading/empty/data/error tras cada clic; exitCode 0. |
-| `eval-sim-codex-hydration-console-via-dev-logs` | `codex` | simulated_eval | `run-evals <copia filtrada>/plugins/golfo-kit/skills/prevent-ssr-hydration-mismatches --provider claude (solo los casos nuevos)` | `passed` | Claude (claude-sonnet-5-5) simulando el agente: codex-hydration-console-via-dev-logs: recarga la pestaña y lee los warnings de hidratación con tab.dev.logs, con resultado PASS/FAIL/BLOCKED. |
-| `eval-sim-hermes-session-route-blocked` | `hermes` | simulated_eval | `run-evals <copia filtrada>/plugins/golfo-kit/skills/prevent-ssr-hydration-mismatches --provider claude (solo los casos nuevos)` | `passed` | Claude (claude-sonnet-5-5) simulando el agente: hermes-session-route-blocked: ruta con sesión, sin credenciales de prueba ni consentimiento para computer_use: reporta BLOCKED con Agent limitations y nunca PASS. |
+| `eval-sim-codex-hydration-console-via-dev-logs` | `codex` | simulated_eval | `run-evals <copia filtrada>/plugins/golfo-react-web/skills/prevent-ssr-hydration-mismatches --provider claude (solo los casos nuevos)` | `passed` | Claude (claude-sonnet-5-5) simulando el agente: codex-hydration-console-via-dev-logs: recarga la pestaña y lee los warnings de hidratación con tab.dev.logs, con resultado PASS/FAIL/BLOCKED. |
+| `eval-sim-hermes-session-route-blocked` | `hermes` | simulated_eval | `run-evals <copia filtrada>/plugins/golfo-react-web/skills/prevent-ssr-hydration-mismatches --provider claude (solo los casos nuevos)` | `passed` | Claude (claude-sonnet-5-5) simulando el agente: hermes-session-route-blocked: ruta con sesión, sin credenciales de prueba ni consentimiento para computer_use: reporta BLOCKED con Agent limitations y nunca PASS. |
 
 Pendiente de verificar:
 
@@ -2236,7 +2375,7 @@ Pendiente de verificar:
 
 **Identificación**
 
-- Nombre: React Data Fetching Best Practices; versión: 1.0.0; SKILL.md: `plugins/golfo-kit/skills/react-data-fetching-best-practices/SKILL.md`.
+- Nombre: React Data Fetching Best Practices; versión: 1.0.0; SKILL.md: `plugins/golfo-react-web/skills/react-data-fetching-best-practices/SKILL.md`.
 - Propósito: Buenas prácticas de data fetching en React, server-first.
 - Funcionalidades principales: fetch en servidor; cancelación con AbortController.
 - Agentes soportados declarados: no declara.
@@ -2303,7 +2442,7 @@ Pendiente de verificar:
 
 **Identificación**
 
-- Nombre: React Render Performance Patterns; versión: 1.0.0; SKILL.md: `plugins/golfo-kit/skills/react-render-performance-patterns/SKILL.md`.
+- Nombre: React Render Performance Patterns; versión: 1.0.0; SKILL.md: `plugins/golfo-react/skills/react-render-performance-patterns/SKILL.md`.
 - Propósito: Patrones de rendimiento de render y prioridad de updates en React.
 - Funcionalidades principales: memoización; transiciones.
 - Agentes soportados declarados: no declara.
@@ -2370,7 +2509,7 @@ Pendiente de verificar:
 
 **Identificación**
 
-- Nombre: Refactor Modularity Cohesion Deduplication; versión: 1.0.0; SKILL.md: `plugins/golfo-kit/skills/refactor-modularize-code/SKILL.md`.
+- Nombre: Refactor Modularity Cohesion Deduplication; versión: 1.0.0; SKILL.md: `plugins/golfo-engineering/skills/refactor-modularize-code/SKILL.md`.
 - Propósito: Refactoriza límites de módulos, cohesión y duplicación sin cambiar comportamiento.
 - Funcionalidades principales: extracción de módulos; reorganización de imports.
 - Agentes soportados declarados: no declara.
@@ -2437,7 +2576,7 @@ Pendiente de verificar:
 
 **Identificación**
 
-- Nombre: React SSR y BFF Data Fetching; versión: 1.0.0; SKILL.md: `plugins/golfo-kit/skills/refactor-ssr-data-fetching/SKILL.md`.
+- Nombre: React SSR y BFF Data Fetching; versión: 1.0.0; SKILL.md: `plugins/golfo-react-web/skills/refactor-ssr-data-fetching/SKILL.md`.
 - Propósito: Prioriza el acceso a upstream desde el servidor y el BFF same-origin en React SSR.
 - Funcionalidades principales: decisión de arquitectura de red.
 - Agentes soportados declarados: no declara.
@@ -2504,7 +2643,7 @@ Pendiente de verificar:
 
 **Identificación**
 
-- Nombre: Review Fix Loop; versión: 1.2.0; SKILL.md: `plugins/golfo-kit/skills/review-fix-loop/SKILL.md`.
+- Nombre: Review Fix Loop; versión: 1.2.0; SKILL.md: `plugins/golfo-git/skills/review-fix-loop/SKILL.md`.
 - Propósito: Loop de review y fix multi-provider (Claude Code y Codex como reviewers CLI) sobre cambios locales o PRs.
 - Funcionalidades principales: selección de provider con fallback; rondas de review y fix; filtro adversarial; reporte final.
 - Agentes soportados declarados: no declara.
@@ -2569,7 +2708,7 @@ Providers por CLI; filtro adversarial aislado con un proceso claude -p de solo l
 **Implementación**
 
 - Adaptaciones: Runners del filtro aislado por capacidad: Agent, claude -p de solo lectura, codex exec -s read-only donde lea, o inline.
-- Archivos modificados: `plugins/golfo-kit/skills/review-fix-loop/SKILL.md`, `plugins/golfo-kit/skills/review-fix-loop/evals/eval-config.json`.
+- Archivos modificados: `plugins/golfo-git/skills/review-fix-loop/SKILL.md`, `plugins/golfo-git/skills/review-fix-loop/evals/eval-config.json`.
 - Fallback: Filtro inline..
 - Cambios de comportamiento respecto del original: Codex y Hermes recuperan el filtro aislado cuando claude está en PATH..
 
@@ -2583,8 +2722,8 @@ Providers por CLI; filtro adversarial aislado con un proceso claude -p de solo l
 | `codex-read-only-sandbox-probe` | `codex` | real_run | `codex exec -s read-only [-c 'windows.sandbox="elevated"'] "<leer sum.js e intentar escribir pwned.txt>"` | `failed` | En Windows el sandbox read-only no deja crear ningún proceso: 'CreateProcessAsUserW failed: 5 (Access is denied.)'; con elevated: 'helper_unknown_error: setup refresh had errors'. No pudo ni leer los archivos, así que no sirve como filtro en esta máquina. |
 | `hermes-real-claude-filter` | `hermes` | real_run | `hermes chat -Q -q "<leer Agent compatibility de review-fix-loop y correr solo el filtro aislado sobre findings.md>"` | `passed` | Hermes eligió el runner 2, descartó delegate_task por heredar toolsets y corrió timeout 600 claude -p … --tools "Read,Grep,Glob" --permission-mode dontAsk < /dev/null (exit 0): aceptó 2 findings, rechazó 1 y el directorio quedó idéntico (ls antes/después). |
 | `codex-real-claude-filter` | `codex` | real_run | `codex exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check "<leer Agent compatibility de review-fix-loop y correr solo el filtro aislado sobre findings.md>"` | `passed` | Codex corrió claude.exe -p … --tools Read,Grep,Glob --permission-mode dontAsk con timeout de 600 s y stdin cerrado (exit 0): aceptó 1 finding y rechazó 2; git status igual antes y después. |
-| `eval-sim-hermes-claude-filter` | `hermes` | simulated_eval | `run-evals <copia filtrada>/plugins/golfo-kit/skills/review-fix-loop --provider claude (solo los casos nuevos o modificados)` | `passed` | Claude (claude-sonnet-5-5) simulando el agente: hermes-filter-via-claude-cli-read-only: claude -p --tools Read,Grep,Glob con timeout; descarta delegate_task. |
-| `eval-sim-codex-windows-inline` | `codex` | simulated_eval | `run-evals <copia filtrada>/plugins/golfo-kit/skills/review-fix-loop --provider claude (solo los casos nuevos o modificados)` | `passed` | Claude (claude-sonnet-5-5) simulando el agente: windows-codex-only-filter-inline: sin claude en Windows filtra inline y lo reporta. |
+| `eval-sim-hermes-claude-filter` | `hermes` | simulated_eval | `run-evals <copia filtrada>/plugins/golfo-git/skills/review-fix-loop --provider claude (solo los casos nuevos o modificados)` | `passed` | Claude (claude-sonnet-5-5) simulando el agente: hermes-filter-via-claude-cli-read-only: claude -p --tools Read,Grep,Glob con timeout; descarta delegate_task. |
+| `eval-sim-codex-windows-inline` | `codex` | simulated_eval | `run-evals <copia filtrada>/plugins/golfo-git/skills/review-fix-loop --provider claude (solo los casos nuevos o modificados)` | `passed` | Claude (claude-sonnet-5-5) simulando el agente: windows-codex-only-filter-inline: sin claude en Windows filtra inline y lo reporta. |
 
 Pendiente de verificar:
 
@@ -2596,7 +2735,7 @@ Pendiente de verificar:
 
 **Identificación**
 
-- Nombre: Review Maintainability; versión: 1.0.0; SKILL.md: `plugins/golfo-kit/skills/review-maintainability/SKILL.md`.
+- Nombre: Review Maintainability; versión: 1.0.0; SKILL.md: `plugins/golfo-engineering/skills/review-maintainability/SKILL.md`.
 - Propósito: Revisa riesgos de mantenibilidad en el diff contra develop/main/master.
 - Funcionalidades principales: concurrencia; leaks; edge cases.
 - Agentes soportados declarados: no declara.
@@ -2665,7 +2804,7 @@ Pendiente de verificar:
 
 **Identificación**
 
-- Nombre: Review Performance; versión: 1.0.0; SKILL.md: `plugins/golfo-kit/skills/review-performance/SKILL.md`.
+- Nombre: Review Performance; versión: 1.0.0; SKILL.md: `plugins/golfo-engineering/skills/review-performance/SKILL.md`.
 - Propósito: Revisa problemas de rendimiento con impacto en producción en el diff.
 - Funcionalidades principales: N+1; complejidad; I/O ineficiente.
 - Agentes soportados declarados: no declara.
@@ -2734,7 +2873,7 @@ Pendiente de verificar:
 
 **Identificación**
 
-- Nombre: Review Security; versión: 1.0.0; SKILL.md: `plugins/golfo-kit/skills/review-security/SKILL.md`.
+- Nombre: Review Security; versión: 1.0.0; SKILL.md: `plugins/golfo-engineering/skills/review-security/SKILL.md`.
 - Propósito: Revisa vulnerabilidades en el diff y en instrucciones de agentes.
 - Funcionalidades principales: AppSec; instrucciones de IA y skills.
 - Agentes soportados declarados: no declara.
@@ -2803,7 +2942,7 @@ Pendiente de verificar:
 
 **Identificación**
 
-- Nombre: Semantic HTML and Accessibility; versión: 1.0.0; SKILL.md: `plugins/golfo-kit/skills/semantic-html-a11y/SKILL.md`.
+- Nombre: Semantic HTML and Accessibility; versión: 1.0.0; SKILL.md: `plugins/golfo-web/skills/semantic-html-a11y/SKILL.md`.
 - Propósito: Aplica HTML semántico y accesibilidad en markup frontend.
 - Funcionalidades principales: elementos nativos; aria y foco.
 - Agentes soportados declarados: no declara.
@@ -2870,7 +3009,7 @@ Pendiente de verificar:
 
 **Identificación**
 
-- Nombre: Worktree hermano; versión: 1.0.0; SKILL.md: `plugins/golfo-kit/skills/sibling-worktree/SKILL.md`.
+- Nombre: Worktree hermano; versión: 1.0.0; SKILL.md: `plugins/golfo-git/skills/sibling-worktree/SKILL.md`.
 - Propósito: Gestiona worktrees hermanos persistentes reutilizando ramas existentes.
 - Funcionalidades principales: crear, listar, remover y migrar worktrees.
 - Agentes soportados declarados: no declara.
@@ -2939,7 +3078,7 @@ Pendiente de verificar:
 
 **Identificación**
 
-- Nombre: Simplify Code; versión: 1.0.0; SKILL.md: `plugins/golfo-kit/skills/simplify-code/SKILL.md`.
+- Nombre: Simplify Code; versión: 1.0.0; SKILL.md: `plugins/golfo-engineering/skills/simplify-code/SKILL.md`.
 - Propósito: Revisa el diff por reuso, simplificación y eficiencia, y aplica los fixes.
 - Funcionalidades principales: limpieza del diff.
 - Agentes soportados declarados: no declara.
@@ -3048,7 +3187,7 @@ audit no depende del agente; quick/full requieren subagente aislado y un CLI de 
 
 | Funcionalidad | Alternativa investigada | Fuente | Viable | Motivo |
 |---|---|---|---|---|
-| `isolated-evaluation` | `spawn_agent` + `wait_agent`. | Auditoría 1.0.0 (PR #22) y plugins/golfo-kit/references/agent-capabilities.md | sí | No ejecutada en Codex CLI en esta auditoría. |
+| `isolated-evaluation` | `spawn_agent` + `wait_agent`. | Auditoría 1.0.0 (PR #22) y shared/references/agent-capabilities.md | sí | No ejecutada en Codex CLI en esta auditoría. |
 
 #### skill-optimizer / `hermes`: `unverified`
 
@@ -3064,7 +3203,7 @@ audit no depende del agente; quick/full requieren subagente aislado y un CLI de 
 
 | Funcionalidad | Alternativa investigada | Fuente | Viable | Motivo |
 |---|---|---|---|---|
-| `isolated-evaluation` | `delegate_task`. | Auditoría 1.0.0 (PR #22) y plugins/golfo-kit/references/agent-capabilities.md | sí | No ejecutada en Hermes Agent en esta auditoría. |
+| `isolated-evaluation` | `delegate_task`. | Auditoría 1.0.0 (PR #22) y shared/references/agent-capabilities.md | sí | No ejecutada en Hermes Agent en esta auditoría. |
 
 **Implementación**
 
@@ -3090,7 +3229,7 @@ Pendiente de verificar:
 
 **Identificación**
 
-- Nombre: Stacked PRs por responsabilidad; versión: 1.0.0; SKILL.md: `plugins/golfo-kit/skills/stacked-pr/SKILL.md`.
+- Nombre: Stacked PRs por responsabilidad; versión: 1.0.0; SKILL.md: `plugins/golfo-github/skills/stacked-pr/SKILL.md`.
 - Propósito: Gestiona stacked PRs por responsabilidad con golden diff y CI por capa.
 - Funcionalidades principales: división de PRs; rebase de capas.
 - Agentes soportados declarados: no declara.
@@ -3160,7 +3299,7 @@ Pendiente de verificar:
 
 **Identificación**
 
-- Nombre: test-best-practices; versión: 2.0.0; SKILL.md: `plugins/golfo-kit/skills/test-best-practices/SKILL.md`.
+- Nombre: test-best-practices; versión: 2.0.0; SKILL.md: `plugins/golfo-javascript/skills/test-best-practices/SKILL.md`.
 - Propósito: Estandariza tests con Vitest y Testing Library.
 - Funcionalidades principales: naming y AAA; aserciones estrictas.
 - Agentes soportados declarados: no declara.
@@ -3227,7 +3366,7 @@ Pendiente de verificar:
 
 **Identificación**
 
-- Nombre: Test Planning; versión: 1.0.0; SKILL.md: `plugins/golfo-kit/skills/test-planning/SKILL.md`.
+- Nombre: Test Planning; versión: 1.0.0; SKILL.md: `plugins/golfo-testing/skills/test-planning/SKILL.md`.
 - Propósito: Planifica casos y cobertura de tests antes de escribirlos.
 - Funcionalidades principales: modo casos; modo cobertura.
 - Agentes soportados declarados: no declara.
@@ -3294,7 +3433,7 @@ Pendiente de verificar:
 
 **Identificación**
 
-- Nombre: Typed Errors Refactor; versión: 1.0.0; SKILL.md: `plugins/golfo-kit/skills/typed-errors-refactor/SKILL.md`.
+- Nombre: Typed Errors Refactor; versión: 1.0.0; SKILL.md: `plugins/golfo-engineering/skills/typed-errors-refactor/SKILL.md`.
 - Propósito: Diseña y ejecuta refactors de errores tipados.
 - Funcionalidades principales: jerarquía de errores; normalización.
 - Agentes soportados declarados: no declara.
@@ -3361,7 +3500,7 @@ Pendiente de verificar:
 
 **Identificación**
 
-- Nombre: UI/UX por flujo: componentes, estados y feedback; versión: 1.2.0; SKILL.md: `plugins/golfo-kit/skills/ui-ux-flow-patterns/SKILL.md`.
+- Nombre: UI/UX por flujo: componentes, estados y feedback; versión: 1.2.0; SKILL.md: `plugins/golfo-frontend/skills/ui-ux-flow-patterns/SKILL.md`.
 - Propósito: Define componentes, estados y feedback por flujo de UI.
 - Funcionalidades principales: estados loading/vacío/error; toast, banner, diálogo.
 - Agentes soportados declarados: no declara.
@@ -3401,7 +3540,7 @@ Verificación en navegador adaptada y verificada: Clics por estado con tab.playw
 | Funcionalidad | Alternativa investigada | Fuente | Viable | Motivo |
 |---|---|---|---|---|
 | `browser-verification` | Plugin chrome@openai-bundled | docs/api.json del plugin + corrida real codex-real-chrome-console-states | sí | Chrome real del usuario: tab.dev.logs lee la consola de la carga y getByRole().click() recorre estados. |
-| `browser-verification` | Lighthouse, Chrome headless con log y Playwright por terminal | plugins/golfo-kit/references/agent-capabilities.md#verificación-en-navegador-por-terminal + corridas reales | sí | Agnóstico del agente; verificado desde los tres agentes. Sin sesión del usuario: solo localhost/staging sin login o con credenciales de prueba. |
+| `browser-verification` | Lighthouse, Chrome headless con log y Playwright por terminal | shared/references/agent-capabilities.md#verificación-en-navegador-por-terminal + corridas reales | sí | Agnóstico del agente; verificado desde los tres agentes. Sin sesión del usuario: solo localhost/staging sin login o con credenciales de prueba. |
 | `browser-verification` | Plugin browser@openai-bundled / browser-use (iab) | plugin.json y docs del plugin | sí | Navegador in-app para localhost; solo en la app de escritorio, no probado desde el CLI. |
 | `browser-verification` | computer-use@openai-bundled | plugin.json | no | Toma el escritorio; el plugin Chrome cubre el mismo caso sin hacerlo. |
 
@@ -3420,13 +3559,13 @@ Verificación en navegador adaptada y verificada por terminal: browser_exec para
 | Funcionalidad | Alternativa investigada | Fuente | Viable | Motivo |
 |---|---|---|---|---|
 | `browser-verification` | browser_exec (Chromium headless, perfil descartable) | corrida real hermes-real-browser-exec-probe + doc browser | sí | Sirve para localhost sin login cuando arranca; en esta máquina falló 7 de 9 veces, así que la skill pasa a terminal tras dos fallos. |
-| `browser-verification` | Lighthouse, Chrome headless con log y Playwright por terminal | plugins/golfo-kit/references/agent-capabilities.md#verificación-en-navegador-por-terminal + corridas reales | sí | Agnóstico del agente; verificado desde los tres agentes. Sin sesión del usuario: solo localhost/staging sin login o con credenciales de prueba. |
+| `browser-verification` | Lighthouse, Chrome headless con log y Playwright por terminal | shared/references/agent-capabilities.md#verificación-en-navegador-por-terminal + corridas reales | sí | Agnóstico del agente; verificado desde los tres agentes. Sin sesión del usuario: solo localhost/staging sin login o con credenciales de prueba. |
 | `browser-verification` | computer_use sobre el Chrome real | lista de herramientas + doc computer-use | sí | Único camino para pantallas que necesitan la sesión del usuario; requiere aviso y consentimiento. No ejecutado. |
 
 **Implementación**
 
-- Adaptaciones: Sección «Compatibilidad entre agentes»: navegador según agent-capabilities.md por herramienta presente, aclaración de que headless no reemplaza el lector de pantalla, y Limitaciones del agente en el reporte; Fila «Verificar en un navegador» y sección «Verificación en navegador por terminal» en plugins/golfo-kit/references/agent-capabilities.md (fuente única compartida).
-- Archivos modificados: `plugins/golfo-kit/skills/ui-ux-flow-patterns/SKILL.md`, `plugins/golfo-kit/skills/ui-ux-flow-patterns/evals/eval-config.json`, `plugins/golfo-kit/references/agent-capabilities.md`.
+- Adaptaciones: Sección «Compatibilidad entre agentes»: navegador según agent-capabilities.md por herramienta presente, aclaración de que headless no reemplaza el lector de pantalla, y Limitaciones del agente en el reporte; Fila «Verificar en un navegador» y sección «Verificación en navegador por terminal» en shared/references/agent-capabilities.md (fuente única compartida).
+- Archivos modificados: `plugins/golfo-frontend/skills/ui-ux-flow-patterns/SKILL.md`, `plugins/golfo-frontend/skills/ui-ux-flow-patterns/evals/eval-config.json`, `shared/references/agent-capabilities.md`.
 - Fallback: Sin ningún mecanismo de navegador, la verificación queda BLOCKED y se reporta en Limitaciones del agente..
 - Cambios de comportamiento respecto del original: Codex recorre los estados con el plugin Chrome; Hermes con Playwright por terminal si browser_exec no arranca. La sección Verificación dice con qué herramienta se recorrió..
 
@@ -3441,8 +3580,8 @@ Verificación en navegador adaptada y verificada por terminal: browser_exec para
 | `hermes-real-browser-exec-probe` | `hermes` | real_run | `hermes chat -Q -q "<browser_exec: listener de consola antes de navegar, recarga, performance y clic en cada estado de http://127.0.0.1:8793/>"` | `failed` | browser_exec falló al arrancar 7 de 9 veces ('Chrome exited early … without writing DevToolsActivePort'); las dos que arrancaron eran HeadlessChrome/145 sobre about:blank. Había unos 24 Chromium huérfanos con user-data-dir agent-browser-chrome-<uuid> en Temp, que no se mataron. Ninguna verificación de la página se completó con browser_exec. |
 | `hermes-real-terminal-console-metrics` | `hermes` | real_run | `hermes chat -Q -q "<solo terminal: Chrome headless con --enable-logging --log-file y npx -y lighthouse@12 sobre http://127.0.0.1:8793/>"` | `passed` | Hermes encontró Chrome y npx; el log tuvo la línea CONSOLE del warning de hidratación simulado; Lighthouse 12.8.2: LCP 1.1 s, CLS 0, TBT 0 ms, FCP 1.1 s (hermes-lh.json de 192 KB). |
 | `hermes-real-playwright-states` | `hermes` | real_run | `hermes chat -Q -q "<solo terminal: node walk-states.mjs http://127.0.0.1:8793/ (playwright-core, channel chrome, headless)>"` | `passed` | Salida del script desde Hermes: console.error de hidratación simulado, navegación 175 ms y data-current loading/empty/data/error tras cada clic; exitCode 0. |
-| `eval-sim-codex-walk-states-with-chrome-plugin` | `codex` | simulated_eval | `run-evals <copia filtrada>/plugins/golfo-kit/skills/ui-ux-flow-patterns --provider claude (solo los casos nuevos)` | `passed` | Claude (claude-sonnet-5-5) simulando el agente: codex-walk-states-with-chrome-plugin: recorre cada estado con clics del plugin Chrome, revisa la consola y aclara que no hubo lector de pantalla. |
-| `eval-sim-hermes-browser-exec-unstable-playwright-fallback` | `hermes` | simulated_eval | `run-evals <copia filtrada>/plugins/golfo-kit/skills/ui-ux-flow-patterns --provider claude (solo los casos nuevos)` | `passed` | Claude (claude-sonnet-5-5) simulando el agente: hermes-browser-exec-unstable-playwright-fallback: tras dos fallos de browser_exec recorre los estados con Playwright por terminal, descarta computer_use (no hace falta sesión) y verifica el doble clic. |
+| `eval-sim-codex-walk-states-with-chrome-plugin` | `codex` | simulated_eval | `run-evals <copia filtrada>/plugins/golfo-frontend/skills/ui-ux-flow-patterns --provider claude (solo los casos nuevos)` | `passed` | Claude (claude-sonnet-5-5) simulando el agente: codex-walk-states-with-chrome-plugin: recorre cada estado con clics del plugin Chrome, revisa la consola y aclara que no hubo lector de pantalla. |
+| `eval-sim-hermes-browser-exec-unstable-playwright-fallback` | `hermes` | simulated_eval | `run-evals <copia filtrada>/plugins/golfo-frontend/skills/ui-ux-flow-patterns --provider claude (solo los casos nuevos)` | `passed` | Claude (claude-sonnet-5-5) simulando el agente: hermes-browser-exec-unstable-playwright-fallback: tras dos fallos de browser_exec recorre los estados con Playwright por terminal, descarta computer_use (no hace falta sesión) y verifica el doble clic. |
 
 Pendiente de verificar:
 
@@ -3456,7 +3595,7 @@ Pendiente de verificar:
 
 **Identificación**
 
-- Nombre: User Manual Generator; versión: 2.5.0; SKILL.md: `plugins/golfo-kit/skills/user-manual/SKILL.md`.
+- Nombre: User Manual Generator; versión: 2.5.0; SKILL.md: `plugins/golfo-web/skills/user-manual/SKILL.md`.
 - Propósito: Genera o actualiza manuales de usuario HTML autocontenidos con capturas reales de la app.
 - Funcionalidades principales: preguntas de dispositivo, idiomas y repo; mapa de visibilidad; HTML con DESIGN.md; capturas reales; publicación.
 - Agentes soportados declarados: no declara.
@@ -3499,7 +3638,7 @@ Preguntas adaptadas por agente con fallback en texto; capturas con la herramient
 
 | Funcionalidad | Alternativa investigada | Fuente | Viable | Motivo |
 |---|---|---|---|---|
-| `ask-device-languages` | Texto y detención; `request_user_input` solo en modo Plan. | Auditoría 1.0.0 (PR #22) y plugins/golfo-kit/references/agent-capabilities.md | sí | No ejecutada en Codex CLI en esta auditoría. |
+| `ask-device-languages` | Texto y detención; `request_user_input` solo en modo Plan. | Auditoría 1.0.0 (PR #22) y shared/references/agent-capabilities.md | sí | No ejecutada en Codex CLI en esta auditoría. |
 | `real-app-captures` | Plugin chrome@openai-bundled vía mcp__cua_repl.js | corrida real en codex exec | sí | Evalúa JS en el Chrome real del usuario. |
 | `real-app-captures` | Navegador in-app (iab) | plugin.json del plugin browser | sí | Sirve para dev servers sin login. |
 | `real-app-captures` | computer-use | plugin.json | no | No evalúa scripts en la página. |
@@ -3519,14 +3658,14 @@ Preguntas adaptadas por agente con fallback en texto; capturas con la herramient
 
 | Funcionalidad | Alternativa investigada | Fuente | Viable | Motivo |
 |---|---|---|---|---|
-| `ask-device-languages` | `clarify`; texto ante undelivered/timed_out/cancelled. | Auditoría 1.0.0 (PR #22) y plugins/golfo-kit/references/agent-capabilities.md | sí | No ejecutada en Hermes Agent en esta auditoría. |
+| `ask-device-languages` | `clarify`; texto ante undelivered/timed_out/cancelled. | Auditoría 1.0.0 (PR #22) y shared/references/agent-capabilities.md | sí | No ejecutada en Hermes Agent en esta auditoría. |
 | `real-app-captures` | browser_exec + js() | doc browser | sí | Evalúa scripts en la página; headless sirve para clonar DOM y CSS. |
 | `real-app-captures` | computer_use | doc computer-use | no | No evalúa scripts en la página. |
 
 **Implementación**
 
 - Adaptaciones: Sección «Agent compatibility»: preguntas por agente con fallback en texto y detención; Tabla de la «herramienta JavaScript de navegador» por agente y fallback explícito a mockups dibujados.
-- Archivos modificados: `plugins/golfo-kit/skills/user-manual/SKILL.md`, `plugins/golfo-kit/skills/user-manual/evals/eval-config.json`.
+- Archivos modificados: `plugins/golfo-web/skills/user-manual/SKILL.md`, `plugins/golfo-web/skills/user-manual/evals/eval-config.json`.
 - Fallback: Pregunta en texto con detención..
 - Cambios de comportamiento respecto del original: Ninguno en Claude Code..
 
@@ -3535,9 +3674,9 @@ Preguntas adaptadas por agente con fallback en texto; capturas con la herramient
 | Prueba | Agente | Tipo | Comando | Resultado | Evidencia |
 |---|---|---|---|---|---|
 | `static-inspection` | `any` | static | `grep -rE "AskUserQuestion\|request_user_input\|Monitor\|Cron(Create\|List\|Delete)\|PushNotification\|TaskStop\|Agent\|subagent\|mcp__\|claude -p\|codex exec\|~/.claude\|~/.codex\|apply_patch\|update_plan" plugins/golfo-kit/skills/<skill>` | `passed` | Inspección de SKILL.md, references y scripts del 2026-10-23; las coincidencias de "hook" son hooks de React o de git, no hooks de agente. |
-| `design-tokens-bats` | `any` | bats | `bats plugins/golfo-kit/skills/user-manual/tests/check-design-tokens.bats` | `passed` | Suite del chequeo de tokens de DESIGN.md (agnóstica de agente). |
-| `eval-sim-codex-browser-runtime` | `codex` | simulated_eval | `run-evals <copia filtrada>/plugins/golfo-kit/skills/user-manual --provider claude (solo los casos nuevos o modificados)` | `passed` | Claude (claude-sonnet-5-5) simulando el agente: codex-browser-runtime-for-captures: inyecta capture-snippet.js con mcp__cua_repl.js en el Chrome del usuario. |
-| `eval-sim-drawn-mockups-fallback` | `hermes` | simulated_eval | `run-evals <copia filtrada>/plugins/golfo-kit/skills/user-manual --provider claude (solo los casos nuevos o modificados)` | `passed` | Claude (claude-sonnet-5-5) simulando el agente: no-script-browser-falls-back-to-drawn-mockups: sin navegador que evalúe scripts cae a mockups dibujados. |
+| `design-tokens-bats` | `any` | bats | `bats plugins/golfo-web/skills/user-manual/tests/check-design-tokens.bats` | `passed` | Suite del chequeo de tokens de DESIGN.md (agnóstica de agente). |
+| `eval-sim-codex-browser-runtime` | `codex` | simulated_eval | `run-evals <copia filtrada>/plugins/golfo-web/skills/user-manual --provider claude (solo los casos nuevos o modificados)` | `passed` | Claude (claude-sonnet-5-5) simulando el agente: codex-browser-runtime-for-captures: inyecta capture-snippet.js con mcp__cua_repl.js en el Chrome del usuario. |
+| `eval-sim-drawn-mockups-fallback` | `hermes` | simulated_eval | `run-evals <copia filtrada>/plugins/golfo-web/skills/user-manual --provider claude (solo los casos nuevos o modificados)` | `passed` | Claude (claude-sonnet-5-5) simulando el agente: no-script-browser-falls-back-to-drawn-mockups: sin navegador que evalúe scripts cae a mockups dibujados. |
 
 Pendiente de verificar:
 
@@ -3551,7 +3690,7 @@ Pendiente de verificar:
 
 **Identificación**
 
-- Nombre: Vivid Visual Output; versión: 1.0.0; SKILL.md: `plugins/golfo-kit/skills/vivid-visual-output/SKILL.md`.
+- Nombre: Vivid Visual Output; versión: 1.0.0; SKILL.md: `plugins/golfo-engineering/skills/vivid-visual-output/SKILL.md`.
 - Propósito: Fija un piso de calidad visual para salidas de terminal y UI: color, tablas, listas y animación con degradación a texto plano, temas, contraste AA y movimiento reducido.
 - Funcionalidades principales: degradación por capacidad en terminal; kits para Node, PowerShell y bash o zsh; tokens, temas y movimiento en UI.
 - Agentes soportados declarados: no declara.
@@ -3618,7 +3757,7 @@ Pendiente de verificar:
 
 **Identificación**
 
-- Nombre: Widget-driven UI/UX proposals & previews; versión: 1.3.0; SKILL.md: `plugins/golfo-kit/skills/widget-ui-proposals/SKILL.md`.
+- Nombre: Widget-driven UI/UX proposals & previews; versión: 1.3.0; SKILL.md: `plugins/golfo-frontend/skills/widget-ui-proposals/SKILL.md`.
 - Propósito: Muestra propuestas y previews de UI como widgets visuales interactivos antes de escribir código.
 - Funcionalidades principales: Propuestas de UI como widget interactivo; Preview del cambio antes de aplicarlo; Aplicar las opciones elegidas e iterar.
 - Agentes soportados declarados: no declara.
@@ -3695,7 +3834,7 @@ Adaptada con un preview estático: HTML renderizado a PNG, entregado por ruta o 
 **Implementación**
 
 - Adaptaciones: Modo Codex con el plugin visualize (fragmento HTML, visualize{…}, .viz-carousel, sendFollowUpMessage); Modo de preview estático (HTML → PNG con navegador headless, clarify u opciones numeradas) para Hermes y otros agentes con shell; Detención con Limitaciones del agente solo sin ninguna vía de render.
-- Archivos modificados: `plugins/golfo-kit/skills/widget-ui-proposals/SKILL.md`, `plugins/golfo-kit/skills/widget-ui-proposals/evals/eval-config.json`.
+- Archivos modificados: `plugins/golfo-frontend/skills/widget-ui-proposals/SKILL.md`, `plugins/golfo-frontend/skills/widget-ui-proposals/evals/eval-config.json`.
 - Fallback: Preview estático; sin shell ni navegador, detenerse y reportar..
 - Cambios de comportamiento respecto del original: Codex: mismo flujo con otro mecanismo de render. Hermes: la vista es una imagen fija y la elección vuelve por pregunta, no por clic..
 
@@ -3706,8 +3845,8 @@ Adaptada con un preview estático: HTML renderizado a PNG, entregado por ruta o 
 | `static-inspection` | `any` | static | `grep -rE "AskUserQuestion\|request_user_input\|Monitor\|Cron(Create\|List\|Delete)\|PushNotification\|TaskStop\|Agent\|subagent\|mcp__\|claude -p\|codex exec\|~/.claude\|~/.codex\|apply_patch\|update_plan" plugins/golfo-kit/skills/<skill>` | `passed` | Inspección de SKILL.md, references y scripts del 2026-10-23; las coincidencias de "hook" son hooks de React o de git, no hooks de agente. |
 | `codex-real-visualize-fragment` | `codex` | real_run | `codex exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check "<leer y seguir widget-ui-proposals/SKILL.md; dos variantes del botón Guardar cambios>" (en un directorio temporal)` | `passed` | Codex 0.162.1 eligió el modo Codex, escribió guardar-cambios.html (5582 bytes, fragmento sin <html>/<head>/<body>) con un .viz-carousel de dos hijos data-variant="Sólida azul"/"Outline" y botones Aplicar con window.openai.sendFollowUpMessage, y terminó la respuesta con visualize{"path":"C:/Users/guido/AppData/Local/Temp/rt-codex-widget/guardar-cambios.html"} en una línea propia más la recomendación. El render interactivo en la app de escritorio no se observó (codex exec es terminal). |
 | `hermes-real-static-preview` | `hermes` | real_run | `hermes chat -Q -q "<leer y seguir widget-ui-proposals/SKILL.md; tres variantes del header de una tabla de pedidos>" (en un directorio temporal)` | `passed` | Hermes 0.22.4 eligió el modo de preview estático: escribió propuestas-header-pedidos.html autocontenido, lo renderizó con chrome --headless y un --user-data-dir temporal a propuestas-header-pedidos.png (tarjetas A/B/C, B recomendada), revisó la imagen, corrigió la fila de filtros recortada y re-renderizó; clarify no tenía usuario (-q), así que pasó a opciones numeradas y se detuvo sin aplicar nada; reportó la pérdida de interactividad en Limitaciones del agente y dio las rutas absolutas. |
-| `eval-sim-codex-visualize` | `codex` | simulated_eval | `run-evals <copia filtrada>/plugins/golfo-kit/skills/widget-ui-proposals --provider claude (solo los casos nuevos o modificados)` | `passed` | Claude (claude-sonnet-5-5) simulando el agente: codex-visualize-mode-without-show-widget: modo Codex con visualize{…}, .viz-carousel, sendFollowUpMessage y sin show_widget. codex-cli-falls-back-to-static-preview: en codex exec usa el preview estático. |
-| `eval-sim-hermes-static-preview` | `hermes` | simulated_eval | `run-evals <copia filtrada>/plugins/golfo-kit/skills/widget-ui-proposals --provider claude (solo los casos nuevos o modificados)` | `passed` | Claude (claude-sonnet-5-5) simulando el agente: hermes-static-preview-with-clarify: PNG con --screenshot, clarify multi_select y Limitaciones del agente; no-visual-capability-blocks-with-limitations: sin vía de render se detiene sin simular. |
+| `eval-sim-codex-visualize` | `codex` | simulated_eval | `run-evals <copia filtrada>/plugins/golfo-frontend/skills/widget-ui-proposals --provider claude (solo los casos nuevos o modificados)` | `passed` | Claude (claude-sonnet-5-5) simulando el agente: codex-visualize-mode-without-show-widget: modo Codex con visualize{…}, .viz-carousel, sendFollowUpMessage y sin show_widget. codex-cli-falls-back-to-static-preview: en codex exec usa el preview estático. |
+| `eval-sim-hermes-static-preview` | `hermes` | simulated_eval | `run-evals <copia filtrada>/plugins/golfo-frontend/skills/widget-ui-proposals --provider claude (solo los casos nuevos o modificados)` | `passed` | Claude (claude-sonnet-5-5) simulando el agente: hermes-static-preview-with-clarify: PNG con --screenshot, clarify multi_select y Limitaciones del agente; no-visual-capability-blocks-with-limitations: sin vía de render se detiene sin simular. |
 | `codex-real-cli-static-preview` | `codex` | real_run | `codex exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check "<leer y seguir widget-ui-proposals/SKILL.md; dos variantes del botón Guardar cambios>" (en un directorio temporal)` | `passed` | Tras exigir un frontend que renderice: en codex exec (sin herramientas codex_app) eligió el modo de preview estático, escribió guardar-cambios-variantes.html, lo renderizó con Chrome headless y un perfil temporal a guardar-cambios-variantes.png, revisó la imagen, dio la recomendación y reportó la imagen estática en Limitaciones del agente. |
 
 Pendiente de verificar:

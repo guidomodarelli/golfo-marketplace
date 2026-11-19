@@ -1,0 +1,406 @@
+{
+  "schema_version": 2,
+  "skill": "constants-refactor",
+  "description": "Verifica que la skill centralice solo los valores compartidos, los contratos y los literales mágicos (en constants/ o el archivo de configuración según la naturaleza del valor y el lenguaje), deje locales las constantes nombradas de un solo módulo, se limite al alcance pedido, corra completa ante una invocación explícita, separe copy y valores runtime, y preserve comportamiento, tipos y contratos públicos.",
+  "test_cases": [
+    {
+      "id": "pr-review-constant-candidates",
+      "description": "Revisa un PR en modo análisis y clasifica límites, códigos, regex, timeouts y copy sin aplicar cambios.",
+      "input": "Revisá este diff de un PR en un repo TypeScript y analizá qué constantes deberían moverse a constants/. No hagas cambios ni ejecutes comandos: solo describí el análisis y la clasificación.\n\n```ts\n// server/schema.ts\nexport const commentSchema = z.object({ body: z.string().max(500) });\n// server/api/comments.ts\nif (body.length > 500) return res.status(422).json({ code: 'COMMENT_TOO_LONG' });\n// client/CommentForm.tsx\nconst isTooLong = text.length > 500;\nconst EMAIL_PATTERN = /^[^@\\s]+@[^@\\s]+$/;\nsetTimeout(hideToast, 3000);\nconst errorLabel = 'El comentario es demasiado largo';\nconst remaining = 500 - text.length;\n```",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "constants/",
+          "description": "Propone una fuente canónica en constants/"
+        },
+        {
+          "type": "regex",
+          "pattern": "i18n|traducci(ó|o)n|localizaci(ó|o)n|translation",
+          "description": "Envía el copy user-facing a i18n en lugar de constants/"
+        },
+        {
+          "type": "regex",
+          "pattern": "timeout|_MS|3000",
+          "description": "Clasifica el timeout de UI como constante a extraer"
+        },
+        {
+          "type": "regex",
+          "pattern": "runtime|calculad|derivad|computed|no es (una )?constante",
+          "description": "Deja fuera el valor calculado en runtime"
+        }
+      ]
+    },
+    {
+      "id": "schema-regex-preserve-validation-mechanism",
+      "description": "Centraliza valores de schemas conservando el mecanismo regex, los errores observables y sin tocar autorización.",
+      "input": "Planificá (sin escribir archivos ni ejecutar nada) un refactor de constantes en estos schemas TypeScript. Hay que centralizar facility kinds y status presence, pero mantener exactamente el mecanismo secure().regex() y los mismos errores observables. Indicá qué pasa con consumers y tests; no hay que tocar autorización.\n\n```ts\n// schemas/facility.ts\nexport const facilitySchema = secure().object({\n  kind: secure().string().regex(/^(warehouse|store|hub)$/),\n  status: secure().string().regex(/^(present|absent)$/),\n});\n// auth/policies.ts\nexport const canEditFacility = (user) => user.roles.includes('facility-admin');\n```",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "regex",
+          "description": "Conserva el mecanismo de validación por regex"
+        },
+        {
+          "type": "contains",
+          "value": "constants/",
+          "description": "Ubica los patrones canónicos en constants/"
+        },
+        {
+          "type": "regex",
+          "pattern": "autorizaci(ó|o)n|authorization|policies|permisos",
+          "description": "Deja explícitamente fuera la autorización"
+        },
+        {
+          "type": "regex",
+          "pattern": "test",
+          "description": "Contempla actualizar o ejecutar tests"
+        }
+      ]
+    },
+    {
+      "id": "interfaces-runtime-constants-satisfies",
+      "description": "Mueve constantes runtime fuera de interfaces/ con unions explícitas verificadas por satisfies, imports type-only y sin tocar código generado.",
+      "input": "Describí el plan (sin modificar archivos ni ejecutar comandos) para mover a fuentes canónicas los códigos de error, estados de polling, límites de entrada y runtime constants que hoy viven en interfaces/. Hay que conservar las unions TypeScript, evitar ciclos, no editar catálogos generados y explicar qué valores deben quedarse locales.\n\n```ts\n// interfaces/job.ts\nexport type PollingStatus = 'pending' | 'running' | 'done';\nexport const POLLING_STATUSES = ['pending', 'running', 'done'] as const;\nexport const JOB_ERROR_CODES = { TIMEOUT: 'JOB_TIMEOUT', INVALID: 'JOB_INVALID' };\nexport const MAX_JOB_NAME_LENGTH = 80;\nexport const MAX_UPLOAD_SIZE_MB = 80;\n// interfaces/generated/catalog.ts  (generado, no editar)\nexport const CATALOG = { /* ... */ };\n// client/useJob.ts\nconst startedAt = Date.now();\n```",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "satisfies",
+          "description": "Verifica las constantes contra unions explícitas con satisfies"
+        },
+        {
+          "type": "regex",
+          "pattern": "type-only|import type",
+          "description": "Usa imports type-only para evitar ciclos"
+        },
+        {
+          "type": "regex",
+          "pattern": "generad|generated",
+          "description": "Excluye el catálogo generado"
+        },
+        {
+          "type": "regex",
+          "pattern": "Date\\.now|runtime|calculad",
+          "description": "Deja local el valor calculado en runtime"
+        },
+        {
+          "type": "regex",
+          "pattern": "sem(á|a)ntic|significado|concepto|separad",
+          "description": "Mantiene separados los límites con semántica distinta aunque compartan valor"
+        }
+      ]
+    },
+    {
+      "id": "scan-barrels-and-ui-copy",
+      "description": "Usa el archivo de dominio existente, actualiza barrels con exports explícitos y deja el copy de UI en i18n.",
+      "input": "Planificá, sin aplicar cambios ni ejecutar comandos, cómo mover constantes de scan a constants/process-contingency/scan.ts. El index interno constants/process-contingency/index.ts usa export *, pero constants/index.ts enumera los exports manualmente. Algunas constantes son copy de UI y otras son límites de contrato.\n\n```ts\n// app/features/scan/ScanPanel.tsx\nconst MAX_SCAN_BATCH = 50; // único consumidor\nconst SCAN_RETRY_DELAY_MS = 2000;\nconst emptyStateTitle = 'No hay escaneos pendientes';\n\n// constants/index.ts\nexport { PROCESS_STEPS } from './process-contingency';\n```",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "constants/index.ts",
+          "description": "Actualiza el barrel raíz con export explícito"
+        },
+        {
+          "type": "regex",
+          "pattern": "i18n|traducci(ó|o)n|localizaci(ó|o)n|msgid",
+          "description": "Envía el copy de UI a i18n y solo su msgid a constants/"
+        },
+        {
+          "type": "regex",
+          "pattern": "typecheck|tsc|type[- ]check",
+          "description": "Valida con typecheck tras actualizar barrels"
+        },
+        {
+          "type": "regex",
+          "pattern": "(ú|u)nico consumidor|un solo consumidor|single consumer|cantidad de (usos|consumidores|referencias)",
+          "description": "Mueve el límite que el pedido nombra aunque tenga un solo consumidor"
+        }
+      ]
+    },
+    {
+      "id": "single-use-named-constant-stays-local",
+      "description": "Deja local una constante ya nombrada que usa un solo módulo y explica cuándo pasaría a constants/.",
+      "input": "Sin escribir archivos ni ejecutar nada, explicá cómo refactorizarías este módulo TypeScript según la skill y si la constante debe permanecer local. Empezá la respuesta con una línea `MAX_VISIBLE_ITEMS => destino`.\n\n```ts\n// src/features/feed/FeedList.ts\nconst MAX_VISIBLE_ITEMS = 20;\n\nexport function getVisibleItems(items: Item[]) {\n  return items.slice(0, MAX_VISIBLE_ITEMS);\n}\n```",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "MAX_VISIBLE_ITEMS[^\\n]*=>[^\\n]*(local|FeedList|se queda|mantener|permanece)",
+          "description": "Deja MAX_VISIBLE_ITEMS local en FeedList.ts"
+        },
+        {
+          "type": "regex",
+          "pattern": "(ú|u)nico (uso|consumidor|m(ó|o)dulo)|un solo (uso|consumidor|m(ó|o)dulo)|single (use|consumer)",
+          "description": "Justifica que tiene un solo consumidor y ya tiene nombre"
+        },
+        {
+          "type": "regex",
+          "pattern": "segundo (m(ó|o)dulo|consumidor)|otro (m(ó|o)dulo|consumidor)|compart|reutiliz|m(á|a)s de un",
+          "description": "Explica que pasaría a constants/ cuando otro módulo la use"
+        }
+      ]
+    },
+    {
+      "id": "explicit-invocation-runs-workflow",
+      "description": "Con /constants-refactor explícito, sigue el procedimiento completo sin importar el marcador ~/.work.",
+      "input": "/constants-refactor Solo análisis, sin escribir archivos. Clasificá estos valores y decí a dónde va cada uno con una línea `NOMBRE => destino`.\n\n```ts\n// server/api/orders.ts\nif (qty > 99) return res.status(422).json({ code: 'ORDER_QTY_EXCEEDED' });\n// client/OrderForm.tsx\nconst isTooMany = qty > 99;\n```",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "constants/",
+          "description": "Centraliza el límite compartido entre server y client"
+        },
+        {
+          "type": "regex",
+          "pattern": "ORDER_QTY_EXCEEDED[^\\n]*=>",
+          "description": "Clasifica el código de error como parte del procedimiento"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "~/.work existe",
+            "termino la skill"
+          ],
+          "description": "No corta la skill por el gate cuando la invocación es explícita"
+        }
+      ]
+    },
+    {
+      "id": "scoped-request-does-not-expand",
+      "description": "Ante un pedido acotado a un archivo, cambia solo ese archivo y reporta los candidatos de otros archivos como sugerencias sin aplicarlas.",
+      "input": "Sin escribir archivos ni ejecutar comandos, describí qué cambiarías. Pedido: refactorizá las constantes de `src/checkout/applyCoupon.ts` y nada más. Mientras lo mirás vas a ver también `src/cart/CartSummary.tsx`.\n\n```ts\n// src/checkout/applyCoupon.ts\nexport function applyCoupon(total: number, code: string) {\n  if (code.length > 12) throw new CouponError('COUPON_TOO_LONG');\n  return total * 0.9;\n}\n// src/cart/CartSummary.tsx\nif (items.length > 50) showWarning();\n```",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "fuera (de|del) (alcance|pedido)|sugerencia|no (lo |la )?(toco|modifico|cambio)|sin aplicar",
+          "description": "Deja CartSummary.tsx como sugerencia fuera de alcance"
+        },
+        {
+          "type": "regex",
+          "pattern": "COUPON_TOO_LONG",
+          "description": "Trata el código de error como contrato"
+        },
+        {
+          "type": "regex",
+          "pattern": "0\\.9|12",
+          "description": "Da nombre a los literales mágicos del archivo pedido"
+        }
+      ]
+    },
+    {
+      "id": "npm-eslint-plugin-repo-audit",
+      "description": "Audita una librería npm sin i18n separando producción, tooling y tests, preservando meta.messages y comparando .d.ts.",
+      "input": "Describí el plan de auditoría completa (sin modificar archivos ni ejecutar comandos) para aplicar la skill al máximo en este repositorio: una librería npm que es un plugin de ESLint en TypeScript, sin i18n, con src/, scripts/ de release, benchmarks/ y tests/. Publica tipos .d.ts.\n\n```ts\n// src/rules/no-legacy-api.ts\nexport default {\n  meta: { type: 'problem', messages: { legacyApi: 'No uses la API legacy.' }, schema: [{ type: 'object' }] },\n  create(context) {\n    return { 'Program:exit'() { if (typeof node === 'string' && depth > 3) context.report({ messageId: 'legacyApi' }); } };\n  },\n};\n// scripts/release.ts\nconst NPM_REGISTRY_TAG = 'next';\n// tests/no-legacy-api.test.ts\nconst invalidCode = 'legacyApi()';\n```",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "auditor(í|i)a|audit",
+          "description": "Usa el modo auditoría de repo"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "meta.messages",
+            "messageId"
+          ],
+          "description": "Deja los mensajes en meta.messages y mueve solo sus messageIds"
+        },
+        {
+          "type": "contains",
+          "value": "scripts/constants",
+          "description": "Crea un constants/ propio para el tooling"
+        },
+        {
+          "type": "regex",
+          "pattern": "\\.d\\.ts|declaraciones",
+          "description": "Compara las declaraciones públicas antes y después"
+        },
+        {
+          "type": "regex",
+          "pattern": "vocabulario est(á|a)ndar|Program:exit|JSON Schema|typeof",
+          "description": "No extrae vocabulario estándar del lenguaje o de ESLint"
+        }
+      ]
+    },
+    {
+      "id": "column-width-range-table-parity",
+      "description": "Convierte una cadena de condiciones en una tabla de rangos en constants/ y demuestra paridad contra el código original.",
+      "input": "Sin aplicar cambios ni ejecutar comandos, describí cómo extraerías a constants/ la lógica de ancho de columnas de esta función, convirtiéndola en una tabla de rangos, y cómo comprobarías que no cambia el comportamiento.\n\n```ts\nexport function isWide(code: number): boolean {\n  return code >= 0x1100 && (\n    code <= 0x115f ||\n    (code >= 0x2e80 && code <= 0xa4cf) ||\n    (code >= 0xac00 && code <= 0xd7a3) ||\n    (code >= 0xf900 && code <= 0xfaff)\n  );\n}\n```",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "rango|range",
+          "description": "Propone una constante con la tabla de rangos"
+        },
+        {
+          "type": "regex",
+          "pattern": "paridad|parity|equivalen",
+          "description": "Exige demostrar paridad de comportamiento"
+        },
+        {
+          "type": "regex",
+          "pattern": "original|stash|antes del refactor",
+          "description": "Ejecuta el test también contra el código original"
+        },
+        {
+          "type": "regex",
+          "pattern": "test",
+          "description": "Respaldar la paridad con un test"
+        }
+      ]
+    },
+    {
+      "id": "same-value-distinct-concepts-not-unified",
+      "description": "No unifica dos constantes con el mismo valor pero distinto significado y explica el falso positivo del linter.",
+      "input": "Tengo esto en el mismo archivo de constants y un linter dice que son duplicados. ¿Los unifico? Respondé con tu análisis, sin modificar archivos.\n\n```ts\n// constants/severity.ts\nexport const DEFAULT_DUPLICATE_SEVERITY = 'warn';\nexport const DEFAULT_ADVISORY_SEVERITY = 'warn';\n```",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "falso positivo|false positive",
+          "description": "Califica el hallazgo del linter como falso positivo"
+        },
+        {
+          "type": "regex",
+          "pattern": "concepto|sem(á|a)ntic|significado",
+          "description": "Explica que representan conceptos distintos"
+        },
+        {
+          "type": "regex",
+          "pattern": "separad|no (los )?unifi|no conviene unifi|mantener ambas|mantenelas|mantenerlas",
+          "description": "Mantiene ambas constantes separadas"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "sí, unific",
+            "si, unific",
+            "sí, conviene unific",
+            "yes, merge"
+          ],
+          "description": "No recomienda unificarlas"
+        }
+      ]
+    },
+    {
+      "id": "single-consumer-domain-constant-vs-env-config",
+      "description": "Extrae constante contractual con un consumidor y separa configuración de entorno.",
+      "input": "Solo análisis, sin escribir archivos: `const LABOUR_SHARE_SOURCE_SCANNER = \"scanner\" as const` vive en un archivo de tipos y tiene un consumidor. `const upstreamUrl = process.env.UPSTREAM_URL` se obtiene por entorno. ¿Dónde debe vivir cada valor y qué comportamiento debe conservarse?",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "constants/",
+          "description": "Da fuente canónica a constante de dominio"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "config/",
+            "configuración"
+          ],
+          "description": "Distingue valor de entorno"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "consumidor",
+            "uso"
+          ],
+          "description": "No condiciona extracción a reutilización"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "comportamiento",
+            "serialización",
+            "scanner"
+          ],
+          "description": "Preserva contrato observable"
+        }
+      ]
+    },
+    {
+      "id": "kotlin-spring-operational-values-to-config-file",
+      "description": "En Kotlin con Spring Boot manda los valores operativos al archivo de configuración existente y deja en constants los invariantes y el valor que usa una anotación.",
+      "input": "Solo análisis, sin escribir archivos ni ejecutar comandos. Es un servicio Kotlin con Spring Boot; ya existen `src/main/resources/application.yml` y la clase `PaymentProperties`, que lee el prefijo `payment`. Clasificá cada valor de este archivo: respondé primero con una línea por valor con el formato `NOMBRE => destino` y después justificá.\n\n```kotlin\n// payment/PaymentClient.kt\nprivate const val PARTNER_TIMEOUT_MS = 5000L\nprivate const val MAX_RETRIES = 3\nprivate const val ERROR_CODE_INSUFFICIENT_FUNDS = \"INSUFFICIENT_FUNDS\"\nprivate const val MAX_REFERENCE_LENGTH = 140\n\ndata class PaymentRequest(@field:Size(max = MAX_REFERENCE_LENGTH) val reference: String)\n```",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "PARTNER_TIMEOUT_MS[^=]*=>[^=]*(application|PaymentProperties|configuraci)",
+          "description": "Manda el timeout al archivo de configuración y no a constants"
+        },
+        {
+          "type": "regex",
+          "pattern": "MAX_RETRIES[^=]*=>[^=]*(application|PaymentProperties|configuraci)",
+          "description": "Manda los reintentos al archivo de configuración"
+        },
+        {
+          "type": "regex",
+          "pattern": "ERROR_CODE_INSUFFICIENT_FUNDS[^=]*=>[^=]*[Cc]onstant",
+          "description": "Deja el código de error como constante"
+        },
+        {
+          "type": "regex",
+          "pattern": "MAX_REFERENCE_LENGTH[^=]*=>[^=]*([Cc]onstant|local|const val)",
+          "description": "Deja como constante (local o en constants) el valor que usa la anotación, no en configuración"
+        },
+        {
+          "type": "regex",
+          "pattern": "default|por defecto|valor efectivo",
+          "description": "Conserva el valor actual como default al moverlo a configuración"
+        }
+      ]
+    },
+    {
+      "id": "java-spring-constants-class-request-redirected-to-config",
+      "description": "Ante un pedido de mover todo a una clase Constants en Java, separa lo que corresponde al archivo de configuración con un binding tipado único.",
+      "input": "Sin escribir archivos ni ejecutar comandos: en este servicio Java con Spring Boot quiero mover estos tres valores a una clase `InventoryConstants`. El repo ya tiene `src/main/resources/application.properties` con perfiles por entorno. Respondé primero con una línea por valor con el formato `NOMBRE => destino` y después explicá cómo lo leerían los consumers.\n\n```java\n// inventory/InventorySyncJob.java\nprivate static final int SYNC_BATCH_SIZE = 200;\nprivate static final String INVENTORY_TOPIC = \"inventory-events\";\nprivate static final String HEADER_TRACE_ID = \"X-Trace-Id\";\n```",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "SYNC_BATCH_SIZE[^=]*=>[^=]*(application|[Pp]ropert|configuraci)",
+          "description": "Manda el tamaño de batch al archivo de configuración aunque el pedido nombre una clase de constantes"
+        },
+        {
+          "type": "regex",
+          "pattern": "INVENTORY_TOPIC[^=]*=>[^=]*(application|[Pp]ropert|configuraci)",
+          "description": "Manda el nombre del topic al archivo de configuración"
+        },
+        {
+          "type": "regex",
+          "pattern": "HEADER_TRACE_ID[^=]*=>[^=]*[Cc]onstant",
+          "description": "Deja el nombre del header como constante"
+        },
+        {
+          "type": "contains",
+          "value": "ConfigurationProperties",
+          "description": "Lee la configuración con un binding tipado único"
+        }
+      ]
+    },
+    {
+      "id": "kotlin-library-without-config-file-keeps-constants",
+      "description": "En una librería Kotlin sin archivo de configuración no crea esa infraestructura: deja el valor operativo en constants y lo reporta como candidato.",
+      "input": "Solo análisis, sin escribir archivos. Es una librería Kotlin publicada en Maven, sin framework y sin ningún archivo de configuración: solo `src/main/kotlin`. ¿Dónde va cada valor? Respondé primero con una línea por valor con el formato `NOMBRE => destino` y después justificá.\n\n```kotlin\n// signing/RequestSigner.kt\nprivate const val RETRY_DELAY_MS = 250L\nprivate const val SIGNATURE_HEADER = \"X-Signature\"\n```",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "RETRY_DELAY_MS[^=]*=>[^=]*([Cc]onstant|local|RequestSigner)",
+          "description": "No manda el delay a configuración porque el proyecto no la tiene: queda como constante (local si solo lo usa este módulo)"
+        },
+        {
+          "type": "regex",
+          "pattern": "SIGNATURE_HEADER[^=]*=>[^=]*[Cc]onstant",
+          "description": "Deja el nombre del header como constante"
+        },
+        {
+          "type": "regex",
+          "pattern": "candidat",
+          "description": "Reporta el valor operativo como candidato a configuración sin crear la infraestructura"
+        },
+        {
+          "type": "regex",
+          "pattern": "package|paquete",
+          "description": "Ubica las constantes en el package de constantes idiomático de Kotlin"
+        }
+      ]
+    }
+  ]
+}

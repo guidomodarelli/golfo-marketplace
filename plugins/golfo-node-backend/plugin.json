@@ -1,0 +1,18 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "golfo-node-backend",
+  "version": "0.129.0",
+  "description": "Skills exclusivas de backend en Node.js (servidores y BFF). No aplican a backends en otros lenguajes, como Java.",
+  "author": {
+    "name": "Guido Modarelli"
+  },
+  "repository": "https://github.com/guidomodarelli/golfo-marketplace",
+  "license": "MIT",
+  "keywords": [
+    "golfo",
+    "backend",
+    "node",
+    "bff",
+    "debugging"
+  ]
+}

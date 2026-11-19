@@ -1,0 +1,120 @@
+{
+  "schemaVersion": 1,
+  "rfc": {
+    "title": "RFC 0042: Cancelar un pedido antes del envío",
+    "document": "docs/rfcs/0042-cancel-order.md",
+    "codeRef": "main"
+  },
+  "architecture": "backend-layered",
+  "groups": [
+    { "id": "http", "label": "HTTP" },
+    { "id": "domain", "label": "Casos de uso" },
+    { "id": "data", "label": "Datos" }
+  ],
+  "nodes": [
+    {
+      "id": "order-routes",
+      "label": "orderRoutes",
+      "kind": "view",
+      "group": "http",
+      "change": "modified",
+      "summary": "Rutas HTTP de pedidos; el RFC le suma la de cancelar.",
+      "evidence": [
+        { "path": "src/orders/order-routes.js", "line": 4 },
+        { "side": "rfc", "line": 12 }
+      ]
+    },
+    {
+      "id": "get-order",
+      "label": "getOrder",
+      "kind": "service",
+      "group": "domain",
+      "change": "unchanged",
+      "summary": "Devuelve un pedido.",
+      "evidence": [
+        { "path": "src/orders/get-order.js", "line": 3 },
+        { "side": "rfc", "line": 7 }
+      ]
+    },
+    {
+      "id": "cancel-order",
+      "label": "cancelOrder",
+      "kind": "service",
+      "group": "domain",
+      "change": "added",
+      "summary": "Cancela un pedido que todavía no se envió.",
+      "evidence": [{ "side": "rfc", "line": 11 }]
+    },
+    {
+      "id": "order-repository",
+      "label": "orderRepository",
+      "symbol": "findById",
+      "kind": "data",
+      "group": "data",
+      "change": "unchanged",
+      "summary": "Lee los pedidos de la base.",
+      "evidence": [{ "path": "src/orders/order-repository.js", "line": 3 }]
+    }
+  ],
+  "edges": [
+    {
+      "id": "routes-call-get-order",
+      "source": "order-routes",
+      "target": "get-order",
+      "kind": "calls",
+      "change": "unchanged",
+      "confidence": "verified",
+      "evidence": [{ "path": "src/orders/order-routes.js", "line": 5 }]
+    },
+    {
+      "id": "get-order-reads-repository",
+      "source": "get-order",
+      "target": "order-repository",
+      "kind": "requests",
+      "change": "unchanged",
+      "confidence": "verified",
+      "evidence": [{ "path": "src/orders/get-order.js", "line": 4 }]
+    },
+    {
+      "id": "routes-call-cancel-order",
+      "source": "order-routes",
+      "target": "cancel-order",
+      "kind": "calls",
+      "label": "POST /orders/:id/cancel",
+      "change": "added",
+      "confidence": "verified",
+      "evidence": [{ "side": "rfc", "line": 12 }]
+    },
+    {
+      "id": "cancel-order-reads-repository",
+      "source": "cancel-order",
+      "target": "order-repository",
+      "kind": "requests",
+      "change": "added",
+      "confidence": "verified",
+      "evidence": [{ "side": "rfc", "line": 11 }]
+    }
+  ],
+  "businessFlow": {
+    "summary": "El cliente puede cancelar un pedido mientras no se haya enviado.",
+    "states": [
+      { "id": "pending", "label": "Pendiente", "kind": "initial", "change": "unchanged", "nodeIds": ["get-order"] },
+      { "id": "cancelled", "label": "Cancelado", "kind": "terminal", "change": "added", "nodeIds": ["cancel-order"], "evidence": [{ "side": "rfc", "line": 13 }] }
+    ],
+    "transitions": [
+      {
+        "id": "cancel",
+        "source": "pending",
+        "target": "cancelled",
+        "trigger": "Tocar «Cancelar pedido»",
+        "guard": "si todavía no se envió",
+        "change": "added",
+        "confidence": "verified",
+        "evidence": [{ "side": "rfc", "line": 13 }]
+      }
+    ]
+  },
+  "outOfScope": [
+    { "section": "Alternativas descartadas", "reason": "Opción que el RFC no adopta; no cambia el flujo." }
+  ]
+}

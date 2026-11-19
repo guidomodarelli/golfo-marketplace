@@ -1,0 +1,32 @@
+{
+  "name": "golfo-web",
+  "version": "0.129.0",
+  "description": "Skills exclusivas de desarrollo web, para cualquier framework: medición y optimización de rendimiento web, HTML semántico y accesibilidad, CSS responsive mobile-first y manuales de usuario con capturas del navegador.",
+  "author": {
+    "name": "Guido Modarelli",
+    "email": "",
+    "url": ""
+  },
+  "repository": "https://github.com/guidomodarelli/golfo-marketplace",
+  "license": "MIT",
+  "category": "development",
+  "keywords": [
+    "golfo",
+    "web",
+    "performance",
+    "accessibility",
+    "css",
+    "core-web-vitals"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Golfo Web",
+    "shortDescription": "Skills exclusivas de web, para cualquier framework.",
+    "category": "Development",
+    "capabilities": [
+      "Read",
+      "Write",
+      "Bash"
+    ]
+  }
+}

@@ -1,0 +1,66 @@
+[
+  {
+    "query": "armame la épica del Q1 en Jira para el rediseño del checkout, con tres stories: carrito, pago y confirmación. Que en la descripción se vea el avance de cada story",
+    "should_trigger": true
+  },
+  {
+    "query": "colgá una story nueva 'exportar facturas a CSV' de la épica ACME-500 que ya existe, sin tocarle el texto que escribió el otro equipo",
+    "should_trigger": true
+  },
+  {
+    "query": "en la subtarea de jira ACME-6002 ya terminé el paso de configurar credenciales, actualizá su tabla de pasos así se ve el progreso",
+    "should_trigger": true
+  },
+  {
+    "query": "creá el ticket de jira para los cambios de esta rama con sus subtareas y linkealo al PR #214",
+    "should_trigger": true
+  },
+  {
+    "query": "necesito una story en jira sin épica para que los usuarios suban el comprobante desde el celu, con criterios de aceptación cortos",
+    "should_trigger": true
+  },
+  {
+    "query": "colgá de la épica ACME-800 dos stories nuevas de jira para el onboarding, sin tocar lo que ya escribió el otro equipo en la épica",
+    "should_trigger": true
+  },
+  {
+    "query": "el PR 88 ya se mergeó, pasá la story de jira a Done si corresponde",
+    "should_trigger": true
+  },
+  {
+    "query": "agregá a la story ACME-1234 las subtareas 'PR creado' y 'PR testeado', y a la subtarea de migración una tabla con sus pasos y estados",
+    "should_trigger": true
+  },
+  {
+    "query": "armá la issue de GitHub para lo que voy a hacer: quiero agregar exportación a CSV en el panel de admin, todavía no hay código",
+    "should_trigger": false
+  },
+  {
+    "query": "llená el body del PR que acabo de abrir con el template de siempre, tiene cambios en el checkout",
+    "should_trigger": false
+  },
+  {
+    "query": "explicame la diferencia entre épica, story y subtarea en Jira, ¿cuándo conviene cada una?",
+    "should_trigger": false
+  },
+  {
+    "query": "creá un ticket en Linear para el bug del login que reportó soporte",
+    "should_trigger": false
+  },
+  {
+    "query": "haceme una tabla markdown con el estado de los PRs abiertos del repo para pegar en Slack",
+    "should_trigger": false
+  },
+  {
+    "query": "escribí el changelog de la versión 2.3 a partir de los commits desde el último tag",
+    "should_trigger": false
+  },
+  {
+    "query": "revisá este PR y dejá comentarios inline donde veas problemas de performance",
+    "should_trigger": false
+  },
+  {
+    "query": "documentá en un manual para usuarios no técnicos cómo se usa el flujo nuevo de suscripciones",
+    "should_trigger": false
+  }
+]

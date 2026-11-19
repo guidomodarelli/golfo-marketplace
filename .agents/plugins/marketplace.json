@@ -12,6 +12,141 @@
         "authentication": "ON_INSTALL"
       },
       "category": "productivity"
+    },
+    {
+      "name": "golfo-engineering",
+      "source": "./plugins/golfo-engineering",
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "development"
+    },
+    {
+      "name": "golfo-javascript",
+      "source": "./plugins/golfo-javascript",
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "development"
+    },
+    {
+      "name": "golfo-testing",
+      "source": "./plugins/golfo-testing",
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "development"
+    },
+    {
+      "name": "golfo-frontend",
+      "source": "./plugins/golfo-frontend",
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "development"
+    },
+    {
+      "name": "golfo-react",
+      "source": "./plugins/golfo-react",
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "development"
+    },
+    {
+      "name": "golfo-web",
+      "source": "./plugins/golfo-web",
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "development"
+    },
+    {
+      "name": "golfo-react-web",
+      "source": "./plugins/golfo-react-web",
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "development"
+    },
+    {
+      "name": "golfo-nextjs",
+      "source": "./plugins/golfo-nextjs",
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "development"
+    },
+    {
+      "name": "golfo-mobile",
+      "source": "./plugins/golfo-mobile",
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "development"
+    },
+    {
+      "name": "golfo-node-backend",
+      "source": "./plugins/golfo-node-backend",
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "development"
+    },
+    {
+      "name": "golfo-cli",
+      "source": "./plugins/golfo-cli",
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "development"
+    },
+    {
+      "name": "golfo-git",
+      "source": "./plugins/golfo-git",
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "productivity"
+    },
+    {
+      "name": "golfo-github",
+      "source": "./plugins/golfo-github",
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "productivity"
+    },
+    {
+      "name": "golfo-planning",
+      "source": "./plugins/golfo-planning",
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "productivity"
+    },
+    {
+      "name": "golfo-jira",
+      "source": "./plugins/golfo-jira",
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "productivity"
     }
   ]
 }

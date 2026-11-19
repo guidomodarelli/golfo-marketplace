@@ -1,0 +1,30 @@
+{
+  "name": "golfo-testing",
+  "version": "0.129.0",
+  "description": "Skills de testing para cualquier lenguaje: planificación de casos y cobertura, y diagnóstico de tests rotos o flaky.",
+  "author": {
+    "name": "Guido Modarelli",
+    "email": "",
+    "url": ""
+  },
+  "repository": "https://github.com/guidomodarelli/golfo-marketplace",
+  "license": "MIT",
+  "category": "development",
+  "keywords": [
+    "golfo",
+    "testing",
+    "test-planning",
+    "flaky-tests"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Golfo Testing",
+    "shortDescription": "Skills de testing para cualquier lenguaje.",
+    "category": "Development",
+    "capabilities": [
+      "Read",
+      "Write",
+      "Bash"
+    ]
+  }
+}

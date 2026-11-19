@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Shared logic for the golfo-kit agent compatibility report: status
+ * Shared logic for the agent compatibility report of the golfo plugins: status
  * derivation, consistency rules, Markdown rendering and Markdown/JSON sync.
  *
  * The JSON report is the data source; the Markdown report is rendered from it
@@ -13,7 +13,8 @@ const AGENT_IDS = ['claude_code', 'codex', 'hermes'];
 const SKILL_STATUSES = ['compatible', 'adapted', 'partial', 'incompatible', 'unverified'];
 /** Test kinds that prove the feature ran in that agent. */
 const EXECUTION_EVIDENCE_KINDS = new Set(['eval', 'real_run']);
-const SKILLS_PATH_PREFIX = 'plugins/golfo-kit/skills/';
+/** Path of an audited skill: any plugin of the marketplace, `plugins/<plugin>/skills/<id>/SKILL.md`. */
+const SKILL_PATH_PATTERN = /^plugins\/[a-z0-9-]+\/skills\/([a-z0-9-]+)\/SKILL\.md$/;
 const MATRIX_HEADING = '## B. Matriz global';
 const SKILLS_HEADING = '## C. Análisis por skill';
 const ISSUES_HEADING = '## D. Registro de incompatibilidades';
@@ -148,9 +149,10 @@ function checkConsistency(report, options = {}) {
   const skillIds = report.skills.map((skill) => skill.id);
   const duplicatedSkillIds = skillIds.filter((skillId, index) => skillIds.indexOf(skillId) !== index);
   if (duplicatedSkillIds.length) errors.push(`skills: duplicated ids ${[...new Set(duplicatedSkillIds)].join(', ')}`);
-  if (options.skillIdsOnDisk) {
-    const missingSkills = options.skillIdsOnDisk.filter((skillId) => !skillIds.includes(skillId));
-    const unknownSkills = skillIds.filter((skillId) => !options.skillIdsOnDisk.includes(skillId));
+  if (options.skillPathsOnDisk) {
+    const skillIdsOnDisk = Object.keys(options.skillPathsOnDisk);
+    const missingSkills = skillIdsOnDisk.filter((skillId) => !skillIds.includes(skillId));
+    const unknownSkills = skillIds.filter((skillId) => !skillIdsOnDisk.includes(skillId));
     if (missingSkills.length) errors.push(`skills: not audited: ${missingSkills.join(', ')}`);
     if (unknownSkills.length) errors.push(`skills: not present on disk: ${unknownSkills.join(', ')}`);
   }
@@ -158,7 +160,9 @@ function checkConsistency(report, options = {}) {
   const seenIssueIds = new Set();
   for (const skill of report.skills) {
     const where = `skill ${skill.id}`;
-    if (skill.path !== `${SKILLS_PATH_PREFIX}${skill.id}/SKILL.md`) errors.push(`${where}: path must be ${SKILLS_PATH_PREFIX}${skill.id}/SKILL.md`);
+    const pathOnDisk = options.skillPathsOnDisk?.[skill.id];
+    if (pathOnDisk && skill.path !== pathOnDisk) errors.push(`${where}: path must be ${pathOnDisk}`);
+    if (!pathOnDisk && SKILL_PATH_PATTERN.exec(skill.path)?.[1] !== skill.id) errors.push(`${where}: path must be plugins/<plugin>/skills/${skill.id}/SKILL.md`);
 
     const testsById = new Map();
     for (const test of skill.tests) {
@@ -298,7 +302,7 @@ function renderMarkdown(report) {
   const lines = [];
   const push = (...newLines) => lines.push(...newLines);
 
-  push('# Reporte de compatibilidad entre agentes: golfo-kit', '');
+  push('# Reporte de compatibilidad entre agentes: plugins golfo', '');
   push(`<!-- Generado desde compatibility-report.json con \`${RENDER_COMMAND}\`. No editar a mano: editá el JSON y regenerá. -->`, '');
   push('> Este reporte **describe** la compatibilidad verificada; no es la fuente de verdad para decidir qué ejecutar.',
     '> Cada skill verifica en runtime las herramientas realmente disponibles en la sesión, según [`agent-capabilities.md`](agent-capabilities.md).', '');
