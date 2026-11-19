@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "golfo-engineering",
-  "version": "0.130.0",
-  "description": "Skills de ingeniería para cualquier lenguaje y cualquier parte del código (front, back y CLI): refactors y modularización, constantes, errores tipados, operaciones async, observabilidad, simplificación, reviews de mantenibilidad, performance y seguridad, y salida visual cuidada.",
+  "version": "0.131.0",
+  "description": "Skills de ingeniería para cualquier lenguaje y cualquier parte del código (front, back y CLI): refactors y modularización, constantes, operaciones async, observabilidad, simplificación, reviews de mantenibilidad, performance y seguridad, y salida visual cuidada.",
   "author": {
     "name": "Guido Modarelli"
   },

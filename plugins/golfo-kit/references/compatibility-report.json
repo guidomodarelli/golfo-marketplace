@@ -8401,7 +8401,7 @@
       "id": "typed-errors-refactor",
       "name": "Typed Errors Refactor",
       "version": "1.0.0",
-      "path": "plugins/golfo-engineering/skills/typed-errors-refactor/SKILL.md",
+      "path": "plugins/golfo-javascript/skills/typed-errors-refactor/SKILL.md",
       "purpose": "Diseña y ejecuta refactors de errores tipados.",
       "main_features": [
         "jerarquía de errores",

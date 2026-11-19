@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "golfo-javascript",
-  "version": "0.129.0",
-  "description": "Skills exclusivas de JavaScript y TypeScript, en front o back: JSDoc/TSDoc, tests con Vitest y Testing Library, y aislamiento de dependencias con puertos inyectados y nock. No aplican a otros lenguajes.",
+  "version": "0.130.0",
+  "description": "Skills exclusivas de JavaScript y TypeScript, en front o back: errores tipados, JSDoc/TSDoc, tests con Vitest y Testing Library, y aislamiento de dependencias con puertos inyectados y nock. No aplican a otros lenguajes.",
   "author": {
     "name": "Guido Modarelli"
   },
