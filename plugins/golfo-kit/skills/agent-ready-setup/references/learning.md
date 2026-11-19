@@ -88,6 +88,7 @@ Un episodio se cierra en cualquiera de estos momentos:
 - **Al empezar el siguiente episodio** del mismo chat.
 - **Al barrer desde cualquier hook:** el prompt o el inicio de sesión de cualquier chat del repositorio
   cierra los episodios sin mensajes hace `learning.episodeGapHours` horas o de otro día.
+- **Con el barrido programado** (abajo), aunque nadie vuelva a escribir en el repositorio.
 
 Antes de compactar (`PreCompact` en Claude Code, `--review-now`) se revisa lo que el episodio lleva
 dicho, y la revisión de su cierre empieza desde ahí. Codex no tiene esos dos eventos: sus episodios se
@@ -114,6 +115,29 @@ cierran con el barrido.
 - La revisión corre desacoplada del hook con `scripts/run-detached.py` (`agent-ready learn sweep`, con
   su log privado en `~/.cache/agent-ready-setup/learning-sweeps/`), así que el prompt no la espera.
 - `learning.hooks.sessionEnd` apagado cierra los episodios sin revisarlos.
+
+### Barrido programado
+
+El apply registra una tarea del usuario en el planificador del sistema que corre
+`agent-ready learn sweep --registered` cada `learning.sweep.intervalMinutes` minutos (60 por defecto).
+Así un episodio que nadie retoma se cierra y se revisa como mucho `episodeGapHours` +
+`sweep.intervalMinutes` después de su último mensaje.
+
+- **Sin permisos de administrador:** Windows usa una tarea del usuario actual del Programador de tareas
+  (`schtasks`, nunca `/RU SYSTEM`); macOS, un LaunchAgent en `~/Library/LaunchAgents` (nunca un
+  LaunchDaemon); Linux, el `crontab` del usuario. Corre solo con la sesión del usuario iniciada.
+- **Una tarea por máquina:** cada repositorio que usa learning se anota en
+  `~/.cache/agent-ready-setup/learning-schedule/projects/`. La tarea corre tan seguido como pide el más
+  frecuente, barre todos y olvida los que ya no están en el disco. Se va con el último repositorio.
+- **El motor del último apply:** la tarea arranca `learning-schedule/run-sweep.py`, que apunta al
+  motor que la registró. Cada apply la reescribe.
+- **Retiro:** `intervalMinutes: 0`, un apply sin el profile `learning` o `agent-ready remove` sacan al
+  repositorio de la tarea.
+- **Si el sistema la rechaza** (una política de la máquina, `cron.deny`, sin `crontab`), el apply no
+  falla: lo avisa en una línea, y `agent-ready status` y `agent-ready doctor` informan que falta. Los
+  episodios se siguen cerrando al terminar el chat y desde otro hook. `agent-ready learn schedule`
+  vuelve a registrarla, igual que un apply.
+- **CI y review mode:** nunca tocan el planificador.
 
 ## La decisión
 
@@ -210,6 +234,12 @@ agent-ready learn episode --session <sesión> --scope-question
 
 # Cerrar los episodios inactivos y revisar los cerrados, como hacen los hooks en background.
 agent-ready learn sweep
+
+# Registrar el barrido programado como pide learning.sweep.intervalMinutes, como hace el apply.
+agent-ready learn schedule
+
+# Lo que corre la tarea programada: el barrido de cada repositorio registrado.
+agent-ready learn sweep --registered
 ```
 
 `record` acepta `--date` con la fecha del mensaje, por ejemplo cuando la revisión de fin de sesión

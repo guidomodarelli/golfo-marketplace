@@ -890,4 +890,17 @@ def compute_status(project_root, skill_dir, conflicts_key=None):
                     status["capabilities"][provider] = providers_catalog[provider]["capabilities"]
                 else:
                     status["errors"].append(f"provider '{provider}' is not supported by agent-ready-setup")
+    status["learningSweep"] = learning_sweep_status(project_root)
     return status
+
+
+def learning_sweep_status(project_root):
+    """{"ok", "detail"} of the scheduled learning sweep, or None when the repository does not use it."""
+    # Imported here: the CLI of learning pulls the whole learning engine.
+    from agent_ready_cli_learning import schedule_state
+
+    try:
+        found = schedule_state(project_root)
+    except (StateError, OSError) as problem:
+        return {"ok": False, "detail": str(problem)}
+    return None if found is None else {"ok": found[0], "detail": found[1]}

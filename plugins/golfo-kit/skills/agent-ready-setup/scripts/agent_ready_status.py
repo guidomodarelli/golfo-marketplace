@@ -201,6 +201,12 @@ def print_status(status, brief):
     print_status_conflicts(status.get("conflicts"), stream)
     print_review_summary(status.get("reviews"), brief, stream)
     print_pack_tools(status.get("packTools"), stream, brief=True)
+    sweep = status.get("learningSweep")
+    if sweep and not sweep["ok"]:
+        write_line(paint(f"Scheduled learning sweep missing: {sweep['detail']}. Episodes still close when a chat ends "
+                         "or from another hook; `agent-ready learn schedule` registers it.", "warning", stream))
+    elif sweep and not brief:
+        write_line(f"Scheduled learning sweep: {sweep['detail']}")
     if not brief and status["capabilities"]:
         write_line("Provider capabilities:")
         for provider, capabilities in status["capabilities"].items():

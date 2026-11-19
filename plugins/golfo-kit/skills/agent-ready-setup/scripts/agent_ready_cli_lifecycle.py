@@ -298,7 +298,27 @@ def doctor_checks(project, offline):
         *check_sources(project, configuration, offline),
         *check_engine_requirements(project, configuration, offline),
         *check_hooks(project, providers),
+        *check_learning_sweep(project),
     ]
+
+
+def check_learning_sweep(project):
+    """The scheduled learning sweep, when the repository uses learning; a warning, since the hooks still close episodes."""
+    # Imported here: the CLI of learning pulls the whole learning engine.
+    from agent_ready_cli_learning import schedule_state
+
+    try:
+        found = schedule_state(project)
+    except (StateError, OSError) as problem:
+        return [check("learning sweep", CHECK_WARNING, str(problem), f"{CLI_NAME} learn schedule")]
+    if found is None:
+        return []
+    ok, detail = found
+    if ok:
+        return [check("learning sweep", CHECK_OK, f"scheduled {detail}")]
+    return [check("learning sweep", CHECK_WARNING,
+                  f"no scheduled task: {detail}; episodes still close when a chat ends or from another hook",
+                  f"{CLI_NAME} learn schedule")]
 
 
 def print_doctor_report(checks, stream):

@@ -48,6 +48,20 @@
         }
       }
     },
+    "sweep": {
+      "description": "El barrido periódico que cierra los episodios que quedaron abiertos aunque nadie vuelva a escribir (references/learning.md, «Barrido programado»).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "intervalMinutes": {
+          "description": "Cada cuántos minutos corre agent-ready learn sweep desde una tarea del usuario en el planificador del sistema (Programador de tareas, launchd o crontab), que el apply registra sin permisos de administrador. 0 no registra ninguna tarea y el apply retira la que hubiera; los episodios se siguen cerrando al terminar el chat o desde otro hook.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1439,
+          "default": 60
+        }
+      }
+    },
     "candidateTtlDays": {
       "description": "Días sin evidencia nueva después de los cuales un candidato vence. Si la instrucción vuelve, se cuenta desde cero: la evidencia vencida no suma.",
       "type": "integer",

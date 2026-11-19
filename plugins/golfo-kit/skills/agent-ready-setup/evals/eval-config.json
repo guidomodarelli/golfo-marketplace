@@ -3519,6 +3519,43 @@
           "critical": true
         }
       ]
+    },
+    {
+      "id": "learn-scheduled-sweep-user-task",
+      "description": "El barrido programado es una tarea del usuario sin permisos de admin, configurable con learning.sweep.intervalMinutes, y si el sistema la rechaza el apply no falla y doctor lo informa.",
+      "input": "Mi repo usa el profile learning de agent-ready-setup en una notebook Windows de la empresa. Si cierro la terminal sin cerrar el chat, ¿quién cierra ese episodio para revisarlo? ¿Necesita permisos de administrador o corre como SYSTEM? ¿Cómo cambio cada cuánto corre o lo apago? ¿Y si una política de la empresa no me deja crear tareas programadas, falla el apply? Respondé desde la skill, sin ejecutar comandos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "learning\\.sweep\\.intervalMinutes|sweep\\.intervalMinutes",
+          "description": "Nombra la clave que fija el intervalo",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(sin|no (necesita|requiere|pide))[^.]{0,40}(admin|administrador)|(nunca|no)[^.]{0,40}SYSTEM",
+          "description": "La tarea es del usuario: sin admin ni SYSTEM",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "\\b0\\b.{0,120}(apaga|desactiva|[Nn]o (se )?registra|retira)|(apaga|desactiva).{0,120}\\b0\\b",
+          "description": "0 apaga el barrido programado",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "doctor",
+          "description": "doctor informa la tarea que falta",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(no|nunca)[^.]{0,40}falla|sigue[^.]{0,60}(apply|funcionando)",
+          "description": "El apply no falla si el sistema rechaza la tarea",
+          "critical": true
+        }
+      ]
     }
   ]
 }

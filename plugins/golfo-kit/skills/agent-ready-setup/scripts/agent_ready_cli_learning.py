@@ -13,6 +13,7 @@ import agent_ready_learning as learning
 import agent_ready_learning_apply as learning_apply
 import agent_ready_learning_episodes as learning_episodes
 import agent_ready_learning_review as learning_review
+import agent_ready_learning_schedule as learning_schedule
 import agent_ready_learning_session_review as session_review
 from agent_ready_cli_common import EXIT_OK, SCRIPT_DIRECTORY, find_repository_root
 from agent_ready_common import StateError, serialize_json
@@ -25,6 +26,7 @@ LEARNING_TTL_KEY = "learning.candidateTtlDays"
 LEARNING_GAP_KEY = "learning.episodeGapHours"
 LEARNING_SESSION_END_KEY = "learning.hooks.sessionEnd"
 LEARNING_SESSION_START_KEY = "learning.hooks.sessionStart"
+LEARNING_SWEEP_INTERVAL_KEY = "learning.sweep.intervalMinutes"
 CLI_PATH = os.path.join(SCRIPT_DIRECTORY, "agent-ready")
 PROVIDERS = ("claude", "codex")
 SUMMARY_LOG_LINES = 5
@@ -50,6 +52,7 @@ def settings_of(project_root):
         "gap_hours": configuration.value(LEARNING_GAP_KEY),
         "session_review": configuration.value(LEARNING_SESSION_END_KEY),
         "session_start": configuration.value(LEARNING_SESSION_START_KEY),
+        "sweep_interval": configuration.value(LEARNING_SWEEP_INTERVAL_KEY),
         "max_statement_chars": configuration.value(MAX_STATEMENT_CHARS_KEY),
         "today": datetime.date.today(),
     }
@@ -233,12 +236,84 @@ def command_learn_summary(arguments):
 
 
 def command_learn_sweep(arguments):
-    """What the hooks start in the background: close idle episodes and record what their review finds."""
+    """What the hooks start in the background: close idle episodes and record what their review finds.
+
+    With --registered, what the scheduled task runs: the sweep of every repository that asked for it.
+    """
+    if arguments.registered:
+        return sweep_registered()
     project_root = find_repository_root(arguments.project)
     settings = settings_of(project_root)
     if not learning_active(project_root, settings):
         return EXIT_OK
     session_review.sweep(project_root, settings, write_sweep_line)
+    return EXIT_OK
+
+
+def sweep_registered():
+    """The sweep of every registered repository; one that fails never stops the others."""
+    learning_schedule.prune_missing(CLI_PATH)
+    for _, record in learning_schedule.registered_projects():
+        project_root = record["project"]
+        try:
+            settings = settings_of(project_root)
+            if learning_active(project_root, settings):
+                session_review.sweep(project_root, settings, write_sweep_line)
+        except (StateError, OSError) as problem:
+            write_sweep_line(f"{project_root}: {problem}")
+    return EXIT_OK
+
+
+def schedule_blocked():
+    """Why this run must not touch the scheduler of the machine, or None."""
+    blocked = session_review.provider_blocked()
+    return f"no scheduled task under {blocked}" if blocked else None
+
+
+def schedule_sweep(project_root):
+    """Register this repository for the scheduled sweep, or drop it, as its settings ask. What an apply runs.
+
+    Returns {"status", "detail"} (agent_ready_learning_schedule.register); a refusal of the scheduler
+    never raises: the hooks still close the episodes.
+    """
+    blocked = schedule_blocked()
+    if blocked:
+        return {"status": learning_schedule.STATUS_SKIPPED, "detail": blocked}
+    settings = settings_of(project_root)
+    interval = settings["sweep_interval"] if learning_active(project_root, settings) else 0
+    try:
+        return learning_schedule.register(project_root, interval, CLI_PATH)
+    except StateError as problem:
+        return {"status": learning_schedule.STATUS_FAILED, "detail": str(problem)}
+
+
+def unschedule_sweep(project_root):
+    """agent-ready remove: this repository stops asking for the scheduled sweep."""
+    if schedule_blocked() or learning_schedule.read_project_record(project_root) is None:
+        return None
+    try:
+        return learning_schedule.unregister(project_root, CLI_PATH)
+    except StateError as problem:
+        return {"status": learning_schedule.STATUS_FAILED, "detail": str(problem)}
+
+
+def schedule_state(project_root):
+    """What status and doctor say of the scheduled sweep: None when it does not apply, else (ok, detail)."""
+    settings = settings_of(project_root)
+    if not learning_active(project_root, settings) or settings["sweep_interval"] == 0 or schedule_blocked():
+        return None
+    return learning_schedule.state(project_root)
+
+
+def command_learn_schedule(arguments):
+    """Register the scheduled sweep as the settings ask, as an apply does (after changing them by hand)."""
+    project_root = find_repository_root(arguments.project)
+    report = schedule_sweep(project_root)
+    if arguments.json:
+        sys.stdout.write(serialize_json(report))
+    else:
+        stream = sys.stderr if report["status"] == learning_schedule.STATUS_FAILED else sys.stdout
+        stream.write(f"Scheduled learning sweep: {report['status']}: {report['detail']}\n")
     return EXIT_OK
 
 
@@ -377,4 +452,12 @@ def register(subparsers, new_subparser):
         "  agent-ready learn summary", command_learn_summary)
     sweep_action = new_subparser(
         actions, "sweep", "Close the idle episodes and review the messages of the user of the closed ones.",
-        "  agent-ready learn sweep", command_learn_sweep)
+        "  agent-ready learn sweep\n  agent-ready learn sweep --registered", command_learn_sweep)
+    sweep_action.add_argument("--registered", action="store_true",
+                              help="sweep every repository registered for the scheduled sweep (what the task runs)")
+    # The task runs it from any directory; without --registered the command finds the repository itself.
+    sweep_action.set_defaults(needs_repository=False)
+    schedule_action = new_subparser(
+        actions, "schedule", "Register the scheduled sweep as learning.sweep.intervalMinutes asks, as an apply does.",
+        "  agent-ready learn schedule\n  agent-ready learn schedule --json", command_learn_schedule)
+    schedule_action.add_argument("--json", action="store_true", help="print the result as JSON")
