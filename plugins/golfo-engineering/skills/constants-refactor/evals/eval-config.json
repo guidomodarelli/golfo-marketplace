@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "skill": "constants-refactor",
-  "description": "Verifica que la skill dé a cada constante estática una fuente canónica sin depender de la cantidad de consumidores (constants/ o el archivo de configuración según la naturaleza del valor y el lenguaje), separe copy y valores runtime, y preserve comportamiento, tipos y contratos públicos.",
+  "description": "Verifica que la skill centralice solo los valores compartidos, los contratos y los literales mágicos (en constants/ o el archivo de configuración según la naturaleza del valor y el lenguaje), deje locales las constantes nombradas de un solo módulo, se limite al alcance pedido, corra completa ante una invocación explícita, separe copy y valores runtime, y preserve comportamiento, tipos y contratos públicos.",
   "test_cases": [
     {
       "id": "pr-review-constant-candidates",
@@ -112,34 +112,76 @@
         {
           "type": "regex",
           "pattern": "(ú|u)nico consumidor|un solo consumidor|single consumer|cantidad de (usos|consumidores|referencias)",
-          "description": "Mueve el límite aunque tenga un solo consumidor"
+          "description": "Mueve el límite que el pedido nombra aunque tenga un solo consumidor"
         }
       ]
     },
     {
-      "id": "single-use-static-constant",
-      "description": "Mueve a constants/ una constante estática con un único uso y explica que la cantidad de consumidores no decide su ubicación.",
-      "input": "Sin escribir archivos ni ejecutar nada, explicá cómo refactorizarías este módulo TypeScript según la skill y si la constante debe permanecer local.\n\n```ts\n// src/features/feed/FeedList.ts\nconst MAX_VISIBLE_ITEMS = 20;\n\nexport function getVisibleItems(items: Item[]) {\n  return items.slice(0, MAX_VISIBLE_ITEMS);\n}\n```",
+      "id": "single-use-named-constant-stays-local",
+      "description": "Deja local una constante ya nombrada que usa un solo módulo y explica cuándo pasaría a constants/.",
+      "input": "Sin escribir archivos ni ejecutar nada, explicá cómo refactorizarías este módulo TypeScript según la skill y si la constante debe permanecer local. Empezá la respuesta con una línea `MAX_VISIBLE_ITEMS => destino`.\n\n```ts\n// src/features/feed/FeedList.ts\nconst MAX_VISIBLE_ITEMS = 20;\n\nexport function getVisibleItems(items: Item[]) {\n  return items.slice(0, MAX_VISIBLE_ITEMS);\n}\n```",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "MAX_VISIBLE_ITEMS[^\\n]*=>[^\\n]*(local|FeedList|se queda|mantener|permanece)",
+          "description": "Deja MAX_VISIBLE_ITEMS local en FeedList.ts"
+        },
+        {
+          "type": "regex",
+          "pattern": "(ú|u)nico (uso|consumidor|m(ó|o)dulo)|un solo (uso|consumidor|m(ó|o)dulo)|single (use|consumer)",
+          "description": "Justifica que tiene un solo consumidor y ya tiene nombre"
+        },
+        {
+          "type": "regex",
+          "pattern": "segundo (m(ó|o)dulo|consumidor)|otro (m(ó|o)dulo|consumidor)|compart|reutiliz|m(á|a)s de un",
+          "description": "Explica que pasaría a constants/ cuando otro módulo la use"
+        }
+      ]
+    },
+    {
+      "id": "explicit-invocation-runs-workflow",
+      "description": "Con /constants-refactor explícito, sigue el procedimiento completo sin importar el marcador ~/.work.",
+      "input": "/constants-refactor Solo análisis, sin escribir archivos. Clasificá estos valores y decí a dónde va cada uno con una línea `NOMBRE => destino`.\n\n```ts\n// server/api/orders.ts\nif (qty > 99) return res.status(422).json({ code: 'ORDER_QTY_EXCEEDED' });\n// client/OrderForm.tsx\nconst isTooMany = qty > 99;\n```",
       "assertions": [
         {
           "type": "contains",
           "value": "constants/",
-          "description": "Ubica MAX_VISIBLE_ITEMS en constants/"
+          "description": "Centraliza el límite compartido entre server y client"
         },
         {
           "type": "regex",
-          "pattern": "(ú|u)nico (uso|consumidor)|un solo (uso|consumidor)|una sola vez|single (use|consumer)|cantidad de (usos|consumidores|referencias)",
-          "description": "Explica que un solo uso no justifica dejarla local"
+          "pattern": "ORDER_QTY_EXCEEDED[^\\n]*=>",
+          "description": "Clasifica el código de error como parte del procedimiento"
         },
         {
-          "type": "contains",
-          "value": "import",
-          "description": "Actualiza el import en el consumidor"
+          "type": "not_contains_any",
+          "values": [
+            "~/.work existe",
+            "termino la skill"
+          ],
+          "description": "No corta la skill por el gate cuando la invocación es explícita"
+        }
+      ]
+    },
+    {
+      "id": "scoped-request-does-not-expand",
+      "description": "Ante un pedido acotado a un archivo, cambia solo ese archivo y reporta los candidatos de otros archivos como sugerencias sin aplicarlas.",
+      "input": "Sin escribir archivos ni ejecutar comandos, describí qué cambiarías. Pedido: refactorizá las constantes de `src/checkout/applyCoupon.ts` y nada más. Mientras lo mirás vas a ver también `src/cart/CartSummary.tsx`.\n\n```ts\n// src/checkout/applyCoupon.ts\nexport function applyCoupon(total: number, code: string) {\n  if (code.length > 12) throw new CouponError('COUPON_TOO_LONG');\n  return total * 0.9;\n}\n// src/cart/CartSummary.tsx\nif (items.length > 50) showWarning();\n```",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "fuera (de|del) (alcance|pedido)|sugerencia|no (lo |la )?(toco|modifico|cambio)|sin aplicar",
+          "description": "Deja CartSummary.tsx como sugerencia fuera de alcance"
         },
         {
           "type": "regex",
-          "pattern": "runtime|calculad|mutable",
-          "description": "Aclara que solo quedarían locales valores calculados o estado mutable"
+          "pattern": "COUPON_TOO_LONG",
+          "description": "Trata el código de error como contrato"
+        },
+        {
+          "type": "regex",
+          "pattern": "0\\.9|12",
+          "description": "Da nombre a los literales mágicos del archivo pedido"
         }
       ]
     },
@@ -296,8 +338,8 @@
         },
         {
           "type": "regex",
-          "pattern": "MAX_REFERENCE_LENGTH[^=]*=>[^=]*[Cc]onstant",
-          "description": "Deja como constante el valor que usa la anotación"
+          "pattern": "MAX_REFERENCE_LENGTH[^=]*=>[^=]*([Cc]onstant|local|const val)",
+          "description": "Deja como constante (local o en constants) el valor que usa la anotación, no en configuración"
         },
         {
           "type": "regex",
@@ -340,8 +382,8 @@
       "assertions": [
         {
           "type": "regex",
-          "pattern": "RETRY_DELAY_MS[^=]*=>[^=]*[Cc]onstant",
-          "description": "Deja el delay en constants porque el proyecto no tiene archivo de configuración"
+          "pattern": "RETRY_DELAY_MS[^=]*=>[^=]*([Cc]onstant|local|RequestSigner)",
+          "description": "No manda el delay a configuración porque el proyecto no la tiene: queda como constante (local si solo lo usa este módulo)"
         },
         {
           "type": "regex",
