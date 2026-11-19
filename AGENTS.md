@@ -9,6 +9,7 @@ A multi-provider marketplace of skills and plugins for AI agents. No application
 - `packages/` — npm packages published from this repo. `packages/agent-ready/` is `@golfo/agent-ready`, the launcher that runs the agent-ready-setup CLI of the installed golfo-kit plugin; it never ships a copy of the engine. `.github/workflows/release.yml` publishes it by hand from `main` through npm trusted publishing.
 - `.claude-plugin/marketplace.json` — Claude Code plugin registry. Register plugins here for Claude Code.
 - `.agents/plugins/marketplace.json` — Codex plugin registry. Register plugins here for Codex.
+- `.agents/skills/` — Repo-local skills that are not distributed (`golfo-marketplace-maintenance`: how to change this repo). Codex and Hermes read them there; Claude Code through the symlinks in `.claude/skills/`. They follow rules 1, 2, 4 and 5 but carry no plugin version.
 
 For local development, skills symlink into each provider's own skills folder (`~/.claude/skills/` for Claude Code, `~/.codex/skills/` for Codex) — see **Local Testing**.
 

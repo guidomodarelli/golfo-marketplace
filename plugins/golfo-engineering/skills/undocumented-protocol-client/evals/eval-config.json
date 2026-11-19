@@ -1,0 +1,66 @@
+{
+  "schema_version": 2,
+  "skill": "undocumented-protocol-client",
+  "description": "Evalúa el armado de clientes para protocolos sin documentar: orden de investigación (fuente, paquete publicado), PROTOCOL.md antes del código, captura en vivo y riesgos de conexión compartida.",
+  "test_cases": [
+    {
+      "id": "research-order-before-code",
+      "description": "Para un MCP que habla con el WebSocket interno de una herramienta archivada: clone sparse, paquete publicado como fuente de verdad, PROTOCOL.md antes del código y un modo --record para capturar frames.",
+      "input": "Usando undocumented-protocol-client: quiero un servidor MCP que hable con el servidor de una herramienta de desarrollo archivada en GitHub; su UI web le habla por WebSocket y no hay documentación del protocolo. Los usuarios lo corren con `npx tool-server`. ¿Por dónde empiezo? No ejecutes ni edites nada: describí qué harías, con los comandos o el código concretos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "PROTOCOL[.]md",
+          "description": "Escribe PROTOCOL.md antes del código"
+        },
+        {
+          "type": "regex",
+          "pattern": "npm pack|publicad|published",
+          "description": "Compara con el paquete publicado"
+        },
+        {
+          "type": "regex",
+          "pattern": "record",
+          "description": "Propone un modo de grabación de frames"
+        },
+        {
+          "type": "regex",
+          "pattern": "sparse",
+          "description": "Usa un clone sparse"
+        }
+      ]
+    },
+    {
+      "id": "shared-connection-hazards",
+      "description": "Un cliente que comparte el servidor con la UI oficial usa un rango de ids disjunto y reafirma el estado de forma idempotente ante comandos de ciclo de vida de otro consumidor.",
+      "input": "Usando undocumented-protocol-client: mi cliente y la UI oficial están conectados al mismo servidor. A veces recibo respuestas que no son mías y, cuando el usuario cierra la UI, mis llamadas empiezan a fallar con «not connected». No ejecutes ni edites nada: describí qué harías, con los comandos o el código concretos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": [
+            "disjunt",
+            "disjoint",
+            "rango de ids",
+            "rango distinto",
+            "id range",
+            "separate range"
+          ],
+          "description": "Usa un rango de ids disjunto"
+        },
+        {
+          "type": "regex",
+          "pattern": "idempot",
+          "description": "Reafirma el estado de forma idempotente antes de cada llamada"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "reintent",
+            "retry"
+          ],
+          "description": "Reintenta ante not connected"
+        }
+      ]
+    }
+  ]
+}
