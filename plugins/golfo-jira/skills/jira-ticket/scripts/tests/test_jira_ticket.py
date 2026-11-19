@@ -635,6 +635,41 @@ def test_tracking_list_flag_creates_nested_list_and_converts_existing_table():
     assert "```markdown\n## Pasos\n| Paso | Estado | Nota |\n```" in converted["description"]
 
 
+def test_tracking_list_flag_rebuilds_flattened_table_from_steps():
+    flattened = (
+        "## Pasos\n**Progreso:** 1/2 · ✅ 1 hecho · 🔄 1 en curso · ⬜ 0 pendientes\n\n"
+        "| Paso | Estado | Nota | |---|---|---| | Copiar templates | ✅ Hecho | — | | Revisar copy | 🔄 En curso | — |\n\n"
+        "## Cómo se valida\n- ok\n"
+    )
+    steps = [step("Copiar templates", "done"), step("Revisar copy", "blocked", note="espera a UX")]
+    with pytest.raises(jira_ticket.JiraTicketError):
+        jira_ticket.update_tracking(flattened, steps)
+    result = jira_ticket.update_tracking(flattened, steps, as_list=True)
+    assert result["converted_from"] == "flattened-table" and result["format"] == "list"
+    assert result["description"] == (
+        "## Pasos\n**Progreso:** 1/2 · ✅ 1 hecho · 🔄 0 en curso · ⬜ 0 pendientes · 🚫 1 bloqueado\n\n"
+        "- ✅ Copiar templates\n  - Estado: Hecho\n"
+        "- 🚫 Revisar copy\n  - Estado: Bloqueado\n  - Nota: espera a UX\n\n"
+        "## Cómo se valida\n- ok\n"
+    )
+
+
+def test_tracking_appends_rows_in_the_existing_column_order():
+    reordered = (
+        "## Pasos\n**Progreso:** 0/1 · ✅ 0 hechos · 🔄 0 en curso · ⬜ 1 pendiente\n\n"
+        "| Estado | Paso | Responsable | Nota |\n|---|---|---|---|\n| ⬜ Pendiente | Copiar templates | Ana | — |\n"
+    )
+    steps = [step("Copiar templates"), step("Revisar copy", "in_progress")]
+    first = jira_ticket.update_tracking(reordered, steps)
+    assert first["description"].endswith("| ⬜ Pendiente | Copiar templates | Ana | — |\n| 🔄 En curso | Revisar copy | — | — |\n")
+    second = jira_ticket.update_tracking(first["description"], steps)
+    assert second["changed"] is False and second["added"] == []
+    doc = jira_ticket.adf.markdown_to_document(reordered)
+    adf_result = jira_ticket.update_tracking_adf(doc, steps)
+    assert adf_table_texts(adf_result["description"])[-1] == ["🔄 En curso", "Revisar copy", "—", "—"]
+    assert jira_ticket.update_tracking_adf(adf_result["description"], steps)["changed"] is False
+
+
 def test_tracking_cli_round_trip_and_unknown_state(monkeypatch, capsys):
     payload = json.dumps({"description": SUBTASK_DESCRIPTION, "steps": CURRENT_STEPS})
     exit_code, out, _ = run_cli(monkeypatch, capsys, ["tracking"], payload)

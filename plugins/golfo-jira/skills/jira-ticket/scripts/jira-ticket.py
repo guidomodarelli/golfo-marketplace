@@ -635,8 +635,14 @@ def _note_after(step: Step, previous_state: str | None, current_note: str) -> st
     return current_note or EMPTY_CELL
 
 
-def _table_row(step: Step) -> str:
-    cells = [step.title, step.status_cell, step.note or EMPTY_CELL]
+def _step_values(step: Step) -> dict[str, str]:
+    return {STEP_COLUMN: step.title, STATUS_COLUMN: step.status_cell, NOTE_COLUMN: step.note or EMPTY_CELL}
+
+
+def _table_row(step: Step, columns: list[str] | tuple[str, ...] = STEP_COLUMNS) -> str:
+    """Fila del paso con las celdas en el orden de `columns`; una columna ajena queda con `—`."""
+    values = _step_values(step)
+    cells = [values.get(column, EMPTY_CELL) for column in columns]
     return "| " + " | ".join(_escape_cell(cell) for cell in cells) + " |"
 
 
@@ -676,6 +682,11 @@ def _section_bounds(lines: list[str], heading: str) -> tuple[int, int] | None:
     return start, end
 
 
+def _is_flattened_table_line(line: str) -> bool:
+    """Tabla de pasos que Jira devolvió aplanada: una línea de texto con barras que nombra las columnas `Paso` y `Estado`."""
+    return "|" in line and not line.startswith(PROGRESS_PREFIX) and STEP_COLUMN in line and STATUS_COLUMN in line
+
+
 def _table_columns(columns: list[str]) -> tuple[int, int, int | None]:
     if STEP_COLUMN not in columns or STATUS_COLUMN not in columns:
         raise JiraTicketError(f"jira-ticket: la tabla de '{STEPS_HEADING}' no tiene columnas {STEP_COLUMN} y {STATUS_COLUMN}", EXIT_UNRESOLVED)
@@ -684,7 +695,8 @@ def _table_columns(columns: list[str]) -> tuple[int, int, int | None]:
 
 def _update_table(body: list[str], fenced: list[bool], header_index: int, steps: list[Step], result: dict[str, Any]) -> list[str]:
     by_identity = {step_identity(step.title): step for step in steps}
-    step_column, status_column, note_column = _table_columns(_cell_values(body[header_index]))
+    columns = _cell_values(body[header_index])
+    step_column, status_column, note_column = _table_columns(columns)
     table_end = _table_end(body, fenced, header_index)
     states: list[str] = []
     seen: set[str] = set()
@@ -712,7 +724,7 @@ def _update_table(body: list[str], fenced: list[bool], header_index: int, steps:
             result["updated"].append(step.title)
         states.append(step.state)
     for step in [step for step in steps if step_identity(step.title) not in seen]:
-        body.insert(table_end, _table_row(step))
+        body.insert(table_end, _table_row(step, columns))
         fenced.insert(table_end, False)
         table_end += 1
         result["added"].append(step.title)
@@ -823,6 +835,12 @@ def update_tracking(description: str, steps_payload: Any, create: bool = False, 
             result["format"] = "list"
             states = _update_list(body, list_indexes, steps, result)
         else:
+            if as_list:
+                flattened = [index for index, line in enumerate(body) if not fenced[index] and _is_flattened_table_line(line)]
+                if flattened:
+                    body = [line for index, line in enumerate(body) if index not in flattened]
+                    fenced = _fenced_line_flags(body)
+                    result["converted_from"] = "flattened-table"
             if any(line.strip() and not fenced[index] and not line.startswith(PROGRESS_PREFIX) for index, line in enumerate(body)):
                 raise JiraTicketError(f"jira-ticket: la sección '{STEPS_HEADING}' no tiene tabla ni lista de pasos reconocibles", EXIT_UNRESOLVED)
             trailing = [""] if end < len(lines) else []
@@ -855,9 +873,14 @@ def _adf_status_cell(step: Step) -> list[dict[str, Any]]:
     return [adf.text_node(f"{state.emoji} "), adf.status_node(state.label, state.color)]
 
 
-def _adf_row(step: Step) -> dict[str, Any]:
-    cells = [[adf.text_node(step.title)], _adf_status_cell(step), [adf.text_node(step.note or EMPTY_CELL)]]
-    return adf.table_row([adf.table_cell(cell) for cell in cells])
+def _adf_row(step: Step, columns: list[str] | tuple[str, ...] = STEP_COLUMNS) -> dict[str, Any]:
+    """Fila ADF del paso con las celdas en el orden de `columns`; una columna ajena queda con `—`."""
+    values = {
+        STEP_COLUMN: [adf.text_node(step.title)],
+        STATUS_COLUMN: _adf_status_cell(step),
+        NOTE_COLUMN: [adf.text_node(step.note or EMPTY_CELL)],
+    }
+    return adf.table_row([adf.table_cell(values.get(column, [adf.text_node(EMPTY_CELL)])) for column in columns])
 
 
 def _adf_table(steps: list[Step]) -> dict[str, Any]:
@@ -872,7 +895,8 @@ def _adf_progress(states: list[str]) -> dict[str, Any]:
 def _adf_update_table(table: dict[str, Any], steps: list[Step], result: dict[str, Any]) -> list[str]:
     by_identity = {step_identity(step.title): step for step in steps}
     rows = table.get("content") or []
-    step_column, status_column, note_column = _table_columns([adf.node_text(cell).strip() for cell in (rows[0].get("content") or [])] if rows else [])
+    columns = [adf.node_text(cell).strip() for cell in (rows[0].get("content") or [])] if rows else []
+    step_column, status_column, note_column = _table_columns(columns)
     states: list[str] = []
     seen: set[str] = set()
     for row in rows[1:]:
@@ -902,7 +926,7 @@ def _adf_update_table(table: dict[str, Any], steps: list[Step], result: dict[str
             result["updated"].append(step.title)
         states.append(step.state)
     for step in [step for step in steps if step_identity(step.title) not in seen]:
-        rows.append(_adf_row(step))
+        rows.append(_adf_row(step, columns))
         result["added"].append(step.title)
         states.append(step.state)
     return states
