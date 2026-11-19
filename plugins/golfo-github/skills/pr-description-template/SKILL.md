@@ -4,7 +4,7 @@ description: "Provides the standard PR title and concise description template (c
 allowed-tools: Bash(gh:*) Bash(git:*) Bash(bash:*) Bash(jq:*)
 license: MIT
 metadata:
-  version: "1.10.0"
+  version: "1.11.0"
   author: "Guido Modarelli"
   category: "git-workflow"
   tags: "pull-request, template, description, screenshots"
@@ -76,7 +76,7 @@ If no signal holds, the check produced nothing to report: continue without menti
 Use when another skill updates an existing PR only to add or normalize traceability metadata.
 
 - Do not regenerate the template or edit the PR title.
-- Do not modify the change-type heading that opens the body (`## <emoji> <type>`, or `## 📝 Descripción (…)` and a **Tipo de Cambio** section in older PRs), **Cambios en la API**, the collapsed **Reviewer Notes** block (a **Notas para el Revisor** section in older PRs), or unrelated ticket links.
+- Do not modify the change-type heading that opens the body (`# <emoji> <type>`, or `## <emoji> <type>`, `## 📝 Descripción (…)` and a **Tipo de Cambio** section in older PRs), **Cambios en la API**, the collapsed **Reviewer Notes** block (a **Notas para el Revisor** section in older PRs), or unrelated ticket links.
 - A canonical Jira backlink may be inserted as the first content under that opening heading; this is not the removed top-level **Referencia** metadata block.
 - Conservar cuerpo existente y modificar únicamente enlace de trazabilidad solicitado. Releer cuerpo
   antes de escribir, preservar cambios concurrentes y evitar enlaces duplicados.
@@ -114,10 +114,10 @@ When the change affects the UI but no image could be captured from the real app,
 
 ## Full-composition rules
 
-- Title the two `###` sections with the pair from [Motive and solution headings](#motive-and-solution-headings) that matches why the change exists.
+- Title the two `##` sections that follow it with the pair from [Motive and solution headings](#motive-and-solution-headings) that matches why the change exists.
 - Fill every section from the actual diff; never leave `*italic placeholders*`. Delete optional sections (**Capturas**, **Cambios en la API**, **Reviewer Notes**) when they do not apply.
 - The template contains only content that is published. Do not add instructions, hints, or blockquotes for the author to the body.
-- Start the body with the change type as its own heading, `## <emoji> <type>`, with exactly one primary type from [Change types](#change-types), for example `## ✨ New Feature` or `## 🐛 Bug Fix`. The PR title already carries the change summary, so do not repeat it as a body heading, and do not wrap the type in a `📝 Descripción` heading: the type alone says what kind of change the reader is about to see.
+- Start the body with the change type as its own heading, `# <emoji> <type>` (the only level-1 heading of the body), with exactly one primary type from [Change types](#change-types), for example `# ✨ New Feature` or `# 🐛 Bug Fix`. Every other section of the body (motive, solution, **Capturas**, **Cambios en la API**) is a `##` heading. The PR title already carries the change summary, so do not repeat it as a body heading, and do not wrap the type in a `📝 Descripción` heading: the type alone says what kind of change the reader is about to see.
 - Do not add a separate **Tipo de Cambio** section that lists every type, task-list checkboxes (`[x]`, `[ ]`, which GitHub counts as pending tasks of the PR) or a compact **Tipo** metadata block: the heading already says it in one line.
 - Include ordinary ticket or issue links naturally under the change-type heading or in **Reviewer Notes**; do not create a fixed metadata block.
 - When fully composing an existing PR, preserve every canonical Jira backlink already present: a GitHub `> [!NOTE]` alert whose only line is `> 🎫 Jira: [...]` (or the legacy plain `🎫 Jira: [...]` line). Extract backlinks before replacing the body and reinsert each once, as its own `> [!NOTE]` alert, as first content under the change-type heading; never drop established traceability.
@@ -125,7 +125,7 @@ When the change affects the UI but no image could be captured from the real app,
 - In **Cambios en la API**, keep only the operation groups that apply (**Agregados**, **Modificados**, **Eliminados / Deprecados**) and delete unused lines.
 - Do not add a **Pruebas Manuales** section, manual testing steps or a list of the validations you ran. Mention automated coverage or how to verify the change under the change-type heading only when it adds relevant context.
 - **Reviewer Notes** holds relevant technical decisions (trade-offs, discarded alternatives, constraints) and where to focus the review. Delete it when there is nothing relevant.
-- Keep **Reviewer Notes** collapsed at the end of the body, in the `<details>` block of the template, with its title in `<summary>` and a blank line after `</summary>` and before `</details>` so GitHub renders the Markdown inside. Few readers open these notes, so they must not push the problem and the solution down the page, but they stay in the body: a separate comment would drift from the description on every refresh and get lost among the review threads.
+- Keep **Reviewer Notes** collapsed at the end of the body, in the `<details>` block of the template, after a horizontal rule (`---`) that separates the notes from the description, with its title in `<summary>` and a blank line after `</summary>` and before `</details>` so GitHub renders the Markdown inside. Leave a blank line before `---`: right under a line of text it turns that line into a heading. When **Reviewer Notes** is deleted, delete the rule with it. Few readers open these notes, so they must not push the problem and the solution down the page, but they stay in the body: a separate comment would drift from the description on every refresh and get lost among the review threads.
 - Body text is in Spanish; keep code, paths, endpoints, branch and identifier names in English. The one fixed English heading is the `<summary>` title `👀 Reviewer Notes`; the notes inside it stay in Spanish.
 - Never mention `@codex` in the body, neither `@codex review` nor `@codex fix`: Codex reads a mention in the PR body as a task request and answers asking to create an environment instead of reviewing. [`codex-autofix-loop`](../codex-autofix-loop/SKILL.md) requests the review with a separate comment. To talk about Codex in the body, name it without the `@`.
 - Apply the complete PR body directly with `gh`, unless the user explicitly asks for a draft only.
@@ -139,7 +139,7 @@ Single line, descriptive, English-friendly subject. Example: `Add user status si
 
 ## Change types
 
-Pick the one that best describes the PR as a whole and write it, with its emoji, as the first heading of the body (`## <emoji> <type>`):
+Pick the one that best describes the PR as a whole and write it, with its emoji, as the first heading of the body (`# <emoji> <type>`):
 
 | Heading | When |
 | --- | --- |
@@ -158,9 +158,9 @@ Pick the one that best describes the PR as a whole and write it, with its emoji,
 
 ## Motive and solution headings
 
-Not every PR fixes a problem: a migration, a new feature or a refactor has a reason, not a defect, and a forced "¿Qué problema hay?" makes the author invent one. Pick the pair of `###` headings from the reason the change exists, not mechanically from the change type (a `⚡ Performance` PR that fixes a slow endpoint is a problem; one that prepares for more load is an improvement). For a removal, say under `❓` who still depended on what goes away; for a risk, say under `💡` whether it is closed or only reduced:
+Not every PR fixes a problem: a migration, a new feature or a refactor has a reason, not a defect, and a forced "¿Qué problema hay?" makes the author invent one. Pick the pair of `##` headings from the reason the change exists, not mechanically from the change type (a `⚡ Performance` PR that fixes a slow endpoint is a problem; one that prepares for more load is an improvement). For a removal, say under `❓` who still depended on what goes away; for a risk, say under `💡` whether it is closed or only reduced:
 
-| Reason for the change | `### ❓` heading | `### 💡` heading |
+| Reason for the change | `## ❓` heading | `## 💡` heading |
 | --- | --- | --- |
 | algo funciona mal (bug, regresión, error, lentitud que ya molesta) | `¿Qué problema hay?` | `¿Cómo se solucionó?` |
 | hace falta algo que no existe (feature, endpoint, integración) | `¿Qué se necesita?` | `¿Cómo se implementó?` |
@@ -175,12 +175,12 @@ Keep the `❓` and `💡` emojis and a first question that starts with `¿Qué`.
 ## Body template
 
 ```markdown
-## <emoji> <tipo de cambio>
+# <emoji> <tipo de cambio>
 
-### ❓ <pregunta del motivo>
+## ❓ <pregunta del motivo>
 *Contexto de negocio o técnico: el problema, la necesidad, la migración o la mejora. ¿Por qué es necesario este cambio?*
 
-### 💡 <pregunta de la solución>
+## 💡 <pregunta de la solución>
 *Resumen técnico de la implementación. Componentes, servicios y archivos clave modificados.*
 
 ## 📸 Capturas *(si aplica)*
@@ -196,6 +196,8 @@ Keep the `❓` and `💡` emojis and a first question that starts with `¿Qué`.
 - ➕ **Agregados:** `POST /api/v1/...`
 - ✏️ **Modificados:** `PUT /api/v1/.../{id}`
 - ➖ **Eliminados / Deprecados:** `GET /api/v1/...`
+
+---
 
 <details>
 <summary>👀 Reviewer Notes</summary>
