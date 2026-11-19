@@ -198,7 +198,12 @@ Antes de cada `gh pr create` o `gh pr edit --body`, cargá `pr-description-templ
 gh pr create --base <parent-branch> --head feature/<slug>-<layer> --title "<título>" --body-file <body.md>
 ```
 
-Cuando se crean capas nuevas, actualizá ese bloque en los PRs ya publicados (modo traceability-only de la plantilla, sin tocar el resto del body).
+Cuando se crean, reordenan o mergean capas, actualizá ese bloque en los PRs ya publicados con un patch body-only propio de esta skill (el modo traceability-only de la plantilla no cubre **Notas para el Revisor**):
+
+1. Releé el body justo antes de escribir: `gh pr view <url> --json body -q .body > <body.md>`.
+2. Reemplazá solo el bloque que empieza en `**Stack**` hasta la última línea de la lista numerada; si no existe, agregalo al final de **Notas para el Revisor** (o creá esa sección antes de la línea de atribución). No toques título ni otras secciones.
+3. Aplicá con `gh pr edit <url> --body-file <body.md>`, sin `--title`.
+4. Releé con `gh pr view <url> --json title,body` y verificá que el bloque es el nuevo y que el resto del body quedó idéntico.
 
 ## Dependencias y CI
 
