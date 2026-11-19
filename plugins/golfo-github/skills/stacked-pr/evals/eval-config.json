@@ -10,12 +10,16 @@
       "assertions": [
         {
           "type": "contains_any",
-          "values": ["backup"],
+          "values": [
+            "backup"
+          ],
           "description": "Crea backups del head original antes de reescribir"
         },
         {
           "type": "contains_any",
-          "values": ["manifest"],
+          "values": [
+            "manifest"
+          ],
           "description": "Define manifests explícitos por capa"
         },
         {
@@ -25,12 +29,20 @@
         },
         {
           "type": "contains_any",
-          "values": ["golden"],
+          "values": [
+            "golden"
+          ],
           "description": "Usa el head original como golden"
         },
         {
           "type": "contains_any",
-          "values": ["{tree}", "rev-parse", "árbol final", "final tree", "mismo árbol"],
+          "values": [
+            "{tree}",
+            "rev-parse",
+            "árbol final",
+            "final tree",
+            "mismo árbol"
+          ],
           "description": "Compara el árbol final del stack con el golden"
         }
       ]
@@ -52,18 +64,172 @@
         },
         {
           "type": "contains_any",
-          "values": ["mismo repositorio", "mismo repo", "same-repository", "same repository"],
+          "values": [
+            "mismo repositorio",
+            "mismo repo",
+            "same-repository",
+            "same repository",
+            "isCrossRepository: false"
+          ],
           "description": "Verifica que las branches estén en el mismo repositorio"
         },
         {
           "type": "contains_any",
-          "values": ["gh pr checks", "CI", "checks"],
+          "values": [
+            "gh pr checks",
+            "CI",
+            "checks"
+          ],
           "description": "Reporta bases y CI"
         },
         {
           "type": "regex",
           "pattern": "(no|sin|nunca)[^.]{0,60}(reescrib|modific|cambi|toc)",
           "description": "Conserva el PR existente sin reescribirlo"
+        },
+        {
+          "type": "contains",
+          "value": "pr-description-template",
+          "description": "Carga pr-description-template antes de crear cada PR"
+        },
+        {
+          "type": "regex",
+          "pattern": "(capa|layer) ([0-9]|N)/[0-9N]|navegaci[oó]n|stack navigation",
+          "description": "Agrega la navegación del stack en el body de cada PR"
+        }
+      ]
+    },
+    {
+      "id": "merge-stack-on-main-repo",
+      "description": "En un repo sin develop, resuelve main como rama de integración, guarda el tip del parent antes del squash y rebasea el child sobre origin/main.",
+      "input": "Contexto: el repo solo tiene la rama main (no existe develop). Tengo un stack de dos PRs: #31 (feature/auth-contracts -> main) y #32 (feature/auth-ui -> feature/auth-contracts). Ambos tienen CI verde y quiero mergearlos con squash. Usando la skill stacked-pr, describí el plan y los comandos sin ejecutar nada.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "rebase --onto origin/main",
+          "description": "Rebasea el child sobre origin/main"
+        },
+        {
+          "type": "regex",
+          "pattern": "gh pr edit (#)?32 --base main",
+          "description": "Cambia la base del child a main"
+        },
+        {
+          "type": "contains",
+          "value": "headRefOid",
+          "description": "Obtiene el tip del parent desde el PR para recortar el child"
+        },
+        {
+          "type": "regex",
+          "pattern": "(antes|before)[^.]{0,80}(merge|squash)",
+          "description": "Guarda el tip del parent antes del squash"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "--onto origin/develop",
+            "--base develop",
+            "fetch origin develop"
+          ],
+          "description": "No asume develop como rama de integración"
+        },
+        {
+          "type": "contains",
+          "value": "--force-with-lease",
+          "description": "Pushea el child rebasado con --force-with-lease"
+        }
+      ]
+    },
+    {
+      "id": "propagate-middle-layer-fix",
+      "description": "Tras un fix de review en la capa intermedia, rebasea las capas superiores con --update-refs, pushea con lease y revalida.",
+      "input": "Contexto: stack de cuatro capas en el mismo repo: feature/pay-contracts -> develop, feature/pay-backend -> feature/pay-contracts, feature/pay-frontend -> feature/pay-backend y feature/pay-cleanup -> feature/pay-frontend. Un reviewer pidió un cambio en feature/pay-backend. Usando la skill stacked-pr, describí sin ejecutar nada cómo aplico el fix y lo propago a las capas de arriba.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "--update-refs",
+          "description": "Usa git rebase --update-refs para mover las capas superiores"
+        },
+        {
+          "type": "contains",
+          "value": "feature/pay-cleanup",
+          "description": "Rebasea desde el top del stack"
+        },
+        {
+          "type": "contains",
+          "value": "--force-with-lease",
+          "description": "Pushea cada branch reescrita con --force-with-lease"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "backup"
+          ],
+          "description": "Hace backup de las capas antes de reescribirlas"
+        },
+        {
+          "type": "regex",
+          "pattern": "(revalid|vuelv[oa] a validar|gh pr checks|re-?run)",
+          "description": "Revalida cada capa después del rebase"
+        }
+      ]
+    },
+    {
+      "id": "reorder-layers",
+      "description": "Reordena capas verificando dependencias, reconstruye desde la rama de integración, cambia bases bottom-up y compara el árbol final con el golden.",
+      "input": "Contexto: stack en el mismo repo: #51 feature/report-contracts -> develop, #52 feature/report-backend -> feature/report-contracts, #53 feature/report-export -> feature/report-backend. Producto quiere mergear la capa de export antes que backend. Usando la skill stacked-pr, describí sin ejecutar nada cómo reordenás las capas.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "(depend|import)",
+          "description": "Verifica que export no dependa de backend antes de bajarla"
+        },
+        {
+          "type": "regex",
+          "pattern": "gh pr edit (#)?5[23] --base",
+          "description": "Actualiza las bases de los PRs reordenados"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "{tree}",
+            "golden"
+          ],
+          "description": "Compara el árbol final con el golden"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "backup"
+          ],
+          "description": "Hace backup antes de reconstruir"
+        }
+      ]
+    },
+    {
+      "id": "add-existing-pr-to-stack",
+      "description": "Mueve un PR existente encima del top con rebase --onto, verifica con range-diff que sus commits no cambiaron y cambia su base.",
+      "input": "Contexto: stack en el mismo repo: #71 feature/inbox-contracts -> develop y #72 feature/inbox-api -> feature/inbox-contracts. Aparte tengo el PR #75 (feature/inbox-ui -> develop), que en realidad depende de la API. Usando la skill stacked-pr, describí sin ejecutar nada cómo sumo #75 al stack sin cambiar su contenido.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "range-diff",
+          "description": "Verifica con git range-diff que los commits de #75 no cambiaron"
+        },
+        {
+          "type": "regex",
+          "pattern": "rebase --onto (origin/)?feature/inbox-api",
+          "description": "Rebasea #75 encima del top del stack"
+        },
+        {
+          "type": "regex",
+          "pattern": "gh pr edit (#)?75 --base feature/inbox-api",
+          "description": "Cambia la base de #75 al top"
+        },
+        {
+          "type": "contains",
+          "value": "--force-with-lease",
+          "description": "Pushea con --force-with-lease"
         }
       ]
     },
@@ -74,12 +240,18 @@
       "assertions": [
         {
           "type": "contains_any",
-          "values": ["gh pr list", "gh pr view"],
+          "values": [
+            "gh pr list",
+            "gh pr view"
+          ],
           "description": "Inspecciona los PRs y sus relaciones base/head"
         },
         {
           "type": "contains_any",
-          "values": ["ciclo", "cycle"],
+          "values": [
+            "ciclo",
+            "cycle"
+          ],
           "description": "Verifica que no haya ciclos"
         },
         {
@@ -94,7 +266,12 @@
         },
         {
           "type": "contains_any",
-          "values": ["gh pr checks", "diff incremental", "incremental", "checks"],
+          "values": [
+            "gh pr checks",
+            "diff incremental",
+            "incremental",
+            "checks"
+          ],
           "description": "Valida diff incremental y checks"
         }
       ]
@@ -116,17 +293,25 @@
         },
         {
           "type": "contains_any",
-          "values": ["prepare"],
+          "values": [
+            "prepare"
+          ],
           "description": "Usa una transacción con prepare y commit"
         },
         {
           "type": "contains_any",
-          "values": ["OID esperado", "expected OID", "old-oid", "<old-oid>", "OID original"],
+          "values": [
+            "OID esperado",
+            "expected OID",
+            "old-oid",
+            "<old-oid>",
+            "OID original"
+          ],
           "description": "Exige el OID esperado en cada delete"
         },
         {
           "type": "regex",
-          "pattern": "(conserv|preserv|mantien|intact|keep|no (se )?(borra|toca|elimina))[^.]{0,80}(backup/legacy|preexist)|backup/legacy[^.]{0,80}(conserv|preserv|intact|mantien|sin cambios)",
+          "pattern": "(conserv|preserv|mantien|intact|keep|no (se )?(borra|toca|elimina))[^.]{0,80}(backup/legacy|preexist)|backup/legacy[^.]{0,80}(conserv|preserv|intact|mantien|sin cambios|mismo OID|no se toca)|preexist[^.]{0,40}mantien",
           "description": "Conserva backup/legacy con su OID original"
         }
       ]
@@ -143,7 +328,14 @@
         },
         {
           "type": "contains_any",
-          "values": ["rebase --abort", "abort", "detengo", "detiene", "detener", "stop"],
+          "values": [
+            "rebase --abort",
+            "abort",
+            "detengo",
+            "detiene",
+            "detener",
+            "stop"
+          ],
           "description": "Detiene o aborta el rebase"
         },
         {
@@ -180,7 +372,13 @@
         },
         {
           "type": "contains_any",
-          "values": ["transacc", "transaction", "atómic", "atomic", "update-ref --stdin"],
+          "values": [
+            "transacc",
+            "transaction",
+            "atómic",
+            "atomic",
+            "update-ref --stdin"
+          ],
           "description": "Evita borrado parcial mediante transacción atómica"
         },
         {
@@ -190,7 +388,10 @@
         },
         {
           "type": "not_contains_any",
-          "values": ["git branch -D backup", "update-ref -d refs/heads/backup/"],
+          "values": [
+            "git branch -D backup",
+            "update-ref -d refs/heads/backup/"
+          ],
           "description": "No borra refs por wildcard ni con branch -D"
         }
       ]
