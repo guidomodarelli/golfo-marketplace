@@ -1,0 +1,76 @@
+{
+  "schema_version": 2,
+  "skill": "windows-git-bash-agent-gotchas",
+  "description": "Evalúa los arreglos de gotchas de agentes en Windows con Git Bash: paths para programas nativos, flags de Windows con una barra y comandos de WSL que pierden variables.",
+  "test_cases": [
+    {
+      "id": "native-tool-tmp-path",
+      "description": "jq nativo no abre /tmp/... con la conversión MSYS desactivada: arma el path con cygpath -m y lo usa al escribir y al pasarlo.",
+      "input": "Usando windows-git-bash-agent-gotchas: desde Git Bash en Windows (el agente exporta MSYS_NO_PATHCONV=1) corro `curl -s https://api.example.com/items > \"$TMPDIR/items.json\" && jq '.items | length' \"$TMPDIR/items.json\"` y jq dice que no encuentra el archivo; TMPDIR vale /tmp. No ejecutes ni edites nada: describí qué harías, con los comandos o el código concretos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "cygpath -m",
+          "description": "Convierte el path con cygpath -m"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "nativ",
+            "native"
+          ],
+          "description": "Explica que el programa nativo no entiende el path MSYS"
+        }
+      ]
+    },
+    {
+      "id": "windows-flags-single-slash",
+      "description": "Con la conversión desactivada, los flags de Windows van con una sola barra: el truco //PID llega literal y falla.",
+      "input": "Usando windows-git-bash-agent-gotchas: en Git Bash con MSYS_NO_PATHCONV=1 corro `taskkill //PID 4312 //T //F` y responde «Invalid argument/option». ¿Qué cambio? No ejecutes ni edites nada: describí qué harías, con los comandos o el código concretos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "taskkill /PID",
+          "description": "Usa taskkill /PID con una sola barra"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "una sola barra",
+            "single slash",
+            "one slash",
+            "una barra"
+          ],
+          "description": "Explica la regla de una sola barra"
+        }
+      ]
+    },
+    {
+      "id": "wsl-script-instead-of-bash-lc",
+      "description": "wsl.exe -- bash -lc vuelve a parsear la línea y las variables llegan vacías: escribe un .sh en un temporal de Windows y lo corre por /mnt/c.",
+      "input": "Usando windows-git-bash-agent-gotchas: desde Git Bash lanzo `wsl.exe -d Ubuntu -- bash -lc 'DIR=/opt/app; cd $DIR && ./install.sh'` y en vez de instalar la app parece que corre otro comando: $DIR llega vacío. No ejecutes ni edites nada: describí qué harías, con los comandos o el código concretos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": [
+            "temporal",
+            "temp",
+            "archivo",
+            "file"
+          ],
+          "description": "Escribe el script en un archivo temporal de Windows"
+        },
+        {
+          "type": "regex",
+          "pattern": "bash /mnt/c/",
+          "description": "Corre el script con bash y su path /mnt/c"
+        },
+        {
+          "type": "regex",
+          "pattern": "tr -d",
+          "description": "Filtra la salida con tr -d por UTF-16"
+        }
+      ]
+    }
+  ]
+}

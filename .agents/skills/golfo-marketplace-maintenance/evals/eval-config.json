@@ -1,0 +1,71 @@
+{
+  "schema_version": 2,
+  "skill": "golfo-marketplace-maintenance",
+  "description": "Evalúa el mantenimiento del repo golfo-marketplace: SKILL.md anidados, versión superada por main y directivas para los repos de agent-ready-setup.",
+  "test_cases": [
+    {
+      "id": "nested-skill-md-location",
+      "description": "Un SKILL.md de ejemplo dentro de una skill va solo bajo assets/, references/, templates/ o scripts/: Hermes instala cualquier otro como skill real.",
+      "input": "Usando golfo-marketplace-maintenance: quiero agregar a la skill user-manual una carpeta examples/demo-skill/SKILL.md con un ejemplo de skill completa para que el agente la copie. ¿Algún problema? No ejecutes ni edites nada: describí qué harías, con los comandos o el código concretos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "assets/|templates/|references/",
+          "description": "La mueve bajo assets/, references/, templates/ o scripts/"
+        },
+        {
+          "type": "regex",
+          "pattern": "Hermes",
+          "description": "Explica que Hermes la instalaría como skill real"
+        }
+      ]
+    },
+    {
+      "id": "version-overtaken-by-main",
+      "description": "check-version-bump pasa contra el merge-base aunque main superó la versión: compara con git show origin/main y rebasea a la patch siguiente.",
+      "input": "Usando golfo-marketplace-maintenance: mi PR sube golfo-web a 0.130.0 y pnpm check-version-bump pasa. Mientras tanto otro PR mergeó golfo-web 0.130.0 en main. ¿Puedo mergear? No ejecutes ni edites nada: describí qué harías, con los comandos o el código concretos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "git show origin/main",
+          "description": "Compara con la versión de origin/main"
+        },
+        {
+          "type": "regex",
+          "pattern": "rebase",
+          "description": "Rebasea la rama"
+        },
+        {
+          "type": "regex",
+          "pattern": "0[.]130[.]1|patch siguiente|next patch|siguiente patch",
+          "description": "Sube a la patch siguiente"
+        }
+      ]
+    },
+    {
+      "id": "agent-ready-directive-goes-to-pack-rule",
+      "description": "Una directiva para los AGENTS.md de los repos que configura agent-ready-setup va como bullet en la rule dueña del pack golfo-agent-profiles, no en el template.",
+      "input": "Usando golfo-marketplace-maintenance: agregá en el AGENTS.md de los repos que configura agent-ready-setup que los agentes nunca usen `any` en TypeScript. No ejecutes ni edites nada: describí qué harías, con los comandos o el código concretos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "golfo-agent-profiles",
+          "description": "Lleva el cambio al pack golfo-agent-profiles"
+        },
+        {
+          "type": "regex",
+          "pattern": "rules/",
+          "description": "Lo pone en una rule del pack"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "agents-template",
+            "template"
+          ],
+          "description": "Explica por qué no va en el template"
+        }
+      ]
+    }
+  ]
+}

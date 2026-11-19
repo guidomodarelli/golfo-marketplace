@@ -1,0 +1,88 @@
+{
+  "schema_version": 2,
+  "skill": "cross-agent-skill-portability",
+  "description": "Evalúa la portabilidad de skills y plugins entre Claude Code, Codex y Hermes: equivalentes en vez de incompatibilidad, honestidad del estado, port de hooks de Claude a Hermes y ubicación de skills locales del repo.",
+  "test_cases": [
+    {
+      "id": "widget-equivalent-not-incompatible",
+      "description": "Una skill que usa el widget de Claude no es incompatible con Codex: usa el plugin visualize como equivalente y deja el estado como no verificado sin una corrida real.",
+      "input": "Usando cross-agent-skill-portability: la skill widget-ui-proposals muestra propuestas de UI con mcp__visualize__show_widget. Un compañero la marcó como `incompatible` para Codex en el reporte de compatibilidad porque Codex no tiene esa herramienta. ¿Está bien? ¿Qué pondrías en el reporte? No ejecutes ni edites nada: describí qué harías, con los comandos o el código concretos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "visualize@openai|visualize[{]|plugin `?visualize",
+          "description": "Propone el plugin visualize de Codex como equivalente"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "unverified",
+            "no verificad",
+            "sin verificar",
+            "not verified"
+          ],
+          "description": "Deja el estado como no verificado hasta correrlo en Codex"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "alternativ",
+            "equivalen"
+          ],
+          "description": "Trata la falta de la herramienta como un caso de alternativa"
+        }
+      ]
+    },
+    {
+      "id": "port-updatedinput-hook",
+      "description": "Un PreToolUse de Claude que reescribe el input se porta a pre_tool_call de Hermes devolviendo action modify, con el hook fail-open.",
+      "input": "Usando cross-agent-skill-portability: tengo un plugin de Claude Code con un hook PreToolUse que reescribe el input de la herramienta (devuelve updatedInput para agregar un campo project). Quiero lo mismo en Hermes. ¿Cómo lo porto? No ejecutes ni edites nada: describí qué harías, con los comandos o el código concretos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "pre_tool_call",
+          "description": "Usa el hook pre_tool_call de Hermes"
+        },
+        {
+          "type": "regex",
+          "pattern": "modify",
+          "description": "Devuelve action modify con los args parciales"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "fail-open",
+            "fail open",
+            "try/except",
+            "try:"
+          ],
+          "description": "Deja el hook fail-open"
+        }
+      ]
+    },
+    {
+      "id": "repo-local-skill-for-every-agent",
+      "description": "Conocimiento de un repo va en .agents/skills con symlink en .claude/skills, y para sesiones de gateway de Hermes en skills.external_dirs.",
+      "input": "Usando cross-agent-skill-portability: tengo una skill privada de Hermes con los gotchas de release del repo billing-service, y Claude Code y Codex los redescubren cada vez. ¿Dónde la pongo para que la vean los tres agentes, incluido Hermes desde Discord? No ejecutes ni edites nada: describí qué harías, con los comandos o el código concretos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "[.]agents/skills",
+          "description": "La ubica en .agents/skills del repo"
+        },
+        {
+          "type": "regex",
+          "pattern": "[.]claude/skills",
+          "description": "Agrega el symlink en .claude/skills para Claude Code"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "external_dirs"
+          ],
+          "description": "Configura skills.external_dirs para las sesiones de gateway"
+        }
+      ]
+    }
+  ]
+}

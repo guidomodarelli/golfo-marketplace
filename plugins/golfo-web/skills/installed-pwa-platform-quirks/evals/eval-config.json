@@ -1,0 +1,65 @@
+{
+  "schema_version": 2,
+  "skill": "installed-pwa-platform-quirks",
+  "description": "Evalúa los arreglos de funciones que fallan solo en la PWA instalada: descarga en iOS standalone con Web Share, activación de usuario y cierre de la hoja de compartir.",
+  "test_cases": [
+    {
+      "id": "download-in-ios-standalone",
+      "description": "La descarga con <a download> no anda en iOS standalone: fallback con navigator.share de archivos cuando canShare lo permite, detección por capacidad y modo en un helper puro testeado, y File armado antes del click.",
+      "input": "Usando installed-pwa-platform-quirks: el botón «Descargar imagen» de mi app funciona en Safari, pero desde la app agregada a la pantalla de inicio del iPhone no hace nada. El handler hace `const blob = await (await fetch(dataUrl)).blob()` y después dispara un link con atributo download. No ejecutes ni edites nada: describí qué harías, con los comandos o el código concretos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "canShare",
+          "description": "Chequea navigator.canShare con archivos"
+        },
+        {
+          "type": "regex",
+          "pattern": "navigator[.]standalone|display-mode",
+          "description": "Detecta el modo standalone por capacidad y modo"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "activación",
+            "activation",
+            "antes del await",
+            "before the await",
+            "sincrónic",
+            "synchronous",
+            "de antemano",
+            "beforehand"
+          ],
+          "description": "Arma el File antes para no perder la activación del usuario"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "userAgent.includes",
+            "navigator.userAgent.match"
+          ],
+          "description": "No detecta por user agent"
+        }
+      ]
+    },
+    {
+      "id": "ignore-share-sheet-close",
+      "description": "Cuando el usuario cierra la hoja de compartir, share() rechaza con AbortError, que se ignora; solo los demás rechazos muestran error.",
+      "input": "Usando installed-pwa-platform-quirks: en la PWA instalada, cuando el usuario abre la hoja de compartir y la cierra sin elegir nada, mostramos un toast rojo «No se pudo compartir». ¿Cómo lo corrijo? No ejecutes ni edites nada: describí qué harías, con los comandos o el código concretos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "AbortError",
+          "description": "Identifica el rechazo AbortError"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "ignor"
+          ],
+          "description": "Ignora ese rechazo y muestra error solo en los demás"
+        }
+      ]
+    }
+  ]
+}

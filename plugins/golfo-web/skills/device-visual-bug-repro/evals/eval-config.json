@@ -1,0 +1,56 @@
+{
+  "schema_version": 2,
+  "skill": "device-visual-bug-repro",
+  "description": "Evalúa la reproducción de bugs visuales del teléfono: medir la captura antes de opinar, emular con WebKit y offsets fraccionarios, causas conocidas de iOS Safari y tests que fijan la propiedad del fix.",
+  "test_cases": [
+    {
+      "id": "measure-capture-then-emulate",
+      "description": "Ante una captura del iPhone con un thumb descentrado, mide los bordes en píxeles con la escala del dispositivo y reproduce con Playwright WebKit y offsets fraccionarios antes de proponer un fix.",
+      "input": "Usando device-visual-bug-repro: te paso una captura de mi iPhone donde el círculo del switch activo de Ajustes se ve un poquito más arriba que el centro del riel; apagado se ve bien. En Chrome de escritorio no lo veo. ¿Cómo lo encarás? No ejecutes ni edites nada: describí qué harías, con los comandos o el código concretos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "PIL|Pillow|escane|scan",
+          "description": "Mide la captura escaneando píxeles"
+        },
+        {
+          "type": "regex",
+          "pattern": "[Ww]eb[Kk]it",
+          "description": "Reproduce con Playwright WebKit"
+        },
+        {
+          "type": "regex",
+          "pattern": "fraccion|fractional|medio p[ií]xel|half.pixel|0[.]5",
+          "description": "Fuerza offsets fraccionarios del contenedor"
+        },
+        {
+          "type": "regex",
+          "pattern": "will-change",
+          "description": "Considera la causa conocida will-change con transform"
+        }
+      ]
+    },
+    {
+      "id": "date-input-overflow-known-cause",
+      "description": "Un input de fecha que desborda en iOS Safari es una causa conocida: appearance none acotado a esos tipos y un test en Chromium que mida el invariante y la propiedad del fix.",
+      "input": "Usando device-visual-bug-repro: en el iPhone, el campo de fecha de nacimiento del formulario de registro se sale de la columna hacia la derecha, aunque tiene width: 100%. No tengo WebKit instalado para emular. No ejecutes ni edites nada: describí qué harías, con los comandos o el código concretos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "appearance: ?none",
+          "description": "Aplica appearance none"
+        },
+        {
+          "type": "regex",
+          "pattern": "getComputedStyle",
+          "description": "El test verifica la propiedad del fix con getComputedStyle"
+        },
+        {
+          "type": "regex",
+          "pattern": "getBoundingClientRect",
+          "description": "El test mide el invariante de ancho"
+        }
+      ]
+    }
+  ]
+}

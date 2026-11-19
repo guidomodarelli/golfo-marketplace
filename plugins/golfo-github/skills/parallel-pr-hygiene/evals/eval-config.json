@@ -1,0 +1,91 @@
+{
+  "schema_version": 2,
+  "skill": "parallel-pr-hygiene",
+  "description": "Evalúa la higiene de PRs en paralelo: versiones que chocan entre ramas, conflictos de rebase solo de versión, limpieza de worktrees de PRs mergeados y el cierre en una máquina de trabajo con ~/.work.",
+  "test_cases": [
+    {
+      "id": "version-only-rebase-conflict",
+      "description": "Un rebase choca solo en el campo version de un manifest: lee la versión de origin/main antes de subirla, se queda con la más alta por encima de main y corre el check de versión después de commitear.",
+      "input": "Usando parallel-pr-hygiene: estoy rebaseando mi rama sobre origin/main y el único conflicto es el campo \"version\" de plugins/golfo-web/.claude-plugin/plugin.json: mi rama tiene 0.130.0 y main ya tiene 0.130.0 porque otra sesión mergeó antes. ¿Cómo lo resuelvo? No ejecutes ni edites nada: describí qué harías, con los comandos o el código concretos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "git show origin/main:",
+          "description": "Lee la versión de origin/main con git show antes de subirla"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "0[.]130[.]1",
+            "0[.]131[.]0",
+            "por encima",
+            "above main",
+            "más alta",
+            "higher"
+          ],
+          "description": "Sube a una versión por encima de la de main"
+        },
+        {
+          "type": "regex",
+          "pattern": "(después|despues|after|luego).{0,80}commit|commit.{0,80}(después|despues|after|luego).{0,40}(check|chequeo)",
+          "description": "Corre el check de versión después de commitear"
+        }
+      ]
+    },
+    {
+      "id": "merged-pr-worktree-cleanup",
+      "description": "Tras mergear con gh pr merge --delete-branch desde el worktree, la rama local sigue viva: confirma git status limpio y borra con git worktree remove + git branch -D, o lo estaciona detached.",
+      "input": "Usando parallel-pr-hygiene: mergeé mi PR corriendo gh pr merge 42 --merge --delete-branch desde su worktree ../repo-worktrees/fix-login. La rama remota se borró, pero `git branch` todavía muestra feature/fix-login y no puedo pasar el checkout principal a main. Ya no voy a usar ese worktree. No ejecutes ni edites nada: describí qué harías, con los comandos o el código concretos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "git worktree remove",
+          "description": "Borra el worktree con git worktree remove"
+        },
+        {
+          "type": "regex",
+          "pattern": "branch -D",
+          "description": "Borra la rama local con git branch -D"
+        },
+        {
+          "type": "regex",
+          "pattern": "git( -C [^ ]+)? status",
+          "description": "Confirma antes que el worktree está limpio"
+        }
+      ]
+    },
+    {
+      "id": "work-machine-does-not-publish",
+      "description": "En una máquina con ~/.work no commitea, no pushea ni abre PR por iniciativa propia: deja los cambios sin commitear y los lista.",
+      "input": "Usando parallel-pr-hygiene: terminé el cambio que me pediste en el repo payments-api (dos archivos editados). En esta máquina existe el archivo ~/.work. ¿Cómo cerrás el pedido? No ejecutes ni edites nada: describí qué harías, con los comandos o el código concretos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": [
+            "sin commitear",
+            "no commite",
+            "no voy a commitear",
+            "no hago commit",
+            "uncommitted",
+            "no commit"
+          ],
+          "description": "Deja los cambios sin commitear"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "salvo que",
+            "a menos que",
+            "unless",
+            "si lo ped",
+            "si me lo ped",
+            "si me ped",
+            "explícitamente",
+            "explicit"
+          ],
+          "description": "Publica solo si el usuario lo pide explícitamente"
+        }
+      ]
+    }
+  ]
+}
