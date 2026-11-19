@@ -8,7 +8,7 @@
     "should_trigger": true
   },
   {
-    "query": "ACME-6002 ya está en Done, actualizá la tabla de tareas de la story ACME-6000 así se ve el progreso",
+    "query": "en la subtarea de jira ACME-6002 ya terminé el paso de configurar credenciales, actualizá su tabla de pasos así se ve el progreso",
     "should_trigger": true
   },
   {
@@ -20,7 +20,7 @@
     "should_trigger": true
   },
   {
-    "query": "sincronizá el seguimiento de la épica ACME-800: dos stories cambiaron de estado y una está bloqueada",
+    "query": "colgá de la épica ACME-800 dos stories nuevas de jira para el onboarding, sin tocar lo que ya escribió el otro equipo en la épica",
     "should_trigger": true
   },
   {
@@ -28,7 +28,7 @@
     "should_trigger": true
   },
   {
-    "query": "agregá a la story ACME-1234 las subtareas 'PR creado' y 'PR testeado' y que aparezcan en la tabla de seguimiento",
+    "query": "agregá a la story ACME-1234 las subtareas 'PR creado' y 'PR testeado', y a la subtarea de migración una tabla con sus pasos y estados",
     "should_trigger": true
   },
   {

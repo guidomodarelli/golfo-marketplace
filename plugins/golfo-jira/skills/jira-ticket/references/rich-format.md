@@ -32,7 +32,7 @@ Jira guarda las descripciones en ADF (Atlassian Document Format). Paneles, lozen
 
 - Leer en el mismo formato en que se escribe: en modo enriquecido, pedir la descripción en ADF (el parámetro de formato de respuesta de `getJiraIssue`, si existe) y pasar ese documento tal cual al helper. Leer en Markdown y reescribir ese texto borra paneles, lozenges y expands que ya estaban.
 - Si Jira rechaza el documento ADF por un nodo, quitar ese elemento según la columna `Respaldo` de la tabla siguiente y reintentar una sola vez. Si vuelve a fallar, pasar a modo Markdown para esa ejecución e informarlo.
-- En modo Markdown, releer después de escribir: si la tabla de seguimiento quedó aplanada como texto, convertirla a lista anidada con `tracking --list` (ver `ticket-templates.md`). Una tabla aplanada ya no tiene filas que leer, así que la lista se arma desde `children`: pasar todos los hijos releídos, con su `pr` y su `note`.
+- En modo Markdown, releer después de escribir: si la tabla de pasos de una subtarea quedó aplanada como texto, reescribir la sección como lista anidada con `tracking --list` (ver `ticket-templates.md`), pasando todos sus pasos con su `state` y su `note`.
 - Informar el modo usado en la respuesta final solo cuando fue el de respaldo, con el motivo en una línea.
 
 ## Un elemento por papel
@@ -41,24 +41,25 @@ Cada elemento tiene un único uso. Mezclarlos o usarlos de adorno le quita valor
 
 | Papel | Elemento | Respaldo en modo Markdown |
 |---|---|---|
-| Seguimiento de hijos (stories, subtareas) | Tabla con emoji y lozenge de estado | Tabla GFM; si no renderiza, lista anidada con emoji |
-| Estado de un hijo | Emoji por categoría más lozenge con el nombre real del estado: ⬜ `neutral`, 🔄 `blue`, ✅ `green`, 🚫 `red` | Emoji y nombre del estado como texto |
+| Pasos de una subtarea (solo en la subtarea; épicas y Stories no llevan tabla de estados) | Tabla `## Pasos` con emoji y lozenge de estado, y la leyenda `Progreso` | Tabla GFM; si no renderiza, lista anidada con emoji |
+| Estado de un paso | Emoji más lozenge con el nombre del estado: ⬜ Pendiente `neutral`, 🔄 En curso `blue`, ✅ Hecho `green`, 🚫 Bloqueado `red` | Emoji y nombre del estado como texto |
 | El ticket está frenado | Panel `ERROR` arriba de todo, en su sección `## Bloqueo` | Cita `> 🚫 **Bloqueado**` |
 | Algo que el lector debe saber antes de actuar (dependencia, ventana de despliegue, riesgo) | Panel `WARNING` dentro de la sección que afecta | Cita `> ⚠️ **<título>**` |
 | Contexto útil que no cambia la acción | Panel `INFO` | Cita `> ℹ️ **<título>**` |
 | Decisión tomada y su motivo | Decisión (`[!DECISION]`) | Cita `> 🧭 **Decisiones**` con una viñeta por decisión |
-| Detalle largo o técnico (áreas de código, cobertura, pasos) | Expand con título que diga qué hay adentro | Título en negrita y el contenido debajo |
+| Detalle largo o técnico (áreas de código, cobertura) | Expand con título que diga qué hay adentro, sin links | Título en negrita y el contenido debajo |
 | Cita textual del pedido o de una persona | Cita | Cita |
 | Fecha comprometida dentro del texto | Fecha (`{date:}`) | Fecha `YYYY-MM-DD` como texto |
 | Lo que entra y lo que no | Lista con ✅ y ❌ al inicio de cada línea | Igual |
-| Separar el relato del seguimiento | Divisor; lo agrega `tracking --create`, no se escribe a mano | Sin divisor |
+| Separar el relato de los pasos | Divisor; lo agrega `tracking --create`, no se escribe a mano | Sin divisor |
 
 Reglas de uso:
 
 - **Emoji primero.** En cualquier lista o celda que exprese un estado o un sí/no, el emoji va al inicio: ✅ hecho o incluido, ❌ no o fuera de alcance, ⬜ pendiente, 🔄 en curso, 🚫 bloqueado, ⚠️ atención, ➖ no aplica. El emoji es texto y se ve igual en web, mobile y notificaciones; el lozenge suma color donde se renderiza.
 - **Tabla o lista anidada.** Para seguir varios ítems con tres o más datos cada uno, tabla. Si la tabla no es posible, lista anidada: una línea con emoji y nombre del ítem, y un sub-item `Campo: valor` por dato. No comprimir varios datos en una sola línea separada por símbolos.
 - **Como máximo dos paneles por ticket.** Si todo está resaltado, nada lo está. Un panel lleva 1–3 líneas.
-- **El expand no esconde lo necesario.** Problema, solución, criterios y seguimiento quedan a la vista; se pliega lo que solo consulta quien implementa o revisa.
+- **El expand no esconde lo necesario.** Problema, solución, criterios y pasos quedan a la vista; se pliega lo que solo consulta quien implementa o revisa.
+- **Links fuera del expand.** Jira no vuelve clickeable un link dentro de un expand: ningún link (PR, issue, doc, URL suelta) va dentro de `<details>`. Si el detalle necesita un link, el link va fuera del bloque, en el párrafo de la sección, y el expand nombra el recurso como texto (`acme/api#88`, `ACME-30`). `jira-ticket.py adf` rechaza un expand con links y nombra el expand y el link.
 - **Las fechas de los campos no se repiten.** Fecha de inicio, Due date y sprint viven en sus campos; `{date:}` es para fechas que solo existen en el texto (hasta cuándo dura un bloqueo, un hito intermedio).
 - **Solo con evidencia.** Un panel de bloqueo, una decisión o una fecha se escriben cuando el pedido, el diff o Jira los aportan. No se inventan para completar el template.
 
@@ -67,8 +68,8 @@ Reglas de uso:
 | Elemento | Motivo |
 |---|---|
 | Lista de tareas con casillas (`- [ ]`, action items) | El trabajo son issues hijos reales; una casilla no tiene estado, responsable ni historial |
-| Mención (`@persona`) | Notifica a la persona; el responsable va como nombre visible en la tabla |
-| Smart link con estado en vivo | La tabla ya trae el estado releído de Jira; en notificaciones y exports queda como URL |
+| Mención (`@persona`) | Notifica a la persona; el responsable vive en el campo del issue |
+| Smart link con estado en vivo | El panel de hijos de Jira ya muestra el estado; en notificaciones y exports queda como URL |
 | Mermaid | Jira Cloud no lo renderiza sin una app del Marketplace |
 | Bloques sincronizados, listas de Confluence, layouts en columnas | Son de Confluence o dependen de contenido que vive fuera del ticket |
 | Colores de texto o de fondo de celda | El color con significado lo dan el lozenge y el panel |
@@ -79,7 +80,7 @@ Nunca se recompila la descripción entera: eso pierde nodos que escribió una pe
 
 | Cambio | Comando |
 |---|---|
-| Seguimiento de hijos | `jira-ticket.py tracking --level story\|epic [--create]`, con `{"description": <releída>, "children": [...]}` por stdin |
+| Pasos de una subtarea | `jira-ticket.py tracking [--create] [--list]`, con `{"description": <releída>, "steps": [...]}` por stdin |
 | Reescribir, crear o quitar una sección | `jira-ticket.py section --heading "<texto del heading>" [--before "<heading>"]`, con `{"description": <releída>, "markdown": "<contenido en Markdown enriquecido, sin el heading>"}` por stdin; `markdown` vacío quita la sección |
 
 - `description` es el documento ADF en modo enriquecido o el texto en modo Markdown; el helper devuelve el mismo tipo en `description` y `changed: false` cuando no hay nada que escribir.

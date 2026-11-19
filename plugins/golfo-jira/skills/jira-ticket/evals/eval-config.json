@@ -138,9 +138,13 @@
           "description": "Pregunta por el Due date de las subtareas nuevas antes de crearlas."
         },
         {
-          "type": "regex",
-          "pattern": "tracking|^## Tareas",
-          "description": "Mantiene el seguimiento de los hijos en la sección de tareas (helper `tracking`)."
+          "type": "not_contains_any",
+          "values": [
+            "^## Tareas",
+            "^## Stories",
+            "^\\*\\*Progreso"
+          ],
+          "description": "No agrega tabla de hijos ni línea de progreso al padre: el panel de hijos de Jira ya los muestra."
         }
       ]
     },
@@ -232,9 +236,13 @@
           "description": "Pregunta por el Due date del padre y las subtareas antes de crear."
         },
         {
-          "type": "regex",
-          "pattern": "tracking|^## Tareas",
-          "description": "La Story lleva la sección de seguimiento de sus subtareas."
+          "type": "not_contains_any",
+          "values": [
+            "^## Tareas",
+            "^## Stories",
+            "^\\*\\*Progreso"
+          ],
+          "description": "No agrega tabla de hijos ni línea de progreso al padre: el panel de hijos de Jira ya los muestra."
         }
       ]
     },
@@ -369,9 +377,12 @@
           "description": "No elige arbitrariamente ACME-610 como padre."
         },
         {
-          "type": "regex",
-          "pattern": "tracking.{0,120}epic|^## Stories",
-          "description": "La épica recibe la fila de seguimiento de la Story nueva, sin otro cambio."
+          "type": "not_contains_any",
+          "values": [
+            "^## Stories",
+            "^\\*\\*Progreso"
+          ],
+          "description": "La épica no recibe tabla de Stories: colgar la Story no toca su descripción."
         }
       ]
     },
@@ -564,8 +575,8 @@
       ]
     },
     {
-      "id": "epic-new-tracking",
-      "description": "Épica nueva con dos Stories: la épica usa el template corto (objetivo, alcance, tabla de stories con progreso), no lleva sprint ni Mermaid aunque el usuario pida un diagrama.",
+      "id": "epic-new-without-children-table",
+      "description": "Épica nueva con dos Stories y pedido de ver el avance en la descripción: la épica usa el template corto (objetivo y alcance) sin tabla de Stories ni progreso, explica que el panel de hijos de Jira ya muestra el avance y no usa Mermaid aunque el usuario pida un diagrama.",
       "input": "Configuración resuelta por `jira-ticket.py config`: SITE_URL https://acme.atlassian.net, PROJECT_KEY ACME, BOARD_ID 101, ASSIGNEE_ACCOUNT_ID configurado, STORY_TYPE Story, SUBTASK_TYPE Sub-task, QUARTER_FIELD customfield_20002, START_DATE_FIELD customfield_20003, SPRINT_FIELD customfield_20001. Creá una épica nueva en ACME 'Onboarding de proveedores' con dos stories: 'Alta de proveedores' y 'Guía de registro'. Empieza el 2026-11-13, sin Due date en ningún ticket, sin subtareas. Quiero ver el avance de un vistazo en la descripción de la épica; si suma, agregá un diagrama del avance. No hay repo ni PR. Metadata ACME válida: Epic 10000, Story 10100, quarter Q4/26 ID 9019; sprint resuelto 501 '2026.Q4.R2.S3'. Búsqueda previa sin candidatos. No publiques nada: devolvé el orden de operaciones, los payloads conceptuales y la descripción final de la épica suponiendo que las stories se crean como ACME-801 y ACME-802.",
       "assertions": [
         {
@@ -579,14 +590,18 @@
           "description": "La descripción de la épica usa la sección Objetivo del template."
         },
         {
-          "type": "regex",
-          "pattern": "Progreso.{0,40}0/2",
-          "description": "Muestra el contador de progreso 0/2 de las stories."
+          "type": "not_contains_any",
+          "values": [
+            "^## Stories",
+            "^\\*\\*Progreso",
+            "^| *\\[*ACME-80[12]"
+          ],
+          "description": "La épica no lleva tabla de Stories ni línea de progreso."
         },
         {
           "type": "regex",
-          "pattern": "\\|[[:space:]]*\\[?ACME-80[12]",
-          "description": "Lista las stories en una tabla con sus keys reales."
+          "pattern": "panel (de )?(hijos|stories|issues hijos|child)|child issues|issues hijos",
+          "description": "Explica que el avance se lee en el panel de hijos de Jira."
         },
         {
           "type": "not_contains_any",
@@ -636,7 +651,7 @@
     },
     {
       "id": "add-story-to-existing-epic",
-      "description": "Story nueva bajo una épica de quarter existente sin sección de seguimiento: agrega `## Stories` al final con todos los hijos reales, une la Story recién creada (que la búsqueda JQL no devuelve) leída por key y no toca el contenido ajeno.",
+      "description": "Story nueva bajo una épica existente que mantiene otro equipo: la Story cuelga vía parent y la descripción de la épica queda idéntica, sin agregar `## Stories` ni progreso y sin reestructurarla.",
       "input": "Configuración resuelta por `jira-ticket.py config`: SITE_URL https://acme.atlassian.net, PROJECT_KEY ACME, BOARD_ID 101, ASSIGNEE_ACCOUNT_ID configurado, STORY_TYPE Story, SUBTASK_TYPE Sub-task, QUARTER_FIELD customfield_20002, START_DATE_FIELD customfield_20003, SPRINT_FIELD customfield_20001. Creá una Story en ACME 'Recordatorio de suscripción vencida' bajo la épica existente ACME-500 (Epic, ACME, In Progress, del quarter, la mantiene otro equipo). Empieza el 2026-11-13, sin Due date, sin subtareas. No hay repo ni PR. Metadata ACME válida: Story 10100, quarter Q4/26 ID 9019; sprint resuelto 501. La descripción actual de ACME-500 es:\n\n## Contexto Q4\nPrioridades acordadas con Operaciones el 2026-10-01. No mover sin hablar con Marta.\n\n## Riesgos\n- Dependemos del proveedor de pagos.\n\nSuponé que la Story se crea como ACME-512 y que getJiraIssue ACME-512 la devuelve en To Do sin responsable. Justo después, `parent = ACME-500` devuelve solo ACME-501 'Alta de proveedores' (Done, Ana Pérez) y ACME-503 'Guía de registro' (In Progress, Luis Gómez). No publiques nada: devolvé el orden de operaciones, los payloads conceptuales y la descripción final completa de ACME-500.",
       "assertions": [
         {
@@ -645,24 +660,17 @@
           "description": "La Story cuelga de ACME-500 vía parent."
         },
         {
-          "type": "regex",
-          "pattern": "^## Stories",
-          "description": "Agrega a la épica la sección de seguimiento que no tenía."
+          "type": "not_contains_any",
+          "values": [
+            "^## Stories",
+            "^\\*\\*Progreso"
+          ],
+          "description": "No agrega a la épica tabla de Stories ni línea de progreso."
         },
         {
-          "type": "regex",
-          "pattern": "\\|[[:space:]]*\\[?ACME-501.{0,200}Done",
-          "description": "La tabla incluye los hijos que ya tenía la épica, no solo la Story nueva."
-        },
-        {
-          "type": "regex",
-          "pattern": "\\|[[:space:]]*\\[?ACME-512.{0,200}To Do",
-          "description": "La tabla incluye la Story recién creada aunque la búsqueda JQL no la devolvió."
-        },
-        {
-          "type": "regex",
-          "pattern": "Progreso.{0,40}1/3",
-          "description": "El progreso cuenta los tres hijos reales (1/3)."
+          "type": "contains",
+          "value": "No mover sin hablar con Marta",
+          "description": "Conserva el contenido ajeno de la épica."
         },
         {
           "type": "not_contains_any",
@@ -674,31 +682,46 @@
       ]
     },
     {
-      "id": "update-child-status-row",
-      "description": "Sincronizar el seguimiento cuando una subtarea termina y otra queda bloqueada: cambia solo esas celdas, anota el bloqueo, cuenta el bloqueado aparte y no transiciona la Story.",
-      "input": "Configuración resuelta por `jira-ticket.py config`: SITE_URL https://acme.atlassian.net, PROJECT_KEY ACME, BOARD_ID 101, ASSIGNEE_ACCOUNT_ID configurado, STORY_TYPE Story, SUBTASK_TYPE Sub-task, QUARTER_FIELD customfield_20002, START_DATE_FIELD customfield_20003, SPRINT_FIELD customfield_20001. Sincronizá el seguimiento de la Story ACME-6000 (In Progress, sin PR asociados, sin épica). Al releer en Jira: ACME-6001 sigue Done; ACME-6002 pasó a Done; ACME-6003 sigue To Do pero ahora tiene un link 'is blocked by' a ACME-7000, que está abierto. La descripción actual de ACME-6000 es:\n\n## Problema\nLos emails de bienvenida salen sin logo.\n\n## Solución\nMigrar los templates al nuevo servicio de emails.\n\n## Criterios de aceptación\n- El email de bienvenida muestra el logo.\n\n## Tareas\n| Key | Tarea | Estado | Responsable | Nota |\n|---|---|---|---|---|\n| [ACME-6001](https://acme.atlassian.net/browse/ACME-6001) | Migrar templates | Done | Ana Pérez | — |\n| [ACME-6002](https://acme.atlassian.net/browse/ACME-6002) | Probar envío | In Progress | Ana Pérez | — |\n| [ACME-6003](https://acme.atlassian.net/browse/ACME-6003) | Validar con producto | To Do | — | — |\n\nNo publiques nada: devolvé las operaciones y la descripción final.",
+      "id": "update-subtask-steps",
+      "description": "Actualizar la tabla de pasos de una subtarea cuando un paso termina y otro queda bloqueado: cambia solo esas celdas, anota el bloqueo en Nota, recalcula la leyenda de Progreso con cada conteo nombrado y no transiciona la subtarea ni la Story.",
+      "input": "Configuración resuelta por `jira-ticket.py config`: SITE_URL https://acme.atlassian.net, PROJECT_KEY ACME, BOARD_ID 101, ASSIGNEE_ACCOUNT_ID configurado, STORY_TYPE Story, SUBTASK_TYPE Sub-task, QUARTER_FIELD customfield_20002, START_DATE_FIELD customfield_20003, SPRINT_FIELD customfield_20001. La subtarea ACME-6002 'Probar envío de templates' (In Progress) de la Story ACME-6000 tiene esta descripción:\n\n## Qué hacer\n- Probar el envío de los templates migrados.\n\n## Cómo se valida\n- Llegan los emails de bienvenida y de recuperación con logo.\n\n## Pasos\n**Progreso:** 1/3 · ✅ 1 hecho · 🔄 1 en curso · ⬜ 1 pendiente\n\n| Paso | Estado | Nota |\n|---|---|---|\n| Configurar credenciales de staging | ✅ Hecho | — |\n| Enviar email de bienvenida | 🔄 En curso | — |\n| Enviar email de recuperación | ⬜ Pendiente | — |\n\nNovedades: el usuario confirma que el email de bienvenida llegó con logo; el de recuperación no se puede probar porque depende de ACME-7000, que sigue abierto. Actualizá los pasos. No publiques nada: devolvé las operaciones y la descripción final de ACME-6002.",
       "assertions": [
         {
           "type": "regex",
-          "pattern": "\\|[[:space:]]*\\[?ACME-6002.{0,200}Done",
-          "description": "La fila de ACME-6002 muestra Done."
+          "pattern": "Enviar email de bienvenida[[:space:]]*\\|[^|]*Hecho",
+          "description": "El paso de bienvenida queda Hecho."
         },
         {
           "type": "regex",
-          "pattern": "To Do[[:space:]]*\\|[^|]*\\|[^|]*ACME-7000[^|]*\\|[[:space:]]*$",
-          "description": "La fila pendiente de ACME-6003 anota el bloqueo por ACME-7000 en su última celda (Nota); no cruza el emoji 🚫, que el grep de MSYS no matchea con `.` en UTF-8."
+          "pattern": "Bloqueado[[:space:]]*\\|[^|]*ACME-7000",
+          "description": "El paso de recuperación queda Bloqueado con ACME-7000 en Nota; el patrón no cruza el emoji 🚫."
         },
         {
           "type": "regex",
-          "pattern": "Progreso.{0,60}2/3.{0,60}0 .{0,40}0 .{0,40}1 ",
-          "description": "Agrega la línea de progreso con el bloqueado contado aparte (2/3, 0, 0, 1)."
+          "pattern": "Progreso.{0,10}2/3",
+          "description": "La leyenda cuenta 2 de 3 pasos hechos."
+        },
+        {
+          "type": "regex",
+          "pattern": "2 hechos",
+          "description": "La leyenda nombra el conteo de hechos."
+        },
+        {
+          "type": "regex",
+          "pattern": "0 pendientes",
+          "description": "La leyenda nombra el conteo de pendientes, también en 0."
+        },
+        {
+          "type": "regex",
+          "pattern": "1 bloqueado",
+          "description": "La leyenda cuenta el bloqueado aparte y con su nombre."
         },
         {
           "type": "not_contains_any",
           "values": [
-            "transitionJiraIssue(.*ACME-6000"
+            "transitionJiraIssue(.*ACME-600[02]"
           ],
-          "description": "No transiciona la Story: el estado de un hijo no decide el del padre."
+          "description": "No transiciona la subtarea ni la Story: el estado de los pasos no decide el de los issues."
         }
       ]
     },
@@ -744,8 +767,8 @@
     },
     {
       "id": "markdown-fallback-nested-list",
-      "description": "Modo Markdown de respaldo: la herramienta no admite ADF y la tabla quedó aplanada al releer, así que el seguimiento pasa a lista anidada con emoji y un sub-item por dato.",
-      "input": "Configuración resuelta por `jira-ticket.py config`: SITE_URL https://acme.atlassian.net, PROJECT_KEY ACME, BOARD_ID 101, ASSIGNEE_ACCOUNT_ID configurado, STORY_TYPE Story, SUBTASK_TYPE Sub-task, QUARTER_FIELD customfield_20002, START_DATE_FIELD customfield_20003, SPRINT_FIELD customfield_20001. En este entorno el schema de createJiraIssue y editJiraIssue solo admite `contentFormat: \"markdown\"`. Acabás de escribir la sección de seguimiento de la Story ACME-6000 (In Progress, sin PR asociados, sin épica) y al releerla por key la tabla volvió aplanada como una sola línea de texto con barras verticales, sin filas. Hijos releídos en Jira: ACME-6001 'Migrar templates' Done, Ana Pérez; ACME-6002 'Probar envío' In Progress, Ana Pérez; ACME-6003 'Validar con producto' To Do, sin responsable, bloqueada por ACME-7000 que está abierto. No publiques nada ni ejecutes comandos: devolvé qué hacés, el comando del helper y la sección `## Tareas` final completa.",
+      "description": "Modo Markdown de respaldo: la herramienta no admite ADF y la tabla de pasos de una subtarea quedó aplanada al releer, así que los pasos pasan a lista anidada con emoji, un sub-item Estado y Nota, y la leyenda de Progreso con cada conteo nombrado.",
+      "input": "Configuración resuelta por `jira-ticket.py config`: SITE_URL https://acme.atlassian.net, PROJECT_KEY ACME, BOARD_ID 101, ASSIGNEE_ACCOUNT_ID configurado, STORY_TYPE Story, SUBTASK_TYPE Sub-task, QUARTER_FIELD customfield_20002, START_DATE_FIELD customfield_20003, SPRINT_FIELD customfield_20001. En este entorno el schema de createJiraIssue y editJiraIssue solo admite `contentFormat: \"markdown\"`. Acabás de escribir la sección `## Pasos` de la subtarea ACME-6002 'Probar envío de templates' (de la Story ACME-6000) y al releerla por key la tabla volvió aplanada como una sola línea de texto con barras verticales, sin filas. Pasos y estado decidido con evidencia: 'Configurar credenciales de staging' hecho; 'Enviar email de bienvenida' en curso; 'Enviar email de recuperación' bloqueado por ACME-7000, que está abierto. No publiques nada ni ejecutes comandos: devolvé qué hacés, el comando del helper y la sección `## Pasos` final completa.",
       "assertions": [
         {
           "type": "regex",
@@ -754,18 +777,28 @@
         },
         {
           "type": "regex",
-          "pattern": "^  - Estado: In Progress",
-          "description": "Cada hijo lleva su estado en un sub-item propio (lista anidada), no todo en una línea."
+          "pattern": "^  - Estado: En curso",
+          "description": "Cada paso lleva su estado en un sub-item propio (lista anidada)."
         },
         {
           "type": "regex",
           "pattern": "^  - Nota: .{0,80}ACME-7000",
-          "description": "El bloqueo queda en un sub-item Nota del hijo bloqueado."
+          "description": "El bloqueo queda en un sub-item Nota del paso bloqueado."
         },
         {
           "type": "regex",
-          "pattern": "Progreso.{0,60}1/3.{0,60}1 .{0,40}0 .{0,40}1 ",
-          "description": "El progreso cuenta el bloqueado aparte (1/3, 1, 0, 1)."
+          "pattern": "Progreso.{0,10}1/3",
+          "description": "La leyenda cuenta 1 de 3 pasos hechos."
+        },
+        {
+          "type": "regex",
+          "pattern": "1 en curso",
+          "description": "La leyenda nombra el conteo en curso."
+        },
+        {
+          "type": "regex",
+          "pattern": "1 bloqueado",
+          "description": "La leyenda cuenta el bloqueado aparte y con su nombre."
         },
         {
           "type": "not_contains_any",
@@ -997,6 +1030,81 @@
             "^ *mem_save("
           ],
           "description": "No duplica la memoria con una entrada nueva."
+        }
+      ]
+    },
+    {
+      "id": "subtask-steps-table-create",
+      "description": "Subtarea nueva con tareas más chicas: lleva la tabla `## Pasos` con estado por evidencia y leyenda de Progreso, creada con `tracking --create`; la Story no recibe tabla de subtareas y no se crean subtareas de la subtarea.",
+      "input": "Configuración resuelta por `jira-ticket.py config`: SITE_URL https://acme.atlassian.net, PROJECT_KEY ACME, BOARD_ID 101, ASSIGNEE_ACCOUNT_ID configurado, STORY_TYPE Story, SUBTASK_TYPE Sub-task, QUARTER_FIELD customfield_20002, START_DATE_FIELD customfield_20003, SPRINT_FIELD customfield_20001. En la Story existente ACME-6000 (In Progress, sin PR, sin tabla en su descripción) creá la subtarea 'Migrar templates de bienvenida', con estas tareas más chicas: 'Copiar templates', 'Ajustar variables' y 'Probar en staging'. 'Copiar templates' ya lo hice yo; de los otros dos no hay evidencia. Sin Due date. Quarter y fecha de inicio heredados ya válidos. Metadata Sub-task válida. Suponé que la subtarea se crea como ACME-6001. No publiques nada: devolvé el orden de operaciones, los payloads conceptuales y la descripción final de ACME-6001.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "^## Pasos",
+          "description": "La subtarea lleva la sección de pasos."
+        },
+        {
+          "type": "regex",
+          "pattern": "Copiar templates[[:space:]]*\\|[^|]*Hecho",
+          "description": "El paso con evidencia queda Hecho."
+        },
+        {
+          "type": "regex",
+          "pattern": "Probar en staging[[:space:]]*\\|[^|]*Pendiente",
+          "description": "El paso sin evidencia queda Pendiente."
+        },
+        {
+          "type": "regex",
+          "pattern": "Progreso.{0,10}1/3",
+          "description": "La leyenda cuenta 1 de 3 pasos hechos."
+        },
+        {
+          "type": "regex",
+          "pattern": "2 pendientes",
+          "description": "La leyenda nombra el conteo de pendientes en plural."
+        },
+        {
+          "type": "regex",
+          "pattern": "tracking.{0,80}--create",
+          "description": "Agrega los pasos con `tracking --create` sobre la descripción releída."
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "parent\"\\{0,1\\} *: *\"ACME-6001",
+            "parent\"\\{0,1\\} *: *{ *\"\\{0,1\\}key\"\\{0,1\\} *: *\"ACME-6001"
+          ],
+          "description": "No crea subtareas de la subtarea: los pasos viven en su tabla."
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "^## Tareas",
+            "^## Stories"
+          ],
+          "description": "No agrega a la Story una tabla de subtareas."
+        }
+      ]
+    },
+    {
+      "id": "expand-links-outside",
+      "description": "Pedido de poner links dentro del expand de detalle técnico: la skill explica que Jira no los vuelve clickeables dentro de un expand y deja los links fuera del bloque, nombrando el recurso como texto adentro.",
+      "input": "Configuración resuelta por `jira-ticket.py config`: SITE_URL https://acme.atlassian.net, PROJECT_KEY ACME, BOARD_ID 101, ASSIGNEE_ACCOUNT_ID configurado, STORY_TYPE Story, SUBTASK_TYPE Sub-task, QUARTER_FIELD customfield_20002, START_DATE_FIELD customfield_20003, SPRINT_FIELD customfield_20001. Creá una Story en ACME desde los cambios del repo payments-api (repository_id payments-api): se migran los templates de email al servicio nuevo. El diff toca `src/mailer/templates/` y `src/mailer/client.ts`. PR asociado: https://github.com/acme/payments-api/pull/88 (OPEN). Doc de diseño: https://acme.atlassian.net/wiki/spaces/ENG/pages/123. Poné los links al PR y al doc de diseño dentro del desplegable de detalle técnico. Sin subtareas, sin épica, empezó el 2026-11-13, sin Due date. Metadata ACME válida: Story 10100, quarter Q4/26 ID 9019; sprint resuelto 501. Búsqueda previa sin candidatos. No publiques nada ni ejecutes comandos: devolvé el texto fuente completo de la descripción tal como se lo pasarías al helper.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "<details><summary>",
+          "description": "Mantiene el detalle técnico en un expand."
+        },
+        {
+          "type": "regex",
+          "pattern": "no [^.]{0,40}(clickeables?|cliqueables?)|no funcionan? |no se pueden? (abrir|clickear|cliquear)",
+          "description": "Explica que Jira no vuelve clickeables los links dentro de un expand."
+        },
+        {
+          "type": "regex",
+          "pattern": "fuera del (expand|bloque|desplegable|<details>)",
+          "description": "Deja los links fuera del expand."
         }
       ]
     }
