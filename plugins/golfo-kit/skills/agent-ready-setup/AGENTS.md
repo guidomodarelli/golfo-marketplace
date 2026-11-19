@@ -16,7 +16,7 @@ Esta skill es el motor: no tiene rules, skills de stack, agents, commands, catá
 2. **En cada PR que cambia la skill:** correr con `--baseline --repeat 3` los casos nuevos o modificados y los del área que toca el cambio, con `--config` y una copia de solo esos casos.
    - Un caso nuevo pasa 3/3 con la skill y falla sin ella.
    - Si pasa sin la skill porque el modelo ya lo hace bien por defecto, se marca `"control": "<motivo>"`.
-   - El resultado va en «Pruebas Manuales» del PR.
+   - El resultado va en «Notas para el Revisor» del PR.
 3. **Al cambiar el `description`:** correr `--triggers --repeat 3` y comparar `trigger_rate` y `false_trigger_rate` con la última corrida. El `description` no puede pasar de 1024 caracteres: para sumar un disparador hay que recortar otro.
 4. **La baseline completa** (`--baseline --repeat 3` de todos los casos, más `--triggers --repeat 3`) se corre en estos momentos, y el resultado se enlaza en la issue o en el PR:
    - al subir `tests/content-pack.ref` a una versión minor o major del pack;

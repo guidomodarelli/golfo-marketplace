@@ -1,10 +1,10 @@
 ---
 name: pr-description-template
-description: "Provides the standard PR title and concise description template (change type, manual validation, screenshots of UI changes uploaded from the running app, optional API changes, reviewer notes) plus a traceability-only mode that preserves existing PR content. MANDATORY: load it before running any `gh pr create` or `gh pr edit --body`/`--body-file`, in any repository, including PRs the agent opens on its own initiative as one step of a larger task (publishing or releasing a library, shipping a fix to another repo, a review or auto-fix loop) where nobody said 'PR'. Never write a PR body by hand. Also use for /feature-branch-pr, 'crear PR', 'abrir pull request', 'subir cambios y crear PR', or any request to fill or restructure a pull request body."
+description: "Provides the standard PR title and concise description template (change type, screenshots of UI changes uploaded from the running app, optional API changes, reviewer notes) plus a traceability-only mode that preserves existing PR content. MANDATORY: load it before running any `gh pr create` or `gh pr edit --body`/`--body-file`, in any repository, including PRs the agent opens on its own initiative as one step of a larger task (publishing or releasing a library, shipping a fix to another repo, a review or auto-fix loop) where nobody said 'PR'. Never write a PR body by hand. Also use for /feature-branch-pr, 'crear PR', 'abrir pull request', 'subir cambios y crear PR', or any request to fill or restructure a pull request body."
 allowed-tools: Bash(gh:*) Bash(git:*) Bash(bash:*) Bash(jq:*)
 license: MIT
 metadata:
-  version: "1.3.1"
+  version: "1.5.0"
   author: "Guido Modarelli"
   category: "git-workflow"
   tags: "pull-request, template, description, screenshots"
@@ -28,6 +28,7 @@ Run only the actions needed to compose, apply, or verify the title and body of t
 - Allowed writes: create the PR when the calling flow asks for it, edit only the title/body of the explicitly requested PR, and upload its screenshots to the `pr-assets` branch with [scripts/upload-pr-image.sh](scripts/upload-pr-image.sh).
 - In `traceability-only` mode, the only allowed write is the delegated body-only backlink; do not re-template the PR.
 - Skip any action that is not a direct requirement of the requested description.
+- Exception: before a new PR, run the [stack check](#stack-check-before-a-new-pr). It only reads the diff and may ask one question; it never creates branches or layers.
 - Exception: after a successful `gh pr create`, hand the new PR to [`codex-autofix-loop`](../codex-autofix-loop/SKILL.md) as described in its «Arranque automático al abrir un PR» section, without asking. That loop owns the later fixes and the merge; this skill does not run them.
 
 ## Direct application
@@ -52,39 +53,35 @@ Hard gate: before typing `gh pr create` or `gh pr edit ... --body`/`--body-file`
 
 Use for new PRs or when the user explicitly asks to fill or restructure the complete title/body. Apply the template below from the actual diff.
 
+### Stack check before a new PR
+
+Run only in `full composition` for a PR that does not exist yet, right before `gh pr create`. Splitting is cheap now and expensive once reviewers have started. Skip it for existing PRs, `traceability-only`, a PR whose base is already another feature branch (it is a layer of a stack), and when the user already chose one PR or a stack.
+
+Measure the PR range with the diff you already read to write the body:
+
+```bash
+git diff --shortstat -M "<base-ref>...<head-ref>"
+git diff --name-status -M "<base-ref>...<head-ref>"
+```
+
+Suggest a stack when at least one signal holds:
+
+- **Size**: reviewable changed lines (without lockfiles, generated catalogs or snapshots) are well above the layer size of [`stacked-pr`](../stacked-pr/SKILL.md) («Tamaño de una capa»), and the change has more than one responsibility.
+- **Refactor mixed with the feature**: renames, moves or mechanical edits of existing code, or a refactor of files the feature does not need, that [`refactor-placement.md`](../../references/refactor-placement.md) places in its own layer.
+
+If no signal holds, the check produced nothing to report: continue without mentioning it, its line counts, or that no split is needed, in the reply, the body or the final report. A "no hace falta dividirlo" line is noise for a PR that was never at risk. If one holds and the user can answer in this session, ask one question before creating the PR: open it as one PR, or split it with `stacked-pr` (name the signal and the proposed layers in one line). On "one PR", continue as usual. In flows where nobody can answer (auto-fix loops, review closeouts, background runs), do not ask: create the PR as usual and add the suggestion to **Notas para el Revisor**.
+
 ### Traceability-only patch
 
 Use when another skill updates an existing PR only to add or normalize traceability metadata.
 
 - Do not regenerate the template or edit the PR title.
-- Do not add or recompute the initial file-count metadata line.
-- Do not modify **Tipo de Cambio**, **Pruebas Manuales**, **Cambios en la API**, **Notas para el Revisor**, or unrelated ticket links.
+- Do not modify the change type of the `## 📝 Descripción (…)` heading (or a **Tipo de Cambio** section in older PRs), **Cambios en la API**, **Notas para el Revisor**, or unrelated ticket links.
 - A canonical Jira backlink may be inserted as the first content under `## 📝 Descripción`; this is not the removed top-level **Referencia** metadata block.
 - Conservar cuerpo existente y modificar únicamente enlace de trazabilidad solicitado. Releer cuerpo
   antes de escribir, preservar cambios concurrentes y evitar enlaces duplicados.
 - Read `title`, `body`, and `url`; edit only through `gh pr edit <url> --body-file <temp-file>` without `--title`.
 - Re-read the PR and verify title identity plus protected body content after the patch.
-
-### Initial file-count metadata
-
-Apply only during `full composition`, before writing the body. Count files from the actual PR comparison range (`base...head`), never from the whole repository, a line-count statistic, or unrelated working-tree changes.
-
-Run [scripts/count-reviewable-files.sh](scripts/count-reviewable-files.sh) from this skill directory. It counts reviewable product code only (JavaScript and TypeScript files a reviewer must read to judge behavior) and excludes dot directories and dotfiles, root `config/` and `settings/`, tests, mocks, fixtures, snapshots, e2e, stories, `.d.ts` declarations, and tooling configuration.
-
-- New PR: `bash <skill-dir>/scripts/count-reviewable-files.sh "<base-ref>...<head-ref>"`.
-- Existing PR: fetch the PR head into a named ref, which also works for PRs from forks and counts only pushed commits, then pass that range:
-
-  ```bash
-  git fetch origin "<baseRefName>" "+refs/pull/<number>/head:refs/remotes/origin/pr/<number>"
-  bash <skill-dir>/scripts/count-reviewable-files.sh "origin/<baseRefName>...origin/pr/<number>"
-  git update-ref -d "refs/remotes/origin/pr/<number>"
-  ```
-
-- A caller that already resolved the range may pipe its exact `git diff --name-only` output into the script instead of passing a range.
-- Do not diff against `FETCH_HEAD` (with two refspecs it points to the base, so the range is empty) and do not use `gh pr view --json files` (it returns at most 100 files).
-- If the range cannot be determined or the fetch fails, stop and report the concrete blocker instead of inventing or estimating a number.
-
-Place exactly one line, `<div align="right"><sup>📄 Archivos de código modificados: N</sup></div>`, as the first body content, followed by one blank line and `## 📝 Descripción`. Replace `N` with the script output; never leave placeholder text. Do not add this line in `traceability-only`.
 
 ## Agent compatibility
 
@@ -119,13 +116,13 @@ When the change affects the UI but no image could be captured from the real app,
 
 - Fill every section from the actual diff; never leave `*italic placeholders*`. Delete optional sections (**Capturas**, **Cambios en la API**, **Notas para el Revisor**) when they do not apply.
 - The template contains only content that is published. Do not add instructions, hints, or blockquotes for the author to the body.
-- Start the body with the file-count line, then one blank line and **Descripción**. The PR title already carries the change summary, so do not repeat it as a body heading.
-- Do not add a compact **Tipo** metadata block above **Descripción**. In **Tipo de Cambio**, mark exactly one primary category with `[x]` and leave every other category unmarked with `[ ]`.
+- Start the body with the **Descripción** heading and its change type. The PR title already carries the change summary, so do not repeat it as a body heading.
+- Write the change type in parentheses on the **Descripción** heading, `## 📝 Descripción (<emoji> <type>)`, with exactly one primary type from [Change types](#change-types), for example `## 📝 Descripción (✨ New Feature)`. Do not add a separate **Tipo de Cambio** section that lists every type, task-list checkboxes (`[x]`, `[ ]`, which GitHub counts as pending tasks of the PR) or a compact **Tipo** metadata block: the heading already says it in one line.
 - Include ordinary ticket or issue links naturally in **Descripción** or **Notas para el Revisor**; do not create a fixed metadata block.
 - When fully composing an existing PR, preserve every canonical `🎫 Jira: [...]` backlink already present. Extract backlinks before replacing the body and reinsert each once as first content under `## 📝 Descripción`; never drop established traceability.
 - New or legacy backlink normalization follows traceability-only mode; full composition preserves known canonical backlinks but does not invent Jira associations.
 - In **Cambios en la API**, keep only the operation groups that apply (**Agregados**, **Modificados**, **Eliminados / Deprecados**) and delete unused lines.
-- **Pruebas Manuales** is mandatory. List reproducible steps a reviewer can follow. When the change has no behavior a reviewer can exercise (only documentation, agent instructions, or tooling), replace the environment and steps with one line: `No aplica: <motivo>`. Do not state which validations you personally ran; mention automated coverage inside **Descripción** only when it adds relevant context.
+- Do not add a **Pruebas Manuales** section, manual testing steps or a list of the validations you ran. Mention automated coverage or how to verify the change inside **Descripción** only when it adds relevant context.
 - **Notas para el Revisor** holds relevant technical decisions (trade-offs, discarded alternatives, constraints) and where to focus the review. Delete it when there is nothing relevant.
 - Body text is in Spanish; keep code, paths, endpoints, branch and identifier names in English.
 - Never mention `@codex` in the body, neither `@codex review` nor `@codex fix`: Codex reads a mention in the PR body as a task request and answers asking to create an environment instead of reviewing. [`codex-autofix-loop`](../codex-autofix-loop/SKILL.md) requests the review with a separate comment. To talk about Codex in the body, name it without the `@`.
@@ -138,40 +135,35 @@ When the change affects the UI but no image could be captured from the real app,
 
 Single line, descriptive, English-friendly subject. Example: `Add user status sidebar element to detail views`. Use it only as the PR title; do not repeat it inside the body.
 
+## Change types
+
+Pick the one that best describes the PR as a whole and write it, with its emoji, in the parentheses of the **Descripción** heading:
+
+| Heading | When |
+| --- | --- |
+| `🐛 Bug Fix` | corrige comportamiento defectuoso |
+| `✨ New Feature` | agrega funcionalidad nueva |
+| `💥 Breaking Change` | modifica un contrato o comportamiento incompatible |
+| `⚡ Performance` | mejora tiempos, uso de recursos o escalabilidad |
+| `🧹 Refactor` | reestructura código sin cambiar comportamiento |
+| `🧪 Tests` | agrega o mejora cobertura sin cambiar producción |
+| `📄 Documentation` | actualiza documentación sin cambiar código funcional |
+| `🏗️ Build` | modifica compilación, empaquetado o herramientas de build |
+| `👷 CI/CD` | modifica pipelines, checks o automatización de entrega |
+| `⬆️ Dependencies` | actualiza, agrega o elimina dependencias |
+| `⚙️ Chore` | mantenimiento sin impacto funcional directo |
+| `↩️ Revert` | revierte un cambio anterior |
+
 ## Body template
 
 ```markdown
-<div align="right"><sup>📄 Archivos de código modificados: N</sup></div>
-
-## 📝 Descripción
+## 📝 Descripción (<emoji> <tipo de cambio>)
 
 ### ❓ ¿Qué problema resuelve?
 *Contexto del problema de negocio o técnico. ¿Por qué es necesario este cambio?*
 
 ### 💡 ¿Cuál fue la solución?
 *Resumen técnico de la implementación. Componentes, servicios y archivos clave modificados.*
-
-## 🚀 Tipo de Cambio
-
-- [ ] 🐛 **Bug Fix** — corrige comportamiento defectuoso
-- [ ] ✨ **New Feature** — agrega funcionalidad nueva
-- [ ] 💥 **Breaking Change** — modifica un contrato o comportamiento incompatible
-- [ ] ⚡ **Performance** — mejora tiempos, uso de recursos o escalabilidad
-- [ ] 🧹 **Refactor** — reestructura código sin cambiar comportamiento
-- [ ] 🧪 **Tests** — agrega o mejora cobertura sin cambiar producción
-- [ ] 📄 **Documentation** — actualiza documentación sin cambiar código funcional
-- [ ] 🏗️ **Build** — modifica compilación, empaquetado o herramientas de build
-- [ ] 👷 **CI/CD** — modifica pipelines, checks o automatización de entrega
-- [ ] ⬆️ **Dependencies** — actualiza, agrega o elimina dependencias
-- [ ] ⚙️ **Chore** — mantenimiento sin impacto funcional directo
-- [ ] ↩️ **Revert** — revierte un cambio anterior
-
-## 🖐️ Pruebas Manuales
-
-**🌐 Entorno:** `<URL / ambiente, si aplica>`
-
-1. `<Acción a realizar>` → `<Resultado esperado>`
-2. `<Acción a realizar>` → `<Resultado esperado>`
 
 ## 📸 Capturas *(si aplica)*
 

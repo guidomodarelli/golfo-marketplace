@@ -3,11 +3,12 @@ name: simplify-code
 description: "Review changed code for reuse, simplification, efficiency, and abstraction-level cleanup, then apply the fixes. Use when the user invokes $simplify-code or /simplify-code, asks to simplify current changes, clean up a diff, reduce duplication, improve reuse, remove unnecessary complexity, tighten abstractions, or make changed code more maintainable. Quality-only review: do not hunt for correctness bugs, security issues, or broad product behavior regressions; use a code-review/security/debugging skill for those."
 license: MIT
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
   author: "Guido Modarelli"
   category: "refactor"
   tags: "simplify-code, simplify, cleanup, duplication, reuse, code-quality"
   command: "/simplify-code"
+  plugin-dependencies: "golfo-github"
 ---
 
 # Simplify Code
@@ -47,10 +48,14 @@ Use these checks while editing:
 - If performance cleanup is possible, prefer removing repeated work or unstable allocations before adding caches or memoization.
 - If the simplification touches tests, keep tests behavior-focused. Do not assert source text, import spelling, or implementation-only structure.
 
+## Cleanups outside the diff
+
+Cleanups of the code the change already touches stay in the same PR. For a cleanup that reaches existing code outside the diff, do not widen the change: decide where it goes with [refactor-placement.md](../../references/refactor-placement.md) and report it.
+
 ## Reporting
 
 When finished, report:
 
 - what was simplified and why it is behavior-preserving
-- any relevant tradeoff or cleanup deliberately skipped
+- any relevant tradeoff or cleanup deliberately skipped, and the suggested stacked PR layer for cleanups outside the diff
 - validation commands run and their result

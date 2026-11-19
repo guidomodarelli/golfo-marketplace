@@ -191,6 +191,28 @@
           "critical": false
         }
       ]
+    },
+    {
+      "id": "cleanup-outside-diff-as-stacked-layer",
+      "description": "Aplica las limpiezas del diff en el mismo PR y sugiere como capa de stacked PR encima la limpieza de código existente fuera del diff, sin ampliar el cambio.",
+      "input": "Usando simplify-code: el diff de mi PR agrega `src/reports/buildReport.ts`, que repite dos veces el mismo bloque `items.filter((item) => item.active).map((item) => item.total)`. Mientras lo miraba vi que `src/legacy/reportUtils.ts`, que el diff no toca, tiene 200 líneas de helpers muertos. No ejecutes ni edites nada: decime qué simplificarías y dónde va cada limpieza.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "(mismo PR|same PR|en (el|este) PR|in (the|this) PR)",
+          "description": "Mantiene en el mismo PR lo que agrega la propia feature"
+        },
+        {
+          "type": "regex",
+          "pattern": "(stack|apilad|capa|layer|rama|branch|PR).{0,200}(encima|arriba|above|on top)|(encima|arriba|above|on top).{0,200}(stack|apilad|capa|layer|rama|branch|PR)",
+          "description": "Sugiere una capa de stacked PR encima de la feature para la limpieza fuera de alcance"
+        },
+        {
+          "type": "regex",
+          "pattern": "(sugier|suger|propon|propuesta|recomiend|si quer[eé]s|si est[aá]s de acuerdo|¿quer[eé]s|suggest|propose|recommend)",
+          "description": "Presenta la capa como sugerencia para que el usuario decida, en vez de crearla"
+        }
+      ]
     }
   ]
 }
