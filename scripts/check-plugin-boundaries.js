@@ -35,14 +35,8 @@ const FILE_TARGET_PATTERN = /^(?=.*[a-z])[\w%@.-]+(?:\/[\w%@.-]+)*\/?$/i;
 const FENCED_CODE_PATTERN = /^(```|~~~)[\s\S]*?^\1/gm;
 const INLINE_CODE_PATTERN = /`[^`\n]*`/g;
 const FRONTMATTER_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---/;
-/**
- * Skills left out of the dependency check, with the reason. agent-ready-setup stays
- * out of the plugin reorganization on purpose; its mention of constants-refactor is
- * reviewed apart.
- */
-const DEPENDENCY_CHECK_EXEMPTIONS = new Map([
-  ['agent-ready-setup', 'fuera de la reorganización de plugins por decisión del usuario'],
-]);
+/** Skills left out of the dependency check, with the reason. */
+const DEPENDENCY_CHECK_EXEMPTIONS = new Map([]);
 
 /**
  * @param {string} directory

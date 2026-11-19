@@ -7,7 +7,7 @@
  *
  * There is one area today, `agent_ready`: the agent-ready-setup suites on Linux, Windows and
  * macOS, the bootstrap shards and the browser registration test. A pull request needs it when it
- * changes a path in AGENT_READY_TRIGGER_PATHS, or a golfo-kit manifest in anything other than its
+ * changes a path in AGENT_READY_TRIGGER_PATHS, or a golfo-agent-ready manifest in anything other than its
  * `version` field (adding or removing a manifest file also counts). A pure version bump does not:
  * the suites never read the real version, and check-version-bump.js already validates it.
  *
@@ -30,7 +30,7 @@ const AGENT_READY_AREA = 'agent_ready';
 
 /** Paths whose change needs the agent-ready-setup suites. A trailing slash matches a directory. */
 const AGENT_READY_TRIGGER_PATHS = [
-  'plugins/golfo-kit/skills/agent-ready-setup/',
+  'plugins/golfo-agent-ready/skills/agent-ready-setup/',
   'package.json',
   'pnpm-lock.yaml',
   'pnpm-workspace.yaml',
@@ -42,11 +42,11 @@ const AGENT_READY_TRIGGER_PATHS = [
   'scripts/run-bats.sh',
 ];
 
-/** golfo-kit manifests that agent-ready-setup reads or copies; a pure version bump does not count. */
+/** golfo-agent-ready manifests that agent-ready-setup reads or copies; a pure version bump does not count. */
 const MANIFEST_PATHS = [
-  'plugins/golfo-kit/plugin.json',
-  'plugins/golfo-kit/.claude-plugin/',
-  'plugins/golfo-kit/.codex-plugin/',
+  'plugins/golfo-agent-ready/plugin.json',
+  'plugins/golfo-agent-ready/.claude-plugin/',
+  'plugins/golfo-agent-ready/.codex-plugin/',
 ];
 const IGNORED_MANIFEST_FIELD = 'version';
 const MODIFIED_STATUS = 'M';

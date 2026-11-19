@@ -1,0 +1,3561 @@
+{
+  "schema_version": 2,
+  "skill": "agent-ready-setup",
+  "description": "Evalúa detección de stack y bootstrap de configuración Agent Ready.",
+  "test_cases": [
+    {
+      "id": "frontend-bootstrap-creates-assets",
+      "description": "Explica cómo el motor detecta una app React y qué proyecta: el contenido del pack oficial en .agents/, sus vistas en .claude/, los hooks y CLAUDE.md.",
+      "input": "Tengo una app React sin `.agents/agent-ready.json`. Explicá cómo agent-ready-setup detecta el stack, de dónde salen las rules, skills y agentes que va a proyectar, y qué estructura crea en `.agents/` y en `.claude/`, incluidos los hooks y `CLAUDE.md`. No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["package.json", "package-dependency"],
+          "description": "Detecta React por el package.json",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["golfo-agent-profiles", "pack de contenido", "content pack", "sources.golfo"],
+          "description": "Dice que el contenido sale del pack oficial, no de la skill"
+        },
+        {
+          "type": "contains",
+          "value": ".agents/rules",
+          "description": "Proyecta las rules en .agents/rules"
+        },
+        {
+          "type": "regex",
+          "pattern": "\\.claude/(rules|skills)|([Ss]ymlinks?|[Vv]istas?|[Vv]iews?|enlaces?|links?)[^.]{0,80}\\.agents",
+          "description": "Explica que .claude/ tiene vistas del contenido de .agents/"
+        },
+        {
+          "type": "contains",
+          "value": "settings.json",
+          "description": "Reporta .claude/settings.json"
+        },
+        {
+          "type": "contains",
+          "value": "sync-marketplace",
+          "description": "Reporta el hook que sincroniza el marketplace"
+        },
+        {
+          "type": "contains",
+          "value": "CLAUDE.md",
+          "description": "Reporta el CLAUDE.md que apunta a AGENTS.md"
+        }
+      ]
+    },
+    {
+      "id": "root-claude-uses-exact-asset",
+      "description": "Genera CLAUDE.md raíz desde el asset canónico y explicita la excepción de conflictos.",
+      "input": "Explicá qué contenido debe tener exactamente el CLAUDE.md raíz que crea agent-ready-setup en el proyecto destino y qué ocurre si CLAUDE.md y AGENTS.md existentes contienen instrucciones diferentes. No ejecutes Bash ni escribas archivos; respondé según el skill.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "assets/claude-proxy.md",
+          "description": "Identifica el asset canónico usado para CLAUDE.md raíz"
+        },
+        {
+          "type": "contains_any",
+          "values": ["exactamente", "byte-a-byte", "copia exacta"],
+          "description": "Exige igualdad exacta con el asset"
+        },
+        {
+          "type": "contains",
+          "value": "@AGENTS.md",
+          "description": "Incluye referencia a AGENTS.md"
+        },
+        {
+          "type": "contains_any",
+          "values": ["diferencia", "diferencias", "contradicción", "contradicciones", "conflicto", "conflictos"],
+          "description": "Explica tratamiento seguro de diferencias y contradicciones"
+        }
+      ]
+    },
+    {
+      "id": "agent-merges-compatible-root-instructions",
+      "description": "Fusiona instrucciones compatibles y escala solo contradicciones irresolubles.",
+      "input": "El bootstrap detectó que CLAUDE.md y AGENTS.md raíz difieren: CLAUDE.md agrega comandos de test y AGENTS.md documenta arquitectura, sin contradicciones. Explicá qué debe hacer el agente antes de terminar agent-ready-setup. También indicá qué cambia si ambos archivos contienen políticas mutuamente excluyentes y no hay evidencia para elegir una.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "AGENTS.md",
+          "description": "Usa AGENTS.md como destino canónico de la fusión"
+        },
+        {
+          "type": "contains_any",
+          "values": ["fusión", "fusion", "fusionar", "integra", "merge"],
+          "description": "Fusiona instrucciones compatibles"
+        },
+        {
+          "type": "contains",
+          "value": "CLAUDE.md",
+          "description": "Normaliza CLAUDE.md después de fusionar"
+        },
+        {
+          "type": "contains_any",
+          "values": ["contradicción", "contradicciones", "irresoluble", "precedencia"],
+          "description": "Escala solo contradicciones sin resolución respaldada"
+        }
+      ]
+    },
+    {
+      "id": "existing-files-are-synchronized-safely",
+      "description": "Actualiza assets gestionados existentes y preserva instrucciones o conflictos.",
+      "input": "Setup agent ready. Asumí que proyecto tiene package.json con React, además de .claude/CLAUDE.md y .claude/rules/security.md ya existentes. Explicá qué assets gestionados actualiza, qué instrucciones conserva y cómo reporta conflictos o archivos existentes. No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "CLAUDE.md",
+          "description": "Menciona archivo existente"
+        },
+        {
+          "type": "contains",
+          "value": "security.md",
+          "description": "Menciona regla existente"
+        },
+        {
+          "type": "contains_any",
+          "values": ["actualiza", "actualizar", "sync", "template", "gestionado"],
+          "description": "Distingue actualización automática de assets gestionados"
+        },
+        {
+          "type": "contains_any",
+          "values": ["preserva", "conserva", "conflicto", "diferencia", "backup"],
+          "description": "Explica protección de instrucciones y conflictos"
+        },
+        {
+          "type": "contains",
+          "value": "@AGENTS.md",
+          "description": "El CLAUDE.md queda como proxy de AGENTS.md",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["agent-ready.lock.json", "lockfile"],
+          "description": "Usa el lockfile para saber qué assets son gestionados"
+        }
+      ]
+    },
+    {
+      "id": "report-preserves-root-centralization-proxy",
+      "description": "Distingue proxy raíz con regla de centralización de proxies en subdirectorios.",
+      "input": "Explicá qué debe verificar el reporte final de agent-ready-setup sobre CLAUDE.md en raíz y en subdirectorios después del bootstrap. No ejecutes Bash ni escribas archivos; respondé desde la plantilla bundled.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "CLAUDE.md",
+          "description": "Menciona proxies CLAUDE.md"
+        },
+        {
+          "type": "regex",
+          "pattern": "centraliz",
+          "description": "Conserva regla de centralización en proxy raíz"
+        },
+        {
+          "type": "regex",
+          "pattern": "subdirectori|anidad",
+          "description": "Distingue proxies de subdirectorios"
+        },
+        {
+          "type": "contains",
+          "value": "@AGENTS.md",
+          "description": "Indica referencia canónica esperada"
+        }
+      ]
+    },
+    {
+      "id": "provider-directory-claude-is-normalized",
+      "description": "Incluye .claude/CLAUDE.md en la normalización recursiva y exige un AGENTS.md hermano.",
+      "input": "Un proyecto ya preparado tiene instrucciones propias en `.claude/CLAUDE.md`, pero no tiene `.claude/AGENTS.md`. Explicá qué deben hacer bootstrap y el hook de sync para detectar ese archivo, conservar sus instrucciones, crear el AGENTS.md hermano y dejar cada CLAUDE.md byte-a-byte igual a `assets/claude-proxy.md`. Incluí qué ocurre ante una divergencia real y desde qué raíz se ejecuta el descubrimiento. No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": ".claude/CLAUDE.md",
+          "description": "Incluye CLAUDE.md bajo .claude"
+        },
+        {
+          "type": "contains",
+          "value": ".claude/AGENTS.md",
+          "description": "Exige AGENTS.md hermano"
+        },
+        {
+          "type": "contains_any",
+          "values": ["byte-a-byte", "copia exacta", "exactamente"],
+          "description": "Exige proxy idéntico al asset"
+        },
+        {
+          "type": "contains_any",
+          "values": ["normalize-instructions.sh", "sync", "sincronización"],
+          "description": "Cubre normalización durante sync"
+        },
+        {
+          "type": "contains_any",
+          "values": ["raíz Git", "raíz del repositorio", "git root"],
+          "description": "Cubre descubrimiento desde raíz Git"
+        },
+        {
+          "type": "contains_any",
+          "values": ["conflicto", "diferencia", "divergencia"],
+          "description": "Explica preservación de divergencias"
+        }
+      ]
+    },
+    {
+      "id": "go-bootstrap-creates-assets",
+      "description": "Detecta Go y reporta assets específicos creados.",
+      "input": "Explicá cómo agent-ready-setup detecta Go para un microservicio y qué archivos principales crea bajo .claude/, incluyendo agents, commands y reglas. No ejecutes Bash ni escribas archivos; respondé desde la plantilla bundled.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["go", "Go"],
+          "description": "Reporta stack Go detectado"
+        },
+        {
+          "type": "contains",
+          "value": "settings.json",
+          "description": "Reporta settings creado"
+        },
+        {
+          "type": "contains",
+          "value": "coding-style.md",
+          "description": "Reporta regla de estilo creada"
+        },
+        {
+          "type": "contains",
+          "value": "security.md",
+          "description": "Reporta regla de seguridad creada"
+        },
+        {
+          "type": "contains_any",
+          "values": ["security-scanner", "review-pr"],
+          "description": "Reporta agents o commands del stack Go"
+        }
+      ]
+    },
+    {
+      "id": "multi-provider-codex-assets",
+      "control": "El rol de AGENTS.md, el proxy CLAUDE.md y .agents/skills se deduce de los nombres de esos archivos: el modelo lo explica bien sin la skill. Cuida que la skill no lo contradiga.",
+      "description": "Explica salida neutral compartida y bridge Codex sin duplicar instrucciones.",
+      "input": "Explicá qué genera agent-ready-setup para que el mismo proyecto funcione con Claude Code, Codex y futuros providers. Incluí el rol de AGENTS.md, CLAUDE.md, .agents/skills, .codex/hooks.json y .codex/.mcp.json. No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "AGENTS.md",
+          "description": "Identifica instrucciones canónicas"
+        },
+        {
+          "type": "contains",
+          "value": "@AGENTS.md",
+          "description": "Identifica proxy de Claude"
+        },
+        {
+          "type": "contains",
+          "value": ".agents/skills",
+          "description": "Identifica skills descubribles por Codex"
+        },
+        {
+          "type": "contains",
+          "value": ".codex/hooks.json",
+          "description": "Identifica hooks específicos de Codex"
+        },
+        {
+          "type": "contains",
+          "value": ".codex/.mcp.json",
+          "description": "Identifica MCP específico de Codex"
+        },
+        {
+          "type": "regex",
+          "pattern": "[Ss]ymlinks?|hard links?|[Vv]istas?",
+          "description": "Explica que .claude/ tiene vistas hacia .agents/ en lugar de copias",
+          "critical": true
+        }
+      ]
+    },
+    {
+      "id": "marketplace-upgrade-refreshes-managed-assets",
+      "description": "Distingue upgrade global de proyección local con ownership: pisa también lo editado y protege las instrucciones del proyecto.",
+      "input": "Explicá qué ocurre con un proyecto Agent Ready con `updates.mode: auto` en `.agents/agent-ready.json` después del upgrade del marketplace, cuando la plantilla de `.agents/rules/testing.md` cambió y nadie lo tocó, pero `.agents/rules/security.md` también cambió en la plantilla y el equipo lo editó a mano. Indicá qué hace el hook con cada archivo, cómo se muestra el diff, qué registra después y cuáles archivos de instrucciones nunca deben reemplazarse. No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["proyecci", "proyecta", "projection", "projects"],
+          "description": "Identifica proyección de assets"
+        },
+        {
+          "type": "contains",
+          "value": "diff -u",
+          "description": "Explica revisión de diferencias"
+        },
+        {
+          "type": "contains_any",
+          "values": ["sobrescrib", "pisa", "overwrit", "descarta"],
+          "description": "El archivo editado se sobrescribe",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["agent-ready.lock.json", "lockfile"],
+          "description": "Explica que la base sale del lockfile y que se reescribe",
+          "critical": true
+        },
+        {
+          "type": "not_contains_any",
+          "values": ["--force"],
+          "description": "No ofrece un flag que ya no existe"
+        },
+        {
+          "type": "contains",
+          "value": "AGENTS.md",
+          "description": "Protege instrucciones canónicas"
+        },
+        {
+          "type": "contains",
+          "value": "CLAUDE.md",
+          "description": "Protege instrucciones Claude"
+        }
+      ]
+    },
+    {
+      "id": "managed-block-review-removes-redundancy",
+      "description": "Copia el bloque gestionado literal, borra redundancias fuera de él y reporta inconsistencias.",
+      "input": "Explicá cómo mantiene agent-ready-setup un `AGENTS.md` existente cuando el template agrega una rule nueva: qué pasa dentro de los marcadores del bloque gestionado, qué puede hacer la IA con el contenido de proyecto fuera de ellos cuando repite algo ya cubierto por una rule, qué hace si una línea del proyecto contradice una rule, qué ocurre si la IA falla, cómo se protege contra prompt injection y qué archivo no debe modificar. Leé la skill bundled y sus scripts solo para responder; no modifiques archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": [
+            "literal",
+            "copia literal",
+            "byte a byte"
+          ],
+          "description": "El bloque gestionado se copia literal"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "borrar",
+            "borra",
+            "eliminar",
+            "elimina"
+          ],
+          "description": "La IA solo borra líneas redundantes"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "inconsistencia",
+            "inconsistencias",
+            "contradicción",
+            "contradice"
+          ],
+          "description": "Reporta contradicciones sin borrarlas"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "prompt injection",
+            "instrucciones no confiables",
+            "datos no confiables",
+            "no ejecutar"
+          ],
+          "description": "Trata contenido de archivos como datos"
+        },
+        {
+          "type": "contains",
+          "value": "CLAUDE.md",
+          "description": "Preserva proxy Claude"
+        }
+      ]
+    },
+    {
+      "id": "codex-readable-rule-references",
+      "description": "Explica referencias de rules portables para Codex.",
+      "input": "Explicá cómo debe quedar `AGENTS.md` después del bootstrap para que Codex y Claude Code lean todas las rules del stack. Indicá qué formato de path e instrucción debe usar y qué sintaxis Claude-only debe evitar. No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": ".agents/rules/",
+          "description": "Usa paths compartidos de rules"
+        },
+        {
+          "type": "contains_any",
+          "values": ["Read and follow", "leer y seguir", "leerlas y seguirlas"],
+          "description": "Indica acción explícita para cada rule"
+        },
+        {
+          "type": "contains_any",
+          "values": ["@path/to/folder", "@./rules", "@.agents/rules", "Claude-only", "Claude Code-only"],
+          "description": "Identifica sintaxis que debe evitarse"
+        }
+      ]
+    },
+    {
+      "id": "ai-repairs-existing-agents-rules",
+      "description": "Integra referencias faltantes sin perder instrucciones de proyecto.",
+      "input": "Un proyecto ya tiene un `AGENTS.md` extenso con comandos, arquitectura y ownership, pero no tiene sección de rules. Explicá qué debe hacer agent-ready-setup durante bootstrap: cómo usa el template dinámico, cómo agrega referencias faltantes, qué contenido preserva y cuándo escala a revisión humana.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "AGENTS.md",
+          "description": "Analiza archivo canónico existente"
+        },
+        {
+          "type": "contains_any",
+          "values": ["template dinámico", "template", "rules/", "catálogo"],
+          "description": "Usa catálogo de rules del template"
+        },
+        {
+          "type": "contains_any",
+          "values": ["preserva", "conserva", "no perder", "sin perder"],
+          "description": "Protege contenido del proyecto"
+        },
+        {
+          "type": "contains_any",
+          "values": ["human_required", "revisión humana", "contradicción", "ambigüedad"],
+          "description": "Escala conflictos reales"
+        }
+      ]
+    },
+    {
+      "id": "sync-refreshes-rule-catalog",
+      "description": "Actualiza catálogo de referencias durante sync con IA.",
+      "input": "Explicá qué debe hacer `sync-marketplace.sh` cuando marketplace agrega una rule nueva o deja de publicar otra. Incluí qué pasa si el upgrade trae una versión nueva del propio hook, el orden upgrade/proyección/merge, análisis IA de `AGENTS.md`, corrección de referencias incompletas y protección contra referencias `@...`.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "siempre|autom(a|á)tic|cada inicio de sesi|cada sesi|sessionstart|sin flags",
+          "description": "Usa sincronización completa sin flags de fase"
+        },
+        {
+          "type": "contains_any",
+          "values": ["upgrade", "proyección", "projection"],
+          "description": "Mantiene actualización de assets antes del merge"
+        },
+        {
+          "type": "regex",
+          "pattern": "re-?ejecuta|reinici|actualiza primero|versi(o|ó)n (nueva|actualizada|m(a|á)s nueva)|latest version|vuelve a ejecutar",
+          "description": "Ejecuta el resto con la versión actualizada del hook"
+        },
+        {
+          "type": "contains_any",
+          "values": ["nueva", "nuevas", "agregada", "obsoleta", "eliminada"],
+          "description": "Cubre cambios dinámicos del catálogo"
+        },
+        {
+          "type": "contains",
+          "value": "AGENTS.md",
+          "description": "Repara referencias en archivo canónico"
+        }
+      ]
+    },
+    {
+      "id": "next-steps-report-distinguishes-automatic-and-manual-work",
+      "description": "Reporta únicamente tareas aplicables y separa validación automática de trabajo manual.",
+      "input": "Explicá cómo debe construir agent-ready-setup la sección Next steps después del bootstrap. El proyecto no tiene `.agents/rules/`, `.agents/skills/` ni `.agents/agents/`, y `CLAUDE.md` raíz ya coincide con `assets/claude-proxy.md`. Indicá qué debe validarse automáticamente, qué requiere completar manualmente y cómo tratar placeholders o directorios ausentes. No ejecutes Bash ni escribas archivos. Mostrá primero la sección Next steps completa y después explicá en párrafos, sin listas numeradas fuera de la sección.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "(\\.agents/rules/.*(N/A|no (existe|hay)|no aplica))|((N/A|no (existe|hay)|no aplica).*\\.agents/rules/)",
+          "description": "Asocia `.agents/rules/` ausente con estado N/A"
+        },
+        {
+          "type": "regex",
+          "pattern": "(\\.agents/skills/.*(N/A|no (existe|hay)|no aplica))|((N/A|no (existe|hay)|no aplica).*\\.agents/skills/)",
+          "description": "Asocia `.agents/skills/` ausente con estado N/A"
+        },
+        {
+          "type": "regex",
+          "pattern": "(\\.agents/agents/.*(N/A|no (existe|hay)|no aplica))|((N/A|no (existe|hay)|no aplica).*\\.agents/agents/)",
+          "description": "Asocia `.agents/agents/` ausente con estado N/A"
+        },
+        {
+          "type": "regex",
+          "pattern": "CLAUDE\\.md.*(PASS|coincide|igual|byte-a-byte|copia exacta)",
+          "description": "Verifica el resultado PASS del proxy raíz coincidente"
+        },
+        {
+          "type": "regex",
+          "pattern": "\\[AUTO\\].*(PASS|FAIL|N/A|determinist)",
+          "description": "Identifica checks automáticos con resultado explícito"
+        },
+        {
+          "type": "regex",
+          "pattern": "(\\[MANUAL\\].*AGENTS\\.md.*(si|cuando|solo))|(AGENTS\\.md.*(si|cuando|solo).*\\[MANUAL\\])",
+          "description": "Mantiene completar AGENTS.md como acción manual condicional"
+        },
+        {
+          "type": "regex",
+          "pattern": "(<domain>|<component-name>).*((ejemplo)|(documentaci[oó]n)|(documental))|((ejemplo)|(documentaci[oó]n)|(documental)).*(<domain>|<component-name>)",
+          "description": "Identifica `<domain>` y `<component-name>` como ejemplos documentales"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "\\.agents/rules/[[:space:]]*:[[:space:]]*pendiente",
+            "\\.agents/rules/[[:space:]]*:[[:space:]]*completar",
+            "\\.agents/rules/[[:space:]]*:[[:space:]]*TODO",
+            "pendiente:[[:space:]]*\\.agents/rules/",
+            "completar:[[:space:]]*\\.agents/rules/",
+            "\\.agents/skills/[[:space:]]*:[[:space:]]*pendiente",
+            "\\.agents/skills/[[:space:]]*:[[:space:]]*completar",
+            "\\.agents/skills/[[:space:]]*:[[:space:]]*TODO",
+            "pendiente:[[:space:]]*\\.agents/skills/",
+            "completar:[[:space:]]*\\.agents/skills/",
+            "\\.agents/agents/[[:space:]]*:[[:space:]]*pendiente",
+            "\\.agents/agents/[[:space:]]*:[[:space:]]*completar",
+            "\\.agents/agents/[[:space:]]*:[[:space:]]*TODO",
+            "pendiente:[[:space:]]*\\.agents/agents/",
+            "completar:[[:space:]]*\\.agents/agents/"
+          ],
+          "description": "Rechaza presentar recursos ausentes como tareas pendientes"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "<domain>[[:space:]]*:[[:space:]]*pendiente",
+            "<domain>[[:space:]]*:[[:space:]]*incompleto",
+            "<domain>[[:space:]]*:[[:space:]]*TODO",
+            "<component-name>[[:space:]]*:[[:space:]]*pendiente",
+            "<component-name>[[:space:]]*:[[:space:]]*incompleto",
+            "<component-name>[[:space:]]*:[[:space:]]*TODO"
+          ],
+          "description": "Rechaza clasificar ejemplos documentales como placeholders pendientes"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "[0-9][0-9]*\\..*\\[AUTO\\].*\\[MANUAL\\]",
+            "[0-9][0-9]*\\..*\\[MANUAL\\].*\\[AUTO\\]",
+            "- .*\\[AUTO\\].*\\[MANUAL\\]",
+            "- .*\\[MANUAL\\].*\\[AUTO\\]",
+            "[0-9][0-9]*\\..*automátic.*manual",
+            "[0-9][0-9]*\\..*manual.*automátic",
+            "- .*automátic.*manual",
+            "- .*manual.*automátic",
+            "^[[:space:]]\\{2,\\}\\[AUTO\\]",
+            "^[[:space:]]\\{2,\\}\\[MANUAL\\]",
+            "^[[:space:]]*[0-9][0-9]*\\..*\\[AUTO\\].*\\(revisar\\|revisá\\|decidir\\|decidí\\|decide\\|confirmar\\|confirmá\\|evaluar\\|evaluá\\|review\\)[^.]*\\(permis\\|credenc\\|credential\\|alcance\\|escopo\\|scope\\|habilit\\|autoriza\\|authoriz\\|enable\\)",
+            "^[[:space:]]*- .*\\[AUTO\\].*\\(revisar\\|revisá\\|decidir\\|decidí\\|decide\\|confirmar\\|confirmá\\|evaluar\\|evaluá\\|review\\)[^.]*\\(permis\\|credenc\\|credential\\|alcance\\|escopo\\|scope\\|habilit\\|autoriza\\|authoriz\\|enable\\)"
+          ],
+          "description": "Rechaza mezclar acciones automáticas y manuales dentro del mismo paso"
+        }
+      ]
+    },
+    {
+      "id": "next-steps-report-ignores-documentation-examples",
+      "description": "No convierte ejemplos documentales en scaffolds incompletos.",
+      "input": "Redactá únicamente la sección Next steps para un proyecto donde la documentación explica rutas de ejemplo con `<domain>` y `<component-name>`, pero no existen archivos bajo `.agents/rules/`, `.agents/skills/` ni `.agents/agents/`, tampoco comentarios scaffold ni marcadores `{{...}}` reales. Explicá cómo distinguir esos ejemplos de archivos que sí requerirían completar. No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "(<domain>).*((ejemplo)|(documentaci[oó]n)|(documental))|((ejemplo)|(documentaci[oó]n)|(documental)).*(<domain>)",
+          "description": "Relaciona `<domain>` con documentación de ejemplo"
+        },
+        {
+          "type": "regex",
+          "pattern": "(<component-name>).*((ejemplo)|(documentaci[oó]n)|(documental))|((ejemplo)|(documentaci[oó]n)|(documental)).*(<component-name>)",
+          "description": "Relaciona `<component-name>` con documentación de ejemplo"
+        },
+        {
+          "type": "regex",
+          "pattern": "(N/A|no (existen|existe|hay)|no aplica|no hace falta).*(rutas|archivos|scaffold|marcadores)|((rutas|archivos|scaffold|marcadores).*(N/A|no (existen|existe|hay)|no aplica|no hace falta))",
+          "description": "Explicita ausencia y ausencia de deuda cuando no hay archivos reales"
+        },
+        {
+          "type": "regex",
+          "pattern": "(scaffold|\\{\\{).*(real|existente|no (hay|existen|tienen) archivos)|(real|existente).*(scaffold|\\{\\{)",
+          "description": "Reserva detección de scaffold a artefactos reales"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "<domain>[[:space:]]*:[[:space:]]*pendiente",
+            "<domain>[[:space:]]*:[[:space:]]*incompleto",
+            "<domain>[[:space:]]*:[[:space:]]*TODO",
+            "<component-name>[[:space:]]*:[[:space:]]*pendiente",
+            "<component-name>[[:space:]]*:[[:space:]]*incompleto",
+            "<component-name>[[:space:]]*:[[:space:]]*TODO"
+          ],
+          "description": "Evita convertir ejemplos de documentación en trabajo pendiente"
+        },
+        {
+          "type": "contains_any",
+          "values": ["\\[AUTO\\]", "\\[MANUAL\\]"],
+          "description": "Usa las etiquetas [AUTO] y [MANUAL] del reporte de Next steps",
+          "critical": true
+        }
+      ]
+    },
+    {
+      "id": "next-steps-report-separates-automatic-and-manual-actions",
+      "description": "Separa checks técnicos automáticos de decisiones operativas manuales.",
+      "input": "Generá una sección Next steps numerada para un proyecto que sí tiene `.codex/` con JSON, MCP y hooks válidos. La validación técnica de JSON, paths y referencias puede ser automática, mientras que permisos, credenciales, alcance y habilitación requieren decisión del proyecto. No mezcles ambos tipos de trabajo en un mismo paso y no ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "\\[AUTO\\].*(JSON|paths|referencias|MCP|hooks|validar)",
+          "description": "Asocia validación técnica de Codex con acción automática"
+        },
+        {
+          "type": "regex",
+          "pattern": "\\[MANUAL\\].*(permisos|credenciales|alcance|habilit|autoriza)",
+          "description": "Asocia permisos y habilitación con decisión manual"
+        },
+        {
+          "type": "regex",
+          "pattern": "[0-9][0-9]*\\..*\\[AUTO\\]|- .*\\[AUTO\\]",
+          "description": "Expresa la acción automática como paso separado"
+        },
+        {
+          "type": "regex",
+          "pattern": "[0-9][0-9]*\\..*\\[MANUAL\\]|- .*\\[MANUAL\\]",
+          "description": "Expresa la acción manual como paso separado"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "[0-9][0-9]*\\..*\\[AUTO\\].*\\[MANUAL\\]",
+            "[0-9][0-9]*\\..*\\[MANUAL\\].*\\[AUTO\\]",
+            "- .*\\[AUTO\\].*\\[MANUAL\\]",
+            "- .*\\[MANUAL\\].*\\[AUTO\\]",
+            "[0-9][0-9]*\\..*automátic.*manual",
+            "[0-9][0-9]*\\..*manual.*automátic",
+            "- .*automátic.*manual",
+            "- .*manual.*automátic",
+            "^[[:space:]]\\{2,\\}\\[AUTO\\]",
+            "^[[:space:]]\\{2,\\}\\[MANUAL\\]",
+            "^[[:space:]]*[0-9][0-9]*\\..*\\[AUTO\\].*\\(revisar\\|revisá\\|decidir\\|decidí\\|decide\\|confirmar\\|confirmá\\|evaluar\\|evaluá\\|review\\)[^.]*\\(permis\\|credenc\\|credential\\|alcance\\|escopo\\|scope\\|habilit\\|autoriza\\|authoriz\\|enable\\)",
+            "^[[:space:]]*- .*\\[AUTO\\].*\\(revisar\\|revisá\\|decidir\\|decidí\\|decide\\|confirmar\\|confirmá\\|evaluar\\|evaluá\\|review\\)[^.]*\\(permis\\|credenc\\|credential\\|alcance\\|escopo\\|scope\\|habilit\\|autoriza\\|authoriz\\|enable\\)"
+          ],
+          "description": "Rechaza pasos que mezclan validación y decisión operativa"
+        }
+      ]
+    },
+    {
+      "id": "frontend-constants-refactor-from-plugin",
+      "description": "Indica que el refactor de constantes se usa desde el plugin golfo-engineering y no se proyecta como skill del stack frontend.",
+      "input": "Explicá si agent-ready-setup proyecta una skill para refactorizar constantes estáticas en el stack frontend y dónde queda disponible ese workflow. No ejecutes Bash ni escribas archivos; respondé desde la plantilla frontend bundled.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "constants-refactor",
+          "description": "Identifica la skill de refactor de constantes"
+        },
+        {
+          "type": "contains_any",
+          "values": ["golfo-engineering", "plugin"],
+          "description": "Ubica la skill en el plugin golfo-engineering"
+        },
+        {
+          "type": "contains_any",
+          "values": ["no crea", "no se proyecta", "no la proyecta", "no se duplica", "no la duplica", "no se copia", "no queda en .agents"],
+          "description": "No la presenta como skill proyectada por el stack"
+        }
+      ]
+    },
+    {
+      "id": "github-pr-template-and-hook-progress",
+      "description": "Explica template estático de GitHub y progreso de hooks compartidos.",
+      "input": "Explicá qué pasa con `.github/pull_request_template.md` durante bootstrap y SessionStart, qué secciones incluye, si calcula archivos modificados y para qué sirve statusMessage. No ejecutes Bash ni escribas archivos; respondé desde assets bundled.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": ".github/pull_request_template.md",
+          "description": "Identifica destino GitHub"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "Pruebas Manuales",
+            "pruebas manuales"
+          ],
+          "description": "Incluye validación reproducible"
+        },
+        {
+          "type": "contains",
+          "value": "statusMessage",
+          "description": "Explica feedback de hooks"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "no calcula",
+            "no ejecuta scripts",
+            "sin scripts",
+            "estático"
+          ],
+          "description": "Reconoce límite de template estático"
+        }
+      ]
+    },
+    {
+      "id": "codex-hook-migration-and-payload",
+      "description": "Explica migración completa de hooks Codex y compatibilidad de payloads.",
+      "input": "Explicá cómo agent-ready-setup migra .codex/hooks/hooks.json si ya existe .codex/hooks.json con hooks personalizados. Incluí conservación, eliminación de ruta anterior, idempotencia, confianza de Codex y lectura de archivos de apply_patch. No ejecutes comandos ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": ".codex/hooks.json",
+          "description": "Identifica destino descubrible"
+        },
+        {
+          "type": "contains",
+          "value": "tool_input.command",
+          "description": "Identifica payload de parche Codex"
+        },
+        {
+          "type": "contains",
+          "value": "tool_input.file_path",
+          "description": "Conserva compatibilidad Claude"
+        },
+        {
+          "type": "contains",
+          "value": "/hooks",
+          "description": "Explica confianza explícita Codex"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "personalizaciones",
+            "personalizados",
+            "propios",
+            "preserva",
+            "conserva"
+          ],
+          "description": "Conserva hooks propios al combinar configuraciones"
+        }
+      ]
+    },
+    {
+      "id": "browser-installation-contract",
+      "description": "Explains automatic install, portable project registration and legacy cleanup without bypassing host trust.",
+      "input": "Leé references/browser-setup.md y explicá instalación browser de bootstrap, rutas MCP de Claude/Codex, requisitos y manejo de cua. Podés usar herramientas de lectura local; no instales paquetes, no escribas archivos ni navegues.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": ".mcp.json",
+          "description": "Registers Claude MCPs in project config"
+        },
+        {
+          "type": "contains",
+          "value": ".codex/config.toml",
+          "description": "Registers Codex MCPs in project config"
+        },
+        {
+          "type": "contains",
+          "value": "launcher",
+          "description": "Keeps machine-specific paths in generated launchers"
+        },
+        {
+          "type": "contains",
+          "value": ".gitignore",
+          "description": "Keeps machine-specific browser metadata ignored"
+        },
+        {
+          "type": "contains",
+          "value": "24",
+          "description": "Requires compatible Node.js"
+        },
+        {
+          "type": "contains",
+          "value": "cua",
+          "description": "Distinguishes host browser capability"
+        }
+      ]
+    },
+    {
+      "id": "hermes-install-asks-provider-when-both-clis",
+      "description": "Ejecutada desde la instalación de Hermes con claude y codex en PATH, resolve-provider.sh falla pidiendo elegir: pregunta al usuario con clarify cuál CLI hará el upgrade y la revisión, relanza con AGENT_READY_SETUP_ACTIVE_PROVIDER y reporta que no hay configuración para Hermes.",
+      "input": "Usando agent-ready-setup: estás en Hermes y la skill está instalada en `$HERMES_HOME/plugins/golfo-agent-ready/skills/agent-ready-setup`. `command -v claude` y `command -v codex` encuentran ambos CLIs. Al correr `resolve-provider.sh --skill-dir \"$SKILL_DIR\"` termina con: `ERROR: skill directory ... belongs to Hermes and both claude and codex are in PATH; ask the user which one runs the marketplace upgrade and the review, then set AGENT_READY_SETUP_ACTIVE_PROVIDER=claude|codex`. No ejecutes nada: describí qué hacés ahora y qué reportás al final.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "clarify",
+          "description": "Pregunta al usuario con clarify"
+        },
+        {
+          "type": "contains",
+          "value": "AGENT_READY_SETUP_ACTIVE_PROVIDER",
+          "description": "Relanza con el provider elegido por el usuario"
+        },
+        {
+          "type": "regex",
+          "pattern": "(no|nunca|never|sin)[^.]{0,40}(adivin|elij|eleg|decid|guess|pick|choose|asum)",
+          "description": "No elige el provider por su cuenta"
+        },
+        {
+          "type": "contains",
+          "value": "Limitaciones del agente",
+          "description": "Reporta que no se generó configuración para Hermes"
+        }
+      ]
+    },
+    {
+      "id": "pinned-session-start-only-reports-updates",
+      "description": "En un repo pinned, SessionStart no escribe: informa el update y deriva a plan y apply explícitos.",
+      "input": "Nuestro repo tiene `.agents/agent-ready.json` con `\"updates\": {\"mode\": \"pinned\"}` y ayer el pack oficial de contenido publicó una versión nueva que cambia rules del stack node. ¿Qué hace el hook de SessionStart cuando abro Claude Code mañana, cómo veo qué cambiaría antes de aceptarlo y cómo lo aplico de forma revisable? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["no escribe", "sin escribir", "solo lectura", "read-only", "no modifica"],
+          "description": "Dice que el hook pinned no escribe",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["--plan", " plan"],
+          "description": "Ofrece el plan sin escrituras",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["Update available", "update disponible", "actualización disponible", "--status", "status"],
+          "description": "Explica que el hook informa el update pendiente"
+        },
+        {
+          "type": "contains",
+          "value": "update golfo",
+          "description": "Aplica con agent-ready update golfo, que deja el cambio revisable en el diff del lockfile"
+        }
+      ]
+    },
+    {
+      "id": "edited-managed-rule-is-overwritten",
+      "description": "El próximo apply pisa un asset gestionado editado, así que se recomienda una rule propia.",
+      "input": "Edité `.agents/rules/security.md` en mi repo para agregar una excepción de nuestro equipo. Si corro /agent-ready-setup de nuevo, ¿pierdo mi cambio? ¿Qué me recomendás hacer con esa excepción? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["sobrescrib", "pisa", "overwrit", "perdés", "se pierde"],
+          "description": "Explica que el próximo apply pisa la edición",
+          "critical": true
+        },
+        {
+          "type": "not_contains_any",
+          "values": ["--force"],
+          "description": "No ofrece un flag que ya no existe"
+        },
+        {
+          "type": "contains_any",
+          "values": ["rule propia", "regla propia", "project rule", "nueva rule", "nueva regla"],
+          "description": "Recomienda mover la excepción a una rule propia del proyecto",
+          "critical": true
+        }
+      ]
+    },
+    {
+      "id": "android-detected-before-generic-gradle",
+      "description": "Un proyecto Gradle con manifest de Android usa el stack android, no java, y no instala herramientas de browser.",
+      "input": "Tengo una app con `settings.gradle.kts`, `build.gradle.kts` en la raíz y un módulo `app/` con Compose. Quiero prepararla con agent-ready-setup. ¿Qué stack va a elegir y por qué? ¿Qué rules, agents y comandos propios del stack recibe? ¿Se instalan las herramientas de automatización de navegador? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["`android`", "stack android", "stack `android`"],
+          "description": "Elige el stack android",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "AndroidManifest.xml",
+          "description": "Explica que la señal es el manifest",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "security-scanner",
+          "description": "Reporta los agents del stack"
+        },
+        {
+          "type": "contains_any",
+          "values": ["--profiles android,browser", "no instala", "no se instalan", "no las instala"],
+          "description": "Aclara que no instala herramientas de browser por defecto"
+        }
+      ]
+    },
+    {
+      "id": "business-flows-profile-composes-with-any-stack",
+      "description": "El profile de flujos se suma a cualquier stack por --profiles y no se detecta solo.",
+      "input": "Tengo una app web en React y una app Android, en repos separados, y en las dos quiero que los agentes diseñen bien los flujos de negocio de varios pasos. ¿Qué le pido a agent-ready-setup en cada repo y qué recibe cada uno? ¿Lo detecta solo? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "business-flows",
+          "description": "Elige el profile de flujos",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["--profiles react,business-flows", "--profiles nextjs,business-flows", "--profiles nextjs-app-router,business-flows", "--profiles android,business-flows"],
+          "description": "Lo combina con el stack de cada repo",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "business-flow-design",
+          "description": "Reporta la skill que recibe"
+        },
+        {
+          "type": "contains_any",
+          "values": ["no se detecta", "no lo detecta", "no la detecta", "no se selecciona", "no `business-flows`", "no business-flows"],
+          "description": "Aclara que no se detecta solo"
+        }
+      ]
+    },
+    {
+      "id": "project-file-at-managed-path-is-preserved",
+      "description": "Un archivo del proyecto que ningún apply escribió no se pisa aunque una versión nueva publique ese path.",
+      "input": "Mi repo ya tiene lockfile de agent-ready-setup. Escribí yo mismo `.agents/rules/billing.md`, que nunca vino del template, y ahora una versión nueva de la skill empieza a publicar una rule con ese mismo nombre. ¿Qué pasa con mi archivo en el próximo apply y qué tengo que hacer para recibir la rule? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["conflicto", "conflict"],
+          "description": "Explica que queda como conflicto preservado",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["renombr", "borr", "elimin"],
+          "description": "Indica cómo liberar el path para recibir la rule",
+          "critical": true
+        },
+        {
+          "type": "not_contains_any",
+          "values": ["--force"],
+          "description": "No ofrece un flag que ya no existe"
+        }
+      ]
+    },
+    {
+      "id": "codex-only-machine-consistency-hook",
+      "description": "El hook de consistencia usa codex exec en Codex y no exige el binario de Claude.",
+      "input": "En mi máquina solo tengo Codex instalado, no Claude Code. ¿El hook que revisa consistencia de rules y skills de agent-ready-setup funciona igual cuando Codex edita `.agents/rules/`? ¿Qué pasa si tampoco está la CLI de codex en el PATH? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "codex exec",
+          "description": "Identifica que usa codex exec para Codex",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["apply_patch"],
+          "description": "Explica que infiere Codex por el evento apply_patch"
+        },
+        {
+          "type": "contains_any",
+          "values": ["omite", "se salta", "skipped", "aviso", "advertencia"],
+          "description": "Sin CLI el check se omite con aviso en vez de fallar",
+          "critical": true
+        }
+      ]
+    },
+    {
+      "id": "automated-review-reads-pinned-context",
+      "description": "Configura una review automatizada sin sync y con versión de contexto identificable.",
+      "input": "Vamos a usar Codex para revisar PRs automáticamente en CI en un repo preparado con agent-ready-setup (`updates.mode: auto`). ¿Cómo evito que la review sincronice reglas mientras revisa y cómo sé después qué versión de las reglas usó? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "AGENT_READY_SETUP_REVIEW_MODE",
+          "description": "Usa el modo review que nunca escribe",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["agent-ready.lock.json", "contentDigest"],
+          "description": "Identifica la versión del contexto desde el lockfile",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["PR de prueba", "test PR", "PR de ejemplo", "presencia", "no prueba"],
+          "description": "Aclara que la presencia del archivo no prueba que el reviewer lo use"
+        }
+      ]
+    },
+    {
+      "id": "manifest-only-apply-resolves-stack-for-merge",
+      "description": "Con manifest y sin variables, toma de bootstrap el stack que necesita el merge posterior.",
+      "input": "Este repo ya tiene .agents/agent-ready.json con los profiles elegidos y estoy en una shell nueva, sin ninguna variable definida. Mostrame los comandos exactos para aplicar agent-ready-setup y correr después el merge de instrucciones.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "merge-instructions.sh",
+          "description": "Incluye el merge de instrucciones posterior",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "apply[^.]{0,120}(ejecuta|corre|runs|lanza)|(ejecuta|corre|runs|lanza)[^.]{0,80}merge",
+          "description": "Explica que agent-ready apply ya corre el merge con el stack que resolvió",
+          "critical": true
+        }
+      ]
+    },
+    {
+      "id": "detected-capability-stays-a-suggestion",
+      "description": "Una capability detectada solo se sugiere en plan: no entra sola al manifest aunque tiente hacerlo.",
+      "input": "Mi repo tiene `.agents/agent-ready.json` con `\"profiles\": [\"android\"]`. Ahora la app usa `androidx.webkit:webkit` y `--plan` lista una línea `? browser: app/build.gradle.kts declares the Gradle dependency androidx.webkit:webkit`. Como ya lo encontró solo, supongo que el próximo apply lo agrega al manifest e instala las herramientas, ¿no? Explicá qué pasa y qué tendría que hacer. No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["no se agrega", "no lo agrega", "no agrega", "no entra", "no va a agregar", "no se suma", "no lo suma", "no cambia el manifest", "nunca cambia"],
+          "description": "Aclara que la sugerencia no entra sola al manifest",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "--profiles android,browser",
+          "description": "Da la selección explícita para adoptarla",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["sugerencia", "sugiere", "sugerida"],
+          "description": "La describe como sugerencia"
+        }
+      ]
+    },
+    {
+      "id": "ambiguous-detection-asks-for-a-selection",
+      "description": "Con señales sin prioridad entre sí, no elige un stack: lista las coincidencias y pide uno.",
+      "input": "Corrí la detección de agent-ready-setup en un repo sin manifest que tiene `package.json` (solo commitlint) y `go.mod`, y salió `Stack: ambiguous (go, node)` con exit 3. Es obvio que debe ser Node porque el package.json aparece primero en el directorio, ¿lanzás bootstrap sin flags y listo? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["--stack go", "--stack <", "--stack `", "--profiles go", "--stack node"],
+          "description": "Pide una selección explícita con la flag",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["falla", "no elige", "sin escribir", "no escribe", "no sirve", "va a fallar", "termina con error"],
+          "description": "Aclara que bootstrap sin flags no elige ni escribe",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["orden", "no depende"],
+          "description": "Rechaza decidir por el orden de los archivos"
+        }
+      ]
+    },
+    {
+      "id": "later-detection-never-moves-the-manifest",
+      "description": "La precedencia conserva el manifest aunque las señales del proyecto cambien después.",
+      "input": "Mi repo fijó `.agents/agent-ready.json` con el stack `node`. Hace poco agregamos `react` a `package.json`. ¿El próximo apply de agent-ready-setup pasa solo al stack react? ¿Cómo me entero y qué hago si quiero cambiarlo? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["no cambia", "sigue en", "se mantiene", "conserva", "no pasa", "no modifica", "keeps node", "mantiene"],
+          "description": "Conserva la selección persistida",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["--plan", "`plan`"],
+          "description": "Indica que plan informa las señales"
+        },
+        {
+          "type": "contains_any",
+          "values": ["--stack react", "--profiles react"],
+          "description": "El cambio es una selección explícita",
+          "critical": true
+        }
+      ]
+    },
+    {
+      "id": "react-over-node-explained-from-the-catalog",
+      "description": "Explica la prioridad entre React y Node desde el contrato, sin lógica de detección en SKILL.md.",
+      "input": "Un repo sin manifest tiene `package.json` con `react` y una app Android generada por React Native en `android/app/src/main/AndroidManifest.xml`. ¿Qué stack elige agent-ready-setup, por qué, y dónde están declaradas esas prioridades por si quiero revisarlas? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "react",
+          "description": "Elige react",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "supersedes",
+          "description": "Nombra el mecanismo de prioridad",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "agent-ready-pack.json",
+          "description": "Ubica las prioridades en el catálogo del pack de contenido"
+        }
+      ]
+    },
+    {
+      "id": "pack-cannot-overwrite-a-golfo-asset",
+      "description": "Un pack que publica el mismo destino que Golfo falla antes de escribir: el namespace no evita la colisión.",
+      "input": "Quiero que el pack de mi empresa reemplace la rule `rules/security.md` de Golfo. Armé el profile `acme/seguridad` con un archivo `rules/security.md` y lo seleccioné junto a `node` en `.agents/agent-ready.json`. Como el profile tiene su propio namespace, ¿agent-ready-setup usa mi versión? ¿Qué tengo que hacer? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["colisi", "both write", "falla", "rechaza"],
+          "description": "Explica que la colisión se rechaza",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["antes de escribir", "antes de modificar", "no escribe", "nothing was written", "sin escribir"],
+          "description": "Falla antes de tocar el repositorio",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["nombre propio", "nombres propios", "rutas propias", "otro nombre", "renombr", "acme-"],
+          "description": "Indica publicar el asset con un nombre propio"
+        }
+      ]
+    },
+    {
+      "id": "pack-source-missing-in-review-mode",
+      "description": "En modo review sin la fuente en caché no descarga nada y no presenta un plan validado.",
+      "input": "Un job de CI corre la review con `AGENT_READY_SETUP_REVIEW_MODE=1` definida en todos sus pasos, incluido `bootstrap.sh --plan`, en una máquina limpia. El repo seleccionó `acme/kafka-interno` con una fuente Git fijada por commit que no está en la caché. ¿Baja el pack para poder responder? ¿El resultado sirve como plan aprobado? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["no descarga", "sin descarga", "no baja", "no lo baja", "no usa la red", "sin red"],
+          "description": "No descarga nada",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["incomplet"],
+          "description": "Informa la evaluación incompleta",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["no es un plan validado", "no está validado", "no sirve como", "no presenta", "not a validated", "no es válido", "no lo presenta", "no valida"],
+          "description": "No lo presenta como un plan validado",
+          "critical": true
+        }
+      ]
+    },
+    {
+      "id": "auto-source-follows-its-ref-without-blocking",
+      "description": "En auto, una fuente sigue su ref en segundo plano, sin bloquear la sesión, y explica el riesgo.",
+      "input": "Mi manifest no configura `updates` y tiene la fuente `git+https://github.com/acme/agent-profiles` con `\"ref\": \"main\"`. Hoy mergearon cambios en `main` de ese pack. ¿Mañana, al abrir sesión, mis agentes reciben las rules nuevas? ¿Esa sesión tiene que esperar la descarga? ¿Qué riesgo tiene esto y cómo lo controlo? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["segundo plano", "desacoplad", "background", "no bloquea", "no espera", "no hace esperar"],
+          "description": "La actualización corre sin bloquear la sesión",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["sesión siguiente", "próxima sesión", "siguiente sesión"],
+          "description": "El resultado se informa después"
+        },
+        {
+          "type": "contains_any",
+          "values": ["quien pushee", "quien haga push", "quien publique", "pushea", "cualquiera con push", "permiso de escritura", "acceso de escritura"],
+          "description": "Advierte quién puede cambiar las instrucciones del agente",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["agent-ready check", "agent-ready\" check", "chequeo de CI", "diff del lock"],
+          "description": "Da el control disponible",
+          "critical": true
+        }
+      ]
+    },
+    {
+      "id": "pinned-source-never-applies-on-its-own",
+      "description": "Una fuente pinned no se aplica sola, aunque su rama avance, y plan lo avisa.",
+      "input": "Mi manifest tiene `\"updates\": {\"mode\": \"pinned\"}` y una fuente con `\"ref\": \"main\"`. Esa rama avanzó ayer. ¿Se aplica sola en la próxima sesión? ¿Cómo me entero y cómo adopto esa versión? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["no se aplica", "nada se aplica", "no aplica", "no escribe", "sin escribir"],
+          "description": "Pinned no aplica solo",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["agent-ready update", "agent-ready\" update"],
+          "description": "Da la adopción explícita con el CLI",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["--plan", "--status", "`plan`", "`status`", "agent-ready plan", "agent-ready\" plan", "agent-ready status", "agent-ready\" status", "--dry-run"],
+          "description": "Indica cómo ver la actualización pendiente"
+        }
+      ]
+    },
+    {
+      "id": "offline-plan-does-not-touch-the-network",
+      "description": "Distingue el refresco por defecto de plan y status del modo sin red.",
+      "input": "Estoy en un avión, sin internet, y quiero correr `--plan` de agent-ready-setup. ¿Por defecto intenta usar la red? ¿Qué uso para que no lo haga en esta corrida, y cómo lo dejo apagado para siempre en este repo? ¿Escribe algo en el repo? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "--offline",
+          "description": "Da la opción de una corrida",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["updates.refresh"],
+          "description": "Da la configuración persistente",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["no escribe", "sin escribir", "fuera del repo", "no toca el repo"],
+          "description": "Aclara que el repo no se escribe"
+        }
+      ]
+    },
+    {
+      "id": "ci-check-follows-its-mode",
+      "description": "El chequeo de CI falla, avisa o se omite según ci, con el token fuera del manifest.",
+      "input": "Quiero que el CI de mi repo me avise si los assets de agent-ready-setup quedaron viejos, y mi pack es privado. ¿Qué corro en el workflow? ¿Cómo hago para que solo avise sin fallar, y para apagarlo? ¿Dónde va el token? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["agent-ready check", "agent-ready\" check"],
+          "description": "Usa el comando común de chequeo",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["warn"],
+          "description": "Da el modo que solo avisa",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["secret", "secreto"],
+          "description": "El token va como secret",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["ci.enabled"],
+          "description": "Explica cómo apagarlo"
+        }
+      ]
+    },
+    {
+      "id": "ci-check-works-without-github",
+      "description": "El chequeo sirve en Jenkins, sin gh, con códigos de salida y sin crear workflows.",
+      "input": "Mi empresa usa Jenkins y no tenemos GitHub Actions; el pack privado está en un Git interno. ¿Cómo corro el chequeo de agent-ready-setup en un Jenkinsfile? ¿Qué códigos de salida tengo que manejar y necesito `gh` para autenticar? ¿agent-ready-setup me genera algún archivo de CI? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["agent-ready check", "agent-ready\" check"],
+          "description": "Usa el comando común",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(4|5).{0,60}(desactualizad|no disponible|outdated|unavailable)|(desactualizad|no disponible|outdated|unavailable).{0,60}(4|5)",
+          "description": "Da los códigos de salida",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["GIT_CONFIG", "SSH", "ssh", "sshagent"],
+          "description": "La autenticación va por Git",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["no proyecta", "no crea", "no genera", "no te genera", "no te crea"],
+          "description": "Aclara que no crea workflows",
+          "critical": true
+        }
+      ]
+    },
+    {
+      "id": "each-mechanism-is-optional",
+      "description": "Sin configurar nada funciona, y cada mecanismo se apaga por separado.",
+      "input": "Es un proyecto personal chico: no quiero packs, ni CI, ni sugerencias, y prefiero actualizar a mano. ¿Tengo que configurar algo para que agent-ready-setup funcione? ¿Qué pongo para apagar cada cosa por separado? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "detection",
+          "description": "Apaga la detección y las sugerencias",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["updates.*pinned", "pinned.*updates", "updates.enabled"],
+          "description": "Apaga las actualizaciones automáticas",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["sources.packs", "sources.enabled"],
+          "description": "Los packs son opcionales por no declararlos"
+        },
+        {
+          "type": "not_contains_any",
+          "values": ["es obligatorio configurar", "tenés que configurar todo"],
+          "description": "No impone configuración"
+        }
+      ]
+    },
+    {
+      "id": "pack-keeps-credentials-out-of-the-manifest",
+      "description": "Para un pack privado no acepta un token en la URL del manifest.",
+      "input": "El pack de mi empresa es privado. Para no pelear con la autenticación en CI pensaba poner `git+https://usuario:ghp_mitoken@github.com/acme/agent-profiles#<commit>` en `sources.packs`. ¿Está bien? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["rechaz", "no acepta", "no se acepta", "falla", "no pongas", "no pongás", "no van en", "nunca"],
+          "description": "Rechaza credenciales en el manifest",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["autenticación ya configurada", "autenticación configurada", "credential", "ssh", "autenticación de Git"],
+          "description": "Propone la autenticación ya configurada",
+          "critical": true
+        }
+      ]
+    },
+    {
+      "id": "config-loosening-from-the-project-needs-machine-approval",
+      "description": "Un valor del manifest que afloja una clave sensible se ignora hasta que la máquina aprueba el repo; no se esquiva borrando la config de usuario.",
+      "input": "En mi notebook tengo `~/.config/agent-ready-setup/config.json` con `{\"tools\": {\"enabled\": false}}`. Cloné un repo cuyo `.agents/agent-ready.json` trae `{\"tools\": {\"enabled\": true}}` y el apply avisa que lo ignoró y no instala el browser. Confío en ese repo. ¿Borro mi config de usuario o le pongo `security.enabled: false` para que ande? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["afloj", "loosen"],
+          "description": "Explica que el manifest afloja una clave sensible",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "trust",
+          "description": "Aprueba ese repo con la operación de confianza",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["todos los repo", "todos los proyecto", "cualquier repo", "cualquier proyecto", "every project", "all projects", "every repo"],
+          "description": "Advierte que apagar security.enabled o borrar la config afecta a todos los repos",
+          "critical": true
+        }
+      ]
+    },
+    {
+      "id": "config-old-flat-fields-fail-and-point-to-namespaces",
+      "description": "Un campo con el formato viejo falla antes de escribir; la respuesta usa el namespace del módulo.",
+      "input": "Un README viejo de mi equipo dice que para apagar el chequeo de CI de agent-ready-setup hay que poner `\"ci\": \"off\"` en `.agents/agent-ready.json`, y para no refrescar `\"refresh\": \"off\"`. Lo hice y ahora bootstrap falla antes de escribir. ¿Qué tengo que poner? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "ci.enabled",
+          "description": "Apaga el chequeo con su enabled",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "updates.refresh",
+          "description": "El refresco vive en el módulo updates",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["unknown key", "clave desconocida", "desconocid", "schema"],
+          "description": "Explica que el formato viejo es una clave que el schema no conoce"
+        }
+      ]
+    },
+    {
+      "id": "config-machine-preference-goes-to-the-user-layer",
+      "description": "Una preferencia de la máquina va a la config de usuario, no al manifest de cada repo.",
+      "input": "En mi máquina de trabajo quiero que todos los repos que tengo con agent-ready-setup queden fijados y nada se actualice solo, sin tocar el `.agents/agent-ready.json` de cada uno porque los comparten otras personas. ¿Dónde lo configuro? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": [".config.*agent-ready-setup"],
+          "description": "Usa la config de usuario",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["updates.mode", "security.preset", "\"mode\": \"pinned\"", "strict"],
+          "description": "Fija con updates.mode o el preset strict",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["afloj", "loosen", "ignora", "aprob"],
+          "description": "Explica que un manifest no puede volver a auto sin aprobación de la máquina"
+        }
+      ]
+    },
+    {
+      "id": "config-explains-where-a-value-comes-from",
+      "description": "Para saber de dónde sale un valor, muestra la configuración efectiva con su capa de origen.",
+      "input": "Mi repo quedó en `pinned` y el `.agents/agent-ready.json` no dice nada de `updates`. ¿De dónde sale eso y cómo lo averiguo sin adivinar? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["config explain", "--config", "state.py\" config", "state.py config", "config --project"],
+          "description": "Muestra la configuración efectiva",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["organizaci", "organization"],
+          "description": "Considera la capa de organización",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [".config.*agent-ready-setup", "config de usuario", "user layer", "capa de usuario", "capa user"],
+          "description": "Considera la capa de usuario"
+        }
+      ]
+    },
+    {
+      "id": "config-reference-is-generated-from-the-schemas",
+      "description": "La referencia de claves no se edita a mano: se cambia el schema y se regenera.",
+      "input": "Estoy agregando una opción nueva `ci.timeoutSeconds` a agent-ready-setup. Para documentarla pensaba sumar una fila a mano en `references/configuration-keys.md` y listar el default en `scripts/agent_ready_options.py`. ¿Es así? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "ci.schema.json",
+          "description": "La opción se declara en el schema del módulo",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "config-reference",
+          "description": "Regenera la referencia desde los schemas",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["uso real", "llamador", "caller", "código que la use", "código que la lea"],
+          "description": "Recuerda que una opción entra con el código que la usa"
+        }
+      ]
+    },
+    {
+      "id": "config-organization-locks-a-key",
+      "description": "Una organización bloquea una clave con locked desde su capa opcional, sin imponerla en el manifest.",
+      "input": "Soy del equipo de plataforma de una empresa. Quiero que ningún repo ni ningún desarrollador pueda apagar el chequeo de CI de agent-ready-setup ni pasarlo a warn, pero sin agregar nada a los repos de los equipos. ¿Cómo lo hago y qué tan a prueba de manipulación es? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "locked",
+          "description": "Usa locked de la organización",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["AGENT_READY_SETUP_ORGANIZATION_CONFIG", "/etc/agent-ready-setup", "ProgramData"],
+          "description": "Ubica la capa de organización",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["no es a prueba", "no es un control", "puede cambiar", "puede modificar", "no garantiza", "tamper"],
+          "description": "Aclara que la capa de organización no es a prueba de manipulación"
+        }
+      ]
+    },
+    {
+      "id": "config-preset-off-from-the-project-is-ignored",
+      "description": "security.preset off desde el proyecto cuenta como aflojar; solo vale desde usuario u organización.",
+      "input": "Para que agent-ready-setup deje de quejarse en un repo nuestro, pensaba poner `\"security\": {\"preset\": \"off\"}` en el `.agents/agent-ready.json` y commitearlo, así le sirve a todo el equipo. ¿Funciona? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["afloj", "loosen"],
+          "description": "Lo trata como aflojar",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["ignora", "no se toma", "no se aplica", "no tiene efecto", "ignored"],
+          "description": "Dice que desde el proyecto se ignora sin aprobación",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["usuario", "user", "organizaci", "organization"],
+          "description": "Indica desde qué capas sí vale"
+        }
+      ]
+    },
+    {
+      "id": "example-pack-is-copied-from-assets",
+      "description": "El pack de ejemplo vive bajo assets/examples/, fuera de lo que un runtime carga como skill.",
+      "input": "Quiero armar el profile pack de mi empresa partiendo del pack de ejemplo que trae agent-ready-setup. ¿De qué carpeta de la skill lo copio, qué trae y cómo lo declaro en mi repo? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "assets/examples/acme-profile-pack",
+          "description": "Copia el ejemplo desde su ubicación real",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["agent-ready-pack.json"],
+          "description": "Nombra el catálogo del pack",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["profileSources", "sources.packs"],
+          "description": "Explica cómo declararlo en el manifest"
+        }
+      ]
+    },
+    {
+      "id": "cli-apply-runs-the-whole-flow",
+      "description": "Aplicar usa agent-ready apply, que proyecta y alinea AGENTS.md, en vez de encadenar los scripts internos.",
+      "input": "Dame el comando exacto para dejar agent ready un repo Node que además diseña flujos de negocio, incluido dejar alineado el AGENTS.md. Antes quiero ver qué cambiaría. No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "apply --profiles node,business-flows",
+          "description": "Aplica con el CLI y la selección pedida",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["--dry-run", "agent-ready plan", "agent-ready\" plan"],
+          "description": "Muestra antes qué cambiaría",
+          "critical": true
+        },
+        {
+          "type": "not_contains_any",
+          "values": ["bootstrap.sh\" --skill-dir", "bootstrap.sh --skill-dir"],
+          "description": "No encadena bootstrap.sh a mano"
+        }
+      ]
+    },
+    {
+      "id": "cli-check-json-for-a-pipeline",
+      "description": "En CI, el chequeo se corre con agent-ready check y su JSON va por stdout.",
+      "input": "En el pipeline quiero guardar en un archivo el resultado del chequeo de agent-ready-setup como JSON y que el job falle solo cuando está desactualizado o una fuente no responde. ¿Qué corro y qué códigos manejo? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["check --json", "check --format json"],
+          "description": "Pide el JSON al CLI",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["agent-ready check", "agent-ready\" check"],
+          "description": "Usa el CLI",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(4|5).{0,80}(desactualizad|no disponible|outdated|unavailable)|(desactualizad|no disponible|outdated|unavailable).{0,80}(4|5)",
+          "description": "Da los códigos de salida"
+        }
+      ]
+    },
+    {
+      "id": "cli-update-previews-one-source",
+      "description": "Adoptar una fuente fijada se previsualiza con update --dry-run y se aplica con update.",
+      "input": "Mi repo está en pinned y quiero ver qué cambiaría si adopto la última versión de la fuente acme, y si me gusta, adoptarla sin tocar las otras fuentes. ¿Qué comandos corro? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["agent-ready update acme --dry-run", "agent-ready\" update acme --dry-run"],
+          "description": "Previsualiza la adopción de esa fuente con el CLI",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "update acme($|[^-])",
+          "description": "Adopta solo esa fuente",
+          "critical": true
+        }
+      ]
+    },
+    {
+      "id": "cli-config-set-writes-the-right-layer",
+      "description": "Una preferencia de la máquina se escribe con config set --layer user, y una del repo en el manifest.",
+      "input": "Con el CLI de agent-ready-setup quiero dos cosas: que en mi máquina todos los repos queden en pinned, y que este repo en particular use el chequeo de CI solo como aviso. ¿Qué comandos uso? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "config set updates.mode pinned --layer user",
+          "description": "La preferencia de la máquina va a la capa de usuario",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "config set ci.mode warn",
+          "description": "La del repo va al manifest",
+          "critical": true
+        }
+      ]
+    },
+    {
+      "id": "cli-init-asks-only-with-a-terminal",
+      "description": "Un agente sin terminal corre init con sus flags; init pregunta solo cuando hay una persona.",
+      "input": "Sos un agente sin terminal interactiva y tenés que dejar agent ready un repo nuevo que detectaste como react, sin manifest todavía. ¿Qué comando corrés para la primera configuración, y qué pasa si lo corrés sin flags? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "init (--stack react|--profiles react[a-z,-]*)( --updates [a-z]+)? --yes",
+          "description": "Corre init con la selección y --yes",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(exit|sale con|código)[^.]{0,40}2|2[^.]{0,40}(flags? (que )?falt|missing)",
+          "description": "Sin flags y sin terminal, sale con 2 nombrando los flags faltantes",
+          "critical": true
+        }
+      ]
+    },
+    {
+      "id": "cli-sources-add-before-selecting-a-pack-profile",
+      "description": "Un pack se declara con sources add y su profile se suma con profiles add antes del apply.",
+      "input": "Quiero sumar a un repo que ya usa agent-ready-setup el pack de mi empresa que está en git+https://github.com/acme/agent-profiles, siguiendo la rama main, y usar su profile kafka-interno. Dame los comandos del CLI en orden. No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "sources add acme git[^ ]*github.com/acme/agent-profiles --ref main",
+          "description": "Declara la fuente con su ref",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "profiles add acme/kafka-interno",
+          "description": "Selecciona el profile con namespace",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["agent-ready apply", "agent-ready\" apply"],
+          "description": "Termina proyectando con apply"
+        }
+      ]
+    },
+    {
+      "id": "cli-remove-previews-and-keeps-project-content",
+      "description": "Sacar agent-ready-setup se hace con remove --dry-run y remove --yes, que conservan lo propio, en vez de borrar carpetas a mano.",
+      "input": "Ya no queremos usar agent-ready-setup en este repo. Tenemos rules propias en .agents/rules/ y una sección nuestra en AGENTS.md que hay que conservar. Sos un agente sin terminal interactiva: ¿qué comandos corrés para sacarlo y qué queda en el repo? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "remove --dry-run",
+          "description": "Muestra antes qué se borra, se edita y se conserva",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "remove --yes",
+          "description": "Sin terminal confirma con --yes",
+          "critical": true
+        },
+        {
+          "type": "not_contains_any",
+          "values": ["rm -rf .agents", "rm -rf .claude", "rm -r .agents", "Remove-Item -Recurse"],
+          "description": "No borra a mano las carpetas donde viven las rules propias",
+          "critical": true
+        }
+      ]
+    },
+    {
+      "id": "cli-doctor-before-guessing-why-hooks-do-nothing",
+      "description": "Cuando los hooks no hacen nada en una máquina, se corre agent-ready doctor antes de adivinar la causa o reinstalar.",
+      "input": "En una máquina nueva clonamos un repo que ya usa agent-ready-setup y al abrir Claude Code el hook de SessionStart no sincroniza nada. ¿Qué corrés primero para saber qué falta y cómo lo arreglás? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["agent-ready doctor", "agent-ready\" doctor"],
+          "description": "Corre doctor primero",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "doctor.{0,400}(arregl|fix)|(arregl|fix|aplic).{0,400}doctor",
+          "description": "Arregla lo que doctor nombra, en vez de adivinar la causa"
+        }
+      ]
+    },
+    {
+      "id": "reviews-hook-reviews-only-the-pairs-of-the-edited-rule",
+      "description": "El hook de consistencia revisa de a pares solo lo que cambió y guarda cada par en la caché local compartida por los worktrees.",
+      "input": "En un repo con agent-ready-setup edité `.agents/rules/testing.md` tres veces seguidas, sin tocar las otras rules ni las skills. ¿Qué revisa el hook de consistencia en cada edición, a cuántas cosas le pide revisión al provider y dónde queda guardado el resultado? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": ".git/info/agent-ready/reviews.json",
+          "description": "Ubica la caché local en el directorio info de Git",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["par", "pares", "pair"],
+          "description": "Explica que la unidad es un par de documentos"
+        },
+        {
+          "type": "regex",
+          "pattern": "no se (re-?)?revisan|no se tocan|no (se )?vuelven? a revisar|se saltean|salen de la caché|siguen en la caché|solo participan|no compara entre sí|no entran",
+          "description": "Los pares que no incluyen la rule editada no se vuelven a revisar"
+        }
+      ]
+    },
+    {
+      "id": "reviews-recheck-and-turn-off",
+      "description": "Forzar la revisión de AGENTS.md es apply --recheck y apagar las revisiones es la opción reviews.enabled, sin inventar flags.",
+      "input": "Necesito dos cosas en agent-ready-setup: que la IA vuelva a revisar el `AGENTS.md` aunque nada haya cambiado, y en otro repo apagar todas las revisiones de IA. ¿Qué comandos corro? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "--recheck",
+          "description": "Fuerza la revisión con apply --recheck",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "reviews.enabled",
+          "description": "Apaga las revisiones con la opción reviews.enabled",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "config set.{0,80}reviews\\.enabled",
+          "description": "Cambia la opción con agent-ready config set"
+        }
+      ]
+    },
+    {
+      "id": "reviews-accept-finding-with-the-users-reason",
+      "description": "Aceptar un hallazgo a pedido del usuario es agent-ready review accept con su id y el motivo que dio el usuario, que solo silencia ese hallazgo.",
+      "input": "El hook de consistencia de agent-ready-setup me marcó `! [3f9a1c2b7e] .agents/rules/golfo.md <-> .agents/rules/testing.md: una pide mockear la red y la otra lo prohíbe`. Es a propósito: golfo mockea la red porque sus tests corren sin conexión. Aceptalo. Decime el comando exacto que corrés y qué pasa si mañana alguien edita una de esas dos rules. No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "review accept 3f9a1c2b7e .{0,40}--reason",
+          "description": "Acepta el hallazgo por su id con --reason",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["sin conexión", "corren sin conexión", "mockea la red"],
+          "description": "Usa el motivo que dio el usuario, sin inventar otro"
+        },
+        {
+          "type": "contains_any",
+          "values": ["a confirmar", "to-confirm", "confirmar", "vuelve a revisar", "se revisa de nuevo"],
+          "description": "Explica que con el alcance content la decisión vuelve a confirmarse si cambian los archivos"
+        }
+      ]
+    },
+    {
+      "id": "reviews-accept-without-reason-asks-first",
+      "description": "Sin motivo del usuario, el agente pregunta el motivo en vez de inventarlo, porque aceptar sin motivo falla.",
+      "input": "agent-ready-setup me muestra el hallazgo `! [9c0d11aa42] AGENTS.md: Mock every dependency. — conflicts with .agents/rules/testing.md`. Aceptalo y listo. No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "(motivo|razón|reason|por qué)",
+          "description": "Pide o menciona el motivo que exige la aceptación",
+          "critical": true
+        },
+        {
+          "type": "not_contains_any",
+          "values": ["--reason \"es intencional\"", "--reason \"intencional\"", "--reason \"aceptado\"", "--reason \"accepted\""],
+          "description": "No inventa un motivo genérico por el usuario"
+        }
+      ]
+    },
+    {
+      "id": "reviews-share-the-cache-with-ci",
+      "description": "Para que el CI no pague de nuevo las revisiones de IA se activa reviews.commit, que commitea la caché y nunca da por resuelto un hallazgo.",
+      "input": "En nuestro repo con agent-ready-setup, cada clon nuevo y cada job de CI vuelve a pagarle al provider las mismas revisiones de IA de rules y skills. ¿Qué configuro para reutilizarlas, qué archivo tengo que commitear y qué riesgo tiene? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "reviews.commit",
+          "description": "Activa la caché compartida con reviews.commit",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": ".agents/agent-ready.review-cache.json",
+          "description": "Nombra el archivo versionado que hay que commitear"
+        },
+        {
+          "type": "contains_any",
+          "values": ["cualquiera puede editar", "puede editarlo", "se puede editar", "editable", "falsific", "manipul", "anyone can edit"],
+          "description": "Explica el riesgo: el archivo versionado lo puede editar cualquiera"
+        },
+        {
+          "type": "contains_any",
+          "values": ["saltea", "saltearía", "omite", "no vuelve a correr", "no se vuelve a revisar", "skip", "oculta", "no da por aceptado", "nunca da"],
+          "description": "Dice qué pasa con una entrada falsa: saltea una revisión, pero nunca da por aceptado un hallazgo"
+        }
+      ]
+    },
+    {
+      "id": "content-pinned-for-a-delivered-solution",
+      "description": "Para que el contenido no cambie en un repo entregado se fija sources.golfo en pinned y se actualiza solo con agent-ready update golfo; el motor sigue al plugin.",
+      "input": "Entregamos a un cliente un repo que usa agent-ready-setup. Necesito que sus rules no cambien aunque el pack oficial de contenido publique una versión nueva, y poder pasar a una versión concreta solo cuando lo decidamos. ¿Qué configuro y qué comando uso para actualizar? ¿Qué parte sigue actualizándose sola? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "(sources\\.golfo\\b|\"golfo\"\\s*:)",
+          "description": "Fija la fuente del contenido en sources.golfo",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "pinned",
+          "description": "Usa el modo pinned"
+        },
+        {
+          "type": "regex",
+          "pattern": "update golfo\\b.{0,40}--to",
+          "description": "Actualiza con agent-ready update golfo --to"
+        },
+        {
+          "type": "regex",
+          "pattern": "(motor|engine|scripts|hooks).{0,200}(plugin instalado|siguen?|actualiza|nunca se fija|no se fija)",
+          "description": "Explica que el motor sigue al plugin instalado"
+        }
+      ]
+    },
+    {
+      "id": "apply-from-lock-on-another-machine",
+      "description": "Para reproducir exactamente el lock en otra máquina se usa agent-ready apply --from-lock, que verifica revisiones y sha256 y falla antes de escribir.",
+      "input": "Tenemos un repo con agent-ready-setup aplicado hace meses y su lockfile commiteado. En la máquina de un cliente necesito que quede exactamente igual a lo que dice el lock, sin traer versiones nuevas del contenido ni de los packs, y que falle si no se puede. ¿Qué comando corro y qué pasa si algo no coincide? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "--from-lock",
+          "description": "Usa agent-ready apply --from-lock",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(sha256|digest|revisi)",
+          "description": "Explica que verifica revisiones o sha256 del lock"
+        },
+        {
+          "type": "regex",
+          "pattern": "(antes de escribir|sin escribir|no escribe|nada cambia|no cambia nada|falla)",
+          "description": "Dice que falla antes de escribir si algo no coincide"
+        }
+      ]
+    },
+    {
+      "id": "pack-needs-newer-engine",
+      "description": "Un pack declara minEngine más alto que el motor instalado: el apply falla antes de escribir y hay que actualizar el plugin golfo-agent-ready; el motor no se fija.",
+      "input": "Aplicamos agent-ready-setup y falló con: pack 'acme' needs the agent-ready-setup engine 0.50.0 or newer, and this installation runs golfo-agent-ready 0.46.0. ¿Qué significa, quedó algo a medias y cómo lo resuelvo? ¿Puedo fijar el motor viejo para no actualizar? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "minEngine",
+          "description": "Explica que el pack declara minEngine",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(actualiz|instal).{0,80}(plugin|golfo-agent-ready)",
+          "description": "Indica actualizar el plugin golfo-agent-ready"
+        },
+        {
+          "type": "regex",
+          "pattern": "(nada|no se escribi|no cambi|antes de escribir|sin escribir)",
+          "description": "Aclara que no quedó nada a medias"
+        },
+        {
+          "type": "regex",
+          "pattern": "(motor|engine).{0,120}(no se fija|nunca se fija|no se puede fijar|siempre)",
+          "description": "Explica que el motor no se fija"
+        }
+      ]
+    },
+    {
+      "id": "update-brings-a-semantic-conflict",
+      "description": "Con conflicts.block, una actualización trae una rule gestionada que contradice una rule propia: el apply no escribió nada y se destraba cambiando la rule o aceptando el hallazgo con el motivo del usuario.",
+      "input": "Corrí agent-ready apply y falló con: conflicts.block: this apply brings 1 semantic conflict(s) with the project, so nothing was changed: [fbef35ed76] .agents/rules/team.md <-> .agents/rules/verify-changes.md: One rule verifies every change and the other forbids it. La rule team.md es a propósito: en este repo no verificamos cada cambio porque lo hace el CI. ¿Quedó algo a medias y cómo sigo? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "review accept fbef35ed76",
+          "description": "Da el comando para aceptar ese hallazgo por su id",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "--reason.{0,10}[\"'].{0,160}(CI|a propósito|verific)",
+          "description": "Usa el motivo que dio el usuario"
+        },
+        {
+          "type": "regex",
+          "pattern": "(nada|no se escribi|no cambi|antes de escribir|sin escribir)",
+          "description": "Aclara que el apply no dejó nada a medias"
+        },
+        {
+          "type": "regex",
+          "pattern": "((volvé|volver|de nuevo|otra vez|reintent|corré|[Dd]espués).{0,80}apply|apply.{0,200}(de nuevo|otra vez|reintent))",
+          "description": "Indica volver a correr el apply después de decidir"
+        }
+      ]
+    },
+    {
+      "id": "delivered-solution-with-one-preset",
+      "description": "Para dejar estable una solución entregada a un cliente se usa el preset delivered (agent-ready preset delivered), que fija pinned, apaga el refresco, reproduce el lock y deja el CI en fail; se actualiza solo con agent-ready update.",
+      "input": "Le entregamos a un estudio de abogados una herramienta armada con agent-ready-setup. Necesito que quede estable: que no cambien solos ni el contenido ni los packs, que cada apply deje exactamente lo que dice el lock y que el CI falle si el repo se aparta. ¿Hay una forma de configurar todo eso de una vez, y cómo actualizo cuando lo decidamos? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "(preset delivered|preset.{0,20}delivered)",
+          "description": "Usa el preset delivered",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(fromLock|from-lock|reproduc)",
+          "description": "Explica que cada apply reproduce el lock"
+        },
+        {
+          "type": "regex",
+          "pattern": "update.{0,60}(--to|--dry-run)",
+          "description": "Indica actualizar de forma controlada con agent-ready update"
+        }
+      ]
+    },
+    {
+      "id": "pack-tool-blocked-until-the-source-is-trusted",
+      "description": "Un pack declara un CLI y un script, y plan los muestra bloqueados porque la fuente no es de confianza: se confía con agent-ready trust add, sin aflojar la política desde el manifest.",
+      "input": "Agregamos el pack acme de mi empresa y agent-ready plan dice: - blocked: cli acme 1.4.2 (artifacts) [acme/kafka-interno]: the source acme is not trusted on this machine; trust it with agent-ready trust add acme. ¿Es un error? ¿Lo destrabo poniendo security.checks.trustedSource en false en el .agents/agent-ready.json del repo? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "trust add acme",
+          "description": "Indica confiar en la fuente con agent-ready trust add acme",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(afloj|ignor|no se toma|aprob|no conviene|no lo hagas|no lo recomiendo)",
+          "description": "Explica que apagar el check desde el manifest afloja la política y no se toma sin aprobación"
+        },
+        {
+          "type": "regex",
+          "pattern": "(máquina|machine|config de usuario|tu usuario)",
+          "description": "Aclara que la confianza es por máquina y no queda en el repo"
+        }
+      ]
+    },
+    {
+      "id": "pack-mcp-server-kept-by-a-project-server",
+      "description": "El apply no registra el servidor MCP de un pack porque el proyecto ya tiene uno con ese nombre: se conserva el del proyecto y se resuelve renombrando uno de los dos.",
+      "input": "Después de confiar en el pack acme, agent-ready apply dice: ! MCP server kept as the project has it: acme-docs: .mcp.json already has a server with that name, which belongs to the project; rename one of them. El acme-docs que tenemos en .mcp.json lo armamos a mano hace meses. ¿Por qué no lo reemplaza y qué hago? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "(lock|del proyecto|propio|ownership|nunca toca|no toca|no lo pisa|no pisa)",
+          "description": "Explica que un servidor que el lock no registra es del proyecto y no se toca",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(renombr|cambiar el nombre|otro nombre|borr|quit|elimin)",
+          "description": "Propone renombrar o quitar el servidor propio para que el apply registre el del pack"
+        },
+        {
+          "type": "regex",
+          "pattern": "(apply|aplic)",
+          "description": "Indica volver a correr el apply"
+        },
+        {
+          "type": "contains_any",
+          "values": ["agent-ready.lock.json", "lockfile", "el lock", "del lock", "en el lock"],
+          "description": "Explica que el lock decide de quién es cada servidor: el que no registró un apply es del proyecto",
+          "critical": true
+        }
+      ]
+    },
+    {
+      "id": "pack-cli-sha256-mismatch-installs-nothing",
+      "description": "El apply no instala el CLI de un pack porque el sha256 del archivo descargado no es el declarado: no instala nada y la solución es corregir el sha256 en el pack (o la URL), nunca apagar el check.",
+      "input": "Confiamos en el pack acme y agent-ready apply dice: ! CLI not installed: acme 1.4.2: acme-linux-x64.tar.gz has sha256 3f1c..., not the 9a0b... the pack declares; nothing was installed. El release lo subimos ayer de nuevo con un fix. ¿Qué pasó y cómo lo arreglo? ¿Apago security.checks.artifactSha256? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "(sha256|hash|checksum|suma)",
+          "description": "Explica que el sha256 del archivo descargado no coincide con el que declara el pack",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(actualiz|correg|cambi|nuevo sha256|sha256 nuevo|recalcul|volv).{0,200}(pack|agent-ready-pack\\.json|declar)",
+          "description": "Propone actualizar el sha256 declarado en el pack (o publicar una versión nueva) en vez de apagar el check"
+        },
+        {
+          "type": "regex",
+          "pattern": "(no (te )?(lo |la )?recomiendo|no (lo |la )?apag|no (conviene|hace falta)|no desactiv|mantené|dejalo (encendido|prendido)|evit)",
+          "description": "Desaconseja apagar security.checks.artifactSha256"
+        },
+        {
+          "type": "regex",
+          "pattern": "agent-ready[\"'`]? update acme|update acme|--update-source",
+          "description": "Adopta la revisión del pack con el sha256 corregido con agent-ready update acme",
+          "critical": true
+        }
+      ]
+    },
+    {
+      "id": "pack-script-blocked-in-ci",
+      "description": "En el workflow de CI, agent-ready apply no corre el install script del pack aunque la fuente sea de confianza: la ejecución en CI está apagada hasta que el workflow prenda security.execution.ci en su propia configuración.",
+      "input": "En GitHub Actions corremos agent-ready apply y el plan dice: - blocked: script acme/scripts/setup.sh on install (bash) [acme/kafka-interno]: this runs in continuous integration (CI is set) and security.execution.ci is false. En mi máquina el mismo script corre bien. ¿Por qué en CI no, y cómo hago para que corra solo en ese workflow? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "security\\.execution\\.ci",
+          "description": "Nombra la clave security.execution.ci",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(workflow|CI).{0,200}(config|configuración|AGENT_READY|variable|--layer|capa)",
+          "description": "Explica que se prende desde la configuración del workflow, no en el manifest del repo para todos"
+        },
+        {
+          "type": "regex",
+          "pattern": "(por defecto|default|apagad|false)",
+          "description": "Dice que en CI la ejecución está apagada por defecto"
+        },
+        {
+          "type": "regex",
+          "pattern": "security\\.execution\\.ci[^.]{0,40}true",
+          "description": "Prende security.execution.ci en la configuración de ese workflow",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["--layer user", "capa user", "capa de usuario", "config del usuario", "configuración de usuario", "XDG_CONFIG_HOME"],
+          "description": "Lo hace en la capa de usuario del job, no en el manifest que comparten todos"
+        }
+      ]
+    },
+    {
+      "id": "pack-signature-needs-signer-key",
+      "description": "Con security.checks.signature prendido, una fuente bloqueada por falta de claves se habilita sumando la clave pública SSH de sus mantenedores con trust add --signer, sin apagar el check.",
+      "input": "En mi config de usuario prendí security.checks.signature y ahora agent-ready plan dice: - blocked: cli acme 1.4.2 (artifacts) [acme/kafka-interno]: security.checks.signature: no key of security.signers covers the source acme. Los de acme firman sus releases con una clave SSH y me pasaron acme-release.pub. ¿Qué hago para que pase? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "trust add acme.{0,40}--signer",
+          "description": "Indica agent-ready trust add acme --signer",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "acme-release\\.pub",
+          "description": "Usa el archivo .pub que le pasaron"
+        },
+        {
+          "type": "regex",
+          "pattern": "security\\.signers",
+          "description": "Explica que la clave queda en security.signers"
+        }
+      ]
+    },
+    {
+      "id": "personal-pack-with-tools-needs-no-signature",
+      "description": "Para publicar un pack personal con su propio CLI no hace falta firmar: la firma está apagada por defecto, quien agrega la fuente con sources add la aprueba, y el CLI necesita sha256 por artefacto; se apoya en la guía o el ejemplo personal.",
+      "input": "Quiero publicar en mi GitHub un profile pack personal que instale mi CLI mytool y escriba una config local después de cada apply. ¿Tengo que firmar los commits o los tags? ¿Qué necesito declarar para el CLI y cómo lo uso desde un proyecto mío? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "(security\\.checks\\.signature|signature)",
+          "description": "Nombra el check de firma",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(no (hace falta|necesit|ten[eé]s que|es necesario)|apagad|por defecto|default)",
+          "description": "Dice que no hace falta firmar porque el check está apagado por defecto"
+        },
+        {
+          "type": "regex",
+          "pattern": "sha256",
+          "description": "Pide el sha256 de cada artefacto del CLI"
+        },
+        {
+          "type": "regex",
+          "pattern": "(sources add|post-apply|personal-tools-pack|publishing-packs-with-tools)",
+          "description": "Explica cómo adoptarlo (sources add, post-apply) o remite al ejemplo o la guía"
+        }
+      ]
+    },
+    {
+      "id": "pr-template-own-section-outside-block",
+      "description": "Para sumar una sección propia al template de PR sin que el próximo apply la pise, se escribe fuera del bloque gestionado (marcadores BEGIN/END AGENT-READY MANAGED: common); lo de adentro se pisa en cada apply.",
+      "input": "Quiero agregar al .github/pull_request_template.md de mi repo una sección '## Deploy notes'. Agent Ready lo gestiona. ¿Dónde la pongo para que el próximo apply no me la borre? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "(fuera|afuera|outside|despu[eé]s|antes).{0,80}(bloque|marcador|block|marker)",
+          "description": "Dice que va fuera del bloque gestionado",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "AGENT-READY MANAGED",
+          "description": "Nombra los marcadores del bloque"
+        },
+        {
+          "type": "regex",
+          "pattern": "(adentro|dentro|inside|entre).{0,120}(pisa|reemplaza|sobrescrib|overwrit|se pierde)|(pisa|reemplaza|sobrescrib|overwrit)[^.]{0,80}(entre|dentro|adentro)",
+          "description": "Advierte que lo de adentro del bloque se pisa en cada apply"
+        }
+      ]
+    },
+    {
+      "id": "gitignore-own-rules-outside-block",
+      "description": "El .gitignore que gestiona agent-ready-setup tiene un bloque con su estado local (por ejemplo .agents/browser-tools.json); las reglas propias van fuera del bloque, porque lo de adentro se pisa en cada apply.",
+      "input": "Agent Ready me dejó un bloque '# BEGIN AGENT-READY MANAGED: common' en el .gitignore de mi repo. Quiero ignorar también dist/. ¿Lo agrego adentro del bloque o afuera? ¿Qué ignora ese bloque? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "(fuera|afuera|outside|despu[eé]s|antes).{0,80}(bloque|marcador|block|marker)",
+          "description": "Dice que dist/ va fuera del bloque",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "browser-tools\\.json|agent-ready-assets\\.lock|hard-link-views",
+          "description": "Nombra al menos una ruta local que ignora el bloque"
+        },
+        {
+          "type": "regex",
+          "pattern": "(adentro|dentro|inside|entre).{0,200}(pisa|reemplaza|sobrescrib|overwrit|se pierde|se perder)",
+          "description": "Advierte que lo de adentro se pisa en cada apply"
+        }
+      ]
+    },
+    {
+      "id": "ci-provider-setup-command",
+      "description": "Para dejar armado el chequeo de CI en GitHub Actions se usa agent-ready ci setup --provider github, que crea el workflow y el script gestionados; cambiar de proveedor retira los archivos del anterior.",
+      "input": "Quiero que el chequeo de Agent Ready corra en GitHub Actions en mi repo. ¿Qué comando corro y qué archivos me deja? Y si después me paso a GitLab, ¿qué pasa con el workflow? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "ci setup --provider github",
+          "description": "Da el comando agent-ready ci setup --provider github",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "agent-ready-check\\.sh|workflows/agent-ready\\.yml",
+          "description": "Nombra el script o el workflow que deja"
+        },
+        {
+          "type": "regex",
+          "pattern": "(retira|elimina|borra|saca|remov|quita).{0,160}(workflow|anterior|github)|(workflow|anterior|github).{0,160}(retira|elimina|borra|saca|remov|quita)",
+          "description": "Dice que al cambiar de proveedor se retiran los archivos del anterior"
+        }
+      ]
+    },
+    {
+      "id": "ci-question-never-outside-interactive-runs",
+      "description": "La pregunta del proveedor de CI solo aparece con el usuario presente; el hook de SessionStart, las actualizaciones en segundo plano, review mode y CI nunca preguntan.",
+      "input": "Mi repo usa agent-ready y todavía no tiene ci.provider. Cuando corre el hook de SessionStart al abrir una sesión, o el chequeo en el CI, ¿me va a preguntar qué proveedor de CI uso? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "(no|nunca)[^.]{0,80}pregunt",
+          "description": "Dice que en esos flujos no pregunta",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "ci setup|ci\\.provider|--ci-provider",
+          "description": "Dice cómo elegirlo: ci setup, init --ci-provider o la clave ci.provider"
+        }
+      ]
+    },
+    {
+      "id": "ci-question-detected-provider-first",
+      "description": "En la primera configuración interactiva de un repo con Jenkinsfile, la pregunta del CI ofrece Jenkins primero; elegirlo deja el stage para copiar y no edita el Jenkinsfile.",
+      "input": "Es la primera vez que configuro Agent Ready en un repo que tiene un Jenkinsfile y no tiene ci.provider. ¿Qué me vas a preguntar sobre el CI, y qué pasa si elijo Jenkins? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "jenkins.{0,160}(primer|detectad|default|por defecto)|(primer|detectad|default|por defecto).{0,160}jenkins",
+          "description": "Ofrece Jenkins primero porque lo detecta",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "jenkinsfile[^.]{0,160}(no (se )?(lo )?(edita|modifica|toca|cambia)|nunca|intacto|igual)|(no (se )?(edita|modifica|toca|cambia)|nunca)[^.]{0,160}jenkinsfile",
+          "description": "Aclara que el Jenkinsfile no se edita"
+        }
+      ]
+    },
+    {
+      "id": "two-stacks-in-one-repository",
+      "description": "Un monorepo con una app React y un servicio Node selecciona los dos stacks; cada uno trae sus assets con su prefijo y su sección de AGENTS.md.",
+      "input": "Tengo un monorepo con una app React y un servicio Node. ¿Puedo usar los stacks react y node a la vez con agent-ready-setup? ¿Qué comando corro, cómo se llaman las rules de seguridad de cada uno y cómo queda el AGENTS.md? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "--profiles[ =]+(react,node|node,react)",
+          "description": "Da la selección con los dos stacks",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "react-security.md",
+          "description": "Nombra la rule de seguridad de react con su prefijo"
+        },
+        {
+          "type": "contains",
+          "value": "node-security.md",
+          "description": "Nombra la rule de seguridad de node con su prefijo"
+        },
+        {
+          "type": "regex",
+          "pattern": "[Ss]ecci[^.]{0,160}(stack|react|node)|(stack|react|node)[^.]{0,160}[Ss]ecci",
+          "description": "Dice que cada stack suma su sección a AGENTS.md"
+        }
+      ]
+    },
+    {
+      "id": "agents-md-stack-sections",
+      "description": "El AGENTS.md sale de un template base único más una sección por stack como bloque con id; sacar un stack se lleva su sección y la revisión de IA no la toca.",
+      "input": "En un repo con agent-ready-setup y los stacks react y node, ¿de dónde sale cada parte del AGENTS.md? Si saco react de la selección y vuelvo a aplicar, ¿qué pasa con lo de react en el AGENTS.md? ¿La revisión de IA de AGENTS.md puede borrar esas secciones? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "agents-template.md",
+          "description": "Ubica el template base único en assets/common",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "AGENT-READY MANAGED: react",
+            "AGENT-READY MANAGED: node",
+            "blocks/AGENTS.md"
+          ],
+          "description": "Explica que cada stack aporta su sección como bloque con id"
+        },
+        {
+          "type": "regex",
+          "pattern": "se lleva su secci|secci[^.]{0,80}(desaparece|se elimina|se retira|se borra|se saca)|(desaparece|se elimina|se retira|se borra|se saca)[^.]{0,80}secci",
+          "description": "Dice que sacar react retira su sección"
+        },
+        {
+          "type": "regex",
+          "pattern": "placeholder|AGENT-READY MANAGED SECTION|solo lectura|read-only|[Rr]echaz",
+          "description": "Explica que la revisión ve la sección como contenido gestionado y no puede borrarla"
+        }
+      ]
+    },
+    {
+      "id": "nextjs-app-router-layers",
+      "description": "Un repo Next.js App Router detecta la capa más específica y trae por requires las capas que extiende, sin assets duplicados.",
+      "input": "Tengo una app Next.js con App Router (`next` y `react` en package.json, y `src/app/layout.tsx`). ¿Qué stack detecta agent-ready-setup, qué otras capas trae y cómo, y en qué capa queda la rule de server-first-data-flow? ¿Se repite algún asset entre capas? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "nextjs-app-router",
+          "description": "Detecta la capa nextjs-app-router",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "requires",
+          "description": "Explica que las otras capas llegan por requires",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "react[^.]{0,120}nextjs|nextjs[^.]{0,120}react",
+          "description": "Nombra las capas react y nextjs que extiende"
+        },
+        {
+          "type": "regex",
+          "pattern": "server-first-data-flow.{0,200}capa[^[:alnum:]]{0,6}nextjs([^-]|$)|server-first-data-flow[^.]{0,160}nextjs([^-]|$)|nextjs([^-]|$)[^.]{0,160}server-first-data-flow",
+          "description": "Ubica server-first-data-flow en la capa nextjs"
+        },
+        {
+          "type": "contains_any",
+          "values": ["sin assets duplicados", "no se repite", "ningún asset se repite", "no repite", "sin duplicados", "nombres propios", "no hay duplicados", "no hay assets repetidos", "solo sus propios", "sin repetir"],
+          "description": "Aclara que cada capa publica solo sus assets"
+        }
+      ]
+    },
+    {
+      "id": "profile-defaults-and-bundles",
+      "description": "Los defaults vienen del profile, se dejan afuera con excludedDefaults y un bundle agrupa profiles por requires; el manifest guarda lo elegido y el lock lo resuelto.",
+      "input": "En un repo con agent-ready-setup elegí `node`. ¿Por qué me aparece `browser` si no lo elegí, cómo lo saco sin sacar node, y qué queda guardado en `.agents/agent-ready.json` y en el lock? Además, mi empresa quiere un profile `acme/backend` que traiga node y su capability de Kafka de una: ¿cómo se declara? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "excludedDefaults",
+          "description": "Saca browser con excludedDefaults",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "defaults[^.]{0,120}(node|browser)|(node|browser)[^.]{0,120}defaults",
+          "description": "Explica que browser es un default de node"
+        },
+        {
+          "type": "contains",
+          "value": "bundle",
+          "description": "Propone un profile kind bundle",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "lock[^.]{0,160}(resuel|profileOrder)|(resuel|profileOrder)[^.]{0,160}lock",
+          "description": "Dice que el lock guarda lo resuelto"
+        }
+      ]
+    },
+    {
+      "id": "pack-publishes-primary-stack",
+      "description": "Un pack publica un stack primario propio con detección y sección de AGENTS.md; empatar con un stack de golfo-agent-ready pide selección explícita.",
+      "input": "Mi empresa programa en Elixir y agent-ready-setup no tiene ese stack. ¿Puedo publicar uno propio en un pack, cómo se detecta y cómo aporta su parte de AGENTS.md? ¿Qué pasa si el repo además tiene un package.json? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "kind[^.]{0,40}stack",
+          "description": "Usa un profile kind stack en el pack",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "blocks/AGENTS.md",
+          "description": "La sección de AGENTS.md va en blocks/AGENTS.md"
+        },
+        {
+          "type": "contains_any",
+          "values": ["selección explícita", "seleccion explicita", "ambiguous", "ambigu", "--profiles"],
+          "description": "Con package.json pide una selección explícita"
+        },
+        {
+          "type": "contains_any",
+          "values": ["supersedes", "elixir-stack-pack"],
+          "description": "Menciona supersedes o el pack de ejemplo"
+        }
+      ]
+    },
+    {
+      "id": "repository-without-a-stack",
+      "description": "Un repo sin código elige solo capabilities: recibe el núcleo y el template neutro de AGENTS.md, sin las rules de software-development ni el template de PR.",
+      "input": "Tengo un repo de un estudio jurídico donde solo redactamos actas en Markdown, sin código. ¿Puedo usar agent-ready-setup sin elegir un stack? ¿Qué recibe el repo y qué no, comparado con un repo de Node? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "software-development",
+          "description": "Nombra la capability software-development",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["núcleo", "nucleo", "assets/common"],
+          "description": "Dice que recibe el núcleo"
+        },
+        {
+          "type": "contains_any",
+          "values": ["pull_request_template", "template de PR", "plantilla de PR"],
+          "description": "Aclara que el template de PR es de software-development"
+        },
+        {
+          "type": "contains_any",
+          "values": ["Purpose", "propósito", "Propósito", "neutro"],
+          "description": "Menciona el template neutro de AGENTS.md"
+        }
+      ]
+    },
+    {
+      "id": "detection-without-stack-signals",
+      "description": "Un repo sin señales de stack no es un error: el apply deja solo el núcleo y guarda profiles vacío; con una persona, init pregunta para qué es el repo.",
+      "input": "Corrí la detección de agent-ready-setup en un repo que solo tiene Markdown de actas y dio `Stack: none`. ¿Es un error? ¿Qué hago para dejarlo agent ready sin elegir un stack, y qué queda guardado en `.agents/agent-ready.json`? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["--profiles none", "\"profiles\": \\[\\]", "profiles: \\[\\]", "lista vacía"],
+          "description": "Usa la selección vacía",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": ["núcleo", "nucleo", "assets/common"],
+          "description": "Dice que se aplica el núcleo"
+        },
+        {
+          "type": "regex",
+          "pattern": "[Nn]o es (un )?error|exit 0|sale con 0",
+          "description": "Aclara que Stack: none no es un error"
+        }
+      ]
+    },
+    {
+      "id": "legal-domain-pack-without-code",
+      "description": "Un estudio jurídico arma un pack con un stack de dominio detectado por carpetas y una capability de actas, sin software-development.",
+      "input": "En el estudio jurídico tenemos un repo con carpetas actas/2026/ y expedientes/ llenas de Markdown. Quiero que agent-ready-setup detecte solo que es un repo del estudio y le dé reglas de formato de actas y una skill para redactarlas. ¿Cómo lo armo y qué recibe el repo? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": ["estudio-juridico-pack", "estudio-juridico/estudio"],
+          "description": "Usa el pack de ejemplo estudio-juridico",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "carpeta[^.]{0,80}actas|actas[^.]{0,80}carpeta|actas/[*][*]",
+          "description": "Explica la detección por carpetas"
+        },
+        {
+          "type": "contains",
+          "value": "software-development",
+          "description": "Aclara que no recibe software-development"
+        }
+      ]
+    },
+    {
+      "id": "pack-overrides-a-golfo-rule",
+      "description": "Un pack reemplaza a propósito una rule de golfo con overrides; sin overrides las dos quedan activas.",
+      "input": "Mi pack de empresa tiene su propia rule de testing y quiero que reemplace a testing-scope.md del pack oficial, no que queden las dos. ¿Cómo lo declaro en agent-ready-pack.json y cómo veo que funcionó? ¿Qué pasa si dos profiles declaran el mismo servidor MCP con distinta URL? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "overrides",
+          "description": "Usa overrides",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "software-development:rules/testing-scope.md",
+          "description": "Nombra la referencia <profile>:<path> correcta"
+        },
+        {
+          "type": "contains_any",
+          "values": ["antes de escribir", "falla", "conflicto"],
+          "description": "Dice que el MCP declarado distinto falla antes de escribir"
+        }
+      ]
+    },
+    {
+      "id": "context-budget-in-plan",
+      "description": "Con muchos profiles, plan informa el contexto que suma la selección y el usuario ajusta el umbral.",
+      "input": "Sumé varios profiles y siento que el agente arranca cada sesión con demasiado contexto. ¿Cómo veo cuánto suma la selección antes de aplicar y qué hago si se pasa? Quiero que me avise también por las rules de Claude. No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "agent-ready[\"'`]? plan",
+          "description": "Usa agent-ready plan para ver el presupuesto",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "conflicts.contextBudget.rulesBytes",
+          "description": "Nombra la clave del umbral de las rules"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "paths:",
+            "skills"
+          ],
+          "description": "Propone mover contenido a rules con paths: o a skills"
+        }
+      ]
+    },
+    {
+      "id": "machine-shadowing-and-user-servers",
+      "description": "Una skill del usuario con el mismo nombre que una del profile, y un MCP del pack que el usuario ya tiene: plan lo informa y el apply no duplica el servidor.",
+      "input": "Tengo en ~/.claude/skills una skill component-creation propia y el profile react de agent-ready-setup trae otra con el mismo nombre. Además ya tengo registrado a nivel usuario el mismo servidor MCP que declara mi pack. ¿Cuál usa cada agente y qué hace agent-ready con el servidor repetido? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "agent-ready plan",
+          "description": "Usa agent-ready plan para ver los choques",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "la del usuario",
+            "del usuario gana",
+            "gana la del usuario",
+            "usa la del usuario",
+            "user's"
+          ],
+          "description": "Dice que en Claude Code gana la skill del usuario"
+        },
+        {
+          "type": "contains",
+          "value": "conflicts.userServers.register",
+          "description": "Nombra la clave para registrar igual la copia del proyecto"
+        }
+      ]
+    },
+    {
+      "id": "rule-contradicts-repo-config",
+      "description": "Una rule de testing que pide Vitest en un repo con Jest: plan lo informa y la rule propia declara lo que asume con assumes.",
+      "input": "Mi repo usa Jest y pnpm, pero el profile react de agent-ready-setup trae una rule que pide Vitest. ¿agent-ready me avisa de esa contradicción? Y quiero que una rule mía declare que asume pnpm para que me avise si alguien mete un package-lock.json. No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "agent-ready plan",
+          "description": "Usa agent-ready plan para ver la contradicción",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "assumes",
+          "description": "Explica el campo assumes del frontmatter",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "packageManager",
+          "description": "Usa el dato packageManager para pnpm"
+        }
+      ]
+    },
+    {
+      "id": "hooks-and-permissions-collide",
+      "description": "Dos formateadores en PostToolUse y un permiso allow del proyecto contra un deny del usuario: plan lo informa con las dos capas.",
+      "input": "En .claude/settings.json tengo un hook PostToolUse que corre Prettier y en settings.local.json otro que corre Biome, y además el proyecto permite Bash(npm run *) pero en mi ~/.claude/settings.json lo tengo en deny. ¿agent-ready me avisa de estos choques y cómo apago ese chequeo si no me interesa? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "agent-ready plan",
+          "description": "Usa agent-ready plan para ver los choques",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "deny",
+            "prohíbe"
+          ],
+          "description": "Dice que Claude Code aplica el deny"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "conflicts.hooks.enabled",
+            "conflicts.permissions.enabled"
+          ],
+          "description": "Nombra la clave para apagar el chequeo"
+        }
+      ]
+    },
+    {
+      "id": "provider-parity-env-and-ci",
+      "description": "Un hook propio solo en Claude, una variable del pack que ya está en .env.example y un workflow que ya corre el chequeo: plan lo informa.",
+      "input": "Uso Claude Code y Codex en el mismo repo. Tengo un hook PostToolUse propio solo en .claude/settings.json, mi pack pide ACME_TOKEN que ya está en .env.example para otra cosa, y mi workflow de GitHub ya corre el chequeo de agent-ready aunque configuré ci.provider github. ¿agent-ready me avisa de todo eso? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "agent-ready plan",
+          "description": "Usa agent-ready plan",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            ".codex/hooks.json",
+            "Codex no",
+            "no corre en Codex"
+          ],
+          "description": "Dice que el hook no llega a Codex"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "conflicts.ciJobs.enabled",
+            "dos veces",
+            "duplicad"
+          ],
+          "description": "Explica el job de CI duplicado"
+        }
+      ]
+    },
+    {
+      "id": "pack-rule-contradicts-golfo-and-tools-compete",
+      "description": "Una rule de un pack que contradice la de golfo y dos servidores MCP con la misma capacidad: plan lo informa y complements u overrides lo resuelven.",
+      "input": "Mi pack acme trae una rule de testing que pide Jest y el pack oficial trae otra que pide Vitest. Además el pack declara dos servidores MCP de documentación en profiles distintos, los dos con provides docs-search. ¿agent-ready me avisa? ¿Cómo me quedo con una sola rule y cómo digo que los dos servidores van juntos a propósito? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "agent-ready plan",
+          "description": "Usa agent-ready plan",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "overrides",
+          "description": "Propone overrides para quedarse con una rule"
+        },
+        {
+          "type": "contains",
+          "value": "complements",
+          "description": "Propone complements para los servidores que van juntos",
+          "critical": true
+        }
+      ]
+    },
+    {
+      "id": "pack-skill-competes-with-golfo-skill",
+      "description": "Una skill de un pack que hace lo mismo que una de golfo-agent-ready: plan la revisa con IA y complements declara las que van juntas.",
+      "input": "Mi pack trae una skill team-review para revisar pull requests con nuestro checklist, y el pack oficial ya trae pr-review-workflow. Me preocupa que el agente elija una u otra al azar. ¿agent-ready me avisa? Y si en realidad se complementan, ¿cómo lo declaro para que no avise? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "agent-ready plan",
+          "description": "Usa agent-ready plan",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "complements",
+          "description": "Propone complements para las que van juntas",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "software-development:skills/pr-review-workflow",
+          "description": "Escribe la referencia <profile>:skills/<nombre> correcta"
+        }
+      ]
+    },
+    {
+      "id": "conflicts-command-and-ci",
+      "description": "El usuario quiere ver todos los conflictos juntos y que el CI falle por los estructurales pero no por los de IA.",
+      "input": "Quiero un comando que me liste todos los conflictos entre los perfiles de agent-ready de una vez, y que mi CI falle si hay conflictos estructurales pero que no llame a ninguna IA. ¿Cómo lo hago? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": [
+            "agent-ready conflicts",
+            "agent-ready\" conflicts",
+            "conflicts --offline",
+            "conflicts --json"
+          ],
+          "description": "Nombra el subcomando agent-ready conflicts",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "ci.conflicts",
+          "description": "Nombra las claves ci.conflicts",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "semantic",
+            "semántic",
+            "IA",
+            "AI"
+          ],
+          "description": "Distingue lo semántico (IA) de lo estructural"
+        }
+      ]
+    },
+    {
+      "id": "conflicts-at-session-start-and-on-edit",
+      "description": "El usuario no quiere que agent-ready le muestre los conflictos estructurales cada vez que edita un archivo, pero sí al iniciar la sesión.",
+      "input": "Agent-ready me lista los conflictos entre perfiles cada vez que edito el package.json y es mucho ruido. Quiero que solo me los muestre al iniciar la sesión. ¿Qué clave cambio? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "conflicts.onEdit.enabled",
+          "description": "Nombra la clave conflicts.onEdit.enabled",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "false"
+          ],
+          "description": "La apaga con false",
+          "critical": true
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "conflicts.sessionStart.enabled false"
+          ],
+          "description": "No apaga el aviso al iniciar sesión"
+        }
+      ]
+    },
+    {
+      "id": "pack-author-conflicts-check",
+      "description": "El autor de un profile pack quiere que el CI del pack detecte contradicciones con golfo-agent-ready antes de publicarlo.",
+      "input": "Mantengo un profile pack de agent-ready en su propio repo y quiero que su CI falle si alguno de sus perfiles choca con la base del pack oficial o con los perfiles que requiere, sin tener un repo consumidor. ¿Qué comando corro? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "--pack",
+          "description": "Nombra la opción --pack",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "conflicts --pack",
+            "agent-ready conflicts"
+          ],
+          "description": "Usa agent-ready conflicts",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "6"
+          ],
+          "description": "Menciona el código de salida 6"
+        }
+      ]
+    },
+    {
+      "id": "nested-agents-target-folder",
+      "description": "Un repo con un monorepo pide que el bloque anidado de App Router de un pack vaya a otra carpeta y que Claude Code lo cargue.",
+      "input": "Uso agent-ready con un pack que publica un bloque para el AGENTS.md de App Router. En mi monorepo la carpeta es apps/web/src/app y la detección no la encuentra. ¿Cómo le digo a qué carpeta va, qué pasa con el AGENTS.md que ya dejó en otra carpeta y qué necesita Claude Code para cargarlo? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "nested.targets",
+          "description": "Configura la carpeta con nested.targets en el manifest",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "apps/web/src/app",
+          "description": "Usa la carpeta del monorepo como path",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "CLAUDE.md",
+          "description": "Explica que el AGENTS.md anidado lleva su CLAUDE.md proxy para Claude Code",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "retira",
+            "retirado",
+            "se borra",
+            "lo saca",
+            "saca el bloque",
+            "quita el bloque"
+          ],
+          "description": "Dice que el bloque de la carpeta anterior se retira"
+        }
+      ]
+    },
+    {
+      "id": "nested-agents-codex-index",
+      "description": "Un equipo que usa Codex pregunta cómo llega un AGENTS.md anidado a Codex, cuánto contexto cuesta y qué deja agent-ready en el CLAUDE.md de esa carpeta.",
+      "input": "Con agent-ready tenemos un AGENTS.md gestionado en src/app/. Usamos Codex arrancando desde la raíz del repo y Claude Code. ¿Cómo se entera Codex de ese AGENTS.md, dónde veo cuánto le suma al AGENTS.md raíz y qué tiene el CLAUDE.md de src/app/? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": [
+            "Nested instructions",
+            "nested-index",
+            "índice"
+          ],
+          "description": "Explica que el AGENTS.md raíz lleva un índice de los anidados para Codex",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "agent-ready plan",
+          "description": "Dice que agent-ready plan informa el costo del índice",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "bytes",
+          "description": "Menciona el costo en bytes"
+        },
+        {
+          "type": "contains",
+          "value": "@AGENTS.md",
+          "description": "Dice que el CLAUDE.md anidado solo importa su AGENTS.md",
+          "critical": true
+        }
+      ]
+    },
+    {
+      "id": "nextjs-app-router-nested-agents",
+      "description": "Un repo Next.js con src/app pregunta qué escribe agent-ready en la carpeta de rutas sin configurar nada.",
+      "input": "Tengo un repo Next.js con App Router en src/app (src/app/layout.tsx y next en dependencies). Si corro agent-ready apply sin configurar nada, ¿qué escribe dentro de src/app, qué dice ese archivo y qué tiene su CLAUDE.md? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "src/app/AGENTS.md",
+          "description": "Dice que escribe src/app/AGENTS.md",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "nextjs-app-router/app-router",
+            "app-router"
+          ],
+          "description": "Nombra el destino anidado de App Router",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "route handler",
+            "route.ts",
+            "archivos de ruta",
+            "page.tsx"
+          ],
+          "description": "Resume qué dice: los archivos de ruta y los route handlers"
+        },
+        {
+          "type": "contains",
+          "value": "@AGENTS.md",
+          "description": "Dice que el CLAUDE.md de src/app solo importa su AGENTS.md",
+          "critical": true
+        }
+      ]
+    },
+    {
+      "id": "monorepo-workspaces-selection",
+      "description": "Un monorepo pide una selección por carpeta para la web y la API.",
+      "input": "Tengo un monorepo con apps/web (Next.js con App Router) y services/api (Node). Quiero que agent-ready sepa que apps/web usa nextjs-app-router y services/api usa node. ¿Qué pongo en .agents/agent-ready.json y cómo veo qué resolvió para cada carpeta? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "workspaces",
+          "description": "Usa el campo workspaces del manifest",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "apps/web",
+          "description": "Declara el workspace apps/web",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "agent-ready plan",
+          "description": "Dice que agent-ready plan muestra la selección de cada workspace",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [".agents/rules/workspaces/", "paths:"],
+          "description": "Dice que las rules de un workspace se proyectan acotadas a su carpeta"
+        }
+      ]
+    },
+    {
+      "id": "monorepo-workspace-rules",
+      "description": "Un monorepo pregunta cómo le llegan a cada provider las rules de un workspace.",
+      "input": "En mi monorepo .agents/agent-ready.json tiene profiles [\"node\"] y workspaces [{\"path\": \"apps/web\", \"profiles\": [\"react\"]}]. Después del apply, ¿dónde quedan las rules de react, cómo hace Claude Code para cargarlas solo en apps/web y cómo se entera Codex de ellas? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": ".agents/rules/workspaces/apps/web",
+          "description": "Dice dónde quedan las rules del workspace",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "paths:",
+          "description": "Explica que llevan paths: limitado al workspace",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "apps/web/AGENTS.md",
+          "description": "Dice que el AGENTS.md del workspace las lista para Codex",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "no las lista",
+            "no lista",
+            "no aparecen en el AGENTS.md raíz",
+            "solo el AGENTS.md del workspace",
+            "fuera del AGENTS.md raíz"
+          ],
+          "description": "Aclara que el AGENTS.md raíz no las lista"
+        }
+      ]
+    },
+    {
+      "id": "monorepo-workspace-assets",
+      "description": "Explica dónde quedan los comandos, la sección de stack y el destino App Router de un workspace",
+      "input": "Mi monorepo tiene .agents/agent-ready.json con \"profiles\": [\"node\"] y \"workspaces\": [{\"path\": \"apps/web\", \"profiles\": [\"nextjs-app-router\"]}], y existe la carpeta apps/web/app. Después del apply, ¿dónde queda el comando /react-review-pr, qué lleva apps/web/AGENTS.md además de la lista de rules y a qué AGENTS.md va el bloque del App Router? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": ".agents/commands/react-review-pr.md",
+          "description": "Dice que el comando queda en .agents/ para todo el repo",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "apps/web/app/AGENTS.md",
+          "description": "Ubica el destino App Router dentro del workspace",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "sección",
+            "seccion",
+            "section"
+          ],
+          "description": "Menciona la sección de cada stack en el AGENTS.md del workspace",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "todo el repositorio",
+            "todo el repo",
+            "una sola vez",
+            "una vez para"
+          ],
+          "description": "Aclara que skills, subagentes y comandos valen para todo el repositorio"
+        }
+      ]
+    },
+    {
+      "id": "monorepo-workspace-suggestions",
+      "description": "Explica qué workspaces sugiere la detección en un monorepo y con qué comando se agregan",
+      "input": "Mi monorepo tiene un package.json raíz con \"workspaces\": [\"apps/*\"], apps/web/package.json con next y react, el archivo apps/web/app/layout.tsx y services/api/go.mod. El manifest .agents/agent-ready.json tiene solo \"profiles\": [\"node\"]. ¿Qué workspaces me sugiere agent-ready plan y con qué comandos los agrego al manifest? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "agent-ready[\"'`]? workspaces add apps/web",
+          "description": "Da el comando que agrega el workspace de la web",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "nextjs-app-router",
+          "description": "Dice que apps/web se sugiere con nextjs-app-router",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "agent-ready[\"'`]? workspaces add services/api",
+          "description": "Da el comando que agrega el workspace de Go",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "no cambia el manifest",
+            "no cambian el manifest",
+            "no escribe",
+            "no modifica el manifest",
+            "solo sugiere",
+            "no se aplica",
+            "no aplica"
+          ],
+          "description": "Aclara que la sugerencia no cambia el manifest"
+        }
+      ]
+    },
+    {
+      "id": "monorepo-level-conflicts",
+      "description": "Explica cómo se informa una contradicción entre una rule de la raíz y una de un workspace",
+      "input": "En mi monorepo la raíz tiene \"profiles\": [\"node\"] y el workspace apps/web elige un profile de mi pack acme cuya rule dice \"Never verify changes.\", mientras la rule verify-changes.md de la raíz pide verificar cada cambio. ¿agent-ready plan me avisa de esa contradicción, cómo la marca y compara también las rules de dos workspaces entre sí? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "two levels",
+          "description": "Dice que el plan la marca como dos niveles",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "root and apps/web/",
+          "description": "Nombra los dos niveles como el plan: la raíz y el workspace",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "nunca se cargan juntas",
+            "no se comparan",
+            "no compara",
+            "no las compara",
+            "no se revisan entre"
+          ],
+          "description": "Aclara que las rules de dos workspaces no se comparan entre sí",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "conflicts.block",
+            "frena el apply",
+            "llega con el apply"
+          ],
+          "description": "Menciona que el conflicto llega con el apply"
+        }
+      ]
+    },
+    {
+      "id": "content-pack-source",
+      "description": "Explica cómo tomar el contenido de un repositorio propio en formato de pack en vez del pack oficial",
+      "input": "Quiero que mis repos tomen las rules comunes, el template de AGENTS.md y los stacks de un repositorio propio (github.com/acme/agent-content) en vez de los del pack oficial. ¿Qué declaro en .agents/agent-ready.json, qué tiene que tener ese repositorio y de dónde salen los profiles de CI? ¿Puedo publicar la base desde un pack de sources.packs? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "(sources\\.golfo\\.source|\"golfo\"\\s*:\\s*\\{[^}]*\"source\")",
+          "description": "Declara la fuente de contenido en sources.golfo.source",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "baseAssets",
+          "description": "Dice que el pack de contenido publica la base en baseAssets",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "agents-template.md",
+          "description": "Menciona el template de AGENTS.md de la base"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "salen del motor",
+            "siguen siendo del motor",
+            "quedan en el motor",
+            "vienen con el motor",
+            "son del motor",
+            "del motor instalado"
+          ],
+          "description": "Aclara que los profiles de CI salen del motor",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "falla antes de escribir",
+            "no puede declarar baseAssets",
+            "solo la fuente de contenido"
+          ],
+          "description": "Dice que un pack de sources.packs no puede publicar la base",
+          "critical": true
+        }
+      ]
+    },
+    {
+      "id": "content-comes-from-the-official-pack",
+      "description": "Sin declarar nada, el contenido sale del pack oficial golfo-agent-profiles siguiendo main; un checkout local del pack se prueba con AGENT_READY_SETUP_CONTENT_DIR sin publicarlo.",
+      "input": "Instalé el plugin golfo-agent-ready y no encuentro las rules de node dentro de la skill agent-ready-setup. ¿De dónde salen las rules, las skills y el template de AGENTS.md que proyecta, qué revisión usa si no declaro nada, y cómo pruebo un cambio en mi checkout local de ese contenido antes de publicarlo? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "golfo-agent-profiles",
+          "description": "Nombra el pack oficial de contenido",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "sources.golfo",
+            "\"golfo\""
+          ],
+          "description": "Nombra la fuente golfo del manifest"
+        },
+        {
+          "type": "contains",
+          "value": "main",
+          "description": "Dice que por defecto sigue main"
+        },
+        {
+          "type": "contains",
+          "value": "AGENT_READY_SETUP_CONTENT_DIR",
+          "description": "Usa el override de desarrollo para un checkout local",
+          "critical": true
+        }
+      ]
+    },
+    {
+      "id": "doctor-reports-sources-that-need-a-newer-engine",
+      "description": "Para saber antes de aplicar si el contenido o un pack piden un golfo-agent-ready más nuevo se usa agent-ready doctor, que compara el minEngine de cada fuente con el motor instalado, dice qué versión instalar y sale con 1.",
+      "input": "Agregamos el pack de la empresa a sources.packs y no quiero enterarme recién al aplicar de que necesita una versión de golfo-agent-ready más nueva que la que tengo instalada. ¿Cómo lo reviso antes, qué me va a decir si falta actualizar y cómo actualizo el plugin? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "agent-ready[\"'`]? doctor",
+          "description": "Usa agent-ready doctor",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "minEngine",
+          "description": "Explica que compara el minEngine declarado",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(sale con|exit( code)?|código( de salida)?)[[:space:]`]*1([^0-9]|$)",
+          "description": "Dice que doctor sale con 1 si falta actualizar"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "claude plugin update",
+            "codex plugin marketplace upgrade",
+            "hermes plugins update"
+          ],
+          "description": "Da el comando que actualiza el plugin"
+        }
+      ]
+    },
+    {
+      "id": "rules-lint-pack-in-ci",
+      "description": "El autor de un pack quiere que el CI del pack falle, sin IA, si una rule tiene varias instrucciones o si dos rules deciden lo mismo de forma distinta.",
+      "input": "Mantengo un pack de rules para agent-ready. Quiero que el CI del pack falle si una rule mete varias instrucciones juntas o si dos rules deciden lo mismo de forma distinta (una dice Jest y otra Vitest), sin llamar a ninguna IA. ¿Qué comando corro en el CI y cómo tengo que escribir las rules para que eso se detecte? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "rules lint",
+          "description": "Nombra agent-ready rules lint",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "--path",
+          "description": "Usa --path para leer el pack sin un repositorio consumidor",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "<!-- rule",
+          "description": "Muestra el comentario de la rule atómica",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "key=",
+            "`key`",
+            "key-conflict"
+          ],
+          "description": "Explica que la misma key con distinto contenido es el conflicto",
+          "critical": true
+        }
+      ]
+    },
+    {
+      "id": "rules-statement-limits-config",
+      "description": "El usuario quiere mover los límites de largo del statement que revisa el lint de rules en su repo.",
+      "input": "El lint de rules de agent-ready me avisa cuando el statement de una rule pasa los 200 caracteres. En este repo quiero que avise recién a los 250 y que falle a los 350. ¿Qué claves cambio y dónde? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "rules.statementWarnChars",
+          "description": "Nombra rules.statementWarnChars",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "rules.maxStatementChars",
+          "description": "Nombra rules.maxStatementChars",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "agent-ready.json",
+            "config set"
+          ],
+          "description": "Lo declara en la configuración del proyecto"
+        }
+      ]
+    },
+    {
+      "id": "rule-override-replaces-one-rule",
+      "description": "El autor de un pack quiere que una rule suya reemplace una sola rule de otro profile, no el archivo entero.",
+      "input": "En mi pack acme, el profile acme/kafka-interno tiene una rule de logging para Kafka. Quiero que reemplace solo la rule con id conventions/logger del archivo rules/acme-conventions.md de acme/base, y que las otras rules de ese archivo se sigan proyectando. ¿Cómo lo escribo con agent-ready? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "overrides=acme:conventions/logger",
+          "description": "Usa overrides con la fuente y el id de la rule",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "<!-- rule",
+          "description": "Lo declara en el comentario de la rule",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "Rule overridden",
+            "agent-ready plan",
+            "plan"
+          ],
+          "description": "Dice cómo verlo en el plan"
+        }
+      ]
+    },
+    {
+      "id": "rule-key-conflict-without-ai",
+      "description": "El usuario tiene una rule propia que decide lo mismo que una gestionada y quiere detectarlo sin IA.",
+      "input": "Una rule gestionada de agent-ready dice que usemos Vitest y yo tengo una rule propia en .agents/rules/ que dice Jest. Quiero que agent-ready detecte este tipo de choque sin llamar a ninguna IA, y que el CI falle por eso. ¿Cómo tengo que escribir mi rule y qué comando lo muestra? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "key=",
+          "description": "Declara la key de decisión en la rule",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "agent-ready conflicts",
+            "conflicts --offline",
+            "conflicts --json"
+          ],
+          "description": "Nombra agent-ready conflicts",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "ci.conflicts",
+            "agent-ready check"
+          ],
+          "description": "Dice cómo hacerlo fallar en CI"
+        }
+      ]
+    },
+    {
+      "id": "project-rule-overrides-managed-rule",
+      "description": "El usuario quiere que una rule propia del proyecto reemplace una sola rule gestionada de un pack, sin editar el pack.",
+      "input": "En mi repo uso agent-ready con el pack acme. El profile acme/base proyecta .agents/rules/acme-conventions.md, y una de sus rules, con id conventions/logger, dice que usemos el logger de Acme. En este repo usamos pino y no puedo cambiar el pack. Quiero escribir una rule propia en .agents/rules/ que reemplace solo esa rule, y que las otras rules del archivo se sigan proyectando. ¿Cómo la escribo y cómo verifico qué va a pasar? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "overrides=acme:conventions/logger",
+          "description": "Usa overrides con la fuente y el id de la rule",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "<!-- rule",
+          "description": "Lo declara en el comentario de una rule atómica propia",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "Rule overridden",
+            "agent-ready plan"
+          ],
+          "description": "Dice cómo verlo en el plan"
+        }
+      ]
+    },
+    {
+      "id": "rule-impact-before-change",
+      "description": "Antes de cambiar una rule, el usuario quiere saber qué rules y skills dependen de ella.",
+      "input": "Quiero cambiar la rule testing/unit-runner de mi repo con agent-ready, pero antes necesito saber qué otras rules dependen de ella, si alguna la reemplaza y qué skills la mencionan. ¿Qué comando me lo muestra, y cómo hago para que una skill quede registrada como que cita esa rule? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "rules impact",
+          "description": "Usa agent-ready rules impact",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "rule:(golfo:)?testing/unit-runner",
+          "description": "Explica la cita rule:<fuente>:<id> en la skill",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "requires",
+            "required by"
+          ],
+          "description": "Menciona las dependencias por requires"
+        }
+      ]
+    },
+    {
+      "id": "plan-shows-rule-changes",
+      "description": "El usuario quiere ver, antes de actualizar, qué rules atómicas cambian y qué depende de ellas, no el diff del archivo entero.",
+      "input": "Salió una versión nueva del contenido de agent-ready y el archivo .agents/rules/testing.md cambia. Ese archivo tiene varias rules atómicas, y no quiero leer el diff entero: quiero saber qué rules cambian, cuáles se agregan o se van, y si algo de mi repo depende de las que cambian. ¿Qué comando lo muestra y qué voy a ver? ¿Dónde queda registrado el hash de cada rule? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "agent-ready\"?\\s+plan|--dry-run",
+          "description": "Usa agent-ready plan, o apply/update --dry-run, que muestran el mismo plan",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "rule changed",
+            "ruleChanges"
+          ],
+          "description": "Dice cómo aparecen las rules que cambian",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "agent-ready.lock.json",
+          "description": "Ubica el hash por rule en el lock"
+        }
+      ]
+    },
+    {
+      "id": "review-cache-per-rule",
+      "description": "El usuario pregunta si cambiar una sola rule atómica repite la revisión de IA de todo el archivo; la respuesta es que solo se revisan los pares de esa rule.",
+      "input": "En .agents/rules/testing.md tengo 30 rules atómicas de agent-ready. Si cambio el texto de una sola, ¿la revisión de contradicciones con IA (el hook después de editar y agent-ready plan) vuelve a revisar las 30 contra mis otras rules y skills, o solo esa? ¿Cómo aparece esa rule en un hallazgo? ¿Y si por error dos rules del archivo tienen el mismo id? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "[Ss][oó]lo (los pares de )?(esa|la) rule|rule por rule|por rule|las (otras|dem[aá]s) .*(cach[eé]|no se (vuelven a )?revisa)",
+          "description": "Dice que solo se vuelven a revisar los pares de la rule cambiada",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "testing.md#",
+          "description": "Nombra la rule en el hallazgo como <archivo>#<id>",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(archivo|documento) (entero|completo)|todo el archivo|un (solo|único) documento",
+          "description": "Con un id repetido el archivo se revisa entero, como un documento",
+          "critical": true
+        }
+      ]
+    },
+    {
+      "id": "check-lints-adopted-rule-files",
+      "description": "agent-ready check corre el lint de rules solo en los archivos con rules atómicas, bajo ci.conflicts.structural y con el código 6.",
+      "input": "En mi repo, .agents/rules/ tiene varios archivos de rules en prosa y uno, team.md, que ya migré a rules atómicas, pero le quedó un bullet sin su comentario de rule. ¿Falla agent-ready check en el CI? Si falla, ¿con qué código de salida, y qué clave de configuración lo baja a un aviso? ¿Qué pasa con los archivos en prosa? Respondé desde la skill, sin ejecutar comandos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "ci.conflicts.structural",
+          "description": "El lint de rules queda bajo ci.conflicts.structural",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(c(o|ó)digo|exit|sale)[^0-9]{0,30}6([^0-9]|$)|(^|[^0-9])6[^0-9]{0,10}\\(?conflict",
+          "description": "Sale con 6, el código de los conflictos",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "prosa.{0,120}(no (se )?(revisa|lint|cuenta|falla|aparece|reporta)|ignor|salte|omit|fuera)|(no (se )?(revisa|lint|cuentan|fallan|aparecen|reporta)|ignor|salte|omit).{0,120}prosa",
+          "description": "Los archivos en prosa no se lintean en check",
+          "critical": true
+        }
+      ]
+    },
+    {
+      "id": "learn-record-counts-episodes",
+      "description": "agent-ready learn record cuenta episodios distintos: una instrucción implícita repetida en la misma conversación del mismo día queda como candidata, se aprende al aparecer en otro episodio, y list no muestra las citas.",
+      "input": "Hoy, en la misma conversación, le dije dos veces al agente que ponga el número de expediente arriba en las actas, sin decir «siempre» ni «de ahora en más». El agente lo registró con agent-ready learn record. ¿Ya se aprende como rule del proyecto? ¿Qué tiene que pasar para que se aprenda? ¿agent-ready learn list muestra la frase que le dije? Respondé desde la skill, sin ejecutar comandos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "(todav(i|í)a no|a(u|ú)n no|no se aprende|no (lo )?aprende|queda (como )?(un )?candidat|sigue (como )?(un )?candidat|wait)",
+          "description": "Todavía no se aprende: queda como candidata",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(otro|segundo|nuevo|distinto) episodio|episodios distintos|otra (sesi(o|ó)n|conversaci(o|ó)n)|otro d(i|í)a",
+          "description": "Hace falta otro episodio: repetirlo en el mismo no suma",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(no|nunca)[^.]{0,60}(muestra|aparece|imprime|ves|ve|incluye)[^.]{0,80}(cita|frase|quote)|(cita|frase|quote)[^.]{0,80}(no|nunca)[^.]{0,40}(muestra|aparece|imprime|sale)|(sin|nunca) (las )?citas|solo (vive|queda|est(a|á))[^.]{0,40}candidates\\.json",
+          "description": "list no muestra las citas del usuario",
+          "critical": true
+        }
+      ]
+    },
+    {
+      "id": "learn-apply-overrides-and-locked",
+      "description": "agent-ready learn apply reemplaza una rule gestionada de la misma key con overrides sin editarla, y no guarda nada contra una rule locked.",
+      "input": "En mi repo, testing.unit-runner lo decide una rule del profile software-development. Le dije al agente «de ahora en más, usá el runner de tests del proyecto». Otra instrucción mía, «de ahora en más, poné el DNI completo en los informes», va contra una rule que su profile marca locked. Después de agent-ready learn apply, ¿qué queda escrito en cada caso? ¿Se modifica la rule del profile? Respondé desde la skill, sin ejecutar comandos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "overrides",
+          "description": "La primera queda como rule aprendida con overrides",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(no|nunca|sin)[^.]{0,60}(toca|tocar|modific|edit|cambi|reescrib)[^.]{0,80}(gestionad|profile|del pack|original)|(gestionad|del profile|del pack|original)[^.]{0,80}(no|nunca|queda)[^.]{0,40}(toca|modific|edit|cambi|igual|intact)",
+          "description": "La rule del profile no se edita",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "locked[^.]{0,160}(no (se )?(guarda|escribe|aprende|graba)|nada)|(no (se )?(guarda|escribe|aprende|graba)|no queda nada|nada escrito)[^.]{0,160}locked|no se (escribe|guarda|graba)[^.]{0,30}(ninguna|nada)|no (escribe|guarda|graba|aprende|crea)[^.]{0,30}nada|nada se (guarda|escribe)|no (se )?(crea|escribe) ninguna|sale con (un )?error",
+          "description": "Contra la locked no se guarda nada",
+          "critical": true
+        }
+      ]
+    },
+    {
+      "id": "learn-review-revert-and-reject",
+      "description": "El desarrollador deshace un aprendizaje con learn revert, que devuelve la instrucción que había reemplazado, y descarta una candidata con learn reject, que el agente no aprende aunque el cliente insista.",
+      "input": "Soy el desarrollador del repo de un cliente. El agente aprendió «las actas llevan el número de expediente arriba» y después «al pie», que reemplazó a la anterior. Quiero deshacer lo de «al pie», y que una candidata, «firmar en tinta azul», no se aprenda nunca aunque el cliente lo vuelva a pedir. ¿Qué comandos de agent-ready uso y en qué queda cada cosa? Respondé desde la skill, sin ejecutar comandos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "learn revert",
+          "description": "Deshace el aprendizaje con learn revert",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "learn reject",
+          "description": "Descarta la candidata con learn reject",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(vuelve|volver|queda|restaura|recupera|reaparece)[^.]{0,100}(anterior|arriba|learned|aprendida)|(anterior|arriba)[^.]{0,100}(vuelve|restaura|recupera|reaparece|learned)",
+          "description": "La instrucción reemplazada («arriba») vuelve a estar aprendida",
+          "critical": true
+        }
+      ]
+    },
+    {
+      "id": "learn-episodes-split-a-long-chat",
+      "description": "El hook del prompt parte un chat largo en episodios por learning.episodeGapHours; el estado vive en .git/info y no se commitea.",
+      "input": "Mi repo usa el profile learning de agent-ready-setup. El usuario me dio la misma corrección hoy a las 9 y otra vez a las 15, en el mismo chat, sin escribir nada en el medio. ¿Cuenta como un episodio o como dos? ¿Dónde guarda agent-ready los episodios, y eso se commitea? Respondé desde la skill, sin ejecutar comandos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "(dos|2) episodios|episodio (nuevo|distinto)|otro episodio|segundo episodio",
+          "description": "Seis horas sin mensajes abren un episodio nuevo: son dos",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "episodes.json",
+          "description": "Los episodios viven en .git/info/agent-ready/episodes.json",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(no|nunca)[^.]{0,40}(se )?(commitea|versiona)|(local|fuera del repo)[^.]{0,60}(no|nunca)",
+          "description": "No se commitea: es local al clon",
+          "critical": true
+        }
+      ]
+    },
+    {
+      "id": "learn-session-review-records-only",
+      "description": "La revisión al cerrar un episodio lee solo los mensajes del usuario del transcript y registra candidatas; nunca escribe rules ni llama al provider en CI.",
+      "input": "Mi repo usa el profile learning de agent-ready-setup. El usuario cerró el chat en Claude Code sin que yo registrara una corrección que me hizo. ¿Qué pasa con esa corrección al cerrar el chat? ¿La revisión lee también mis respuestas y la salida de las herramientas? ¿Escribe la rule ella misma? ¿Y si eso pasa en CI? Respondé desde la skill, sin ejecutar comandos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "solo[^.]{0,40}mensajes del usuario|únicamente[^.]{0,40}mensajes del usuario|mensajes del usuario[^.]{0,60}(solo|únicamente)",
+          "description": "La revisión lee solo los mensajes del usuario",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "candidat",
+          "description": "Lo que encuentra queda como candidata",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(no|nunca)[^.]{0,50}(escribe|crea|commitea)[^.]{0,30}(rule|regla)",
+          "description": "No escribe la rule por su cuenta",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "CI[^.]{0,80}(no|nunca)[^.]{0,40}(llama|provider|modelo|revis)|(no|nunca)[^.]{0,60}(llama|provider|modelo)[^.]{0,40}CI",
+          "description": "En CI no llama a ningún provider",
+          "critical": true
+        }
+      ]
+    },
+    {
+      "id": "learn-scheduled-sweep-user-task",
+      "description": "El barrido programado es una tarea del usuario sin permisos de admin, configurable con learning.sweep.intervalMinutes, y si el sistema la rechaza el apply no falla y doctor lo informa.",
+      "input": "Mi repo usa el profile learning de agent-ready-setup en una notebook Windows de la empresa. Si cierro la terminal sin cerrar el chat, ¿quién cierra ese episodio para revisarlo? ¿Necesita permisos de administrador o corre como SYSTEM? ¿Cómo cambio cada cuánto corre o lo apago? ¿Y si una política de la empresa no me deja crear tareas programadas, falla el apply? Respondé desde la skill, sin ejecutar comandos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "learning\\.sweep\\.intervalMinutes|sweep\\.intervalMinutes",
+          "description": "Nombra la clave que fija el intervalo",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(sin|no (necesita|requiere|pide))[^.]{0,40}(admin|administrador)|(nunca|no)[^.]{0,40}SYSTEM",
+          "description": "La tarea es del usuario: sin admin ni SYSTEM",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "\\b0\\b.{0,120}(apaga|desactiva|[Nn]o (se )?registra|retira)|(apaga|desactiva).{0,120}\\b0\\b",
+          "description": "0 apaga el barrido programado",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "doctor",
+          "description": "doctor informa la tarea que falta",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(no|nunca)[^.]{0,40}falla|sigue[^.]{0,60}(apply|funcionando)",
+          "description": "El apply no falla si el sistema rechaza la tarea",
+          "critical": true
+        }
+      ]
+    }
+  ]
+}

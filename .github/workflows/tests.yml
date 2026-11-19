@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   # Decides which heavy areas this run needs (scripts/detect-test-areas.js). Pull requests run the
-  # agent-ready-setup suites only when they touch that skill, its tooling or a golfo-kit manifest
+  # agent-ready-setup suites only when they touch that skill, its tooling or a golfo-agent-ready manifest
   # beyond its version; a push to main and workflow_dispatch always run everything. If the detection
   # cannot compare, it asks for every area instead of skipping one.
   changes:
@@ -103,7 +103,7 @@ jobs:
       # The suites project the official content pack at the tag of tests/content-pack.ref: cloned once here,
       # read by every test without network.
       - name: Content pack of the tests
-        run: bash plugins/golfo-kit/skills/agent-ready-setup/tests/prepare-content-pack.sh
+        run: bash plugins/golfo-agent-ready/skills/agent-ready-setup/tests/prepare-content-pack.sh
       # The list of suites lives in package.json (test:agent-ready).
       - name: Agent Ready suites
         run: pnpm run test:agent-ready
@@ -210,9 +210,9 @@ jobs:
       # The suites project the official content pack at the tag of tests/content-pack.ref: cloned once here,
       # read by every test without network.
       - name: Content pack of the tests
-        run: bash plugins/golfo-kit/skills/agent-ready-setup/tests/prepare-content-pack.sh
+        run: bash plugins/golfo-agent-ready/skills/agent-ready-setup/tests/prepare-content-pack.sh
       - name: Agent Ready suites
-        working-directory: plugins/golfo-kit/skills/agent-ready-setup/tests
+        working-directory: plugins/golfo-agent-ready/skills/agent-ready-setup/tests
         # A test that hangs fails on its own, with its name, instead of stopping the whole shard at the
         # 45-minute limit of the job: no test takes more than a few minutes, even on a slow Windows runner.
         env:
@@ -250,13 +250,13 @@ jobs:
       # The suites project the official content pack at the tag of tests/content-pack.ref: cloned once here,
       # read by every test without network.
       - name: Content pack of the tests
-        run: bash plugins/golfo-kit/skills/agent-ready-setup/tests/prepare-content-pack.sh
+        run: bash plugins/golfo-agent-ready/skills/agent-ready-setup/tests/prepare-content-pack.sh
       - name: Run this shard of bootstrap.bats
         env:
           SHARD: ${{ matrix.shard }}
           SHARD_COUNT: 3
         run: |
-          suite=plugins/golfo-kit/skills/agent-ready-setup/tests/bootstrap.bats
+          suite=plugins/golfo-agent-ready/skills/agent-ready-setup/tests/bootstrap.bats
           # Every SHARD_COUNT-th test name goes to this shard; names are unique.
           pattern=$(grep -oP '^@test "\K[^"]+' "$suite" \
             | awk -v shard="$SHARD" -v count="$SHARD_COUNT" '(NR - 1) % count == shard - 1' \

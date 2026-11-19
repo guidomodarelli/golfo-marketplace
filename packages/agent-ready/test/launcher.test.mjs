@@ -1,4 +1,4 @@
-// The launcher runs the engine of the installed golfo-kit plugin with the same arguments,
+// The launcher runs the engine of the installed golfo-agent-ready plugin with the same arguments,
 // streams and exit status, prefers the newest installed version, and fails with an
 // install hint when there is none. The engines here are small Python scripts in the
 // layouts that Claude Code, Codex and Hermes use; the last test runs the real engine.
@@ -15,7 +15,7 @@ import { compareVersions, resolveEngine } from "../lib/resolve-engine.js";
 
 const PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const LAUNCHER = join(PACKAGE_ROOT, "bin", "agent-ready.js");
-const REPOSITORY_SKILL = join(PACKAGE_ROOT, "..", "..", "plugins", "golfo-kit", "skills", "agent-ready-setup");
+const REPOSITORY_SKILL = join(PACKAGE_ROOT, "..", "..", "plugins", "golfo-agent-ready", "skills", "agent-ready-setup");
 const FAKE_ENGINE = [
   "import json, os, sys",
   "print(json.dumps({'engine': os.environ['FAKE_ENGINE_NAME'], 'arguments': sys.argv[1:],",
@@ -34,10 +34,10 @@ afterEach(() => {
   rmSync(home, { recursive: true, force: true });
 });
 
-/** A golfo-kit plugin with its manifest and a fake engine, in the layout the provider uses. */
+/** A golfo-agent-ready plugin with its manifest and a fake engine, in the layout the provider uses. */
 function installPlugin(pluginRoot, version, name) {
   mkdirSync(join(pluginRoot, ".claude-plugin"), { recursive: true });
-  writeFileSync(join(pluginRoot, ".claude-plugin", "plugin.json"), JSON.stringify({ name: "golfo-kit", version }));
+  writeFileSync(join(pluginRoot, ".claude-plugin", "plugin.json"), JSON.stringify({ name: "golfo-agent-ready", version }));
   const scripts = join(pluginRoot, "skills", "agent-ready-setup", "scripts");
   mkdirSync(scripts, { recursive: true });
   writeFileSync(join(scripts, "agent-ready"), FAKE_ENGINE.replace("os.environ['FAKE_ENGINE_NAME']", JSON.stringify(name)));
@@ -59,10 +59,10 @@ function launch(argumentsList, extra) {
 }
 
 test("runs the newest installed engine with the same arguments, streams and exit status", () => {
-  const claudeCache = join(home, ".claude", "plugins", "cache", "golfo-marketplace", "golfo-kit");
+  const claudeCache = join(home, ".claude", "plugins", "cache", "golfo-marketplace", "golfo-agent-ready");
   installPlugin(join(claudeCache, "0.39.0"), "0.39.0", "claude-0.39.0");
   installPlugin(join(claudeCache, "0.40.0"), "0.40.0", "claude-0.40.0");
-  installPlugin(join(home, ".hermes", "plugins", "golfo-kit"), "0.38.0", "hermes-0.38.0");
+  installPlugin(join(home, ".hermes", "plugins", "golfo-agent-ready"), "0.38.0", "hermes-0.38.0");
 
   const result = launch(["plan", "--json"], { FAKE_ENGINE_STATUS: "4" });
 
@@ -73,8 +73,8 @@ test("runs the newest installed engine with the same arguments, streams and exit
 });
 
 test("compares versions numerically across providers, so 0.10.0 is newer than 0.9.0", () => {
-  installPlugin(join(home, ".codex", "plugins", "cache", "golfo-marketplace", "golfo-kit", "0.9.0"), "0.9.0", "codex-0.9.0");
-  installPlugin(join(home, "local", "hermes", "plugins", "golfo-kit"), "0.10.0", "hermes-0.10.0");
+  installPlugin(join(home, ".codex", "plugins", "cache", "golfo-marketplace", "golfo-agent-ready", "0.9.0"), "0.9.0", "codex-0.9.0");
+  installPlugin(join(home, "local", "hermes", "plugins", "golfo-agent-ready"), "0.10.0", "hermes-0.10.0");
 
   const engine = resolveEngine(environment(), home);
 
@@ -85,7 +85,7 @@ test("compares versions numerically across providers, so 0.10.0 is newer than 0.
 });
 
 test("reads the marketplace snapshots of Claude Code and Codex when there is no cache", () => {
-  installPlugin(join(home, ".codex", ".tmp", "marketplaces", "golfo-marketplace", "plugins", "golfo-kit"), "0.40.0", "codex-snapshot");
+  installPlugin(join(home, ".codex", ".tmp", "marketplaces", "golfo-marketplace", "plugins", "golfo-agent-ready"), "0.40.0", "codex-snapshot");
 
   const result = launch(["status"]);
 
@@ -94,9 +94,9 @@ test("reads the marketplace snapshots of Claude Code and Codex when there is no 
 });
 
 test("a local Codex marketplace counts from the source its config names", () => {
-  installPlugin(join(home, ".codex", "plugins", "cache", "golfo-marketplace", "golfo-kit", "0.40.0"), "0.40.0", "codex-cache");
+  installPlugin(join(home, ".codex", "plugins", "cache", "golfo-marketplace", "golfo-agent-ready", "0.40.0"), "0.40.0", "codex-cache");
   const source = join(home, "clones", "golfo-marketplace");
-  installPlugin(join(source, "plugins", "golfo-kit"), "0.41.0", "codex-local");
+  installPlugin(join(source, "plugins", "golfo-agent-ready"), "0.41.0", "codex-local");
   writeFileSync(join(home, ".codex", "config.toml"),
     `model = "x"\n\n[marketplaces.golfo-marketplace]\nsource_type = "local"\nsource = ${JSON.stringify(source)}\n`);
 
@@ -106,7 +106,7 @@ test("a local Codex marketplace counts from the source its config names", () => 
 });
 
 test("the provider of the installation reaches the engine, unless the person chose one", () => {
-  installPlugin(join(home, "custom-claude", "plugins", "cache", "golfo-marketplace", "golfo-kit", "0.40.0"), "0.40.0", "custom");
+  installPlugin(join(home, "custom-claude", "plugins", "cache", "golfo-marketplace", "golfo-agent-ready", "0.40.0"), "0.40.0", "custom");
 
   const found = launch(["status"], { CLAUDE_CONFIG_DIR: join(home, "custom-claude") });
   assert.equal(JSON.parse(found.stdout).provider, "claude");
@@ -128,7 +128,7 @@ const WAITING_ENGINE = [
 
 /** Starts the launcher on an engine that waits, sends it one signal and returns its exit status. */
 async function cancelWith(signal) {
-  const skill = installPlugin(join(home, ".claude", "plugins", "cache", "golfo-marketplace", "golfo-kit", "0.40.0"), "0.40.0", "waiting");
+  const skill = installPlugin(join(home, ".claude", "plugins", "cache", "golfo-marketplace", "golfo-agent-ready", "0.40.0"), "0.40.0", "waiting");
   writeFileSync(join(skill, "scripts", "agent-ready"), WAITING_ENGINE);
   const marker = join(home, "signal");
   const launcher = spawn(process.execPath, [LAUNCHER, "apply"], { env: environment({ FAKE_ENGINE_MARKER: marker }) });
@@ -144,8 +144,8 @@ test("a SIGTERM or a SIGINT sent only to the launcher reaches the engine, which 
 });
 
 test("AGENT_READY_SETUP_SKILL_DIR wins over every installation and must hold an engine", () => {
-  installPlugin(join(home, ".claude", "plugins", "cache", "golfo-marketplace", "golfo-kit", "9.0.0"), "9.0.0", "installed");
-  const checkout = installPlugin(join(home, "checkout", "plugins", "golfo-kit"), "0.1.0", "checkout");
+  installPlugin(join(home, ".claude", "plugins", "cache", "golfo-marketplace", "golfo-agent-ready", "9.0.0"), "9.0.0", "installed");
+  const checkout = installPlugin(join(home, "checkout", "plugins", "golfo-agent-ready"), "0.1.0", "checkout");
 
   assert.equal(JSON.parse(launch(["check"], { AGENT_READY_SETUP_SKILL_DIR: checkout }).stdout).engine, "checkout");
 
@@ -160,26 +160,26 @@ test("without an installed plugin it fails with exit 1 and says how to install o
 
   assert.equal(result.status, 1);
   assert.equal(result.stdout, "");
-  assert.match(result.stderr, /no installed golfo-kit plugin has the agent-ready-setup engine/);
-  assert.match(result.stderr, /claude plugin install --scope user golfo-kit@golfo-marketplace/);
-  assert.match(result.stderr, /hermes plugins install guidomodarelli\/golfo-marketplace#plugins\/golfo-kit --enable/);
+  assert.match(result.stderr, /no installed golfo-agent-ready plugin has the agent-ready-setup engine/);
+  assert.match(result.stderr, /claude plugin install --scope user golfo-agent-ready@golfo-marketplace/);
+  assert.match(result.stderr, /hermes plugins install guidomodarelli\/golfo-marketplace#plugins\/golfo-agent-ready --enable/);
 
   const version = launch(["--version"]);
   assert.equal(version.status, 0);
   const { version: launcherVersion } = JSON.parse(readFileSync(join(PACKAGE_ROOT, "package.json"), "utf8"));
-  assert.match(version.stdout, new RegExp(`^@golfo/agent-ready ${launcherVersion.replaceAll(".", "\\.")}: no installed golfo-kit plugin`));
+  assert.match(version.stdout, new RegExp(`^@golfo/agent-ready ${launcherVersion.replaceAll(".", "\\.")}: no installed golfo-agent-ready plugin`));
 });
 
-test("an installed golfo-kit older than the CLI is named, with how to update it", () => {
-  const skill = installPlugin(join(home, ".hermes", "plugins", "golfo-kit"), "0.36.1", "old");
+test("an installed golfo-agent-ready older than the CLI is named, with how to update it", () => {
+  const skill = installPlugin(join(home, ".hermes", "plugins", "golfo-agent-ready"), "0.36.1", "old");
   rmSync(join(skill, "scripts"), { recursive: true });
   writeFileSync(join(skill, "SKILL.md"), "---\nname: agent-ready-setup\n---\n");
 
   const result = launch(["doctor"]);
 
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /the installed golfo-kit 0\.36\.1 \(hermes\) predates the agent-ready CLI/);
-  assert.match(result.stderr, /hermes plugins update golfo-kit/);
+  assert.match(result.stderr, /the installed golfo-agent-ready 0\.36\.1 \(hermes\) predates the agent-ready CLI/);
+  assert.match(result.stderr, /hermes plugins update golfo-agent-ready/);
 });
 
 test("runs the real engine of this repository", () => {
