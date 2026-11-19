@@ -1389,7 +1389,7 @@
     {
       "id": "35-ephemeral-clone-handoff",
       "description": "Pregunta entorno primero y, con Clone efímero, delega una sola vez a fix-in-ephemeral-clone.",
-      "input": "Escenario hipotético de evaluación para inline-thread-autofix.\nhttps://github.com/acme/widgets/pull/42#discussion_r123456816\nAplicá este fix usando aislamiento efímero y cerrá el comentario.\nDescribí cuál es tu primera interacción visible y, suponiendo que después elijo Clone efímero, el resto del flujo. No ejecutes comandos ni consultes GitHub: describí el plan, las verificaciones que harías, las mutaciones que harías u omitirías y el estado o código que reportás.",
+      "input": "Escenario hipotético de evaluación para inline-thread-autofix. Suponé que el chequeo confirmó que ~/.work no existe en esta máquina.\nhttps://github.com/acme/widgets/pull/42#discussion_r123456816\nAplicá este fix usando aislamiento efímero y cerrá el comentario.\nDescribí cuál es tu primera interacción visible y, suponiendo que después elijo Clone efímero, el resto del flujo. No ejecutes comandos ni consultes GitHub: describí el plan, las verificaciones que harías, las mutaciones que harías u omitirías y el estado o código que reportás.",
       "assertions": [
         {
           "type": "contains_any",
@@ -2233,6 +2233,78 @@
             "no hay issue asociada"
           ],
           "description": "Registra que no hay issue asociada"
+        }
+      ]
+    },
+    {
+      "id": "55-work-marker-forces-current-checkout",
+      "description": "Con ~/.work presente no pregunta el entorno: resuelve en el checkout actual aunque el pedido sugiera clone efímero.",
+      "input": "Escenario hipotético de evaluación para inline-thread-autofix. Suponé que en esta máquina existe el archivo ~/.work (el chequeo ya lo confirmó).\nhttps://github.com/acme/widgets/pull/42#discussion_r123456829\nAplicá este fix, idealmente en un clone efímero, y cerrá el comentario.\nDescribí cuál es tu primera interacción visible y el resto del flujo. No ejecutes comandos ni consultes GitHub: describí el plan, las verificaciones que harías, las mutaciones que harías u omitirías y el estado o código que reportás.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": [
+            "~/.work"
+          ],
+          "description": "Menciona el gate ~/.work"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "checkout actual",
+            "checkout_actual"
+          ],
+          "description": "Usa el checkout actual"
+        },
+        {
+          "type": "regex",
+          "pattern": "([Nn]o|[Ss]in|[Nn]inguna|[Oo]mito|[Ss]alteo)[^.]{0,40}pregunt",
+          "description": "No formula la pregunta de entorno"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "ignor",
+            "no uso el clone",
+            "no invoco",
+            "no delego",
+            "no creo clone",
+            "en lugar del clone",
+            "en vez del clone"
+          ],
+          "description": "No usa el clone efímero pedido y lo informa"
+        }
+      ]
+    },
+    {
+      "id": "56-no-work-marker-asks-environment",
+      "description": "Sin ~/.work el comportamiento no cambia: pregunta el entorno antes de cualquier análisis.",
+      "input": "Escenario hipotético de evaluación para inline-thread-autofix. Suponé que el chequeo confirmó que ~/.work no existe en esta máquina.\nhttps://github.com/acme/widgets/pull/42#discussion_r123456830\nAplicá el fix y cerrá el comentario.\nDescribí cuál es tu primera interacción visible. No ejecutes comandos ni consultes GitHub: describí el plan, las verificaciones que harías, las mutaciones que harías u omitirías y el estado o código que reportás.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": [
+            "AskUserQuestion",
+            "Entorno",
+            "¿Dónde querés resolver"
+          ],
+          "description": "Formula la pregunta de entorno"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "Worktree hermano",
+            "sibling-worktree"
+          ],
+          "description": "Ofrece worktree hermano"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "Clone efímero",
+            "fix-in-ephemeral-clone"
+          ],
+          "description": "Ofrece clone efímero"
         }
       ]
     }
