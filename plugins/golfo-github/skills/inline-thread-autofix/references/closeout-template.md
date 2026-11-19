@@ -132,6 +132,17 @@ Publicar como comentario nuevo en `repos/{{owner}}/{{repo}}/issues/{{pull_reques
 
 `{{autor_login}}` va como texto, sin `@`, para no notificar de nuevo. Si ningún pedido llevó commit, cambiar `✅ **Fix aplicado** …` por `ℹ️ **Sin cambios de código**.`, quitar `### 🔧 Qué cambió` y conservar tabla y marker. `⏸️ Pendiente` se usa para pedidos que necesitan confirmación del usuario (labels, merge, otro PR) o que quedaron `FINDING_ANCHOR_AMBIGUOUS`. No usar la palabra `Resuelto` en el texto: no hay thread. Tras verificar la respuesta, el comentario original se oculta como resuelto (`minimizeComment`, `classifier: RESOLVED`), también con pedidos `⏸️ Pendiente` o `ℹ️ Sin cambios`, porque la tabla de la respuesta conserva su estado. Nunca se oculta un comentario del propio usuario autenticado.
 
+### Respuesta ya publicada: se reemplaza, no se acumula
+
+Un comentario general tiene una sola respuesta, y esa respuesta muestra solo el análisis actual. Si al retomarlo ya existe una respuesta propia con su marker (`issuecomment:`, `answer:issuecomment:` o `declined:issuecomment:` con el mismo `{{comment_id}}`), no publicar otra ni conservarla como está: rehacer el análisis de cada pedido contra el head actual del PR y reescribir esa respuesta en el lugar con `PATCH repos/{{owner}}/{{repo}}/issues/comments/{{reply_id}}`, usando el template vigente de esta sección (o de `Respuesta a una pregunta`). Quien lee el PR necesita saber qué estado tiene hoy cada pedido, no la crónica de corridas anteriores.
+
+- El body nuevo reemplaza al anterior por completo: no conservar el texto previo, ni tachado, ni en `<details>`, ni como sección `Actualización` o `Historial`, ni la tabla vieja al lado de la nueva.
+- Un formato viejo (sin link inicial, sin quote, sin tabla o sin emojis) se migra al template vigente en la misma edición.
+- Para un pedido ya implementado en una corrida anterior, reutilizar su commit solo si se verifica que el cambio sigue en el head; no crear otro commit para reescribir la respuesta.
+- Mantener el marker exacto: la URL de la respuesta no cambia, así que el back-link del original sigue válido.
+- Releer la respuesta justo antes del `PATCH` y verificar después el body publicado (link, quote, tabla, SHA si hay commit y marker). Si hay más de una respuesta propia con el marker, reescribir la más antigua y reportar las otras sin borrarlas.
+- Si el `PATCH` devuelve `403`/`404` o no verifica, no publicar una respuesta nueva y dejar el ítem en `CLOSEOUT_INCOMPLETE`: no agregar el back-link, no ocultar el original y no cerrar la issue que dependa de esa respuesta, porque un comentario oculto se descarta en las corridas siguientes y ya no se podría recuperar la respuesta vigente. Reportar `respuesta: no reescrita` y seguir solo con los demás ítems independientes.
+
 ## Back-link en el comentario original
 
 Después de publicar y verificar la respuesta a un comentario general, editar el original con `PATCH repos/{{owner}}/{{repo}}/issues/comments/{{comment_id}}` enviando su body completo, tal como se leyó inmediatamente antes, más este bloque al final:
