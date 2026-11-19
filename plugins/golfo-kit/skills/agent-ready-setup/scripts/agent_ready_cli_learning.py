@@ -253,7 +253,9 @@ def command_learn_sweep(arguments):
 def sweep_registered():
     """The sweep of every registered repository; one that fails never stops the others."""
     try:
-        learning_schedule.prune_missing(CLI_PATH)
+        # CI and review mode never touch the scheduler, so they leave the records as they are.
+        if not schedule_blocked():
+            learning_schedule.prune_missing(CLI_PATH)
     except (learning_schedule.ScheduleError, StateError, OSError) as problem:
         write_sweep_line(f"scheduled sweep: {problem}")
     for _, record in learning_schedule.registered_projects():

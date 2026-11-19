@@ -1448,6 +1448,17 @@ sweep_lines() {
   [ "$(sweep_lines)" = "1" ]
   [ ! -e "$FAKE_SCHEDULER_STATE/calls.log" ]
   [ -e "$XDG_CACHE_HOME/agent-ready-setup/learning-schedule/projects/"*.json ]
+
+  # A sweep of the registered repositories forgets no gone repository there either.
+  gone="$test_root/gone"
+  git -C "$test_root" -c init.defaultBranch=main init -q gone
+  (cd "$gone" && select_learning_profile && python3 -B "$cli" learn schedule > /dev/null)
+  rm -rf "$gone"
+  rm "$FAKE_SCHEDULER_STATE/calls.log"
+  CI=true run --separate-stderr python3 -B "$cli" learn sweep --registered
+  [ "$status" -eq 0 ]
+  [ ! -e "$FAKE_SCHEDULER_STATE/calls.log" ]
+  [ "$(ls "$XDG_CACHE_HOME/agent-ready-setup/learning-schedule/projects" | wc -l)" -eq 2 ]
 }
 
 @test "agent-ready remove takes the repository out of the scheduled sweep" {
