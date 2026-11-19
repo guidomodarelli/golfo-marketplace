@@ -1,7 +1,7 @@
 {
   "name": "golfo-jira",
   "description": "Skills exclusivas de Jira: stories con subtareas, sprint, fechas y enlace con pull requests. No aplican a otros trackers.",
-  "version": "0.130.2",
+  "version": "0.131.0",
   "author": {
     "name": "Guido Modarelli"
   },

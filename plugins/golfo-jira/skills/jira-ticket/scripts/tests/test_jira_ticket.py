@@ -114,7 +114,7 @@ def test_config_reports_missing_required_and_disabled_features(monkeypatch, caps
     data = json.loads(out)
     assert exit_code == jira_ticket.EXIT_CONFIG
     assert data["missing_required"] == ["JIRA_TICKET_SITE_URL", "JIRA_TICKET_CLOUD_ID", "JIRA_TICKET_PROJECT_KEY"]
-    assert data["features"] == {"quarter": False, "start_date": False, "sprint": False, "default_assignee": False}
+    assert data["features"] == {"quarter": False, "start_date": False, "sprint": False, "default_assignee": False, "blocker_default_epic": False}
 
 
 def test_config_reads_profile_file_and_env_wins(tmp_path):
@@ -967,3 +967,143 @@ def test_adf_keeps_every_list_item_after_blank_separated_nested_list():
     assert adf_types(items[0]["content"]) == ["paragraph", "bulletList"]
     deeper_first = jira_ticket.adf.markdown_to_document("  - hijo\n- padre\n")
     assert [jira_ticket.adf.node_text(item) for node in deeper_first["content"] for item in node["content"]] == ["hijo", "padre"]
+
+
+# --- dependency --------------------------------------------------------------
+
+BLOCKED_KEY = "ACME-42"
+LINK_TYPES = {
+    "issueLinkTypes": [
+        {"id": "10000", "name": "Blocks", "inward": "is blocked by", "outward": "blocks"},
+        {"id": "10001", "name": "Relates", "inward": "relates to", "outward": "relates to"},
+        {"id": "10002", "name": "Depende", "inward": "depende de", "outward": "es requisito de"},
+    ]
+}
+
+
+def linked_issue(key, category):
+    return {"key": key, "fields": {"status": {"name": category, "statusCategory": {"key": category}}}}
+
+
+def blocked_issue(*links):
+    return {"key": BLOCKED_KEY, "fields": {"issuelinks": list(links)}}
+
+
+def is_blocked_by(key, category="indeterminate", type_name="Blocks", link_id="1"):
+    return {"id": link_id, "type": {"name": type_name}, "inwardIssue": linked_issue(key, category)}
+
+
+def blocks(key, category="new", type_name="Blocks", link_id="2"):
+    return {"id": link_id, "type": {"name": type_name}, "outwardIssue": linked_issue(key, category)}
+
+
+def dependency_cli(monkeypatch, capsys, action, payload, env=None):
+    exit_code, out, err = run_cli(monkeypatch, capsys, ["dependency", action, "--key", BLOCKED_KEY], json.dumps(payload), env)
+    return exit_code, (json.loads(out) if out else None), err
+
+
+def test_config_exposes_dependency_defaults_from_other_settings(monkeypatch, capsys):
+    exit_code, out, _ = run_cli(monkeypatch, capsys, ["config"], env={**BASE_ENV, "JIRA_TICKET_STORY_TYPE": "Historia"})
+    assert exit_code == jira_ticket.EXIT_OK
+    assert json.loads(out)["dependencies"] == {
+        "link_type": "Blocks",
+        "blocker_project_keys": ["ACME"],
+        "blocker_issue_type": "Historia",
+        "blocker_default_epic": None,
+    }
+
+
+def test_config_dependency_settings_come_from_profile(monkeypatch, capsys):
+    env = {
+        **BASE_ENV,
+        "JIRA_TICKET_DEPENDENCY_LINK_TYPE": "Depende",
+        "JIRA_TICKET_BLOCKER_PROJECT_KEYS": "ACME, PLAT",
+        "JIRA_TICKET_BLOCKER_ISSUE_TYPE": "Task",
+        "JIRA_TICKET_BLOCKER_DEFAULT_EPIC": "ACME-1",
+    }
+    _, out, _ = run_cli(monkeypatch, capsys, ["config"], env=env)
+    data = json.loads(out)
+    assert data["dependencies"] == {"link_type": "Depende", "blocker_project_keys": ["ACME", "PLAT"], "blocker_issue_type": "Task", "blocker_default_epic": "ACME-1"}
+    assert data["features"]["blocker_default_epic"] is True
+
+
+def test_dependency_plan_builds_create_issue_link_with_blocker_as_inward(monkeypatch, capsys):
+    payload = {"issue": blocked_issue(), "link_types": LINK_TYPES, "blockers": [linked_issue("ACME-7", "done"), linked_issue("ACME-8", "indeterminate")]}
+    exit_code, plan, _ = dependency_cli(monkeypatch, capsys, "plan", payload)
+    assert exit_code == jira_ticket.EXIT_OK
+    assert [item["create_issue_link"] for item in plan["create"]] == [
+        {"type": "Blocks", "inwardIssue": "ACME-7", "outwardIssue": BLOCKED_KEY},
+        {"type": "Blocks", "inwardIssue": "ACME-8", "outwardIssue": BLOCKED_KEY},
+    ]
+    assert plan["open_blockers"] == ["ACME-8"] and plan["is_blocked"] is True
+    assert plan["rejected"] == [] and plan["already_linked"] == []
+
+
+def test_dependency_plan_is_idempotent_and_ignores_other_link_types():
+    payload = {
+        "issue": blocked_issue(is_blocked_by("ACME-7", "done"), is_blocked_by("ACME-9", type_name="Relates")),
+        "link_types": LINK_TYPES,
+        "blockers": ["ACME-7", "ACME-9", "ACME-7"],
+    }
+    plan = jira_ticket.plan_dependencies(payload, BLOCKED_KEY, config())
+    assert plan["already_linked"] == [{"key": "ACME-7", "status_category": "done"}]
+    assert [item["key"] for item in plan["create"]] == ["ACME-9"]
+    assert plan["unknown_status"] == ["ACME-9"]
+    assert plan["is_blocked"] is False
+
+
+def test_dependency_plan_rejects_self_cycle_and_foreign_project():
+    payload = {"issue": blocked_issue(blocks("ACME-5")), "link_types": LINK_TYPES, "blockers": [BLOCKED_KEY, "ACME-5", "PLAT-3"]}
+    plan = jira_ticket.plan_dependencies(payload, BLOCKED_KEY, config())
+    assert plan["create"] == []
+    reasons = {item["key"]: item["reason"] for item in plan["rejected"]}
+    assert set(reasons) == {BLOCKED_KEY, "ACME-5", "PLAT-3"}
+    assert "ciclo" in reasons["ACME-5"] and "BLOCKER_PROJECT_KEYS" in reasons["PLAT-3"]
+
+
+def test_dependency_plan_accepts_configured_other_project():
+    payload = {"issue": blocked_issue(), "link_types": LINK_TYPES, "blockers": ["PLAT-3"]}
+    plan = jira_ticket.plan_dependencies(payload, BLOCKED_KEY, config(JIRA_TICKET_BLOCKER_PROJECT_KEYS="ACME,PLAT"))
+    assert [item["key"] for item in plan["create"]] == ["PLAT-3"]
+
+
+def test_dependency_plan_uses_configured_link_type_and_counts_existing_open_blockers():
+    payload = {"issue": blocked_issue(is_blocked_by("ACME-11", type_name="Depende")), "link_types": LINK_TYPES, "blockers": ["ACME-12"]}
+    plan = jira_ticket.plan_dependencies(payload, BLOCKED_KEY, config(JIRA_TICKET_DEPENDENCY_LINK_TYPE="depende"))
+    assert plan["link_type"] == {"id": "10002", "name": "Depende", "inward": "depende de", "outward": "es requisito de"}
+    assert plan["create"][0]["create_issue_link"]["type"] == "Depende"
+    assert plan["open_blockers"] == ["ACME-11"]
+
+
+def test_dependency_plan_unknown_link_type_is_unresolved(monkeypatch, capsys):
+    payload = {"issue": blocked_issue(), "link_types": LINK_TYPES, "blockers": ["ACME-7"]}
+    exit_code, _, err = dependency_cli(monkeypatch, capsys, "plan", payload, {**BASE_ENV, "JIRA_TICKET_DEPENDENCY_LINK_TYPE": "Bloquea"})
+    assert exit_code == jira_ticket.EXIT_UNRESOLVED
+    assert "Bloquea" in err and "Blocks" in err
+
+
+@pytest.mark.parametrize("payload", [{"issue": {"key": BLOCKED_KEY, "fields": {}}, "link_types": LINK_TYPES, "blockers": []}, {"issue": blocked_issue(), "link_types": LINK_TYPES, "blockers": ["acme 7"]}])
+def test_dependency_plan_rejects_malformed_input(monkeypatch, capsys, payload):
+    exit_code, _, err = dependency_cli(monkeypatch, capsys, "plan", payload)
+    assert exit_code == jira_ticket.EXIT_USAGE and err.startswith("jira-ticket:")
+
+
+def test_dependency_verify_detects_missing_and_inverted_links(monkeypatch, capsys):
+    payload = {"issue": blocked_issue(is_blocked_by("ACME-7"), blocks("ACME-8")), "link_types": LINK_TYPES, "blockers": ["ACME-7", "ACME-8", "ACME-9"]}
+    exit_code, result, _ = dependency_cli(monkeypatch, capsys, "verify", payload)
+    assert exit_code == jira_ticket.EXIT_UNRESOLVED
+    assert (result["linked"], result["inverted"], result["missing"], result["ok"]) == (["ACME-7"], ["ACME-8"], ["ACME-9"], False)
+
+
+def test_dependency_verify_skips_blockers_plan_rejects_for_fixed_reasons(monkeypatch, capsys):
+    payload = {"issue": blocked_issue(is_blocked_by("ACME-7")), "link_types": LINK_TYPES, "blockers": ["ACME-7", BLOCKED_KEY, "PLAT-3"]}
+    exit_code, result, _ = dependency_cli(monkeypatch, capsys, "verify", payload)
+    assert exit_code == jira_ticket.EXIT_OK and result["ok"] is True
+    assert [item["key"] for item in result["skipped"]] == [BLOCKED_KEY, "PLAT-3"]
+    assert (result["linked"], result["missing"], result["inverted"]) == (["ACME-7"], [], [])
+
+
+def test_dependency_verify_ok_after_links_exist(monkeypatch, capsys):
+    payload = {"issue": blocked_issue(is_blocked_by("ACME-7", "done")), "link_types": LINK_TYPES, "blockers": ["ACME-7"]}
+    exit_code, result, _ = dependency_cli(monkeypatch, capsys, "verify", payload)
+    assert exit_code == jira_ticket.EXIT_OK and result["ok"] is True

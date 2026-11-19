@@ -45,5 +45,11 @@ Devuelve JSON con `settings` (valor y origen: `env`, `file` o `default`), `featu
 | `JIRA_TICKET_REPO_PREFIXES` | No | Prefijos que se quitan al basename del repositorio, separados por coma | — |
 | `JIRA_TICKET_MEMORY_ORG` | No | Organización para la memoria persistente (por ejemplo `--org` de Engram) | — |
 | `JIRA_TICKET_MAX_RESULTS` | No | Tope de `maxResults` por consulta | `50` |
+| `JIRA_TICKET_DEPENDENCY_LINK_TYPE` | No | Nombre (o id) del tipo de issue link que el timeline usa como dependencia | `Blocks` |
+| `JIRA_TICKET_BLOCKER_PROJECT_KEYS` | No | Proyectos donde puede estar un bloqueante existente, separados por coma | `<PROJECT_KEY>` |
+| `JIRA_TICKET_BLOCKER_ISSUE_TYPE` | No | Tipo de issue de un bloqueante nuevo | `<STORY_TYPE>` |
+| `JIRA_TICKET_BLOCKER_DEFAULT_EPIC` | No | Key de la épica de la que cuelga un bloqueante nuevo cuando el pedido no indica otra; sin ella se pregunta | — |
+
+`config` devuelve los valores efectivos de las cuatro últimas en `dependencies`, con los defaults que dependen de otras variables ya resueltos. Su uso está en [`dependencies.md`](dependencies.md).
 
 Los valores no son secretos, pero son datos del equipo: no copiarlos a la skill, a memorias compartidas ni a issues públicos. Nunca guardar tokens ni credenciales en este archivo; la autenticación es de la integración Atlassian.
