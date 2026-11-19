@@ -50,7 +50,7 @@ Use these checks while editing:
 
 ## Cleanups outside the diff
 
-The cleanups this skill applies belong to the code the change already touches, so they stay in the same PR. When a worthwhile cleanup reaches existing code outside the diff, do not widen the change: suggest it as a stacked PR layer above the feature, following [refactor-placement.md](../../references/refactor-placement.md).
+Cleanups of the code the change already touches stay in the same PR. For a cleanup that reaches existing code outside the diff, do not widen the change: decide where it goes with [refactor-placement.md](../../references/refactor-placement.md) and report it.
 
 ## Reporting
 

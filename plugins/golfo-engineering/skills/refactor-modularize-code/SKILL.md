@@ -31,7 +31,7 @@ Read [ejecución compartida](../../references/refactor-execution.md) before edit
 
 ## Same PR or stacked PR layer
 
-When the refactor comes with a feature in progress, decide whether it travels in the same PR or in its own stacked PR layer with the criterion in [refactor-placement.md](../../references/refactor-placement.md). Structure the feature's own new code well in the same PR. Suggest a layer **below** the feature for an extraction the feature needs before it can be built, and a layer **above** for cleanup of existing code outside the feature's scope or moves and renames that would inflate its diff. Only suggest it: create branches or PRs only after the user agrees.
+When the refactor comes with a feature in progress, decide where it goes with [refactor-placement.md](../../references/refactor-placement.md) and report it in the closeout.
 
 ## Detect Bad Boundaries
 

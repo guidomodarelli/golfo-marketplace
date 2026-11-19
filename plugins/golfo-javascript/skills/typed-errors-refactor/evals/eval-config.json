@@ -197,13 +197,13 @@
     },
     {
       "id": "error-contract-below-consumer-migration-above",
-      "description": "Ubica el contrato de errores que la feature consume en una capa debajo y la migración de consumers ajenos en una capa encima, solo como sugerencia.",
+      "description": "Ubica el contrato de errores nuevo que la feature consume con la feature o debajo, y la migración de consumers ajenos en una capa encima, solo como sugerencia.",
       "input": "Usando typed-errors-refactor: en la rama feature/refund-flow estoy agregando reembolsos en TypeScript. Para mapear bien los errores del provider necesito un contrato `RefundError` con códigos y un normalizer. Además, los 12 handlers viejos de `src/api/payments/` (que la feature no toca) comparan `error.message.includes('timeout')` y habría que migrarlos al contrato. No ejecutes ni edites nada: decime el plan y cómo lo repartirías en PRs.",
       "assertions": [
         {
           "type": "regex",
-          "pattern": "(contrato|contract|normaliz).{0,300}(debajo|abajo|below|antes|before|preparatori|preparatory|base)",
-          "description": "Ubica el contrato y normalizer en una capa debajo de la feature"
+          "pattern": "(contrato|contract|normaliz).{0,300}(debajo|abajo|below|antes|before|preparatori|preparatory|mismo PR|same PR|este PR|PR 1)",
+          "description": "Ubica el contrato y normalizer nuevos con la feature (mismo PR) o en una capa debajo, nunca encima"
         },
         {
           "type": "regex",

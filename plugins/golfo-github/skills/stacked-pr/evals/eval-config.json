@@ -423,6 +423,16 @@
         },
         {
           "type": "regex",
+          "pattern": "push[^|]{0,80}(-u|--set-upstream)?[^|]{0,40}refactor",
+          "description": "Publica la branch de refactor en el remoto antes de usarla como base"
+        },
+        {
+          "type": "regex",
+          "pattern": "(cherry-pick|hunk)",
+          "description": "Arma la capa de refactor con commits o hunks, no copiando archivos enteros"
+        },
+        {
+          "type": "regex",
           "pattern": "backup",
           "description": "Hace backup de la feature antes de reescribirla"
         },

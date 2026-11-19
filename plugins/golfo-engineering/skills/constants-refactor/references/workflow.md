@@ -16,7 +16,7 @@ Limitar los cambios a lo que el usuario nombró: un archivo, un módulo, una fun
 
 ### Mismo PR o capa de stacked PR
 
-Cuando el refactor de constantes acompaña una feature en curso (modo PR / diff), decidir si va en el mismo PR o en una capa propia de stacked PR con el criterio de [refactor-placement.md](../../../references/refactor-placement.md). Las constantes que la propia feature agrega se ubican bien en el mismo PR. Las de código existente fuera del alcance, o una extracción que toca muchos archivos que la feature no toca, se sugieren como capa encima. Proponerlo en la sección "Capa de refactor sugerida" del reporte, sin crear ramas ni PRs.
+Cuando el refactor de constantes acompaña una feature en curso (modo PR / diff), decidir dónde va con [refactor-placement.md](../../../references/refactor-placement.md) y reportarlo en "Capa de refactor sugerida".
 
 ## Modos
 

@@ -189,20 +189,31 @@ Usá cuando una capa debe ir antes que otra (por ejemplo, para mergear primero a
 
 Usá cuando el usuario acepta separar un refactor de la feature en su propia capa, porque se lo sugirió una skill de refactor o porque lo pidió. Si no está claro si va **debajo** o **encima** de la feature, o si conviene dejarlo en el mismo PR, decidilo con [`refactor-placement.md`](../../references/refactor-placement.md) antes de crear nada.
 
-- **Encima** (limpieza de código existente fuera del alcance de la feature): es el modo B si la feature es un PR normal, o el C si ya es un stack. La branch `feature/<slug>-refactor` sale del head de la feature, y su PR usa la branch de la feature como base. Si el refactor ya está mezclado en la feature, sacalo de ahí con un manifest, como en el paso 5 del modo A, y verificá que el árbol del top siga igual al golden.
-- **Debajo** (refactor preparatorio que la feature necesita): hacé backup de la branch de la feature. Creá `feature/<slug>-refactor` desde la base de la feature con solo el manifest del refactor, y rebasá la feature encima:
+- **Encima** (limpieza de código existente fuera del alcance de la feature): es el modo B si la feature es un PR normal, o el C si ya es un stack. La branch `feature/<slug>-refactor` sale del head de la feature, y su PR usa la branch de la feature como base. Si el refactor ya está mezclado en la feature, sacalo de ahí por commits o hunks, no por path si comparte archivos con la feature, y verificá que el árbol del top siga igual al golden.
+- **Debajo** (refactor preparatorio que la feature necesita): capturá el tip de la feature y de cada capa que tenga encima, y hacé backup de todas (ver «Backups»).
+  1. **Armá la capa solo con el refactor.** Si el refactor vive en commits propios, cherry-pickealos sobre la base. Si comparte archivos o commits con la feature, aplicá solo sus hunks: un diff filtrado por path copiaría también los cambios de comportamiento de esos archivos. Revisá que `git diff origin/<feature-base>..feature/<slug>-refactor` no traiga ningún cambio de comportamiento, porque la igualdad del árbol final no lo detecta.
 
-  ```bash
-  old_feature_tip=$(git rev-parse <feature-branch>)
-  git switch -c feature/<slug>-refactor origin/<feature-base>
-  git diff --binary origin/<feature-base> "$old_feature_tip" -- <refactor-manifest> | git apply --index
-  git commit -m "refactor(<scope>): <summary>"
-  git rebase --onto feature/<slug>-refactor origin/<feature-base> <feature-branch>
-  git push --force-with-lease=<feature-branch>:"$old_feature_tip" origin <feature-branch>
-  gh pr edit <feature-pr> --base feature/<slug>-refactor
-  ```
+     ```bash
+     old_feature_tip=$(git rev-parse <feature-branch>)
+     git switch -c feature/<slug>-refactor origin/<feature-base>
+     git cherry-pick <refactor-commits>                 # refactor en commits propios
+     # o: git diff origin/<feature-base> "$old_feature_tip" -- <archivos> > refactor.patch,
+     #    dejar solo los hunks del refactor y aplicar con: git apply --index refactor.patch
+     ```
 
-  Reescribir la feature necesita autorización explícita (ver «Reglas de seguridad y alcance»). El árbol final del top tiene que ser igual al `old_feature_tip` (ver «Golden diff y cierre»).
+  2. **Publicala antes de reescribir nada:** `git push --set-upstream origin feature/<slug>-refactor` y su PR con base `<feature-base>` (ver «Publicar cada PR»). `gh pr edit --base` solo acepta una branch que ya exista en el remoto.
+  3. **Rebasá la feature encima** y pusheala con su OID esperado:
+
+     ```bash
+     git rebase --onto feature/<slug>-refactor origin/<feature-base> <feature-branch>
+     git push --force-with-lease=<feature-branch>:"$old_feature_tip" origin <feature-branch>
+     gh pr edit <feature-pr> --base feature/<slug>-refactor
+     ```
+
+     Si el rebase choca porque los commits de la feature traen hunks que ya están en la capa, resolvé a favor de la capa y verificá con `git range-diff` que la feature solo perdió esos hunks.
+  4. **Propagá las capas de encima**, si las hay, con el modo D desde el paso 3, usando `old_feature_tip` como tip viejo del parent. Sin eso, el diff de cada child contra la feature mostraría también el refactor.
+
+  Reescribir la feature y sus capas necesita autorización explícita (ver «Reglas de seguridad y alcance»). El árbol final del top tiene que ser igual al tip viejo del top (ver «Golden diff y cierre»).
 
 En ambos casos, la capa de refactor no cambia comportamiento: su CI tiene que pasar sin tocar tests de comportamiento, y su body dice qué se movió y por qué va separado.
 

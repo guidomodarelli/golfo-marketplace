@@ -164,7 +164,7 @@ Ejecutar typecheck, lint y tests focales después de cada fase; luego suite comp
 
 ### Mismo PR o capa de stacked PR
 
-Cuando el refactor de errores acompaña una feature en curso, decidir con el criterio de [refactor-placement.md](../../references/refactor-placement.md) si va en el mismo PR o en una capa propia de stacked PR. Los errores que la propia feature agrega se tipan en el mismo PR. Un contrato y normalizer que la feature necesita para consumirlo (fases 0 y 1) van en una capa **debajo**, y la migración de productores o consumers ajenos a la feature, o el retiro de bridges (fases 3 a 5), en una capa **encima**. Solo sugerirlo: crear ramas o PRs recién cuando el usuario acepte.
+Cuando el refactor de errores acompaña una feature en curso, decidir dónde va cada fase con [refactor-placement.md](../../references/refactor-placement.md) y reportarlo en "Capa de refactor sugerida".
 
 ## Seguridad y límites
 
