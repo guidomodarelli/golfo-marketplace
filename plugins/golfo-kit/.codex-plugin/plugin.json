@@ -1,6 +1,6 @@
 {
   "name": "golfo-kit",
-  "version": "0.129.0",
+  "version": "0.130.0",
   "description": "Núcleo de los plugins golfo: setup Agent Ready y skills para trabajar con agentes (optimizar skills, profundizar prompts, máxima ambición). Las demás skills viven en los plugins golfo-* por plataforma y tecnología.",
   "author": {
     "name": "Guido Modarelli",
