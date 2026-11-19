@@ -1407,10 +1407,12 @@ sweep_lines() {
   select_learning_profile
   agent_ready learn schedule
   schedule="$XDG_CACHE_HOME/agent-ready-setup/learning-schedule"
-  touch -d "2001-01-01" "$schedule/run-sweep.py" "$schedule/projects/"*.json
+  # touch -t and find -newer behave the same in GNU and BSD (macOS).
+  touch -t 200101010000 "$schedule/run-sweep.py" "$schedule/projects/"*.json
+  touch -t 200201010000 "$test_root/reference"
   agent_ready learn schedule
   [[ "$output" == *"unchanged"* ]]
-  [ -z "$(find "$schedule/run-sweep.py" "$schedule/projects" -name '*.*' -newermt 2002-01-01)" ]
+  [ -z "$(find "$schedule/run-sweep.py" "$schedule/projects" -name '*.*' -newer "$test_root/reference")" ]
 }
 
 @test "a removal the scheduler refused is tried again by the next schedule" {
