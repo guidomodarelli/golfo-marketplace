@@ -67,7 +67,7 @@ Cada plugin tiene un ámbito: una plataforma o una tecnología. Una skill va al 
 | `golfo-node-backend` | Solo backend en Node.js | node-runtime-debugging |
 | `golfo-cli` | Solo CLIs, cualquier lenguaje | interactive-cli-design |
 | `golfo-git` | Git con cualquier host | sibling-worktree, generate-commit-messages, fix-in-ephemeral-clone, review-fix-loop, pr-flow-graph |
-| `golfo-github` | Solo GitHub | feature-branch-pr, pr-description-template, pr-inline-comment-template, stacked-pr, codex-autofix-loop, claude-autofix-loop, codex-comment-closeout, inline-thread-autofix, parallel-pr-hygiene |
+| `golfo-github` | Solo GitHub | feature-branch-pr, pr-description-template, pr-inline-comment-template, stacked-pr, codex-autofix-loop, claude-autofix-loop, codex-comment-closeout, inline-thread-autofix, pr-feedback-sweep, parallel-pr-hygiene |
 | `golfo-planning` | Planificación con cualquier herramienta | create-issue, improve-spec, functionality-check |
 | `golfo-jira` | Solo Jira | jira-ticket |
 

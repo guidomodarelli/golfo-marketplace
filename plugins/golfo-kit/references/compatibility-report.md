@@ -8,9 +8,9 @@
 ## A. Resumen ejecutivo
 
 - **Fecha de auditoría:** 2026-10-23 (generado 2026-10-23T21:00:00Z).
-- **Total de skills analizadas:** 58.
+- **Total de skills analizadas:** 59.
 - **Funcionalidades deshabilitadas:** 0.
-- **Adaptaciones implementadas:** 42; verificadas: 20.
+- **Adaptaciones implementadas:** 44; verificadas: 20.
 - **Problemas críticos pendientes:** ninguno.
 - **Funcionalidades que dejaron de estar deshabilitadas en esta revisión:** 0 (respecto de `1e937e0 (golfo-kit 0.11.0, PR #23, schema 1.1.0)`).
 
@@ -43,7 +43,7 @@ Dependencias implícitas de navegador de measured-performance-optimization, prev
 | `adapted` | 0 | 1 | 1 |
 | `partial` | 0 | 0 | 0 |
 | `incompatible` | 0 | 0 | 0 |
-| `unverified` | 54 | 57 | 57 |
+| `unverified` | 55 | 58 | 58 |
 
 ### Regla de derivación del estado
 
@@ -99,6 +99,7 @@ Una funcionalidad `disabled` lista las alternativas investigadas y ninguna es vi
 | `optimistic-action-mutations` | `unverified` | `unverified` | `unverified` |
 | `parallel-pr-hygiene` | `unverified` | `unverified` | `unverified` |
 | `pr-description-template` | `compatible` | `unverified` | `unverified` |
+| `pr-feedback-sweep` | `unverified` | `unverified` | `unverified` |
 | `pr-flow-graph` | `unverified` | `unverified` | `unverified` |
 | `pr-inline-comment-template` | `unverified` | `unverified` | `unverified` |
 | `prevent-ssr-hydration-mismatches` | `unverified` | `unverified` | `unverified` |
@@ -2549,6 +2550,87 @@ Pendiente de verificar:
 
 - Codex: flujo completo antes/después + subida a pr-assets.
 - Hermes: captura con computer_use o con use_real_profile + headed.
+
+### `pr-feedback-sweep`
+
+**Identificación**
+
+- Nombre: PR Feedback Sweep; versión: 1.0.0; SKILL.md: `plugins/golfo-github/skills/pr-feedback-sweep/SKILL.md`.
+- Propósito: Barre threads, reviews y comentarios generales de un PR y resuelve cada ítem con el contrato de inline-thread-autofix.
+- Funcionalidades principales: pregunta del entorno una sola vez; inventario y clasificación del feedback del PR; resolución por ítem con inline-thread-autofix; reporte final por ítem.
+- Agentes soportados declarados: no declara.
+
+**Dependencias**
+
+| Dependencia | Tipo | Obligatoria | Agentes que la tienen |
+|---|---|---|---|
+| Herramienta de preguntas | tool | no | `claude_code`; `codex`; `hermes` |
+| `gh` en PATH | command | sí | `claude_code`; `codex`; `hermes` |
+
+**Compatibilidad por agente**
+
+#### pr-feedback-sweep / `claude_code`: `unverified`
+
+Reusa la pregunta del entorno de inline-thread-autofix; no ejecutada en Claude Code en esta auditoría.
+
+- Capacidades faltantes: ninguna.
+- Alternativas investigadas: ninguna.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `ask-environment` | sí | `unverified` | `native` | `AskUserQuestion`. | Pregunta en texto y detención. | No ejecutada en Claude Code en esta auditoría. | — |
+| `pr-closeout` | sí | `unverified` | `native` | Reply, resolución de threads y `minimizeComment` de comentarios generales con gh. | — | No ejecutada en Claude Code en esta auditoría. | — |
+
+#### pr-feedback-sweep / `codex`: `unverified`
+
+Reusa la pregunta del entorno de inline-thread-autofix; no ejecutada en Codex CLI en esta auditoría.
+
+- Capacidades faltantes: request_user_input fuera del modo Plan.
+- Alternativas investigadas: request_user_input en modo Plan.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `ask-environment` | sí | `unverified` | `alternative` | Texto y detención; `request_user_input` solo en modo Plan. | Pregunta en texto y detención. | No ejecutada en Codex CLI en esta auditoría. | — |
+| `pr-closeout` | sí | `unverified` | `native` | Reply, resolución de threads y `minimizeComment` de comentarios generales con gh. | — | No ejecutada en Codex CLI en esta auditoría. | — |
+
+| Funcionalidad | Alternativa investigada | Fuente | Viable | Motivo |
+|---|---|---|---|---|
+| `ask-environment` | Texto y detención; `request_user_input` solo en modo Plan. | Auditoría 1.0.0 (PR #22) y shared/references/agent-capabilities.md | sí | No ejecutada en Codex CLI en esta auditoría. |
+
+#### pr-feedback-sweep / `hermes`: `unverified`
+
+Reusa la pregunta del entorno de inline-thread-autofix; no ejecutada en Hermes Agent en esta auditoría.
+
+- Capacidades faltantes: ninguna.
+- Alternativas investigadas: clarify.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `ask-environment` | sí | `unverified` | `alternative` | `clarify`; texto ante undelivered/timed_out/cancelled. | Pregunta en texto y detención. | No ejecutada en Hermes Agent en esta auditoría. | — |
+| `pr-closeout` | sí | `unverified` | `native` | Reply, resolución de threads y `minimizeComment` de comentarios generales con gh. | — | No ejecutada en Hermes Agent en esta auditoría. | — |
+
+| Funcionalidad | Alternativa investigada | Fuente | Viable | Motivo |
+|---|---|---|---|---|
+| `ask-environment` | `clarify`; texto ante undelivered/timed_out/cancelled. | Auditoría 1.0.0 (PR #22) y shared/references/agent-capabilities.md | sí | No ejecutada en Hermes Agent en esta auditoría. |
+
+**Implementación**
+
+- Adaptaciones: Delega la pregunta del entorno y su compatibilidad entre agentes a inline-thread-autofix.
+- Archivos modificados: `plugins/golfo-github/skills/pr-feedback-sweep/SKILL.md`.
+- Fallback: Pregunta en texto con detención, heredada de inline-thread-autofix..
+- Cambios de comportamiento respecto del original: Ninguno; skill nueva..
+
+**Verificación**
+
+| Prueba | Agente | Tipo | Comando | Resultado | Evidencia |
+|---|---|---|---|---|---|
+| `static-inspection` | `any` | static | `grep -rE "AskUserQuestion\|request_user_input\|Monitor\|Cron(Create\|List\|Delete)\|PushNotification\|TaskStop\|Agent\|subagent\|mcp__\|claude -p\|codex exec\|~/.claude\|~/.codex\|apply_patch\|update_plan" plugins/golfo-github/skills/pr-feedback-sweep` | `passed` | Inspección de SKILL.md del 2026-11-19: solo nombra `AskUserQuestion` a través de inline-thread-autofix. |
+
+Pendiente de verificar:
+
+- Ejecutar sobre un PR real con threads y comentarios generales en Claude Code.
+- Ejecutar sobre un PR real en Codex CLI.
+- Ejecutar sobre un PR real en Hermes Agent.
 
 ### `pr-flow-graph`
 

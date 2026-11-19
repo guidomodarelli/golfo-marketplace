@@ -1,9 +1,9 @@
 ---
 name: inline-thread-autofix
-description: "Orquesta feedback accionable de un PR GitHub desde URL `#discussion_r...` o `#pullrequestreview-...`: al activarse comprueba `~/.work` (si existe, usa siempre el checkout actual sin preguntar); si no, pregunta si el usuario quiere checkout actual, worktree hermano (`/sibling-worktree`) o clone efímero (`/fix-in-ephemeral-clone`), y recién después inspecciona PR, código, stack y referencias explícitas a issues. Ejecuta solo el entorno elegido. Para inline comments responde y resuelve el thread (si el comentario fue eliminado, permite closeout sin reply). La issue es opcional: sin referencia el thread se cierra igual; si el feedback referencia inequívocamente una issue del mismo repo, también la responde y cierra. Si el PR fuente está cerrado/mergeado, trabaja en el PR abierto de branch relacionada solo con ownership verificable. Para review-bodies preserva body o usa fallback. Usar siempre al recibir estos links; detener ante ambigüedad, precondiciones inseguras o closeout no verificable."
+description: "Orquesta feedback accionable de un PR GitHub desde URL `#discussion_r...`, `#pullrequestreview-...` o `#issuecomment-...` (comentario general): al activarse comprueba `~/.work` (si existe, usa el checkout actual sin preguntar); si no, pregunta entre checkout actual, worktree hermano (`/sibling-worktree`) o clone efímero (`/fix-in-ephemeral-clone`), y recién después inspecciona PR, código, stack e issues referenciadas. Inline: responde y resuelve el thread (sin reply si el comentario fue eliminado). Review body: preserva el body o usa fallback. Comentario general: responde con un comentario nuevo y lo oculta como resuelto (`minimizeComment` `RESOLVED`). La issue es opcional; si el feedback la referencia inequívocamente, también la responde y cierra. Con PR fuente cerrado, usa el PR abierto relacionado solo con ownership verificable. Usar siempre al recibir estos links; para barrer todo el feedback de un PR usar `pr-feedback-sweep`. Detener ante ambigüedad, precondiciones inseguras o closeout no verificable."
 license: MIT
 metadata:
-  version: "1.3.0"
+  version: "1.4.0"
   author: "Guido Modarelli"
   category: "code-review"
   tags: "code-review, pull-request, inline-comment, autofix"
@@ -34,7 +34,7 @@ Usar single-select y mostrar exactamente estas alternativas:
 2. **Worktree hermano** — invocar `/sibling-worktree` para crear o entrar al worktree persistente; no reimplementar su helper.
 3. **Clone efímero** — invocar `/fix-in-ephemeral-clone` con handoff completo; no crear ni administrar el clone desde esta skill.
 
-No elegir opción por defecto, no inferir preferencia por estado Git y no comenzar análisis o implementación hasta recibir respuesta. Si el flujo ya llega con un `HANDOFF: INLINE_THREAD_AUTOFIX` explícito, usar el `execution_mode` entregado como selección previa y no volver a preguntar. Si opción elegida no puede ejecutarse, detener con `NEEDS_CLARIFICATION` o `HARD_STOP`; no cambiar automáticamente a otra opción.
+No elegir opción por defecto, no inferir preferencia por estado Git y no comenzar análisis o implementación hasta recibir respuesta. Si el flujo ya llega con un `HANDOFF: INLINE_THREAD_AUTOFIX` explícito, usar el `execution_mode` entregado como selección previa y no volver a preguntar. Lo mismo vale cuando `pr-feedback-sweep` invoca esta skill por cada ítem con el entorno ya elegido para todo el barrido. Si opción elegida no puede ejecutarse, detener con `NEEDS_CLARIFICATION` o `HARD_STOP`; no cambiar automáticamente a otra opción.
 
 Pregunta sugerida:
 
@@ -64,6 +64,7 @@ Hay dos destinos independientes:
 
 - `inline`: comentario de línea `#discussion_r<comment_id>`, con `ReviewThread` resoluble.
 - `review_body`: review `#pullrequestreview-<review_id>`, sin resolución de thread; se edita body o se publica fallback.
+- `issue_comment`: comentario general del PR `#issuecomment-<comment_id>` (conversación del PR, fuera de un review), sin thread que resolver; se responde con un comentario general nuevo que lo enlaza.
 
 El link autoriza únicamente destino indicado. No autoriza otros threads, branches, repositorios, cambios ajenos, comandos destructivos ni ocultar validaciones fallidas.
 
@@ -100,6 +101,7 @@ Aceptar exactamente:
 ```text
 https://github.com/<owner>/<repo>/pull/<number>#discussion_r<comment_id>
 https://github.com/<owner>/<repo>/pull/<number>#pullrequestreview-<review_id>
+https://github.com/<owner>/<repo>/pull/<number>#issuecomment-<comment_id>
 ```
 
 Parsear objeto discriminado, conservando `originalUrl`:
@@ -107,6 +109,7 @@ Parsear objeto discriminado, conservando `originalUrl`:
 ```text
 { source: "inline", owner, repo, pullRequestNumber, commentId, originalUrl }
 { source: "review_body", owner, repo, pullRequestNumber, reviewId, originalUrl }
+{ source: "issue_comment", owner, repo, pullRequestNumber, issueCommentId, originalUrl }
 ```
 
 Validar host exacto `github.com`, path `/owner/repo/pull/<número>`, fragment exacto e IDs positivos, numéricos y completos. Rechazar paths de issues, fragmentos vacíos/adicionales, IDs cero, URLs de otros hosts y cualquier dato no validado. URL inválida termina flujo antes de GitHub.
@@ -130,14 +133,15 @@ Después del parseo, lanzar en paralelo las consultas independientes con límite
 | Wave A, ambos | `gh api user`; `gh api pulls/<PR>` como metadata canónica; markers en body/comentarios generales cuando estén disponibles |
 | Wave A, inline | `gh api pulls/comments/<commentId>`; GraphQL `reviewThreads` paginado con comentarios, replies y estados |
 | Wave A, review body | `gh api pulls/<PR>/reviews/<reviewId>`; `gh api --paginate pulls/<PR>/comments` para reconocer hijos sin procesarlos |
+| Wave A, comentario general | `gh api issues/comments/<issueCommentId>`; `gh api --paginate issues/<PR>/comments` para buscar el marker `issuecomment:<issueCommentId>` |
 | Wave B, solo si no hay fast path | `gh pr view` independiente, `gh repo view` para default branch y `gh api --paginate pulls?state=all&per_page=100` para grafo completo |
 | Duplicados | Buscar markers dentro de respuestas ya necesarias; no hacer listados amplios si Wave A ya demuestra closeout completo |
 
-Primero ejecutar Wave A. Si target inline está resuelto y existe closeout verificable (reply del usuario con marker `comment:<comment_id>`, SHA final, URLs, head remoto y, si hay issue validada, sus markers y estados), terminar sin Wave B, backend ni inventario de stack. Si está resuelto pero closeout falta, exigir código correcto más segunda señal independiente para `ALREADY_RESOLVED`; solo entonces continuar destinos faltantes, nunca responder/resolver otra vez. Thread resuelto manualmente, con reply ajeno, marker ausente o código vulnerable es `RESOLVED_UNVERIFIED`: hacer solo lecturas, devolver `UNKNOWN`/parada y no cerrar issue. Si review body tiene marker verificable, terminar sin backend ni stack. Solo `NOT_RESOLVED` pasa a Wave B; nunca confundir marker aislado con closeout.
+Primero ejecutar Wave A. Si target inline está resuelto y existe closeout verificable (reply del usuario con marker `comment:<comment_id>`, SHA final, URLs, head remoto y, si hay issue validada, sus markers y estados), terminar sin Wave B, backend ni inventario de stack. Si está resuelto pero closeout falta, exigir código correcto más segunda señal independiente para `ALREADY_RESOLVED`; solo entonces continuar destinos faltantes, nunca responder/resolver otra vez. Thread resuelto manualmente, con reply ajeno, marker ausente o código vulnerable es `RESOLVED_UNVERIFIED`: hacer solo lecturas, devolver `UNKNOWN`/parada y no cerrar issue. Si review body o comentario general tiene marker verificable, terminar sin backend ni stack. Solo `NOT_RESOLVED` pasa a Wave B; nunca confundir marker aislado con closeout.
 
 Usar campos estructurados/`--jq` en vez de parsear JSON serializado. Para saltos `\\n`, conservar `body_raw`, derivar `body_for_analysis` una sola vez y nunca reconstruir body original desde representación normalizada.
 
-La issue asociada es opcional: el thread pertenece al PR y se resuelve ahí, tenga o no una issue. Para inline, detectarla solo por referencia explícita en body, solicitud directa o replies del usuario autenticado dentro del thread: URL canónica `https://github.com/<owner>/<repo>/issues/<N>`, `<owner>/<repo>#<N>` o `#<N>`; excluir bots, otros threads, títulos, labels y comentarios generales. Con una única candidata, consultar en paralelo issue y comentarios y exigir mismo repo, `number`, `html_url`, `repository_url`, `state`, `title` y `pull_request == null`; no inferir por título, labels, `issue_url` null o similitud. Sin referencias, usar `issue: none` y seguir con fix, reply y resolución del thread: no es una parada ni un error, y no se busca una issue por similitud. Varias candidatas (`ISSUE_REFERENCE_AMBIGUOUS`) o una referencia que no valida (`ISSUE_REFERENCE_INVALID`) tampoco detienen el fix ni el closeout del thread: dejan `issue: none`, omiten comentario y cierre de issue y se informan en el resultado. Si el usuario pidió cerrar esa issue, reportar ese cierre como pendiente en vez de elegir una candidata.
+La issue asociada es opcional: el thread pertenece al PR y se resuelve ahí, tenga o no una issue. Para inline, detectarla solo por referencia explícita en body, solicitud directa o replies del usuario autenticado dentro del thread; para `issue_comment`, solo en el body de ese comentario o en la solicitud directa: URL canónica `https://github.com/<owner>/<repo>/issues/<N>`, `<owner>/<repo>#<N>` o `#<N>`; excluir bots, otros threads, títulos, labels y comentarios generales. Con una única candidata, consultar en paralelo issue y comentarios y exigir mismo repo, `number`, `html_url`, `repository_url`, `state`, `title` y `pull_request == null`; no inferir por título, labels, `issue_url` null o similitud. Sin referencias, usar `issue: none` y seguir con fix, reply y resolución del thread: no es una parada ni un error, y no se busca una issue por similitud. Varias candidatas (`ISSUE_REFERENCE_AMBIGUOUS`) o una referencia que no valida (`ISSUE_REFERENCE_INVALID`) tampoco detienen el fix ni el closeout del thread: dejan `issue: none`, omiten comentario y cierre de issue y se informan en el resultado. Si el usuario pidió cerrar esa issue, reportar ese cierre como pendiente en vez de elegir una candidata.
 
 Derivar localmente ownership, duplicados, grafo y señales de finding desde snapshot. No repetir preflight completo: conservar snapshot y fingerprints. Releer solo OIDs, branch/PR destino y entidad que se va a mutar inmediatamente antes de esa mutación; si cambian, marcar `TARGET_STALE`, refrescar la entidad afectada y reconstruir las precondiciones antes de continuar; nunca usar OIDs o fingerprints anteriores sin revalidarlos.
 
@@ -197,9 +201,28 @@ Validar `id`, `node_id`, `pull_request_url`, `html_url`, autor, body no vacío y
 
 Buscar marker `<!-- inline-thread-autofix: review:<review_id> -->` en body y comentarios generales. Marker con closeout verificable activa fast path: no repetir backend, PUT ni fallback. Review body nunca usa `resolveReviewThread` ni palabra `Resuelto`.
 
+### Comentario general
+
+Validar `id`, `html_url`, `issue_url` terminado exactamente en `/repos/<owner>/<repo>/issues/<PR>` (el comentario pertenece al PR indicado), `user.login`, `user.type` y body no vacío. Un comentario general no tiene thread ni `in_reply_to`: nunca llamar `resolveReviewThread` ni borrar el comentario. La única edición permitida sobre el original es agregarle al final un back-link a la respuesta, preservando su texto completo. Su equivalente a resolver es ocultarlo como resuelto (menú del comentario → *Hide* → *Resolved*), que en la API es la mutación GraphQL `minimizeComment` con `classifier: RESOLVED` sobre su `node_id`.
+
+Un mismo comentario puede pedir varias cosas (por ejemplo una lista). Separar cada pedido en un ítem con su `finding_anchor` (path, símbolo o superficie: código, tests, docs, descripción del PR); el link autoriza todos los pedidos de ese comentario y ninguno de otro. Si un pedido no identifica path, símbolo, expresión o comportamiento, dejarlo `FINDING_ANCHOR_AMBIGUOUS` sin bloquear los demás pedidos del mismo comentario e informarlo en el reply. Pedidos que no son cambios de código del PR (agregar labels, cambiar reviewers, mergear, cerrar, deployar, abrir otro PR) no se ejecutan desde el comentario: se reportan como pendientes de confirmación del usuario. Editar título o descripción del PR solo si el comentario lo pide de forma explícita y el usuario pidió resolver ese comentario.
+
+Comentarios sin pedido accionable (aprobación, agradecimiento, reportes de CI, resúmenes de bots, notificaciones) terminan sin mutación con estado `NOT_ACTIONABLE`. Buscar marker `<!-- inline-thread-autofix: issuecomment:<comment_id> -->` en los comentarios generales del PR: marker con closeout verificable activa fast path. Si el comentario devuelve `404`, aplicar `COMMENT_DELETED`: no publicar respuesta y reportar.
+
 ## Preflight local antes handoff
 
-En modo read-only, resolver root y leer `CLAUDE.md`, `AGENTS.md`, `CONTRIBUTING`, scripts/package manager y reglas de testing. Confirmar remote/repo, branch/base/head del implementation PR y `git status --short`; cambios ajenos no bloquean si backend usa aislamiento seguro, pero nunca se copian, stagean ni descartan. Reproducir feedback o prueba focal cuando sea posible y detener si sugerencia no es accionable.
+En modo read-only, resolver root y leer `CLAUDE.md`, `AGENTS.md`, `CONTRIBUTING`, scripts/package manager y reglas de testing. Confirmar remote/repo, branch/base/head del implementation PR y `git status --short`; cambios ajenos no bloquean si backend usa aislamiento seguro, pero nunca se copian, stagean ni descartan. Reproducir feedback o prueba focal cuando sea posible. Si el feedback no pide un cambio, no detener: aplicar la sección siguiente.
+
+## Feedback sin cambios de código
+
+Aplica cuando el target es una pregunta sin pedido de cambio, o una sugerencia que tras revisar el código no conviene aplicar (incorrecta, ya cubierta o contraria a una regla del repo). También a cada pedido de ese tipo dentro de un comentario general.
+
+1. Juntar evidencia de solo lectura sobre el head remoto actual del PR (`gh pr view --json headRefOid` y lectura del código en el entorno elegido, o `gh api .../contents/<path>?ref=<head>` si el entorno no tiene ese head). No hay handoff, backend, edición, commit ni push; en modo clone efímero no se invoca `/fix-in-ephemeral-clone` ni se crea clone.
+2. Publicar con la variante `Respuesta a una pregunta` o `Sugerencia no aplicada` de [`closeout-template.md`](references/closeout-template.md) (para Codex o Claude, las de `codex-comment-closeout`), con evidencia en `path:línea` o links al head. No hay SHA de implementación: el gate de closeout que exige `HANDOFF_RESULT`, `commit_sha` o `remote_head_sha` no aplica a este camino.
+3. Cerrar según el tipo: thread inline resuelto solo si la evidencia contesta todo (`Sugerencia no aplicada` de una persona lo deja abierto); comentario general con back-link y ocultado como resuelto salvo que sea propio; review body con el bloque agregado al body o fallback.
+4. Las mismas reglas de identidad, releer antes de cada mutación, markers e idempotencia de este archivo siguen vigentes. Estado final: `ANSWERED` o `DECLINED`, nunca `✅ Fix aplicado`.
+
+Un comentario general que mezcla pedidos con y sin código usa el flujo completo para los primeros y este camino para el resto, en una sola respuesta con la tabla de pedidos.
 
 ## Stack y selección de capa
 
@@ -289,7 +312,11 @@ Si el comentario original está ausente y el estado es `COMMENT_DELETED`, usar l
 5. Verificar cada POST por ID, marker, URLs y SHA; un POST ambiguo se relee antes de reintentar. No cerrar issue hasta comentario de issue verificado.
 6. Con issue validada, cerrarla con `PATCH .../issues/<issue_number> -f state=closed`; releer `state == closed`. Nunca reabrir issue.
 
-Si reply, marker, resolución o comentario ya están verificados, no duplicar: continuar desde primer destino faltante. Ante timeout, red o `5xx` durante una mutation de closeout, releer primero target, marker y estado; reutilizar una mutation ya aplicada o reintentarla de forma acotada solo si la operación es idempotente y las precondiciones siguen válidas. Un `4xx` definitivo, target cambiado o resultado aún ambiguo es `HARD_STOP`. Si falla fase posterior después de agotar retries, conservar publicaciones y backups, reportar pendiente y no afirmar cierre integral.
+Si reply, marker, resolución, back-link, ocultamiento o comentario ya están verificados, no duplicar: continuar desde primer destino faltante (`CLOSEOUT_INCOMPLETE`), sin reimplementar ni crear otro commit. Ante timeout, red o `5xx` durante una mutation de closeout, releer primero target, marker y estado; reutilizar una mutation ya aplicada o reintentarla de forma acotada solo si la operación es idempotente y las precondiciones siguen válidas. Un `4xx` definitivo, target cambiado o resultado aún ambiguo es `HARD_STOP`. Si falla fase posterior después de agotar retries, conservar publicaciones y backups, reportar pendiente y no afirmar cierre integral.
+
+### Comentario general
+
+Tras validar head y releer el comentario inmediatamente antes de publicar (mismo `id`, body y `issue_url`), publicar un comentario general nuevo en `issues/<PR>/comments` con la variante `Comentario general del PR` de [`closeout-template.md`](references/closeout-template.md): link al comentario original, una fila por pedido con su resultado, SHA final y marker `issuecomment:<comment_id>`. La respuesta empieza con el link al original y un quote reply de su texto (reglas en `Comentario general del PR`). Verificar `html_url`, marker, link al original, quote, links y SHA en el body publicado. Ante timeout, red o `5xx`, releer por marker antes de reintentar y no duplicar. Después, agregar al original el back-link a la respuesta con `PATCH .../issues/comments/<comment_id>` según la variante `Back-link en el comentario original` (releer antes, conservar el body completo, no duplicar por marker `issuecomment-backlink`); si el `PATCH` falla, reportar `back-link: no agregado` y seguir. Después, ocultar el comentario original como resuelto con `minimizeComment(input: {subjectId: <node_id>, classifier: RESOLVED})` y releer `isMinimized: true` y `minimizedReason` igual a `resolved` (sin distinguir mayúsculas). Se oculta aunque algún pedido quede `⏸️ Pendiente` o `ℹ️ Sin cambios`: la respuesta publicada conserva ese estado en su tabla. La única excepción es un comentario cuyo autor es el usuario autenticado (`user.login` igual al de `gh api user`): se atiende y se responde igual, pero nunca se oculta. Nunca ocultar la respuesta propia ni otro comentario distinto del target. Si `minimizeComment` falla por permisos o no verifica, la respuesta publicada sigue valiendo: reportar `Comentario general: respondido, no ocultado` sin reintentar en loop. Si `implementation_pr != source_pr`, publicar en el PR de implementación con link al comentario original. Con issue validada, seguir los pasos 4 a 6 del closeout inline usando el marker `issue:<owner>/<repo>#<issue_number>:issuecomment:<comment_id>`.
 
 ### Review body
 
@@ -299,7 +326,7 @@ Tras validar head y releer review inmediatamente antes de editar, agregar body o
 
 Consultar [`verification-matrix.md`](references/verification-matrix.md). Backend debe ejecutar el gate disponible inicialmente y, tras refresh/rebase, aplicar la clasificación de drift: `REMOTE_DRIFT_INDEPENDENT` reutiliza fingerprints/gates equivalentes y ejecuta solo integridad final; `REMOTE_DRIFT_RELATED` revalida superficies afectadas o gate completo cuando impacto no sea aislable. Nunca afirmar commands rerun que solo fueron reutilizados, debilitar assertions o agregar mocks de plataforma sin justificación.
 
-Detener antes de mutation si URL, target, repo, branch, stack, ownership, anchor, OID, permisos, validación, reply, marker o estado final no son inequívocos/verificables, excepto en la variante `COMMENT_DELETED` descrita arriba. La issue no está en esa lista: si falta, es ambigua o no valida, solo se omiten sus destinos. Un cambio de threads ajenos no basta para detener: primero ejecutar refresh, comparación y reconciliación según el protocolo anterior. Códigos principales: `HANDOFF_NOT_STARTED`, `HANDOFF_EXECUTOR_MISSING`, `HANDOFF_EXECUTOR_LOST`, `HANDOFF_RESULT_INCOMPLETE`, `HANDOFF_RESULT_UNVERIFIED`, `REMOTE_DRIFT_INDEPENDENT`, `REMOTE_DRIFT_RELATED`, `ISSUE_REFERENCE_AMBIGUOUS` e `ISSUE_REFERENCE_INVALID` (informativos: solo omiten destinos de issue), `FINDING_ANCHOR_AMBIGUOUS`, `COMMENT_DELETED`, `TARGET_STALE`, `SNAPSHOT_STALE` (solo refresh o reconciliación no concluyente), `RESOLVED_UNVERIFIED`, `THREAD_TARGET_MISMATCH`, `STACK_INCOMPLETE`, `STACK_AMBIGUOUS`, `NEEDS_SCOPE_CONFIRMATION`, `IMPLEMENTATION_TARGET_AMBIGUOUS`, `REBASE_INCOMPLETE`, `GOLDEN_DIFF_MISMATCH`, `CONCURRENT_PUSH_RETRY_EXHAUSTED`, `PUBLICATION_UNVERIFIED`, `ISSUE_CLOSEOUT_UNVERIFIED`, `BACKUPS_NOT_APPLICABLE`, `BACKUPS_PENDING_CLOSEOUT`, `BACKUPS_PRESERVED_ON_FAILURE`, `BACKUP_CLEANUP_FAILED`, `CLONE_CLEANUP_FAILED`.
+Detener antes de mutation si URL, target, repo, branch, stack, ownership, anchor, OID, permisos, validación, reply, marker o estado final no son inequívocos/verificables, excepto en la variante `COMMENT_DELETED` descrita arriba. La issue no está en esa lista: si falta, es ambigua o no valida, solo se omiten sus destinos. Un cambio de threads ajenos no basta para detener: primero ejecutar refresh, comparación y reconciliación según el protocolo anterior. Códigos principales: `HANDOFF_NOT_STARTED`, `HANDOFF_EXECUTOR_MISSING`, `HANDOFF_EXECUTOR_LOST`, `HANDOFF_RESULT_INCOMPLETE`, `HANDOFF_RESULT_UNVERIFIED`, `REMOTE_DRIFT_INDEPENDENT`, `REMOTE_DRIFT_RELATED`, `ISSUE_REFERENCE_AMBIGUOUS` e `ISSUE_REFERENCE_INVALID` (informativos: solo omiten destinos de issue), `FINDING_ANCHOR_AMBIGUOUS`, `NOT_ACTIONABLE`, `ANSWERED`, `DECLINED`, `CLOSEOUT_INCOMPLETE`, `COMMENT_DELETED`, `TARGET_STALE`, `SNAPSHOT_STALE` (solo refresh o reconciliación no concluyente), `RESOLVED_UNVERIFIED`, `THREAD_TARGET_MISMATCH`, `STACK_INCOMPLETE`, `STACK_AMBIGUOUS`, `NEEDS_SCOPE_CONFIRMATION`, `IMPLEMENTATION_TARGET_AMBIGUOUS`, `REBASE_INCOMPLETE`, `GOLDEN_DIFF_MISMATCH`, `CONCURRENT_PUSH_RETRY_EXHAUSTED`, `PUBLICATION_UNVERIFIED`, `ISSUE_CLOSEOUT_UNVERIFIED`, `BACKUPS_NOT_APPLICABLE`, `BACKUPS_PENDING_CLOSEOUT`, `BACKUPS_PRESERVED_ON_FAILURE`, `BACKUP_CLEANUP_FAILED`, `CLONE_CLEANUP_FAILED`.
 
 Verificaciones finales independientes pueden ejecutarse en paralelo: refs remotas/API de cada PR, bases/heads del stack, reply por `in_reply_to`, GraphQL del thread exacto, markers/URLs de issue o PR destino, estado issue y árbol seguro. Cleanup de backups es último paso local y solo reporta `BACKUPS_CLEANED` tras comprobar refs propias ausentes y preexistentes intactas.
 
@@ -339,6 +366,7 @@ Solo éxito completo usa:
 - Issue: resuelta y cerrada | sin issue asociada | omitida (`ISSUE_REFERENCE_AMBIGUOUS`/`ISSUE_REFERENCE_INVALID`) # inline
 - PR destino: comentario publicado # implementation_pr != source_pr
 - Review body: actualizada     # review body
+- Comentario general: respondido con quote (<URL>), back-link agregado | no agregado, y ocultado como resuelto | visible (comentario propio) # issue_comment
 - Comentario fallback: publicado
 ```
 

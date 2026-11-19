@@ -44,7 +44,7 @@
     }
   ],
   "summary": {
-    "total_skills": 58,
+    "total_skills": 59,
     "agents": [
       "claude_code",
       "codex",
@@ -56,26 +56,26 @@
         "adapted": 0,
         "partial": 0,
         "incompatible": 0,
-        "unverified": 54
+        "unverified": 55
       },
       "codex": {
         "compatible": 0,
         "adapted": 1,
         "partial": 0,
         "incompatible": 0,
-        "unverified": 57
+        "unverified": 58
       },
       "hermes": {
         "compatible": 0,
         "adapted": 1,
         "partial": 0,
         "incompatible": 0,
-        "unverified": 57
+        "unverified": 58
       }
     },
     "disabled_features": 0,
     "adaptations": {
-      "implemented": 42,
+      "implemented": 44,
       "verified": 20
     },
     "critical_pending": [],
@@ -6258,6 +6258,210 @@
       "pending_verification": [
         "Codex: flujo completo antes/después + subida a pr-assets.",
         "Hermes: captura con computer_use o con use_real_profile + headed."
+      ]
+    },
+    {
+      "id": "pr-feedback-sweep",
+      "name": "PR Feedback Sweep",
+      "version": "1.0.0",
+      "path": "plugins/golfo-github/skills/pr-feedback-sweep/SKILL.md",
+      "purpose": "Barre threads, reviews y comentarios generales de un PR y resuelve cada ítem con el contrato de inline-thread-autofix.",
+      "main_features": [
+        "pregunta del entorno una sola vez",
+        "inventario y clasificación del feedback del PR",
+        "resolución por ítem con inline-thread-autofix",
+        "reporte final por ítem"
+      ],
+      "declared_agents": null,
+      "dependencies": [
+        {
+          "name": "Herramienta de preguntas",
+          "kind": "tool",
+          "required": false,
+          "agents": [
+            "claude_code",
+            "codex",
+            "hermes"
+          ]
+        },
+        {
+          "name": "`gh` en PATH",
+          "kind": "command",
+          "required": true,
+          "agents": [
+            "claude_code",
+            "codex",
+            "hermes"
+          ]
+        }
+      ],
+      "agents": {
+        "claude_code": {
+          "status": "unverified",
+          "summary": "Reusa la pregunta del entorno de inline-thread-autofix; no ejecutada en Claude Code en esta auditoría.",
+          "missing_capabilities": [],
+          "alternatives_investigated": [],
+          "features": [
+            {
+              "id": "ask-environment",
+              "status": "unverified",
+              "resolution": "native",
+              "required": true,
+              "adaptation": false,
+              "required_capabilities": [
+                "herramienta de preguntas o texto"
+              ],
+              "implementation": "`AskUserQuestion`.",
+              "fallback": "Pregunta en texto y detención.",
+              "reason": "No ejecutada en Claude Code en esta auditoría.",
+              "alternatives_investigated": [],
+              "evidence": [],
+              "tests": []
+            },
+            {
+              "id": "pr-closeout",
+              "status": "unverified",
+              "resolution": "native",
+              "required": true,
+              "adaptation": false,
+              "required_capabilities": [
+                "gh"
+              ],
+              "implementation": "Reply, resolución de threads y `minimizeComment` de comentarios generales con gh.",
+              "fallback": "",
+              "reason": "No ejecutada en Claude Code en esta auditoría.",
+              "alternatives_investigated": [],
+              "evidence": [],
+              "tests": []
+            }
+          ]
+        },
+        "codex": {
+          "status": "unverified",
+          "summary": "Reusa la pregunta del entorno de inline-thread-autofix; no ejecutada en Codex CLI en esta auditoría.",
+          "missing_capabilities": [
+            "request_user_input fuera del modo Plan"
+          ],
+          "alternatives_investigated": [
+            "request_user_input en modo Plan"
+          ],
+          "features": [
+            {
+              "id": "ask-environment",
+              "status": "unverified",
+              "resolution": "alternative",
+              "required": true,
+              "adaptation": true,
+              "required_capabilities": [
+                "herramienta de preguntas o texto"
+              ],
+              "implementation": "Texto y detención; `request_user_input` solo en modo Plan.",
+              "fallback": "Pregunta en texto y detención.",
+              "reason": "No ejecutada en Codex CLI en esta auditoría.",
+              "alternatives_investigated": [
+                {
+                  "name": "Texto y detención; `request_user_input` solo en modo Plan.",
+                  "source": "Auditoría 1.0.0 (PR #22) y shared/references/agent-capabilities.md",
+                  "viable": true,
+                  "reason": "No ejecutada en Codex CLI en esta auditoría."
+                }
+              ],
+              "evidence": [],
+              "tests": []
+            },
+            {
+              "id": "pr-closeout",
+              "status": "unverified",
+              "resolution": "native",
+              "required": true,
+              "adaptation": false,
+              "required_capabilities": [
+                "gh"
+              ],
+              "implementation": "Reply, resolución de threads y `minimizeComment` de comentarios generales con gh.",
+              "fallback": "",
+              "reason": "No ejecutada en Codex CLI en esta auditoría.",
+              "alternatives_investigated": [],
+              "evidence": [],
+              "tests": []
+            }
+          ]
+        },
+        "hermes": {
+          "status": "unverified",
+          "summary": "Reusa la pregunta del entorno de inline-thread-autofix; no ejecutada en Hermes Agent en esta auditoría.",
+          "missing_capabilities": [],
+          "alternatives_investigated": [
+            "clarify"
+          ],
+          "features": [
+            {
+              "id": "ask-environment",
+              "status": "unverified",
+              "resolution": "alternative",
+              "required": true,
+              "adaptation": true,
+              "required_capabilities": [
+                "herramienta de preguntas o texto"
+              ],
+              "implementation": "`clarify`; texto ante undelivered/timed_out/cancelled.",
+              "fallback": "Pregunta en texto y detención.",
+              "reason": "No ejecutada en Hermes Agent en esta auditoría.",
+              "alternatives_investigated": [
+                {
+                  "name": "`clarify`; texto ante undelivered/timed_out/cancelled.",
+                  "source": "Auditoría 1.0.0 (PR #22) y shared/references/agent-capabilities.md",
+                  "viable": true,
+                  "reason": "No ejecutada en Hermes Agent en esta auditoría."
+                }
+              ],
+              "evidence": [],
+              "tests": []
+            },
+            {
+              "id": "pr-closeout",
+              "status": "unverified",
+              "resolution": "native",
+              "required": true,
+              "adaptation": false,
+              "required_capabilities": [
+                "gh"
+              ],
+              "implementation": "Reply, resolución de threads y `minimizeComment` de comentarios generales con gh.",
+              "fallback": "",
+              "reason": "No ejecutada en Hermes Agent en esta auditoría.",
+              "alternatives_investigated": [],
+              "evidence": [],
+              "tests": []
+            }
+          ]
+        }
+      },
+      "implementation": {
+        "adaptations": [
+          "Delega la pregunta del entorno y su compatibilidad entre agentes a inline-thread-autofix"
+        ],
+        "files_modified": [
+          "plugins/golfo-github/skills/pr-feedback-sweep/SKILL.md"
+        ],
+        "fallback": "Pregunta en texto con detención, heredada de inline-thread-autofix.",
+        "behavior_changes": "Ninguno; skill nueva."
+      },
+      "issues": [],
+      "tests": [
+        {
+          "id": "static-inspection",
+          "agent": "any",
+          "kind": "static",
+          "command": "grep -rE \"AskUserQuestion|request_user_input|Monitor|Cron(Create|List|Delete)|PushNotification|TaskStop|Agent|subagent|mcp__|claude -p|codex exec|~/.claude|~/.codex|apply_patch|update_plan\" plugins/golfo-github/skills/pr-feedback-sweep",
+          "result": "passed",
+          "evidence": "Inspección de SKILL.md del 2026-11-19: solo nombra `AskUserQuestion` a través de inline-thread-autofix."
+        }
+      ],
+      "pending_verification": [
+        "Ejecutar sobre un PR real con threads y comentarios generales en Claude Code.",
+        "Ejecutar sobre un PR real en Codex CLI.",
+        "Ejecutar sobre un PR real en Hermes Agent."
       ]
     },
     {
