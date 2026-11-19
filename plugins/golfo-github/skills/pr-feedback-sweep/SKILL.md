@@ -3,7 +3,7 @@ name: pr-feedback-sweep
 description: "Revisa y resuelve todo el feedback pendiente de un PR GitHub: threads inline sin resolver, reviews con body y comentarios generales de la conversación del PR que piden una acción. Usar SIEMPRE, sin que nombren la skill, cuando pidan revisar o resolver los comentarios, los threads, o los comentarios y threads de un PR: «revisá los comentarios del PR», «revisá los threads», «mirá los comentarios y threads del PR 123», «resolvé el feedback», «atendé la review», o un link de PR sin fragmento. Inventaria y clasifica cada ítem, pregunta el entorno una vez (o usa el checkout actual si existe `~/.work`) y resuelve cada uno con el contrato de `inline-thread-autofix`: fix validado, push, respuesta con template y emojis, thread resuelto y comentario general ocultado como resuelto; cierra con un reporte por ítem. No usar para un solo comentario, hilo o link con fragmento (`inline-thread-autofix`; con Codex o Claude, `codex-comment-closeout`) ni para el loop automático de bots (`codex-autofix-loop`)."
 license: MIT
 metadata:
-  version: "1.1.0"
+  version: "1.2.0"
   author: "Guido Modarelli"
   category: "code-review"
   tags: "code-review, pull-request, inline-comment, issue-comment, autofix, sweep"
@@ -73,7 +73,7 @@ Lo que significa "cerrar" depende del tipo, y está definido ahí:
 
 - **Thread inline**: reply `✅ Resuelto` y `resolveReviewThread`.
 - **Review body**: bloque `✅ Fix aplicado` agregado al body (o fallback).
-- **Comentario general**: comentario nuevo que empieza con el link al original y su quote reply, seguido de la tabla de pedidos; después, agregar al original un back-link a esa respuesta (sin tocar su texto) y ocultarlo como resuelto (`minimizeComment`, `classifier: RESOLVED`), que es lo que hace el menú del comentario *Hide → Resolved*. Se oculta aunque algún pedido quede pendiente, porque la tabla lo deja registrado. La única excepción son los comentarios del propio usuario autenticado: se atienden y responden igual, pero nunca se ocultan.
+- **Comentario general**: comentario nuevo que empieza con el link al original, sigue con una línea divisoria (`---`) sin citar su texto y después la tabla de pedidos; después, agregar al original un back-link a esa respuesta (sin tocar su texto) y ocultarlo como resuelto (`minimizeComment`, `classifier: RESOLVED`), que es lo que hace el menú del comentario *Hide → Resolved*. Se oculta aunque algún pedido quede pendiente, porque la tabla lo deja registrado. La única excepción son los comentarios del propio usuario autenticado: se atienden y responden igual, pero nunca se ocultan.
 
 Las respuestas siempre usan una variante de [`closeout-template.md`](../inline-thread-autofix/references/closeout-template.md) (para Codex o Claude como revisores, las de `codex-comment-closeout`): encabezado con emoji, secciones `###` con emoji, `<sub>🤖 …</sub>` y marker. Nunca una respuesta libre. Una sugerencia que no conviene aplicar se contesta con `Sugerencia no aplicada` y se deja abierta para quien la hizo.
 
@@ -93,7 +93,7 @@ Usar siempre este template en el chat:
 | # | Tipo | Autor | Link | Clase | Resultado |
 |---|---|---|---|---|---|
 | 1 | 🧵 Thread | <login> | [#discussion_r…](<url>) | ACCIONABLE | ✅ Resuelto (`<sha>`) |
-| 2 | 💬 General | <login> | [#issuecomment-…](<url>) | ACCIONABLE | ✅ Respondido con quote, back-link y ocultado como resuelto |
+| 2 | 💬 General | <login> | [#issuecomment-…](<url>) | ACCIONABLE | ✅ Respondido, back-link y ocultado como resuelto |
 | 6 | 💬 General | <usuario> (propio) | [#issuecomment-…](<url>) | ACCIONABLE | ✅ Respondido (visible: comentario propio) |
 | 3 | 📝 Review | <login> | [#pullrequestreview-…](<url>) | PREGUNTA | 💬 Respondida |
 | 4 | 💬 General | <bot> | [#issuecomment-…](<url>) | NO_ACCIONABLE | ⏭️ Omitido |

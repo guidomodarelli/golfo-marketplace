@@ -87,12 +87,11 @@
         {
           "type": "contains_any",
           "values": [
-            "quote reply",
-            "Quote reply",
-            "> ",
-            "cita"
+            "---",
+            "línea divisoria",
+            "divisor"
           ],
-          "description": "Responde con quote reply del comentario original"
+          "description": "Separa el link al original de la respuesta con una línea divisoria, sin citar el original"
         },
         {
           "type": "contains_any",
