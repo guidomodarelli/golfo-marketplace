@@ -96,15 +96,17 @@ cierran con el barrido.
 - El hook guarda en `episodes.json` el `transcript_path` y el provider del payload; la revisión corre
   con ese provider y el modelo de las revisiones de IA, sin herramientas ni sesión.
 - Del transcript lee los mensajes del usuario y deja afuera lo que escribió el agente, los resultados de
-  herramientas y lo que agrega el harness (comandos, recordatorios, contexto del entorno).
+  herramientas y lo que agrega el harness (comandos, recordatorios, contexto del entorno), que se
+  reconoce por sus etiquetas. Un mensaje del usuario que empieza con otro markup se revisa igual.
 - Una cita que no está en los mensajes del usuario se descarta: la revisión no puede inventar evidencia.
 - Cada mensaje cuenta en un solo episodio: la ventana de cada revisión empieza donde terminó la
   anterior del mismo chat, aunque dos episodios empiecen con minutos de diferencia (por ejemplo, a
-  medianoche).
+  medianoche). La ventana nunca pasa del momento en que cerró el episodio, así que un chat que se
+  retoma enseguida revisa sus mensajes nuevos en el episodio siguiente.
 - Lo que se manda al provider tiene un tope de caracteres: entran primero los mensajes más nuevos, y
   un mensaje enorme (un documento pegado) entra recortado.
-- Cada episodio se revisa una vez. Si el provider falla, queda en la cola para el barrido siguiente,
-  hasta tres intentos. Un episodio sin transcript se cierra sin revisión.
+- Cada episodio se revisa una vez. Si el provider falla o otra sesión tiene tomado el registro, queda
+  en la cola para el barrido siguiente, hasta tres intentos. Un episodio sin transcript se cierra sin revisión.
 - La cola vive en `episodes.json` hasta que cada revisión termina: si el barrido se corta (se apaga la
   máquina), otro barrido retoma esas revisiones una hora después.
 - Nunca llama a un provider en CI ni en review mode: el episodio queda en la cola para la máquina del

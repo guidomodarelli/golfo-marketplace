@@ -99,30 +99,31 @@ def format_time(moment):
     return moment.strftime(TIMESTAMP_FORMAT)
 
 
-def review_window(session, until, next_start=None, exact=False):
+def review_window(session, until, closed_at, next_start=None, exact=False):
     """The transcript window of a review: (after, through), after exclusive and through inclusive.
 
     It starts where the previous review of the session ended (``reviewedThrough``), or BOUNDARY_SLACK
-    before the episode started. It ends BOUNDARY_SLACK after ``until``, but before the slack of the
-    next episode (``next_start``), so that adjacent episodes never read the same message; ``exact``
-    ends it at ``until`` (a compaction: the episode goes on from there).
+    before the episode started. It ends BOUNDARY_SLACK after ``until``, but never after ``closed_at``
+    (a message written later belongs to a later episode, which starts reading where this one ends)
+    nor within the slack of the next episode (``next_start``), so that adjacent episodes never read
+    the same message; ``exact`` ends it at ``until`` (a compaction: the episode goes on from there).
     """
     previous = session.get("reviewedThrough")
     after = parse_time(previous) if previous else parse_time(session["episodeStartedAt"]) - BOUNDARY_SLACK
     end = parse_time(until)
-    through = end if exact else end + BOUNDARY_SLACK
+    through = end if exact else max(end, min(end + BOUNDARY_SLACK, closed_at))
     if next_start is not None:
         through = max(end, min(through, next_start - BOUNDARY_SLACK))
     return after, max(after, through)
 
 
-def queue_review(state, session_id, session, until, next_start=None, exact=False):
+def queue_review(state, session_id, session, until, closed_at, next_start=None, exact=False):
     """Queue the review of what the user wrote in the episode since its last review, up to ``until``.
 
     The session remembers where the window ended, so its next review starts there. Without a
     transcript there is nothing to read: the episode closes without a review.
     """
-    after, through = review_window(session, until, next_start, exact)
+    after, through = review_window(session, until, closed_at, next_start, exact)
     session["reviewedThrough"] = format_time(through)
     if not session.get("transcriptPath"):
         return False
@@ -136,8 +137,8 @@ def queue_review(state, session_id, session, until, next_start=None, exact=False
     return True
 
 
-def close(state, session_id, next_start=None):
-    """Close the open episode of a session and queue its review; False when there was none to close.
+def close(state, session_id, now, next_start=None):
+    """Close the open episode of a session at ``now`` and queue its review; False when there was none to close.
 
     ``next_start`` is when the next episode of the session starts, when that is what closes this one.
     """
@@ -145,14 +146,14 @@ def close(state, session_id, next_start=None):
     if session is None or session.get("closed"):
         return False
     session["closed"] = True
-    queue_review(state, session_id, session, session["lastUserMessageAt"], next_start)
+    queue_review(state, session_id, session, session["lastUserMessageAt"], now, next_start)
     return True
 
 
 def close_idle(state, now, gap_hours):
     """Close every open episode idle for learning.episodeGapHours: the sweep from any hook of the repository."""
     return [session_id for session_id, session in sorted(state["sessions"].items())
-            if not session.get("closed") and is_idle(session, now, gap_hours) and close(state, session_id)]
+            if not session.get("closed") and is_idle(session, now, gap_hours) and close(state, session_id, now)]
 
 
 def write_episodes(path, state):
@@ -177,7 +178,7 @@ def touch(project_root, session_id, now, gap_hours, transcript=None, provider=No
         if started:
             previous = session
             if previous is not None:
-                close(state, session_id, now)
+                close(state, session_id, now, now)
             session = {"episodeId": episode_id(session_id, now), "episodeStartedAt": now.strftime(TIMESTAMP_FORMAT),
                        "scopeQuestionAsked": False}
             # The same chat keeps its transcript and provider, and the review of this episode starts
@@ -204,7 +205,7 @@ def end(project_root, session_id, now, gap_hours, transcript=None):
         session = state["sessions"].get(session_id)
         if session is not None and transcript:
             session["transcriptPath"] = transcript
-        closed = close(state, session_id)
+        closed = close(state, session_id, now)
         close_idle(state, now, gap_hours)
         write_episodes(path, state)
     return closed
@@ -224,7 +225,7 @@ def review_now(project_root, session_id, now, transcript=None):
         if transcript:
             session["transcriptPath"] = transcript
         until = now.strftime(TIMESTAMP_FORMAT)
-        queued = queue_review(state, session_id, session, until, exact=True)
+        queued = queue_review(state, session_id, session, until, now, exact=True)
         if queued:
             session["reviewedUntil"] = until
         write_episodes(path, state)

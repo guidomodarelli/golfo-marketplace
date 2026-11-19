@@ -33,6 +33,14 @@ TRUNCATION_MARK = "\n[…]"
 RUN_DETACHED_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "run-detached.py")
 SWEEP_LOG_DIRECTORY = ("agent-ready-setup", "learning-sweeps")
 KINDS = (learning.KIND_RULE, learning.KIND_SKILL)
+# The tags that open the text the harness writes in the turn of the user (Claude Code, then Codex).
+HARNESS_TAGS = (
+    "command-name", "command-message", "command-args", "local-command-stdout", "local-command-stderr",
+    "local-command-caveat", "system-reminder", "user-prompt-submit-hook", "bash-input", "bash-stdout",
+    "bash-stderr", "task-notification",
+    "environment_context", "user_instructions", "user_shell_command", "turn_aborted", "subagent_notification",
+)
+HARNESS_BLOCK = re.compile(r"\s*<(?:%s)[\s>/]" % "|".join(re.escape(tag) for tag in HARNESS_TAGS))
 RESULT_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
@@ -97,7 +105,8 @@ def message_of(record):
 
     Claude Code: {"type": "user", "message": {"role": "user", "content": ...}}, skipping meta lines.
     Codex: {"type": "response_item", "payload": {"type": "message", "role": "user", "content": [...]}}.
-    Text the harness injects (commands, reminders, the context of the environment) starts with a tag.
+    Text the harness injects (commands, reminders, the context of the environment) starts with one of
+    HARNESS_TAGS; a message of the user that starts with any other markup is kept.
     """
     if not isinstance(record, dict):
         return None
@@ -110,7 +119,7 @@ def message_of(record):
                    and payload.get("role") == "user" else None)
     else:
         return None
-    text = "\n".join(block.strip() for block in text_blocks(content) if block.strip() and not block.lstrip().startswith("<"))
+    text = "\n".join(block.strip() for block in text_blocks(content) if block.strip() and not HARNESS_BLOCK.match(block))
     if not text:
         return None
     return parse_transcript_time(record.get("timestamp")), text
@@ -134,15 +143,6 @@ def user_messages(transcript_path, after, through):
                 continue
             messages.append(text)
     return messages
-
-
-def review_bounds(review):
-    """The transcript window of a queued review; a review queued before windows existed widens its times."""
-    parse = learning_episodes.parse_time
-    if review.get("after") and review.get("through"):
-        return parse(review["after"]), parse(review["through"])
-    slack = learning_episodes.BOUNDARY_SLACK
-    return parse(review["since"]) - slack, parse(review["until"]) + slack
 
 
 def messages_document(messages):
@@ -190,7 +190,8 @@ def review_episode(project_root, review, settings):
     transcript = review["transcriptPath"]
     if not os.path.isfile(transcript):
         return [], 0
-    messages = user_messages(transcript, *review_bounds(review))
+    messages = user_messages(transcript, learning_episodes.parse_time(review["after"]),
+                             learning_episodes.parse_time(review["through"]))
     if not messages:
         return [], 0
     harness = load_harness_review(ENGINE_SKILL_DIRECTORY)
@@ -219,6 +220,10 @@ def review_episode(project_root, review, settings):
                        "explicit": bool(finding.get("explicit"))}
         try:
             entry, _, _ = learning.record(project_root, instruction, settings)
+        except learning.RegistryLockedError:
+            # Another session holds the registry: the review stays queued, and its retry adds
+            # the evidence of this episode once (record counts one episode once).
+            return None
         except StateError:
             skipped += 1
             continue
@@ -244,13 +249,19 @@ def sweep(project_root, settings, write):
         return 0
     for review in reviews:
         # Each review is acknowledged or released as soon as it ends: if the sweep dies, the rest
-        # stay queued for a later one.
-        outcome = review_episode(project_root, review, settings)
-        if outcome is None:
-            learning_episodes.requeue(project_root, [review])
-            write(f"episode {review['episodeId']}: the provider {review.get('provider')} failed; it stays queued")
-            continue
-        learning_episodes.acknowledge(project_root, [review])
+        # stay queued (claimed) and a later sweep takes them after REVIEW_CLAIM_TIMEOUT.
+        try:
+            outcome = review_episode(project_root, review, settings)
+            if outcome is None:
+                learning_episodes.requeue(project_root, [review])
+                write(f"episode {review['episodeId']}: the provider {review.get('provider')} failed "
+                      "or the registry was locked; it stays queued")
+                continue
+            learning_episodes.acknowledge(project_root, [review])
+        except learning.RegistryLockedError:
+            write(f"episode {review['episodeId']}: the registry stays locked by another session; "
+                  "this review and the rest stay queued for a later sweep")
+            return len(reviews)
         recorded, skipped = outcome
         ids = ", ".join(entry["id"] for entry in recorded) or "none"
         write(f"episode {review['episodeId']}: {len(recorded)} instructions recorded ({ids}), {skipped} dropped")

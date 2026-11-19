@@ -901,6 +901,9 @@ fake_provider() {
 import json, os, sys
 inputs = os.environ["FAKE_INPUTS"]
 number = len(os.listdir(inputs)) + 1
+# Another session takes the registry while the provider runs, and keeps it.
+if os.environ.get("FAKE_HOLD_LOCK"):
+    os.makedirs(os.environ["FAKE_HOLD_LOCK"], exist_ok=True)
 # Bytes: the review sends UTF-8, whatever the locale of the fake.
 with open(os.path.join(inputs, f"{number}.txt"), "wb") as saved:
     saved.write(sys.stdin.buffer.read())
@@ -1057,7 +1060,7 @@ findings() {
   [ "$(episodes_value 'len(data["pendingReviews"])')" = "1" ]
 
   FAKE_FAIL=1 agent_ready learn sweep
-  [[ "$output" == *"the provider claude failed; it stays queued"* ]]
+  [[ "$output" == *"the provider claude failed or the registry was locked; it stays queued"* ]]
   FAKE_FAIL=1 agent_ready learn sweep
   [ "$(episodes_value 'len(data["pendingReviews"])')" = "1" ]
   FAKE_FAIL=1 agent_ready learn sweep
@@ -1204,4 +1207,64 @@ PY
     MINGW*|MSYS*|CYGWIN*) ;;
     *) [ "$(stat -c %a "$XDG_CACHE_HOME"/agent-ready-setup/learning-sweeps/*.log 2>/dev/null || stat -f %Lp "$XDG_CACHE_HOME"/agent-ready-setup/learning-sweeps/*.log)" = "600" ] ;;
   esac
+}
+
+@test "a chat that resumes right after it ended reviews the new messages in its next episode" {
+  select_learning_profile
+  fake_provider
+  claude_transcript "user|2026-03-10T09:00:00Z|Armá el acta." "user|2026-03-10T09:02:00Z|Siempre firmá en azul."
+  at_time 2026-03-10T09:00:00+0000
+  agent_ready learn episode --session s1 --touch --provider claude --transcript "$test_root/transcript.jsonl"
+  at_time 2026-03-10T09:01:00+0000
+  agent_ready learn episode --session s1 --end
+  ! grep -q "Siempre firmá en azul." "$FAKE_INPUTS/1.txt"
+  # The chat resumes a minute later: the window of the review that ended never reaches past its close.
+  at_time 2026-03-10T09:02:00+0000
+  agent_ready learn episode --session s1 --touch
+  at_time 2026-03-10T09:10:00+0000
+  agent_ready learn episode --session s1 --end
+  grep -q "Siempre firmá en azul." "$FAKE_INPUTS/2.txt"
+  ! grep -q "Armá el acta." "$FAKE_INPUTS/2.txt"
+}
+
+@test "a message of the user that starts with markup is reviewed, and the text of the harness is not" {
+  select_learning_profile
+  fake_provider
+  claude_transcript "user|2026-03-10T09:00:00Z|<instructions>De ahora en más, resúmenes en castellano.</instructions>" \
+    "user|2026-03-10T09:01:00Z|<system-reminder>recordatorio del harness</system-reminder>"
+  at_time 2026-03-10T09:00:00+0000
+  agent_ready learn episode --session s1 --touch --provider claude --transcript "$test_root/transcript.jsonl"
+  at_time 2026-03-10T09:10:00+0000
+  agent_ready learn episode --session s1 --end
+  grep -q "De ahora en más, resúmenes en castellano." "$FAKE_INPUTS/1.txt"
+  ! grep -q "recordatorio del harness" "$FAKE_INPUTS/1.txt"
+}
+
+@test "a review that finds the registry locked stays queued and records its evidence later" {
+  select_learning_profile
+  fake_provider
+  claude_transcript "user|2026-03-10T09:00:00Z|De ahora en más, la fecha va al final."
+  findings '[{"statement": "Records put the date at the end.", "kind": "rule", "quote": "De ahora en más, la fecha va al final.", "explicit": true}]'
+  lock_path="$(python3 - "$skill_dir/scripts" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1])
+import agent_ready_learning as learning
+print(learning.RegistryLock(".").path)
+PY
+)"
+  at_time 2026-03-10T09:00:00+0000
+  agent_ready learn episode --session s1 --touch --provider claude --transcript "$test_root/transcript.jsonl"
+  at_time 2026-03-10T09:10:00+0000
+  FAKE_HOLD_LOCK="$lock_path" agent_ready learn episode --session s1 --end
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"the registry stays locked by another session"* ]]
+  [ "$(episodes_value 'len(data["pendingReviews"])')" = "1" ]
+  [ ! -e .agents/learning/candidates.json ] || [ "$(registry_value 'len(data["candidates"])')" = "0" ]
+
+  # The other session lets the registry go: a sweep after the claim expires records the evidence.
+  python3 -c 'import os, sys; os.rmdir(sys.argv[1])' "$lock_path"
+  at_time 2026-03-10T10:30:00+0000
+  agent_ready learn sweep
+  [ "$(registry_value 'len(data["candidates"])')" = "1" ]
+  [ "$(episodes_value 'len(data["pendingReviews"])')" = "0" ]
 }
