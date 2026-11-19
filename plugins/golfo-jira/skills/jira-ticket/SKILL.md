@@ -37,6 +37,7 @@ El sprint se descubre en Jira según `jira-fields.md`; nunca se calcula ni se in
 | 3 | Alcance desde el diff (solo modo repositorio) | — |
 | 4 | Summary, descripción y subtareas deseadas | `ticket-templates.md`, `rich-format.md` |
 | 5 | Crear o actualizar issues y los pasos de las subtareas | `jira-fields.md`, `ticket-templates.md` |
+| 5b | Dependencias por bloqueo, si el pedido nombra bloqueantes | `dependencies.md` |
 | 6 | Trazabilidad Jira ↔ PR | `pr-traceability.md` |
 | 7 | Estado del padre | `status-transitions.md` |
 | 8 | Gate final | — |
@@ -51,7 +52,7 @@ Ejecutar únicamente acciones necesarias para crear, actualizar, asociar, transi
 - No ejecutar tests, builds, linters, scanners ni comandos de validación del repositorio salvo pedido explícito.
 - No invocar skills, agentes o workflows ajenos al flujo Jira salvo pedido explícito. Si una regla de mayor prioridad obliga una invocación, limitarla a determinar aplicabilidad y volver al flujo; no expandirla a auditoría o implementación.
 - No modificar código, dependencias, configuración, comentarios de review, approvals ni estado del PR.
-- Únicos writes externos permitidos: issues JIRA, transiciones JIRA, backlink Jira body-only y label `jira-ticket` sobre PR asociado al flujo solicitado, incluida creación de esa label en su repositorio si falta.
+- Únicos writes externos permitidos: issues JIRA, transiciones JIRA, issue links de bloqueo pedidos, backlink Jira body-only y label `jira-ticket` sobre PR asociado al flujo solicitado, incluida creación de esa label en su repositorio si falta.
 - Si una acción no es requisito directo para completar sincronización Jira pedida, omitirla.
 - Pedidos laterales fuera de este alcance (push, cambiar título del PR, escribir archivos del repositorio, publicar en otros canales): declinarlos en una sola línea que los nombre por su efecto (por ejemplo «el push de la rama», no el comando literal), sin reproducir comandos ni listarlos como pasos, y continuar con el flujo Jira.
 
@@ -102,6 +103,7 @@ Reglas de separación:
   [máquina de estados](references/status-transitions.md).
 - Antes de redactar o editar la descripción de una épica, Story o subtarea, de agregar un hijo a un padre existente
   o de agregar o actualizar los pasos de una subtarea, leer [templates por nivel](references/ticket-templates.md).
+- Cuando el pedido nombra un bloqueante o una dependencia, leer [dependencias por bloqueo](references/dependencies.md).
 - Antes de escribir o editar cualquier descripción, leer [formato enriquecido](references/rich-format.md): decide el modo de
   escritura (ADF o Markdown de respaldo), qué elemento de Jira corresponde a cada papel y cómo editar una sola sección.
 
@@ -133,6 +135,7 @@ getJiraIssueTypeMetaWithFields(issueTypeId: "<id>", requiredFieldsOnly: true)
 | `plain` | El mismo Markdown enriquecido sin elementos exclusivos de ADF, para el modo Markdown de respaldo |
 | `section --heading <texto> [--before <heading>]` | Una sola sección reescrita, creada o quitada desde `{description, markdown}` por stdin; el resto de la descripción queda idéntico |
 | `tracking [--create] [--list]` | Tabla `## Pasos` de una subtarea actualizada desde `{description, steps}` por stdin: celdas `Estado` y `Nota`, pasos nuevos y leyenda `Progreso`, sin tocar el resto (`ticket-templates.md`). `description` es el documento ADF o el texto Markdown releído; `--list` deja los pasos Markdown como lista anidada |
+| `dependency plan\|verify --key <KEY>` | Links de bloqueo a crear sobre `<KEY>` (payload de `createIssueLink`, ya existentes, rechazados y bloqueantes abiertos) y su verificación tras releer, desde `{issue, link_types, blockers}` por stdin (`dependencies.md`) |
 | `slim --fields <ids>` | Reduce respuestas grandes de JQL, createmeta o issue a los campos pedidos |
 
 Si el script no puede ejecutarse, aplicar las mismas reglas de las referencias manualmente e informarlo.
@@ -158,7 +161,8 @@ Ejecutar `scripts/jira-ticket.py config`. Si informa `missing_required`, detener
 - Gate final debe pasar antes de memoria y respuesta exitosa.
 - En modo repositorio, checkout actual y diff contra base son fuente de verdad para alcance.
 - En modo tarea explícita, pedido del usuario y contenido actual del issue son fuente de alcance; no exigir Git ni inventar implementación, tests o PR.
-- Toda búsqueda JQL queda limitada a `project = <PROJECT_KEY>`; rechazar keys y padres de otros proyectos sin migrarlos.
+- Toda búsqueda JQL queda limitada a `project = <PROJECT_KEY>`; rechazar keys y padres de otros proyectos sin migrarlos. Única excepción: un bloqueante existente de `blocker_project_keys` se lee por key y se linkea, sin editarlo (`dependencies.md`).
+- Una dependencia por bloqueo se crea solo cuando el pedido nombra el bloqueante; nunca se infiere ni se duplica un link existente.
 
 ## Paso 1 — Resolver contexto
 
@@ -339,6 +343,10 @@ Para cualquier update del padre, tenga PR asociados o no, usar `version`, `updat
 
 Las tablas de este paso y del gate final son la forma por defecto de mostrar resultados al usuario. Si la superficie donde se responde no renderiza tablas, usar una lista anidada con los mismos datos: una línea por ticket con su emoji y su key, y un sub-item `Campo: valor` por columna. En los dos formatos, cada resultado empieza con su emoji (✅, ❌, ➖, 🆕, ✏️) para que se lea sin recorrer el texto.
 
+### Dependencias por bloqueo
+
+Si el pedido nombra bloqueantes, después de crear o releer el issue bloqueado seguir `dependencies.md`: resolver o crear cada bloqueante (uno nuevo pregunta su Due date junto con los demás datos faltantes del Paso 1 y cuelga de la épica indicada o de `<BLOCKER_DEFAULT_EPIC>`), crear los links con `dependency plan`, verificarlos con `dependency verify` y mantener `## Bloqueo` según los bloqueantes abiertos.
+
 ## Paso 6 — Sincronizar trazabilidad bidireccional
 
 Si hay PR, ejecutar `pr-traceability.md` en este orden:
@@ -385,6 +393,7 @@ Releer por key padre y subtareas, y releer todos los PR en GitHub. Validar:
 - Ni el padre ni la épica recibieron una tabla de hijos nueva; cada tabla `## Pasos` de subtarea tiene estados respaldados por evidencia y su leyenda `Progreso` coincide con las filas, según `ticket-templates.md`.
 - Descripciones escritas en el modo resuelto según `rich-format.md`: elementos enriquecidos solo en su papel y con evidencia, ningún link dentro de un expand, sin sintaxis de Markdown enriquecido (`[!…]`, `{status:…}`, `<details>`) visible como texto, y contenido ajeno intacto.
 - Status padre coherente con `status-transitions.md`.
+- Si hubo bloqueantes pedidos: `dependency verify` en `ok`, sin links invertidos ni duplicados, `## Bloqueo` coherente con `open_blockers` y aviso de timeline cuando un extremo no se ve en él (`dependencies.md`).
 
 Corregir mismatch local y revalidar elemento. No reiniciar flujo ni repetir transición ya verificada.
 

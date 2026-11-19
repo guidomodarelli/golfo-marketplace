@@ -1107,6 +1107,112 @@
           "description": "Deja los links fuera del expand."
         }
       ]
+    },
+    {
+      "id": "dependency-done-and-open-blockers",
+      "description": "Story existente bloqueada por un ticket hecho y otro abierto: crea los dos links Blocks con el bloqueante como inwardIssue, no duplica uno existente, verifica tras releer y pone ## Bloqueo solo por el abierto.",
+      "input": "Configuración resuelta por `jira-ticket.py config`: SITE_URL https://acme.atlassian.net, CLOUD_ID 00000000-0000-0000-0000-000000000000, PROJECT_KEY ACME, ASSIGNEE_ACCOUNT_ID configurado, STORY_TYPE Story, SUBTASK_TYPE Sub-task; quarter, fecha de inicio y sprint no configurados; dependencies: link_type Blocks, blocker_project_keys [ACME], blocker_issue_type Story, blocker_default_epic null. La Story ACME-42 (`[payments-api] Migra templates de email`) está bloqueada por ACME-7, que ya está hecho, y por ACME-8, que todavía no. Linkealas para que se vean en el timeline. Lecturas ya hechas: ACME-7 statusCategory done; ACME-8 statusCategory indeterminate; ACME-42 tiene issuelinks vacíos, fecha de inicio 2026-11-02 y Due date 2026-11-30; getIssueLinkTypes devuelve Blocks (inward `is blocked by`, outward `blocks`) y Relates. No publiques nada ni ejecutes comandos: devolvé el plan con cada llamada a Jira y el texto de las secciones que cambiarías.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "inwardIssue\"?[[:space:]]*[:=][[:space:]]*\"?ACME-7",
+          "description": "El link de ACME-7 usa al bloqueante como inwardIssue."
+        },
+        {
+          "type": "regex",
+          "pattern": "inwardIssue\"?[[:space:]]*[:=][[:space:]]*\"?ACME-8",
+          "description": "El link de ACME-8 usa al bloqueante como inwardIssue."
+        },
+        {
+          "type": "contains",
+          "value": "Blocks",
+          "description": "Usa el tipo de link configurado Blocks."
+        },
+        {
+          "type": "regex",
+          "pattern": "dependency (plan|verify)",
+          "description": "Usa el helper dependency para planificar o verificar los links."
+        },
+        {
+          "type": "regex",
+          "pattern": "(Bloqueo|bloquead|frena|destraba).{0,200}ACME-8|ACME-8.{0,200}(Bloqueo|bloquead|frena|destraba)",
+          "description": "El bloqueo del ticket se atribuye al bloqueante abierto ACME-8."
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "createJiraIssue(",
+            "editJiraIssue(issueIdOrKey: \"ACME-7\"",
+            "editJiraIssue(issueIdOrKey: \"ACME-8\""
+          ],
+          "description": "No crea issues ni edita los bloqueantes existentes."
+        }
+      ]
+    },
+    {
+      "id": "dependency-new-blocker-under-epic",
+      "description": "El bloqueante todavía no existe: se crea como Story bajo la épica por defecto configurada, preguntando antes su Due date, y el link se crea después de crearlo.",
+      "input": "Configuración resuelta por `jira-ticket.py config`: SITE_URL https://acme.atlassian.net, CLOUD_ID 00000000-0000-0000-0000-000000000000, PROJECT_KEY ACME, ASSIGNEE_ACCOUNT_ID configurado, STORY_TYPE Story, SUBTASK_TYPE Sub-task; quarter, fecha de inicio y sprint no configurados; dependencies: link_type Blocks, blocker_project_keys [ACME], blocker_issue_type Story, blocker_default_epic ACME-1. La Story ACME-42 está bloqueada porque falta definir el contrato del webhook de pagos, y eso todavía no tiene ticket: cargalo y linkealo como bloqueante. ACME-1 es una épica de ACME verificada. Búsqueda previa por alcance sin candidatos. ACME-42 tiene issuelinks vacíos. getIssueLinkTypes devuelve Blocks (inward `is blocked by`, outward `blocks`). Metadata de Story válida (10100). No publiques nada ni ejecutes comandos: devolvé el plan y los payloads conceptuales en orden.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "parent\"?[[:space:]]*[:=][[:space:]]*\"?ACME-1([^0-9]|$)",
+          "description": "El bloqueante nuevo cuelga de la épica por defecto ACME-1."
+        },
+        {
+          "type": "regex",
+          "pattern": "(¿|pregunt|respond|necesito|decime|indic[aá]|falta).{0,220}(Due date|vencimiento)|(Due date|vencimiento).{0,220}(\\?|pregunt|respond|necesito|decime|pendiente)",
+          "description": "Pregunta por el Due date del bloqueante nuevo antes de crearlo."
+        },
+        {
+          "type": "regex",
+          "pattern": "inwardIssue\"?[[:space:]]*[:=][[:space:]]*\"?(<|[{]|[$]|nuev|NUEV|ACME-([^4\"]|4[^2\"]|42[0-9]))",
+          "description": "El link usa como inwardIssue al bloqueante recién creado (su key o un placeholder), no a ACME-42."
+        },
+        {
+          "type": "regex",
+          "pattern": "outwardIssue\"?[[:space:]]*[:=][[:space:]]*\"?ACME-42",
+          "description": "El link deja a ACME-42 como bloqueado (outwardIssue)."
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "editJiraIssue(issueIdOrKey: \"ACME-1\""
+          ],
+          "description": "No edita la épica al colgarle el bloqueante."
+        }
+      ]
+    },
+    {
+      "id": "dependency-foreign-project-custom-type",
+      "description": "Tipo de link configurado distinto (Depende) y un bloqueante de un proyecto fuera de BLOCKER_PROJECT_KEYS: usa Depende para el permitido y rechaza el otro sin linkearlo ni editarlo.",
+      "input": "Configuración resuelta por `jira-ticket.py config`: SITE_URL https://acme.atlassian.net, CLOUD_ID 00000000-0000-0000-0000-000000000000, PROJECT_KEY ACME, ASSIGNEE_ACCOUNT_ID configurado, STORY_TYPE Story, SUBTASK_TYPE Sub-task; quarter, fecha de inicio y sprint no configurados; dependencies: link_type Depende, blocker_project_keys [ACME, PLAT], blocker_issue_type Story, blocker_default_epic null. ACME-42 está bloqueada por PLAT-3 y por OPS-9. Linkealos. Lecturas ya hechas: PLAT-3 existe, statusCategory indeterminate; OPS-9 existe, statusCategory new; ACME-42 sin issuelinks. getIssueLinkTypes devuelve Blocks (inward `is blocked by`, outward `blocks`) y Depende (inward `depende de`, outward `es requisito de`). No publiques nada ni ejecutes comandos: devolvé el plan con cada llamada a Jira.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "type\"?[[:space:]]*[:=][[:space:]]*\"?Depende",
+          "description": "Usa el tipo de link configurado Depende, no Blocks."
+        },
+        {
+          "type": "regex",
+          "pattern": "inwardIssue\"?[[:space:]]*[:=][[:space:]]*\"?PLAT-3",
+          "description": "Linkea PLAT-3, que está en un proyecto permitido."
+        },
+        {
+          "type": "regex",
+          "pattern": "OPS-9.{0,200}(rechaz|fuera|no (est[aá] )?permitid|no se linke|BLOCKER_PROJECT_KEYS)|(rechaz|fuera|no permitid|BLOCKER_PROJECT_KEYS).{0,200}OPS-9",
+          "description": "Rechaza OPS-9 por estar fuera de BLOCKER_PROJECT_KEYS."
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "inwardIssue: \"OPS-9\"",
+            "\"inwardIssue\": \"OPS-9\"",
+            "editJiraIssue(issueIdOrKey: \"PLAT-3\""
+          ],
+          "description": "No linkea OPS-9 ni edita PLAT-3."
+        }
+      ]
     }
   ]
 }

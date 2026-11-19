@@ -50,6 +50,7 @@ DEFAULT_SETTINGS = {
     "REPO_ID_SOURCES": "package.json:name,basename",
     "REPO_PREFIXES": "",
     "MAX_RESULTS": "50",
+    "DEPENDENCY_LINK_TYPE": "Blocks",
 }
 KNOWN_SETTINGS = (
     "SITE_URL",
@@ -71,6 +72,10 @@ KNOWN_SETTINGS = (
     "REPO_PREFIXES",
     "MEMORY_ORG",
     "MAX_RESULTS",
+    "DEPENDENCY_LINK_TYPE",
+    "BLOCKER_PROJECT_KEYS",
+    "BLOCKER_ISSUE_TYPE",
+    "BLOCKER_DEFAULT_EPIC",
 )
 SPRINT_REGEX_YEAR_GROUP = "year"
 SPRINT_REGEX_QUARTER_GROUP = "quarter"
@@ -90,6 +95,7 @@ PR_NUMBER_REGEX = re.compile(r"^[0-9]+$")
 PR_URL_REGEX = re.compile(r"^https://github\.com/(?P<owner>[A-Za-z0-9_.-]+)/(?P<repo>[A-Za-z0-9_.-]+)/pull/(?P<number>[0-9]+)$")
 PR_LABEL_TEMPLATE = "{repository_id}/PR-{number}"
 MERGED_STATE = "MERGED"
+DONE_STATUS_CATEGORY = "done"
 GH_PR_FIELDS = "number,url,headRefName,baseRefName,state"
 MONTHS_PER_QUARTER = 3
 
@@ -138,6 +144,19 @@ class Config:
             "start_date": self.get("START_DATE_FIELD") is not None,
             "sprint": self.get("SPRINT_FIELD") is not None and self.get("BOARD_ID") is not None,
             "default_assignee": self.get("ASSIGNEE_ACCOUNT_ID") is not None,
+            "blocker_default_epic": self.get("BLOCKER_DEFAULT_EPIC") is not None,
+        }
+
+    @property
+    def dependencies(self) -> dict[str, Any]:
+        """Valores efectivos de dependencias por bloqueo, con los defaults que dependen de otras variables."""
+        project_key = self.get("PROJECT_KEY")
+        blocker_projects = [item.strip() for item in (self.get("BLOCKER_PROJECT_KEYS") or "").split(",") if item.strip()]
+        return {
+            "link_type": self.get("DEPENDENCY_LINK_TYPE") or DEFAULT_SETTINGS["DEPENDENCY_LINK_TYPE"],
+            "blocker_project_keys": blocker_projects or ([project_key] if project_key else []),
+            "blocker_issue_type": self.get("BLOCKER_ISSUE_TYPE") or self.get("STORY_TYPE") or DEFAULT_SETTINGS["STORY_TYPE"],
+            "blocker_default_epic": self.get("BLOCKER_DEFAULT_EPIC"),
         }
 
 
@@ -183,6 +202,7 @@ def describe_config(config: Config) -> dict[str, Any]:
         "env_file": config.env_file,
         "missing_required": config.missing_required,
         "features": config.features,
+        "dependencies": config.dependencies,
         "settings": {f"{ENV_PREFIX}{name}": {"value": value, "source": config.sources[name]} for name, value in sorted(config.values.items())},
     }
 
@@ -1018,6 +1038,159 @@ def update_section(description: Any, heading: str, markdown: str, before: str | 
     return {"heading": heading, "action": action, "changed": action != "unchanged", "description": new_description if action != "unchanged" else description}
 
 
+# --- dependency ------------------------------------------------------------
+#
+# Una dependencia por bloqueo es un issue link del tipo `<DEPENDENCY_LINK_TYPE>`
+# (por defecto `Blocks`), el que el timeline de Jira dibuja como flecha entre
+# barras. En la respuesta de `getJiraIssue` del issue bloqueado, cada link trae
+# el otro issue como `inwardIssue` (el otro aplica la descripción outward sobre
+# este: "BLOCKER blocks ESTE", que se lee "ESTE is blocked by BLOCKER") o como
+# `outwardIssue` (al revés). La dirección se lee de ahí y no del nombre del tipo,
+# porque cada sitio puede renombrar `inward`/`outward`.
+
+
+def _link_type_entries(link_types_payload: Any) -> list[dict[str, Any]]:
+    if isinstance(link_types_payload, dict):
+        entries = link_types_payload.get("issueLinkTypes", link_types_payload.get("values"))
+    else:
+        entries = link_types_payload
+    if not isinstance(entries, list):
+        raise JiraTicketError("jira-ticket: dependency espera `link_types` como la respuesta de getIssueLinkTypes (lista o `issueLinkTypes`)")
+    return [entry for entry in entries if isinstance(entry, dict)]
+
+
+def resolve_link_type(link_types_payload: Any, wanted_name: str) -> dict[str, str]:
+    """Busca el tipo de link configurado por nombre (sin distinguir mayúsculas) o por id."""
+    wanted = wanted_name.strip().casefold()
+    for entry in _link_type_entries(link_types_payload):
+        if str(entry.get("name", "")).casefold() == wanted or str(entry.get("id", "")) == wanted_name.strip():
+            return {"id": str(entry.get("id", "")), "name": str(entry.get("name")), "inward": str(entry.get("inward", "")), "outward": str(entry.get("outward", ""))}
+    available = ", ".join(sorted(str(entry.get("name")) for entry in _link_type_entries(link_types_payload)))
+    raise JiraTicketError(
+        f"jira-ticket: el tipo de link '{wanted_name}' ({ENV_PREFIX}DEPENDENCY_LINK_TYPE) no existe en el sitio; tipos disponibles: {available or 'ninguno'}",
+        EXIT_UNRESOLVED,
+    )
+
+
+def _issue_key(issue: Any) -> str | None:
+    return issue.get("key") if isinstance(issue, dict) and isinstance(issue.get("key"), str) else None
+
+
+def _status_category(issue: Any) -> str | None:
+    fields = issue.get("fields") if isinstance(issue, dict) else None
+    status = (fields or {}).get("status") if isinstance(fields, dict) else None
+    category = (status or {}).get("statusCategory") if isinstance(status, dict) else None
+    key = (category or {}).get("key") if isinstance(category, dict) else None
+    return key if isinstance(key, str) else None
+
+
+def existing_dependency_links(issue: Any, link_type: dict[str, str]) -> dict[str, dict[str, Any]]:
+    """Links del tipo de dependencia ya presentes en el issue, separados por dirección."""
+    fields = issue.get("fields") if isinstance(issue, dict) else None
+    links = (fields or {}).get("issuelinks") if isinstance(fields, dict) else None
+    if not isinstance(links, list):
+        raise JiraTicketError("jira-ticket: dependency espera `issue` como la respuesta de getJiraIssue con fields [\"issuelinks\"]")
+    blocked_by: dict[str, Any] = {}
+    blocks: dict[str, Any] = {}
+    for link in links:
+        if not isinstance(link, dict):
+            continue
+        link_kind = link.get("type") or {}
+        if str(link_kind.get("name", "")).casefold() != link_type["name"].casefold() and str(link_kind.get("id", "")) != link_type["id"]:
+            continue
+        if _issue_key(link.get("inwardIssue")):
+            blocked_by[link["inwardIssue"]["key"]] = {"link_id": link.get("id"), "status_category": _status_category(link["inwardIssue"])}
+        elif _issue_key(link.get("outwardIssue")):
+            blocks[link["outwardIssue"]["key"]] = {"link_id": link.get("id"), "status_category": _status_category(link["outwardIssue"])}
+    return {"blocked_by": blocked_by, "blocks": blocks}
+
+
+def _normalize_blockers(blockers: Any) -> list[dict[str, Any]]:
+    if not isinstance(blockers, list):
+        raise JiraTicketError("jira-ticket: dependency espera `blockers` como lista de keys o de issues de getJiraIssue")
+    normalized: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for blocker in blockers:
+        key = blocker if isinstance(blocker, str) else _issue_key(blocker)
+        if key is None or not ISSUE_KEY_REGEX.match(key):
+            raise JiraTicketError(f"jira-ticket: key de bloqueante inválida '{str(blocker)[:40]}', se espera PROYECTO-123")
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized.append({"key": key, "status_category": None if isinstance(blocker, str) else _status_category(blocker)})
+    return normalized
+
+
+def blocker_project_keys(config: Config) -> list[str]:
+    config.require("PROJECT_KEY")
+    return config.dependencies["blocker_project_keys"]
+
+
+def plan_dependencies(payload: Any, blocked_key: str, config: Config) -> dict[str, Any]:
+    """Qué links `is blocked by` crear sobre `blocked_key`, cuáles ya existen y cuáles se rechazan.
+
+    Cada link a crear trae el payload de `createIssueLink`: `inwardIssue` es el
+    bloqueante y `outwardIssue` el bloqueado. Nunca escribe en Jira.
+    """
+    if not ISSUE_KEY_REGEX.match(blocked_key):
+        raise JiraTicketError(f"jira-ticket: key inválida '{blocked_key[:40]}', se espera PROYECTO-123")
+    if not isinstance(payload, dict):
+        raise JiraTicketError("jira-ticket: dependency espera por stdin un objeto con `issue`, `link_types` y `blockers`")
+    link_type = resolve_link_type(payload.get("link_types"), config.get("DEPENDENCY_LINK_TYPE") or DEFAULT_SETTINGS["DEPENDENCY_LINK_TYPE"])
+    existing = existing_dependency_links(payload.get("issue"), link_type)
+    allowed_projects = blocker_project_keys(config)
+    create: list[dict[str, Any]] = []
+    already_linked: list[dict[str, Any]] = []
+    rejected: list[dict[str, str]] = []
+    for blocker in _normalize_blockers(payload.get("blockers", [])):
+        key = blocker["key"]
+        project = key.rsplit("-", 1)[0]
+        if key == blocked_key:
+            rejected.append({"key": key, "reason": "un issue no puede bloquearse a sí mismo"})
+        elif project not in allowed_projects:
+            rejected.append({"key": key, "reason": f"proyecto {project} fuera de {ENV_PREFIX}BLOCKER_PROJECT_KEYS ({', '.join(allowed_projects)})"})
+        elif key in existing["blocks"]:
+            rejected.append({"key": key, "reason": f"{blocked_key} ya bloquea a {key}; el link inverso crearía un ciclo"})
+        elif key in existing["blocked_by"]:
+            already_linked.append({"key": key, "status_category": existing["blocked_by"][key]["status_category"] or blocker["status_category"]})
+        else:
+            create.append(
+                {
+                    "key": key,
+                    "status_category": blocker["status_category"],
+                    "create_issue_link": {"type": link_type["name"], "inwardIssue": key, "outwardIssue": blocked_key},
+                }
+            )
+    open_blockers = sorted(
+        {item["key"] for item in [*create, *already_linked] if item["status_category"] not in (DONE_STATUS_CATEGORY, None)}
+        | {key for key, info in existing["blocked_by"].items() if info["status_category"] not in (DONE_STATUS_CATEGORY, None)}
+    )
+    unknown_status = sorted(item["key"] for item in [*create, *already_linked] if item["status_category"] is None)
+    return {
+        "blocked": blocked_key,
+        "link_type": link_type,
+        "create": create,
+        "already_linked": already_linked,
+        "rejected": rejected,
+        "open_blockers": open_blockers,
+        "unknown_status": unknown_status,
+        "is_blocked": bool(open_blockers),
+    }
+
+
+def verify_dependencies(payload: Any, blocked_key: str, config: Config) -> dict[str, Any]:
+    """Relectura: cada bloqueante pedido aparece como `is blocked by` sobre `blocked_key`, sin links invertidos."""
+    if not isinstance(payload, dict):
+        raise JiraTicketError("jira-ticket: dependency verify espera por stdin un objeto con `issue`, `link_types` y `blockers`")
+    link_type = resolve_link_type(payload.get("link_types"), config.get("DEPENDENCY_LINK_TYPE") or DEFAULT_SETTINGS["DEPENDENCY_LINK_TYPE"])
+    existing = existing_dependency_links(payload.get("issue"), link_type)
+    keys = [blocker["key"] for blocker in _normalize_blockers(payload.get("blockers", []))]
+    linked = [key for key in keys if key in existing["blocked_by"]]
+    inverted = [key for key in keys if key not in existing["blocked_by"] and key in existing["blocks"]]
+    missing = [key for key in keys if key not in existing["blocked_by"] and key not in existing["blocks"]]
+    return {"blocked": blocked_key, "link_type": link_type["name"], "linked": linked, "inverted": inverted, "missing": missing, "ok": not inverted and not missing}
+
+
 # --- CLI -------------------------------------------------------------------
 
 
@@ -1046,6 +1219,9 @@ def build_parser() -> argparse.ArgumentParser:
     section_cmd = sub.add_parser("section", help="Reescribe una sola sección de una descripción (stdin JSON: description y markdown).")
     section_cmd.add_argument("--heading", required=True, help="Texto del heading de la sección, sin `##`.")
     section_cmd.add_argument("--before", help="Heading antes del cual crear la sección si no existe.")
+    dependency_cmd = sub.add_parser("dependency", help="Planifica o verifica links de bloqueo sobre un issue (stdin JSON: issue, link_types y blockers).")
+    dependency_cmd.add_argument("action", choices=["plan", "verify"])
+    dependency_cmd.add_argument("--key", required=True, help="Key del issue bloqueado.")
     slim_cmd = sub.add_parser("slim", help="Reduce una respuesta grande de Jira (stdin) a los campos pedidos.")
     slim_cmd.add_argument("--fields", default="")
     return parser
@@ -1110,6 +1286,14 @@ def main(argv: list[str] | None = None, environ: dict[str, str] | None = None) -
             if not isinstance(description, (str, dict)) or not isinstance(payload.get("markdown"), str):
                 raise JiraTicketError("jira-ticket: section espera por stdin un objeto con `description` (Markdown o documento ADF) y `markdown` (contenido de la sección)")
             emit(update_section(description, args.heading, payload["markdown"], args.before))
+        elif args.command == "dependency":
+            payload = read_json_stdin()
+            if args.action == "plan":
+                emit(plan_dependencies(payload, args.key, config))
+            else:
+                result = verify_dependencies(payload, args.key, config)
+                emit(result)
+                return EXIT_OK if result["ok"] else EXIT_UNRESOLVED
         elif args.command == "slim":
             emit(slim(read_json_stdin(), [item.strip() for item in args.fields.split(",") if item.strip()]))
     except JiraTicketError as error:

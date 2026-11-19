@@ -197,6 +197,7 @@ Releer por key padre y subtareas y verificar:
 - [ ] Si sprint está configurado, padre tiene sprint resuelto o preservado según sección Sprint, y cada subtarea muestra el sprint del padre.
 - [ ] Due date de padre y subtareas coincide con lo confirmado por el usuario (fecha o sin Due date) o se preservó el existente.
 - [ ] Subtareas contienen campos heredados correspondientes.
+- [ ] Bloqueantes pedidos linkeados con `<DEPENDENCY_LINK_TYPE>` y verificados con `dependency verify`; bloqueantes de otros proyectos sin editar (`dependencies.md`).
 
 En tablas finales, columna Label significa labels solicitadas; mostrar `➖ no aplica` si no existen.
 Corregir discrepancias y revalidar entidad afectada. No finalizar mientras contrato quede incumplido.

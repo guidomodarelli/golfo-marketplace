@@ -61,7 +61,7 @@ Los templates están en el Markdown enriquecido de `rich-format.md`: se compilan
 - [acme/payments-api#88](https://github.com/acme/payments-api/pull/88)
 ```
 
-- `## Bloqueo` va primero y solo mientras la Story esté frenada: un link `is blocked by` a un issue abierto, o lo indica el usuario. Al destrabarse se quita la sección entera.
+- `## Bloqueo` va primero y solo mientras la Story esté frenada: un link `is blocked by` a un issue abierto (`open_blockers` de `dependency plan`, ver `dependencies.md`), o lo indica el usuario. Al destrabarse se quita la sección entera.
 - El expand `Detalle técnico` se usa en modo repositorio, con hasta 4 bullets de áreas técnicas y cobertura automática. En una tarea planificada sin diff se omite. Nunca lleva links: ver `Links fuera del expand` en `rich-format.md`.
 - Criterios de aceptación como bullets simples, no `- [ ]`: describen el resultado esperado, no el trabajo pendiente. Cuando el pedido indica cuáles ya se verificaron y cuáles no, anteponer ✅ o ⬜ a cada uno.
 - `## Decisiones` solo cuando el pedido o el diff traen una decisión con su motivo (por ejemplo, la alternativa que se descartó).
