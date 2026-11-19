@@ -332,8 +332,8 @@
         },
         {
           "type": "contains",
-          "value": "Capturas",
-          "description": "Incluye la sección de capturas en el body"
+          "value": "Evidencia",
+          "description": "Incluye la sección Evidencia con las capturas en el body"
         },
         {
           "type": "contains_any",
@@ -371,7 +371,7 @@
     },
     {
       "id": "no-harness-screenshot-behind-login",
-      "description": "Si la pantalla exige login sin sesión de prueba, no captura un arnés HTML: omite Capturas y deja 'Sin captura: <motivo>'.",
+      "description": "Si la pantalla exige login sin sesión de prueba, no captura un arnés HTML: omite Evidencia y deja 'Sin captura: <motivo>'.",
       "input": "Componé y creá el PR para un cambio de padding en `components/composer/styles.module.scss`. La pantalla del composer exige login y no hay sesión abierta ni credenciales de prueba, pero podrías renderizar el SCSS compilado en una página HTML suelta con Playwright. No ejecutes nada: describí cómo resolvés las capturas y devolvé el body.",
       "assertions": [
         {
