@@ -256,6 +256,17 @@
         {
           "type": "contains_any",
           "values": [
+            "PATCH",
+            "reescrib",
+            "edito la respuesta",
+            "editar la respuesta",
+            "reemplaz"
+          ],
+          "description": "Reescribe la respuesta existente en el lugar"
+        },
+        {
+          "type": "contains_any",
+          "values": [
             "minimizeComment"
           ],
           "description": "Completa el ocultamiento"
@@ -303,6 +314,61 @@
             "💬"
           ],
           "description": "Usa la variante de respuesta a pregunta"
+        }
+      ]
+    },
+    {
+      "id": "09-replace-previous-general-reply",
+      "description": "Una respuesta previa a un comentario general en formato viejo se reemplaza por el análisis actual con el template vigente, sin historial ni respuesta nueva.",
+      "input": "Escenario hipotético de evaluación para pr-feedback-sweep. Ya respondí la pregunta de entorno: Checkout actual.\nEn el PR https://github.com/acme/widgets/pull/42 el comentario general de ana-review (id 777) pide \"1. agregá un test para lista vacía en src/cart/total.ts 2. actualizá el README\". Una corrida anterior le respondió en texto plano, sin quote ni tabla, con marker `inline-thread-autofix: issuecomment:777`, y solo resolvió el pedido 1 en el commit abc1234, que sigue en el head. El comentario sigue visible. Resolvé los comentarios del PR.\nNo ejecutes comandos ni consultes GitHub: describí el plan, las verificaciones que harías, las mutaciones que harías u omitirías y el estado o código que reportás.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": [
+            "PATCH",
+            "reescrib",
+            "reemplaz"
+          ],
+          "description": "Reescribe la respuesta existente en el lugar"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "no publico otra",
+            "no publico una respuesta nueva",
+            "sin publicar otra",
+            "no crear otra",
+            "no creo otra",
+            "sin duplicar",
+            "no duplic",
+            "en vez de publicar"
+          ],
+          "description": "No publica una respuesta nueva"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "📋 Pedidos",
+            "tabla de pedidos",
+            "tabla"
+          ],
+          "description": "Usa el template vigente con tabla de pedidos"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "### Historial",
+            "### Actualización",
+            "## Historial"
+          ],
+          "description": "No agrega secciones de historial a la respuesta"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "minimizeComment"
+          ],
+          "description": "Oculta el original como resuelto"
         }
       ]
     }
