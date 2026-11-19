@@ -1,0 +1,22 @@
+[
+  {"query": "el PR #412 de feature/checkout-v2 tiene 3800 líneas y nadie lo quiere revisar. partilo en varios PRs encadenados por responsabilidad, que el último quede igual al original", "should_trigger": true},
+  {"query": "Tengo abierto el PR de feature/billing-api contra develop. Quiero montarle encima dos PRs más (uno de UI y otro de tests) que dependan de ese, sin tocar el primero.", "should_trigger": true},
+  {"query": "en el stack de search (contracts -> backend -> frontend) me falta una capa de fixtures, agregala arriba de todo y abrí el PR", "should_trigger": true},
+  {"query": "me pidieron cambios en la capa del medio de mi stack (feature/pay-backend). después de commitear el fix, ¿cómo actualizo frontend y cleanup que están arriba sin romper nada?", "should_trigger": true},
+  {"query": "ya se mergeó con squash el primer PR del stack (#31 contra main) y ahora #32 muestra todos los commits del parent. arreglalo", "should_trigger": true},
+  {"query": "producto quiere que la capa de export salga antes que la de backend. reordená los PRs #52 y #53 del stack de reportes", "should_trigger": true},
+  {"query": "tengo el PR #75 suelto contra develop pero depende de la API que está en #72. metelo en el stack encima de #72 sin cambiarle el contenido", "should_trigger": true},
+  {"query": "how do I merge a chain of 4 stacked pull requests with squash without each child PR getting messed up?", "should_trigger": true},
+  {"query": "cambiá la base del PR #203 a feature/search-backend porque ahora depende de esa rama", "should_trigger": true},
+  {"query": "Este PR quedó enorme, ¿lo podés dividir en PRs más chicos que se puedan revisar por separado? https://github.com/acme/shop/pull/880", "should_trigger": true},
+  {"query": "creá un PR con los cambios que tengo en la rama actual contra develop", "should_trigger": false},
+  {"query": "escribí la descripción del PR #140 con la plantilla de siempre, todavía tiene el body vacío", "should_trigger": false},
+  {"query": "hacé rebase de mi rama feature/login sobre origin/main y resolvé los conflictos del package-lock", "should_trigger": false},
+  {"query": "Codex dejó 4 comentarios en el PR #88, fixealos y respondé cada hilo", "should_trigger": false},
+  {"query": "dividí este commit gigante en varios commits atómicos dentro de la misma rama, no quiero PRs nuevos", "should_trigger": false},
+  {"query": "¿cuál es la diferencia entre squash merge y rebase merge en GitHub para el repo del equipo?", "should_trigger": false},
+  {"query": "tengo un stack de llamadas en el error log de node (stack trace) que no entiendo, ayudame a ver qué falla en el PR", "should_trigger": false},
+  {"query": "armá un merge request en GitLab para la rama feature/reports y dividilo en dos MRs dependientes", "should_trigger": false},
+  {"query": "revisá el PR #301 y dejá comentarios inline sobre lo que veas mal", "should_trigger": false},
+  {"query": "mové el fix del commit abc123 a una rama nueva desde main y abrí un PR solo con eso", "should_trigger": false}
+]

@@ -1,0 +1,66 @@
+[
+  {
+    "query": "revisá los comentarios del PR 214 y resolvé lo que haya que cambiar",
+    "should_trigger": true
+  },
+  {
+    "query": "che, mirá los threads del PR https://github.com/acme/widgets/pull/88 que me dejaron un par",
+    "should_trigger": true
+  },
+  {
+    "query": "revisa comentarios y threads del pr que tengo abierto en esta branch",
+    "should_trigger": true
+  },
+  {
+    "query": "hay comentarios generales en el PR #57 pidiendo tests, atendelos",
+    "should_trigger": true
+  },
+  {
+    "query": "cerrá todos los comentarios pendientes de la review del PR 12 de acme/api",
+    "should_trigger": true
+  },
+  {
+    "query": "resolvé el feedback del PR, el reviewer dejó cosas en la conversación y en el código",
+    "should_trigger": true
+  },
+  {
+    "query": "https://github.com/acme/widgets/pull/42 revisá los comentarios",
+    "should_trigger": true
+  },
+  {
+    "query": "fijate qué me pidieron en el PR y aplicalo",
+    "should_trigger": true
+  },
+  {
+    "query": "https://github.com/acme/widgets/pull/42#discussion_r123456789 resolvé este comentario",
+    "should_trigger": false
+  },
+  {
+    "query": "lanzá el loop de codex para que auto-fixee sus comentarios en el PR 30",
+    "should_trigger": false
+  },
+  {
+    "query": "hacé un code review del diff de esta branch antes de abrir el PR",
+    "should_trigger": false
+  },
+  {
+    "query": "escribime la descripción del PR con el template",
+    "should_trigger": false
+  },
+  {
+    "query": "dejá un comentario inline en el PR 40 sobre la línea 12 de src/app.ts",
+    "should_trigger": false
+  },
+  {
+    "query": "abrí un PR con estos cambios",
+    "should_trigger": false
+  },
+  {
+    "query": "respondé al comentario de chatgpt-codex-connector en este hilo con el template",
+    "should_trigger": false
+  },
+  {
+    "query": "dividí este PR grande en un stack de PRs",
+    "should_trigger": false
+  }
+]

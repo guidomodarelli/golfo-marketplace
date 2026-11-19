@@ -1,0 +1,100 @@
+{
+  "schema_version": 2,
+  "skill": "golfo-lint-adoption",
+  "description": "Evalúa la adopción de golfo-lint: falsos positivos arreglados en golfo-lint sin disables en el consumidor, el bloqueo de minimumReleaseAge y el cache de ESLint en CI.",
+  "test_cases": [
+    {
+      "id": "false-positive-fixed-in-preset",
+      "description": "Un falso positivo se arregla en golfo-lint (filtro o regla apagada con el motivo) y nunca con comentarios de disable en el consumidor.",
+      "input": "Usando golfo-lint-adoption: al adoptar golfo-lint en el repo agenda-mensual, la regla unicorn/prefer-simple-sort-comparator marca 14 comparadores de strings ISO como `(a, b) => a.date.localeCompare(b.date)` y propone `b - a`, que es inválido para strings. Mi idea es poner un eslint-disable en cada uno. ¿Te parece? No ejecutes ni edites nada: describí qué harías, con los comandos o el código concretos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": [
+            "preset",
+            "en golfo-lint",
+            "in golfo-lint"
+          ],
+          "description": "Lleva el arreglo al preset de golfo-lint"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "falso positivo",
+            "false positive"
+          ],
+          "description": "Lo clasifica como falso positivo"
+        },
+        {
+          "type": "regex",
+          "pattern": "(no|nunca|never|sin)[^.]{0,60}disable",
+          "description": "Rechaza los comentarios de disable en el consumidor"
+        }
+      ]
+    },
+    {
+      "id": "minimum-release-age-by-name",
+      "description": "Si minimumReleaseAge bloquea un @golfo/* recién publicado, lo agrega a minimumReleaseAgeExclude solo por nombre, sin versión.",
+      "input": "Usando golfo-lint-adoption: `pnpm add -D --save-exact @golfo/lint@0.4.0` falla porque pnpm-workspace.yaml tiene minimumReleaseAge: 1440 y la versión salió hace una hora. ¿Qué cambio en pnpm-workspace.yaml? No ejecutes ni edites nada: describí qué harías, con los comandos o el código concretos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "minimumReleaseAgeExclude",
+          "description": "Usa minimumReleaseAgeExclude"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "solo el nombre",
+            "solo por nombre",
+            "por nombre",
+            "only the name",
+            "by name",
+            "sin versión",
+            "sin la versión",
+            "without the version",
+            "without a version"
+          ],
+          "description": "Lo agrega por nombre, sin versión"
+        }
+      ]
+    },
+    {
+      "id": "eslint-cache-in-ci",
+      "description": "No restaura caches de resultados de ESLint en el gate de PR: el cache de ESLint no sigue dependencias entre archivos y con reglas tipadas deja pasar errores; para acelerar propone concurrencia, recortes por regla o bun lint.",
+      "input": "Usando golfo-lint-adoption: el job de golfo-lint en GitHub Actions tarda 9 minutos en cada PR por el ESLint tipado. Quiero restaurar en cada PR el cache de resultados de ESLint que guarda main con actions/cache. ¿Cómo lo armo? No ejecutes ni edites nada: describí qué harías, con los comandos o el código concretos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "(no|nunca|never|sin|without)[^.]{0,60}(restaur|restore|cache)",
+          "description": "Rechaza restaurar el cache de resultados en el PR"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "dependencias entre archivos",
+            "dependencies between files",
+            "no rastrea",
+            "does not track",
+            "no sigue",
+            "tipo exportado",
+            "exported type",
+            "importadores",
+            "importers"
+          ],
+          "description": "Explica que el cache no sigue dependencias entre archivos"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "concurrency",
+            "bun lint",
+            "por regla",
+            "per-rule"
+          ],
+          "description": "Propone otra forma de acelerar el gate"
+        }
+      ]
+    }
+  ]
+}

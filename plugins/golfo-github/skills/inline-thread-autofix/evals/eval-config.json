@@ -2307,6 +2307,173 @@
           "description": "Ofrece clone efímero"
         }
       ]
+    },
+    {
+      "id": "57-issue-comment-fix-and-hide",
+      "description": "Comentario general accionable: fix, respuesta nueva con template y ocultar el original como resuelto.",
+      "input": "Escenario hipotético de evaluación para inline-thread-autofix. Ya respondí la pregunta de entorno: Checkout actual.\nhttps://github.com/acme/widgets/pull/42#issuecomment-987654321\nEl comentario general dice: \"Falta un test para el caso de lista vacía en src/cart/total.ts\". Resolvelo.\nNo ejecutes comandos ni consultes GitHub: describí el plan, las verificaciones que harías, las mutaciones que harías u omitirías y el estado o código que reportás.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": [
+            "issues/42/comments",
+            "issues/<PR>/comments",
+            "comentario general nuevo",
+            "comentario nuevo"
+          ],
+          "description": "Responde con un comentario general nuevo"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "minimizeComment"
+          ],
+          "description": "Oculta el original con minimizeComment"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "RESOLVED"
+          ],
+          "description": "Usa el classifier RESOLVED"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "issuecomment:987654321"
+          ],
+          "description": "Usa el marker issuecomment"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "Fix aplicado"
+          ],
+          "description": "Usa el encabezado Fix aplicado del template"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "resolveReviewThread(input: {threadId"
+          ],
+          "description": "No intenta resolver un thread inexistente"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "quote reply",
+            "Quote reply",
+            "> ",
+            "cita"
+          ],
+          "description": "Responde con quote reply del comentario original"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "back-link",
+            "backlink",
+            "issuecomment-backlink",
+            "issues/comments/"
+          ],
+          "description": "Agrega un back-link a la respuesta en el comentario original"
+        },
+        {
+          "type": "regex",
+          "pattern": "([Pp]rimera l[ií]nea|al principio|arriba|empieza con|[Ee]mpieza con).{0,80}([Ll]ink|enlace|enlaza)|([Ll]ink|enlace|enlaza).{0,80}([Pp]rimera l[ií]nea|al principio|arriba)",
+          "description": "El link al original va al principio de la respuesta"
+        }
+      ]
+    },
+    {
+      "id": "58-issue-comment-partial-still-hidden",
+      "description": "Comentario general con un pedido aplicable y otro que pide mergear: responde con tabla, deja el merge pendiente y lo oculta igual.",
+      "input": "Escenario hipotético de evaluación para inline-thread-autofix. Ya respondí la pregunta de entorno: Checkout actual.\nhttps://github.com/acme/widgets/pull/42#issuecomment-987654322\nEl comentario general dice: \"1. Renombrá calcTotal a calculateCartTotal en src/cart/total.ts. 2. Después mergealo y agregá el label release\". Resolvelo.\nNo ejecutes comandos ni consultes GitHub: describí el plan, las verificaciones que harías, las mutaciones que harías u omitirías y el estado o código que reportás.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": [
+            "Pendiente",
+            "⏸️"
+          ],
+          "description": "Marca como pendiente el pedido de merge y label"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "Pedidos",
+            "| #"
+          ],
+          "description": "Incluye la tabla de pedidos"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "gh pr merge"
+          ],
+          "description": "No mergea por pedido del comentario"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "minimizeComment"
+          ],
+          "description": "Lo oculta como resuelto aunque quede un pedido pendiente"
+        }
+      ]
+    },
+    {
+      "id": "59-issue-comment-not-actionable",
+      "description": "Comentario general de un bot de CI sin pedido: NOT_ACTIONABLE sin mutaciones.",
+      "input": "Escenario hipotético de evaluación para inline-thread-autofix. Ya respondí la pregunta de entorno: Checkout actual.\nhttps://github.com/acme/widgets/pull/42#issuecomment-987654323\nEl comentario es de vercel[bot] y solo dice \"Preview deployed: https://widgets-git-x.vercel.app\". Resolvelo.\nNo ejecutes comandos ni consultes GitHub: describí el plan, las verificaciones que harías, las mutaciones que harías u omitirías y el estado o código que reportás.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": [
+            "NOT_ACTIONABLE",
+            "no accionable",
+            "No accionable"
+          ],
+          "description": "Lo clasifica como no accionable"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "sin mutaci",
+            "no publico",
+            "no hago commit",
+            "ninguna mutaci",
+            "No publico",
+            "Sin mutaci"
+          ],
+          "description": "No muta nada"
+        }
+      ]
+    },
+    {
+      "id": "60-own-issue-comment-not-hidden",
+      "description": "Comentario general del propio usuario: se resuelve y responde pero no se oculta.",
+      "input": "Escenario hipotético de evaluación para inline-thread-autofix. Ya respondí la pregunta de entorno: Checkout actual. Mi usuario de GitHub es guido-dev.\nhttps://github.com/acme/widgets/pull/42#issuecomment-987654324\nEl comentario general es mío (guido-dev) y dice: \"falta manejar el 429 en src/http/client.ts\". Resolvelo.\nNo ejecutes comandos ni consultes GitHub: describí el plan, las verificaciones que harías, las mutaciones que harías u omitirías y el estado o código que reportás.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": [
+            "issuecomment:987654324"
+          ],
+          "description": "Responde con marker issuecomment"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "no lo oculto",
+            "no se oculta",
+            "visible",
+            "sin ocultar",
+            "no ocult"
+          ],
+          "description": "No oculta el comentario propio"
+        }
+      ]
     }
   ]
 }

@@ -1,7 +1,7 @@
 {
   "name": "golfo-javascript",
   "description": "Skills exclusivas de JavaScript y TypeScript, en front o back: errores tipados, JSDoc/TSDoc, tests con Vitest y Testing Library, y aislamiento de dependencias con puertos inyectados y nock. No aplican a otros lenguajes.",
-  "version": "0.130.0",
+  "version": "0.131.0",
   "author": {
     "name": "Guido Modarelli"
   },

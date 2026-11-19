@@ -44,6 +44,9 @@ coverage/
 
 # Claude Code local
 .claude/**
+# Repo-local skills: Claude Code reads them through symlinks into .agents/skills
+!.claude/skills/
+!.claude/skills/**
 
 # Skill creator eval workspaces (generated during skill development, not for distribution)
 skills/*-workspace/

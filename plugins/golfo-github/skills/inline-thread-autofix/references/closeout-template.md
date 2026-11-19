@@ -103,6 +103,93 @@ Agregar este bloque al body original, sin reemplazarlo:
 <!-- inline-thread-autofix: review:{{review_id}} -->
 ```
 
+## Comentario general del PR
+
+Publicar como comentario nuevo en `repos/{{owner}}/{{repo}}/issues/{{pull_request_number}}/comments`. La respuesta a un comentario general siempre empieza con el link explícito al original (primera línea, para verlo rápido) y sigue con un quote reply de su texto, como el botón *Quote reply* de GitHub: cada línea con `> `. Se cita el body completo; si es muy largo, solo las partes de cada pedido, marcando el recorte con `> …`. Del quote se quitan los comentarios HTML (markers de corridas anteriores) y los back-links agregados por esta skill. Después de verificar la respuesta, se edita el original para agregarle al final, sin tocar su texto, un back-link a la respuesta (variante `Back-link en el comentario original`). Una fila por pedido del comentario, en el mismo orden en que aparecen:
+
+```markdown
+↩️ En respuesta a [este comentario]({{source_comment_url}}) de {{autor_login}}:
+
+> {{linea_1_del_comentario_original}}
+> {{linea_2_del_comentario_original}}
+
+✅ **Fix aplicado** en [`{{sha_corto}}`]({{commit_url}}).
+
+### 📋 Pedidos
+| # | Pedido | Estado |
+|---|---|---|
+| 1 | {{pedido_resumido}} | ✅ Aplicado |
+| 2 | {{pedido_resumido}} | ℹ️ Sin cambios: {{motivo_breve}} |
+| 3 | {{pedido_resumido}} | ⏸️ Pendiente: {{motivo_breve}} |
+
+### 🔧 Qué cambió
+> {{resumen_de_una_linea}}
+
+<sub>🤖 Respuesta a un comentario general del PR.</sub>
+
+<!-- inline-thread-autofix: issuecomment:{{comment_id}} -->
+```
+
+`{{autor_login}}` va como texto, sin `@`, para no notificar de nuevo. Si ningún pedido llevó commit, cambiar `✅ **Fix aplicado** …` por `ℹ️ **Sin cambios de código**.`, quitar `### 🔧 Qué cambió` y conservar tabla y marker. `⏸️ Pendiente` se usa para pedidos que necesitan confirmación del usuario (labels, merge, otro PR) o que quedaron `FINDING_ANCHOR_AMBIGUOUS`. No usar la palabra `Resuelto` en el texto: no hay thread. Tras verificar la respuesta, el comentario original se oculta como resuelto (`minimizeComment`, `classifier: RESOLVED`), también con pedidos `⏸️ Pendiente` o `ℹ️ Sin cambios`, porque la tabla de la respuesta conserva su estado. Nunca se oculta un comentario del propio usuario autenticado.
+
+## Back-link en el comentario original
+
+Después de publicar y verificar la respuesta a un comentario general, editar el original con `PATCH repos/{{owner}}/{{repo}}/issues/comments/{{comment_id}}` enviando su body completo, tal como se leyó inmediatamente antes, más este bloque al final:
+
+```markdown
+
+---
+↪️ Respondido en [este comentario]({{reply_url}}).
+
+<!-- inline-thread-autofix: issuecomment-backlink:{{comment_id}} -->
+```
+
+Reglas:
+
+- Releer el original justo antes del `PATCH`; si su body cambió desde que se citó, reconstruir con el body nuevo y no pisar la edición ajena.
+- Si el marker `issuecomment-backlink:{{comment_id}}` ya está en el body, no agregar otro.
+- Verificar después que el body empieza con el texto original completo y termina con el bloque.
+- Si el `PATCH` devuelve `403`/`404` o no verifica, la respuesta publicada sigue valiendo: reportar `back-link: no agregado` y seguir; no reintentar en loop.
+- Aplica también a comentarios del propio usuario y de bots; editar el original nunca reemplaza ocultarlo como resuelto.
+
+## Respuesta a una pregunta
+
+Para un thread inline o un comentario general que pregunta algo sin pedir cambios. En inline va como reply con `in_reply_to`, sin quote. En comentario general va como comentario nuevo con el mismo encabezado de link y quote reply de la variante anterior (y back-link en el original):
+
+```markdown
+💬 **Respuesta** a [este comentario]({{source_comment_url}}).
+
+{{respuesta_breve}}
+
+### 🔎 Evidencia
+- {{path_y_linea_o_link_al_codigo}}
+
+<sub>🤖 Sin cambios de código: el comentario hacía una pregunta.</sub>
+
+<!-- inline-thread-autofix: answer:{{source_kind}}:{{source_id}} -->
+```
+
+`{{source_kind}}` es `comment`, `review` o `issuecomment`. Un comentario general con pregunta se oculta como resuelto tras responder (salvo que sea del propio usuario). Resolver el thread inline solo si la evidencia contesta la pregunta por completo; si la respuesta deja una decisión abierta, dejar el thread abierto y reportarlo.
+
+## Sugerencia no aplicada
+
+Para feedback que, tras revisar el código, no conviene aplicar (incorrecto, ya cubierto o contrario a una regla del repo):
+
+```markdown
+ℹ️ **Sin cambios** para [este comentario]({{source_comment_url}}).
+
+{{motivo_breve}}
+
+### 🔎 Evidencia
+- {{path_y_linea_test_o_regla}}
+
+<sub>🤖 La sugerencia no se aplicó; queda abierta para que decida quien la hizo.</sub>
+
+<!-- inline-thread-autofix: declined:{{source_kind}}:{{source_id}} -->
+```
+
+No resolver el thread de una persona con esta variante: lo decide quien hizo el comentario. En un comentario general, la respuesta va en la tabla del template `Comentario general del PR` y el comentario se oculta igual, salvo que sea del propio usuario. Para comentarios de Codex (`chatgpt-codex-connector[bot]`) o Claude (`claude[bot]`), usar las variantes de `codex-comment-closeout` en lugar de las de este archivo.
+
 ## Hallazgo ya resuelto en otra capa
 
 Usar solo después de confirmar explícitamente closeout del destino indicado por URL. No afirmar `Fix aplicado` ni `Resuelto` en PR que no recibió patch:
@@ -150,7 +237,8 @@ Las refs `backup/*` son estado local y nunca deben aparecer en comentarios de Gi
 - `{{resumen_de_una_linea}}` describe efecto observable, no repite diff.
 - Mantener `### 🔧 Qué cambió` y resumen en blockquote (`>`).
 - Texto visible va en español; conservar en inglés solo identifiers, paths, comandos y nombres técnicos.
-- `Resuelto` queda reservado para inline threads; review-body usa `Fix aplicado`.
+- `Resuelto` queda reservado para inline threads; review-body y comentario general usan `Fix aplicado`.
+- Toda respuesta publicada usa una variante de este archivo (o de `codex-comment-closeout` para bots revisores): encabezado con emoji, secciones `###` con emoji, `<sub>🤖 …</sub>` y marker. Nunca escribir una respuesta libre.
 - No publicar hasta confirmar push y head remoto.
 - No incluir stack, `cause`, tokens, secrets, cookies, headers, payloads, PII ni logs raw.
 - Review editada debe conservar body original completo; fallback debe enlazar review original.

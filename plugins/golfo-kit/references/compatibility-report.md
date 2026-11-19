@@ -8,9 +8,9 @@
 ## A. Resumen ejecutivo
 
 - **Fecha de auditoría:** 2026-10-23 (generado 2026-10-23T21:00:00Z).
-- **Total de skills analizadas:** 50.
+- **Total de skills analizadas:** 59.
 - **Funcionalidades deshabilitadas:** 0.
-- **Adaptaciones implementadas:** 42; verificadas: 20.
+- **Adaptaciones implementadas:** 44; verificadas: 20.
 - **Problemas críticos pendientes:** ninguno.
 - **Funcionalidades que dejaron de estar deshabilitadas en esta revisión:** 0 (respecto de `1e937e0 (golfo-kit 0.11.0, PR #23, schema 1.1.0)`).
 
@@ -43,7 +43,7 @@ Dependencias implícitas de navegador de measured-performance-optimization, prev
 | `adapted` | 0 | 1 | 1 |
 | `partial` | 0 | 0 | 0 |
 | `incompatible` | 0 | 0 | 0 |
-| `unverified` | 46 | 49 | 49 |
+| `unverified` | 55 | 58 | 58 |
 
 ### Regla de derivación del estado
 
@@ -74,7 +74,9 @@ Una funcionalidad `disabled` lista las alternativas investigadas y ninguna es vi
 | `codex-comment-closeout` | `compatible` | `unverified` | `unverified` |
 | `constants-refactor` | `unverified` | `unverified` | `unverified` |
 | `create-issue` | `unverified` | `unverified` | `unverified` |
+| `cross-agent-skill-portability` | `unverified` | `unverified` | `unverified` |
 | `deepen-prompt` | `unverified` | `unverified` | `unverified` |
+| `device-visual-bug-repro` | `unverified` | `unverified` | `unverified` |
 | `enforce-jsdoc-tsdoc` | `unverified` | `unverified` | `unverified` |
 | `error-observability-diagnostics` | `unverified` | `unverified` | `unverified` |
 | `feature-branch-pr` | `unverified` | `unverified` | `unverified` |
@@ -82,8 +84,11 @@ Una funcionalidad `disabled` lista las alternativas investigadas y ninguna es vi
 | `fix-tests-intelligently` | `unverified` | `unverified` | `unverified` |
 | `functionality-check` | `unverified` | `unverified` | `unverified` |
 | `generate-commit-messages` | `unverified` | `unverified` | `unverified` |
+| `golfo-lint-adoption` | `unverified` | `unverified` | `unverified` |
+| `golfo-npm-package-release` | `unverified` | `unverified` | `unverified` |
 | `improve-spec` | `unverified` | `unverified` | `unverified` |
 | `inline-thread-autofix` | `unverified` | `unverified` | `unverified` |
+| `installed-pwa-platform-quirks` | `unverified` | `unverified` | `unverified` |
 | `interactive-cli-design` | `unverified` | `unverified` | `unverified` |
 | `jira-ticket` | `unverified` | `unverified` | `unverified` |
 | `measured-performance-optimization` | `unverified` | `unverified` | `unverified` |
@@ -92,7 +97,9 @@ Una funcionalidad `disabled` lista las alternativas investigadas y ninguna es vi
 | `nextjs-route-ui-boundaries` | `unverified` | `unverified` | `unverified` |
 | `node-runtime-debugging` | `unverified` | `unverified` | `unverified` |
 | `optimistic-action-mutations` | `unverified` | `unverified` | `unverified` |
+| `parallel-pr-hygiene` | `unverified` | `unverified` | `unverified` |
 | `pr-description-template` | `compatible` | `unverified` | `unverified` |
+| `pr-feedback-sweep` | `unverified` | `unverified` | `unverified` |
 | `pr-flow-graph` | `unverified` | `unverified` | `unverified` |
 | `pr-inline-comment-template` | `unverified` | `unverified` | `unverified` |
 | `prevent-ssr-hydration-mismatches` | `unverified` | `unverified` | `unverified` |
@@ -113,9 +120,11 @@ Una funcionalidad `disabled` lista las alternativas investigadas y ninguna es vi
 | `test-planning` | `unverified` | `unverified` | `unverified` |
 | `typed-errors-refactor` | `unverified` | `unverified` | `unverified` |
 | `ui-ux-flow-patterns` | `unverified` | `unverified` | `unverified` |
+| `undocumented-protocol-client` | `unverified` | `unverified` | `unverified` |
 | `user-manual` | `unverified` | `unverified` | `unverified` |
 | `vivid-visual-output` | `unverified` | `unverified` | `unverified` |
 | `widget-ui-proposals` | `unverified` | `adapted` | `adapted` |
+| `windows-git-bash-agent-gotchas` | `unverified` | `unverified` | `unverified` |
 
 ## C. Análisis por skill
 
@@ -748,6 +757,73 @@ Pendiente de verificar:
 - Ejecutar la skill en Codex CLI con un caso real.
 - Ejecutar la skill en Hermes Agent con un caso real.
 
+### `cross-agent-skill-portability`
+
+**Identificación**
+
+- Nombre: Cross-Agent Skill Portability; versión: 1.0.0; SKILL.md: `plugins/golfo-kit/skills/cross-agent-skill-portability/SKILL.md`.
+- Propósito: Porta skills y plugins entre Claude Code, Codex y Hermes con equivalentes por capacidad.
+- Funcionalidades principales: auditoría de capacidades; port de hooks a Hermes; skills locales del repo.
+- Agentes soportados declarados: no declara.
+
+**Dependencias**
+
+Sin dependencias específicas de agente detectadas por inspección.
+
+**Compatibilidad por agente**
+
+#### cross-agent-skill-portability / `claude_code`: `unverified`
+
+Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Claude Code durante esta auditoría, así que su funcionamiento no está verificado.
+
+- Capacidades faltantes: ninguna.
+- Alternativas investigadas: ninguna.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `core-workflow` | sí | `unverified` | `native` | Instrucciones de la skill; no usa herramientas específicas de agente. | — | Sin dependencias específicas detectadas por inspección; no ejecutada en Claude Code en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
+
+#### cross-agent-skill-portability / `codex`: `unverified`
+
+Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Codex CLI durante esta auditoría, así que su funcionamiento no está verificado.
+
+- Capacidades faltantes: ninguna.
+- Alternativas investigadas: ninguna.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `core-workflow` | sí | `unverified` | `native` | Instrucciones de la skill; no usa herramientas específicas de agente. | — | Sin dependencias específicas detectadas por inspección; no ejecutada en Codex CLI en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
+
+#### cross-agent-skill-portability / `hermes`: `unverified`
+
+Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Hermes Agent durante esta auditoría, así que su funcionamiento no está verificado.
+
+- Capacidades faltantes: ninguna.
+- Alternativas investigadas: ninguna.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `core-workflow` | sí | `unverified` | `native` | Instrucciones de la skill; no usa herramientas específicas de agente. | — | Sin dependencias específicas detectadas por inspección; no ejecutada en Hermes Agent en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
+
+**Implementación**
+
+- Adaptaciones: ninguna.
+- Archivos modificados: ninguno.
+- Fallback: ninguno.
+- Cambios de comportamiento respecto del original: ninguno.
+
+**Verificación**
+
+| Prueba | Agente | Tipo | Comando | Resultado | Evidencia |
+|---|---|---|---|---|---|
+| `static-inspection` | `any` | static | `grep -rE "AskUserQuestion\|request_user_input\|Monitor\|Cron(Create\|List\|Delete)\|PushNotification\|TaskStop\|Agent\|subagent\|mcp__\|claude -p\|codex exec\|~/.claude\|~/.codex\|apply_patch\|update_plan" plugins/golfo-kit/skills/cross-agent-skill-portability` | `passed` | Inspección de SKILL.md y references al migrar la skill desde system-config (2026-11-19). Las menciones a herramientas de Hermes, Claude Code o Codex son alternativas por agente documentadas en la propia skill. |
+
+Pendiente de verificar:
+
+- Ejecutar la skill en Claude Code con un caso real.
+- Ejecutar la skill en Codex CLI con un caso real.
+- Ejecutar la skill en Hermes Agent con un caso real.
+
 ### `deepen-prompt`
 
 **Identificación**
@@ -808,6 +884,73 @@ Sin dependencias específicas de agente detectadas por inspección. No se ejecut
 | Prueba | Agente | Tipo | Comando | Resultado | Evidencia |
 |---|---|---|---|---|---|
 | `static-inspection` | `any` | static | `grep -rE "AskUserQuestion\|request_user_input\|Monitor\|Cron(Create\|List\|Delete)\|PushNotification\|TaskStop\|Agent\|subagent\|mcp__\|claude -p\|codex exec\|~/.claude\|~/.codex\|apply_patch\|update_plan" plugins/golfo-kit/skills/<skill>` | `passed` | Inspección de SKILL.md y evals del 2026-10-30: la skill solo produce texto y no usa herramientas específicas de agente. |
+
+Pendiente de verificar:
+
+- Ejecutar la skill en Claude Code con un caso real.
+- Ejecutar la skill en Codex CLI con un caso real.
+- Ejecutar la skill en Hermes Agent con un caso real.
+
+### `device-visual-bug-repro`
+
+**Identificación**
+
+- Nombre: Device Visual Bug Repro; versión: 1.0.0; SKILL.md: `plugins/golfo-web/skills/device-visual-bug-repro/SKILL.md`.
+- Propósito: Reproduce y arregla bugs visuales vistos en el teléfono a partir de una captura.
+- Funcionalidades principales: medición de la captura; emulación WebKit; probes por LAN.
+- Agentes soportados declarados: no declara.
+
+**Dependencias**
+
+Sin dependencias específicas de agente detectadas por inspección.
+
+**Compatibilidad por agente**
+
+#### device-visual-bug-repro / `claude_code`: `unverified`
+
+Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Claude Code durante esta auditoría, así que su funcionamiento no está verificado.
+
+- Capacidades faltantes: ninguna.
+- Alternativas investigadas: ninguna.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `core-workflow` | sí | `unverified` | `native` | Instrucciones de la skill; no usa herramientas específicas de agente. | — | Sin dependencias específicas detectadas por inspección; no ejecutada en Claude Code en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
+
+#### device-visual-bug-repro / `codex`: `unverified`
+
+Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Codex CLI durante esta auditoría, así que su funcionamiento no está verificado.
+
+- Capacidades faltantes: ninguna.
+- Alternativas investigadas: ninguna.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `core-workflow` | sí | `unverified` | `native` | Instrucciones de la skill; no usa herramientas específicas de agente. | — | Sin dependencias específicas detectadas por inspección; no ejecutada en Codex CLI en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
+
+#### device-visual-bug-repro / `hermes`: `unverified`
+
+Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Hermes Agent durante esta auditoría, así que su funcionamiento no está verificado.
+
+- Capacidades faltantes: ninguna.
+- Alternativas investigadas: ninguna.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `core-workflow` | sí | `unverified` | `native` | Instrucciones de la skill; no usa herramientas específicas de agente. | — | Sin dependencias específicas detectadas por inspección; no ejecutada en Hermes Agent en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
+
+**Implementación**
+
+- Adaptaciones: ninguna.
+- Archivos modificados: ninguno.
+- Fallback: ninguno.
+- Cambios de comportamiento respecto del original: ninguno.
+
+**Verificación**
+
+| Prueba | Agente | Tipo | Comando | Resultado | Evidencia |
+|---|---|---|---|---|---|
+| `static-inspection` | `any` | static | `grep -rE "AskUserQuestion\|request_user_input\|Monitor\|Cron(Create\|List\|Delete)\|PushNotification\|TaskStop\|Agent\|subagent\|mcp__\|claude -p\|codex exec\|~/.claude\|~/.codex\|apply_patch\|update_plan" plugins/golfo-web/skills/device-visual-bug-repro` | `passed` | Inspección de SKILL.md y references al migrar la skill desde system-config (2026-11-19). Las menciones a herramientas de Hermes, Claude Code o Codex son alternativas por agente documentadas en la propia skill. |
 
 Pendiente de verificar:
 
@@ -1304,6 +1447,140 @@ Pendiente de verificar:
 - Ejecutar la skill en Codex CLI con un caso real.
 - Ejecutar la skill en Hermes Agent con un caso real.
 
+### `golfo-lint-adoption`
+
+**Identificación**
+
+- Nombre: golfo-lint Adoption; versión: 1.1.0; SKILL.md: `plugins/golfo-javascript/skills/golfo-lint-adoption/SKILL.md`.
+- Propósito: Adopta y ajusta @golfo/lint en un repo y su CI, arreglando falsos positivos en golfo-lint.
+- Funcionalidades principales: instalación y config; triage de hallazgos; gate en CI.
+- Agentes soportados declarados: no declara.
+
+**Dependencias**
+
+Sin dependencias específicas de agente detectadas por inspección.
+
+**Compatibilidad por agente**
+
+#### golfo-lint-adoption / `claude_code`: `unverified`
+
+Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Claude Code durante esta auditoría, así que su funcionamiento no está verificado.
+
+- Capacidades faltantes: ninguna.
+- Alternativas investigadas: ninguna.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `core-workflow` | sí | `unverified` | `native` | Instrucciones de la skill; no usa herramientas específicas de agente. | — | Sin dependencias específicas detectadas por inspección; no ejecutada en Claude Code en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
+
+#### golfo-lint-adoption / `codex`: `unverified`
+
+Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Codex CLI durante esta auditoría, así que su funcionamiento no está verificado.
+
+- Capacidades faltantes: ninguna.
+- Alternativas investigadas: ninguna.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `core-workflow` | sí | `unverified` | `native` | Instrucciones de la skill; no usa herramientas específicas de agente. | — | Sin dependencias específicas detectadas por inspección; no ejecutada en Codex CLI en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
+
+#### golfo-lint-adoption / `hermes`: `unverified`
+
+Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Hermes Agent durante esta auditoría, así que su funcionamiento no está verificado.
+
+- Capacidades faltantes: ninguna.
+- Alternativas investigadas: ninguna.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `core-workflow` | sí | `unverified` | `native` | Instrucciones de la skill; no usa herramientas específicas de agente. | — | Sin dependencias específicas detectadas por inspección; no ejecutada en Hermes Agent en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
+
+**Implementación**
+
+- Adaptaciones: ninguna.
+- Archivos modificados: ninguno.
+- Fallback: ninguno.
+- Cambios de comportamiento respecto del original: ninguno.
+
+**Verificación**
+
+| Prueba | Agente | Tipo | Comando | Resultado | Evidencia |
+|---|---|---|---|---|---|
+| `static-inspection` | `any` | static | `grep -rE "AskUserQuestion\|request_user_input\|Monitor\|Cron(Create\|List\|Delete)\|PushNotification\|TaskStop\|Agent\|subagent\|mcp__\|claude -p\|codex exec\|~/.claude\|~/.codex\|apply_patch\|update_plan" plugins/golfo-javascript/skills/golfo-lint-adoption` | `passed` | Inspección de SKILL.md y references al migrar la skill desde system-config (2026-11-19). Las menciones a herramientas de Hermes, Claude Code o Codex son alternativas por agente documentadas en la propia skill. |
+
+Pendiente de verificar:
+
+- Ejecutar la skill en Claude Code con un caso real.
+- Ejecutar la skill en Codex CLI con un caso real.
+- Ejecutar la skill en Hermes Agent con un caso real.
+
+### `golfo-npm-package-release`
+
+**Identificación**
+
+- Nombre: golfo npm Package Release; versión: 1.0.0; SKILL.md: `plugins/golfo-javascript/skills/golfo-npm-package-release/SKILL.md`.
+- Propósito: Publica paquetes @golfo en npm con trusted publishing y destraba releases fallidos.
+- Funcionalidades principales: bootstrap con staged publish; npm trust; recuperación de releases.
+- Agentes soportados declarados: no declara.
+
+**Dependencias**
+
+Sin dependencias específicas de agente detectadas por inspección.
+
+**Compatibilidad por agente**
+
+#### golfo-npm-package-release / `claude_code`: `unverified`
+
+Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Claude Code durante esta auditoría, así que su funcionamiento no está verificado.
+
+- Capacidades faltantes: ninguna.
+- Alternativas investigadas: ninguna.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `core-workflow` | sí | `unverified` | `native` | Instrucciones de la skill; no usa herramientas específicas de agente. | — | Sin dependencias específicas detectadas por inspección; no ejecutada en Claude Code en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
+
+#### golfo-npm-package-release / `codex`: `unverified`
+
+Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Codex CLI durante esta auditoría, así que su funcionamiento no está verificado.
+
+- Capacidades faltantes: ninguna.
+- Alternativas investigadas: ninguna.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `core-workflow` | sí | `unverified` | `native` | Instrucciones de la skill; no usa herramientas específicas de agente. | — | Sin dependencias específicas detectadas por inspección; no ejecutada en Codex CLI en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
+
+#### golfo-npm-package-release / `hermes`: `unverified`
+
+Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Hermes Agent durante esta auditoría, así que su funcionamiento no está verificado.
+
+- Capacidades faltantes: ninguna.
+- Alternativas investigadas: ninguna.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `core-workflow` | sí | `unverified` | `native` | Instrucciones de la skill; no usa herramientas específicas de agente. | — | Sin dependencias específicas detectadas por inspección; no ejecutada en Hermes Agent en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
+
+**Implementación**
+
+- Adaptaciones: ninguna.
+- Archivos modificados: ninguno.
+- Fallback: ninguno.
+- Cambios de comportamiento respecto del original: ninguno.
+
+**Verificación**
+
+| Prueba | Agente | Tipo | Comando | Resultado | Evidencia |
+|---|---|---|---|---|---|
+| `static-inspection` | `any` | static | `grep -rE "AskUserQuestion\|request_user_input\|Monitor\|Cron(Create\|List\|Delete)\|PushNotification\|TaskStop\|Agent\|subagent\|mcp__\|claude -p\|codex exec\|~/.claude\|~/.codex\|apply_patch\|update_plan" plugins/golfo-javascript/skills/golfo-npm-package-release` | `passed` | Inspección de SKILL.md y references al migrar la skill desde system-config (2026-11-19). Las menciones a herramientas de Hermes, Claude Code o Codex son alternativas por agente documentadas en la propia skill. |
+
+Pendiente de verificar:
+
+- Ejecutar la skill en Claude Code con un caso real.
+- Ejecutar la skill en Codex CLI con un caso real.
+- Ejecutar la skill en Hermes Agent con un caso real.
+
 ### `improve-spec`
 
 **Identificación**
@@ -1477,6 +1754,73 @@ Pendiente de verificar:
 - Ejecutar con una URL de hilo real en Claude Code.
 - Ejecutar con una URL de hilo real en Codex CLI.
 - Ejecutar con una URL de hilo real en Hermes Agent.
+
+### `installed-pwa-platform-quirks`
+
+**Identificación**
+
+- Nombre: Installed PWA Platform Quirks; versión: 1.0.0; SKILL.md: `plugins/golfo-web/skills/installed-pwa-platform-quirks/SKILL.md`.
+- Propósito: Arregla funciones que fallan solo en la PWA instalada (iOS standalone, Android).
+- Funcionalidades principales: descarga con Web Share; detección por capacidad y modo.
+- Agentes soportados declarados: no declara.
+
+**Dependencias**
+
+Sin dependencias específicas de agente detectadas por inspección.
+
+**Compatibilidad por agente**
+
+#### installed-pwa-platform-quirks / `claude_code`: `unverified`
+
+Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Claude Code durante esta auditoría, así que su funcionamiento no está verificado.
+
+- Capacidades faltantes: ninguna.
+- Alternativas investigadas: ninguna.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `core-workflow` | sí | `unverified` | `native` | Instrucciones de la skill; no usa herramientas específicas de agente. | — | Sin dependencias específicas detectadas por inspección; no ejecutada en Claude Code en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
+
+#### installed-pwa-platform-quirks / `codex`: `unverified`
+
+Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Codex CLI durante esta auditoría, así que su funcionamiento no está verificado.
+
+- Capacidades faltantes: ninguna.
+- Alternativas investigadas: ninguna.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `core-workflow` | sí | `unverified` | `native` | Instrucciones de la skill; no usa herramientas específicas de agente. | — | Sin dependencias específicas detectadas por inspección; no ejecutada en Codex CLI en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
+
+#### installed-pwa-platform-quirks / `hermes`: `unverified`
+
+Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Hermes Agent durante esta auditoría, así que su funcionamiento no está verificado.
+
+- Capacidades faltantes: ninguna.
+- Alternativas investigadas: ninguna.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `core-workflow` | sí | `unverified` | `native` | Instrucciones de la skill; no usa herramientas específicas de agente. | — | Sin dependencias específicas detectadas por inspección; no ejecutada en Hermes Agent en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
+
+**Implementación**
+
+- Adaptaciones: ninguna.
+- Archivos modificados: ninguno.
+- Fallback: ninguno.
+- Cambios de comportamiento respecto del original: ninguno.
+
+**Verificación**
+
+| Prueba | Agente | Tipo | Comando | Resultado | Evidencia |
+|---|---|---|---|---|---|
+| `static-inspection` | `any` | static | `grep -rE "AskUserQuestion\|request_user_input\|Monitor\|Cron(Create\|List\|Delete)\|PushNotification\|TaskStop\|Agent\|subagent\|mcp__\|claude -p\|codex exec\|~/.claude\|~/.codex\|apply_patch\|update_plan" plugins/golfo-web/skills/installed-pwa-platform-quirks` | `passed` | Inspección de SKILL.md y references al migrar la skill desde system-config (2026-11-19). Las menciones a herramientas de Hermes, Claude Code o Codex son alternativas por agente documentadas en la propia skill. |
+
+Pendiente de verificar:
+
+- Ejecutar la skill en Claude Code con un caso real.
+- Ejecutar la skill en Codex CLI con un caso real.
+- Ejecutar la skill en Hermes Agent con un caso real.
 
 ### `interactive-cli-design`
 
@@ -2050,6 +2394,73 @@ Pendiente de verificar:
 - Ejecutar la skill en Codex CLI con un caso real.
 - Ejecutar la skill en Hermes Agent con un caso real.
 
+### `parallel-pr-hygiene`
+
+**Identificación**
+
+- Nombre: Parallel PR Hygiene; versión: 1.0.0; SKILL.md: `plugins/golfo-github/skills/parallel-pr-hygiene/SKILL.md`.
+- Propósito: Evita choques de versión, trabajo duplicado y worktrees huérfanos cuando varias sesiones abren PRs.
+- Funcionalidades principales: revisar trabajo en vuelo; versionado en paralelo; limpieza de worktrees.
+- Agentes soportados declarados: no declara.
+
+**Dependencias**
+
+Sin dependencias específicas de agente detectadas por inspección.
+
+**Compatibilidad por agente**
+
+#### parallel-pr-hygiene / `claude_code`: `unverified`
+
+Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Claude Code durante esta auditoría, así que su funcionamiento no está verificado.
+
+- Capacidades faltantes: ninguna.
+- Alternativas investigadas: ninguna.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `core-workflow` | sí | `unverified` | `native` | Instrucciones de la skill; no usa herramientas específicas de agente. | — | Sin dependencias específicas detectadas por inspección; no ejecutada en Claude Code en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
+
+#### parallel-pr-hygiene / `codex`: `unverified`
+
+Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Codex CLI durante esta auditoría, así que su funcionamiento no está verificado.
+
+- Capacidades faltantes: ninguna.
+- Alternativas investigadas: ninguna.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `core-workflow` | sí | `unverified` | `native` | Instrucciones de la skill; no usa herramientas específicas de agente. | — | Sin dependencias específicas detectadas por inspección; no ejecutada en Codex CLI en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
+
+#### parallel-pr-hygiene / `hermes`: `unverified`
+
+Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Hermes Agent durante esta auditoría, así que su funcionamiento no está verificado.
+
+- Capacidades faltantes: ninguna.
+- Alternativas investigadas: ninguna.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `core-workflow` | sí | `unverified` | `native` | Instrucciones de la skill; no usa herramientas específicas de agente. | — | Sin dependencias específicas detectadas por inspección; no ejecutada en Hermes Agent en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
+
+**Implementación**
+
+- Adaptaciones: ninguna.
+- Archivos modificados: ninguno.
+- Fallback: ninguno.
+- Cambios de comportamiento respecto del original: ninguno.
+
+**Verificación**
+
+| Prueba | Agente | Tipo | Comando | Resultado | Evidencia |
+|---|---|---|---|---|---|
+| `static-inspection` | `any` | static | `grep -rE "AskUserQuestion\|request_user_input\|Monitor\|Cron(Create\|List\|Delete)\|PushNotification\|TaskStop\|Agent\|subagent\|mcp__\|claude -p\|codex exec\|~/.claude\|~/.codex\|apply_patch\|update_plan" plugins/golfo-github/skills/parallel-pr-hygiene` | `passed` | Inspección de SKILL.md y references al migrar la skill desde system-config (2026-11-19). Las menciones a herramientas de Hermes, Claude Code o Codex son alternativas por agente documentadas en la propia skill. |
+
+Pendiente de verificar:
+
+- Ejecutar la skill en Claude Code con un caso real.
+- Ejecutar la skill en Codex CLI con un caso real.
+- Ejecutar la skill en Hermes Agent con un caso real.
+
 ### `pr-description-template`
 
 **Identificación**
@@ -2139,6 +2550,87 @@ Pendiente de verificar:
 
 - Codex: flujo completo antes/después + subida a pr-assets.
 - Hermes: captura con computer_use o con use_real_profile + headed.
+
+### `pr-feedback-sweep`
+
+**Identificación**
+
+- Nombre: PR Feedback Sweep; versión: 1.0.0; SKILL.md: `plugins/golfo-github/skills/pr-feedback-sweep/SKILL.md`.
+- Propósito: Barre threads, reviews y comentarios generales de un PR y resuelve cada ítem con el contrato de inline-thread-autofix.
+- Funcionalidades principales: pregunta del entorno una sola vez; inventario y clasificación del feedback del PR; resolución por ítem con inline-thread-autofix; reporte final por ítem.
+- Agentes soportados declarados: no declara.
+
+**Dependencias**
+
+| Dependencia | Tipo | Obligatoria | Agentes que la tienen |
+|---|---|---|---|
+| Herramienta de preguntas | tool | no | `claude_code`; `codex`; `hermes` |
+| `gh` en PATH | command | sí | `claude_code`; `codex`; `hermes` |
+
+**Compatibilidad por agente**
+
+#### pr-feedback-sweep / `claude_code`: `unverified`
+
+Reusa la pregunta del entorno de inline-thread-autofix; no ejecutada en Claude Code en esta auditoría.
+
+- Capacidades faltantes: ninguna.
+- Alternativas investigadas: ninguna.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `ask-environment` | sí | `unverified` | `native` | `AskUserQuestion`. | Pregunta en texto y detención. | No ejecutada en Claude Code en esta auditoría. | — |
+| `pr-closeout` | sí | `unverified` | `native` | Reply, resolución de threads y `minimizeComment` de comentarios generales con gh. | — | No ejecutada en Claude Code en esta auditoría. | — |
+
+#### pr-feedback-sweep / `codex`: `unverified`
+
+Reusa la pregunta del entorno de inline-thread-autofix; no ejecutada en Codex CLI en esta auditoría.
+
+- Capacidades faltantes: request_user_input fuera del modo Plan.
+- Alternativas investigadas: request_user_input en modo Plan.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `ask-environment` | sí | `unverified` | `alternative` | Texto y detención; `request_user_input` solo en modo Plan. | Pregunta en texto y detención. | No ejecutada en Codex CLI en esta auditoría. | — |
+| `pr-closeout` | sí | `unverified` | `native` | Reply, resolución de threads y `minimizeComment` de comentarios generales con gh. | — | No ejecutada en Codex CLI en esta auditoría. | — |
+
+| Funcionalidad | Alternativa investigada | Fuente | Viable | Motivo |
+|---|---|---|---|---|
+| `ask-environment` | Texto y detención; `request_user_input` solo en modo Plan. | Auditoría 1.0.0 (PR #22) y shared/references/agent-capabilities.md | sí | No ejecutada en Codex CLI en esta auditoría. |
+
+#### pr-feedback-sweep / `hermes`: `unverified`
+
+Reusa la pregunta del entorno de inline-thread-autofix; no ejecutada en Hermes Agent en esta auditoría.
+
+- Capacidades faltantes: ninguna.
+- Alternativas investigadas: clarify.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `ask-environment` | sí | `unverified` | `alternative` | `clarify`; texto ante undelivered/timed_out/cancelled. | Pregunta en texto y detención. | No ejecutada en Hermes Agent en esta auditoría. | — |
+| `pr-closeout` | sí | `unverified` | `native` | Reply, resolución de threads y `minimizeComment` de comentarios generales con gh. | — | No ejecutada en Hermes Agent en esta auditoría. | — |
+
+| Funcionalidad | Alternativa investigada | Fuente | Viable | Motivo |
+|---|---|---|---|---|
+| `ask-environment` | `clarify`; texto ante undelivered/timed_out/cancelled. | Auditoría 1.0.0 (PR #22) y shared/references/agent-capabilities.md | sí | No ejecutada en Hermes Agent en esta auditoría. |
+
+**Implementación**
+
+- Adaptaciones: Delega la pregunta del entorno y su compatibilidad entre agentes a inline-thread-autofix.
+- Archivos modificados: `plugins/golfo-github/skills/pr-feedback-sweep/SKILL.md`.
+- Fallback: Pregunta en texto con detención, heredada de inline-thread-autofix..
+- Cambios de comportamiento respecto del original: Ninguno; skill nueva..
+
+**Verificación**
+
+| Prueba | Agente | Tipo | Comando | Resultado | Evidencia |
+|---|---|---|---|---|---|
+| `static-inspection` | `any` | static | `grep -rE "AskUserQuestion\|request_user_input\|Monitor\|Cron(Create\|List\|Delete)\|PushNotification\|TaskStop\|Agent\|subagent\|mcp__\|claude -p\|codex exec\|~/.claude\|~/.codex\|apply_patch\|update_plan" plugins/golfo-github/skills/pr-feedback-sweep` | `passed` | Inspección de SKILL.md del 2026-11-19: solo nombra `AskUserQuestion` a través de inline-thread-autofix. |
+
+Pendiente de verificar:
+
+- Ejecutar sobre un PR real con threads y comentarios generales en Claude Code.
+- Ejecutar sobre un PR real en Codex CLI.
+- Ejecutar sobre un PR real en Hermes Agent.
 
 ### `pr-flow-graph`
 
@@ -3591,6 +4083,73 @@ Pendiente de verificar:
 - Claude Code: verificación en navegador con Claude in Chrome conectado (camino nativo).
 - Hermes: pantallas que requieren la sesión del usuario con computer_use (con consentimiento) o browser_exec con perfil real.
 
+### `undocumented-protocol-client`
+
+**Identificación**
+
+- Nombre: Undocumented Protocol Client; versión: 1.0.0; SKILL.md: `plugins/golfo-engineering/skills/undocumented-protocol-client/SKILL.md`.
+- Propósito: Arma clientes y servidores MCP para protocolos internos sin documentar.
+- Funcionalidades principales: investigación de fuente y paquete; PROTOCOL.md; captura en vivo.
+- Agentes soportados declarados: no declara.
+
+**Dependencias**
+
+Sin dependencias específicas de agente detectadas por inspección.
+
+**Compatibilidad por agente**
+
+#### undocumented-protocol-client / `claude_code`: `unverified`
+
+Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Claude Code durante esta auditoría, así que su funcionamiento no está verificado.
+
+- Capacidades faltantes: ninguna.
+- Alternativas investigadas: ninguna.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `core-workflow` | sí | `unverified` | `native` | Instrucciones de la skill; no usa herramientas específicas de agente. | — | Sin dependencias específicas detectadas por inspección; no ejecutada en Claude Code en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
+
+#### undocumented-protocol-client / `codex`: `unverified`
+
+Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Codex CLI durante esta auditoría, así que su funcionamiento no está verificado.
+
+- Capacidades faltantes: ninguna.
+- Alternativas investigadas: ninguna.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `core-workflow` | sí | `unverified` | `native` | Instrucciones de la skill; no usa herramientas específicas de agente. | — | Sin dependencias específicas detectadas por inspección; no ejecutada en Codex CLI en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
+
+#### undocumented-protocol-client / `hermes`: `unverified`
+
+Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Hermes Agent durante esta auditoría, así que su funcionamiento no está verificado.
+
+- Capacidades faltantes: ninguna.
+- Alternativas investigadas: ninguna.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `core-workflow` | sí | `unverified` | `native` | Instrucciones de la skill; no usa herramientas específicas de agente. | — | Sin dependencias específicas detectadas por inspección; no ejecutada en Hermes Agent en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
+
+**Implementación**
+
+- Adaptaciones: ninguna.
+- Archivos modificados: ninguno.
+- Fallback: ninguno.
+- Cambios de comportamiento respecto del original: ninguno.
+
+**Verificación**
+
+| Prueba | Agente | Tipo | Comando | Resultado | Evidencia |
+|---|---|---|---|---|---|
+| `static-inspection` | `any` | static | `grep -rE "AskUserQuestion\|request_user_input\|Monitor\|Cron(Create\|List\|Delete)\|PushNotification\|TaskStop\|Agent\|subagent\|mcp__\|claude -p\|codex exec\|~/.claude\|~/.codex\|apply_patch\|update_plan" plugins/golfo-engineering/skills/undocumented-protocol-client` | `passed` | Inspección de SKILL.md y references al migrar la skill desde system-config (2026-11-19). Las menciones a herramientas de Hermes, Claude Code o Codex son alternativas por agente documentadas en la propia skill. |
+
+Pendiente de verificar:
+
+- Ejecutar la skill en Claude Code con un caso real.
+- Ejecutar la skill en Codex CLI con un caso real.
+- Ejecutar la skill en Hermes Agent con un caso real.
+
 ### `user-manual`
 
 **Identificación**
@@ -3854,6 +4413,73 @@ Pendiente de verificar:
 - Claude: probar en una sesión con el conector visualize.
 - Codex: observar el render y el clic de Aplicar en la app de escritorio.
 - Hermes: verificar la entrega inline de la PNG por el gateway de Telegram.
+
+### `windows-git-bash-agent-gotchas`
+
+**Identificación**
+
+- Nombre: Windows Git Bash Agent Gotchas; versión: 1.0.0; SKILL.md: `plugins/golfo-kit/skills/windows-git-bash-agent-gotchas/SKILL.md`.
+- Propósito: Arreglos para agentes que corren comandos en Windows con Git Bash/MSYS.
+- Funcionalidades principales: paths para programas nativos; WSL desde Git Bash; symlinks en Windows.
+- Agentes soportados declarados: no declara.
+
+**Dependencias**
+
+Sin dependencias específicas de agente detectadas por inspección.
+
+**Compatibilidad por agente**
+
+#### windows-git-bash-agent-gotchas / `claude_code`: `unverified`
+
+Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Claude Code durante esta auditoría, así que su funcionamiento no está verificado.
+
+- Capacidades faltantes: ninguna.
+- Alternativas investigadas: ninguna.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `core-workflow` | sí | `unverified` | `native` | Instrucciones de la skill; no usa herramientas específicas de agente. | — | Sin dependencias específicas detectadas por inspección; no ejecutada en Claude Code en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
+
+#### windows-git-bash-agent-gotchas / `codex`: `unverified`
+
+Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Codex CLI durante esta auditoría, así que su funcionamiento no está verificado.
+
+- Capacidades faltantes: ninguna.
+- Alternativas investigadas: ninguna.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `core-workflow` | sí | `unverified` | `native` | Instrucciones de la skill; no usa herramientas específicas de agente. | — | Sin dependencias específicas detectadas por inspección; no ejecutada en Codex CLI en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
+
+#### windows-git-bash-agent-gotchas / `hermes`: `unverified`
+
+Sin dependencias específicas de agente detectadas por inspección. No se ejecutó en Hermes Agent durante esta auditoría, así que su funcionamiento no está verificado.
+
+- Capacidades faltantes: ninguna.
+- Alternativas investigadas: ninguna.
+
+| Funcionalidad | Obligatoria | Estado | Resolución | Implementación | Fallback | Justificación | Evidencia |
+|---|---|---|---|---|---|---|---|
+| `core-workflow` | sí | `unverified` | `native` | Instrucciones de la skill; no usa herramientas específicas de agente. | — | Sin dependencias específicas detectadas por inspección; no ejecutada en Hermes Agent en esta auditoría. | Inspección estática (prueba static-inspection).; prueba `static-inspection` |
+
+**Implementación**
+
+- Adaptaciones: ninguna.
+- Archivos modificados: ninguno.
+- Fallback: ninguno.
+- Cambios de comportamiento respecto del original: ninguno.
+
+**Verificación**
+
+| Prueba | Agente | Tipo | Comando | Resultado | Evidencia |
+|---|---|---|---|---|---|
+| `static-inspection` | `any` | static | `grep -rE "AskUserQuestion\|request_user_input\|Monitor\|Cron(Create\|List\|Delete)\|PushNotification\|TaskStop\|Agent\|subagent\|mcp__\|claude -p\|codex exec\|~/.claude\|~/.codex\|apply_patch\|update_plan" plugins/golfo-kit/skills/windows-git-bash-agent-gotchas` | `passed` | Inspección de SKILL.md y references al migrar la skill desde system-config (2026-11-19). Las menciones a herramientas de Hermes, Claude Code o Codex son alternativas por agente documentadas en la propia skill. |
+
+Pendiente de verificar:
+
+- Ejecutar la skill en Claude Code con un caso real.
+- Ejecutar la skill en Codex CLI con un caso real.
+- Ejecutar la skill en Hermes Agent con un caso real.
 
 ## D. Registro de incompatibilidades
 
