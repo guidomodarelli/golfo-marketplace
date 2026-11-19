@@ -2380,7 +2380,7 @@
         },
         {
           "type": "regex",
-          "pattern": "([Pp]rimera l[ií]nea|al principio|arriba|empieza con|[Ee]mpieza con).{0,80}([Ll]ink|enlace)|([Ll]ink|enlace).{0,80}([Pp]rimera l[ií]nea|al principio|arriba)",
+          "pattern": "([Pp]rimera l[ií]nea|al principio|arriba|empieza con|[Ee]mpieza con).{0,80}([Ll]ink|enlace|enlaza)|([Ll]ink|enlace|enlaza).{0,80}([Pp]rimera l[ií]nea|al principio|arriba)",
           "description": "El link al original va al principio de la respuesta"
         }
       ]
