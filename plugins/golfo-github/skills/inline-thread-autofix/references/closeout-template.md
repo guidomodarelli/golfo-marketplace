@@ -108,7 +108,7 @@ Agregar este bloque al body original, sin reemplazarlo:
 Publicar como comentario nuevo en `repos/{{owner}}/{{repo}}/issues/{{pull_request_number}}/comments`. La respuesta a un comentario general siempre empieza con el link explícito al original (primera línea, para verlo rápido) y sigue con un quote reply de su texto, como el botón *Quote reply* de GitHub: cada línea con `> `. Se cita el body completo; si es muy largo, solo las partes de cada pedido, marcando el recorte con `> …`. Del quote se quitan los comentarios HTML (markers de corridas anteriores) y los back-links agregados por esta skill. Después de verificar la respuesta, se edita el original para agregarle al final, sin tocar su texto, un back-link a la respuesta (variante `Back-link en el comentario original`). Una fila por pedido del comentario, en el mismo orden en que aparecen:
 
 ```markdown
-↩️ En respuesta a [este comentario]({{source_comment_url}}) de {{autor_login}}:
+↩️ En respuesta a [este comentario]({{source_comment_url}}) de {{mencion_autor}}:
 
 > {{linea_1_del_comentario_original}}
 > {{linea_2_del_comentario_original}}
@@ -130,7 +130,7 @@ Publicar como comentario nuevo en `repos/{{owner}}/{{repo}}/issues/{{pull_reques
 <!-- inline-thread-autofix: issuecomment:{{comment_id}} -->
 ```
 
-`{{autor_login}}` va como texto, sin `@`, para no notificar de nuevo. Si ningún pedido llevó commit, cambiar `✅ **Fix aplicado** …` por `ℹ️ **Sin cambios de código**.`, quitar `### 🔧 Qué cambió` y conservar tabla y marker. `⏸️ Pendiente` se usa para pedidos que necesitan confirmación del usuario (labels, merge, otro PR) o que quedaron `FINDING_ANCHOR_AMBIGUOUS`. No usar la palabra `Resuelto` en el texto: no hay thread. Tras verificar la respuesta, el comentario original se oculta como resuelto (`minimizeComment`, `classifier: RESOLVED`), también con pedidos `⏸️ Pendiente` o `ℹ️ Sin cambios`, porque la tabla de la respuesta conserva su estado. Nunca se oculta un comentario del propio usuario autenticado.
+`{{mencion_autor}}` es `@{{autor_login}}` (por ejemplo `@octocat`), para que GitHub lo renderice como mención y notifique al autor que su comentario tiene respuesta. Excepción: si el autor es un bot (`user.type == "Bot"` o login terminado en `[bot]`), va su login como texto, sin `@`, porque mencionar a un bot revisor puede disparar otra corrida suya. Si ningún pedido llevó commit, cambiar `✅ **Fix aplicado** …` por `ℹ️ **Sin cambios de código**.`, quitar `### 🔧 Qué cambió` y conservar tabla y marker. `⏸️ Pendiente` se usa para pedidos que necesitan confirmación del usuario (labels, merge, otro PR) o que quedaron `FINDING_ANCHOR_AMBIGUOUS`. No usar la palabra `Resuelto` en el texto: no hay thread. Tras verificar la respuesta, el comentario original se oculta como resuelto (`minimizeComment`, `classifier: RESOLVED`), también con pedidos `⏸️ Pendiente` o `ℹ️ Sin cambios`, porque la tabla de la respuesta conserva su estado. Nunca se oculta un comentario del propio usuario autenticado.
 
 ### Respuesta ya publicada: se reemplaza, no se acumula
 

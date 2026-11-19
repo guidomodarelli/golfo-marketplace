@@ -3,7 +3,7 @@ name: inline-thread-autofix
 description: "Orquesta feedback accionable de un PR GitHub desde URL `#discussion_r...`, `#pullrequestreview-...` o `#issuecomment-...` (comentario general): al activarse comprueba `~/.work` (si existe, usa el checkout actual sin preguntar); si no, pregunta entre checkout actual, worktree hermano (`/sibling-worktree`) o clone efímero (`/fix-in-ephemeral-clone`), y recién después inspecciona PR, código, stack e issues referenciadas. Inline: responde y resuelve el thread (sin reply si el comentario fue eliminado). Review body: preserva el body o usa fallback. Comentario general: responde con un comentario nuevo y lo oculta como resuelto (`minimizeComment` `RESOLVED`). La issue es opcional; si el feedback la referencia inequívocamente, también la responde y cierra. Con PR fuente cerrado, usa el PR abierto relacionado solo con ownership verificable. Usar siempre al recibir estos links; para barrer todo el feedback de un PR usar `pr-feedback-sweep`. Detener ante ambigüedad, precondiciones inseguras o closeout no verificable."
 license: MIT
 metadata:
-  version: "1.5.0"
+  version: "1.6.0"
   author: "Guido Modarelli"
   category: "code-review"
   tags: "code-review, pull-request, inline-comment, autofix"
