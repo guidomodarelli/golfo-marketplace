@@ -4,7 +4,7 @@ description: "Provides the standard PR title and concise description template (c
 allowed-tools: Bash(gh:*) Bash(git:*) Bash(bash:*) Bash(jq:*)
 license: MIT
 metadata:
-  version: "1.11.0"
+  version: "1.12.0"
   author: "Guido Modarelli"
   category: "git-workflow"
   tags: "pull-request, template, description, screenshots"
@@ -101,7 +101,7 @@ Apply only during `full composition`. When the diff changes what a user sees (co
    If an image fails any check, capture it again or skip it.
 5. **Stop every server you started** as soon as the last image passes the checks, before uploading, so it does not keep consuming CPU, memory or ports. This includes any server started for the base branch to capture the before image. Stop it through the same tool that launched it (`preview_stop`, `stop_terminal_tab`, `TaskStop`, or killing the process tree whose PID you recorded) and confirm the port no longer responds. Never stop a server that was already running before this skill started it: it belongs to the user. Apply the same cleanup when the capture is skipped or fails after the app was launched.
 6. **Upload** with `bash <skill-dir>/scripts/upload-pr-image.sh <owner/repo> <head-branch> <image>...`. It stores the files in the repository's orphan `pr-assets` branch through the GitHub API, under a folder named after the head branch, without touching the local checkout, and prints the URL of each file, one per line. Use the head branch name, so the links exist before the PR does. Name each file by what it shows (`before-dark.png`, `after-dark.png`).
-7. **Place the images** in the **Capturas** table of the template: one row per pair, the first cell names what the row shows (theme, viewport or state), and the **Antes** and **Después** columns hold the images side by side with the same `width`, so the reviewer compares them directly. Put each URL the script prints in `<img src="<url>" alt="<antes|después> <row>" width="<same width>">`; keep the width at most 400 so two fit side by side. Add one sentence above the table saying what to look at. Delete the section when no image applies.
+7. **Place the images** in the **Evidencia** table of the template: one row per pair, the first cell names what the row shows (theme, viewport or state), and the **Antes** and **Después** columns hold the images side by side with the same `width`, so the reviewer compares them directly. Put each URL the script prints in `<img src="<url>" alt="<antes|después> <row>" width="<same width>">`; keep the width at most 400 so two fit side by side. Add one sentence above the table saying what to look at. Delete the section when no image applies.
 
 ### Capture browser
 
@@ -110,14 +110,14 @@ Which browsers count as the user's own, how to recognise each one and which are 
 - Open a **new** tab for the captures and close only the tabs you opened; never navigate or close the user's own tabs.
 - A tool that drives the real desktop (for example Hermes `computer_use`) moves the user's mouse and keyboard: tell the user before starting and capture only if they agree. Crop the desktop screenshot to the page area.
 
-When the change affects the UI but no image could be captured from the real app, delete **Capturas** and add one line to **Reviewer Notes** with the concrete reason (`Sin captura: <motivo>`). Do not block the PR on a screenshot.
+When the change affects the UI but no image could be captured from the real app, delete **Evidencia** and add one line to **Reviewer Notes** with the concrete reason (`Sin captura: <motivo>`). Do not block the PR on a screenshot.
 
 ## Full-composition rules
 
 - Title the two `##` sections that follow it with the pair from [Motive and solution headings](#motive-and-solution-headings) that matches why the change exists.
-- Fill every section from the actual diff; never leave `*italic placeholders*`. Delete optional sections (**Capturas**, **Cambios en la API**, **Reviewer Notes**) when they do not apply.
+- Fill every section from the actual diff; never leave `*italic placeholders*`. Delete optional sections (**Evidencia**, **Cambios en la API**, **Reviewer Notes**) when they do not apply.
 - The template contains only content that is published. Do not add instructions, hints, or blockquotes for the author to the body.
-- Start the body with the change type as its own heading, `# <emoji> <type>` (the only level-1 heading of the body), with exactly one primary type from [Change types](#change-types), for example `# ✨ New Feature` or `# 🐛 Bug Fix`. Every other section of the body (motive, solution, **Capturas**, **Cambios en la API**) is a `##` heading. The PR title already carries the change summary, so do not repeat it as a body heading, and do not wrap the type in a `📝 Descripción` heading: the type alone says what kind of change the reader is about to see.
+- Start the body with the change type as its own heading, `# <emoji> <type>` (the only level-1 heading of the body), with exactly one primary type from [Change types](#change-types), for example `# ✨ New Feature` or `# 🐛 Bug Fix`. Every other section of the body (motive, solution, **Evidencia**, **Cambios en la API**) is a `##` heading. The PR title already carries the change summary, so do not repeat it as a body heading, and do not wrap the type in a `📝 Descripción` heading: the type alone says what kind of change the reader is about to see.
 - Do not add a separate **Tipo de Cambio** section that lists every type, task-list checkboxes (`[x]`, `[ ]`, which GitHub counts as pending tasks of the PR) or a compact **Tipo** metadata block: the heading already says it in one line.
 - Include ordinary ticket or issue links naturally under the change-type heading or in **Reviewer Notes**; do not create a fixed metadata block.
 - When fully composing an existing PR, preserve every canonical Jira backlink already present: a GitHub `> [!NOTE]` alert whose only line is `> 🎫 Jira: [...]` (or the legacy plain `🎫 Jira: [...]` line). Extract backlinks before replacing the body and reinsert each once, as its own `> [!NOTE]` alert, as first content under the change-type heading; never drop established traceability.
@@ -183,7 +183,7 @@ Keep the `❓` and `💡` emojis and a first question that starts with `¿Qué`.
 ## 💡 <pregunta de la solución>
 *Resumen técnico de la implementación. Componentes, servicios y archivos clave modificados.*
 
-## 📸 Capturas *(si aplica)*
+## 📸 Evidencia *(si aplica)*
 
 *Qué mirar:* `<la diferencia que el revisor tiene que ver>`
 
