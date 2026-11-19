@@ -178,9 +178,9 @@ Al aplicar parche:
 - Leer `title`, `body` y `url` con `gh pr view`.
 - No pasar `--title` a `gh pr edit`.
 - No invocar composición completa de `pr-description-template`.
-- No cambiar el tipo de cambio entre paréntesis del encabezado `## 📝 Descripción (…)`, ni la selección `[x]` de `Tipo de Cambio` en PRs con el formato anterior.
+- No cambiar el encabezado de tipo de cambio que abre el body (`## <emoji> <tipo>`), ni el tipo entre paréntesis de `## 📝 Descripción (…)` o la selección `[x]` de `Tipo de Cambio` en PRs con formatos anteriores.
 - No agregar, eliminar o reordenar secciones opcionales.
-- No modificar `Pruebas Manuales`, `Cambios en la API` ni `Notas para el Revisor`.
+- No modificar `Pruebas Manuales`, `Cambios en la API` ni `Reviewer Notes` (`Notas para el Revisor` en PRs anteriores).
 - Preservar estilo de fin de línea (`LF`/`CRLF`) y presencia/ausencia de newline final.
 - Limitar diff a eliminar variantes estructuradas del mismo ticket e insertar backlink canónico.
 

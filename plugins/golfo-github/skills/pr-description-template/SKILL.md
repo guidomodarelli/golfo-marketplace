@@ -4,7 +4,7 @@ description: "Provides the standard PR title and concise description template (c
 allowed-tools: Bash(gh:*) Bash(git:*) Bash(bash:*) Bash(jq:*)
 license: MIT
 metadata:
-  version: "1.5.0"
+  version: "1.10.0"
   author: "Guido Modarelli"
   category: "git-workflow"
   tags: "pull-request, template, description, screenshots"
@@ -69,15 +69,15 @@ Suggest a stack when at least one signal holds:
 - **Size**: reviewable changed lines (without lockfiles, generated catalogs or snapshots) are well above the layer size of [`stacked-pr`](../stacked-pr/SKILL.md) («Tamaño de una capa»), and the change has more than one responsibility.
 - **Refactor mixed with the feature**: renames, moves or mechanical edits of existing code, or a refactor of files the feature does not need, that [`refactor-placement.md`](../../references/refactor-placement.md) places in its own layer.
 
-If no signal holds, the check produced nothing to report: continue without mentioning it, its line counts, or that no split is needed, in the reply, the body or the final report. A "no hace falta dividirlo" line is noise for a PR that was never at risk. If one holds and the user can answer in this session, ask one question before creating the PR: open it as one PR, or split it with `stacked-pr` (name the signal and the proposed layers in one line). On "one PR", continue as usual. In flows where nobody can answer (auto-fix loops, review closeouts, background runs), do not ask: create the PR as usual and add the suggestion to **Notas para el Revisor**.
+If no signal holds, the check produced nothing to report: continue without mentioning it, its line counts, or that no split is needed, in the reply, the body or the final report. A "no hace falta dividirlo" line is noise for a PR that was never at risk. If one holds and the user can answer in this session, ask one question before creating the PR: open it as one PR, or split it with `stacked-pr` (name the signal and the proposed layers in one line). On "one PR", continue as usual. In flows where nobody can answer (auto-fix loops, review closeouts, background runs), do not ask: create the PR as usual and add the suggestion to **Reviewer Notes**.
 
 ### Traceability-only patch
 
 Use when another skill updates an existing PR only to add or normalize traceability metadata.
 
 - Do not regenerate the template or edit the PR title.
-- Do not modify the change type of the `## 📝 Descripción (…)` heading (or a **Tipo de Cambio** section in older PRs), **Cambios en la API**, **Notas para el Revisor**, or unrelated ticket links.
-- A canonical Jira backlink may be inserted as the first content under `## 📝 Descripción`; this is not the removed top-level **Referencia** metadata block.
+- Do not modify the change-type heading that opens the body (`## <emoji> <type>`, or `## 📝 Descripción (…)` and a **Tipo de Cambio** section in older PRs), **Cambios en la API**, the collapsed **Reviewer Notes** block (a **Notas para el Revisor** section in older PRs), or unrelated ticket links.
+- A canonical Jira backlink may be inserted as the first content under that opening heading; this is not the removed top-level **Referencia** metadata block.
 - Conservar cuerpo existente y modificar únicamente enlace de trazabilidad solicitado. Releer cuerpo
   antes de escribir, preservar cambios concurrentes y evitar enlaces duplicados.
 - Read `title`, `body`, and `url`; edit only through `gh pr edit <url> --body-file <temp-file>` without `--title`.
@@ -110,21 +110,23 @@ Which browsers count as the user's own, how to recognise each one and which are 
 - Open a **new** tab for the captures and close only the tabs you opened; never navigate or close the user's own tabs.
 - A tool that drives the real desktop (for example Hermes `computer_use`) moves the user's mouse and keyboard: tell the user before starting and capture only if they agree. Crop the desktop screenshot to the page area.
 
-When the change affects the UI but no image could be captured from the real app, delete **Capturas** and add one line to **Notas para el Revisor** with the concrete reason (`Sin captura: <motivo>`). Do not block the PR on a screenshot.
+When the change affects the UI but no image could be captured from the real app, delete **Capturas** and add one line to **Reviewer Notes** with the concrete reason (`Sin captura: <motivo>`). Do not block the PR on a screenshot.
 
 ## Full-composition rules
 
-- Fill every section from the actual diff; never leave `*italic placeholders*`. Delete optional sections (**Capturas**, **Cambios en la API**, **Notas para el Revisor**) when they do not apply.
+- Title the two `###` sections with the pair from [Motive and solution headings](#motive-and-solution-headings) that matches why the change exists.
+- Fill every section from the actual diff; never leave `*italic placeholders*`. Delete optional sections (**Capturas**, **Cambios en la API**, **Reviewer Notes**) when they do not apply.
 - The template contains only content that is published. Do not add instructions, hints, or blockquotes for the author to the body.
-- Start the body with the **Descripción** heading and its change type. The PR title already carries the change summary, so do not repeat it as a body heading.
-- Write the change type in parentheses on the **Descripción** heading, `## 📝 Descripción (<emoji> <type>)`, with exactly one primary type from [Change types](#change-types), for example `## 📝 Descripción (✨ New Feature)`. Do not add a separate **Tipo de Cambio** section that lists every type, task-list checkboxes (`[x]`, `[ ]`, which GitHub counts as pending tasks of the PR) or a compact **Tipo** metadata block: the heading already says it in one line.
-- Include ordinary ticket or issue links naturally in **Descripción** or **Notas para el Revisor**; do not create a fixed metadata block.
-- When fully composing an existing PR, preserve every canonical `🎫 Jira: [...]` backlink already present. Extract backlinks before replacing the body and reinsert each once as first content under `## 📝 Descripción`; never drop established traceability.
+- Start the body with the change type as its own heading, `## <emoji> <type>`, with exactly one primary type from [Change types](#change-types), for example `## ✨ New Feature` or `## 🐛 Bug Fix`. The PR title already carries the change summary, so do not repeat it as a body heading, and do not wrap the type in a `📝 Descripción` heading: the type alone says what kind of change the reader is about to see.
+- Do not add a separate **Tipo de Cambio** section that lists every type, task-list checkboxes (`[x]`, `[ ]`, which GitHub counts as pending tasks of the PR) or a compact **Tipo** metadata block: the heading already says it in one line.
+- Include ordinary ticket or issue links naturally under the change-type heading or in **Reviewer Notes**; do not create a fixed metadata block.
+- When fully composing an existing PR, preserve every canonical `🎫 Jira: [...]` backlink already present. Extract backlinks before replacing the body and reinsert each once as first content under the change-type heading; never drop established traceability.
 - New or legacy backlink normalization follows traceability-only mode; full composition preserves known canonical backlinks but does not invent Jira associations.
 - In **Cambios en la API**, keep only the operation groups that apply (**Agregados**, **Modificados**, **Eliminados / Deprecados**) and delete unused lines.
-- Do not add a **Pruebas Manuales** section, manual testing steps or a list of the validations you ran. Mention automated coverage or how to verify the change inside **Descripción** only when it adds relevant context.
-- **Notas para el Revisor** holds relevant technical decisions (trade-offs, discarded alternatives, constraints) and where to focus the review. Delete it when there is nothing relevant.
-- Body text is in Spanish; keep code, paths, endpoints, branch and identifier names in English.
+- Do not add a **Pruebas Manuales** section, manual testing steps or a list of the validations you ran. Mention automated coverage or how to verify the change under the change-type heading only when it adds relevant context.
+- **Reviewer Notes** holds relevant technical decisions (trade-offs, discarded alternatives, constraints) and where to focus the review. Delete it when there is nothing relevant.
+- Keep **Reviewer Notes** collapsed at the end of the body, in the `<details>` block of the template, with its title in `<summary>` and a blank line after `</summary>` and before `</details>` so GitHub renders the Markdown inside. Few readers open these notes, so they must not push the problem and the solution down the page, but they stay in the body: a separate comment would drift from the description on every refresh and get lost among the review threads.
+- Body text is in Spanish; keep code, paths, endpoints, branch and identifier names in English. The one fixed English heading is the `<summary>` title `👀 Reviewer Notes`; the notes inside it stay in Spanish.
 - Never mention `@codex` in the body, neither `@codex review` nor `@codex fix`: Codex reads a mention in the PR body as a task request and answers asking to create an environment instead of reviewing. [`codex-autofix-loop`](../codex-autofix-loop/SKILL.md) requests the review with a separate comment. To talk about Codex in the body, name it without the `@`.
 - Apply the complete PR body directly with `gh`, unless the user explicitly asks for a draft only.
 - For an existing PR under full composition, locate it with `gh pr view --json number,title,body,url,headRefName,baseRefName`, write the filled template to a temp file, and run `gh pr edit <number-or-url> --title "<title>" --body-file <temp-file>`.
@@ -137,7 +139,7 @@ Single line, descriptive, English-friendly subject. Example: `Add user status si
 
 ## Change types
 
-Pick the one that best describes the PR as a whole and write it, with its emoji, in the parentheses of the **Descripción** heading:
+Pick the one that best describes the PR as a whole and write it, with its emoji, as the first heading of the body (`## <emoji> <type>`):
 
 | Heading | When |
 | --- | --- |
@@ -154,15 +156,31 @@ Pick the one that best describes the PR as a whole and write it, with its emoji,
 | `⚙️ Chore` | mantenimiento sin impacto funcional directo |
 | `↩️ Revert` | revierte un cambio anterior |
 
+## Motive and solution headings
+
+Not every PR fixes a problem: a migration, a new feature or a refactor has a reason, not a defect, and a forced "¿Qué problema hay?" makes the author invent one. Pick the pair of `###` headings from the reason the change exists, not mechanically from the change type (a `⚡ Performance` PR that fixes a slow endpoint is a problem; one that prepares for more load is an improvement). For a removal, say under `❓` who still depended on what goes away; for a risk, say under `💡` whether it is closed or only reduced:
+
+| Reason for the change | `### ❓` heading | `### 💡` heading |
+| --- | --- | --- |
+| algo funciona mal (bug, regresión, error, lentitud que ya molesta) | `¿Qué problema hay?` | `¿Cómo se solucionó?` |
+| hace falta algo que no existe (feature, endpoint, integración) | `¿Qué se necesita?` | `¿Cómo se implementó?` |
+| se pasa de un servicio, librería o plataforma a otro | `¿Qué se migra y por qué?` | `¿Cómo se migró?` |
+| algo funciona pero se quiere mejorar (refactor, rendimiento, dependencias, tooling, docs) | `¿Qué se quiere mejorar?` | `¿Cómo se mejoró?` |
+| se elimina o depreca algo (código muerto, endpoint, feature flag, dependencia) | `¿Qué se elimina y por qué?` | `¿Cómo se eliminó?` |
+| se cierra un riesgo de seguridad o cumplimiento (vulnerabilidad, permisos, datos personales) | `¿Qué riesgo hay?` | `¿Cómo se mitigó?` |
+| se deshace un cambio anterior | `¿Qué se revierte y por qué?` | `¿Cómo se revirtió?` |
+
+Keep the `❓` and `💡` emojis and a first question that starts with `¿Qué`. When no row fits, write a short pair in the same style (for example `¿Qué se quiere validar?` / `¿Cómo se va a medir?` for an experiment behind a flag) instead of bending the change into a problem.
+
 ## Body template
 
 ```markdown
-## 📝 Descripción (<emoji> <tipo de cambio>)
+## <emoji> <tipo de cambio>
 
-### ❓ ¿Qué problema resuelve?
-*Contexto del problema de negocio o técnico. ¿Por qué es necesario este cambio?*
+### ❓ <pregunta del motivo>
+*Contexto de negocio o técnico: el problema, la necesidad, la migración o la mejora. ¿Por qué es necesario este cambio?*
 
-### 💡 ¿Cuál fue la solución?
+### 💡 <pregunta de la solución>
 *Resumen técnico de la implementación. Componentes, servicios y archivos clave modificados.*
 
 ## 📸 Capturas *(si aplica)*
@@ -179,7 +197,10 @@ Pick the one that best describes the PR as a whole and write it, with its emoji,
 - ✏️ **Modificados:** `PUT /api/v1/.../{id}`
 - ➖ **Eliminados / Deprecados:** `GET /api/v1/...`
 
-## 👀 Notas para el Revisor *(si aplica)*
+<details>
+<summary>👀 Reviewer Notes</summary>
 
 *Decisiones técnicas relevantes (trade-offs, alternativas descartadas, restricciones) y dónde enfocar la revisión.*
+
+</details>
 ```
