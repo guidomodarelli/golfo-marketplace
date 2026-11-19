@@ -401,6 +401,28 @@
           "description": "Ubica las constantes en el package de constantes idiomático de Kotlin"
         }
       ]
+    },
+    {
+      "id": "suggest-stacked-layer-for-out-of-scope-cleanup",
+      "description": "En modo PR, ubica en el mismo PR las constantes que agrega la feature y sugiere una capa de stacked PR encima para extraer literales de código existente fuera del alcance.",
+      "input": "Usando /constants-refactor: estoy en la rama feature/invoice-export con el PR #88 abierto, que agrega exportación de facturas. El diff agrega `src/invoices/exportInvoices.ts` con `if (rows.length > 500) throw new Error('too many rows')` y `fetch('/api/v2/invoices/export')`. Revisando vi que hay otros 14 archivos viejos de `src/billing/` y `src/payments/` (que la feature no toca) con el mismo `'/api/v2/'` hardcodeado y timeouts `30000` sueltos. No ejecutes ni edites nada: decime qué constantes extraerías, dónde va cada refactor (este PR u otro) y por qué.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "(mismo PR|same PR|en (el|este) PR|in (the|this) PR)",
+          "description": "Mantiene en el mismo PR lo que agrega la propia feature"
+        },
+        {
+          "type": "regex",
+          "pattern": "(stack|apilad|capa|layer|rama|branch|PR).{0,200}(encima|arriba|above|on top)|(encima|arriba|above|on top).{0,200}(stack|apilad|capa|layer|rama|branch|PR)",
+          "description": "Sugiere una capa de stacked PR encima de la feature para la limpieza fuera de alcance"
+        },
+        {
+          "type": "regex",
+          "pattern": "(sugier|suger|propon|propuesta|recomiend|si quer[eé]s|si est[aá]s de acuerdo|¿quer[eé]s|suggest|propose|recommend)",
+          "description": "Presenta la capa como sugerencia para que el usuario decida, en vez de crearla"
+        }
+      ]
     }
   ]
 }

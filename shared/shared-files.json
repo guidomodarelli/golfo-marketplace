@@ -10,6 +10,10 @@
       "plugins": ["golfo-git", "golfo-github"]
     },
     {
+      "source": "references/refactor-placement.md",
+      "plugins": ["golfo-engineering", "golfo-github", "golfo-javascript"]
+    },
+    {
       "source": "references/skill-coverage.md",
       "plugins": ["golfo-frontend", "golfo-nextjs", "golfo-web"]
     },

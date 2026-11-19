@@ -18,5 +18,6 @@
   {"query": "tengo un stack de llamadas en el error log de node (stack trace) que no entiendo, ayudame a ver qué falla en el PR", "should_trigger": false},
   {"query": "armá un merge request en GitLab para la rama feature/reports y dividilo en dos MRs dependientes", "should_trigger": false},
   {"query": "revisá el PR #301 y dejá comentarios inline sobre lo que veas mal", "should_trigger": false},
-  {"query": "mové el fix del commit abc123 a una rama nueva desde main y abrí un PR solo con eso", "should_trigger": false}
+  {"query": "mové el fix del commit abc123 a una rama nueva desde main y abrí un PR solo con eso", "should_trigger": false},
+  {"query": "constants-refactor me dijo que la extracción de los timeouts de src/payments mejor va en otro PR arriba del de feature/invoice-export (#88). ok, hacelo: armame esa capa encima y abrí el PR", "should_trigger": true}
 ]

@@ -28,6 +28,7 @@ Run only the actions needed to compose, apply, or verify the title and body of t
 - Allowed writes: create the PR when the calling flow asks for it, edit only the title/body of the explicitly requested PR, and upload its screenshots to the `pr-assets` branch with [scripts/upload-pr-image.sh](scripts/upload-pr-image.sh).
 - In `traceability-only` mode, the only allowed write is the delegated body-only backlink; do not re-template the PR.
 - Skip any action that is not a direct requirement of the requested description.
+- Exception: before a new PR, run the [stack check](#stack-check-before-a-new-pr). It only reads the diff and may ask one question; it never creates branches or layers.
 - Exception: after a successful `gh pr create`, hand the new PR to [`codex-autofix-loop`](../codex-autofix-loop/SKILL.md) as described in its «Arranque automático al abrir un PR» section, without asking. That loop owns the later fixes and the merge; this skill does not run them.
 
 ## Direct application
@@ -51,6 +52,24 @@ Hard gate: before typing `gh pr create` or `gh pr edit ... --body`/`--body-file`
 ### Full composition
 
 Use for new PRs or when the user explicitly asks to fill or restructure the complete title/body. Apply the template below from the actual diff.
+
+### Stack check before a new PR
+
+Run only in `full composition` for a PR that does not exist yet, right before `gh pr create`. Splitting is cheap now and expensive once reviewers have started. Skip it for existing PRs, `traceability-only`, a PR whose base is already another feature branch (it is a layer of a stack), and when the user already chose one PR or a stack.
+
+Measure the PR range with the diff you already read to write the body:
+
+```bash
+git diff --shortstat -M "<base-ref>...<head-ref>"
+git diff --name-status -M "<base-ref>...<head-ref>"
+```
+
+Suggest a stack when at least one signal holds:
+
+- **Size**: reviewable changed lines (without lockfiles, generated catalogs or snapshots) are well above the layer size of [`stacked-pr`](../stacked-pr/SKILL.md) («Tamaño de una capa»), and the change has more than one responsibility.
+- **Refactor mixed with the feature**: renames, moves or mechanical edits of existing code, or a refactor of files the feature does not need, that [`refactor-placement.md`](../../references/refactor-placement.md) places in its own layer.
+
+If no signal holds, the check produced nothing to report: continue without mentioning it, its line counts, or that no split is needed, in the reply, the body or the final report. A "no hace falta dividirlo" line is noise for a PR that was never at risk. If one holds and the user can answer in this session, ask one question before creating the PR: open it as one PR, or split it with `stacked-pr` (name the signal and the proposed layers in one line). On "one PR", continue as usual. In flows where nobody can answer (auto-fix loops, review closeouts, background runs), do not ask: create the PR as usual and add the suggestion to **Notas para el Revisor**.
 
 ### Traceability-only patch
 

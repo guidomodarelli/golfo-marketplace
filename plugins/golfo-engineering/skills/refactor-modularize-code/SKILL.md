@@ -3,11 +3,12 @@ name: refactor-modularize-code
 description: Refactor code to improve module boundaries, raise cohesion, decouple responsibilities, and remove harmful duplication without changing behavior, in any language and in JavaScript, TypeScript, and React in particular. Use when a file or feature mixes responsibilities, repeats business logic, leaks infrastructure details across layers, has hard-to-follow dependencies, or needs to be reorganized into clearer modules such as services, adapters, utils, helpers, constants, types, components, custom hooks, or feature-specific folders; also when splitting large JS/TS/TSX files or React components, moving inline logic out of UI, extracting custom hooks, reorganizing imports/exports with reexports, or preparing safer tests around extracted boundaries.
 license: MIT
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
   author: "Guido Modarelli"
   category: "refactor"
   tags: "refactor, modularity, cohesion, duplication"
   command: "/refactor-modularize-code"
+  plugin-dependencies: "golfo-github"
 ---
 
 # Refactor Modularity Cohesion Deduplication
@@ -27,6 +28,10 @@ Refactor toward clear responsibilities and smaller, more cohesive modules. Keep 
 ## Shared execution
 
 Read [ejecución compartida](../../references/refactor-execution.md) before editing. Apply its phases, metrics, and validation workflow.
+
+## Same PR or stacked PR layer
+
+When the refactor comes with a feature in progress, decide where it goes with [refactor-placement.md](../../references/refactor-placement.md) and report it in the closeout.
 
 ## Detect Bad Boundaries
 
@@ -118,4 +123,4 @@ Apply shared validation per phase. Confirm also that removed duplication shares 
 
 ## Closeout
 
-Summarize the extracted boundary, preserved contracts, main-file and feature metrics, and deferred phases.
+Summarize the extracted boundary, preserved contracts, main-file and feature metrics, deferred phases, and the suggested stacked PR layer when the refactor should not ship with the feature.

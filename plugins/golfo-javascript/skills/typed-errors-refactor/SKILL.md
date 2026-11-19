@@ -3,12 +3,12 @@ name: typed-errors-refactor
 description: Analiza, diseña y ejecuta refactors de errores tipados en código JavaScript y TypeScript, front o back (Node, browser, SSR); no aplica a otros lenguajes. Usar siempre cuando el usuario mencione throws o catches genéricos, custom errors, códigos o status inconsistentes, normalización de errores API, filtración de upstream, cause, error boundaries, SSR, cancelación o tests de errores, aunque no pida explícitamente una jerarquía de clases. Usar también ante operaciones async por batches/chunks, partial success, polling, retries, deadlines, jobs/runs terminales, reanudación, unresolved work o cancelación; en esos casos coordinar con `async-operation-error-handling`. Preserva comportamiento observable, migra consumers por boundary y agrega tests de contrato sin imponer framework ni patrón de implementación.
 license: MIT
 metadata:
-  version: "1.1.0"
+  version: "1.2.0"
   author: "Guido Modarelli"
   category: "error-handling"
   tags: "errors, typed-errors, refactor, boundaries, typescript"
   command: "/typed-errors-refactor"
-  plugin-dependencies: "golfo-engineering"
+  plugin-dependencies: "golfo-engineering, golfo-github"
 ---
 
 # Typed Errors Refactor
@@ -162,6 +162,10 @@ Buscar throws sin contrato, casts inseguros, bridges, serialización de `cause/s
 
 Ejecutar typecheck, lint y tests focales después de cada fase; luego suite completa y build/runtime cuando existan.
 
+### Mismo PR o capa de stacked PR
+
+Cuando el refactor de errores acompaña una feature en curso, decidir dónde va cada fase con [refactor-placement.md](../../references/refactor-placement.md) y reportarlo en "Capa de refactor sugerida".
+
 ## Seguridad y límites
 
 - Nunca enviar al browser o DTO público raw upstream response, `cause`, `stack`, headers, cookies, tokens, secrets, passwords, CSRF, payloads completos o PII.
@@ -207,6 +211,7 @@ Usar salvo que el usuario pida otro formato:
 ## Contrato tipado propuesto
 ## Mapping de transporte y sanitización
 ## Plan de migración
+## Capa de refactor sugerida
 ## Tests de comportamiento
 ## Validación
 ## Riesgos, incompatibilidades y pendientes
