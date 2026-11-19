@@ -94,6 +94,21 @@
 | Resolución | no usar `resolveReviewThread` ni afirmar review resuelta |
 | Salida | `Review body: actualizada` o `Comentario fallback: publicado` |
 
+## Destino comentario general (`#issuecomment-<comment_id>`)
+
+| Verificación | Resultado requerido |
+|---|---|
+| Comentario | `id`, `user`, `body`, `html_url` e `issue_url` leídos |
+| Pertenencia | `issue_url` termina en `/repos/<owner>/<repo>/issues/<PR>` del PR indicado |
+| Pedidos | cada pedido separado con su anchor; los ambiguos quedan `FINDING_ANCHOR_AMBIGUOUS` sin bloquear al resto |
+| Alcance | pedidos que no son código del PR (labels, merge, reviewers, otro PR) quedan `⏸️ Pendiente` hasta confirmación del usuario |
+| Duplicados | ningún comentario general contiene marker `issuecomment:<comment_id>` |
+| Respuesta | comentario nuevo en `issues/<PR>/comments` cuya primera línea enlaza el original, seguida del quote reply (`> `) de su texto, tabla de pedidos, SHA si hubo commit y marker |
+| Original | no borrado; la única edición es el back-link agregado al final, con el body previo completo al principio y marker `issuecomment-backlink:<comment_id>` sin duplicar; si el `PATCH` falla se reporta `back-link: no agregado` |
+| Ocultar | tras verificar la respuesta, `minimizeComment` `classifier: RESOLVED` solo sobre el `node_id` del original; releer `isMinimized: true` y `minimizedReason` `resolved`; si el autor es el usuario autenticado, no se oculta |
+| Resolución | no usar `resolveReviewThread` ni la palabra `Resuelto` |
+| Salida | `Comentario general: respondido (<URL>) y ocultado como resuelto`, `respondido, visible (comentario propio)` o `NOT_ACTIONABLE` sin mutación |
+
 ## Reglas de parada
 
 Detener sin commit/push/closeout si:
@@ -102,7 +117,7 @@ Detener sin commit/push/closeout si:
 - handle se perdió, executor no está activo o no puede consultarse (`HANDOFF_EXECUTOR_LOST`);
 - `HANDOFF_RESULT` solo aparece en texto narrativo, carece de campos obligatorios o no puede vincularse a respuesta de herramienta (`HANDOFF_RESULT_INCOMPLETE`/`HANDOFF_RESULT_UNVERIFIED`);
 - se intenta aceptar o rechazar branch/base por nombre o prefijo sin verificar repo, PR, OIDs, relación del stack y autorización derivada del target/handoff;
-- URL no coincide con formato inline o review-body válido;
+- URL no coincide con formato inline, review-body o comentario general válido;
 - PR está cerrado/mergeado y no existe `implementation_pr` abierto inequívoco de branch relacionada;
 - destino no pertenece a PR/repo indicado;
 - stack está `STACK_INCOMPLETE` o `STACK_AMBIGUOUS` y se pretende elegir otra capa;

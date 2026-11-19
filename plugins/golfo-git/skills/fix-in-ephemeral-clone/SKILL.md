@@ -3,7 +3,7 @@ name: fix-in-ephemeral-clone
 description: "Ejecuta fixes en clone efímero depth-1 y publica branch autorizada. En URLs de review delega una vez a `inline-thread-autofix`; en handoff implementa, valida, commitea y pushea sin mutar GitHub ni realizar closeout. Usar para fixes aislados con necesidad de preservar checkout, revalidar cambios concurrentes y limpiar únicamente recursos propios."
 license: MIT
 metadata:
-  version: "1.1.1"
+  version: "1.1.2"
   author: "Guido Modarelli"
   category: "git-workflow"
   tags: "git, ephemeral-clone, fix, push, isolation"
@@ -38,7 +38,7 @@ Usar exactamente un modo:
 - `DIRECT`: solicitud de issue/repo sin URL de review. Descubrir branch/upstream, clonar, implementar, validar, committear, pushear branch actual y borrar únicamente clone propio después de éxito.
 - `INLINE_THREAD_AUTOFIX_HANDOFF`: usar solo con header completo de orquestadora. Implementar únicamente branch indicada y devolver `HANDOFF_RESULT`; no invocar `inline-thread-autofix` ni mutar GitHub.
 
-Si llega URL PR en forma válida o malformed (`#discussion_r...`/`#pullrequestreview-...`) sin handoff, invocar `$inline-thread-autofix` exactamente una vez y detenerse antes de inspección, clone, edición o push. No reinterpretar URL PR como issue genérica.
+Si llega URL PR en forma válida o malformed (`#discussion_r...`/`#pullrequestreview-...`/`#issuecomment-...`) sin handoff, invocar `$inline-thread-autofix` exactamente una vez y detenerse antes de inspección, clone, edición o push. No reinterpretar URL PR como issue genérica.
 
 ```text
 HANDOFF: INLINE_THREAD_AUTOFIX

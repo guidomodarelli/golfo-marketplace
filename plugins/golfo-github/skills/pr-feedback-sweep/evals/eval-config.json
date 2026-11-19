@@ -1,0 +1,231 @@
+{
+  "schema_version": 2,
+  "skill": "pr-feedback-sweep",
+  "description": "Evalúa el barrido de feedback de un PR: inventario de threads, reviews y comentarios generales, clasificación, delegación al contrato de inline-thread-autofix, cierre por tipo (resolver thread, ocultar comentario general como resuelto) y reporte final con template y emojis.",
+  "test_cases": [
+    {
+      "id": "01-inventory-includes-general-comments",
+      "description": "Pedido de resolver comentarios del PR: inventaria threads, reviews y comentarios generales.",
+      "input": "Escenario hipotético de evaluación para pr-feedback-sweep. Ya respondí la pregunta de entorno: Checkout actual.\nResolvé los comentarios y threads del PR https://github.com/acme/widgets/pull/42.\nNo ejecutes comandos ni consultes GitHub: describí el plan, las verificaciones que harías, las mutaciones que harías u omitirías y el estado o código que reportás.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": [
+            "reviewThreads"
+          ],
+          "description": "Consulta los review threads"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "issuecomment",
+            "comentarios generales",
+            "Comentarios generales",
+            "pullRequest.comments",
+            "issues/42/comments"
+          ],
+          "description": "Incluye los comentarios generales"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "reviews"
+          ],
+          "description": "Incluye las reviews con body"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "inline-thread-autofix"
+          ],
+          "description": "Delega cada ítem al contrato de inline-thread-autofix"
+        }
+      ]
+    },
+    {
+      "id": "02-hide-general-as-resolved",
+      "description": "Un comentario general accionable resuelto se oculta como resuelto; el thread se resuelve.",
+      "input": "Escenario hipotético de evaluación para pr-feedback-sweep. Ya respondí la pregunta de entorno: Checkout actual.\nPR https://github.com/acme/widgets/pull/42: hay un thread inline sin resolver que pide validar null en src/api/user.ts y un comentario general que pide actualizar el README con el nuevo flag --dry-run. Resolvé todo.\nNo ejecutes comandos ni consultes GitHub: describí el plan, las verificaciones que harías, las mutaciones que harías u omitirías y el estado o código que reportás.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": [
+            "resolveReviewThread"
+          ],
+          "description": "Resuelve el thread"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "minimizeComment"
+          ],
+          "description": "Oculta el comentario general"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "RESOLVED"
+          ],
+          "description": "Con classifier RESOLVED"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "Barrido de feedback",
+            "🧹"
+          ],
+          "description": "Usa el template del reporte final"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "| Clase |",
+            "Clase"
+          ],
+          "description": "Incluye la tabla de ítems del reporte con la columna Clase"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "quote reply",
+            "Quote reply",
+            "> ",
+            "cita"
+          ],
+          "description": "Responde con quote reply del comentario original"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "back-link",
+            "backlink",
+            "issuecomment-backlink",
+            "issues/comments/"
+          ],
+          "description": "Agrega un back-link a la respuesta en el comentario original"
+        }
+      ]
+    },
+    {
+      "id": "03-classify-skip-non-actionable",
+      "description": "Comentarios de bots de CI y LGTM no se procesan; un pedido de merge queda pendiente.",
+      "input": "Escenario hipotético de evaluación para pr-feedback-sweep. Ya respondí la pregunta de entorno: Checkout actual.\nPR acme/widgets#42 tiene: un comentario general de github-actions[bot] con el reporte de coverage, un 'LGTM 🚀' de una persona, y un comentario general que dice 'mergealo cuando pase CI'. Resolvé los comentarios del PR.\nNo ejecutes comandos ni consultes GitHub: describí el plan, las verificaciones que harías, las mutaciones que harías u omitirías y el estado o código que reportás.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": [
+            "NO_ACCIONABLE",
+            "No accionable",
+            "no accionable"
+          ],
+          "description": "Clasifica bots y LGTM como no accionables"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "FUERA_DE_ALCANCE",
+            "Pendiente",
+            "⏸️"
+          ],
+          "description": "El pedido de merge queda fuera de alcance o pendiente"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "gh pr merge"
+          ],
+          "description": "No mergea por pedido de un comentario"
+        }
+      ]
+    },
+    {
+      "id": "04-single-link-uses-inline",
+      "description": "Con un solo link #discussion_r no hace barrido completo.",
+      "input": "Escenario hipotético de evaluación. Ya respondí la pregunta de entorno: Checkout actual.\nhttps://github.com/acme/widgets/pull/42#discussion_r123456789 resolvé solo este comentario.\nNo ejecutes comandos ni consultes GitHub: describí el plan, las verificaciones que harías, las mutaciones que harías u omitirías y el estado o código que reportás.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": [
+            "inline-thread-autofix"
+          ],
+          "description": "Usa inline-thread-autofix para un solo link"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "solo",
+            "únicamente",
+            "un solo",
+            "único"
+          ],
+          "description": "Limita el alcance al link indicado"
+        }
+      ]
+    },
+    {
+      "id": "05-work-gate-once",
+      "description": "Con ~/.work usa el checkout actual para todo el barrido sin preguntar.",
+      "input": "Escenario hipotético de evaluación para pr-feedback-sweep. Suponé que ~/.work existe en esta máquina.\nResolvé todo el feedback del PR https://github.com/acme/widgets/pull/42.\nNo ejecutes comandos ni consultes GitHub: describí el plan, las verificaciones que harías, las mutaciones que harías u omitirías y el estado o código que reportás.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": [
+            "checkout actual",
+            "Checkout actual",
+            "checkout_actual"
+          ],
+          "description": "Usa el checkout actual"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "~/.work"
+          ],
+          "description": "Menciona el gate ~/.work"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "¿Dónde querés resolver"
+          ],
+          "description": "No pregunta el entorno"
+        }
+      ]
+    },
+    {
+      "id": "06-own-general-comment-not-hidden",
+      "description": "Un comentario general del propio usuario se atiende pero no se oculta; el de otra persona sí.",
+      "input": "Escenario hipotético de evaluación para pr-feedback-sweep. Ya respondí la pregunta de entorno: Checkout actual. Mi usuario de GitHub es guido-dev.\nEn el PR https://github.com/acme/widgets/pull/42 hay dos comentarios generales: uno mío (guido-dev) que dice \"TODO: agregar test de timeout en src/http/client.ts\" y otro de ana-review que pide \"documentá el retry en el README\". Resolvé los comentarios del PR.\nNo ejecutes comandos ni consultes GitHub: describí el plan, las verificaciones que harías, las mutaciones que harías u omitirías y el estado o código que reportás.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": [
+            "propio",
+            "tuyo",
+            "del usuario autenticado",
+            "guido-dev"
+          ],
+          "description": "Identifica el comentario propio"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "no lo oculto",
+            "no se oculta",
+            "visible",
+            "sin ocultar",
+            "no ocult"
+          ],
+          "description": "No oculta el comentario propio"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "minimizeComment"
+          ],
+          "description": "Oculta el de la otra persona con minimizeComment"
+        }
+      ]
+    }
+  ]
+}
