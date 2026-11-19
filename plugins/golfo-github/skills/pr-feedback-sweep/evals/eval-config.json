@@ -85,12 +85,8 @@
           "description": "Incluye la tabla de ítems del reporte con la columna Clase"
         },
         {
-          "type": "contains_any",
-          "values": [
-            "---",
-            "línea divisoria",
-            "divisor"
-          ],
+          "type": "regex",
+          "pattern": "`---`|^[[:space:]]*---[[:space:]]*$|l[ií]nea divisoria",
           "description": "Separa el link al original de la respuesta con una línea divisoria, sin citar el original"
         },
         {
