@@ -431,7 +431,7 @@ def test_backlink_preserves_examples_inside_blockquoted_code_fences():
     body = "\n".join(["## Real", "", *quoted_example, "", "Cuerpo"]) + "\n"
     once = jira_ticket.apply_backlink(body, TARGET_KEY, SITE_URL)
     lines = once.splitlines()
-    assert lines[5:10] == quoted_example
+    assert lines[5:9] == quoted_example
     assert lines[:5] == ["## Real", "", *alert, ""]
     assert jira_ticket.apply_backlink(once, TARGET_KEY, SITE_URL) == once
     assert jira_ticket.verify_backlink(body, TARGET_KEY, SITE_URL)["occurrences"] == 0
