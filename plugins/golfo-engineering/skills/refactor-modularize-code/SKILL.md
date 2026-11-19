@@ -3,7 +3,7 @@ name: refactor-modularize-code
 description: Refactor code to improve module boundaries, raise cohesion, decouple responsibilities, and remove harmful duplication without changing behavior, in any language and in JavaScript, TypeScript, and React in particular. Use when a file or feature mixes responsibilities, repeats business logic, leaks infrastructure details across layers, has hard-to-follow dependencies, or needs to be reorganized into clearer modules such as services, adapters, utils, helpers, constants, types, components, custom hooks, or feature-specific folders; also when splitting large JS/TS/TSX files or React components, moving inline logic out of UI, extracting custom hooks, reorganizing imports/exports with reexports, or preparing safer tests around extracted boundaries.
 license: MIT
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
   author: "Guido Modarelli"
   category: "refactor"
   tags: "refactor, modularity, cohesion, duplication"

@@ -3,7 +3,7 @@ name: simplify-code
 description: "Review changed code for reuse, simplification, efficiency, and abstraction-level cleanup, then apply the fixes. Use when the user invokes $simplify-code or /simplify-code, asks to simplify current changes, clean up a diff, reduce duplication, improve reuse, remove unnecessary complexity, tighten abstractions, or make changed code more maintainable. Quality-only review: do not hunt for correctness bugs, security issues, or broad product behavior regressions; use a code-review/security/debugging skill for those."
 license: MIT
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
   author: "Guido Modarelli"
   category: "refactor"
   tags: "simplify-code, simplify, cleanup, duplication, reuse, code-quality"

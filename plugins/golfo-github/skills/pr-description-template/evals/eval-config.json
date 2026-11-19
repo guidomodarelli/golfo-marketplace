@@ -397,6 +397,52 @@
           "description": "El body no menciona `@codex` (ni `@codex review` ni `@codex fix`)"
         }
       ]
+    },
+    {
+      "id": "stack-check-asks-before-mixed-refactor-pr",
+      "description": "Antes de crear un PR nuevo cuyo diff mezcla la feature con renames masivos de código existente, pregunta una vez si abrirlo como un PR o dividirlo con stacked-pr.",
+      "input": "Estoy en feature/invoice-export y quiero abrir el PR contra main. `git diff --shortstat -M main...HEAD` da `46 files changed, 1310 insertions(+), 1190 deletions(-)`. `--name-status` muestra 3 archivos nuevos de la feature (`src/invoices/exportInvoices.ts`, `src/invoices/exportButton.tsx`, `tests/invoices/export.test.ts`) y 43 renames `R100`/`R097` de `src/billing/**` a `src/billing-legacy/**`, que hice de paso y la feature no necesita. Estoy acá para responderte. No ejecutes gh: decime qué hacés antes de crear el PR.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "stacked-pr",
+          "description": "Nombra stacked-pr como forma de dividir"
+        },
+        {
+          "type": "regex",
+          "pattern": "(rename|renombr|R100|mov(e|id|imiento)|billing-legacy)",
+          "description": "Nombra los renames de código existente como la señal"
+        },
+        {
+          "type": "regex",
+          "pattern": "(¿|pregunt|un solo PR|one PR|un PR o|antes de crear|before creating)",
+          "description": "Pregunta antes de crear el PR en vez de crearlo directo"
+        }
+      ]
+    },
+    {
+      "id": "stack-check-silent-on-small-pr",
+      "control": "Un PR chico de una sola responsabilidad no debe mencionar un stack, con o sin la skill.",
+      "description": "Un PR chico con una sola responsabilidad no dispara la sugerencia de stack.",
+      "input": "Estoy en feature/fix-date-format y abro el PR contra main. `git diff --shortstat -M main...HEAD` da `2 files changed, 18 insertions(+), 6 deletions(-)`: `src/utils/formatDate.ts` y su test `src/utils/formatDate.test.ts`. No ejecutes gh: devolvé el body que pasarías a `gh pr create`.",
+      "assertions": [
+        {
+          "type": "not_contains_any",
+          "values": [
+            "stacked-pr",
+            "dividir el PR",
+            "dividirlo",
+            "stack de PRs",
+            "split the PR"
+          ],
+          "description": "No sugiere un stack para un PR chico"
+        },
+        {
+          "type": "contains",
+          "value": "Tipo de Cambio",
+          "description": "Compone el body con el template"
+        }
+      ]
     }
   ]
 }

@@ -400,6 +400,43 @@
           "description": "No borra refs por wildcard ni con branch -D"
         }
       ]
+    },
+    {
+      "id": "refactor-layer-below-feature",
+      "description": "Modo capa de refactor: el usuario acepta poner una extracción preparatoria debajo de la feature; crea la capa desde la base, rebasa la feature con backup y lease, cambia su base y verifica el golden.",
+      "input": "Contexto: tengo abierto el PR #301 (head feature/stripe-payments, base main) en el mismo repo. refactor-modularize-code me sugirió que la extracción de `src/checkout/totals.ts` (que ya está commiteada dentro de feature/stripe-payments) vaya en una capa debajo de la feature, y le dije que sí. Te autorizo a reescribir feature/stripe-payments. Usando la skill stacked-pr, describí el plan y los comandos sin ejecutar nada.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "rebase --onto",
+          "description": "Rebasa la feature sobre la capa de refactor con --onto"
+        },
+        {
+          "type": "regex",
+          "pattern": "gh pr edit.*--base.*refactor|gh pr edit 301",
+          "description": "Cambia la base del PR de la feature a la capa de refactor"
+        },
+        {
+          "type": "contains",
+          "value": "--force-with-lease",
+          "description": "Pushea la feature reescrita con lease"
+        },
+        {
+          "type": "regex",
+          "pattern": "backup",
+          "description": "Hace backup de la feature antes de reescribirla"
+        },
+        {
+          "type": "regex",
+          "pattern": "(golden|rev-parse.*\\^\\{tree\\}|mismo árbol|same tree)",
+          "description": "Verifica que el árbol final sea igual al tip original"
+        },
+        {
+          "type": "regex",
+          "pattern": "(desde|from|sale de|base).{0,80}(main|origin/main)",
+          "description": "Crea la capa de refactor desde la base de la feature"
+        }
+      ]
     }
   ]
 }

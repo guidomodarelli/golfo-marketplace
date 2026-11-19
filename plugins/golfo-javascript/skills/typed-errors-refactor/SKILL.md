@@ -3,7 +3,7 @@ name: typed-errors-refactor
 description: Analiza, diseña y ejecuta refactors de errores tipados en código JavaScript y TypeScript, front o back (Node, browser, SSR); no aplica a otros lenguajes. Usar siempre cuando el usuario mencione throws o catches genéricos, custom errors, códigos o status inconsistentes, normalización de errores API, filtración de upstream, cause, error boundaries, SSR, cancelación o tests de errores, aunque no pida explícitamente una jerarquía de clases. Usar también ante operaciones async por batches/chunks, partial success, polling, retries, deadlines, jobs/runs terminales, reanudación, unresolved work o cancelación; en esos casos coordinar con `async-operation-error-handling`. Preserva comportamiento observable, migra consumers por boundary y agrega tests de contrato sin imponer framework ni patrón de implementación.
 license: MIT
 metadata:
-  version: "1.1.0"
+  version: "1.2.0"
   author: "Guido Modarelli"
   category: "error-handling"
   tags: "errors, typed-errors, refactor, boundaries, typescript"

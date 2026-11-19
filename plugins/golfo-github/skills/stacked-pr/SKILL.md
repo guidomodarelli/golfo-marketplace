@@ -1,10 +1,10 @@
 ---
 name: stacked-pr
-description: "Gestiona stacked Pull Requests de GitHub con ramas feature/*: divide PRs grandes por responsabilidad, crea un stack desde un PR normal, agrega capas o PRs existentes, propaga fixes de una capa intermedia a las de arriba, reordena capas, preserva un golden diff, valida CI por capa y mergea bottom-up con rebase post-squash. Usar siempre cuando el usuario mencione stacked PRs, stacked pull requests, dividir un PR, crear un stack, agregar un PR al stack, cambiar la base de un PR dependiente, actualizar las capas tras un fix o review, reordenar capas o mergear un stack. No usar para merge requests de GitLab ni de otros hosts."
+description: "Gestiona stacked Pull Requests de GitHub con ramas feature/*: divide PRs grandes por responsabilidad, crea un stack desde un PR normal, agrega capas o PRs existentes, propaga fixes de una capa intermedia a las de arriba, reordena capas, separa un refactor en su propia capa (debajo o encima de la feature), preserva un golden diff, valida CI por capa y mergea bottom-up con rebase post-squash. Usar siempre cuando el usuario mencione stacked PRs, stacked pull requests, dividir un PR, crear un stack, agregar un PR al stack, cambiar la base de un PR dependiente, actualizar las capas tras un fix o review, reordenar capas, sacar un refactor a otra capa o mergear un stack. No usar para merge requests de GitLab ni de otros hosts."
 allowed-tools: Bash Read Write Edit
 license: MIT
 metadata:
-  version: "1.2.0"
+  version: "1.3.0"
   author: "Guido Modarelli"
   category: "git-workflow"
   tags: "git, pull-request, stacked-pr, stack"
@@ -184,6 +184,27 @@ Usá cuando una capa debe ir antes que otra (por ejemplo, para mergear primero a
 3. Reconstruí las capas en el nuevo orden desde `<integration-branch>` con los manifests (o `git cherry-pick` de los commits de cada capa) sobre las mismas branches.
 4. Pusheá con `--force-with-lease=<branch>:<old-tip>` y actualizá bases de abajo hacia arriba con `gh pr edit <PR> --base <nueva-base>`, capturando `baseRefName` antes y después.
 5. Verificá que el árbol del nuevo top sea igual al golden (ver «Golden diff y cierre») y revalidá CI por capa.
+
+### F. Capa de refactor
+
+Usá cuando el usuario acepta separar un refactor de la feature en su propia capa, porque se lo sugirió una skill de refactor o porque lo pidió. Si no está claro si va **debajo** o **encima** de la feature, o si conviene dejarlo en el mismo PR, decidilo con [`refactor-placement.md`](../../references/refactor-placement.md) antes de crear nada.
+
+- **Encima** (limpieza de código existente fuera del alcance de la feature): es el modo B si la feature es un PR normal, o el C si ya es un stack. La branch `feature/<slug>-refactor` sale del head de la feature, y su PR usa la branch de la feature como base. Si el refactor ya está mezclado en la feature, sacalo de ahí con un manifest, como en el paso 5 del modo A, y verificá que el árbol del top siga igual al golden.
+- **Debajo** (refactor preparatorio que la feature necesita): hacé backup de la branch de la feature. Creá `feature/<slug>-refactor` desde la base de la feature con solo el manifest del refactor, y rebasá la feature encima:
+
+  ```bash
+  old_feature_tip=$(git rev-parse <feature-branch>)
+  git switch -c feature/<slug>-refactor origin/<feature-base>
+  git diff --binary origin/<feature-base> "$old_feature_tip" -- <refactor-manifest> | git apply --index
+  git commit -m "refactor(<scope>): <summary>"
+  git rebase --onto feature/<slug>-refactor origin/<feature-base> <feature-branch>
+  git push --force-with-lease=<feature-branch>:"$old_feature_tip" origin <feature-branch>
+  gh pr edit <feature-pr> --base feature/<slug>-refactor
+  ```
+
+  Reescribir la feature necesita autorización explícita (ver «Reglas de seguridad y alcance»). El árbol final del top tiene que ser igual al `old_feature_tip` (ver «Golden diff y cierre»).
+
+En ambos casos, la capa de refactor no cambia comportamiento: su CI tiene que pasar sin tocar tests de comportamiento, y su body dice qué se movió y por qué va separado.
 
 ## Publicar cada PR
 
