@@ -141,7 +141,7 @@ Un comentario general tiene una sola respuesta, y esa respuesta muestra solo el 
 - Para un pedido ya implementado en una corrida anterior, reutilizar su commit solo si se verifica que el cambio sigue en el head; no crear otro commit para reescribir la respuesta.
 - Mantener el marker exacto: la URL de la respuesta no cambia, así que el back-link del original sigue válido.
 - Releer la respuesta justo antes del `PATCH` y verificar después el body publicado (link, quote, tabla, SHA si hay commit y marker). Si hay más de una respuesta propia con el marker, reescribir la más antigua y reportar las otras sin borrarlas.
-- Si el `PATCH` devuelve `403`/`404` o no verifica, no publicar una respuesta nueva: reportar `respuesta: no reescrita` y seguir con los demás destinos.
+- Si el `PATCH` devuelve `403`/`404` o no verifica, no publicar una respuesta nueva y dejar el ítem en `CLOSEOUT_INCOMPLETE`: no agregar el back-link, no ocultar el original y no cerrar la issue que dependa de esa respuesta, porque un comentario oculto se descarta en las corridas siguientes y ya no se podría recuperar la respuesta vigente. Reportar `respuesta: no reescrita` y seguir solo con los demás ítems independientes.
 
 ## Back-link en el comentario original
 
