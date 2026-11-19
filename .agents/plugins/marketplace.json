@@ -86,15 +86,6 @@
       "category": "development"
     },
     {
-      "name": "golfo-mobile",
-      "source": "./plugins/golfo-mobile",
-      "policy": {
-        "installation": "AVAILABLE",
-        "authentication": "ON_INSTALL"
-      },
-      "category": "development"
-    },
-    {
       "name": "golfo-node-backend",
       "source": "./plugins/golfo-node-backend",
       "policy": {

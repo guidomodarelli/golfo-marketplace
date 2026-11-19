@@ -3433,7 +3433,7 @@ Pendiente de verificar:
 
 **Identificación**
 
-- Nombre: Typed Errors Refactor; versión: 1.0.0; SKILL.md: `plugins/golfo-engineering/skills/typed-errors-refactor/SKILL.md`.
+- Nombre: Typed Errors Refactor; versión: 1.0.0; SKILL.md: `plugins/golfo-javascript/skills/typed-errors-refactor/SKILL.md`.
 - Propósito: Diseña y ejecuta refactors de errores tipados.
 - Funcionalidades principales: jerarquía de errores; normalización.
 - Agentes soportados declarados: no declara.

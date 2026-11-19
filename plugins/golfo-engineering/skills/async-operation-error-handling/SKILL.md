@@ -8,7 +8,7 @@ metadata:
   category: "error-handling"
   tags: "errors, async, batch, retries, polling, partial-success"
   command: "/async-operation-error-handling"
-  plugin-dependencies: "golfo-frontend"
+  plugin-dependencies: "golfo-frontend, golfo-javascript"
 ---
 
 # Async Operation Error Handling
@@ -41,7 +41,7 @@ Activar este workflow cuando exista una o más señales:
 - un error upstream necesita clasificación segura antes de llegar a browser/UI;
 - el flujo cruza server/client, SSR, BFF, job runner o más de un servicio.
 
-No activarla para un error síncrono local sin progreso parcial, polling, retry ni boundary distribuido, salvo que el cambio también requiera el contrato tipado general de `typed-errors-refactor`.
+No activarla para un error síncrono local sin progreso parcial, polling, retry ni boundary distribuido, salvo que el cambio también requiera el contrato tipado general; en JavaScript o TypeScript, ese contrato lo cubre `typed-errors-refactor` (plugin `golfo-javascript`).
 
 ## Preflight obligatorio
 
