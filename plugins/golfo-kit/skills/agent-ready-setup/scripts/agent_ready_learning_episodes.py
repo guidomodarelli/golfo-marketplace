@@ -15,6 +15,7 @@ of what the episode said so far, and the review of its close starts after that p
 import datetime
 import os
 import subprocess
+import uuid
 
 from agent_ready_common import StateError, read_json_file, serialize_json, write_text_atomically
 from agent_ready_learning import RegistryLock
@@ -29,6 +30,13 @@ CLOCK_ENVIRONMENT_VARIABLE = "AGENT_READY_LEARNING_NOW"
 # The review of an episode is given up after this many runs in which the provider failed.
 REVIEW_MAX_ATTEMPTS = 3
 DEFAULT_PROVIDER = "claude"
+# Transcript timestamps and the times of the hooks differ by a few seconds. The window of each review
+# widens by this much, but never into the window of the review before it in the same session: a
+# message counts in one episode only.
+BOUNDARY_SLACK = datetime.timedelta(minutes=5)
+# A review a sweep took and never acknowledged (the process died, the machine shut down) is taken
+# again after this long.
+REVIEW_CLAIM_TIMEOUT = datetime.timedelta(hours=1)
 
 
 def current_time():
@@ -87,29 +95,57 @@ def is_new_episode(session, now, gap_hours):
     return bool(session.get("closed")) or is_idle(session, now, gap_hours)
 
 
-def queue_review(state, session_id, session, until):
+def format_time(moment):
+    return moment.strftime(TIMESTAMP_FORMAT)
+
+
+def review_window(session, until, next_start=None, exact=False):
+    """The transcript window of a review: (after, through), after exclusive and through inclusive.
+
+    It starts where the previous review of the session ended (``reviewedThrough``), or BOUNDARY_SLACK
+    before the episode started. It ends BOUNDARY_SLACK after ``until``, but before the slack of the
+    next episode (``next_start``), so that adjacent episodes never read the same message; ``exact``
+    ends it at ``until`` (a compaction: the episode goes on from there).
+    """
+    previous = session.get("reviewedThrough")
+    after = parse_time(previous) if previous else parse_time(session["episodeStartedAt"]) - BOUNDARY_SLACK
+    end = parse_time(until)
+    through = end if exact else end + BOUNDARY_SLACK
+    if next_start is not None:
+        through = max(end, min(through, next_start - BOUNDARY_SLACK))
+    return after, max(after, through)
+
+
+def queue_review(state, session_id, session, until, next_start=None, exact=False):
     """Queue the review of what the user wrote in the episode since its last review, up to ``until``.
 
-    Without a transcript there is nothing to read: the episode closes without a review.
+    The session remembers where the window ended, so its next review starts there. Without a
+    transcript there is nothing to read: the episode closes without a review.
     """
+    after, through = review_window(session, until, next_start, exact)
+    session["reviewedThrough"] = format_time(through)
     if not session.get("transcriptPath"):
         return False
     state["pendingReviews"].append({
-        "session": session_id, "episodeId": session["episodeId"],
+        "id": uuid.uuid4().hex, "session": session_id, "episodeId": session["episodeId"],
         "since": session.get("reviewedUntil") or session["episodeStartedAt"], "until": until,
+        "after": format_time(after), "through": format_time(through),
         "transcriptPath": session["transcriptPath"], "provider": session.get("provider") or DEFAULT_PROVIDER,
         "attempts": 0,
     })
     return True
 
 
-def close(state, session_id):
-    """Close the open episode of a session and queue its review; False when there was none to close."""
+def close(state, session_id, next_start=None):
+    """Close the open episode of a session and queue its review; False when there was none to close.
+
+    ``next_start`` is when the next episode of the session starts, when that is what closes this one.
+    """
     session = state["sessions"].get(session_id)
     if session is None or session.get("closed"):
         return False
     session["closed"] = True
-    queue_review(state, session_id, session, session["lastUserMessageAt"])
+    queue_review(state, session_id, session, session["lastUserMessageAt"], next_start)
     return True
 
 
@@ -139,10 +175,16 @@ def touch(project_root, session_id, now, gap_hours, transcript=None, provider=No
         session = state["sessions"].get(session_id)
         started = session is None or is_new_episode(session, now, gap_hours)
         if started:
-            if session is not None:
-                close(state, session_id)
+            previous = session
+            if previous is not None:
+                close(state, session_id, now)
             session = {"episodeId": episode_id(session_id, now), "episodeStartedAt": now.strftime(TIMESTAMP_FORMAT),
                        "scopeQuestionAsked": False}
+            # The same chat keeps its transcript and provider, and the review of this episode starts
+            # where the review of the previous one ended.
+            for key in ("reviewedThrough", "transcriptPath", "provider"):
+                if previous is not None and previous.get(key):
+                    session[key] = previous[key]
             state["sessions"][session_id] = session
         session["lastUserMessageAt"] = now.strftime(TIMESTAMP_FORMAT)
         if transcript:
@@ -182,17 +224,24 @@ def review_now(project_root, session_id, now, transcript=None):
         if transcript:
             session["transcriptPath"] = transcript
         until = now.strftime(TIMESTAMP_FORMAT)
-        queued = queue_review(state, session_id, session, until)
+        queued = queue_review(state, session_id, session, until, exact=True)
         if queued:
             session["reviewedUntil"] = until
         write_episodes(path, state)
     return queued
 
 
-def sweep(project_root, now, gap_hours):
-    """Close the idle episodes and take the queued reviews out of the state, to run them once.
+def is_claimable(review, now):
+    """A review no sweep is running: never taken, or taken by a sweep that died REVIEW_CLAIM_TIMEOUT ago."""
+    claimed = review.get("claimedAt")
+    return not claimed or now - parse_time(claimed) >= REVIEW_CLAIM_TIMEOUT
 
-    Returns the reviews taken; the caller puts back with ``requeue`` the ones that could not run.
+
+def sweep(project_root, now, gap_hours):
+    """Close the idle episodes and claim the queued reviews, to run them once.
+
+    The reviews stay in the state, claimed, until the caller acknowledges each one (``acknowledge``)
+    or puts it back (``requeue``): a sweep that dies leaves them for a later one.
     """
     path = episodes_path(project_root)
     if not os.path.exists(path):
@@ -200,27 +249,53 @@ def sweep(project_root, now, gap_hours):
     with RegistryLock(project_root):
         state = read_episodes(path)
         close_idle(state, now, gap_hours)
-        taken, state["pendingReviews"] = state["pendingReviews"], []
+        taken = []
+        for review in state["pendingReviews"]:
+            if is_claimable(review, now):
+                review.setdefault("id", uuid.uuid4().hex)
+                review["claimedAt"] = format_time(now)
+                taken.append(dict(review))
         write_episodes(path, state)
     return taken
 
 
-def requeue(project_root, reviews, count_attempt=True):
-    """Put back reviews that could not run, until a failed provider reaches REVIEW_MAX_ATTEMPTS.
-
-    ``count_attempt`` false puts them back as they were: the review did not try (CI, review mode).
-    """
-    increment = 1 if count_attempt else 0
-    kept = [dict(review, attempts=review.get("attempts", 0) + increment) for review in reviews
-            if review.get("attempts", 0) + increment < REVIEW_MAX_ATTEMPTS]
-    if not kept:
-        return 0
+def acknowledge(project_root, reviews):
+    """Drop reviews that ran, or that will not run (learning.hooks.sessionEnd off)."""
+    finished = {review["id"] for review in reviews}
+    if not finished:
+        return
     path = episodes_path(project_root)
     with RegistryLock(project_root):
         state = read_episodes(path)
-        state["pendingReviews"].extend(kept)
+        state["pendingReviews"] = [review for review in state["pendingReviews"] if review.get("id") not in finished]
         write_episodes(path, state)
-    return len(kept)
+
+
+def requeue(project_root, reviews, count_attempt=True):
+    """Release reviews that could not run, until a failed provider reaches REVIEW_MAX_ATTEMPTS.
+
+    ``count_attempt`` false releases them as they were: the review did not try (CI, review mode).
+    Returns how many stay queued.
+    """
+    released = {review["id"] for review in reviews}
+    if not released:
+        return 0
+    increment = 1 if count_attempt else 0
+    path = episodes_path(project_root)
+    with RegistryLock(project_root):
+        state = read_episodes(path)
+        kept, count = [], 0
+        for review in state["pendingReviews"]:
+            if review.get("id") in released:
+                review.pop("claimedAt", None)
+                review["attempts"] = review.get("attempts", 0) + increment
+                if review["attempts"] >= REVIEW_MAX_ATTEMPTS:
+                    continue
+                count += 1
+            kept.append(review)
+        state["pendingReviews"] = kept
+        write_episodes(path, state)
+    return count
 
 
 def needs_sweep(project_root, now, gap_hours):
@@ -235,7 +310,7 @@ def needs_sweep(project_root, now, gap_hours):
         state = read_episodes(path)
     except StateError:
         return False
-    return bool(state["pendingReviews"]) or any(
+    return any(is_claimable(review, now) for review in state["pendingReviews"]) or any(
         not session.get("closed") and session.get("transcriptPath") and is_idle(session, now, gap_hours)
         for session in state["sessions"].values())
 

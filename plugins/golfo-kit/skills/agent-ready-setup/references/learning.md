@@ -98,12 +98,19 @@ cierran con el barrido.
 - Del transcript lee los mensajes del usuario y deja afuera lo que escribió el agente, los resultados de
   herramientas y lo que agrega el harness (comandos, recordatorios, contexto del entorno).
 - Una cita que no está en los mensajes del usuario se descarta: la revisión no puede inventar evidencia.
+- Cada mensaje cuenta en un solo episodio: la ventana de cada revisión empieza donde terminó la
+  anterior del mismo chat, aunque dos episodios empiecen con minutos de diferencia (por ejemplo, a
+  medianoche).
+- Lo que se manda al provider tiene un tope de caracteres: entran primero los mensajes más nuevos, y
+  un mensaje enorme (un documento pegado) entra recortado.
 - Cada episodio se revisa una vez. Si el provider falla, queda en la cola para el barrido siguiente,
   hasta tres intentos. Un episodio sin transcript se cierra sin revisión.
+- La cola vive en `episodes.json` hasta que cada revisión termina: si el barrido se corta (se apaga la
+  máquina), otro barrido retoma esas revisiones una hora después.
 - Nunca llama a un provider en CI ni en review mode: el episodio queda en la cola para la máquina del
   usuario.
-- La revisión corre desacoplada del hook (`agent-ready learn sweep`, con su log en
-  `~/.cache/agent-ready-setup/learning-sweeps/`), así que el prompt no la espera.
+- La revisión corre desacoplada del hook con `scripts/run-detached.py` (`agent-ready learn sweep`, con
+  su log privado en `~/.cache/agent-ready-setup/learning-sweeps/`), así que el prompt no la espera.
 - `learning.hooks.sessionEnd` apagado cierra los episodios sin revisarlos.
 
 ## La decisión

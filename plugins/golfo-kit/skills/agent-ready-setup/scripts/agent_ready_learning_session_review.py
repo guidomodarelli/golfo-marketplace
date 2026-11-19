@@ -7,10 +7,11 @@ of evidence (references/learning.md, «Revisión al cerrar un episodio»).
 """
 
 import datetime
+import importlib.util
 import json
 import os
+import pathlib
 import re
-import subprocess
 import sys
 import tempfile
 
@@ -25,11 +26,11 @@ CI_VARIABLE = "CI"
 REVIEW_MODE_VARIABLE = "AGENT_READY_SETUP_REVIEW_MODE"
 # Runs the sweep in the calling process instead of the background: for tests and for debugging.
 SWEEP_FOREGROUND_VARIABLE = "AGENT_READY_LEARNING_SWEEP_FOREGROUND"
-# Transcript timestamps and the times of the hooks differ by a few seconds; the overlap is harmless,
-# since the registry keeps one evidence per quote and episode.
-BOUNDARY_SLACK = datetime.timedelta(minutes=5)
-# What the review sends at most, keeping the newest messages: a long episode must not overflow it.
+# What the review sends at most, keeping the newest messages: a long episode, or one huge paste,
+# must not overflow it.
 MAX_MESSAGES_CHARACTERS = 60000
+TRUNCATION_MARK = "\n[…]"
+RUN_DETACHED_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "run-detached.py")
 SWEEP_LOG_DIRECTORY = ("agent-ready-setup", "learning-sweeps")
 KINDS = (learning.KIND_RULE, learning.KIND_SKILL)
 RESULT_SCHEMA = {
@@ -115,8 +116,8 @@ def message_of(record):
     return parse_transcript_time(record.get("timestamp")), text
 
 
-def user_messages(transcript_path, since, until):
-    """The messages of the user between ``since`` and ``until`` (aware datetimes; None leaves it open)."""
+def user_messages(transcript_path, after, through):
+    """The messages of the user after ``after`` and up to ``through`` (aware datetimes; None leaves it open)."""
     messages = []
     with open(transcript_path, encoding="utf-8", errors="replace") as transcript:
         for line in transcript:
@@ -128,21 +129,35 @@ def user_messages(transcript_path, since, until):
                 continue
             timestamp, text = found
             if timestamp is not None and (
-                    (since is not None and timestamp < since - BOUNDARY_SLACK)
-                    or (until is not None and timestamp > until + BOUNDARY_SLACK)):
+                    (after is not None and timestamp <= after)
+                    or (through is not None and timestamp > through)):
                 continue
             messages.append(text)
     return messages
 
 
+def review_bounds(review):
+    """The transcript window of a queued review; a review queued before windows existed widens its times."""
+    parse = learning_episodes.parse_time
+    if review.get("after") and review.get("through"):
+        return parse(review["after"]), parse(review["through"])
+    slack = learning_episodes.BOUNDARY_SLACK
+    return parse(review["since"]) - slack, parse(review["until"]) + slack
+
+
 def messages_document(messages):
-    """The messages as the review reads them, newest kept when they exceed MAX_MESSAGES_CHARACTERS."""
-    kept, size = [], 0
+    """The messages as the review reads them, within MAX_MESSAGES_CHARACTERS.
+
+    The newest messages go first into the budget; a message longer than what is left keeps its start.
+    """
+    kept, remaining = [], MAX_MESSAGES_CHARACTERS
     for message in reversed(messages):
-        size += len(message)
-        if size > MAX_MESSAGES_CHARACTERS and kept:
+        if remaining <= 0:
             break
+        if len(message) > remaining:
+            message = message[:remaining] + TRUNCATION_MARK
         kept.append(message)
+        remaining -= len(message)
     body = "\n".join(f"<message>\n{message}\n</message>" for message in reversed(kept))
     return f"<messages>\n{body}\n</messages>\n"
 
@@ -175,8 +190,7 @@ def review_episode(project_root, review, settings):
     transcript = review["transcriptPath"]
     if not os.path.isfile(transcript):
         return [], 0
-    messages = user_messages(transcript, learning_episodes.parse_time(review["since"]),
-                             learning_episodes.parse_time(review["until"]))
+    messages = user_messages(transcript, *review_bounds(review))
     if not messages:
         return [], 0
     harness = load_harness_review(ENGINE_SKILL_DIRECTORY)
@@ -219,6 +233,7 @@ def sweep(project_root, settings, write):
     if not reviews:
         return 0
     if not settings["session_review"]:
+        learning_episodes.acknowledge(project_root, reviews)
         write(f"learning.hooks.sessionEnd is off: {len(reviews)} episodes closed without a review")
         return 0
     blocked = provider_blocked()
@@ -227,17 +242,18 @@ def sweep(project_root, settings, write):
         learning_episodes.requeue(project_root, reviews, count_attempt=False)
         write(f"no review under {blocked}: {len(reviews)} episodes stay queued")
         return 0
-    failed = []
     for review in reviews:
+        # Each review is acknowledged or released as soon as it ends: if the sweep dies, the rest
+        # stay queued for a later one.
         outcome = review_episode(project_root, review, settings)
         if outcome is None:
-            failed.append(review)
+            learning_episodes.requeue(project_root, [review])
             write(f"episode {review['episodeId']}: the provider {review.get('provider')} failed; it stays queued")
             continue
+        learning_episodes.acknowledge(project_root, [review])
         recorded, skipped = outcome
         ids = ", ".join(entry["id"] for entry in recorded) or "none"
         write(f"episode {review['episodeId']}: {len(recorded)} instructions recorded ({ids}), {skipped} dropped")
-    learning_episodes.requeue(project_root, failed)
     return len(reviews)
 
 
@@ -255,9 +271,9 @@ def start_sweep(project_root, cli_path, run_inline):
     if os.environ.get(SWEEP_FOREGROUND_VARIABLE) == "1":
         run_inline()
         return
-    log_path = sweep_log_path(project_root)
-    os.makedirs(os.path.dirname(log_path), exist_ok=True)
-    with open(log_path, "a", encoding="utf-8") as log:
-        subprocess.Popen([sys.executable, cli_path, "learn", "sweep", "--project", project_root],
-                         stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, cwd=project_root,
-                         start_new_session=True)
+    # The detached runner of the skill: its own session, a private log and no log through a symlink.
+    specification = importlib.util.spec_from_file_location("run_detached", RUN_DETACHED_PATH)
+    run_detached = importlib.util.module_from_spec(specification)
+    specification.loader.exec_module(run_detached)
+    run_detached.run_detached([sys.executable, cli_path, "learn", "sweep", "--project", project_root],
+                              pathlib.Path(sweep_log_path(project_root)))

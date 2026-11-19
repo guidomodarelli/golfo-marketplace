@@ -1119,3 +1119,89 @@ PY
   [ "$status" -eq 0 ]
   [ "$(episodes_value 'data["sessions"]["k1"]["closed"]')" = "True" ]
 }
+
+@test "a message near the boundary of two episodes counts in one of them only" {
+  select_learning_profile
+  fake_provider
+  claude_transcript "user|2026-03-10T23:59:00Z|Siempre firmá en azul." "user|2026-03-11T00:01:00Z|Armá el acta."
+  findings '[{"statement": "Records are signed in blue.", "kind": "rule", "quote": "Siempre firmá en azul.", "explicit": false}]'
+  at_time 2026-03-10T23:59:00+0000
+  agent_ready learn episode --session s1 --touch --provider claude --transcript "$test_root/transcript.jsonl"
+  # Another day opens another episode two minutes later: each review reads its own messages only.
+  at_time 2026-03-11T00:01:00+0000
+  agent_ready learn episode --session s1 --touch
+  grep -q "Siempre firmá en azul." "$FAKE_INPUTS/1.txt"
+  ! grep -q "Armá el acta." "$FAKE_INPUTS/1.txt"
+  at_time 2026-03-11T00:10:00+0000
+  agent_ready learn episode --session s1 --end
+  grep -q "Armá el acta." "$FAKE_INPUTS/2.txt"
+  ! grep -q "Siempre firmá en azul." "$FAKE_INPUTS/2.txt"
+
+  # The second review cannot quote the first episode, so the instruction keeps one episode of evidence.
+  [ "$(registry_value 'len(data["candidates"])')" = "1" ]
+  [ "$(registry_value 'len(data["candidates"][0]["evidence"])')" = "1" ]
+}
+
+@test "a sweep that dies leaves its reviews queued, and a later sweep takes them after a while" {
+  select_learning_profile
+  fake_provider
+  claude_transcript "user|2026-03-10T09:00:00Z|Siempre en castellano."
+  at_time 2026-03-10T09:00:00+0000
+  agent_ready learn episode --session s1 --touch --provider claude --transcript "$test_root/transcript.jsonl"
+  CI=true agent_ready learn episode --session s1 --end
+  [ "$(episodes_value 'len(data["pendingReviews"])')" = "1" ]
+
+  # A sweep claims the review and dies before running it.
+  python3 - "$skill_dir/scripts" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1])
+import agent_ready_learning_episodes as episodes
+episodes.sweep(".", episodes.current_time(), 4)
+PY
+  [ "$(episodes_value 'len(data["pendingReviews"])')" = "1" ]
+  # While the claim is fresh, another sweep leaves it to the one that took it.
+  agent_ready learn sweep
+  [ ! -e "$FAKE_INPUTS/1.txt" ]
+  at_time 2026-03-10T10:30:00+0000
+  agent_ready learn sweep
+  grep -q "Siempre en castellano." "$FAKE_INPUTS/1.txt"
+  [ "$(episodes_value 'len(data["pendingReviews"])')" = "0" ]
+}
+
+@test "one huge message does not take the review over its budget" {
+  select_learning_profile
+  fake_provider
+  python3 - "$test_root/transcript.jsonl" <<'PY'
+import json, sys
+with open(sys.argv[1], "w", encoding="utf-8") as transcript:
+    for time, text in (("2026-03-10T09:00:00Z", "Mensaje anterior."), ("2026-03-10T09:01:00Z", "Pegado: " + "x" * 200000)):
+        transcript.write(json.dumps({"type": "user", "timestamp": time, "message": {"role": "user", "content": text}}) + "\n")
+PY
+  at_time 2026-03-10T09:00:00+0000
+  agent_ready learn episode --session s1 --touch --provider claude --transcript "$test_root/transcript.jsonl"
+  at_time 2026-03-10T09:10:00+0000
+  agent_ready learn episode --session s1 --end
+  grep -q "Pegado: xxx" "$FAKE_INPUTS/1.txt"
+  [ "$(wc -c < "$FAKE_INPUTS/1.txt")" -lt 70000 ]
+}
+
+@test "the hooks start the sweep in the background with a private log" {
+  select_learning_profile
+  fake_provider
+  unset AGENT_READY_LEARNING_SWEEP_FOREGROUND
+  export XDG_CACHE_HOME="$test_root/cache"
+  claude_transcript "user|2026-03-10T09:00:00Z|Siempre en castellano."
+  at_time 2026-03-10T09:00:00+0000
+  agent_ready learn episode --session s1 --touch --provider claude --transcript "$test_root/transcript.jsonl"
+  agent_ready learn episode --session s1 --end
+  [ "$status" -eq 0 ]
+  for _ in $(seq 1 100); do
+    grep -q "instructions recorded" "$XDG_CACHE_HOME"/agent-ready-setup/learning-sweeps/*.log 2>/dev/null && break
+    sleep 0.2
+  done
+  grep -q "episode s1:20260310T090000: 0 instructions recorded" "$XDG_CACHE_HOME"/agent-ready-setup/learning-sweeps/*.log
+  case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*) ;;
+    *) [ "$(stat -c %a "$XDG_CACHE_HOME"/agent-ready-setup/learning-sweeps/*.log 2>/dev/null || stat -f %Lp "$XDG_CACHE_HOME"/agent-ready-setup/learning-sweeps/*.log)" = "600" ] ;;
+  esac
+}
