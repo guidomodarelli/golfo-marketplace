@@ -130,9 +130,12 @@ Así un episodio que nadie retoma se cierra y se revisa como mucho `episodeGapHo
   `~/.cache/agent-ready-setup/learning-schedule/projects/`. La tarea corre tan seguido como pide el más
   frecuente, barre todos y olvida los que ya no están en el disco. Se va con el último repositorio.
 - **El motor del último apply:** la tarea arranca `learning-schedule/run-sweep.py`, que apunta al
-  motor que la registró. Cada apply la reescribe.
+  motor que la registró. Cada apply la reescribe solo si cambió. El runner restaura el `PATH` y el
+  `XDG_CACHE_HOME` del apply, porque el planificador arranca con un entorno mínimo. Si la tarea no le
+  da salida (`pythonw.exe`), la escribe en `learning-schedule/last-sweep.log`.
 - **Retiro:** `intervalMinutes: 0`, un apply sin el profile `learning` o `agent-ready remove` sacan al
-  repositorio de la tarea.
+  repositorio de la tarea. Si el sistema rechazó borrar la tarea del último repositorio, el próximo
+  `learn schedule`, apply o barrido lo vuelve a intentar.
 - **Si el sistema la rechaza** (una política de la máquina, `cron.deny`, sin `crontab`), el apply no
   falla: lo avisa en una línea, y `agent-ready status` y `agent-ready doctor` informan que falta. Los
   episodios se siguen cerrando al terminar el chat y desde otro hook. `agent-ready learn schedule`

@@ -407,6 +407,11 @@ def learning_sweep_removal_entries(project_root):
 
 def unschedule_learning_sweep(project_root, skill_dir, report):
     """This repository leaves the scheduled sweep; the scheduler drops the task with the last repository."""
+    from agent_ready_cli_learning import schedule_blocked  # Lazy: the CLI of learning imports far more.
+    blocked = schedule_blocked()
+    if blocked:
+        report["kept"].append(f"{LEARNING_SWEEP_REMOVAL_LABEL}: {blocked}")
+        return
     try:
         result = learning_schedule.unregister(project_root, os.path.join(skill_dir, CLI_RELATIVE_PATH))
     except StateError as problem:

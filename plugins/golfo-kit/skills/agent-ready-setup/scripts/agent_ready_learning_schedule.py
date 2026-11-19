@@ -27,6 +27,7 @@ from xml.sax.saxutils import escape
 
 from agent_ready_common import (
     StateError, acquire_directory_lock, serialize_json, sha256_of_text, skill_cache_directory, write_text_atomically,
+    write_text_if_changed,
 )
 
 # Chooses the scheduler instead of the platform: schtasks, launchd, crontab or none (tests, debugging).
@@ -40,6 +41,10 @@ SCHEDULE_DIRECTORY = "learning-schedule"
 PROJECTS_DIRECTORY = "projects"
 RUNNER_FILE = "run-sweep.py"
 TASK_FILE = "task.json"
+# Where the runner sends the output of the sweep when the task gives it no streams (pythonw.exe).
+RUNNER_LOG_FILE = "last-sweep.log"
+CACHE_VARIABLE = "XDG_CACHE_HOME"
+PATH_VARIABLE = "PATH"
 LOCK_DIRECTORY = "lock"
 LOCK_WAIT_SECONDS = 10
 LOCK_POLL_SECONDS = 0.05
@@ -293,13 +298,31 @@ def python_for_task():
     return sys.executable
 
 
+def task_file_path():
+    return os.path.join(schedule_root(), TASK_FILE)
+
+
 def write_runner(cli_path):
-    """The runner the task starts: it runs the sweep of every registered repository with this engine."""
+    """The runner the task starts: it runs the sweep of every registered repository with this engine.
+
+    The scheduler starts it with an environment of its own, so the runner brings back what the apply
+    saw: the cache that holds the records (XDG_CACHE_HOME) and the PATH that finds the CLI of the
+    provider the review runs. pythonw.exe gives it no output streams, so it opens a log for them.
+    """
     path = os.path.join(schedule_root(), RUNNER_FILE)
-    write_text_atomically(path, (
+    cache_home = os.path.dirname(skill_cache_directory())
+    write_text_if_changed(path, (
         '"""Started by the scheduled learning sweep of agent-ready-setup; the next apply rewrites it."""\n'
-        "import runpy\nimport sys\n\n"
+        "import os\nimport runpy\nimport sys\n\n"
         f"CLI = {cli_path!r}\n"
+        f"LOG = {os.path.join(schedule_root(), RUNNER_LOG_FILE)!r}\n"
+        f"os.environ[{CACHE_VARIABLE!r}] = {cache_home!r}\n"
+        f"os.environ[{PATH_VARIABLE!r}] = os.pathsep.join(filter(None, [{os.environ.get(PATH_VARIABLE, '')!r}, "
+        f"os.environ.get({PATH_VARIABLE!r})]))\n"
+        "if sys.stdout is None or sys.stderr is None:\n"
+        '    log = open(LOG, "w", encoding="utf-8")\n'
+        "    sys.stdout = sys.stdout or log\n"
+        "    sys.stderr = sys.stderr or log\n"
         'sys.argv = [CLI, "learn", "sweep", "--registered"]\n'
         'runpy.run_path(CLI, run_name="__main__")\n'))
     return path
@@ -315,7 +338,7 @@ def sync_task(cli_path):
     """Make the task match the records: installed with the wanted interval, or removed. Returns its state."""
     name = scheduler_name()
     install, remove, present = SCHEDULER_ACTIONS[name]
-    task_path = os.path.join(schedule_root(), TASK_FILE)
+    task_path = task_file_path()
     interval = wanted_interval()
     if interval is None:
         remove()
@@ -340,11 +363,14 @@ def register(project_root, interval, cli_path):
     record = {"project": os.path.realpath(project_root), "intervalMinutes": interval}
     with ScheduleLock():
         if interval == 0:
-            if previous is None:
+            # Without a record there is nothing to drop, unless an earlier removal was refused and
+            # left the task of the last repository behind: then it is tried again.
+            if previous is None and (registered_projects() or not os.path.exists(task_file_path())):
                 return {"status": STATUS_SKIPPED, "detail": "learning.sweep.intervalMinutes is 0"}
-            os.remove(record_path)
+            if previous is not None:
+                os.remove(record_path)
         else:
-            write_text_atomically(record_path, serialize_json(record))
+            write_text_if_changed(record_path, serialize_json(record))
         try:
             task = sync_task(cli_path)
         except (ScheduleError, OSError) as problem:
@@ -368,7 +394,8 @@ def prune_missing(cli_path):
         gone = [path for path, record in registered_projects() if not os.path.isdir(record["project"])]
         for path in gone:
             os.remove(path)
-        if gone:
+        # A task left by a refused removal goes too, once no repository asks for it.
+        if gone or (not registered_projects() and os.path.exists(task_file_path())):
             sync_task(cli_path)
     return len(gone)
 
@@ -387,5 +414,5 @@ def state(project_root):
         return False, str(problem)
     if not present:
         return False, f"the task is not in the scheduler ({name}): run agent-ready apply"
-    task = read_json(os.path.join(schedule_root(), TASK_FILE)) or {}
+    task = read_json(task_file_path()) or {}
     return True, f"every {task.get('intervalMinutes', record['intervalMinutes'])} minutes ({name})"

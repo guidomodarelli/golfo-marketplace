@@ -1381,6 +1381,55 @@ sweep_lines() {
   [ "$(ls "$XDG_CACHE_HOME/agent-ready-setup/learning-schedule/projects" | wc -l)" -eq 1 ]
 }
 
+@test "the runner finds the records and the provider of the apply, even from the bare environment of the scheduler" {
+  fake_scheduler crontab
+  select_learning_profile
+  fake_provider
+  claude_transcript "user|2026-03-10T09:00:00Z|Siempre en castellano."
+  at_time 2026-03-10T09:00:00+0000
+  agent_ready learn episode --session s1 --touch --provider claude --transcript "$test_root/transcript.jsonl"
+  agent_ready learn schedule
+  runner="$XDG_CACHE_HOME/agent-ready-setup/learning-schedule/run-sweep.py"
+  python="$(command -v python3)"
+
+  # pythonw.exe on Windows: no PATH of the shell, no XDG_CACHE_HOME and no output streams.
+  at_time 2026-03-10T14:00:00+0000
+  run env -u XDG_CACHE_HOME HOME="$test_root/elsewhere" PATH=/usr/bin:/bin "$python" -c \
+    'import runpy, sys; sys.stdout = sys.stderr = None; runpy.run_path(sys.argv[1], run_name="__main__")' "$runner"
+  [ "$status" -eq 0 ]
+  grep -q "Siempre en castellano." "$FAKE_INPUTS/1.txt"
+  grep -q "episode s1:20260310T090000: 0 instructions recorded" \
+    "$XDG_CACHE_HOME/agent-ready-setup/learning-schedule/last-sweep.log"
+}
+
+@test "registering again with nothing new rewrites neither the record nor the runner" {
+  fake_scheduler crontab
+  select_learning_profile
+  agent_ready learn schedule
+  schedule="$XDG_CACHE_HOME/agent-ready-setup/learning-schedule"
+  touch -d "2001-01-01" "$schedule/run-sweep.py" "$schedule/projects/"*.json
+  agent_ready learn schedule
+  [[ "$output" == *"unchanged"* ]]
+  [ -z "$(find "$schedule/run-sweep.py" "$schedule/projects" -name '*.*' -newermt 2002-01-01)" ]
+}
+
+@test "a removal the scheduler refused is tried again by the next schedule" {
+  fake_scheduler crontab
+  select_learning_profile
+  agent_ready learn schedule
+  [ "$(sweep_lines)" = "1" ]
+  write_manifest '{"learning": {"sweep": {"intervalMinutes": 0}}}'
+  touch "$FAKE_SCHEDULER_STATE/refuse"
+  agent_ready learn schedule
+  [[ "$stderr" == *"failed"* ]]
+  [ "$(sweep_lines)" = "1" ]
+
+  rm "$FAKE_SCHEDULER_STATE/refuse"
+  agent_ready learn schedule
+  [[ "$output" == *"removed"* ]]
+  [ "$(sweep_lines)" = "0" ]
+}
+
 @test "in CI or a review the scheduler is never touched" {
   fake_scheduler crontab
   select_learning_profile
@@ -1389,6 +1438,16 @@ sweep_lines() {
   AGENT_READY_SETUP_REVIEW_MODE=1 agent_ready learn schedule
   [[ "$output" == *"skipped: no scheduled task under review mode"* ]]
   [ ! -e "$FAKE_SCHEDULER_STATE/calls.log" ]
+
+  # Neither does a remove: the task of the user stays as the apply left it.
+  agent_ready learn schedule
+  [ "$(sweep_lines)" = "1" ]
+  rm "$FAKE_SCHEDULER_STATE/calls.log"
+  CI=true agent_ready remove --yes
+  [ "$status" -eq 0 ]
+  [ "$(sweep_lines)" = "1" ]
+  [ ! -e "$FAKE_SCHEDULER_STATE/calls.log" ]
+  [ -e "$XDG_CACHE_HOME/agent-ready-setup/learning-schedule/projects/"*.json ]
 }
 
 @test "agent-ready remove takes the repository out of the scheduled sweep" {
