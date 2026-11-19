@@ -425,6 +425,25 @@ def test_backlink_ignores_headings_and_backlinks_inside_code_fences():
     assert jira_ticket.verify_backlink(body, TARGET_KEY, SITE_URL)["occurrences"] == 0
 
 
+def test_backlink_preserves_examples_inside_blockquoted_code_fences():
+    alert = jira_ticket.backlink_alert_lines(TARGET_KEY, SITE_URL)
+    quoted_example = ["> ```markdown", *(f"> {line}" for line in alert), "> ```"]
+    body = "\n".join(["## Real", "", *quoted_example, "", "Cuerpo"]) + "\n"
+    once = jira_ticket.apply_backlink(body, TARGET_KEY, SITE_URL)
+    lines = once.splitlines()
+    assert lines[5:10] == quoted_example
+    assert lines[:5] == ["## Real", "", *alert, ""]
+    assert jira_ticket.apply_backlink(once, TARGET_KEY, SITE_URL) == once
+    assert jira_ticket.verify_backlink(body, TARGET_KEY, SITE_URL)["occurrences"] == 0
+
+
+def test_backlink_fence_inside_blockquote_ends_with_the_blockquote():
+    plain_link = jira_ticket.backlink_line(TARGET_KEY, SITE_URL)
+    body = f"## Real\n\n> ```\n> código sin cerrar\n\n{plain_link}\n"
+    once = jira_ticket.apply_backlink(body, TARGET_KEY, SITE_URL)
+    assert alert_count(once) == 1 and once.count(plain_link) == 1
+
+
 def test_backlink_prepends_when_every_heading_is_fenced():
     alert_text = "\n".join(jira_ticket.backlink_alert_lines(TARGET_KEY, SITE_URL))
     body = "Intro\n~~~~\n## Ejemplo\n~~~\n~~~~\n"

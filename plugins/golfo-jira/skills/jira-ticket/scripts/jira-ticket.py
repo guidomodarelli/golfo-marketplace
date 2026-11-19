@@ -81,6 +81,7 @@ ENV_LINE_REGEX = re.compile(r"^\s*(?:export\s+)?(?P<name>[A-Z][A-Z0-9_]*)\s*=\s*
 BACKLINK_PREFIX = "🎫 Jira:"
 BACKLINK_ALERT_MARKER = "> [!NOTE]"
 BLOCKQUOTE_PREFIX = ">"
+BLOCKQUOTE_MARKER_REGEX = re.compile(r"^ {0,3}> ?")
 DESCRIPTION_HEADING = "## 📝 Descripción"
 LEGACY_REFERENCE_PREFIX = "> **Referencia:**"
 ATX_HEADING_REGEX = re.compile(r"^#{1,6} ")
@@ -445,19 +446,39 @@ def _without_same_ticket_backlinks(lines: list[str], fenced_flags: list[bool], k
     return kept
 
 
+def _split_blockquote_markers(line: str) -> tuple[int, str]:
+    """Devuelve la profundidad de blockquote (`>` iniciales) y el contenido que queda tras los marcadores."""
+    depth = 0
+    content = line
+    while True:
+        marker = BLOCKQUOTE_MARKER_REGEX.match(content)
+        if not marker:
+            return depth, content
+        depth += 1
+        content = content[marker.end():]
+
+
 def _fenced_line_flags(lines: list[str]) -> list[bool]:
-    """Marca las líneas dentro de bloques de código fenced (delimitadores incluidos); un fence sin cerrar llega al final."""
+    """Marca las líneas dentro de bloques de código fenced (delimitadores incluidos), también dentro de blockquotes.
+
+    Un fence sin cerrar llega al final; uno abierto dentro de un blockquote termina cuando termina ese blockquote.
+    """
     flags: list[bool] = []
     open_fence: str | None = None
+    fence_depth = 0
     for line in lines:
+        depth, content = _split_blockquote_markers(line)
+        if open_fence is not None and depth < fence_depth:
+            open_fence = None
         if open_fence is None:
-            opening = CODE_FENCE_OPEN_REGEX.match(line)
-            if opening and not (opening.group("fence").startswith("`") and "`" in line[opening.end():]):
+            opening = CODE_FENCE_OPEN_REGEX.match(content)
+            if opening and not (opening.group("fence").startswith("`") and "`" in content[opening.end():]):
                 open_fence = opening.group("fence")
+                fence_depth = depth
             flags.append(open_fence is not None)
             continue
         flags.append(True)
-        closing = CODE_FENCE_CLOSE_REGEX.match(line)
+        closing = CODE_FENCE_CLOSE_REGEX.match(content)
         if closing and closing.group("fence")[0] == open_fence[0] and len(closing.group("fence")) >= len(open_fence):
             open_fence = None
     return flags
