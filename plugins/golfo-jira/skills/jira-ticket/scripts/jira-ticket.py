@@ -84,6 +84,9 @@ ENV_LINE_REGEX = re.compile(r"^\s*(?:export\s+)?(?P<name>[A-Z][A-Z0-9_]*)\s*=\s*
 # --- Contratos fijos (no dependen de la organización) ---------------------
 
 BACKLINK_PREFIX = "🎫 Jira:"
+BACKLINK_ALERT_MARKER = "> [!NOTE]"
+BLOCKQUOTE_PREFIX = ">"
+BLOCKQUOTE_MARKER_REGEX = re.compile(r"^ {0,3}> ?")
 DESCRIPTION_HEADING = "## 📝 Descripción"
 LEGACY_REFERENCE_PREFIX = "> **Referencia:**"
 ATX_HEADING_REGEX = re.compile(r"^#{1,6} ")
@@ -420,33 +423,82 @@ def browse_url(site_url: str, key: str) -> str:
 
 
 def backlink_line(key: str, site_url: str) -> str:
+    """Contenido del backlink (`🎫 Jira: [KEY](url)`), sin el prefijo de la alerta."""
     if not ISSUE_KEY_REGEX.match(key):
         raise JiraTicketError(f"jira-ticket: key Jira inválida '{key[:30]}'")
     return f"{BACKLINK_PREFIX} [{key}]({browse_url(site_url, key)})"
 
 
-def _is_same_ticket_line(line: str, key: str) -> bool:
-    """Reemplazable solo si es backlink/referencia legacy cuyas keys Jira son únicamente la key objetivo."""
+def backlink_alert_lines(key: str, site_url: str) -> list[str]:
+    """Backlink canónico: alerta `> [!NOTE]` de GitHub cuyo único contenido es la línea `🎫 Jira:`."""
+    return [BACKLINK_ALERT_MARKER, f"{BLOCKQUOTE_PREFIX} {backlink_line(key, site_url)}"]
+
+
+def _blockquote_content(line: str) -> str:
     stripped = line.strip()
-    if not (stripped.startswith(BACKLINK_PREFIX) or stripped.startswith(LEGACY_REFERENCE_PREFIX)):
+    return stripped[len(BLOCKQUOTE_PREFIX):].strip() if stripped.startswith(BLOCKQUOTE_PREFIX) else stripped
+
+
+def _is_same_ticket_line(line: str, key: str) -> bool:
+    """Reemplazable solo si es backlink (plano o dentro de alerta) o referencia legacy cuyas keys Jira son únicamente la key objetivo."""
+    stripped = line.strip()
+    content = _blockquote_content(line)
+    if not (content.startswith(BACKLINK_PREFIX) or stripped.startswith(LEGACY_REFERENCE_PREFIX)):
         return False
     referenced_keys = set(EMBEDDED_ISSUE_KEY_REGEX.findall(stripped))
     return referenced_keys == {key}
 
 
+def _without_same_ticket_backlinks(lines: list[str], fenced_flags: list[bool], key: str) -> list[tuple[str, bool]]:
+    """Quita backlinks del ticket objetivo fuera de fences; si la alerta NOTE solo contenía ese backlink, también quita su marcador."""
+    kept: list[tuple[str, bool]] = []
+    index = 0
+    while index < len(lines):
+        line, is_fenced = lines[index], fenced_flags[index]
+        if not is_fenced and line.strip() == BACKLINK_ALERT_MARKER and index + 1 < len(lines) and not fenced_flags[index + 1]:
+            next_is_alert_end = index + 2 >= len(lines) or not lines[index + 2].lstrip().startswith(BLOCKQUOTE_PREFIX)
+            if next_is_alert_end and _is_same_ticket_line(lines[index + 1], key):
+                index += 2
+                continue
+        if is_fenced or not _is_same_ticket_line(line, key):
+            kept.append((line, is_fenced))
+        index += 1
+    return kept
+
+
+def _split_blockquote_markers(line: str) -> tuple[int, str]:
+    """Devuelve la profundidad de blockquote (`>` iniciales) y el contenido que queda tras los marcadores."""
+    depth = 0
+    content = line
+    while True:
+        marker = BLOCKQUOTE_MARKER_REGEX.match(content)
+        if not marker:
+            return depth, content
+        depth += 1
+        content = content[marker.end():]
+
+
 def _fenced_line_flags(lines: list[str]) -> list[bool]:
-    """Marca las líneas dentro de bloques de código fenced (delimitadores incluidos); un fence sin cerrar llega al final."""
+    """Marca las líneas dentro de bloques de código fenced (delimitadores incluidos), también dentro de blockquotes.
+
+    Un fence sin cerrar llega al final; uno abierto dentro de un blockquote termina cuando termina ese blockquote.
+    """
     flags: list[bool] = []
     open_fence: str | None = None
+    fence_depth = 0
     for line in lines:
+        depth, content = _split_blockquote_markers(line)
+        if open_fence is not None and depth < fence_depth:
+            open_fence = None
         if open_fence is None:
-            opening = CODE_FENCE_OPEN_REGEX.match(line)
-            if opening and not (opening.group("fence").startswith("`") and "`" in line[opening.end():]):
+            opening = CODE_FENCE_OPEN_REGEX.match(content)
+            if opening and not (opening.group("fence").startswith("`") and "`" in content[opening.end():]):
                 open_fence = opening.group("fence")
+                fence_depth = depth
             flags.append(open_fence is not None)
             continue
         flags.append(True)
-        closing = CODE_FENCE_CLOSE_REGEX.match(line)
+        closing = CODE_FENCE_CLOSE_REGEX.match(content)
         if closing and closing.group("fence")[0] == open_fence[0] and len(closing.group("fence")) >= len(open_fence):
             open_fence = None
     return flags
@@ -454,15 +506,11 @@ def _fenced_line_flags(lines: list[str]) -> list[bool]:
 
 def apply_backlink(body: str, key: str, site_url: str) -> str:
     """Inserta el backlink canónico una sola vez fuera de bloques de código; idempotente y sin tocar el resto del body."""
-    link = backlink_line(key, site_url)
+    alert = backlink_alert_lines(key, site_url)
     newline = "\r\n" if "\r\n" in body else "\n"
     had_final_newline = body.endswith(("\n", "\r\n"))
     original_lines = body.splitlines()
-    kept_lines = [
-        (line, is_fenced)
-        for line, is_fenced in zip(original_lines, _fenced_line_flags(original_lines))
-        if is_fenced or not _is_same_ticket_line(line, key)
-    ]
+    kept_lines = _without_same_ticket_backlinks(original_lines, _fenced_line_flags(original_lines), key)
     lines = [line for line, _ in kept_lines]
     heading_indexes = [index for index, (line, is_fenced) in enumerate(kept_lines) if not is_fenced and ATX_HEADING_REGEX.match(line)]
     description_index = next((index for index in heading_indexes if lines[index] == DESCRIPTION_HEADING), None)
@@ -474,15 +522,20 @@ def apply_backlink(body: str, key: str, site_url: str) -> str:
     while rest and not rest[0].strip():
         rest = rest[1:]
     separator_after_link = [""] if rest else []
-    new_lines = (head + ["", link] + separator_after_link + rest) if insert_at is not None else ([link] + separator_after_link + rest)
+    new_lines = (head + ["", *alert] + separator_after_link + rest) if insert_at is not None else (alert + separator_after_link + rest)
     result = newline.join(new_lines)
     return result + newline if had_final_newline else result
 
 
 def verify_backlink(body: str, key: str, site_url: str) -> dict[str, Any]:
-    link = backlink_line(key, site_url)
+    alert = backlink_alert_lines(key, site_url)
     lines = body.splitlines()
-    count = sum(1 for line, is_fenced in zip(lines, _fenced_line_flags(lines)) if not is_fenced and line == link)
+    flags = _fenced_line_flags(lines)
+    count = sum(
+        1
+        for index in range(len(lines) - 1)
+        if not flags[index] and not flags[index + 1] and lines[index : index + 2] == alert
+    )
     return {"key": key, "occurrences": count, "canonical": count == 1 and apply_backlink(body, key, site_url) == body}
 
 

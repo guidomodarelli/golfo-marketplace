@@ -886,8 +886,13 @@
         },
         {
           "type": "regex",
-          "pattern": "Jira: \\[ACME-9300\\]\\(https://acme\\.atlassian\\.net/browse/ACME-9300\\)",
-          "description": "El body del PR lleva el backlink canónico al padre."
+          "pattern": "^> \\S+ Jira: \\[ACME-9300\\]\\(https://acme\\.atlassian\\.net/browse/ACME-9300\\)",
+          "description": "El body del PR lleva el backlink canónico al padre dentro de la alerta."
+        },
+        {
+          "type": "regex",
+          "pattern": "^> \\[!NOTE\\]",
+          "description": "El backlink va en una alerta `> [!NOTE]` de GitHub."
         },
         {
           "type": "regex",

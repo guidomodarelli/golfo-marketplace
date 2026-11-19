@@ -321,16 +321,23 @@ def test_pr_normalize_rejects_unvalidated_input(bad_input):
 # --- backlink --------------------------------------------------------------
 
 
+def alert_count(body: str) -> int:
+    """Cuenta las alertas NOTE del backlink objetivo (marcador seguido de la línea `> 🎫 Jira:`)."""
+    lines = body.splitlines()
+    alert = jira_ticket.backlink_alert_lines(TARGET_KEY, SITE_URL)
+    return sum(1 for index in range(len(lines) - 1) if lines[index : index + 2] == alert)
+
+
 def test_backlink_on_template_body_is_minimal_and_idempotent():
     body = (FIXTURES / "pr-body.md").read_text(encoding="utf-8")
-    link = jira_ticket.backlink_line(TARGET_KEY, SITE_URL)
+    alert_text = "\n".join(jira_ticket.backlink_alert_lines(TARGET_KEY, SITE_URL))
     once = jira_ticket.apply_backlink(body, TARGET_KEY, SITE_URL)
     assert jira_ticket.apply_backlink(once, TARGET_KEY, SITE_URL) == once
-    assert once.splitlines().count(link) == 1
-    assert once.replace("\n" + link + "\n", "", 1).rstrip() == body.rstrip()
-    assert once.split("## 📝 Descripción\n", 1)[1].startswith("\n" + link + "\n\n### ❓")
+    assert alert_count(once) == 1
+    assert once.replace("\n" + alert_text + "\n", "", 1).rstrip() == body.rstrip()
+    assert once.split("## 📝 Descripción\n", 1)[1].startswith("\n" + alert_text + "\n\n### ❓")
     assert f"[{OTHER_KEY}]({SITE_URL}/browse/{OTHER_KEY})" in once
-    assert link == f"🎫 Jira: [{TARGET_KEY}]({SITE_URL}/browse/{TARGET_KEY})"
+    assert alert_text == f"> [!NOTE]\n> 🎫 Jira: [{TARGET_KEY}]({SITE_URL}/browse/{TARGET_KEY})"
 
 
 def test_backlink_uses_configured_site_without_trailing_slash():
@@ -345,17 +352,40 @@ def test_backlink_preserves_crlf_and_missing_final_newline():
 
 
 def test_backlink_replaces_same_key_variants_only():
+    plain_link = jira_ticket.backlink_line(TARGET_KEY, SITE_URL)
     body = (
         "## 📝 Descripción\n"
-        f"🎫 Jira: [{TARGET_KEY}]({SITE_URL}/browse/{TARGET_KEY})\n"
+        f"{plain_link}\n"
         f"> **Referencia:** {SITE_URL}/browse/{TARGET_KEY}\n"
         f"> **Referencia:** {SITE_URL}/browse/{TARGET_KEY}5\n"
         f"Texto que menciona {TARGET_KEY} en prosa.\n"
-        f"🎫 Jira: [{TARGET_KEY}]({SITE_URL}/browse/{TARGET_KEY})\n"
+        "\n> [!NOTE]\n"
+        f"> {plain_link}\n"
     )
     result = jira_ticket.apply_backlink(body, TARGET_KEY, SITE_URL)
-    assert result.splitlines().count(jira_ticket.backlink_line(TARGET_KEY, SITE_URL)) == 1
+    assert alert_count(result) == 1
+    assert result.count(plain_link) == 1 and result.count("> [!NOTE]") == 1
     assert f"{TARGET_KEY}5" in result and f"Texto que menciona {TARGET_KEY} en prosa." in result
+
+
+def test_backlink_migrates_legacy_plain_line_to_note_alert():
+    plain_link = jira_ticket.backlink_line(TARGET_KEY, SITE_URL)
+    body = f"## 📝 Descripción\n\n{plain_link}\n\n### ❓ ¿Qué problema resuelve?\nTexto\n"
+    result = jira_ticket.apply_backlink(body, TARGET_KEY, SITE_URL)
+    assert result == f"## 📝 Descripción\n\n> [!NOTE]\n> {plain_link}\n\n### ❓ ¿Qué problema resuelve?\nTexto\n"
+    assert jira_ticket.verify_backlink(body, TARGET_KEY, SITE_URL)["canonical"] is False
+    assert jira_ticket.verify_backlink(result, TARGET_KEY, SITE_URL)["canonical"] is True
+
+
+def test_backlink_keeps_other_ticket_alert_and_shared_note_text():
+    other_alert = ["> [!NOTE]", f"> {jira_ticket.backlink_line(OTHER_KEY, SITE_URL)}"]
+    shared_note = ["> [!NOTE]", "> Desplegar después del release.", f"> {jira_ticket.backlink_line(TARGET_KEY, SITE_URL)}"]
+    body = "\n".join(["## Real", "", *other_alert, "", *shared_note, ""])
+    once = jira_ticket.apply_backlink(body, TARGET_KEY, SITE_URL)
+    lines = once.splitlines()
+    assert other_alert[1] in lines and "> Desplegar después del release." in lines
+    assert alert_count(once) == 1
+    assert jira_ticket.apply_backlink(once, TARGET_KEY, SITE_URL) == once
 
 
 def test_backlink_preserves_mixed_reference_line_with_other_ticket():
@@ -363,7 +393,7 @@ def test_backlink_preserves_mixed_reference_line_with_other_ticket():
     body = f"## 📝 Descripción\n{mixed_reference}\nTexto\n"
     once = jira_ticket.apply_backlink(body, TARGET_KEY, SITE_URL)
     assert mixed_reference in once.splitlines()
-    assert once.splitlines().count(jira_ticket.backlink_line(TARGET_KEY, SITE_URL)) == 1
+    assert alert_count(once) == 1
     assert jira_ticket.apply_backlink(once, TARGET_KEY, SITE_URL) == once
     assert jira_ticket.verify_backlink(once, TARGET_KEY, SITE_URL)["canonical"] is True
 
@@ -377,29 +407,48 @@ def test_backlink_is_idempotent_for_empty_or_heading_only_bodies(body):
 
 
 def test_backlink_fallbacks_first_heading_then_prepend():
-    link = jira_ticket.backlink_line(TARGET_KEY, SITE_URL)
-    assert jira_ticket.apply_backlink("# Título\nCuerpo\n", TARGET_KEY, SITE_URL).splitlines()[:3] == ["# Título", "", link]
-    assert jira_ticket.apply_backlink("Cuerpo sin títulos\n", TARGET_KEY, SITE_URL).splitlines()[0] == link
+    alert = jira_ticket.backlink_alert_lines(TARGET_KEY, SITE_URL)
+    assert jira_ticket.apply_backlink("# Título\nCuerpo\n", TARGET_KEY, SITE_URL).splitlines()[:4] == ["# Título", "", *alert]
+    assert jira_ticket.apply_backlink("Cuerpo sin títulos\n", TARGET_KEY, SITE_URL).splitlines()[:3] == [*alert, ""]
 
 
 def test_backlink_ignores_headings_and_backlinks_inside_code_fences():
-    link = jira_ticket.backlink_line(TARGET_KEY, SITE_URL)
-    fenced_example = ["```markdown", "## Ejemplo", link, "```"]
+    alert = jira_ticket.backlink_alert_lines(TARGET_KEY, SITE_URL)
+    fenced_example = ["```markdown", "## Ejemplo", *alert, "```"]
     body = "\n".join(["Intro", *fenced_example, "", "## Real", "Cuerpo"]) + "\n"
     once = jira_ticket.apply_backlink(body, TARGET_KEY, SITE_URL)
     lines = once.splitlines()
-    assert lines[1:5] == fenced_example
-    assert lines[lines.index("## Real") + 1 : lines.index("## Real") + 3] == ["", link]
+    assert lines[1:6] == fenced_example
+    assert lines[lines.index("## Real") + 1 : lines.index("## Real") + 4] == ["", *alert]
     assert jira_ticket.apply_backlink(once, TARGET_KEY, SITE_URL) == once
     assert jira_ticket.verify_backlink(once, TARGET_KEY, SITE_URL) == {"key": TARGET_KEY, "occurrences": 1, "canonical": True}
     assert jira_ticket.verify_backlink(body, TARGET_KEY, SITE_URL)["occurrences"] == 0
 
 
+def test_backlink_preserves_examples_inside_blockquoted_code_fences():
+    alert = jira_ticket.backlink_alert_lines(TARGET_KEY, SITE_URL)
+    quoted_example = ["> ```markdown", *(f"> {line}" for line in alert), "> ```"]
+    body = "\n".join(["## Real", "", *quoted_example, "", "Cuerpo"]) + "\n"
+    once = jira_ticket.apply_backlink(body, TARGET_KEY, SITE_URL)
+    lines = once.splitlines()
+    assert lines[5:9] == quoted_example
+    assert lines[:5] == ["## Real", "", *alert, ""]
+    assert jira_ticket.apply_backlink(once, TARGET_KEY, SITE_URL) == once
+    assert jira_ticket.verify_backlink(body, TARGET_KEY, SITE_URL)["occurrences"] == 0
+
+
+def test_backlink_fence_inside_blockquote_ends_with_the_blockquote():
+    plain_link = jira_ticket.backlink_line(TARGET_KEY, SITE_URL)
+    body = f"## Real\n\n> ```\n> código sin cerrar\n\n{plain_link}\n"
+    once = jira_ticket.apply_backlink(body, TARGET_KEY, SITE_URL)
+    assert alert_count(once) == 1 and once.count(plain_link) == 1
+
+
 def test_backlink_prepends_when_every_heading_is_fenced():
-    link = jira_ticket.backlink_line(TARGET_KEY, SITE_URL)
+    alert_text = "\n".join(jira_ticket.backlink_alert_lines(TARGET_KEY, SITE_URL))
     body = "Intro\n~~~~\n## Ejemplo\n~~~\n~~~~\n"
     once = jira_ticket.apply_backlink(body, TARGET_KEY, SITE_URL)
-    assert once == f"{link}\n\n{body}"
+    assert once == f"{alert_text}\n\n{body}"
     assert jira_ticket.apply_backlink(once, TARGET_KEY, SITE_URL) == once
     assert jira_ticket.verify_backlink(once, TARGET_KEY, SITE_URL)["canonical"] is True
 

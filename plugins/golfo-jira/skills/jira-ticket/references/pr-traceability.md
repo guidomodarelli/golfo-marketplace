@@ -137,17 +137,21 @@ Edits de issues independientes pueden ejecutarse en paralelo después de fijar p
 
 ## Backlink canónico PR→Jira
 
-Formato exacto:
+Formato exacto: alerta `NOTE` de GitHub cuyo único contenido es la línea `🎫 Jira:`.
 
 ```markdown
-🎫 Jira: [<KEY>](<SITE_URL>/browse/<KEY>)
+> [!NOTE]
+> 🎫 Jira: [<KEY>](<SITE_URL>/browse/<KEY>)
 ```
 
 Ejemplo:
 
 ```markdown
-🎫 Jira: [PROJ-1234](<SITE_URL>/browse/PROJ-1234)
+> [!NOTE]
+> 🎫 Jira: [PROJ-1234](<SITE_URL>/browse/PROJ-1234)
 ```
+
+Una alerta por ticket: backlinks de otros tickets quedan en su propia alerta. La línea plana `🎫 Jira: [...]` sin alerta es formato legacy del mismo ticket y se normaliza a la alerta.
 
 ### Posición
 
@@ -164,7 +168,8 @@ No crear heading o bloque `Referencia`.
 Normalizar solo padre objetivo:
 
 - Eliminar backlinks canónicos duplicados del mismo key.
-- Reemplazar variantes estructuradas del mismo backlink.
+- Reemplazar variantes estructuradas del mismo backlink, incluida la línea plana legacy `🎫 Jira: [...]`.
+- Si una alerta `> [!NOTE]` contiene solo el backlink del key objetivo, reemplazarla entera; si además contiene otro texto, quitar solo la línea del backlink y conservar la alerta.
 - Reemplazar línea legacy `> **Referencia:** ...` solo cuando URL o key identifica exactamente mismo ticket.
 - Usar límites exactos: `PROJ-1234` no coincide con `PROJ-12345`.
 - Preservar backlinks y referencias a otros tickets.
