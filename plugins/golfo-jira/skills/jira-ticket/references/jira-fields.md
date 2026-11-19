@@ -191,7 +191,7 @@ Releer por key padre y subtareas y verificar:
 - [ ] Padres existentes compatibles reutilizados sin duplicación; cada hito solicitado representado por issue hijo real, no checklist textual.
 - [ ] Requisitos actuales de metadata cubiertos.
 - [ ] Responsable previo preservado o responsable solicitado/configurado verificado.
-- [ ] Todos los `PR_LABELS` y labels solicitadas presentes; labels ajenos preservados.
+- [ ] Todos los `PR_LABELS` y labels solicitadas presentes; labels ajenos preservados. Un bloqueante nuevo no recibe los `PR_LABELS` del bloqueado (`dependencies.md`).
 - [ ] Quarter contiene opción válida del trimestre esperado (si está configurado).
 - [ ] Fecha de inicio (si está configurada) coincide con valor aportado, heredado o verificado; no reemplazar fecha existente por fecha actual.
 - [ ] Si sprint está configurado, padre tiene sprint resuelto o preservado según sección Sprint, y cada subtarea muestra el sprint del padre.
