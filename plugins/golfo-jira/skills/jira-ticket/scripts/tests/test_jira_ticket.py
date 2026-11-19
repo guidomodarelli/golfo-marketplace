@@ -1095,6 +1095,14 @@ def test_dependency_verify_detects_missing_and_inverted_links(monkeypatch, capsy
     assert (result["linked"], result["inverted"], result["missing"], result["ok"]) == (["ACME-7"], ["ACME-8"], ["ACME-9"], False)
 
 
+def test_dependency_verify_skips_blockers_plan_rejects_for_fixed_reasons(monkeypatch, capsys):
+    payload = {"issue": blocked_issue(is_blocked_by("ACME-7")), "link_types": LINK_TYPES, "blockers": ["ACME-7", BLOCKED_KEY, "PLAT-3"]}
+    exit_code, result, _ = dependency_cli(monkeypatch, capsys, "verify", payload)
+    assert exit_code == jira_ticket.EXIT_OK and result["ok"] is True
+    assert [item["key"] for item in result["skipped"]] == [BLOCKED_KEY, "PLAT-3"]
+    assert (result["linked"], result["missing"], result["inverted"]) == (["ACME-7"], [], [])
+
+
 def test_dependency_verify_ok_after_links_exist(monkeypatch, capsys):
     payload = {"issue": blocked_issue(is_blocked_by("ACME-7", "done")), "link_types": LINK_TYPES, "blockers": ["ACME-7"]}
     exit_code, result, _ = dependency_cli(monkeypatch, capsys, "verify", payload)

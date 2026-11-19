@@ -1126,6 +1126,16 @@ def blocker_project_keys(config: Config) -> list[str]:
     return config.dependencies["blocker_project_keys"]
 
 
+def _fixed_rejection(key: str, blocked_key: str, allowed_projects: list[str]) -> str | None:
+    """Motivo de rechazo que no depende de los links existentes; `plan` y `verify` lo aplican igual."""
+    project = key.rsplit("-", 1)[0]
+    if key == blocked_key:
+        return "un issue no puede bloquearse a sí mismo"
+    if project not in allowed_projects:
+        return f"proyecto {project} fuera de {ENV_PREFIX}BLOCKER_PROJECT_KEYS ({', '.join(allowed_projects)})"
+    return None
+
+
 def plan_dependencies(payload: Any, blocked_key: str, config: Config) -> dict[str, Any]:
     """Qué links `is blocked by` crear sobre `blocked_key`, cuáles ya existen y cuáles se rechazan.
 
@@ -1144,11 +1154,9 @@ def plan_dependencies(payload: Any, blocked_key: str, config: Config) -> dict[st
     rejected: list[dict[str, str]] = []
     for blocker in _normalize_blockers(payload.get("blockers", [])):
         key = blocker["key"]
-        project = key.rsplit("-", 1)[0]
-        if key == blocked_key:
-            rejected.append({"key": key, "reason": "un issue no puede bloquearse a sí mismo"})
-        elif project not in allowed_projects:
-            rejected.append({"key": key, "reason": f"proyecto {project} fuera de {ENV_PREFIX}BLOCKER_PROJECT_KEYS ({', '.join(allowed_projects)})"})
+        fixed_reason = _fixed_rejection(key, blocked_key, allowed_projects)
+        if fixed_reason is not None:
+            rejected.append({"key": key, "reason": fixed_reason})
         elif key in existing["blocks"]:
             rejected.append({"key": key, "reason": f"{blocked_key} ya bloquea a {key}; el link inverso crearía un ciclo"})
         elif key in existing["blocked_by"]:
@@ -1179,16 +1187,26 @@ def plan_dependencies(payload: Any, blocked_key: str, config: Config) -> dict[st
 
 
 def verify_dependencies(payload: Any, blocked_key: str, config: Config) -> dict[str, Any]:
-    """Relectura: cada bloqueante pedido aparece como `is blocked by` sobre `blocked_key`, sin links invertidos."""
+    """Relectura: cada bloqueante pedido aparece como `is blocked by` sobre `blocked_key`, sin links invertidos.
+
+    Omite (en `skipped`) los bloqueantes que `plan` rechaza por autorreferencia o
+    proyecto no permitido, porque nunca reciben link. Los rechazados por ciclo
+    dependen del estado previo a crear los links: no deben pasarse a `verify`
+    (ver `dependencies.md`), o se informarían como `inverted`.
+    """
     if not isinstance(payload, dict):
         raise JiraTicketError("jira-ticket: dependency verify espera por stdin un objeto con `issue`, `link_types` y `blockers`")
     link_type = resolve_link_type(payload.get("link_types"), config.get("DEPENDENCY_LINK_TYPE") or DEFAULT_SETTINGS["DEPENDENCY_LINK_TYPE"])
     existing = existing_dependency_links(payload.get("issue"), link_type)
-    keys = [blocker["key"] for blocker in _normalize_blockers(payload.get("blockers", []))]
+    allowed_projects = blocker_project_keys(config)
+    requested = [blocker["key"] for blocker in _normalize_blockers(payload.get("blockers", []))]
+    skipped = [{"key": key, "reason": reason} for key in requested if (reason := _fixed_rejection(key, blocked_key, allowed_projects)) is not None]
+    skipped_keys = {item["key"] for item in skipped}
+    keys = [key for key in requested if key not in skipped_keys]
     linked = [key for key in keys if key in existing["blocked_by"]]
     inverted = [key for key in keys if key not in existing["blocked_by"] and key in existing["blocks"]]
     missing = [key for key in keys if key not in existing["blocked_by"] and key not in existing["blocks"]]
-    return {"blocked": blocked_key, "link_type": link_type["name"], "linked": linked, "inverted": inverted, "missing": missing, "ok": not inverted and not missing}
+    return {"blocked": blocked_key, "link_type": link_type["name"], "linked": linked, "inverted": inverted, "missing": missing, "skipped": skipped, "ok": not inverted and not missing}
 
 
 # --- CLI -------------------------------------------------------------------
