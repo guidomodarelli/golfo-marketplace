@@ -142,13 +142,13 @@
     },
     {
       "id": "propagate-middle-layer-fix",
-      "description": "Tras un fix de review en la capa intermedia, rebasea las capas superiores con --update-refs, pushea con lease y revalida.",
+      "description": "Tras un fix de review en la capa intermedia, rebasea las capas superiores capa por capa sin --update-refs (que movería los backups), pushea con lease y revalida.",
       "input": "Contexto: stack de cuatro capas en el mismo repo: feature/pay-contracts -> develop, feature/pay-backend -> feature/pay-contracts, feature/pay-frontend -> feature/pay-backend y feature/pay-cleanup -> feature/pay-frontend. Un reviewer pidió un cambio en feature/pay-backend. Usando la skill stacked-pr, describí sin ejecutar nada cómo aplico el fix y lo propago a las capas de arriba.",
       "assertions": [
         {
-          "type": "contains",
-          "value": "--update-refs",
-          "description": "Usa git rebase --update-refs para mover las capas superiores"
+          "type": "regex",
+          "pattern": "rebase --onto +(origin/)?feature/pay-backend +[^ ]+ +(origin/)?feature/pay-frontend",
+          "description": "Rebasea la capa siguiente desde el tip viejo de su parent"
         },
         {
           "type": "contains",
@@ -171,6 +171,11 @@
           "type": "regex",
           "pattern": "(revalid|vuelv[oa] a validar|gh pr checks|re-?run)",
           "description": "Revalida cada capa después del rebase"
+        },
+        {
+          "type": "regex",
+          "pattern": "(no|nunca|sin|evit)[^.]{0,60}--update-refs|--update-refs[^.]{0,120}(backup|refs/heads)",
+          "description": "No usa --update-refs porque movería las refs de backup"
         }
       ]
     },

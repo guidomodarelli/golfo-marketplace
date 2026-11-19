@@ -152,16 +152,19 @@ Usá cuando un review, un fix o un rebase obliga a cambiar la capa N y las capas
 
    ```bash
    old_n_tip=$(git rev-parse feature/<slug>-<layer-n>)
+   old_n1_tip=$(git rev-parse feature/<slug>-<layer-n+1>)   # y así hasta el top
    ```
 
 2. Commiteá el cambio en la capa N (commit nuevo; no reescribas commits ya revisados salvo pedido).
-3. Rebaseá el resto del stack de una sola vez. `--update-refs` (git ≥ 2.38) mueve también cada branch intermedia que apuntaba a un commit reescrito:
+3. Rebaseá capa por capa, de abajo hacia arriba, usando los tips capturados en el paso 1: cada child se recorta desde el tip **viejo** de su parent y se apoya en el tip **nuevo**.
 
    ```bash
-   git rebase --update-refs --onto feature/<slug>-<layer-n> "$old_n_tip" feature/<slug>-<top-layer>
+   git rebase --onto feature/<slug>-<layer-n> "$old_n_tip" feature/<slug>-<layer-n+1>
+   git rebase --onto feature/<slug>-<layer-n+1> "$old_n1_tip" feature/<slug>-<layer-n+2>
+   # ...hasta el top
    ```
 
-   Con git más viejo, rebaseá capa por capa de abajo hacia arriba con `git rebase --onto <parent-nuevo> <parent-tip-viejo> <child>`, usando los tips capturados en el paso 1.
+   No uses `git rebase --update-refs`: mueve **toda** ref bajo `refs/heads/` que apunte a un commit reescrito, incluidas las `refs/heads/backup/*` propias y ajenas (por ejemplo `backup/legacy`). Eso destruye los puntos de recuperación y hace fallar el cleanup por OID esperado. El rebase capa por capa solo mueve la branch que se nombra.
 
 4. Si aparece un conflicto que no se resuelve con seguridad, `git rebase --abort`, conservá backups y reportá `BACKUPS_PRESERVED_ON_FAILURE` con la capa afectada.
 5. Revalidá cada capa (ver «Dependencias y CI») y pusheá cada branch con su OID esperado:
@@ -264,7 +267,7 @@ El último PR debe contener todo el cambio intencional y ningún archivo fuera d
   gh pr edit <child-pr> --base <integration-branch>
   ```
 
-  Si quedan más capas encima, usá `--update-refs` desde el top para moverlas todas en el mismo rebase (ver modo D).
+  Si quedan más capas encima, rebaseálas capa por capa con los tips viejos capturados antes, como en el modo D (sin `--update-refs`).
 
 - Revalidá CI, conflictos y golden después de cada squash.
 - Eliminá branches del stack solo cuando todos los PRs estén fusionados y el golden final verificado; las refs `backup/*` siguen el cleanup de [`references/backups.md`](references/backups.md).
