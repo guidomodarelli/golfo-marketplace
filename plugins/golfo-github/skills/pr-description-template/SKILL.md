@@ -4,7 +4,7 @@ description: "Provides the standard PR title and concise description template (c
 allowed-tools: Bash(gh:*) Bash(git:*) Bash(bash:*) Bash(jq:*)
 license: MIT
 metadata:
-  version: "1.4.0"
+  version: "1.5.0"
   author: "Guido Modarelli"
   category: "git-workflow"
   tags: "pull-request, template, description, screenshots"

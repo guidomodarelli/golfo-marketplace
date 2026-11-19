@@ -409,8 +409,17 @@
         },
         {
           "type": "contains",
-          "value": "Tipo de Cambio",
-          "description": "Compone el body con el template"
+          "value": "Descripción (",
+          "description": "Compone el body con el template, con el tipo de cambio en el heading Descripción"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "Tipo de Cambio",
+            "Archivos de código modificados",
+            "Pruebas Manuales"
+          ],
+          "description": "No agrega la sección Tipo de Cambio, el conteo de archivos ni Pruebas Manuales"
         }
       ]
     }
