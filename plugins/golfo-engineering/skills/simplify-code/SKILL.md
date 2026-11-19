@@ -8,6 +8,7 @@ metadata:
   category: "refactor"
   tags: "simplify-code, simplify, cleanup, duplication, reuse, code-quality"
   command: "/simplify-code"
+  plugin-dependencies: "golfo-github"
 ---
 
 # Simplify Code
@@ -47,10 +48,14 @@ Use these checks while editing:
 - If performance cleanup is possible, prefer removing repeated work or unstable allocations before adding caches or memoization.
 - If the simplification touches tests, keep tests behavior-focused. Do not assert source text, import spelling, or implementation-only structure.
 
+## Cleanups outside the diff
+
+The cleanups this skill applies belong to the code the change already touches, so they stay in the same PR. When a worthwhile cleanup reaches existing code outside the diff, do not widen the change: suggest it as a stacked PR layer above the feature, following [refactor-placement.md](../../references/refactor-placement.md).
+
 ## Reporting
 
 When finished, report:
 
 - what was simplified and why it is behavior-preserving
-- any relevant tradeoff or cleanup deliberately skipped
+- any relevant tradeoff or cleanup deliberately skipped, and the suggested stacked PR layer for cleanups outside the diff
 - validation commands run and their result

@@ -194,6 +194,28 @@
           "description": "Incluye tests negativos de serialización segura"
         }
       ]
+    },
+    {
+      "id": "error-contract-below-consumer-migration-above",
+      "description": "Ubica el contrato de errores que la feature consume en una capa debajo y la migración de consumers ajenos en una capa encima, solo como sugerencia.",
+      "input": "Usando typed-errors-refactor: en la rama feature/refund-flow estoy agregando reembolsos en TypeScript. Para mapear bien los errores del provider necesito un contrato `RefundError` con códigos y un normalizer. Además, los 12 handlers viejos de `src/api/payments/` (que la feature no toca) comparan `error.message.includes('timeout')` y habría que migrarlos al contrato. No ejecutes ni edites nada: decime el plan y cómo lo repartirías en PRs.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "(contrato|contract|normaliz).{0,300}(debajo|abajo|below|antes|before|preparatori|preparatory|base)",
+          "description": "Ubica el contrato y normalizer en una capa debajo de la feature"
+        },
+        {
+          "type": "regex",
+          "pattern": "(stack|apilad|capa|layer|rama|branch|PR).{0,200}(encima|arriba|above|on top)|(encima|arriba|above|on top).{0,200}(stack|apilad|capa|layer|rama|branch|PR)",
+          "description": "Sugiere una capa de stacked PR encima de la feature para la limpieza fuera de alcance"
+        },
+        {
+          "type": "regex",
+          "pattern": "(sugier|suger|propon|propuesta|recomiend|si quer[eé]s|si est[aá]s de acuerdo|¿quer[eé]s|suggest|propose|recommend)",
+          "description": "Presenta la capa como sugerencia para que el usuario decida, en vez de crearla"
+        }
+      ]
     }
   ]
 }

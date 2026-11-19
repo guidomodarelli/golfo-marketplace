@@ -8,6 +8,7 @@ metadata:
   category: "refactor"
   tags: "refactor, constants, configuration, literals, cross-layer"
   command: "/constants-refactor"
+  plugin-dependencies: "golfo-github"
 ---
 
 # Constants Refactor

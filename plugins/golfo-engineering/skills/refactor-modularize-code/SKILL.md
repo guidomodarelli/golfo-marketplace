@@ -8,6 +8,7 @@ metadata:
   category: "refactor"
   tags: "refactor, modularity, cohesion, duplication"
   command: "/refactor-modularize-code"
+  plugin-dependencies: "golfo-github"
 ---
 
 # Refactor Modularity Cohesion Deduplication
@@ -27,6 +28,10 @@ Refactor toward clear responsibilities and smaller, more cohesive modules. Keep 
 ## Shared execution
 
 Read [ejecución compartida](../../references/refactor-execution.md) before editing. Apply its phases, metrics, and validation workflow.
+
+## Same PR or stacked PR layer
+
+When the refactor comes with a feature in progress, decide whether it travels in the same PR or in its own stacked PR layer with the criterion in [refactor-placement.md](../../references/refactor-placement.md). Structure the feature's own new code well in the same PR. Suggest a layer **below** the feature for an extraction the feature needs before it can be built, and a layer **above** for cleanup of existing code outside the feature's scope or moves and renames that would inflate its diff. Only suggest it: create branches or PRs only after the user agrees.
 
 ## Detect Bad Boundaries
 
@@ -118,4 +123,4 @@ Apply shared validation per phase. Confirm also that removed duplication shares 
 
 ## Closeout
 
-Summarize the extracted boundary, preserved contracts, main-file and feature metrics, and deferred phases.
+Summarize the extracted boundary, preserved contracts, main-file and feature metrics, deferred phases, and the suggested stacked PR layer when the refactor should not ship with the feature.

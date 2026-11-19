@@ -14,6 +14,10 @@ Aplicar workflow completo cuando usuario pida implementar. Entregar solo anális
 
 Limitar los cambios a lo que el usuario nombró: un archivo, un módulo, una función, un PR o una lista de constantes. No convertir un pedido puntual en una auditoría del repositorio ni tocar archivos fuera de ese alcance. Si aparecen candidatos fuera del alcance, listarlos en "Sugerencias fuera de alcance" del reporte, sin aplicarlos. El modo auditoría de repo se usa solo cuando el usuario lo pide.
 
+### Mismo PR o capa de stacked PR
+
+Cuando el refactor de constantes acompaña una feature en curso (modo PR / diff), decidir si va en el mismo PR o en una capa propia de stacked PR con el criterio de [refactor-placement.md](../../../references/refactor-placement.md). Las constantes que la propia feature agrega se ubican bien en el mismo PR. Las de código existente fuera del alcance, o una extracción que toca muchos archivos que la feature no toca, se sugieren como capa encima. Proponerlo en la sección "Capa de refactor sugerida" del reporte, sin crear ramas ni PRs.
+
 ## Modos
 
 Elegir el modo antes de inventariar; el alcance y la base de comparación dependen de él.
@@ -304,6 +308,9 @@ Usar este formato salvo que usuario pida otro:
 
 ## Sugerencias fuera de alcance
 - Candidatos vistos fuera de lo pedido, sin aplicar (omitir la sección si no hay).
+
+## Capa de refactor sugerida
+- Refactor, si va debajo o encima de la feature y por qué, según refactor-placement.md (omitir la sección si todo va en el mismo PR).
 
 ## Cambios aplicados
 - Fuentes canónicas.
