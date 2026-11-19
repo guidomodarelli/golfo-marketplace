@@ -1,8 +1,8 @@
 # Capacidades de agente: detección, equivalencias y fallbacks
 
-Leer este archivo cuando una skill de `golfo-kit` necesite una herramienta que no todos los agentes tienen: preguntar con opciones, monitorear procesos, programar tareas, lanzar subagentes, invocar otra skill, plan/todos, widgets, verificar en un navegador, hooks, MCP o rutas de configuración. Es la única fuente de verdad de estas equivalencias; cada skill lista en su sección «Compatibilidad entre agentes» solo sus adaptaciones propias.
+Leer este archivo cuando una skill de los plugins golfo necesite una herramienta que no todos los agentes tienen: preguntar con opciones, monitorear procesos, programar tareas, lanzar subagentes, invocar otra skill, plan/todos, widgets, verificar en un navegador, hooks, MCP o rutas de configuración. Es la única fuente de verdad de estas equivalencias; cada skill lista en su sección «Compatibilidad entre agentes» solo sus adaptaciones propias.
 
-El [reporte de compatibilidad](compatibility-report.md) describe qué se verificó por skill y por agente. **No es la fuente de verdad para decidir qué ejecutar**: en cada ejecución la skill verifica las capacidades realmente disponibles con el protocolo de abajo, aunque el reporte diga otra cosa.
+El reporte de compatibilidad (`references/compatibility-report.md` del plugin `golfo-kit`) describe qué se verificó por skill y por agente. **No es la fuente de verdad para decidir qué ejecutar**: en cada ejecución la skill verifica las capacidades realmente disponibles con el protocolo de abajo, aunque el reporte diga otra cosa.
 
 ## Protocolo (obligatorio en cada skill que use una capacidad de esta tabla)
 
@@ -21,7 +21,7 @@ Reglas que valen siempre:
 
 ## Detección
 
-Señales verificadas en esta máquina el 2026-10-23 (ver evidencia en el [reporte](compatibility-report.md)):
+Señales verificadas en esta máquina el 2026-10-23 (ver evidencia en el reporte de compatibilidad del plugin `golfo-kit`):
 
 | Agente | Versión probada | Variables de entorno en sus comandos de shell | Otras señales |
 |---|---|---|---|
@@ -55,7 +55,7 @@ Las variables **se heredan**: un Claude Code lanzado desde una sesión de Hermes
 | Hooks | `hooks` en `settings.json` | Feature `hooks` activo; formato no verificado en esta auditoría | `hooks:` en `config.yaml` (shell hooks), `HOOK.yaml` de gateway | — | La automatización del hook; hacer la acción a mano y reportarlo |
 | Rutas de config | `~/.claude` (o `$CLAUDE_CONFIG_DIR`) | `$CODEX_HOME` (default `~/.codex`) | `$HERMES_HOME` (default `~/.hermes`; `%LOCALAPPDATA%\hermes` en Windows) | Preguntar la ruta | — |
 | Invocar otra skill | `Skill` / `/<skill>` | Mención `$<skill>` o leer su `SKILL.md` (la mención no se verificó en esta auditoría) | `skill_view(name)` o `/<skill>` si está instalada; `hermes chat -s <skill>` para precargar | Leer el `SKILL.md` de la skill por path y seguirlo | Nada si el archivo existe |
-| Registrar cobertura de skills ([`skill-coverage`](skill-coverage.md)) | `node <plugin>/tools/skill-coverage/skill-coverage.mjs` por `Bash` | El mismo comando por `exec_command` | El mismo comando por `terminal` | Cualquier shell con `node` ≥ 20 en `PATH`; sin el parser de Babel del proyecto, comparación por archivo completo (más conservadora) | Ninguno que registre: la skill termina su trabajo pero cierra **incompleta** (cobertura sin registrar), con el motivo concreto (sin `node`, CLI no encontrado, error literal de `add-unit` o `record`) y qué falta para registrar por unidad; nunca como completa ni solo como limitación ([Cierre incompleto o bloqueado](skill-coverage.md#cierre-incompleto-o-bloqueado)) |
+| Registrar cobertura de skills (`skill-coverage`; protocolo en `references/skill-coverage.md` de los plugins que lo usan) | `node <plugin>/tools/skill-coverage/skill-coverage.mjs` por `Bash` | El mismo comando por `exec_command` | El mismo comando por `terminal` | Cualquier shell con `node` ≥ 20 en `PATH`; sin el parser de Babel del proyecto, comparación por archivo completo (más conservadora) | Ninguno que registre: la skill termina su trabajo pero cierra **incompleta** (cobertura sin registrar), con el motivo concreto (sin `node`, CLI no encontrado, error literal de `add-unit` o `record`) y qué falta para registrar por unidad; nunca como completa ni solo como limitación («Cierre incompleto o bloqueado» de `references/skill-coverage.md`) |
 | Notificación push | `PushNotification` | No existe en la sesión; el `notify` de `config.toml` dispara un programa al terminar cada turno, no un aviso a pedido | En el gateway, el propio mensaje llega al chat (Telegram); desde cualquier shell, `hermes send --to <destino> "<texto>"` reutiliza las credenciales del gateway (`hermes send --list` mostró `telegram`; no se envió nada en la auditoría) | Línea en el mensaje del chat | Nada |
 
 ## Verificación en navegador por terminal

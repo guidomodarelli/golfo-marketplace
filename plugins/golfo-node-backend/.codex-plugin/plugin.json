@@ -1,0 +1,31 @@
+{
+  "name": "golfo-node-backend",
+  "version": "0.129.0",
+  "description": "Skills exclusivas de backend en Node.js (servidores y BFF). No aplican a backends en otros lenguajes, como Java.",
+  "author": {
+    "name": "Guido Modarelli",
+    "email": "",
+    "url": ""
+  },
+  "repository": "https://github.com/guidomodarelli/golfo-marketplace",
+  "license": "MIT",
+  "category": "development",
+  "keywords": [
+    "golfo",
+    "backend",
+    "node",
+    "bff",
+    "debugging"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Golfo Node Backend",
+    "shortDescription": "Skills exclusivas de backend en Node.js.",
+    "category": "Development",
+    "capabilities": [
+      "Read",
+      "Write",
+      "Bash"
+    ]
+  }
+}

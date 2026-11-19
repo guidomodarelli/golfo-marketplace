@@ -1,0 +1,18 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "golfo-react",
+  "version": "0.129.0",
+  "description": "Skills exclusivas de React, compartidas entre React web y React Native: rendimiento de renders, prioridad de updates e higiene de estado y efectos. No aplican a UI nativa de Android o iOS ni a otros frameworks.",
+  "author": {
+    "name": "Guido Modarelli"
+  },
+  "repository": "https://github.com/guidomodarelli/golfo-marketplace",
+  "license": "MIT",
+  "keywords": [
+    "golfo",
+    "react",
+    "react-native",
+    "performance",
+    "hooks"
+  ]
+}

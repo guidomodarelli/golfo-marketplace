@@ -1,0 +1,31 @@
+{
+  "name": "golfo-react",
+  "version": "0.129.0",
+  "description": "Skills exclusivas de React, compartidas entre React web y React Native: rendimiento de renders, prioridad de updates e higiene de estado y efectos. No aplican a UI nativa de Android o iOS ni a otros frameworks.",
+  "author": {
+    "name": "Guido Modarelli",
+    "email": "",
+    "url": ""
+  },
+  "repository": "https://github.com/guidomodarelli/golfo-marketplace",
+  "license": "MIT",
+  "category": "development",
+  "keywords": [
+    "golfo",
+    "react",
+    "react-native",
+    "performance",
+    "hooks"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Golfo React",
+    "shortDescription": "Skills exclusivas de React (web y React Native).",
+    "category": "Development",
+    "capabilities": [
+      "Read",
+      "Write",
+      "Bash"
+    ]
+  }
+}

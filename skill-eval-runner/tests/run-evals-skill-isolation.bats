@@ -54,6 +54,9 @@ case "$prompt" in
       [ -e "$view/../../shared/../skills/$skill_dir_name/evals" ] && echo "parent_traversal=visible" || echo "parent_traversal=hidden"
       [ -e "$view/../held-out-eval-config.json" ] && echo "adjacent_config=visible" || echo "adjacent_config=hidden"
       [ -e "$view/../unrelated-tree" ] && echo "unrelated_tree=visible" || echo "unrelated_tree=hidden"
+      [ -f "$view/../dependency-skill/SKILL.md" ] && echo "dependency_skill=yes" || echo "dependency_skill=no"
+      [ -e "$view/../dependency-skill/evals" ] && echo "dependency_evals=visible" || echo "dependency_evals=hidden"
+      [ -f "$view/../undeclared-skill/SKILL.md" ] && echo "undeclared_skill=yes" || echo "undeclared_skill=no"
     } >> "$VIEW_LOG"
     response_text='ok'
     ;;
@@ -85,6 +88,42 @@ run_with_view_log_env() {
         "GOLFO_MARKETPLACE_EVAL_PROVIDER=claude"
     )
     run --separate-stderr env "${environment[@]}" "${EVAL_RUNNER}" --jobs 1 "$@"
+}
+
+# Adds a sibling plugin next to the fixture plugin, with one skill that has its own evals/.
+# add_sibling_plugin <plugin> <skill>
+add_sibling_plugin() {
+    local skill_dir="${TEST_ROOT}/$1/skills/$2"
+    mkdir -p "${TEST_ROOT}/$1/.claude-plugin" "${skill_dir}/evals"
+    printf -- '---
+name: %s
+description: Companion.
+---
+' "$2" > "${skill_dir}/SKILL.md"
+    echo '{}' > "${skill_dir}/evals/eval-config.json"
+}
+
+# declare_plugin_dependencies <comma-separated plugins>
+declare_plugin_dependencies() {
+    local skill_file="${SKILL_DIR}/SKILL.md"
+    awk -v dependencies="$1" 'NR == 1 && $0 == "---" { print; print "metadata:"; print "  plugin-dependencies: \"" dependencies "\""; next } { print }' "${skill_file}" > "${skill_file}.tmp"
+    mv "${skill_file}.tmp" "${skill_file}"
+}
+
+@test "skills of the declared plugin dependencies are copied into the view without their evals" {
+    nest_skill_in_plugin_layout
+    add_sibling_plugin dependency-plugin dependency-skill
+    add_sibling_plugin undeclared-plugin undeclared-skill
+    declare_plugin_dependencies "dependency-plugin, missing-plugin"
+
+    run_with_view_log_env "${SKILL_DIR}"
+
+    [ "$status" -eq 0 ]
+    grep -q '^dependency_skill=yes$' "${VIEW_LOG}"
+    grep -q '^dependency_evals=hidden$' "${VIEW_LOG}"
+    grep -q '^undeclared_skill=no$' "${VIEW_LOG}"
+    grep -q '^evals_dirs_under_readable=0$' "${VIEW_LOG}"
+    [ -f "${TEST_ROOT}/dependency-plugin/skills/dependency-skill/evals/eval-config.json" ]
 }
 
 @test "the agent reads a copy of the skill without its evals directory" {

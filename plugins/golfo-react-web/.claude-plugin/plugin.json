@@ -1,0 +1,18 @@
+{
+  "name": "golfo-react-web",
+  "description": "Skills exclusivas de React en la web con render en el servidor (Next.js, Remix o SSR propio): hidratación, data fetching server-first y acceso a backend desde el servidor. No aplican a React Native.",
+  "version": "0.129.0",
+  "author": {
+    "name": "Guido Modarelli"
+  },
+  "repository": "https://github.com/guidomodarelli/golfo-marketplace",
+  "license": "MIT",
+  "category": "development",
+  "keywords": [
+    "golfo",
+    "react",
+    "ssr",
+    "hydration",
+    "data-fetching"
+  ]
+}

@@ -47,6 +47,46 @@ Cada registro luego referencia la ruta del subdirectorio de su proveedor (ej. `.
 
 ---
 
+## 🧩 Plugins
+
+Cada plugin tiene un ámbito: una plataforma o una tecnología. Una skill va al plugin **exclusivo** de su ámbito, y si sirve en varios ámbitos sube al plugin **compartido** que los cubre. El nombre del plugin dice cuándo no aplica: `golfo-node-backend` no sirve para un backend en Java, ni `golfo-react` para una UI nativa de Android.
+
+| Plugin | Ámbito | Skills |
+|---|---|---|
+| `golfo-kit` | Núcleo para trabajar con agentes | agent-ready-setup, skill-optimizer, be-ambitious, deepen-prompt |
+| `golfo-engineering` | Cualquier lenguaje, front, back o CLI | constants-refactor, refactor-modularize-code, simplify-code, typed-errors-refactor, async-operation-error-handling, error-observability-diagnostics, review-maintainability, review-performance, review-security, vivid-visual-output |
+| `golfo-javascript` | Solo JavaScript y TypeScript, front o back | enforce-jsdoc-tsdoc, test-best-practices, mock-first-testing-design |
+| `golfo-testing` | Testing en cualquier lenguaje | test-planning, fix-tests-intelligently |
+| `golfo-frontend` | Cualquier tecnología de UI (web, mobile nativo o React) | ui-ux-flow-patterns, optimistic-action-mutations, widget-ui-proposals |
+| `golfo-react` | Solo React, web y React Native | react-render-performance-patterns |
+| `golfo-web` | Solo web, cualquier framework | measured-performance-optimization, semantic-html-a11y, mobile-first-responsive-layout, user-manual |
+| `golfo-react-web` | Solo React en la web con SSR (Next.js, Remix, SSR propio) | prevent-ssr-hydration-mismatches, refactor-ssr-data-fetching, react-data-fetching-best-practices |
+| `golfo-nextjs` | Solo Next.js App Router | nextjs-route-ui-boundaries |
+| `golfo-mobile` | Solo mobile nativo (Android, iOS, React Native, Expo) | Todavía ninguna |
+| `golfo-node-backend` | Solo backend en Node.js | node-runtime-debugging |
+| `golfo-cli` | Solo CLIs, cualquier lenguaje | interactive-cli-design |
+| `golfo-git` | Git con cualquier host | sibling-worktree, generate-commit-messages, fix-in-ephemeral-clone, review-fix-loop, pr-flow-graph |
+| `golfo-github` | Solo GitHub | feature-branch-pr, pr-description-template, pr-inline-comment-template, stacked-pr, codex-autofix-loop, claude-autofix-loop, codex-comment-closeout, inline-thread-autofix |
+| `golfo-planning` | Planificación con cualquier herramienta | create-issue, improve-spec, functionality-check |
+| `golfo-jira` | Solo Jira | jira-ticket |
+
+### 🔗 Dependencias entre plugins
+
+Cada plugin se instala por separado, así que una skill no enlaza archivos de otro plugin: la nombra junto con su plugin (por ejemplo, «`async-operation-error-handling` (plugin `golfo-engineering`)»). La skill que nombra skills de otros plugins los declara en `metadata.plugin-dependencies` de su `SKILL.md`, como texto separado por comas:
+
+```yaml
+metadata:
+  plugin-dependencies: "golfo-engineering, golfo-nextjs"
+```
+
+Instalá también esos plugins para que la skill pueda derivar a ellos. `pnpm check-plugin-boundaries` (CI) falla si un link se sale de su plugin o si una skill nombra una skill de otro plugin sin declararlo.
+
+### 📦 Archivos compartidos (`shared/`)
+
+Lo que usan varios plugins vive una sola vez en `shared/`: `references/agent-capabilities.md`, `references/review-convergence.md`, `references/skill-coverage.md` y el CLI `tools/skill-coverage/` (con sus tests). `shared/shared-files.json` dice qué plugin lleva cada uno; `pnpm sync-shared-files` escribe las copias en cada plugin y `pnpm sync-shared-files --check` (CI) falla si una copia difiere. Editá solo la fuente en `shared/` y volvé a sincronizar: las copias dentro de `plugins/` no se editan a mano.
+
+---
+
 ## 🤖 Agent Ready multi-provider
 
 `plugins/golfo-kit/skills/agent-ready-setup` prepara siempre los tres planos sin acoplar assets compartidos a un provider:
@@ -318,7 +358,7 @@ providers falsos y no llama a Claude ni a Codex reales.
 `pnpm run test:sibling-worktree` corre la suite del helper de `sibling-worktree` sobre repos git
 temporales.
 `pnpm run test:skill-coverage` corre con `node --test` la suite del motor de cobertura incremental de
-skills (`plugins/golfo-kit/tools/skill-coverage/`) sobre repos git temporales; usa `@babel/parser`
+skills (`shared/tools/skill-coverage/`, la fuente que `pnpm sync-shared-files` copia a cada plugin) sobre repos git temporales; usa `@babel/parser`
 de las devDependencies para el análisis por símbolos.
 `pnpm run test:pr-flow-graph` corre con `node --test` las suites de `pr-flow-graph`: el
 validador del modelo, los renderers de Mermaid y HTML, la compuerta de Lean, el contrato del CLI y la
@@ -392,8 +432,9 @@ se vuelve más lento. Durante una tarea, corré solo lo que cubre el cambio y de
 | Archivos de CI por proveedor de `agent-ready-setup` (`assets/ci/`, `ci.provider`, `agent-ready ci setup`) | `bash scripts/run-bats.sh plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-ci.bats` |
 | Herramientas de un pack y política de seguridad de `agent-ready-setup` (`scripts/agent_ready_pack_tools.py`, `agent-ready trust`) | `bash scripts/run-bats.sh plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-pack-tools.bats` |
 | `review-fix-loop`, `sibling-worktree`, `create-version`, `check-version-bump`, `validate-portable-plugins` o el eval runner | Su suite (`pnpm run test:review-fix-loop`, `pnpm run test:sibling-worktree`, `bash scripts/run-bats.sh tests/create-version.bats tests/check-version-bump.bats tests/validate-portable-plugins.bats`, `bash scripts/run-bats.sh skill-eval-runner/tests/*.bats`) |
-| Motor de cobertura de skills (`plugins/golfo-kit/tools/skill-coverage/**`) | `pnpm run test:skill-coverage` |
-| `user-manual`: navegación de `DESIGN.md`, `scripts/check-*`, `build-manual.mjs` o `assets/` | `pnpm run test:user-manual` (con Playwright para la suite de navegador) y, si se tocó la paleta, `bash scripts/run-bats.sh plugins/golfo-kit/skills/user-manual/tests/check-design-tokens.bats` |
+| Motor de cobertura de skills (`shared/tools/skill-coverage/**`) | `pnpm run test:skill-coverage` y `pnpm sync-shared-files` |
+| Un archivo de `shared/`, `shared/shared-files.json`, un link entre skills o `metadata.plugin-dependencies` | `pnpm sync-shared-files --check`, `pnpm check-plugin-boundaries` y `bash scripts/run-bats.sh tests/sync-shared-files.bats tests/check-plugin-boundaries.bats` |
+| `user-manual`: navegación de `DESIGN.md`, `scripts/check-*`, `build-manual.mjs` o `assets/` | `pnpm run test:user-manual` (con Playwright para la suite de navegador) y, si se tocó la paleta, `bash scripts/run-bats.sh plugins/golfo-web/skills/user-manual/tests/check-design-tokens.bats` |
 | `pr-flow-graph`: el modelo de flujo, `scripts/` o `assets/flow-graph-template.html` | `pnpm run test:pr-flow-graph` (con Playwright para la suite de navegador) |
 | Helper de `jira-ticket` (`scripts/jira-ticket.py`) | `pnpm run test:jira-ticket` (necesita `pytest`: `python3 -m pip install pytest`) |
 | Frontmatter de una skill o `plugin.json` de un plugin | `pnpm validate-portable-plugins` |

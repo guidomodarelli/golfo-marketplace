@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/guidomodarelli/golfo-marketplace/plugins/golfo-kit/references/compatibility-report.schema.json",
-  "title": "golfo-kit agent compatibility report",
+  "title": "golfo plugins agent compatibility report",
   "description": "Describes per-skill, per-agent compatibility. It is not the runtime source of truth: skills still verify the tools available in each session (see agent-capabilities.md).",
   "type": "object",
   "additionalProperties": false,
@@ -521,7 +521,7 @@
         },
         "path": {
           "type": "string",
-          "pattern": "^plugins/golfo-kit/skills/[a-z0-9-]+/SKILL\\.md$"
+          "pattern": "^plugins/[a-z0-9-]+/skills/[a-z0-9-]+/SKILL\\.md$"
         },
         "purpose": {
           "$ref": "#/$defs/nonEmptyString"

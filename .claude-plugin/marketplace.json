@@ -6,13 +6,13 @@
   },
   "metadata": {
     "version": "0.0.1",
-    "description": "Claude Code skills and plugins marketplace"
+    "description": "Marketplace de plugins de Golfo para Claude Code, Codex y Hermes, separados por plataforma y tecnología."
   },
   "plugins": [
     {
       "name": "golfo-kit",
       "source": "./plugins/golfo-kit",
-      "description": "Colección de skills de Golfo para agentes AI: setup Agent Ready con rules de plataforma y otros artefactos reutilizables.",
+      "description": "Núcleo de los plugins golfo: setup Agent Ready y skills para trabajar con agentes (optimizar skills, profundizar prompts, máxima ambición). Las demás skills viven en los plugins golfo-* por plataforma y tecnología.",
       "author": {
         "name": "Guido Modarelli"
       },
@@ -22,8 +22,262 @@
         "golfo",
         "skills",
         "agent-ready",
-        "frontend",
+        "prompts",
+        "skill-optimizer"
+      ]
+    },
+    {
+      "name": "golfo-engineering",
+      "source": "./plugins/golfo-engineering",
+      "description": "Skills de ingeniería para cualquier lenguaje y cualquier parte del código (front, back y CLI): refactors y modularización, constantes, errores tipados, operaciones async, observabilidad, simplificación, reviews de mantenibilidad, performance y seguridad, y salida visual cuidada.",
+      "author": {
+        "name": "Guido Modarelli"
+      },
+      "repository": "https://github.com/guidomodarelli/golfo-marketplace",
+      "category": "development",
+      "keywords": [
+        "golfo",
+        "refactor",
+        "errors",
+        "observability",
+        "review",
+        "code-quality"
+      ]
+    },
+    {
+      "name": "golfo-javascript",
+      "source": "./plugins/golfo-javascript",
+      "description": "Skills exclusivas de JavaScript y TypeScript, en front o back: JSDoc/TSDoc, tests con Vitest y Testing Library, y aislamiento de dependencias con puertos inyectados y nock. No aplican a otros lenguajes.",
+      "author": {
+        "name": "Guido Modarelli"
+      },
+      "repository": "https://github.com/guidomodarelli/golfo-marketplace",
+      "category": "development",
+      "keywords": [
+        "golfo",
+        "javascript",
+        "typescript",
+        "jsdoc",
+        "vitest",
         "testing"
+      ]
+    },
+    {
+      "name": "golfo-testing",
+      "source": "./plugins/golfo-testing",
+      "description": "Skills de testing para cualquier lenguaje: planificación de casos y cobertura, y diagnóstico de tests rotos o flaky.",
+      "author": {
+        "name": "Guido Modarelli"
+      },
+      "repository": "https://github.com/guidomodarelli/golfo-marketplace",
+      "category": "development",
+      "keywords": [
+        "golfo",
+        "testing",
+        "test-planning",
+        "flaky-tests"
+      ]
+    },
+    {
+      "name": "golfo-frontend",
+      "source": "./plugins/golfo-frontend",
+      "description": "Skills de frontend para cualquier tecnología de UI (web, mobile nativo o React): qué mostrar en cada estado de un flujo, optimistic UI y ciclo de vida de acciones, y propuestas visuales de UI.",
+      "author": {
+        "name": "Guido Modarelli"
+      },
+      "repository": "https://github.com/guidomodarelli/golfo-marketplace",
+      "category": "development",
+      "keywords": [
+        "golfo",
+        "frontend",
+        "ui",
+        "ux",
+        "optimistic-ui"
+      ]
+    },
+    {
+      "name": "golfo-react",
+      "source": "./plugins/golfo-react",
+      "description": "Skills exclusivas de React, compartidas entre React web y React Native: rendimiento de renders, prioridad de updates e higiene de estado y efectos. No aplican a UI nativa de Android o iOS ni a otros frameworks.",
+      "author": {
+        "name": "Guido Modarelli"
+      },
+      "repository": "https://github.com/guidomodarelli/golfo-marketplace",
+      "category": "development",
+      "keywords": [
+        "golfo",
+        "react",
+        "react-native",
+        "performance",
+        "hooks"
+      ]
+    },
+    {
+      "name": "golfo-web",
+      "source": "./plugins/golfo-web",
+      "description": "Skills exclusivas de desarrollo web, para cualquier framework: medición y optimización de rendimiento web, HTML semántico y accesibilidad, CSS responsive mobile-first y manuales de usuario con capturas del navegador.",
+      "author": {
+        "name": "Guido Modarelli"
+      },
+      "repository": "https://github.com/guidomodarelli/golfo-marketplace",
+      "category": "development",
+      "keywords": [
+        "golfo",
+        "web",
+        "performance",
+        "accessibility",
+        "css",
+        "core-web-vitals"
+      ]
+    },
+    {
+      "name": "golfo-react-web",
+      "source": "./plugins/golfo-react-web",
+      "description": "Skills exclusivas de React en la web con render en el servidor (Next.js, Remix o SSR propio): hidratación, data fetching server-first y acceso a backend desde el servidor. No aplican a React Native.",
+      "author": {
+        "name": "Guido Modarelli"
+      },
+      "repository": "https://github.com/guidomodarelli/golfo-marketplace",
+      "category": "development",
+      "keywords": [
+        "golfo",
+        "react",
+        "ssr",
+        "hydration",
+        "data-fetching"
+      ]
+    },
+    {
+      "name": "golfo-nextjs",
+      "source": "./plugins/golfo-nextjs",
+      "description": "Skills exclusivas de Next.js App Router: loading y error boundaries, layouts, Suspense y división entre server y client components.",
+      "author": {
+        "name": "Guido Modarelli"
+      },
+      "repository": "https://github.com/guidomodarelli/golfo-marketplace",
+      "category": "development",
+      "keywords": [
+        "golfo",
+        "nextjs",
+        "app-router",
+        "react"
+      ]
+    },
+    {
+      "name": "golfo-mobile",
+      "source": "./plugins/golfo-mobile",
+      "description": "Skills exclusivas de desarrollo mobile nativo, para cualquier tecnología (Android, iOS, React Native, Expo). Las skills de UI que sirven también en web viven en golfo-frontend y las de React, en golfo-react.",
+      "author": {
+        "name": "Guido Modarelli"
+      },
+      "repository": "https://github.com/guidomodarelli/golfo-marketplace",
+      "category": "development",
+      "keywords": [
+        "golfo",
+        "mobile",
+        "android",
+        "ios",
+        "react-native"
+      ]
+    },
+    {
+      "name": "golfo-node-backend",
+      "source": "./plugins/golfo-node-backend",
+      "description": "Skills exclusivas de backend en Node.js (servidores y BFF). No aplican a backends en otros lenguajes, como Java.",
+      "author": {
+        "name": "Guido Modarelli"
+      },
+      "repository": "https://github.com/guidomodarelli/golfo-marketplace",
+      "category": "development",
+      "keywords": [
+        "golfo",
+        "backend",
+        "node",
+        "bff",
+        "debugging"
+      ]
+    },
+    {
+      "name": "golfo-cli",
+      "source": "./plugins/golfo-cli",
+      "description": "Skills exclusivas de herramientas de línea de comandos, en cualquier lenguaje: diseño de CLIs con flags, modo interactivo, modo agente y salida --json.",
+      "author": {
+        "name": "Guido Modarelli"
+      },
+      "repository": "https://github.com/guidomodarelli/golfo-marketplace",
+      "category": "development",
+      "keywords": [
+        "golfo",
+        "cli",
+        "terminal",
+        "interactive"
+      ]
+    },
+    {
+      "name": "golfo-git",
+      "source": "./plugins/golfo-git",
+      "description": "Skills de Git que sirven con cualquier host (GitHub, GitLab u otro): worktrees hermanos, mensajes de commit, fixes en clones efímeros, loop de review y fix, y grafos del flujo de un cambio.",
+      "author": {
+        "name": "Guido Modarelli"
+      },
+      "repository": "https://github.com/guidomodarelli/golfo-marketplace",
+      "category": "productivity",
+      "keywords": [
+        "golfo",
+        "git",
+        "worktree",
+        "commits",
+        "review"
+      ]
+    },
+    {
+      "name": "golfo-github",
+      "source": "./plugins/golfo-github",
+      "description": "Skills exclusivas de GitHub: pull requests y su descripción, stacked PRs, comentarios inline y los loops que auto-fixean los comentarios de Codex y Claude. No aplican a GitLab ni a otros hosts.",
+      "author": {
+        "name": "Guido Modarelli"
+      },
+      "repository": "https://github.com/guidomodarelli/golfo-marketplace",
+      "category": "productivity",
+      "keywords": [
+        "golfo",
+        "github",
+        "pull-request",
+        "code-review",
+        "codex",
+        "autofix"
+      ]
+    },
+    {
+      "name": "golfo-planning",
+      "source": "./plugins/golfo-planning",
+      "description": "Skills de planificación y producto para cualquier herramienta: issues, specs listos para implementar y chequeo de funcionalidades contra el código.",
+      "author": {
+        "name": "Guido Modarelli"
+      },
+      "repository": "https://github.com/guidomodarelli/golfo-marketplace",
+      "category": "productivity",
+      "keywords": [
+        "golfo",
+        "planning",
+        "issues",
+        "specs"
+      ]
+    },
+    {
+      "name": "golfo-jira",
+      "source": "./plugins/golfo-jira",
+      "description": "Skills exclusivas de Jira: stories con subtareas, sprint, fechas y enlace con pull requests. No aplican a otros trackers.",
+      "author": {
+        "name": "Guido Modarelli"
+      },
+      "repository": "https://github.com/guidomodarelli/golfo-marketplace",
+      "category": "productivity",
+      "keywords": [
+        "golfo",
+        "jira",
+        "tickets",
+        "planning"
       ]
     }
   ]
