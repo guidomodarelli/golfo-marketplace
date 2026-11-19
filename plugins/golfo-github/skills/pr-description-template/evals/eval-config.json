@@ -1,27 +1,29 @@
 {
   "schema_version": 2,
   "skill": "pr-description-template",
-  "description": "Evalúa el template de PR: línea de metadata con el conteo correcto de archivos de código, exclusiones (tests, mocks, assets, estilos, tooling, docs), modo traceability-only sin retemplar, Pruebas Manuales y Notas para el Revisor, carga obligatoria antes de gh pr create y manejo de capturas (subida a pr-assets, omisión con motivo y detención del servidor propio).",
+  "description": "Evalúa el template de PR: conteo de archivos de código junto al heading Descripción (también Kotlin, Java y Go), su refresco tras cada push, exclusiones (tests, mocks, assets, estilos, tooling, docs), modo traceability-only sin retemplar, Pruebas Manuales y Notas para el Revisor, carga obligatoria antes de gh pr create y manejo de capturas (subida a pr-assets, omisión con motivo y detención del servidor propio).",
   "test_cases": [
     {
       "id": "metadata-counts-code-files",
-      "description": "Cuenta solo los archivos de código elegibles (2) y excluye tests, mocks, imagen y SCSS en la línea de metadata.",
+      "description": "Cuenta solo los archivos de código elegibles (2), excluye tests, mocks, imagen y SCSS y escribe el conteo en el mismo heading de Descripción.",
       "input": "Componé un body nuevo de PR en full composition. El diff tiene `src/App.tsx`, `src/utils/date.ts`, `src/App.test.tsx`, `tests/helpers.ts`, `__mocks__/client.ts`, `assets/logo.svg` y `styles/theme.scss`. Agregá metadata inicial y completá el template sin placeholders. No ejecutes git ni gh: devolvé solo el body en Markdown.",
       "assertions": [
         {
           "type": "contains",
-          "value": "<div align=\"right\"><sup>",
-          "description": "Incluye la línea de metadata alineada a la derecha"
+          "value": "Descripción <sup>",
+          "description": "El conteo va en la misma línea del heading Descripción"
         },
         {
           "type": "contains",
-          "value": "Archivos de código modificados: 2<",
+          "value": "Archivos de código modificados: 2</sup>",
           "description": "Cuenta exactamente 2 archivos de código"
         },
         {
-          "type": "contains",
-          "value": "## 📝 Descripción",
-          "description": "Sigue con la sección Descripción del template"
+          "type": "not_contains_any",
+          "values": [
+            "<div align=\"right\">"
+          ],
+          "description": "No usa la línea separada alineada a la derecha sobre el heading"
         }
       ]
     },
@@ -37,7 +39,7 @@
         },
         {
           "type": "contains",
-          "value": "## 📝 Descripción",
+          "value": "Descripción <sup>",
           "description": "Mantiene la sección Descripción después de la metadata"
         },
         {
@@ -46,6 +48,55 @@
             "Archivos de código modificados: [1-9]"
           ],
           "description": "No cuenta archivos excluidos"
+        }
+      ]
+    },
+    {
+      "id": "counts-kotlin-java-go-files",
+      "description": "Cuenta fuentes Kotlin, Java y Go (4) y excluye sus tests por convención de lenguaje, testdata y scripts de Gradle.",
+      "input": "Componé un body nuevo de PR en full composition. El diff tiene `app/src/main/kotlin/com/acme/UserService.kt`, `app/src/main/java/com/acme/UserRepository.java`, `cmd/server/main.go`, `internal/user/service.go`, `internal/user/service_test.go`, `app/src/test/kotlin/com/acme/UserServiceTest.kt`, `app/src/main/java/com/acme/UserRepositoryIT.java`, `internal/user/testdata/input.go` y `build.gradle.kts`. No ejecutes git ni gh: devolvé solo el body en Markdown.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "Archivos de código modificados: 4</sup>",
+          "description": "Cuenta 4 fuentes de Kotlin, Java y Go"
+        },
+        {
+          "type": "contains",
+          "value": "Descripción <sup>",
+          "description": "El conteo va en la misma línea del heading Descripción"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "Archivos de código modificados: [0-35-9]<",
+            "Archivos de código modificados: [1-9][0-9]"
+          ],
+          "description": "No usa otro conteo (ni 0 por ignorar lenguajes no JS/TS, ni contar tests o Gradle)"
+        }
+      ]
+    },
+    {
+      "id": "refresh-count-after-push",
+      "description": "Tras un push a un PR abierto, refresca solo el conteo con refresh-file-count.sh sin retemplar el body.",
+      "input": "Acabo de hacer `git push` de dos commits nuevos a la rama `feature/login`, que ya tiene un PR abierto creado con este template. ¿Qué hacés con la descripción del PR? No ejecutes git ni gh: describí el comando y qué cambia y qué no.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "refresh-file-count.sh",
+          "description": "Usa el script de refresco del conteo"
+        },
+        {
+          "type": "regex",
+          "pattern": "(solo|únicamente|sólo|Solo|Únicamente|Sólo) [^.]*(conteo|contador|marcador|número)",
+          "description": "Aclara que cambia solo el conteo"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "gh pr edit [^`]*--title"
+          ],
+          "description": "No propone editar el título del PR"
         }
       ]
     },
@@ -69,7 +120,7 @@
         },
         {
           "type": "contains",
-          "value": "## 📝 Descripción",
+          "value": "Descripción <sup>",
           "description": "Sigue con la sección Descripción del template"
         }
       ]
@@ -174,7 +225,7 @@
         },
         {
           "type": "contains",
-          "value": "## 📝 Descripción",
+          "value": "Descripción <sup>",
           "description": "Sigue el template completo desde Descripción"
         },
         {
@@ -386,7 +437,7 @@
       "assertions": [
         {
           "type": "contains",
-          "value": "## 📝 Descripción",
+          "value": "Descripción <sup>",
           "description": "Devuelve el body con la sección Descripción del template"
         },
         {
