@@ -178,7 +178,7 @@ Al aplicar parche:
 - Leer `title`, `body` y `url` con `gh pr view`.
 - No pasar `--title` a `gh pr edit`.
 - No invocar composición completa de `pr-description-template`.
-- No cambiar selección `[x]` de `Tipo de Cambio`.
+- No cambiar el tipo de cambio entre paréntesis del encabezado `## 📝 Descripción (…)`, ni la selección `[x]` de `Tipo de Cambio` en PRs con el formato anterior.
 - No agregar, eliminar o reordenar secciones opcionales.
 - No modificar `Pruebas Manuales`, `Cambios en la API` ni `Notas para el Revisor`.
 - Preservar estilo de fin de línea (`LF`/`CRLF`) y presencia/ausencia de newline final.
