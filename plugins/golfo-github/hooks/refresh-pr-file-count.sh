@@ -12,9 +12,10 @@ readonly HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly REFRESH_SCRIPT="${HOOK_DIR}/../skills/pr-description-template/scripts/refresh-file-count.sh"
 readonly DISABLED_VALUE='0'
 readonly HOOK_EVENT_NAME='PostToolUse'
-# `git push` as a command of its own (start of the line or after ; & | ( or a space), with
-# optional global options such as `-C <dir>` between `git` and `push`.
-readonly GIT_PUSH_REGEX='(^|[;&|(]|[[:space:]])git([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+push([[:space:]]|$)'
+# `git push` as a command invocation: at the start of the command or right after a command
+# separator (; & | ( or a new line), never as an argument such as `echo git push`. Optional
+# global options such as `-C <dir>` may sit between `git` and `push`.
+readonly GIT_PUSH_REGEX='(^|[;&|('$'\n''])[[:space:]]*git([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+push([[:space:]]|$)'
 readonly DRY_RUN_REGEX='[[:space:]]push[^;&|]*[[:space:]](--dry-run|-n)([[:space:]]|$)'
 readonly GIT_DIR_OPTION_REGEX='git[[:space:]]+-C[[:space:]]+("([^"]+)"|'"'"'([^'"'"']+)'"'"'|([^[:space:];&|]+))'
 readonly LEADING_CD_REGEX='^[[:space:]]*cd[[:space:]]+("([^"]+)"|'"'"'([^'"'"']+)'"'"'|([^[:space:];&|]+))'

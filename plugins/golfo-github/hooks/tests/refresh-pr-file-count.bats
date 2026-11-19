@@ -1,13 +1,13 @@
 #!/usr/bin/env bats
 
 # The PostToolUse hook receives the Claude Code hook JSON on stdin. A fake `gh` on PATH answers
-# from files and a real bare repository plays `origin`, so a detected push runs the real
+# from files and a real bare repository at `acme/app.git` plays the PR's base repository, so a detected push runs the real
 # refresh-file-count.sh end to end.
 
 setup() {
   HOOK_SCRIPT="${BATS_TEST_DIRNAME}/../refresh-pr-file-count.sh"
   FAKE_DIR="${BATS_TEST_TMPDIR}/gh"
-  ORIGIN_DIR="${BATS_TEST_TMPDIR}/origin.git"
+  ORIGIN_DIR="${BATS_TEST_TMPDIR}/acme/app.git"
   WORK_DIR="${BATS_TEST_TMPDIR}/work"
   PR_URL="https://github.com/acme/app/pull/7"
   mkdir -p "${FAKE_DIR}/bin"
@@ -29,6 +29,7 @@ FAKE_GH
   export PATH="${FAKE_DIR}/bin:${PATH}"
   unset GOLFO_PR_FILE_COUNT_REFRESH
 
+  mkdir -p "$(dirname "$ORIGIN_DIR")"
   git init --quiet --bare "$ORIGIN_DIR"
   git init --quiet -b main "$WORK_DIR"
   git -C "$WORK_DIR" config user.email test@example.com
@@ -71,12 +72,23 @@ run_hook() {
 }
 
 @test "ignores commands that are not a git push and dry runs" {
-  for command in 'git status' 'git commit -m "push the fix"' 'git push --dry-run origin feature/login' 'git push -n'; do
+  for command in 'git status' 'git commit -m "push the fix"' 'echo git push origin feature/login' 'printf "%s" "run git push later"' 'git push --dry-run origin feature/login' 'git push -n'; do
     run_hook "$command"
     [ "$status" -eq 0 ]
     [ -z "$output" ]
   done
   [ ! -s "${FAKE_DIR}/calls" ]
+}
+
+@test "detects git push after a command separator or on a later line" {
+  run_hook "git add . && git commit -m wip && git push"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"UPDATED: 0 -> 1"* ]]
+
+  printf '%s\n' '## 📝 Descripción <sup>📄 Archivos de código modificados: 0</sup>' > "${FAKE_DIR}/body"
+  run_hook $'git status\ngit push origin feature/login'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"UPDATED: 0 -> 1"* ]]
 }
 
 @test "does nothing when GOLFO_PR_FILE_COUNT_REFRESH=0" {
@@ -91,5 +103,5 @@ run_hook() {
   printf '7\t%s\tOPEN\tmain\tfeature/missing\tfalse\n' "$PR_URL" > "${FAKE_DIR}/fields"
   run_hook 'git push'
   [ "$status" -eq 0 ]
-  [[ "$(jq -r '.hookSpecificOutput.additionalContext' <<<"$output")" == *"FAILED: refresh-file-count: git fetch origin main feature/missing failed"* ]]
+  [[ "$(jq -r '.hookSpecificOutput.additionalContext' <<<"$output")" == *"FAILED: refresh-file-count: git fetch origin main refs/heads/feature/missing failed"* ]]
 }

@@ -1,13 +1,13 @@
 #!/usr/bin/env bats
 
 # refresh-file-count.sh talks to GitHub only through `gh`: a fake `gh` on PATH answers from files
-# and logs every call, while a real bare repository plays `origin`, so the count comes from a
-# real `git fetch` + `git diff` of the PR range.
+# and logs every call, while a real bare repository at `acme/app.git` plays the base repository
+# of the PR URL, so the count comes from a real `git fetch` + `git diff` of the PR range.
 
 setup() {
   REFRESH_SCRIPT="${BATS_TEST_DIRNAME}/../scripts/refresh-file-count.sh"
   FAKE_DIR="${BATS_TEST_TMPDIR}/gh"
-  ORIGIN_DIR="${BATS_TEST_TMPDIR}/origin.git"
+  ORIGIN_DIR="${BATS_TEST_TMPDIR}/acme/app.git"
   WORK_DIR="${BATS_TEST_TMPDIR}/work"
   PR_URL="https://github.com/acme/app/pull/7"
   mkdir -p "${FAKE_DIR}/bin"
@@ -28,6 +28,7 @@ FAKE_GH
   chmod +x "${FAKE_DIR}/bin/gh"
   export PATH="${FAKE_DIR}/bin:${PATH}"
 
+  mkdir -p "$(dirname "$ORIGIN_DIR")"
   git init --quiet --bare "$ORIGIN_DIR"
   git init --quiet -b main "$WORK_DIR"
   cd "$WORK_DIR"
@@ -101,5 +102,34 @@ write_body() {
   printf '7\t%s\tOPEN\tmain\tfeature/missing\tfalse\n' "$PR_URL" > "${FAKE_DIR}/fields"
   run bash "$REFRESH_SCRIPT"
   [ "$status" -eq 1 ]
-  [[ "$output" == *"git fetch origin main feature/missing failed for PR ${PR_URL}"* ]]
+  [[ "$output" == *"git fetch origin main refs/heads/feature/missing failed for PR ${PR_URL}"* ]]
+}
+
+@test "deepens a depth-1 clone until base...head has a merge base" {
+  write_body '## 📝 Descripción <sup>📄 Archivos de código modificados: 0</sup>'
+  git checkout --quiet main
+  echo 'more' >> README.md
+  git commit --quiet -am 'main moves on' && git push --quiet origin main
+  git clone --quiet --depth 1 --single-branch --no-tags --branch feature/login "file://${ORIGIN_DIR}" "${BATS_TEST_TMPDIR}/shallow"
+  cd "${BATS_TEST_TMPDIR}/shallow"
+  [ "$(git rev-parse --is-shallow-repository)" = "true" ]
+  run bash "$REFRESH_SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$output" = "UPDATED: 0 -> 2 ${PR_URL}" ]
+}
+
+@test "fetches a fork PR from the base repository when origin is the contributor's fork" {
+  write_body '## 📝 Descripción <sup>📄 Archivos de código modificados: 0</sup>'
+  FORK_DIR="${BATS_TEST_TMPDIR}/contributor/app.git"
+  git clone --quiet --bare "$ORIGIN_DIR" "$FORK_DIR"
+  git push --quiet origin feature/login:refs/pull/7/head
+  git push --quiet origin --delete feature/login
+  git remote rename origin upstream
+  git remote add origin "$FORK_DIR"
+  printf '7	%s	OPEN	main	feature/login	true
+' "$PR_URL" > "${FAKE_DIR}/fields"
+  run bash "$REFRESH_SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$output" = "UPDATED: 0 -> 2 ${PR_URL}" ]
+  ! git show-ref | grep -q 'refs/pr-file-count'
 }
