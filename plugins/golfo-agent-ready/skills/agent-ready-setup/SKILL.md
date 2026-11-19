@@ -9,7 +9,7 @@ description: >-
   en cada apply y ofrece status y plan sin escrituras. Usar cuando usuario diga "configurar agent ready", "setup
   agent ready", "bootstrap claude", "bootstrap codex", "inicializar configuración
   de agentes", "quiero ser agent ready", "make this repo agent ready", pida pasar
-  Agent Ready Score, o pregunte qué versión de las rules usa el repo, si el plugin golfo-agent-ready
+  Agent Ready Score, o pregunte qué versión de las rules usa el repo, si el motor
   instalado alcanza para el contenido o un pack, qué cambiaría
   una actualización de agent-ready-setup o por qué un asset quedó en conflicto, o pida
   sacar agent-ready-setup del repo, saber por qué sus hooks no sincronizan o aceptar o
