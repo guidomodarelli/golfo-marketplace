@@ -252,7 +252,10 @@ def command_learn_sweep(arguments):
 
 def sweep_registered():
     """The sweep of every registered repository; one that fails never stops the others."""
-    learning_schedule.prune_missing(CLI_PATH)
+    try:
+        learning_schedule.prune_missing(CLI_PATH)
+    except (learning_schedule.ScheduleError, StateError, OSError) as problem:
+        write_sweep_line(f"scheduled sweep: {problem}")
     for _, record in learning_schedule.registered_projects():
         project_root = record["project"]
         try:

@@ -1368,11 +1368,14 @@ sweep_lines() {
   git -C "$test_root" -c init.defaultBranch=main init -q gone
   (cd "$gone" && select_learning_profile && python3 -B "$cli" learn schedule > /dev/null)
   rm -rf "$gone"
+  # The scheduler refuses to follow the change: the sweep of the others still runs.
+  touch "$FAKE_SCHEDULER_STATE/refuse"
 
   # Nobody writes again: hours later, the task closes the idle episode and reviews it, from anywhere.
   at_time 2026-03-10T14:00:00+0000
   run --separate-stderr bash -c 'cd / && python3 -B "$1" learn sweep --registered' _ "$cli"
   [ "$status" -eq 0 ]
+  [[ "$output$stderr" == *"scheduled sweep: "*"access denied by a policy of the machine"* ]]
   [[ "$output" == *"episode s1:20260310T090000: 0 instructions recorded"* ]]
   grep -q "Siempre en castellano." "$FAKE_INPUTS/1.txt"
   [ "$(ls "$XDG_CACHE_HOME/agent-ready-setup/learning-schedule/projects" | wc -l)" -eq 1 ]
