@@ -169,6 +169,28 @@
           "description": "Valida con tests de comportamiento"
         }
       ]
+    },
+    {
+      "id": "preparatory-extraction-goes-below-feature",
+      "description": "Distingue la extracción que la feature necesita (capa debajo) de la limpieza de código existente fuera de alcance (capa encima) y solo las sugiere.",
+      "input": "Usando refactor-modularize-code: tengo que agregar pagos con Stripe en la rama feature/stripe-payments. Para hacerlo necesito sacar de `src/checkout/CheckoutPage.tsx` (900 líneas) la lógica de cálculo de totales a un módulo `checkout/totals.ts`, porque el nuevo provider la reutiliza. Además, `src/orders/OrderHistory.tsx`, que la feature no toca, tiene tres funciones duplicadas de formateo de fechas que me gustaría unificar. No ejecutes ni edites nada: decime cómo lo organizarías en PRs y por qué.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "(capa|layer|PR).{0,200}(debajo|abajo|below|antes|before|preparatori|preparatory)|(debajo|abajo|below|preparatori|preparatory).{0,200}(capa|layer|PR|stack)",
+          "description": "Ubica la extracción de totales en una capa debajo de la feature"
+        },
+        {
+          "type": "regex",
+          "pattern": "(stack|apilad|capa|layer|rama|branch|PR).{0,200}(encima|arriba|above|on top)|(encima|arriba|above|on top).{0,200}(stack|apilad|capa|layer|rama|branch|PR)",
+          "description": "Sugiere una capa de stacked PR encima de la feature para la limpieza fuera de alcance"
+        },
+        {
+          "type": "regex",
+          "pattern": "(sugier|suger|propon|propuesta|recomiend|si quer[eé]s|si est[aá]s de acuerdo|¿quer[eé]s|suggest|propose|recommend)",
+          "description": "Presenta la capa como sugerencia para que el usuario decida, en vez de crearla"
+        }
+      ]
     }
   ]
 }
