@@ -1,6 +1,6 @@
 ---
 name: pr-description-template
-description: "Provides the standard PR title and concise description template (change type, manual validation, screenshots of UI changes uploaded from the running app, optional API changes, reviewer notes) plus a traceability-only mode that preserves existing PR content. MANDATORY: load it before running any `gh pr create` or `gh pr edit --body`/`--body-file`, in any repository, including PRs the agent opens on its own initiative as one step of a larger task (publishing or releasing a library, shipping a fix to another repo, a review or auto-fix loop) where nobody said 'PR'. Never write a PR body by hand. Also use for /feature-branch-pr, 'crear PR', 'abrir pull request', 'subir cambios y crear PR', or any request to fill or restructure a pull request body."
+description: "Provides the standard PR title and concise description template (change type, screenshots of UI changes uploaded from the running app, optional API changes, reviewer notes) plus a traceability-only mode that preserves existing PR content. MANDATORY: load it before running any `gh pr create` or `gh pr edit --body`/`--body-file`, in any repository, including PRs the agent opens on its own initiative as one step of a larger task (publishing or releasing a library, shipping a fix to another repo, a review or auto-fix loop) where nobody said 'PR'. Never write a PR body by hand. Also use for /feature-branch-pr, 'crear PR', 'abrir pull request', 'subir cambios y crear PR', or any request to fill or restructure a pull request body."
 allowed-tools: Bash(gh:*) Bash(git:*) Bash(bash:*) Bash(jq:*)
 license: MIT
 metadata:
@@ -57,7 +57,7 @@ Use for new PRs or when the user explicitly asks to fill or restructure the comp
 Use when another skill updates an existing PR only to add or normalize traceability metadata.
 
 - Do not regenerate the template or edit the PR title.
-- Do not modify the change type of the `## 📝 Descripción (…)` heading (or a **Tipo de Cambio** section in older PRs), **Pruebas Manuales**, **Cambios en la API**, **Notas para el Revisor**, or unrelated ticket links.
+- Do not modify the change type of the `## 📝 Descripción (…)` heading (or a **Tipo de Cambio** section in older PRs), **Cambios en la API**, **Notas para el Revisor**, or unrelated ticket links.
 - A canonical Jira backlink may be inserted as the first content under `## 📝 Descripción`; this is not the removed top-level **Referencia** metadata block.
 - Conservar cuerpo existente y modificar únicamente enlace de trazabilidad solicitado. Releer cuerpo
   antes de escribir, preservar cambios concurrentes y evitar enlaces duplicados.
@@ -103,7 +103,7 @@ When the change affects the UI but no image could be captured from the real app,
 - When fully composing an existing PR, preserve every canonical `🎫 Jira: [...]` backlink already present. Extract backlinks before replacing the body and reinsert each once as first content under `## 📝 Descripción`; never drop established traceability.
 - New or legacy backlink normalization follows traceability-only mode; full composition preserves known canonical backlinks but does not invent Jira associations.
 - In **Cambios en la API**, keep only the operation groups that apply (**Agregados**, **Modificados**, **Eliminados / Deprecados**) and delete unused lines.
-- **Pruebas Manuales** is mandatory. List reproducible steps a reviewer can follow. When the change has no behavior a reviewer can exercise (only documentation, agent instructions, or tooling), replace the environment and steps with one line: `No aplica: <motivo>`. Do not state which validations you personally ran; mention automated coverage inside **Descripción** only when it adds relevant context.
+- Do not add a **Pruebas Manuales** section, manual testing steps or a list of the validations you ran. Mention automated coverage or how to verify the change inside **Descripción** only when it adds relevant context.
 - **Notas para el Revisor** holds relevant technical decisions (trade-offs, discarded alternatives, constraints) and where to focus the review. Delete it when there is nothing relevant.
 - Body text is in Spanish; keep code, paths, endpoints, branch and identifier names in English.
 - Never mention `@codex` in the body, neither `@codex review` nor `@codex fix`: Codex reads a mention in the PR body as a task request and answers asking to create an environment instead of reviewing. [`codex-autofix-loop`](../codex-autofix-loop/SKILL.md) requests the review with a separate comment. To talk about Codex in the body, name it without the `@`.
@@ -145,13 +145,6 @@ Pick the one that best describes the PR as a whole and write it, with its emoji,
 
 ### 💡 ¿Cuál fue la solución?
 *Resumen técnico de la implementación. Componentes, servicios y archivos clave modificados.*
-
-## 🖐️ Pruebas Manuales
-
-**🌐 Entorno:** `<URL / ambiente, si aplica>`
-
-1. `<Acción a realizar>` → `<Resultado esperado>`
-2. `<Acción a realizar>` → `<Resultado esperado>`
 
 ## 📸 Capturas *(si aplica)*
 

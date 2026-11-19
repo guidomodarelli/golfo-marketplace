@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "skill": "pr-description-template",
-  "description": "Evalúa el template de PR: tipo de cambio entre paréntesis en el heading Descripción, sin sección Tipo de Cambio ni conteo de archivos, modo traceability-only sin retemplar, Pruebas Manuales y Notas para el Revisor, carga obligatoria antes de gh pr create y manejo de capturas (subida a pr-assets, omisión con motivo y detención del servidor propio).",
+  "description": "Evalúa el template de PR: tipo de cambio entre paréntesis en el heading Descripción, sin sección Tipo de Cambio ni conteo de archivos, modo traceability-only sin retemplar, sin Pruebas Manuales, Notas para el Revisor, carga obligatoria antes de gh pr create y manejo de capturas (subida a pr-assets, omisión con motivo y detención del servidor propio).",
   "test_cases": [
     {
       "id": "change-type-in-description-heading",
@@ -29,12 +29,19 @@
             "\\[!NOTE\\]"
           ],
           "description": "No agrega el conteo de archivos de código"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "Pruebas Manuales"
+          ],
+          "description": "No agrega la sección Pruebas Manuales"
         }
       ]
     },
     {
       "id": "traceability-only-preserves-body",
-      "description": "En traceability-only solo toca el backlink Jira, sin agregar ni recalcular la metadata ni retemplar el body.",
+      "description": "En traceability-only solo toca el backlink Jira, sin retemplar el body.",
       "input": "Aplicá traceability-only sobre un PR existente para agregar o normalizar backlink Jira. El body actual ya tiene sus secciones y no debe retemplarse. No ejecutes gh: describí qué cambiás y qué preservás.",
       "assertions": [
         {
@@ -58,15 +65,10 @@
       ]
     },
     {
-      "id": "docs-only-manual-tests-not-applicable",
-      "description": "Con un diff solo de docs, muestra conteo 0, reemplaza Pruebas Manuales por una línea 'No aplica' y no agrega Decisiones técnicas relevantes.",
+      "id": "docs-only-without-manual-tests",
+      "description": "Con un diff solo de docs, no agrega Pruebas Manuales, conteo de archivos ni Decisiones técnicas relevantes.",
       "input": "Componé un body nuevo de PR en full composition para un diff que solo modifica `.agents/skills/logger/SKILL.md`, `AGENTS.md` y `docs/setup.md`. No ejecutes git ni gh: devolvé solo el body en Markdown.",
       "assertions": [
-        {
-          "type": "contains",
-          "value": "No aplica:",
-          "description": "Pruebas Manuales usa una única línea 'No aplica: <motivo>'"
-        },
         {
           "type": "not_contains_any",
           "values": [
@@ -80,12 +82,19 @@
             "Archivos de código modificados"
           ],
           "description": "No agrega el conteo de archivos de código"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "Pruebas Manuales"
+          ],
+          "description": "No agrega la sección Pruebas Manuales"
         }
       ]
     },
     {
       "id": "technical-decision-in-reviewer-notes",
-      "description": "La decisión técnica va dentro de Notas para el Revisor, sin sección separada, y Pruebas Manuales lista pasos reproducibles.",
+      "description": "La decisión técnica va dentro de Notas para el Revisor, sin sección separada.",
       "input": "Componé un body nuevo de PR en full composition para un diff que cambia `api/services/orders.ts` eligiendo reintentos solo para errores temporales en lugar de reintentar todo. No ejecutes git ni gh: devolvé solo el body en Markdown.",
       "assertions": [
         {
@@ -102,16 +111,18 @@
           "description": "Explica la decisión de reintentar solo errores temporales"
         },
         {
-          "type": "contains",
-          "value": "Pruebas Manuales",
-          "description": "Incluye Pruebas Manuales"
-        },
-        {
           "type": "not_contains_any",
           "values": [
             "Decisiones técnicas relevantes"
           ],
           "description": "No crea una sección separada de decisiones técnicas"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "Pruebas Manuales"
+          ],
+          "description": "No agrega la sección Pruebas Manuales"
         }
       ]
     },
@@ -126,16 +137,18 @@
           "description": "Pone el tipo de cambio entre paréntesis en el heading Descripción"
         },
         {
-          "type": "contains",
-          "value": "Pruebas Manuales",
-          "description": "Incluye Pruebas Manuales reproducibles"
-        },
-        {
           "type": "not_contains_any",
           "values": [
             "Archivos de código modificados"
           ],
           "description": "No agrega el conteo de archivos de código"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "Pruebas Manuales"
+          ],
+          "description": "No agrega la sección Pruebas Manuales"
         }
       ]
     },
