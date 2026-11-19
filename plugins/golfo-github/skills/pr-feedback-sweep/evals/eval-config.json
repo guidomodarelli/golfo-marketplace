@@ -226,6 +226,85 @@
           "description": "Oculta el de la otra persona con minimizeComment"
         }
       ]
+    },
+    {
+      "id": "07-resume-incomplete-closeout",
+      "description": "Un comentario general con respuesta y marker pero sin back-link ni ocultar se retoma sin duplicar la respuesta.",
+      "input": "Escenario hipotético de evaluación para pr-feedback-sweep. Ya respondí la pregunta de entorno: Checkout actual.\nEn el PR https://github.com/acme/widgets/pull/42 una corrida anterior publicó la respuesta con marker `inline-thread-autofix: issuecomment:555` a un comentario general de ana-review, pero se cortó antes de agregar el back-link y de ocultarlo; el comentario sigue visible. Resolvé los comentarios del PR.\nNo ejecutes comandos ni consultes GitHub: describí el plan, las verificaciones que harías, las mutaciones que harías u omitirías y el estado o código que reportás.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": [
+            "CLOSEOUT_INCOMPLETE",
+            "incompleto",
+            "retomo",
+            "retomar"
+          ],
+          "description": "Detecta el closeout incompleto y lo retoma"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "sin duplicar",
+            "no duplic",
+            "reutiliz",
+            "no publico otra",
+            "no vuelvo a publicar"
+          ],
+          "description": "No duplica la respuesta"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "minimizeComment"
+          ],
+          "description": "Completa el ocultamiento"
+        }
+      ]
+    },
+    {
+      "id": "08-question-no-code-path",
+      "description": "Una pregunta en clone efímero se responde sin clone, commit ni push.",
+      "input": "Escenario hipotético de evaluación para pr-feedback-sweep. Ya respondí la pregunta de entorno: Clone efímero.\nEn el PR https://github.com/acme/widgets/pull/42 el único feedback es un comentario general de ana-review que pregunta \"¿por qué el retry usa backoff exponencial y no lineal?\". Resolvé los comentarios del PR.\nNo ejecutes comandos ni consultes GitHub: describí el plan, las verificaciones que harías, las mutaciones que harías u omitirías y el estado o código que reportás.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": [
+            "sin commit",
+            "no hay commit",
+            "ningún commit",
+            "no commiteo",
+            "sin código",
+            "no hago commit",
+            "No hay commit",
+            "no hay commit, push"
+          ],
+          "description": "Responde sin commit"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "sin clone",
+            "no creo clone",
+            "no se crea clone",
+            "no invoco",
+            "ningún clone",
+            "no hace falta clone",
+            "no crea clone",
+            "No hay clone",
+            "no se creó clone"
+          ],
+          "description": "No crea clone efímero para una pregunta"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "Respuesta",
+            "💬"
+          ],
+          "description": "Usa la variante de respuesta a pregunta"
+        }
+      ]
     }
   ]
 }
