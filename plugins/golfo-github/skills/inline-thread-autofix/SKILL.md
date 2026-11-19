@@ -1,9 +1,9 @@
 ---
 name: inline-thread-autofix
-description: "Orquesta feedback accionable de un PR GitHub desde URL `#discussion_r...` o `#pullrequestreview-...`: al activarse pregunta primero si el usuario quiere checkout actual, worktree hermano (`/sibling-worktree`) o clone efímero (`/fix-in-ephemeral-clone`), y recién después inspecciona PR, código, stack y referencias explícitas a issues. Ejecuta solo el entorno elegido. Para inline comments responde y resuelve el thread (si el comentario fue eliminado, permite closeout sin reply). La issue es opcional: sin referencia el thread se cierra igual; si el feedback referencia inequívocamente una issue del mismo repo, también la responde y cierra. Si el PR fuente está cerrado/mergeado, trabaja en el PR abierto de branch relacionada solo con ownership verificable. Para review-bodies preserva body o usa fallback. Usar siempre al recibir estos links; detener ante ambigüedad, precondiciones inseguras o closeout no verificable."
+description: "Orquesta feedback accionable de un PR GitHub desde URL `#discussion_r...` o `#pullrequestreview-...`: al activarse comprueba `~/.work` (si existe, usa siempre el checkout actual sin preguntar); si no, pregunta si el usuario quiere checkout actual, worktree hermano (`/sibling-worktree`) o clone efímero (`/fix-in-ephemeral-clone`), y recién después inspecciona PR, código, stack y referencias explícitas a issues. Ejecuta solo el entorno elegido. Para inline comments responde y resuelve el thread (si el comentario fue eliminado, permite closeout sin reply). La issue es opcional: sin referencia el thread se cierra igual; si el feedback referencia inequívocamente una issue del mismo repo, también la responde y cierra. Si el PR fuente está cerrado/mergeado, trabaja en el PR abierto de branch relacionada solo con ownership verificable. Para review-bodies preserva body o usa fallback. Usar siempre al recibir estos links; detener ante ambigüedad, precondiciones inseguras o closeout no verificable."
 license: MIT
 metadata:
-  version: "1.2.0"
+  version: "1.3.0"
   author: "Guido Modarelli"
   category: "code-review"
   tags: "code-review, pull-request, inline-comment, autofix"
@@ -13,9 +13,20 @@ metadata:
 
 # Inline Thread Autofix
 
+## Gate de máquina de trabajo (`~/.work`): antes de la pregunta
+
+El usuario marca sus máquinas de trabajo con un archivo o directorio `~/.work` en su home. En esas máquinas el thread se resuelve siempre en el checkout actual, sin preguntar el entorno.
+
+1. Como primera acción, antes de parsear la URL o leer cualquier otra cosa, comprobar si existe `~/.work` con un solo comando de lectura: `test -e ~/.work` en bash o zsh, `Test-Path ~/.work` en PowerShell.
+2. **Existe**: usar `execution_mode: checkout_actual` sin formular la pregunta de entorno. Esto prevalece sobre la pregunta, sobre un pedido de worktree o clone en el mismo mensaje y sobre el `execution_mode` de un `HANDOFF: INLINE_THREAD_AUTOFIX` recibido. No invocar `/sibling-worktree` ni `/fix-in-ephemeral-clone`. Informar en una línea `Entorno: checkout actual (máquina de trabajo, ~/.work)`; si el pedido o el handoff traían otro modo, decir que se ignoró por el gate y reportarlo también en `Limitaciones del agente`. Si los cambios locales impiden distinguir el patch, detener con `NEEDS_CLARIFICATION` y pedir al usuario que libere el checkout; no pasar a worktree ni clone.
+3. **No existe** (el comando corrió y confirmó que no está): seguir con la selección obligatoria del entorno de la sección siguiente.
+4. **No se puede comprobar** (no hay shell, o un sandbox o permiso bloquea el comando): seguir con la selección obligatoria del entorno, que pregunta al usuario y no decide nada por su cuenta, y reportar el fallback en `Limitaciones del agente`.
+
+Este chequeo es la única lectura permitida antes de la pregunta de entorno. Las validaciones, gates y reglas del modo checkout actual siguen igual.
+
 ## Selección obligatoria del entorno: primer paso
 
-En una invocación directa por URL, formular primero la pregunta mediante `AskUserQuestion`, antes de cualquier otro análisis o acción. No parsear ni validar la URL, consultar GitHub, leer checkout o código, ejecutar `git status`, construir el stack ni analizar el feedback antes de recibir respuesta. Esta pregunta define el entorno, no autoriza mutaciones: las validaciones y gates posteriores siguen siendo obligatorios.
+Aplica cuando el gate `~/.work` no fijó el entorno. En una invocación directa por URL, formular primero la pregunta mediante `AskUserQuestion`, antes de cualquier otro análisis o acción. No parsear ni validar la URL, consultar GitHub, leer checkout o código, ejecutar `git status`, construir el stack ni analizar el feedback antes de recibir respuesta. Esta pregunta define el entorno, no autoriza mutaciones: las validaciones y gates posteriores siguen siendo obligatorios.
 
 Usar single-select y mostrar exactamente estas alternativas:
 
