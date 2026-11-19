@@ -54,15 +54,14 @@ Cada plugin tiene un ámbito: una plataforma o una tecnología. Una skill va al 
 | Plugin | Ámbito | Skills |
 |---|---|---|
 | `golfo-kit` | Núcleo para trabajar con agentes | agent-ready-setup, skill-optimizer, be-ambitious, deepen-prompt |
-| `golfo-engineering` | Cualquier lenguaje, front, back o CLI | constants-refactor, refactor-modularize-code, simplify-code, typed-errors-refactor, async-operation-error-handling, error-observability-diagnostics, review-maintainability, review-performance, review-security, vivid-visual-output |
-| `golfo-javascript` | Solo JavaScript y TypeScript, front o back | enforce-jsdoc-tsdoc, test-best-practices, mock-first-testing-design |
+| `golfo-engineering` | Cualquier lenguaje, front, back o CLI | constants-refactor, refactor-modularize-code, simplify-code, async-operation-error-handling, error-observability-diagnostics, review-maintainability, review-performance, review-security, vivid-visual-output |
+| `golfo-javascript` | Solo JavaScript y TypeScript, front o back | typed-errors-refactor, enforce-jsdoc-tsdoc, test-best-practices, mock-first-testing-design |
 | `golfo-testing` | Testing en cualquier lenguaje | test-planning, fix-tests-intelligently |
 | `golfo-frontend` | Cualquier tecnología de UI (web, mobile nativo o React) | ui-ux-flow-patterns, optimistic-action-mutations, widget-ui-proposals |
 | `golfo-react` | Solo React, web y React Native | react-render-performance-patterns |
 | `golfo-web` | Solo web, cualquier framework | measured-performance-optimization, semantic-html-a11y, mobile-first-responsive-layout, user-manual |
 | `golfo-react-web` | Solo React en la web con SSR (Next.js, Remix, SSR propio) | prevent-ssr-hydration-mismatches, refactor-ssr-data-fetching, react-data-fetching-best-practices |
 | `golfo-nextjs` | Solo Next.js App Router | nextjs-route-ui-boundaries |
-| `golfo-mobile` | Solo mobile nativo (Android, iOS, React Native, Expo) | Todavía ninguna |
 | `golfo-node-backend` | Solo backend en Node.js | node-runtime-debugging |
 | `golfo-cli` | Solo CLIs, cualquier lenguaje | interactive-cli-design |
 | `golfo-git` | Git con cualquier host | sibling-worktree, generate-commit-messages, fix-in-ephemeral-clone, review-fix-loop, pr-flow-graph |
