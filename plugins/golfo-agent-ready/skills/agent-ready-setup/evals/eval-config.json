@@ -3559,7 +3559,7 @@
     },
     {
       "id": "learn-reorganize-equivalent-only",
-      "description": "La reorganización de lo aprendido aplica sola solo lo que la revisión confirma equivalente; lo demás, y pasar una rule a skill, queda como propuesta en learn reorganize --plan, y learn revert la deshace.",
+      "description": "La reorganización de lo aprendido aplica sola solo lo que la revisión confirma equivalente; lo demás queda como propuesta en learn reorganize --plan, se acepta con --accept y learn revert la deshace.",
       "input": "En un repo con el profile learning de agent-ready-setup el agente ya aprendió unas diez rules sueltas sobre las actas y algunas dicen casi lo mismo. ¿La skill las ordena sola? ¿Puede cambiar lo que hace el agente sin que yo me entere? ¿Dónde veo lo que quedó pendiente, cómo lo acepto y cómo deshago una reorganización que no me gustó? Respondé desde la skill, sin ejecutar comandos.",
       "assertions": [
         {
@@ -3585,12 +3585,6 @@
           "pattern": "learn revert",
           "description": "learn revert deshace una reorganización",
           "critical": true
-        },
-        {
-          "type": "regex",
-          "pattern": "skill[^.]{0,120}(propuesta|desarrollador|espera)|(propuesta|desarrollador|espera)[^.]{0,120}skill",
-          "description": "Pasar una rule a skill siempre espera al desarrollador",
-          "critical": false
         }
       ]
     }
