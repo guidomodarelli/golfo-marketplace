@@ -1,6 +1,6 @@
 {
   "name": "golfo-cli",
-  "version": "0.129.0",
+  "version": "0.130.0",
   "description": "Skills exclusivas de herramientas de línea de comandos, en cualquier lenguaje: diseño de CLIs con flags, modo interactivo, modo agente y salida --json.",
   "author": {
     "name": "Guido Modarelli",
