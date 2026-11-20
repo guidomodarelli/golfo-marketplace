@@ -368,8 +368,12 @@ def verify(project_root, operation, items, provider):
 
 
 def fingerprint(project_root, items, rule_ids):
-    """What the rules said when the operation was decided: it is written only if they still say it."""
-    return sha256_of_text("\n".join(rule_text(project_root, items[rule_id]["rule"]) for rule_id in sorted(rule_ids)))
+    """What the rules say now: an operation is written only if they still say what it was decided on."""
+    return fingerprint_of({rule_id: rule_text(project_root, items[rule_id]["rule"]) for rule_id in rule_ids}, rule_ids)
+
+
+def fingerprint_of(texts, rule_ids):
+    return sha256_of_text("\n".join(texts[rule_id] for rule_id in sorted(rule_ids)))
 
 
 def new_entry(statement, key, paths, evidence, today):
@@ -410,8 +414,10 @@ def write_operation(project_root, registry, operation, items, settings, accepted
     paths = sorted(rules[0].paths)
     today = settings["today"].isoformat()
     for source in sources:
-        # What learn revert writes back, exactly as the file had it.
+        # What learn revert writes back, exactly as the file had it, and where: the team may have moved
+        # the rule to another file since it was learned.
         source["entry"]["learned"]["reorganizedText"] = rule_text(project_root, source["rule"])
+        source["entry"]["learned"]["reorganizedPath"] = source["rule"].path
     known = {entry["id"]: entry for entry in registry["candidates"]}
     written_paths = [path]
     created = []
@@ -544,6 +550,9 @@ def reorganize(project_root, settings, provider):
         report["status"] = f"no review under {blocked}"
         return report
     rule_ids = sorted({rule_id for trigger in found for rule_id in trigger["ruleIds"]})
+    # What the rules say before the provider runs: the checks below read these same rules, so a change
+    # made while it answers (a rule locked meanwhile) shows as another fingerprint and nothing is written.
+    snapshot = {rule_id: rule_text(project_root, item["rule"]) for rule_id, item in items.items()}
     document = (f"<triggers>\n{json.dumps(found, ensure_ascii=False)}\n</triggers>\n\n"
                 f"<rules>\n{rules_document(project_root, items, rule_ids)}</rules>\n")
     result = run_provider(provider, ANALYSIS_PROMPT, OPERATIONS_SCHEMA, document)
@@ -559,7 +568,7 @@ def reorganize(project_root, settings, provider):
             report["dropped"] += 1
             continue
         taken_rules.update(operation["ruleIds"])
-        operation["fingerprint"] = fingerprint(project_root, items, operation["ruleIds"])
+        operation["fingerprint"] = fingerprint_of(snapshot, operation["ruleIds"])
         waiting = auto_problem(operation, items, settings)
         if waiting is None:
             verdict = verify(project_root, operation, items, provider)
@@ -576,9 +585,13 @@ def reorganize(project_root, settings, provider):
         waiting = []
         for operation in decided:
             if not all(rule_id in items for rule_id in operation["ruleIds"]) or \
-                    fingerprint(project_root, items, operation["ruleIds"]) != operation["fingerprint"]:
+                    fingerprint(project_root, items, operation["ruleIds"]) != operation["fingerprint"] or \
+                    structural_problem(project_root, operation, items):
                 report["dropped"] += 1
                 continue
+            if not operation["waiting"]:
+                # The rules around may have changed too (a rule that now requires one of them).
+                operation["waiting"] = auto_problem(operation, items, settings)
             if operation["waiting"]:
                 operation["created"] = settings["today"].isoformat()
                 waiting.append(operation)
@@ -691,11 +704,14 @@ def revert(project_root, registry, entry, settings):
         written.add(path)
     for source in sources:
         learned = source["learned"]
-        path = os.path.join(project_root, learned["path"])
+        relative = learned.pop("reorganizedPath", learned["path"])
+        path = os.path.join(project_root, relative)
         if os.path.exists(path):
             text = read_text(path)
         else:
-            _, text = learned_file(project_root, (learned.get("marker") or {}).get("paths") or [])
+            # Only a learned file the reorganization emptied is gone; it comes back with its header.
+            learned_path, header = learned_file(project_root, (learned.get("marker") or {}).get("paths") or [])
+            text = header if learned_path == relative else ""
         newline = "\r\n" if "\r\n" in text else "\n"
         block = newline.join(learned.pop("reorganizedText").split("\n"))
         write_text_atomically(path, text.rstrip("\r\n") + newline + newline + block + newline)

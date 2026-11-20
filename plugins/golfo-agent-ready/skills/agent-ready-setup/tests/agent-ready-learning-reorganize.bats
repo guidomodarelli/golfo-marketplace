@@ -56,6 +56,13 @@ fake_provider() {
   cat > "$fake_bin/fake-provider.py" <<'PY'
 import json, os, sys
 number = len(os.listdir(os.environ["FAKE_INPUTS"])) + 1
+# The team edits the rules while the provider answers: it locks this rule.
+if os.environ.get("FAKE_LOCK_RULE") and number == 1:
+    # The provider runs in a directory of its own: the test gives the file by its full path.
+    path = os.environ["FAKE_LOCK_FILE"]
+    rule = os.environ["FAKE_LOCK_RULE"]
+    text = open(path, encoding="utf-8").read().replace(f"<!-- rule id={rule} -->", f"<!-- rule id={rule} locked -->")
+    open(path, "w", encoding="utf-8", newline="\n").write(text)
 with open(os.path.join(os.environ["FAKE_INPUTS"], f"{number}.txt"), "wb") as saved:
     saved.write(sys.stdin.buffer.read())
 response = os.path.join(os.environ["FAKE_RESPONSES"], f"{number}.json")
@@ -366,7 +373,14 @@ PY
   agent_ready learn reorganize
   merged="$(id_of 'Records carry the case number in the header and the date at the end.')"
   merged_rule="$(rule_id_of 'Records carry the case number in the header and the date at the end.')"
-  sed -i "s#<!-- rule id=$merged_rule -->#<!-- rule id=$merged_rule locked -->#" .agents/rules/learned.md
+  # Python, not sed -i: the sed of macOS takes a suffix after -i.
+  python3 - "$merged_rule" <<'PY'
+import sys
+path = ".agents/rules/learned.md"
+rule = sys.argv[1]
+text = open(path, encoding="utf-8").read().replace(f"<!-- rule id={rule} -->", f"<!-- rule id={rule} locked -->")
+open(path, "w", encoding="utf-8", newline="\n").write(text)
+PY
   grep -q "id=$merged_rule locked" .agents/rules/learned.md
 
   agent_ready learn revert "$merged"
@@ -424,4 +438,42 @@ PY
   [ "$(PYTHONIOENCODING=utf-8 python3 -c 'import json; print(len(json.load(open(".agents/learning/reorganize.json", encoding="utf-8"))["proposals"]))' | tr -d '\r')" -eq 1 ]
   agent_ready learn reorganize --accept "$proposal"
   [ "$status" -eq 0 ]
+}
+
+@test "a rule locked while the provider answers is not reorganized" {
+  learn "Records carry the case number in the header."
+  learn "Records carry the date at the end."
+  over_budget
+  header="$(rule_id_of 'Records carry the case number in the header.')"
+  footer="$(rule_id_of 'Records carry the date at the end.')"
+  respond 1 "$(consolidation "$header" "$footer" "Records carry the case number in the header and the date at the end.")"
+  respond 2 '{"findings": [{"equivalent": true, "reason": "Both instructions stay."}]}'
+  # The team locks a rule while the first call runs.
+  export FAKE_LOCK_RULE="$header" FAKE_LOCK_FILE="$PWD/.agents/rules/learned.md"
+  agent_ready learn reorganize --json
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s' "$output" | python3 -c 'import json, sys; report = json.load(sys.stdin); print(report["dropped"], len(report["applied"]))' | tr -d '\r')" = "1 0" ]
+  grep -q "id=$header locked" .agents/rules/learned.md
+  grep -Fq -- "- Records carry the date at the end." .agents/rules/learned.md
+}
+
+@test "learn revert puts the rules back in the file the team had moved them to" {
+  learn "Records carry the case number in the header."
+  learn "Records carry the date at the end."
+  over_budget
+  mv .agents/rules/learned.md .agents/rules/policies.md
+  git add -A .agents && git commit -q -m move
+  header="$(rule_id_of 'Records carry the case number in the header.')"
+  footer="$(rule_id_of 'Records carry the date at the end.')"
+  respond 1 "$(consolidation "$header" "$footer" "Records carry the case number in the header and the date at the end.")"
+  respond 2 '{"findings": [{"equivalent": true, "reason": "Both instructions stay."}]}'
+  agent_ready learn reorganize
+  [[ "$output" == *"applied  consolidate"* ]]
+  merged="$(id_of 'Records carry the case number in the header and the date at the end.')"
+
+  agent_ready learn revert "$merged"
+  [ "$status" -eq 0 ]
+  grep -Fq -- "- Records carry the case number in the header." .agents/rules/policies.md
+  grep -Fq -- "- Records carry the date at the end." .agents/rules/policies.md
+  [ ! -e .agents/rules/learned.md ]
 }
