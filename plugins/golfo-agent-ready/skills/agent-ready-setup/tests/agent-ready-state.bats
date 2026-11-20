@@ -556,7 +556,7 @@ EOF2
 @test "unknown profiles are rejected with the catalog, and a selection without a stack applies" {
   run_bootstrap_with "$skill_dir" --profiles cobol
   [ "$status" -ne 0 ]
-  [[ "$output" == *"unknown profile 'cobol'; available profiles: android, browser, business-flows, go, java, nextjs, nextjs-app-router, node, react, software-development"* ]]
+  [[ "$output" == *"unknown profile 'cobol'; available profiles: android, browser, business-flows, go, java, learning, nextjs, nextjs-app-router, node, react, software-development"* ]]
 
   run_bootstrap_with "$skill_dir" --profiles browser
   [ "$status" -eq 0 ]
