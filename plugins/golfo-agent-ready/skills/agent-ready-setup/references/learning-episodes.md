@@ -23,8 +23,9 @@ pasar en `--episode`; el resto de los mensajes no imprime nada.
 
 - `agent-ready learn episode --session <id>` muestra el episodio actual de la sesión.
 - `agent-ready learn episode --session <id> --scope-question` registra la única pregunta de alcance
-  del episodio, y falla si ya se hizo: ahí el agente aplica la instrucción solo al documento actual y la
-  registra sin `--explicit`.
+  del episodio, y falla si ya se hizo o si `learning.clarify` es `off`: ahí el agente no pregunta, aplica
+  la instrucción solo al documento actual y la registra sin `--explicit`, como candidata que espera la
+  repetición.
 
 **El resumen al iniciar la sesión** (`SessionStart`, también después de compactar en Claude Code)
 corre `agent-ready learn summary`: las últimas líneas de `log.md` y los candidatos que esperan otro

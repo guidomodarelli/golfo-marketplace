@@ -243,6 +243,37 @@ managed_rule() {
   [[ "$stderr" == *"is not learned: it is already learned"* ]]
 }
 
+json_field() {
+  printf '%s' "$output" | python3 -c 'import json, sys; print(json.load(sys.stdin)[sys.argv[1]])' "$1" | tr -d '\r'
+}
+
+@test "learning.notify: apply asks the agent for the one-line notice, and off asks it to stay silent" {
+  commit_identity
+  header_rule --quote "de ahora en más, número arriba" --explicit --session s1
+  agent_ready learn apply "$(id_of 'header')"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Tell the user in one line that you will keep it in mind, without calling it a rule"* ]]
+  agent_ready learn status
+  [[ "$output" == *"Notice to the user: on."* ]]
+
+  write_manifest '{"learning": {"notify": false}}'
+  agent_ready learn record --kind rule --key records.date --statement "Records carry the date first." \
+    --quote "de ahora en más, la fecha primero" --explicit --session s1
+  agent_ready learn apply "$(id_of 'date first')" --json
+  [ "$status" -eq 0 ]
+  [ "$(json_field notify)" = "False" ]
+  agent_ready learn record --kind rule --key records.footer --statement "Records end with the signature." \
+    --quote "de ahora en más, la firma al final" --explicit --session s1
+  agent_ready learn apply "$(id_of 'signature')"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"learning.notify is off: do not tell the user."* ]]
+  [[ "$output" != *"Tell the user"* ]]
+  # What was learned stays in the commit and the log all the same.
+  grep -Fq "Records end with the signature." .agents/learning/log.md
+  agent_ready learn status --json
+  [ "$(json_field notify)" = "False" ]
+}
+
 @test "a newer instruction on the same key replaces the learned one in place, and the old one is superseded" {
   commit_identity
   header_rule --quote "número arriba" --explicit --session s1
@@ -837,6 +868,29 @@ at_time() {
   [[ "$output" == *"Episode s2:20260311T003000 started"* ]]
   agent_ready learn episode --session s2 --json
   [ "$(printf '%s' "$output" | python3 -c 'import json, sys; print(json.load(sys.stdin)["episode"]["episodeId"])' | tr -d '\r')" = "s2:20260311T003000" ]
+}
+
+@test "learning.clarify off: the scope question is never asked and the episode records none" {
+  select_learning_profile
+  write_manifest '{"learning": {"clarify": "off"}}'
+  at_time 2026-03-10T09:00:00+0000
+  agent_ready learn episode --session s1 --touch
+  agent_ready learn episode --session s1 --scope-question
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"learning.clarify is off: do not ask the scope question, apply the instruction to the current document only and record it without --explicit"* ]]
+  agent_ready learn episode --session s1 --json
+  [ "$(printf '%s' "$output" | python3 -c 'import json, sys; print(json.load(sys.stdin)["episode"]["scopeQuestionAsked"])' | tr -d '\r')" = "False" ]
+  agent_ready learn episode --session s1
+  [[ "$output" == *"scope question off"* ]]
+  agent_ready learn status
+  [[ "$output" == *"Scope question: off."* ]]
+  agent_ready learn status --json
+  [ "$(printf '%s' "$output" | python3 -c 'import json, sys; print(json.load(sys.stdin)["clarify"])' | tr -d '\r')" = "off" ]
+
+  # Back to the default, the one question of the episode is still there to ask.
+  write_manifest '{"learning": {"clarify": "once"}}'
+  agent_ready learn episode --session s1 --scope-question
+  [ "$status" -eq 0 ]
 }
 
 @test "one scope question per episode, and a new episode allows another" {

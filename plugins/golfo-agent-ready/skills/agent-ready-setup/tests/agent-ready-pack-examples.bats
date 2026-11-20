@@ -26,6 +26,8 @@ setup() {
   export AGENT_READY_SETUP_ORGANIZATION_CONFIG="$test_root/organization/config.json"
   export AGENT_READY_SETUP_TOOLS=0
   export AGENT_READY_SETUP_ACTIVE_PROVIDER=claude
+  # The legal example brings the learning profile, whose apply registers the scheduled sweep.
+  export AGENT_READY_LEARNING_SCHEDULER=none
   export GIT_CONFIG_GLOBAL="$test_root/gitconfig"
   git config --global user.name Test
   git config --global user.email test@example.invalid
@@ -281,7 +283,7 @@ add_legal_pack() {
   write_manifest '{"sources": {"packs": [{"name": "estudio-juridico", "source": "path:./agent-packs/estudio-juridico"}]}}'
 }
 
-@test "the legal example pack: its domain stack is detected by folders and brings its capability, without software-development" {
+@test "the legal example pack: its domain stack is detected by folders and brings its capabilities, without software-development" {
   rm package.json
   mkdir -p actas/2026
   printf '%s\n' '# Acta de infracción N.º 001' > actas/2026/acta-001.md
@@ -304,7 +306,26 @@ add_legal_pack() {
   # A repository without code: none of software-development.
   [ ! -e .agents/rules/lint-gate.md ]
   [ ! -e .github/pull_request_template.md ]
+  [ "$(python3 -c 'import json; print(json.load(open(".agents/agent-ready.lock.json"))["profileOrder"])' | tr -d '\r')" = "['estudio-juridico/estudio', 'estudio-juridico/actas-infraccion', 'learning']" ]
+  # The learning capability of the content comes by default: its rules and the hook of the episodes.
+  grep -q 'rule id=learning/user-messages-only' .agents/rules/learning.md
+  [ -f .agents/hooks/learning-hook.sh ]
+  run_cli learn status
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Notice to the user: on. Scope question: at most one per episode."* ]]
+}
+
+@test "the legal example pack: a repository leaves learning out with excludedDefaults" {
+  rm package.json
+  mkdir -p actas/2026
+  printf '%s\n' '# Acta de infracción N.º 001' > actas/2026/acta-001.md
+  add_legal_pack
+  write_manifest '{"sources": {"packs": [{"name": "estudio-juridico", "source": "path:./agent-packs/estudio-juridico"}]}, "excludedDefaults": ["learning"]}'
+
+  run_cli apply
+  [ "$status" -eq 0 ]
   [ "$(python3 -c 'import json; print(json.load(open(".agents/agent-ready.lock.json"))["profileOrder"])' | tr -d '\r')" = "['estudio-juridico/estudio', 'estudio-juridico/actas-infraccion']" ]
+  [ ! -e .agents/rules/learning.md ]
 }
 
 @test "without its folders the legal domain stack is not detected, and its capability works alone" {

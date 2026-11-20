@@ -8,7 +8,8 @@
       "description": "Repositorio de un estudio jurídico: escritos y actas en Markdown, sin código. Se detecta por la carpeta actas/.",
       "assets": "profiles/estudio",
       "defaults": [
-        "estudio-juridico/actas-infraccion"
+        "estudio-juridico/actas-infraccion",
+        "learning"
       ],
       "detect": {
         "signals": [
