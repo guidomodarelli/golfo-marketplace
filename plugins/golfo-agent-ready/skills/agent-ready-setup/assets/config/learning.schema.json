@@ -32,7 +32,7 @@
       "default": 4
     },
     "hooks": {
-      "description": "Los hooks de aprendizaje de los providers que tienen esos eventos (references/learning.md, «Episodios»).",
+      "description": "Los hooks de aprendizaje de los providers que tienen esos eventos (references/learning-episodes.md, «Episodios»).",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -49,7 +49,7 @@
       }
     },
     "sweep": {
-      "description": "El barrido periódico que cierra los episodios que quedaron abiertos aunque nadie vuelva a escribir (references/learning.md, «Barrido programado»).",
+      "description": "El barrido periódico que cierra los episodios que quedaron abiertos aunque nadie vuelva a escribir (references/learning-episodes.md, «Barrido programado»).",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -63,7 +63,7 @@
       }
     },
     "reorganize": {
-      "description": "La reorganización de lo aprendido: consolidar rules redundantes, dividir una larga o pasar una a skill (references/learning.md, «Reorganizar lo aprendido»).",
+      "description": "La reorganización de lo aprendido: consolidar rules redundantes, dividir una larga o pasar una a skill (references/learning-reorganize.md, «Reorganizar lo aprendido»).",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -100,7 +100,7 @@
       "x-security": { "strictness": [true, false] }
     },
     "harvest": {
-      "description": "agent-ready learn harvest, en la máquina del desarrollador (references/learning.md, «Aprender de varios clientes»).",
+      "description": "agent-ready learn harvest, en la máquina del desarrollador (references/learning-share.md, «Aprender de varios clientes»).",
       "type": "object",
       "additionalProperties": false,
       "properties": {

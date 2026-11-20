@@ -1,5 +1,5 @@
 """The scheduled learning sweep: one task of the user in the scheduler of the system that runs
-``agent-ready learn sweep --registered`` every ``learning.sweep.intervalMinutes`` (references/learning.md,
+``agent-ready learn sweep --registered`` every ``learning.sweep.intervalMinutes`` (references/learning-episodes.md,
 «Barrido programado»).
 
 It closes the episodes nobody comes back to, so their review runs even when the chat is never used

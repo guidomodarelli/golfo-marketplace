@@ -3,7 +3,7 @@
 It reads only the messages of the user from the local transcript of the provider (Claude Code or Codex),
 asks the provider which of them should last, and records each one in the registry with the source
 session-end. It never writes a rule or a skill: the agent decides in its next session with the rules
-of evidence (references/learning.md, «Revisión al cerrar un episodio»).
+of evidence (references/learning-episodes.md, «Revisión al cerrar un episodio»).
 """
 
 import datetime

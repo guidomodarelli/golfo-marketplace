@@ -6,9 +6,17 @@ agente, con reglas de evidencia fijas. Al usuario nunca se le pregunta «¿lo gu
 
 Esta referencia cubre el registro, la evidencia, la decisión de `agent-ready learn record`, cómo
 `agent-ready learn apply` escribe lo aprendido, cómo lo revisa el desarrollador (`accept`, `reject` y
-`revert`), cómo se reorganiza (`reorganize`) y cómo el desarrollador junta lo que aprendieron varios
-clientes (`export` y `harvest`). Promover un candidato a un pack (`promote`) es la parte siguiente de la
-issue #156.
+`revert`) y qué pasa cuando el profile cambia una rule reemplazada (`keep` y `retire`). El resto vive en
+referencias propias:
+
+- [learning-episodes.md](learning-episodes.md): los episodios, los hooks, la revisión al cerrar un
+  episodio y el barrido programado.
+- [learning-reorganize.md](learning-reorganize.md): cómo `reorganize` consolida, divide o pasa a skill
+  lo aprendido.
+- [learning-share.md](learning-share.md): cómo el desarrollador junta lo que aprendieron varios
+  clientes (`export` y `harvest`).
+
+Promover un candidato a un pack (`promote`) es la parte siguiente de la issue #156.
 
 ## Qué se aprende y qué no
 
@@ -41,107 +49,6 @@ ser la que reemplaza a la anterior, y `record` la informa en `same key` para que
 
 **Las citas solo viven en este archivo.** `quote` puede tener datos del caso, así que `learn status` y
 `learn list`, también con `--json`, muestran los statements y las fechas, nunca las citas.
-
-## Episodios
-
-La evidencia cuenta episodios distintos, no mensajes: repetir una instrucción tres veces en el mismo
-episodio es una sola evidencia.
-
-- Con `--episode`, el episodio es el que informó el hook de la sesión.
-- Sin `--episode`, otra sesión o otro día empiezan un episodio nuevo: el episodio es la sesión más la
-  fecha del mensaje.
-
-**El hook del prompt** (`UserPromptSubmit` en Claude Code y en Codex, con
-`.agents/hooks/learning-hook.sh`) corre `agent-ready learn episode --session <id> --touch` en cada
-mensaje del usuario. Guarda por sesión, en `.git/info/agent-ready/episodes.json` (local, nunca
-versionado), el episodio, cuándo empezó y la hora del último mensaje. El mensaje siguiente abre un
-episodio nuevo si es de otro día de la máquina o si pasaron `learning.episodeGapHours` horas (4 por
-defecto) sin mensajes. Así un chat largo cuenta varios episodios. Nada corre entre mensajes: el corte
-se calcula cuando llega el próximo. Al abrir un episodio, el hook le dice al agente el id que tiene que
-pasar en `--episode`; el resto de los mensajes no imprime nada.
-
-- `agent-ready learn episode --session <id>` muestra el episodio actual de la sesión.
-- `agent-ready learn episode --session <id> --scope-question` registra la única pregunta de alcance
-  del episodio, y falla si ya se hizo: ahí el agente aplica la instrucción solo al documento actual y la
-  registra sin `--explicit`.
-
-**El resumen al iniciar la sesión** (`SessionStart`, también después de compactar en Claude Code)
-corre `agent-ready learn summary`: las últimas líneas de `log.md` y los candidatos que esperan otro
-episodio, sin las citas, para que el agente cuente como segunda evidencia una instrucción que vuelve.
-No llama a ningún modelo. `learning.hooks.sessionStart` apagado lo deja sin salida.
-
-El hook y el resumen no hacen nada mientras el repositorio no use el profile `learning` (el lockfile
-lo registra en `profileOrder`) o `learning.enabled` esté apagado, y nunca hacen fallar el prompt ni la
-sesión.
-
-### Revisión al cerrar un episodio
-
-La detección en la conversación puede perder una instrucción: el agente no la registró, o se compactó
-el contexto antes. Por eso, al cerrarse un episodio, una revisión en background lee **solo los mensajes
-del usuario** de ese episodio en el transcript local del provider y registra como candidatas, con
-`source` `session-end`, las instrucciones que deben durar. Nunca escribe una rule ni una skill: el
-agente decide en la sesión siguiente con las reglas de «La decisión», y el resumen de inicio se las
-muestra.
-
-Un episodio se cierra en cualquiera de estos momentos:
-
-- **Al cerrar el chat:** `SessionEnd` en Claude Code (`learn episode --session <id> --end`).
-- **Al empezar el siguiente episodio** del mismo chat.
-- **Al barrer desde cualquier hook:** el prompt o el inicio de sesión de cualquier chat del repositorio
-  cierra los episodios sin mensajes hace `learning.episodeGapHours` horas o de otro día.
-- **Con el barrido programado** (abajo), aunque nadie vuelva a escribir en el repositorio.
-
-Antes de compactar (`PreCompact` en Claude Code, `--review-now`) se revisa lo que el episodio lleva
-dicho, y la revisión de su cierre empieza desde ahí. Codex no tiene esos dos eventos: sus episodios se
-cierran con el barrido.
-
-- El hook guarda en `episodes.json` el `transcript_path` y el provider del payload; la revisión corre
-  con ese provider y el modelo de las revisiones de IA, sin herramientas ni sesión.
-- Del transcript lee los mensajes del usuario y deja afuera lo que escribió el agente, los resultados de
-  herramientas y lo que agrega el harness (comandos, recordatorios, contexto del entorno), que se
-  reconoce por sus etiquetas. Un mensaje del usuario que empieza con otro markup se revisa igual.
-- Una cita que no está en los mensajes del usuario se descarta: la revisión no puede inventar evidencia.
-- Cada mensaje cuenta en un solo episodio: la ventana de cada revisión empieza donde terminó la
-  anterior del mismo chat, aunque dos episodios empiecen con minutos de diferencia (por ejemplo, a
-  medianoche). La ventana nunca pasa del momento en que cerró el episodio, así que un chat que se
-  retoma enseguida revisa sus mensajes nuevos en el episodio siguiente.
-- Lo que se manda al provider tiene un tope de caracteres: entran primero los mensajes más nuevos, y
-  un mensaje enorme (un documento pegado) entra recortado.
-- Cada episodio se revisa una vez. Si el provider falla o otra sesión tiene tomado el registro, queda
-  en la cola para el barrido siguiente, hasta tres intentos. Un episodio sin transcript se cierra sin revisión.
-- La cola vive en `episodes.json` hasta que cada revisión termina: si el barrido se corta (se apaga la
-  máquina), otro barrido retoma esas revisiones una hora después.
-- Nunca llama a un provider en CI ni en review mode: el episodio queda en la cola para la máquina del
-  usuario.
-- La revisión corre desacoplada del hook con `scripts/run-detached.py` (`agent-ready learn sweep`, con
-  su log privado en `~/.cache/agent-ready-setup/learning-sweeps/`), así que el prompt no la espera.
-- `learning.hooks.sessionEnd` apagado cierra los episodios sin revisarlos.
-
-### Barrido programado
-
-El apply registra una tarea del usuario en el planificador del sistema que corre
-`agent-ready learn sweep --registered` cada `learning.sweep.intervalMinutes` minutos (60 por defecto).
-Así un episodio que nadie retoma se cierra y se revisa como mucho `episodeGapHours` +
-`sweep.intervalMinutes` después de su último mensaje.
-
-- **Sin permisos de administrador:** Windows usa una tarea del usuario actual del Programador de tareas
-  (`schtasks`, nunca `/RU SYSTEM`); macOS, un LaunchAgent en `~/Library/LaunchAgents` (nunca un
-  LaunchDaemon); Linux, el `crontab` del usuario. Corre solo con la sesión del usuario iniciada.
-- **Una tarea por máquina:** cada repositorio que usa learning se anota en
-  `~/.cache/agent-ready-setup/learning-schedule/projects/`. La tarea corre tan seguido como pide el más
-  frecuente, barre todos y olvida los que ya no están en el disco. Se va con el último repositorio.
-- **El motor del último apply:** la tarea arranca `learning-schedule/run-sweep.py`, que apunta al
-  motor que la registró. Cada apply la reescribe solo si cambió. El runner restaura el `PATH` y el
-  `XDG_CACHE_HOME` del apply, porque el planificador arranca con un entorno mínimo. Si la tarea no le
-  da salida (`pythonw.exe`), la escribe en `learning-schedule/last-sweep.log`.
-- **Retiro:** `intervalMinutes: 0`, un apply sin el profile `learning` o `agent-ready remove` sacan al
-  repositorio de la tarea. Si el sistema rechazó borrar la tarea del último repositorio, el próximo
-  `learn schedule`, apply o barrido lo vuelve a intentar.
-- **Si el sistema la rechaza** (una política de la máquina, `cron.deny`, sin `crontab`), el apply no
-  falla: lo avisa en una línea, y `agent-ready status` y `agent-ready doctor` informan que falta. Los
-  episodios se siguen cerrando al terminar el chat y desde otro hook. `agent-ready learn schedule`
-  vuelve a registrarla, igual que un apply.
-- **CI y review mode:** nunca tocan el planificador.
 
 ## La decisión
 
@@ -241,109 +148,6 @@ igual que una revertida. No retira una rule `locked` ni una que otra pide con `r
 El plan solo lee el repo: la huella de lo que el profile publica la guarda en la caché del usuario, y
 `learn keep` la toma de ahí, así que primero hay que correr `agent-ready plan`. Un reemplazo escrito a
 mano, sin entrada de aprendizaje, no tiene huella y no se marca.
-
-## Reorganizar lo aprendido
-
-Lo aprendido crece de a una rule. `agent-ready learn reorganize` lo ordena con tres operaciones:
-consolidar rules redundantes en una (`consolidate`), dividir una rule que tiene varias instrucciones
-(`split`) y pasar a skill una rule que es un procedimiento (`to-skill`). Nunca borra una instrucción:
-lo que saca, lo reemplaza.
-
-**Cuándo.** Solo cuando se cumple un disparador, que se calcula sin llamar a un modelo:
-
-| Disparador | Cuándo se cumple |
-|---|---|
-| `long-rule` | una rule aprendida tiene más de `learning.reorganize.maxRuleLines` líneas no vacías desde su bullet (12 por defecto) |
-| `topic` | tres o más rules aprendidas comparten el tema: el primer segmento de su `key` (`records.header` y `records.date` son del tema `records`) |
-| `context-budget` | las rules raíz sin `paths:`, que Claude carga en cada sesión, pasan `conflicts.contextBudget.rulesBytes` |
-| `conflict` | una rule aprendida y otra deciden la misma `key` con distinto contenido |
-
-En background corre al cerrar el chat (`SessionEnd`) y desde el barrido programado, como mucho una vez
-cada `learning.reorganize.minIntervalDays` (7 por defecto), nunca desde el hook del prompt: no corta una
-tarea. La hora de la última vez queda en `.git/info/agent-ready/reorganize.json`, local. Si el provider
-falla o no hay disparador que revisar, no cuenta como corrida. `agent-ready learn reorganize` la corre en
-el momento, sin esperar el intervalo. En CI y en review mode no llama a ningún provider.
-
-**Qué se aplica solo.** El provider propone las operaciones mirando solo las rules de los disparadores,
-como datos. Cada operación pasa por estos filtros:
-
-1. Se descarta si nombra una rule que no es aprendida, mezcla rules de distintos archivos o alcances,
-   toca una rule `locked` o un archivo gestionado, saca una rule que otra pide con `requires=`, repite un
-   statement que ya está en el registro, o no tiene la forma de su tipo. Una rule entra en una sola operación por corrida.
-2. Queda como **propuesta** para el desarrollador si `learning.mode` es `developer-review`, si
-   `learning.reorganize.auto` está apagado, si es `to-skill`, si una de sus rules no la creó el
-   aprendizaje (una rule del equipo que el aprendizaje editó), si tiene excepciones, detalles o
-   `requires=` que alguien agregó, si consolida rules de distintas `key`, o si divide una rule con `key`
-   u `overrides` (alguna de las nuevas tendría que quedárselos sola).
-3. Lo que pasa los dos filtros va a una segunda llamada, que compara las rules de antes con las de
-   después. Se aplica solo si responde que el comportamiento es el mismo; si no, o si no responde,
-   queda como propuesta con el motivo.
-
-Antes de escribir, la reorganización vuelve a leer las rules: si cambiaron mientras respondía el
-provider, la operación se descarta. Cada operación aplicada es un commit con un `Learning-Id:` por rule
-nueva, `Reorganizes:` con las entradas que reemplaza y `Learned-from:`, y una línea `reorganize` en
-`log.md`. Las rules nuevas son entradas `learned` del registro con la evidencia de las que reemplazan,
-que pasan a `superseded`. Las rules nuevas conservan la `key` común y la unión de los `overrides`, y
-llevan ids nuevos: nunca heredan el de una rule que reemplazan.
-
-Una corrida sin disparador no cuenta para el intervalo, así que un disparador que aparece mañana se
-revisa mañana. Si el provider vuelve a proponer una operación que ya espera y sus rules cambiaron desde
-entonces, la propuesta nueva reemplaza a la vieja.
-
-**Propuestas.** Las operaciones que esperan quedan en `.agents/learning/reorganize.json`, versionado y
-commiteado, con el motivo y el veredicto de la revisión. `learn status` dice cuántas esperan.
-
-| Comando | Qué hace |
-|---|---|
-| `learn reorganize --plan` | muestra los disparadores de ahora y las propuestas que siguen valiendo, sin modelo y sin cambiar nada. Una propuesta cuyas rules cambiaron o ya no están deja de mostrarse |
-| `learn reorganize --accept <id>` | el desarrollador aplica una propuesta sin pasar por la revisión de equivalencia. La rechaza si sus rules cambiaron desde que se propuso, o si es `locked`, gestionada o de otro alcance. Una `to-skill` escribe `.agents/skills/<nombre>/SKILL.md` y saca la rule; el archivo aprendido se borra si quedó solo el encabezado. El log la marca `(accepted)` |
-| `learn reorganize --dismiss <id>` | descarta la propuesta; una reorganización posterior puede volver a proponerla |
-| `learn revert <id>` | con el id de cualquier entrada nueva, deshace la operación completa: saca sus rules (o su skill, si nadie la cambió) y devuelve las rules que reemplazó tal como estaban, con su id y marcador. Las entradas nuevas quedan `reverted` y las anteriores vuelven a `learned`. No toca nada si una rule nueva cambió después (su statement, sus excepciones o detalles, o su marcador: `key`, alcance, `overrides`, `requires=` o `locked`) o una entrada de la operación cambió de estado, ni si otra rule pide con `requires=` una de las rules nuevas |
-
-## Aprender de varios clientes
-
-Cada cliente tiene su repo, privado, y lo aprendido puede tener datos suyos. Por eso **nada sale solo de
-un repositorio**: no hay envío automático. Lo junta el desarrollador, a pedido, desde los clones que ya
-tiene en su máquina.
-
-**Qué sale de un repo.** Solo los `statement` de lo aprendido (estado `learned`), con su `kind`, `key` y
-`paths`. Nunca las citas del usuario, que quedan en `candidates.json`, ni los candidatos que esperan, ni
-documentos. `export` y `harvest` leen el registro y descartan la evidencia al leerla: ninguna cita llega
-a la salida, al provider ni a la caché.
-
-**Participación.** `learning.share` viene encendido: todo repo que el desarrollador tiene clonado
-participa del `harvest`. Un cliente que no quiere participar pone `{"learning": {"share": false}}` en su
-manifest (`.agents/agent-ready.json`), y `harvest` no lee nada más de ese repo. Apagarlo nunca necesita la
-aprobación de la máquina; encenderlo desde el repo, sí, como cualquier valor que afloja.
-
-**`learn export`.** Escribe lo aprendido del repo en un JSON (`--output`, o por la salida estándar), con
-el nombre del repo (`--name`, o su carpeta). Es para el cliente que hostea su repo y no le da acceso al
-desarrollador: lo revisa, lo edita si quiere y se lo pasa. `harvest --export <archivo>` lo lee igual que
-un clon, y de cada ítem toma solo `statement`, `kind`, `key` y `paths`: lo demás que tenga el archivo se
-ignora.
-
-**`learn harvest`.** Lee los repos de `--repos` (o, sin esa opción, los de `learning.harvest.repos` de la
-config de usuario: un repo no puede sumarse a esa lista) y los exports de `--export`. Propone como
-candidato lo que aprendieron al menos `learning.harvest.threshold` repos distintos (2 por defecto, o
-`--threshold`):
-
-1. Con menos repos que el umbral con algo aprendido, no hay nada que agrupar y no llama a ningún modelo.
-2. Si no, un provider (`--provider`, Claude por defecto) agrupa los statements que piden lo mismo y
-   escribe cada grupo como un statement general, sin nombres, expedientes, montos ni nada propio de un
-   cliente. Ve los repos solo como `repo-1`, `repo-2`…, nunca por su nombre ni su ruta, y trata los
-   statements como datos.
-3. Un grupo vale si sus índices existen, cada statement está en un solo grupo, junta al menos el umbral
-   de repos y su statement es una oración que `record` aceptaría (y su `key`, si trae una, también).
-4. En CI, en review mode o si el provider falla, propone solo lo que varios repos aprendieron con las
-   mismas palabras (salvo mayúsculas, espacios y el punto final), y el reporte dice por qué.
-
-Cada candidato tiene un id `harvest-<hash>`, el statement general, de qué repos sale y el statement
-original de cada uno. El resultado queda en la caché del desarrollador
-(`~/.cache/agent-ready-setup/learning-harvest/latest.json`), nunca en un repositorio: `harvest` no
-escribe nada en los repos que lee. Un repo que no existe o no se puede leer figura con su estado y no
-frena a los demás. Un repo o export que se pasa dos veces se lee una, y dos fuentes con el mismo nombre
-(un clon y el export del mismo cliente) cuentan como un solo repo: nada suma evidencia de más. Un
-statement viaja con sus `paths`, y un grupo nunca junta alcances distintos: el candidato conserva el suyo.
 
 ## Comandos
 
