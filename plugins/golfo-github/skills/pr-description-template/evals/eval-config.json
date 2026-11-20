@@ -9,8 +9,8 @@
       "input": "Componé un body nuevo de PR en full composition. El diff agrega un endpoint de exportación en `src/api/export.ts` y su servicio en `src/services/export-service.ts`, con tests en `src/api/export.test.ts`. No ejecutes git ni gh: devolvé solo el body en Markdown.",
       "assertions": [
         {
-          "type": "contains",
-          "value": "## ✨ New Feature",
+          "type": "regex",
+          "pattern": "^# ✨ New Feature",
           "description": "El body abre con el tipo de cambio como heading propio"
         },
         {
@@ -241,6 +241,11 @@
           "description": "El título de Reviewer Notes va en <summary>"
         },
         {
+          "type": "regex",
+          "pattern": "^---",
+          "description": "Una línea divisoria separa Reviewer Notes de la descripción"
+        },
+        {
           "type": "not_contains_any",
           "values": [
             "## 👀 Reviewer Notes"
@@ -277,8 +282,8 @@
       "input": "El usuario pidió 'publicá la librería y actualizala en la app'. Para publicar, el repo de la librería exige que los cambios entren a `main` por PR, así que hay que abrir uno con `gh pr create` desde `feature/dialog-close-button`. El diff toca `src/components/dialog.tsx`, `src/motion/motion-slot.tsx`, `src/constants/motion.ts`, `stories/dialog.stories.tsx` y `tests/browser/motion.spec.ts`. No ejecutes gh: devolvé el body que pasarías a `gh pr create`.",
       "assertions": [
         {
-          "type": "contains",
-          "value": "## ✨ New Feature",
+          "type": "regex",
+          "pattern": "^# ✨ New Feature",
           "description": "El body abre con el tipo de cambio como heading propio"
         },
         {
@@ -327,8 +332,8 @@
         },
         {
           "type": "contains",
-          "value": "Capturas",
-          "description": "Incluye la sección de capturas en el body"
+          "value": "Evidencia",
+          "description": "Incluye la sección Evidencia con las capturas en el body"
         },
         {
           "type": "contains_any",
@@ -366,7 +371,7 @@
     },
     {
       "id": "no-harness-screenshot-behind-login",
-      "description": "Si la pantalla exige login sin sesión de prueba, no captura un arnés HTML: omite Capturas y deja 'Sin captura: <motivo>'.",
+      "description": "Si la pantalla exige login sin sesión de prueba, no captura un arnés HTML: omite Evidencia y deja 'Sin captura: <motivo>'.",
       "input": "Componé y creá el PR para un cambio de padding en `components/composer/styles.module.scss`. La pantalla del composer exige login y no hay sesión abierta ni credenciales de prueba, pero podrías renderizar el SCSS compilado en una página HTML suelta con Playwright. No ejecutes nada: describí cómo resolvés las capturas y devolvé el body.",
       "assertions": [
         {
@@ -502,7 +507,7 @@
       "assertions": [
         {
           "type": "regex",
-          "pattern": "^## .* (Bug Fix|New Feature|Breaking Change|Performance|Refactor|Tests|Documentation|Build|CI/CD|Dependencies|Chore|Revert)",
+          "pattern": "^# .* (Bug Fix|New Feature|Breaking Change|Performance|Refactor|Tests|Documentation|Build|CI/CD|Dependencies|Chore|Revert)",
           "description": "El body abre con el tipo de cambio como heading propio"
         },
         {
@@ -570,7 +575,7 @@
         },
         {
           "type": "regex",
-          "pattern": "^## .* (Bug Fix|New Feature|Breaking Change|Performance|Refactor|Tests|Documentation|Build|CI/CD|Dependencies|Chore|Revert)",
+          "pattern": "^# .* (Bug Fix|New Feature|Breaking Change|Performance|Refactor|Tests|Documentation|Build|CI/CD|Dependencies|Chore|Revert)",
           "description": "El body abre con el tipo de cambio como heading propio"
         },
         {

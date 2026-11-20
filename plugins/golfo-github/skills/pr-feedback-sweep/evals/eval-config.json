@@ -85,14 +85,9 @@
           "description": "Incluye la tabla de ítems del reporte con la columna Clase"
         },
         {
-          "type": "contains_any",
-          "values": [
-            "quote reply",
-            "Quote reply",
-            "> ",
-            "cita"
-          ],
-          "description": "Responde con quote reply del comentario original"
+          "type": "regex",
+          "pattern": "`---`|^[[:space:]]*---[[:space:]]*$|l[ií]nea divisoria",
+          "description": "Separa el link al original de la respuesta con una línea divisoria, sin citar el original"
         },
         {
           "type": "contains_any",

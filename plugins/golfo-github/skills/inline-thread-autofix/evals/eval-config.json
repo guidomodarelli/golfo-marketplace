@@ -2359,14 +2359,9 @@
           "description": "No intenta resolver un thread inexistente"
         },
         {
-          "type": "contains_any",
-          "values": [
-            "quote reply",
-            "Quote reply",
-            "> ",
-            "cita"
-          ],
-          "description": "Responde con quote reply del comentario original"
+          "type": "regex",
+          "pattern": "`---`|^[[:space:]]*---[[:space:]]*$|l[ií]nea divisoria",
+          "description": "Separa el link al original de la respuesta con una línea divisoria, sin citar el original"
         },
         {
           "type": "contains_any",
@@ -2472,6 +2467,44 @@
             "no ocult"
           ],
           "description": "No oculta el comentario propio"
+        }
+      ]
+    },
+    {
+      "id": "61-issue-comment-mentions-human-author",
+      "description": "Respuesta a un comentario general de una persona: el encabezado menciona al autor con @ para que GitHub lo notifique.",
+      "input": "Escenario hipotético de evaluación para inline-thread-autofix. Ya respondí la pregunta de entorno: Checkout actual.\nhttps://github.com/acme/widgets/pull/42#issuecomment-987654325\nEl comentario general es de la usuaria maria-reviewer y dice: \"Falta validar que quantity sea positivo en src/cart/add-item.ts\". Resolvelo.\nNo ejecutes comandos ni consultes GitHub: describí el plan, las verificaciones que harías, las mutaciones que harías u omitirías y mostrá el body exacto de la respuesta que publicarías.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "[Ee]n respuesta a \\[este comentario\\]\\([^)]*\\) de @maria-reviewer",
+          "description": "El encabezado menciona al autor humano con @"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "issuecomment:987654325"
+          ],
+          "description": "Usa el marker issuecomment"
+        }
+      ]
+    },
+    {
+      "id": "62-issue-comment-bot-author-no-mention",
+      "description": "Respuesta a un comentario general de un bot revisor: el login va como texto, sin @, para no disparar otra corrida del bot.",
+      "input": "Escenario hipotético de evaluación para inline-thread-autofix. Ya respondí la pregunta de entorno: Checkout actual.\nhttps://github.com/acme/widgets/pull/42#issuecomment-987654326\nEl comentario general es de sonarqube[bot] (user.type Bot) y dice: \"Remove the unused import of lodash in src/cart/total.ts\". Resolvelo.\nNo ejecutes comandos ni consultes GitHub: describí el plan, las verificaciones que harías, las mutaciones que harías u omitirías y mostrá el body exacto de la respuesta que publicarías.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "[Ee]n respuesta a \\[este comentario\\]\\([^)]*\\) de `?sonarqube\\[bot\\]",
+          "description": "El encabezado nombra al bot como texto"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "de @sonarqube"
+          ],
+          "description": "No menciona al bot con @"
         }
       ]
     }
