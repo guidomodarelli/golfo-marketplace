@@ -8,7 +8,7 @@ Toda la información de la organización llega por variables de entorno `JIRA_TI
 2. Archivo de perfil `JIRA_TICKET_ENV_FILE`, por defecto `~/.config/jira-ticket/env`, con líneas `export NOMBRE=valor`. No se versiona. El script lo lee sin ejecutarlo, así que funciona aunque el shell del agente no lo haya cargado.
 3. Defaults del script para las variables opcionales que los tienen.
 
-Para empezar: copiar [`../env.example`](../env.example) a `~/.config/jira-ticket/env` y completar los valores del equipo.
+Para empezar o al cambiar de equipo: seguir [configurar equipo](team-setup.md), que descubre los valores en Jira y los guarda con `env-save` tras confirmarlos, o copiar [`../env.example`](../env.example) a `~/.config/jira-ticket/env` y completarlo a mano.
 
 ## Resolver la configuración
 

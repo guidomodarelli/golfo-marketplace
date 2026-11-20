@@ -3,13 +3,12 @@ name: jira-ticket
 description: >
   Crea o actualiza una Story de JIRA con subtareas reales (Sub-task) en el proyecto configurado por variables de entorno
   JIRA_TICKET_* (sitio, proyecto, tablero, campos), a partir del pedido del usuario o de los cambios de cualquier repositorio Git.
-  Construye el alcance desde el diff, sincroniza padre y subtareas, completa quarter, fecha de inicio y sprint activo cuando están
-  configurados, pregunta si los tickets tienen Due date, enlaza uno o varios pull requests en ambos sentidos y mueve a Done el trabajo
-  cuando todos sus PRs están fusionados. Usar cuando se pida crear, actualizar o sincronizar un ticket de Jira desde los cambios actuales
+  Sincroniza padre y subtareas, completa quarter, fecha de inicio y sprint activo, pregunta el Due date, enlaza pull requests
+  en ambos sentidos y mueve a Done el trabajo cuando todos sus PRs están fusionados. Usar cuando se pida crear, actualizar o sincronizar un ticket de Jira desde los cambios actuales
   o asociarlo con pull requests; también crea épicas, cuelga stories de una épica existente sin pisar su contenido y lleva en cada
-  subtarea una tabla de pasos con su estado y leyenda de progreso. Usa formato enriquecido de Jira (paneles,
-  estados) y emojis. Reutiliza tickets existentes, crea y asigna faltantes y agrega label jira-ticket al PR tras verificar
-  vínculo.
+  subtarea una tabla de pasos con su estado. Configura esas variables descubriéndolas en Jira al cambiar de equipo
+  («configurar equipo», «cambié de equipo»). Usa formato enriquecido de Jira y emojis. Reutiliza tickets existentes, crea y
+  asigna faltantes y agrega label jira-ticket al PR tras verificar vínculo.
 metadata:
   plugin-dependencies: "golfo-github"
 ---
@@ -32,6 +31,7 @@ El sprint se descubre en Jira según `jira-fields.md`; nunca se calcula ni se in
 | Paso | Qué resuelve | Referencia |
 |---|---|---|
 | 0 | Configuración y features activas | `config.md` |
+| — | Configurar equipo: descubrir y guardar las variables | `team-setup.md` |
 | 1 | Modo (tarea explícita o repositorio), campos, Due date y PRs | `jira-fields.md` |
 | 2 | Padre existente o creación, y épica | `pr-traceability.md` |
 | 3 | Alcance desde el diff (solo modo repositorio) | — |
@@ -52,7 +52,7 @@ Ejecutar únicamente acciones necesarias para crear, actualizar, asociar, transi
 - No ejecutar tests, builds, linters, scanners ni comandos de validación del repositorio salvo pedido explícito.
 - No invocar skills, agentes o workflows ajenos al flujo Jira salvo pedido explícito. Si una regla de mayor prioridad obliga una invocación, limitarla a determinar aplicabilidad y volver al flujo; no expandirla a auditoría o implementación.
 - No modificar código, dependencias, configuración, comentarios de review, approvals ni estado del PR.
-- Únicos writes externos permitidos: issues JIRA, transiciones JIRA, issue links de bloqueo pedidos, backlink Jira body-only y label `jira-ticket` sobre PR asociado al flujo solicitado, incluida creación de esa label en su repositorio si falta.
+- Únicos writes externos permitidos: issues JIRA, transiciones JIRA, issue links de bloqueo pedidos, backlink Jira body-only y label `jira-ticket` sobre PR asociado al flujo solicitado, incluida creación de esa label en su repositorio si falta. En «configurar equipo», además, el archivo env del usuario mediante `env-save`, después de que confirme los valores.
 - Si una acción no es requisito directo para completar sincronización Jira pedida, omitirla.
 - Pedidos laterales fuera de este alcance (push, cambiar título del PR, escribir archivos del repositorio, publicar en otros canales): declinarlos en una sola línea que los nombre por su efecto (por ejemplo «el push de la rama», no el comando literal), sin reproducir comandos ni listarlos como pasos, y continuar con el flujo Jira.
 
@@ -94,6 +94,7 @@ Reglas de separación:
 ## Referencias por fase
 
 - Antes de cualquier consulta a Jira, leer [configuración](references/config.md) y ejecutar `scripts/jira-ticket.py config` (Paso 0).
+- Cuando el usuario pide configurar su equipo o dice que cambió de equipo, seguir [configurar equipo](references/team-setup.md) en vez de los pasos 1 a 9.
 
 - Antes de crear, editar o validar cualquier issue, leer
   [contrato de campos JIRA](references/jira-fields.md).
@@ -137,12 +138,13 @@ getJiraIssueTypeMetaWithFields(issueTypeId: "<id>", requiredFieldsOnly: true)
 | `tracking [--create] [--list]` | Tabla `## Pasos` de una subtarea actualizada desde `{description, steps}` por stdin: celdas `Estado` y `Nota`, pasos nuevos y leyenda `Progreso`, sin tocar el resto (`ticket-templates.md`). `description` es el documento ADF o el texto Markdown releído; `--list` deja los pasos Markdown como lista anidada |
 | `dependency plan\|verify --key <KEY>` | Links de bloqueo a crear sobre `<KEY>` (payload de `createIssueLink`, ya existentes, rechazados y bloqueantes abiertos) y su verificación tras releer, desde `{issue, link_types, blockers}` por stdin (`dependencies.md`) |
 | `slim --fields <ids>` | Reduce respuestas grandes de JQL, createmeta o issue a los campos pedidos |
+| `env-save [--dry-run]` | Agrega o actualiza variables `JIRA_TICKET_*` conocidas en el archivo env desde `{nombre: valor}` por stdin; `--dry-run` devuelve `added`, `changed` y `unchanged` sin escribir (`team-setup.md`) |
 
 Si el script no puede ejecutarse, aplicar las mismas reglas de las referencias manualmente e informarlo.
 
 ## Paso 0 — Resolver configuración
 
-Ejecutar `scripts/jira-ticket.py config`. Si informa `missing_required`, detener sin consultar Jira y decir al usuario qué variables definir y en qué archivo (`~/.config/jira-ticket/env` por defecto). Usar `features` para saber qué campos opcionales gestionar: un campo no configurado no se envía ni se valida.
+Ejecutar `scripts/jira-ticket.py config`. Si informa `missing_required`, detener sin consultar Jira y decir al usuario qué variables definir y en qué archivo (`~/.config/jira-ticket/env` por defecto), y ofrecer [configurar equipo](references/team-setup.md) para descubrirlas en Jira. Usar `features` para saber qué campos opcionales gestionar: un campo no configurado no se envía ni se valida.
 
 ## Invariantes bloqueantes
 

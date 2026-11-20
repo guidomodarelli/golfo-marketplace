@@ -1156,3 +1156,88 @@ def test_dependency_verify_ok_after_links_exist(monkeypatch, capsys):
     payload = {"issue": blocked_issue(is_blocked_by("ACME-7", "done")), "link_types": LINK_TYPES, "blockers": ["ACME-7"]}
     exit_code, result, _ = dependency_cli(monkeypatch, capsys, "verify", payload)
     assert exit_code == jira_ticket.EXIT_OK and result["ok"] is True
+
+
+# --- env-save ------------------------------------------------------------------
+
+
+def env_save(monkeypatch, capsys, env_file, updates, *flags):
+    env = {"JIRA_TICKET_ENV_FILE": str(env_file)}
+    return run_cli(monkeypatch, capsys, ["env-save", *flags], json.dumps(updates), env=env)
+
+
+def test_env_save_creates_file_that_config_reads_back(monkeypatch, capsys, tmp_path):
+    env_file = tmp_path / "nested" / "env"
+    exit_code, out, _ = env_save(
+        monkeypatch, capsys, env_file, {"JIRA_TICKET_SITE_URL": SITE_URL, "CLOUD_ID": "abc", "JIRA_TICKET_BOARD_ID": 202, "JIRA_TICKET_SPRINT_NAME_REGEX": SPRINT_REGEX}
+    )
+    result = json.loads(out)
+    assert exit_code == jira_ticket.EXIT_OK
+    assert [item["name"] for item in result["added"]] == ["JIRA_TICKET_SITE_URL", "JIRA_TICKET_CLOUD_ID", "JIRA_TICKET_BOARD_ID", "JIRA_TICKET_SPRINT_NAME_REGEX"]
+    loaded = jira_ticket.load_config({"JIRA_TICKET_ENV_FILE": str(env_file)})
+    assert loaded.get("SITE_URL") == SITE_URL and loaded.get("BOARD_ID") == "202" and loaded.sources["CLOUD_ID"] == "file"
+    assert loaded.get("SPRINT_NAME_REGEX") == SPRINT_REGEX
+    assert b"\r\n" not in env_file.read_bytes()
+
+
+def test_env_save_updates_in_place_and_keeps_comments_and_other_lines(monkeypatch, capsys, tmp_path):
+    env_file = tmp_path / "env"
+    env_file.write_text(
+        "# equipo pagos\nexport JIRA_TICKET_PROJECT_KEY=PAY\nexport JIRA_TICKET_BOARD_ID=101\nexport OTRA_COSA=1\n", encoding="utf-8"
+    )
+    exit_code, out, _ = env_save(monkeypatch, capsys, env_file, {"JIRA_TICKET_PROJECT_KEY": "SHIP", "JIRA_TICKET_BOARD_ID": "101"})
+    result = json.loads(out)
+    assert exit_code == jira_ticket.EXIT_OK
+    assert result["changed"] == [{"name": "JIRA_TICKET_PROJECT_KEY", "previous": "PAY", "value": "SHIP"}]
+    assert result["unchanged"] == ["JIRA_TICKET_BOARD_ID"] and result["added"] == []
+    assert env_file.read_text(encoding="utf-8") == "# equipo pagos\nexport JIRA_TICKET_PROJECT_KEY=SHIP\nexport JIRA_TICKET_BOARD_ID=101\nexport OTRA_COSA=1\n"
+
+
+def test_env_save_dry_run_reports_plan_without_writing(monkeypatch, capsys, tmp_path):
+    env_file = tmp_path / "env"
+    env_file.write_text("export JIRA_TICKET_PROJECT_KEY=PAY\n", encoding="utf-8")
+    exit_code, out, _ = env_save(monkeypatch, capsys, env_file, {"JIRA_TICKET_PROJECT_KEY": "SHIP"}, "--dry-run")
+    assert exit_code == jira_ticket.EXIT_OK and json.loads(out)["changed"][0]["previous"] == "PAY"
+    assert env_file.read_text(encoding="utf-8") == "export JIRA_TICKET_PROJECT_KEY=PAY\n"
+
+
+def test_env_save_neutralizes_duplicate_lines_so_the_new_value_wins(monkeypatch, capsys, tmp_path):
+    env_file = tmp_path / "env"
+    env_file.write_text("export JIRA_TICKET_PROJECT_KEY=PAY\nexport JIRA_TICKET_PROJECT_KEY=OLD\n", encoding="utf-8")
+    env_save(monkeypatch, capsys, env_file, {"JIRA_TICKET_PROJECT_KEY": "SHIP"})
+    assert jira_ticket.load_config({"JIRA_TICKET_ENV_FILE": str(env_file)}).get("PROJECT_KEY") == "SHIP"
+
+
+def test_env_save_keeps_the_requested_value_when_the_last_duplicate_already_had_it(monkeypatch, capsys, tmp_path):
+    env_file = tmp_path / "env"
+    env_file.write_text("export JIRA_TICKET_PROJECT_KEY=OLD\nexport JIRA_TICKET_PROJECT_KEY=SHIP\n", encoding="utf-8")
+    exit_code, out, _ = env_save(monkeypatch, capsys, env_file, {"JIRA_TICKET_PROJECT_KEY": "SHIP", "JIRA_TICKET_BOARD_ID": "202"})
+    assert exit_code == 0
+    assert json.loads(out)["unchanged"] == ["JIRA_TICKET_PROJECT_KEY"]
+    config = jira_ticket.load_config({"JIRA_TICKET_ENV_FILE": str(env_file)})
+    assert config.get("PROJECT_KEY") == "SHIP"
+    assert config.get("BOARD_ID") == "202"
+
+
+@pytest.mark.parametrize(
+    ("updates", "fragment"),
+    [
+        ({"JIRA_TICKET_API_TOKEN": "secreto"}, "no conoce"),
+        ({"JIRA_TICKET_PROJECTKEY": "SHIP"}, "no conoce"),
+        ({"JIRA_TICKET_PROJECT_KEY": ""}, "vacío"),
+        ({"JIRA_TICKET_PROJECT_KEY": "SHIP\nexport X=1"}, "multilínea"),
+        ({"JIRA_TICKET_BOARD_ID": True}, "texto o número"),
+    ],
+)
+def test_env_save_rejects_unknown_or_unsafe_values_without_writing(monkeypatch, capsys, tmp_path, updates, fragment):
+    env_file = tmp_path / "env"
+    exit_code, _, err = env_save(monkeypatch, capsys, env_file, updates)
+    assert exit_code == jira_ticket.EXIT_CONFIG and fragment in err
+    assert not env_file.exists()
+
+
+def test_env_save_quotes_values_so_they_are_never_executed(monkeypatch, capsys, tmp_path):
+    env_file = tmp_path / "env"
+    value = "ACME $(touch pwned) `x`"
+    env_save(monkeypatch, capsys, env_file, {"JIRA_TICKET_PROJECT_NAME": value})
+    assert jira_ticket.load_config({"JIRA_TICKET_ENV_FILE": str(env_file)}).get("PROJECT_NAME") == value

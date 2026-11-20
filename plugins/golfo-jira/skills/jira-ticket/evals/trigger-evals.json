@@ -62,5 +62,13 @@
   {
     "query": "documentá en un manual para usuarios no técnicos cómo se usa el flujo nuevo de suscripciones",
     "should_trigger": false
+  },
+  {
+    "query": "me pasaron al equipo de envíos (proyecto SHIP en el jira de la empresa), configurame lo de jira-ticket para el equipo nuevo así los tickets salen en su tablero y con su sprint",
+    "should_trigger": true
+  },
+  {
+    "query": "en el workflow de jira de mi proyecto quiero agregar un estado QA entre Code Review y Done, cómo lo configuro como admin del proyecto",
+    "should_trigger": false
   }
 ]

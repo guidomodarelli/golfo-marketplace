@@ -8,7 +8,8 @@ entorno, se busca en el archivo de perfil (`JIRA_TICKET_ENV_FILE`, por defecto
 `~/.config/jira-ticket/env`). El entorno siempre tiene prioridad.
 
 No escribe en Jira ni en GitHub: `pr-normalize` solo lee con `gh`; las
-escrituras quedan a cargo del agente.
+escrituras quedan a cargo del agente. Su único write local es `env-save`, que
+actualiza el archivo de perfil con las variables que confirmó el usuario.
 
 La salida es JSON por stdout; los errores van a stderr en español con exit
 code distinto de cero.
@@ -173,13 +174,17 @@ def parse_env_file(path: pathlib.Path) -> dict[str, str]:
         match = ENV_LINE_REGEX.match(line)
         if not match:
             continue
-        raw_value = match["value"].strip()
-        try:
-            parts = shlex.split(raw_value, comments=True, posix=True)
-        except ValueError as error:
-            raise JiraTicketError(f"jira-ticket: valor mal citado para {match['name']} en {path}", EXIT_CONFIG) from error
-        values[match["name"]] = parts[0] if len(parts) == 1 else " ".join(parts)
+        values[match["name"]] = _env_line_value(match, path)
     return values
+
+
+def _env_line_value(match: re.Match[str], path: pathlib.Path) -> str:
+    """Devuelve el valor de una línea `[export] NOMBRE=valor` ya matcheada, con las comillas resueltas como en shell."""
+    try:
+        parts = shlex.split(match["value"].strip(), comments=True, posix=True)
+    except ValueError as error:
+        raise JiraTicketError(f"jira-ticket: valor mal citado para {match['name']} en {path}", EXIT_CONFIG) from error
+    return parts[0] if len(parts) == 1 else " ".join(parts)
 
 
 def load_config(environ: dict[str, str] | None = None) -> Config:
@@ -208,6 +213,79 @@ def describe_config(config: Config) -> dict[str, Any]:
         "dependencies": config.dependencies,
         "settings": {f"{ENV_PREFIX}{name}": {"value": value, "source": config.sources[name]} for name, value in sorted(config.values.items())},
     }
+
+
+def env_file_path(environ: dict[str, str] | None = None) -> pathlib.Path:
+    environ = os.environ if environ is None else environ
+    return pathlib.Path(os.path.expanduser(environ.get(ENV_FILE_VARIABLE, DEFAULT_ENV_FILE)))
+
+
+def _setting_name(raw_name: Any) -> str:
+    """Acepta `JIRA_TICKET_NOMBRE` o `NOMBRE`; solo variables conocidas, así nunca se escribe un secreto ni un typo."""
+    name = str(raw_name).strip().upper()
+    name = name[len(ENV_PREFIX):] if name.startswith(ENV_PREFIX) else name
+    if name not in KNOWN_SETTINGS:
+        raise JiraTicketError(f"jira-ticket: env-save no conoce la variable '{str(raw_name)[:60]}'; ver references/config.md", EXIT_CONFIG)
+    return name
+
+
+def _setting_value(name: str, raw_value: Any) -> str:
+    if isinstance(raw_value, bool) or not isinstance(raw_value, (str, int)):
+        raise JiraTicketError(f"jira-ticket: env-save espera texto o número para {ENV_PREFIX}{name}", EXIT_CONFIG)
+    value = str(raw_value).strip()
+    if not value or "\n" in value or "\r" in value:
+        raise JiraTicketError(f"jira-ticket: valor vacío o multilínea para {ENV_PREFIX}{name}", EXIT_CONFIG)
+    return value
+
+
+def save_env_settings(path: pathlib.Path, updates: Any, dry_run: bool = False) -> dict[str, Any]:
+    """Agrega o actualiza líneas `export JIRA_TICKET_*` del archivo env, sin tocar comentarios ni otras líneas.
+
+    Con `dry_run` devuelve el mismo plan sin escribir, para que la persona lo confirme antes.
+    """
+    if not isinstance(updates, dict) or not updates:
+        raise JiraTicketError("jira-ticket: env-save espera por stdin un objeto {\"JIRA_TICKET_NOMBRE\": \"valor\"} no vacío")
+    wanted: dict[str, str] = {}
+    for raw_name, raw_value in updates.items():
+        name = _setting_name(raw_name)
+        wanted[name] = _setting_value(name, raw_value)
+    current = parse_env_file(path) if path.is_file() else {}
+    lines = path.read_text(encoding="utf-8").splitlines() if path.is_file() else []
+    result: dict[str, Any] = {"file": str(path), "dry_run": dry_run, "added": [], "changed": [], "unchanged": []}
+    written: set[str] = set()
+    for index, line in enumerate(lines):
+        match = ENV_LINE_REGEX.match(line.strip()) if not line.strip().startswith("#") else None
+        name = match["name"][len(ENV_PREFIX):] if match and match["name"].startswith(ENV_PREFIX) else None
+        if name not in wanted:
+            continue
+        key = ENV_PREFIX + name
+        if name in written:
+            lines[index] = f"# {line}  (duplicada: reemplazada por la línea anterior)"
+            continue
+        written.add(name)
+        # La línea que se conserva debe quedar con el valor pedido: con duplicadas, `current` refleja la última
+        # línea y esta puede tener un valor viejo que volvería a regir al comentar las siguientes.
+        if _env_line_value(match, path) != wanted[name]:
+            lines[index] = f"export {key}={shlex.quote(wanted[name])}"
+        if current.get(key) == wanted[name]:
+            result["unchanged"].append(key)
+        else:
+            result["changed"].append({"name": key, "previous": current.get(key), "value": wanted[name]})
+    for name, value in wanted.items():
+        if name not in written:
+            result["added"].append({"name": ENV_PREFIX + name, "value": value})
+            lines.append(f"export {ENV_PREFIX}{name}={shlex.quote(value)}")
+    if dry_run or not (result["added"] or result["changed"]):
+        return result
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.tmp")
+    try:
+        temporary.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+        os.replace(temporary, path)
+    except OSError as error:
+        temporary.unlink(missing_ok=True)
+        raise JiraTicketError(f"jira-ticket: no se pudo escribir {path} ({error.strerror})", EXIT_CONFIG) from error
+    return result
 
 
 # --- Utilidades ------------------------------------------------------------
@@ -1295,6 +1373,8 @@ def build_parser() -> argparse.ArgumentParser:
     dependency_cmd.add_argument("--key", required=True, help="Key del issue bloqueado.")
     slim_cmd = sub.add_parser("slim", help="Reduce una respuesta grande de Jira (stdin) a los campos pedidos.")
     slim_cmd.add_argument("--fields", default="")
+    env_save_cmd = sub.add_parser("env-save", help="Agrega o actualiza variables JIRA_TICKET_* en el archivo env (stdin JSON {nombre: valor}).")
+    env_save_cmd.add_argument("--dry-run", action="store_true", help="Muestra qué se agregaría o cambiaría, sin escribir.")
     return parser
 
 
@@ -1367,6 +1447,8 @@ def main(argv: list[str] | None = None, environ: dict[str, str] | None = None) -
                 return EXIT_OK if result["ok"] else EXIT_UNRESOLVED
         elif args.command == "slim":
             emit(slim(read_json_stdin(), [item.strip() for item in args.fields.split(",") if item.strip()]))
+        elif args.command == "env-save":
+            emit(save_env_settings(env_file_path(environ), read_json_stdin(), args.dry_run))
     except JiraTicketError as error:
         print(error, file=sys.stderr)
         return error.exit_code
