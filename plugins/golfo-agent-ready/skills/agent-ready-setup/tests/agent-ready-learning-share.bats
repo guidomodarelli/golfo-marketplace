@@ -253,3 +253,47 @@ JSON
   agent_ready learn harvest --project "$test_root/acme" --json
   [ "$status" -ne 0 ]
 }
+
+@test "a repository or an export given twice counts once" {
+  repository acme
+  learn_in acme "Records carry the case number in the header." "siempre arriba"
+  agent_ready learn export --project "$test_root/acme" --output "$test_root/acme.json"
+  export CI=true
+  agent_ready learn harvest --repos "$test_root/acme" "$test_root/acme/" --export "$test_root/acme.json" \
+    --export "$test_root/acme.json" --json
+  [ "$status" -eq 0 ]
+  # Each one given twice is read once, and the repository and its own export are one repository.
+  [ "$(json_value 'len(report["sources"]), len(report["candidates"])')" = "(2, 0)" ]
+  [[ "$(json_value 'report["sources"][1]["status"]')" == "same repository as an earlier source (acme)" ]]
+  agent_ready learn harvest --export "$test_root/acme.json" --export "$test_root/acme.json" --json
+  [ "$status" -eq 0 ]
+  [ "$(json_value 'len(report["sources"]), len(report["candidates"])')" = "(1, 0)" ]
+}
+
+@test "a candidate keeps the folders its instruction is for, and never joins two scopes" {
+  repository acme
+  repository globex
+  repository initech
+  agent_ready learn record --project "$test_root/acme" --kind rule --statement "Dates use the short format." \
+    --quote "siempre fecha corta" --explicit --session s1 --paths "reports/**"
+  agent_ready learn apply --project "$test_root/acme" "$(printf '%s' "$output" | head -n 1 | cut -d' ' -f1)"
+  [ "$status" -eq 0 ]
+  agent_ready learn record --project "$test_root/globex" --kind rule --statement "Dates use the short format." \
+    --quote "siempre fecha corta" --explicit --session s1 --paths "reports/**"
+  agent_ready learn apply --project "$test_root/globex" "$(printf '%s' "$output" | head -n 1 | cut -d' ' -f1)"
+  [ "$status" -eq 0 ]
+  learn_in initech "Dates use the short format." "siempre fecha corta"
+  export CI=true
+  agent_ready learn harvest --repos "$test_root/acme" "$test_root/globex" "$test_root/initech" --json
+  [ "$status" -eq 0 ]
+  [ "$(json_value '[(candidate["repositories"], candidate.get("paths")) for candidate in report["candidates"]]')" = \
+    "[(['acme', 'globex'], ['reports/**'])]" ]
+
+  # The review sees the scope, and a group that mixes scopes is dropped.
+  unset CI
+  respond 1 '{"findings": [{"statement": "Dates use the short format.", "kind": "rule", "key": "", "items": [0, 1, 2], "reason": "same"}]}'
+  agent_ready learn harvest --repos "$test_root/acme" "$test_root/globex" "$test_root/initech" --json
+  [ "$status" -eq 0 ]
+  grep -q 'paths="reports/\*\*"' "$FAKE_INPUTS/1.txt"
+  [ "$(json_value 'len(report["candidates"])')" = "0" ]
+}

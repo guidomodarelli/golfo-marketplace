@@ -314,7 +314,9 @@ Cada candidato tiene un id `harvest-<hash>`, el statement general, de qué repos
 original de cada uno. El resultado queda en la caché del desarrollador
 (`~/.cache/agent-ready-setup/learning-harvest/latest.json`), nunca en un repositorio: `harvest` no
 escribe nada en los repos que lee. Un repo que no existe o no se puede leer figura con su estado y no
-frena a los demás.
+frena a los demás. Un repo o export que se pasa dos veces se lee una, y dos fuentes con el mismo nombre
+(un clon y el export del mismo cliente) cuentan como un solo repo: nada suma evidencia de más. Un
+statement viaja con sus `paths`, y un grupo nunca junta alcances distintos: el candidato conserva el suyo.
 
 ## Comandos
 
