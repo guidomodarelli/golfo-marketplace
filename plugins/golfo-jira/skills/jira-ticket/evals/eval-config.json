@@ -1218,6 +1218,51 @@
           "description": "No linkea OPS-9 ni edita PLAT-3."
         }
       ]
+    },
+    {
+      "id": "configure-team-env-save",
+      "description": "Configurar equipo: descubre los valores en Jira, muestra el plan de env-save --dry-run con el valor anterior, pregunta qué hacer con QUARTER_FIELD del equipo anterior, no escribe sin confirmación y no deduce el proyecto del repositorio.",
+      "input": "Cambié de equipo: ahora estoy en Envíos, proyecto SHIP del sitio https://acme.atlassian.net. Configurá el equipo. Respuestas ya obtenidas: getAccessibleAtlassianResources devuelve un solo sitio (cloudId 00000000-0000-0000-0000-000000000000); tipos del proyecto SHIP: Story, Sub-task; metadata de Story: Sprint es customfield_10020 (schema com.pyxis.greenhopper.jira:gh-sprint), no hay campo de quarter; sprints abiertos de SHIP: todos con boardId 202. `jira-ticket.py config` muestra hoy, con source file: PROJECT_KEY PAY, BOARD_ID 101, SPRINT_FIELD customfield_20001, QUARTER_FIELD customfield_20002. `env-save --dry-run` con PROJECT_KEY SHIP, BOARD_ID 202 y SPRINT_FIELD customfield_10020 devuelve changed: PROJECT_KEY PAY→SHIP, BOARD_ID 101→202, SPRINT_FIELD customfield_20001→customfield_10020. No guardes nada todavía: devolvé el plan y lo que necesitás que confirme.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "env-save",
+          "description": "Usa env-save para guardar las variables."
+        },
+        {
+          "type": "regex",
+          "pattern": "PAY.{0,80}SHIP",
+          "description": "Muestra el cambio de proyecto con su valor anterior."
+        },
+        {
+          "type": "regex",
+          "pattern": "101.{0,80}202",
+          "description": "Muestra el cambio de tablero con su valor anterior."
+        },
+        {
+          "type": "contains",
+          "value": "customfield_10020",
+          "description": "Propone el campo Sprint descubierto."
+        },
+        {
+          "type": "regex",
+          "pattern": "QUARTER_FIELD.{0,300}(\\?|borr|quit|elimin|conserv|mant)|(borr|quit|elimin|conserv|mant).{0,300}QUARTER_FIELD",
+          "description": "Pregunta qué hacer con QUARTER_FIELD del equipo anterior."
+        },
+        {
+          "type": "regex",
+          "pattern": "(confirm|\\?)",
+          "description": "Pide confirmación antes de escribir."
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "createJiraIssue(",
+            "transitionJiraIssue("
+          ],
+          "description": "No crea issues ni ejecuta transiciones durante la configuración."
+        }
+      ]
     }
   ]
 }
