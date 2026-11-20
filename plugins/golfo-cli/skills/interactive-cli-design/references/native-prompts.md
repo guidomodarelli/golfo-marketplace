@@ -1,10 +1,10 @@
 # Prompts propios: menú con filtro, memoria, secretos y Ctrl+C
 
-Para cuando el proyecto no tiene librería de prompts y no conviene sumar una, o la que tiene no filtra ni dibuja en stderr. Lo que sigue salió de CLIs reales en Python 3.9+ sin dependencias (entre ellos `emu` de system-config), probados en pseudoconsolas de macOS. Windows no tiene `termios`: ahí va el menú numerado.
+Para cuando el proyecto no tiene librería de prompts y no conviene sumar una, o la que tiene no filtra ni dibuja en stderr. Lo que sigue salió de CLIs reales en Python 3.8+ sin dependencias (entre ellos `emu` de system-config y `keepwarm`), probados en pseudoconsolas de macOS y Linux y en una ConPTY de Windows. Windows no tiene `termios`: ahí las teclas se leen con `msvcrt` ([Windows](#windows-msvcrt)).
 
 ## Índice
 
-1. [Menú con flechas y filtro](#menú-con-flechas-y-filtro)
+1. [Menú con flechas y filtro](#menú-con-flechas-y-filtro) · [Windows (msvcrt)](#windows-msvcrt)
 2. [Trampas del menú](#trampas-del-menú)
 3. [Recordar respuestas](#recordar-respuestas)
 4. [Secretos](#secretos) · [Del wrapper al programa](#del-wrapper-al-programa)
@@ -12,7 +12,7 @@ Para cuando el proyecto no tiene librería de prompts y no conviene sumar una, o
 
 ## Menú con flechas y filtro
 
-Usar flechas solo si stdin es una terminal, hay color (sin `NO_COLOR`, `TERM` distinto de `dumb`) y existe `termios`. Si no, menú numerado: las opciones con su número, `(por defecto)` en la preseleccionada, Enter vacío la elige y un número fuera de rango repite la pregunta con el rango válido.
+Usar flechas solo si stdin es una terminal, hay color (sin `NO_COLOR`, `TERM` distinto de `dumb`) y existe `termios` (o `msvcrt`, en Windows). Si no, menú numerado: las opciones con su número, `(por defecto)` en la preseleccionada, Enter vacío la elige y un número fuera de rango repite la pregunta con el rango válido.
 
 Las teclas:
 
@@ -28,8 +28,10 @@ Las teclas:
 
 Leer del descriptor en modo cbreak, no de `sys.stdin`: el buffer de `sys.stdin` parte una secuencia de flecha en dos lecturas. Un `os.read` puede traer varias teclas juntas (flecha y Enter, o un texto pegado), así que `KeyReader` guarda lo leído y devuelve una tecla por llamada: una secuencia de escape completa o un carácter UTF-8. Lo que sobra queda para la llamada siguiente.
 
+El menú entero corre dentro de `session()`, en cbreak desde antes del primer dibujo hasta después del último. Si se vuelve al modo normal entre tecla y tecla, la terminal hace eco de lo que se tipea mientras se redibuja: las letras aparecen sueltas en la pantalla y el menú queda una fila corrido (visto en una pty de Linux al tipear rápido).
+
 ```python
-import os, re, select, sys, termios, tty, unicodedata
+import contextlib, os, re, select, sys, termios, tty, unicodedata
 
 KEY_READ_MAX_BYTES = 64                # lo que haya llegado: varias teclas o un texto pegado
 ESCAPE_SEQUENCE_TIMEOUT_SECONDS = 0.05
@@ -81,6 +83,17 @@ class KeyReader:
         self.file_descriptor = file_descriptor
         self.pending = b""
 
+    @contextlib.contextmanager
+    def session(self):
+        """Cbreak durante todo el menú: `with reader.session(): …dibujar y leer…`."""
+        previous = termios.tcgetattr(self.file_descriptor)
+        try:
+            # TCSANOW: el default (TCSAFLUSH) descarta lo que ya se tecleó.
+            tty.setcbreak(self.file_descriptor, termios.TCSANOW)
+            yield self
+        finally:
+            termios.tcsetattr(self.file_descriptor, termios.TCSADRAIN, previous)
+
     def _read_more(self, timeout=None) -> bool:
         if timeout is not None and not select.select([self.file_descriptor], [], [], timeout)[0]:
             return False
@@ -91,22 +104,16 @@ class KeyReader:
         return True
 
     def read_key(self) -> str:
-        previous = termios.tcgetattr(self.file_descriptor)
-        try:
-            # TCSANOW: el default (TCSAFLUSH) descarta lo tecleado mientras el menú se redibujaba.
-            tty.setcbreak(self.file_descriptor, termios.TCSANOW)
+        key, rest = split_first_key(self.pending)
+        while not key:
+            # Un Esc solo no trae más bytes: esperar un instante y seguir, en vez de bloquear.
+            timeout = ESCAPE_SEQUENCE_TIMEOUT_SECONDS if self.pending.startswith(ESCAPE) else None
+            if not self._read_more(timeout):
+                key, rest = "\x1b", self.pending[1:]
+                break
             key, rest = split_first_key(self.pending)
-            while not key:
-                # Un Esc solo no trae más bytes: esperar un instante y seguir, en vez de bloquear.
-                timeout = ESCAPE_SEQUENCE_TIMEOUT_SECONDS if self.pending.startswith(ESCAPE) else None
-                if not self._read_more(timeout):
-                    key, rest = "\x1b", self.pending[1:]
-                    break
-                key, rest = split_first_key(self.pending)
-        finally:
-            termios.tcsetattr(self.file_descriptor, termios.TCSADRAIN, previous)
         self.pending = rest
-        if key == "\x03":
+        if key == "\x03":  # en cbreak, Ctrl+C suele llegar como SIGINT; si llega como carácter, igual cancela
             raise KeyboardInterrupt
         return key
 
@@ -120,8 +127,21 @@ def normalized(text: str) -> str:
     decomposed = unicodedata.normalize("NFD", strip_ansi(text).casefold())
     return "".join(character for character in decomposed if not unicodedata.combining(character))
 
-def matching(labels: list, query: str) -> list:
-    return [index for index, label in enumerate(labels) if normalized(query) in normalized(label)]
+NAME_PREFIX_RANK, NAME_RANK, DESCRIPTION_RANK = 0, 1, 2
+
+def matching(options: list, query: str) -> list:
+    """`options`: pares (nombre, descripción). Primero los nombres que empiezan con lo escrito, después
+    los que lo contienen y al final las descripciones; dentro de cada grupo, el orden original."""
+    needle = normalized(query)
+    ranked = []
+    for index, (name, description) in enumerate(options):
+        if normalized(name).startswith(needle):
+            ranked.append((NAME_PREFIX_RANK, index))
+        elif needle in normalized(name):
+            ranked.append((NAME_RANK, index))
+        elif needle in normalized(description):
+            ranked.append((DESCRIPTION_RANK, index))
+    return [index for _rank, index in sorted(ranked)]
 
 def typed_text(key: str) -> str:
     """Lo que una tecla suma al filtro: nada si es una secuencia de escape, y solo caracteres imprimibles."""
@@ -130,12 +150,42 @@ def typed_text(key: str) -> str:
     return "".join(character for character in key if character.isprintable())
 ```
 
-Con etiquetas de color, `matching(["\x1b[32m🧪 release\x1b[0m", "\x1b[31m🚨 prod\x1b[0m", "México"], "m")` da `[2]`, y con `"3"` da `[]`.
+Con etiquetas de color, `matching([("\x1b[32m🧪 release\x1b[0m", ""), ("\x1b[31m🚨 prod\x1b[0m", ""), ("México", "")], "m")` da `[2]`, y con `"3"` da `[]`. Sin el orden por grupos, en un menú de subcomandos escribir `s` deja resaltado `up` porque su descripción dice «hasta», y no `status`.
+
+### Windows (msvcrt)
+
+`msvcrt.getwch()` lee una tecla de la consola, sin eco y sin búfer de línea, así que no hace falta una sesión. Las flechas y las teclas de función llegan en dos partes: un prefijo `\xe0` (o `\x00`) y un código (`H` arriba, `P` abajo). Backspace llega como `\x08` (en POSIX, `\x7f`) y Esc como `\x1b` suelto, sin secuencia detrás, así que no hace falta esperar con timeout.
+
+```python
+WINDOWS_EXTENDED_KEY_PREFIXES = ("\x00", "\xe0")
+WINDOWS_ARROWS = {"H": "up", "P": "down"}
+BACKSPACE_KEYS = ("\x7f", "\x08")
+
+class WindowsKeyReader:
+    """Una tecla por llamada. `read_character` es para tests: un guion de caracteres en vez de la consola."""
+
+    def __init__(self, read_character=None):
+        if read_character is None:
+            import msvcrt
+            read_character = msvcrt.getwch
+        self.read_character = read_character
+
+    def read_key(self) -> str:
+        character = self.read_character()
+        if character in WINDOWS_EXTENDED_KEY_PREFIXES:
+            return WINDOWS_ARROWS.get(self.read_character(), "")  # Supr, F1, Inicio: se ignoran
+        if character == "\x03":
+            raise KeyboardInterrupt
+        return ENTER_KEYS.get(character, character)
+```
+
+El menú elige el lector al arrancar: `WindowsKeyReader` en Windows, `KeyReader(sys.stdin.fileno())` si existe `termios`, y si no hay ninguno, menú numerado. Probado en una ConPTY real: [verification.md](verification.md#windows-conpty-con-pywinpty).
 
 El dibujo: ocultar el cursor, escribir la pregunta y una fila por opción. En cada tecla, subir `\033[<n>A` las filas dibujadas y reescribirlas con `\r\033[2K` delante. Si el filtro dejó menos filas, limpiar las que sobran y volver a subir. Al elegir, o en un `finally` si se cancela, borrar todo el menú, mostrar el cursor y escribir la línea `✔ pregunta › respuesta`. Todo va a stderr.
 
 - **Que se sepa que se puede filtrar.** Al lado de la pregunta va una pista atenuada, `(↑/↓ y Enter · escribí para filtrar)`: los menús de flechas no suelen filtrar, y sin la pista nadie prueba a escribir. Lo tipeado va a la derecha de la pista, después de `›`, en el color de acento y en negrita.
-- **Filtro sin resultados.** No dejar la lista vacía: una fila atenuada `nada coincide: Backspace borra, Esc limpia`. Enter y las flechas no hacen nada hasta que haya resultados.
+- **Filtro sin resultados.** No dejar la lista vacía: una fila atenuada `nada coincide: Backspace borra, Esc limpia`. Enter y las flechas no hacen nada hasta que haya resultados. Las teclas de navegación se atienden antes que el filtro y nunca caen en él: el lector las devuelve con nombre (`"enter"`, `"up"`), y si el código sigue de largo hasta «sumar al filtro», la palabra `enter` entra como texto.
+- **La marca va antes de la descripción** (`status  (último usado) los keepwarm que…`): al cortar la fila a `columnas - 1` se pierde el final de la descripción y no la marca, que es lo que explica por qué esa opción está primera.
 - **El resaltado vuelve a la primera coincidencia** cada vez que cambia el filtro (al escribir, con Backspace o con Esc). Si conserva la posición anterior, con menos filas queda fuera de rango o sobre una opción que no se ve.
 - **Cuando el color es parte del dato** (producción en rojo, test en verde), la fila resaltada conserva su color y se marca solo con `›` y negrita, en vez de pintarse entera del acento. La línea `✔ pregunta › respuesta` también lo conserva. En los demás menús, la resaltada va entera en el acento, sin los colores propios.
 - **Medir sin escapes.** El corte de cada fila a `columnas - 1` mide sobre `strip_ansi(label)`, con la misma función que el filtro.
@@ -176,7 +226,7 @@ def confirm(question: str, default: bool, read_line=input) -> bool:
 - **Dígitos Unicode.** `"²".isdigit()` da `True` e `int("²")` lanza `ValueError`. Para saltar a una opción, aceptar solo `text.isascii() and text.isdigit()`.
 - **Esc solo.** Sin el timeout de `select`, el menú se queda esperando el resto de una secuencia que nunca llega.
 - **Varias teclas en una lectura.** Comparar el bloque entero contra `"\x1b[B"` o `"\n"` falla cuando llegan juntas: Abajo y Enter dan `"\x1b[B\n"`, y un texto pegado con Enter mete el salto de línea en el filtro. Separar una tecla por vez, como `split_first_key`.
-- **Teclas perdidas.** `tty.setcbreak` y `tty.setraw` usan `TCSAFLUSH` por default y vacían lo que quedó en la cola de la terminal entre una lectura y la siguiente: quien teclea rápido o pega texto pierde letras o el Enter. Pasarles `termios.TCSANOW`, o entrar en cbreak una sola vez por menú (antes del bucle, restaurando en el `finally`).
+- **Teclas perdidas o con eco.** `tty.setcbreak` y `tty.setraw` usan `TCSAFLUSH` por default y vacían lo que quedó en la cola de la terminal: quien teclea rápido o pega texto pierde letras o el Enter. Pasarles `termios.TCSANOW` y entrar en cbreak una sola vez por menú (`session()`). Volver al modo normal entre teclas, aun con `TCSANOW`, deja que la terminal haga eco de lo que se tipea mientras se redibuja, y el menú queda corrido una fila.
 - **Secuencias que el menú no usa** (flecha derecha, Supr `\x1b[3~`, Inicio, Fin, F1) vuelven enteras: ignorarlas. Al filtro se suman solo caracteres imprimibles (`typed_text`), así un pegado con `\n` o `\t` no ensucia la búsqueda.
 - **Etiquetas con color.** Filtrar y medir sobre el texto sin escapes; si no, `m` o un dígito coinciden con el código de color.
 - **Fin de la entrada.** `os.read` devuelve vacío y `readline()` devuelve `""`: tratarlo como cancelación, no como Enter.
@@ -184,7 +234,7 @@ def confirm(question: str, default: bool, read_line=input) -> bool:
 
 ## Recordar respuestas
 
-- **Dónde.** `~/Library/Application Support/<herramienta>/` en macOS, `$XDG_CONFIG_HOME` (o `~/.config`) en Linux y `%APPDATA%` en Windows, con una variable de entorno que cambie la ruta, que además usan los tests.
+- **Dónde.** `~/Library/Application Support/<herramienta>/` en macOS, `$XDG_CONFIG_HOME` (o `~/.config`) en Linux y `%APPDATA%` en Windows, con una variable de entorno que cambie la ruta, que además usan los tests. Nunca en una carpeta que otro comando del CLI limpia, como la de estado de procesos. Y esa limpieza borra solo los archivos con el nombre que ella misma escribe (`<pid>.json`): un `status` que borraba todo `.json` sin pid se llevaba el archivo de respuestas.
 - **Cómo escribir.** A un temporal del mismo directorio con `mkstemp`, permisos `600` (directorio `700`) y `os.replace`. Dos corridas en paralelo no se pisan a medias, y una corrida cortada no deja un JSON roto.
 - **Qué.** El último valor, o los últimos N sin repetir con el más reciente primero. Nunca un secreto: eso va al llavero del sistema.
 - **Cómo ofrecerlo.** Primero en el menú, marcado («último usado») y preseleccionado, así Enter lo elige. La respuesta que queda a la vista no lleva la marca.
