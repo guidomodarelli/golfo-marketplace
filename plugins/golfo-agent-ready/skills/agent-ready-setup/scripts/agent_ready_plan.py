@@ -9,6 +9,7 @@ import sys
 
 import agent_ready_blocks as managed_blocks
 import agent_ready_conflicts as conflicts_review
+import agent_ready_learning_customized as learning_customized
 import agent_ready_nested as nested
 import agent_ready_pack_tools as pack_tools
 import agent_ready_rule_changes as rule_changes
@@ -111,7 +112,12 @@ from agent_ready_profiles import (
     resolved_tools,
 )
 from agent_ready_review_findings import project_owned_instructions, review_summary
-from agent_ready_rule_overrides import MANAGED_DESTINATION_PREFIX, resolved_rule_overrides, rule_override_texts
+from agent_ready_rule_overrides import (
+    MANAGED_DESTINATION_PREFIX,
+    resolved_rule_overrides,
+    rule_override_texts,
+    selection_rules,
+)
 from agent_ready_source_identity import (
     golfo_blocks,
     merged_template_entries,
@@ -364,8 +370,10 @@ def compute_plan(project_root, skill_dir, catalog, profile_names):
         "overrides": [{"profile": by, "replaces": f"{target}{ASSET_REFERENCE_SEPARATOR}{path}"}
                       for target, paths in sorted(shared_overrides(skill_dir, catalog, resolved, workspace_profiles).items())
                       for path, by in sorted(paths.items())],
-        "ruleOverrides": resolved_rule_overrides(skill_dir, catalog, resolved, project_root,
-                                                 workspace_rule_destinations(workspace_rules)),
+        # An override of a learned rule whose managed rule the profile changed since: «customized, review».
+        "ruleOverrides": learning_customized.mark(project_root, selection_rules(skill_dir, catalog, resolved),
+                                                  resolved_rule_overrides(skill_dir, catalog, resolved, project_root,
+                                                                          workspace_rule_destinations(workspace_rules))),
     }
 
 
@@ -674,6 +682,11 @@ def print_plan(project_root, skill_dir, plan, provider, skip_marketplace_upgrade
     for override in plan.get("ruleOverrides", []):
         write_line(f"Rule overridden: {override['replaces']} by {override['rule']} of {override['profile']} "
                    f"({override['targetPath']} keeps its other rules)")
+        if override.get("customized"):
+            learning_id = override["customized"]["learningId"]
+            write_line(f"  customized, review: the profile changed {override['replaces']} since {learning_id} replaced "
+                       f"it; the learned version stays. Keep it (agent-ready learn keep {learning_id}) or take the "
+                       f"profile's (agent-ready learn retire {learning_id})")
     for workspace in plan.get("workspaces", []):
         write_line(f"Workspace {workspace_selection.describe(workspace)}")
         if workspace.get("rules"):

@@ -476,6 +476,11 @@ def write_operation(project_root, registry, operation, items, settings, accepted
                                 "marker": {"key": key, "paths": paths}}
             if override:
                 entry["learned"]["overrides"] = override
+                fingerprints = {reference: fingerprint for source in sources
+                                for reference, fingerprint in (source["entry"]["learned"].get("overridden") or {}).items()
+                                if reference in override.split(",")}
+                if fingerprints:
+                    entry["learned"]["overridden"] = fingerprints
             created.append(entry)
         text = text.rstrip("\r\n") + newline + newline + newline.join(blocks)
         for entry in created:
