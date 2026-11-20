@@ -3551,7 +3551,7 @@
         },
         {
           "type": "regex",
-          "pattern": "(no|nunca)[^.]{0,40}falla|sigue[^.]{0,60}(apply|funcionando)",
+          "pattern": "(no|nunca)[^.]{0,40}falla|sigue[^.]{0,60}(apply|funcionando)|apply[^.]{0,60}sigue",
           "description": "El apply no falla si el sistema rechaza la tarea",
           "critical": true
         }
