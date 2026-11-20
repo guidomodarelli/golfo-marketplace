@@ -88,6 +88,9 @@ agent-ready learn registra las instrucciones del usuario que pueden quedar como 
 | `learning.reorganize.maxRuleLines` | integer | `12` | todas | — | — | Líneas no vacías, desde el bullet, a partir de las cuales una rule aprendida se revisa para dividirla. |
 | `learning.reorganize.minIntervalDays` | integer | `7` | todas | — | — | Días mínimos entre dos reorganizaciones en background (al cerrar el chat o desde el barrido programado). agent-ready learn reorganize la corre en el momento. |
 | `learning.candidateTtlDays` | integer | `90` | todas | — | — | Días sin evidencia nueva después de los cuales un candidato vence. Si la instrucción vuelve, se cuenta desde cero: la evidencia vencida no suma. |
+| `learning.share` | boolean | `true` | todas | — | `true` < `false` | Encendido, este repositorio participa de agent-ready learn harvest: el desarrollador, a pedido y sobre su clon local, lee solo los statements de lo aprendido (nunca las citas ni documentos). Un cliente que no quiere participar lo apaga en su manifest y harvest no lee nada del repo. Nada sale solo del repositorio en ningún caso. |
+| `learning.harvest.repos` | lista de string | `[]` | user | — | — | Repositorios clonados que harvest lee cuando no recibe --repos, cada uno por su ruta. Es una lista del desarrollador: vive en su config de usuario, nunca en la de un repositorio. |
+| `learning.harvest.threshold` | integer | `2` | user | — | — | Repositorios distintos que tienen que haber aprendido lo mismo para que harvest lo proponga como candidato para el pack. |
 
 ## `nested`: AGENTS.md anidados
 

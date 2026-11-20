@@ -1,7 +1,7 @@
 {
   "name": "golfo-agent-ready",
   "description": "Setup Agent Ready de un repositorio para Claude Code y Codex: detección de stack, profiles y packs, AGENTS.md gestionado, hooks, sync, revisiones con IA y aprendizaje de las instrucciones del usuario.",
-  "version": "0.134.0",
+  "version": "0.135.0",
   "author": {
     "name": "Guido Modarelli"
   },

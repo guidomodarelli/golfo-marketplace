@@ -3587,6 +3587,37 @@
           "critical": true
         }
       ]
+    },
+    {
+      "id": "learn-harvest-share-opt-out",
+      "description": "Juntar lo aprendido en varios repos de clientes es un learn harvest del desarrollador sobre sus clones: lee solo los statements, nunca las citas; un cliente se excluye con learning.share false, y el que no da acceso pasa un learn export.",
+      "input": "Tengo tres clientes con agent-ready-setup y el profile learning, cada uno en su repo privado. Quiero ver qué aprendió el agente en todos para subir lo común al pack. Uno de los clientes no quiere que se use nada de su repo, y otro hostea el suyo y no me da acceso. ¿Cómo junto lo aprendido? ¿Se va a filtrar lo que escribió cada cliente? Respondé desde la skill, sin ejecutar comandos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "learn harvest",
+          "description": "Lo junta el desarrollador con learn harvest",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "learning\\.share|\"share\": ?false|share: ?false",
+          "description": "El cliente que no participa apaga learning.share",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "learn export",
+          "description": "El cliente sin acceso pasa un learn export",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(nunca|sin|no)[^.]{0,80}(citas?|quotes?)|(citas?|quotes?)[^.]{0,80}(nunca|no (salen|se leen|se comparten|viajan))",
+          "description": "Ni harvest ni export leen las citas del usuario",
+          "critical": true
+        }
+      ]
     }
   ]
 }

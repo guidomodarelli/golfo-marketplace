@@ -16,8 +16,9 @@ import agent_ready_learning_reorganize as learning_reorganize
 import agent_ready_learning_review as learning_review
 import agent_ready_learning_schedule as learning_schedule
 import agent_ready_learning_session_review as session_review
+import agent_ready_learning_share as learning_share
 from agent_ready_cli_common import EXIT_OK, SCRIPT_DIRECTORY, find_repository_root
-from agent_ready_common import StateError, serialize_json
+from agent_ready_common import StateError, serialize_json, write_text_atomically
 from agent_ready_config import resolve_configuration
 from agent_ready_options import CONTEXT_BUDGET_ENABLED_KEY, CONTEXT_BUDGET_RULES_BYTES_KEY
 
@@ -470,9 +471,57 @@ def command_learn_reorganize(arguments):
     return EXIT_OK
 
 
+def command_learn_export(arguments):
+    """What this repository learned, without the quotes of the user, for its client to review and share."""
+    project_root = find_repository_root(arguments.project)
+    name = arguments.name or os.path.basename(os.path.normpath(project_root))
+    document = learning_share.export(project_root, name, datetime.date.today())
+    if not arguments.output:
+        sys.stdout.write(serialize_json(document))
+        return EXIT_OK
+    write_text_atomically(os.path.abspath(arguments.output), serialize_json(document))
+    sys.stdout.write(f"Exported {len(document['learned'])} learned instructions of {name} to {arguments.output}: "
+                     "it holds the statements only, never what the user wrote; review it before sharing it.\n")
+    return EXIT_OK
+
+
+def command_learn_harvest(arguments):
+    """Group what several repositories learned, as candidates for a pack. Reads only what was learned."""
+    configuration = resolve_configuration(os.path.abspath(arguments.project))
+    repositories = arguments.repos
+    if repositories is None:
+        repositories = configuration.value(learning_share.HARVEST_REPOS_KEY)
+    if not repositories and not arguments.exports:
+        raise StateError(f"no repository to harvest: pass --repos, --export, or list them in "
+                         f"{learning_share.HARVEST_REPOS_KEY} of the user configuration")
+    threshold = arguments.threshold or configuration.value(learning_share.HARVEST_THRESHOLD_KEY)
+    if threshold < 2:
+        raise StateError("--threshold must be 2 or more: harvest looks for what several repositories learned")
+    report = learning_share.harvest(repositories, arguments.exports or [], threshold, arguments.provider,
+                                    configuration.value(MAX_STATEMENT_CHARS_KEY),
+                                    datetime.datetime.now().astimezone())
+    if arguments.json:
+        sys.stdout.write(serialize_json(report))
+        return EXIT_OK
+    sys.stdout.write(f"Harvest of {len(report['sources'])} sources, {threshold} repositories to propose:\n")
+    for source in report["sources"]:
+        where = source.get("path") or source.get("export")
+        sys.stdout.write(f"  {source['name']}  {source['status']}, {source['learned']} learned  ({where})\n")
+    if report.get("reviewProblem"):
+        sys.stdout.write(f"  {report['reviewProblem']}: {report['review']}\n")
+    if not report["candidates"]:
+        sys.stdout.write("Nothing that several repositories learned.\n")
+        return EXIT_OK
+    sys.stdout.write("Candidates for a pack (general statements, without data of a client):\n")
+    for candidate in report["candidates"]:
+        sys.stdout.write(f"  {candidate['id']}  {candidate['kind']}  in {', '.join(candidate['repositories'])}\n"
+                         f"      {candidate['statement']}\n")
+    return EXIT_OK
+
+
 def register(subparsers, new_subparser):
-    """Add learn record|apply|accept|reject|revert|status|list|episode|summary|sweep|schedule|reorganize
-    to the CLI parser."""
+    """Add learn record|apply|accept|reject|revert|status|list|episode|summary|sweep|schedule|reorganize|
+    export|harvest to the CLI parser."""
     learn = new_subparser(subparsers, "learn", "Record and read what the agent learns from the user.",
                           "  agent-ready learn status\n  agent-ready learn list --status candidate", None,
                           with_project=False)
@@ -573,3 +622,26 @@ def register(subparsers, new_subparser):
     reorganize_action.add_argument("--provider", choices=PROVIDERS,
                                    help="provider that reviews (default: the one of the latest session)")
     reorganize_action.add_argument("--json", action="store_true", help="print the result as JSON")
+    export_action = new_subparser(
+        actions, "export", "Write what this repository learned, without the quotes of the user, for its client to "
+                           "review and hand to the developer.",
+        "  agent-ready learn export --output learned.json", command_learn_export)
+    export_action.add_argument("--output", help="file to write (default: print it)")
+    export_action.add_argument("--name", help="name of the repository in the export (default: its folder)")
+    harvest_action = new_subparser(
+        actions, "harvest", "Group what several repositories learned as candidates for a pack, reading only what "
+                            "was learned and skipping the ones with learning.share off.",
+        "  agent-ready learn harvest --repos ../client-a ../client-b\n"
+        "  agent-ready learn harvest --repos ../client-a --export client-c.json --json", command_learn_harvest)
+    harvest_action.add_argument("--repos", nargs="+", metavar="PATH",
+                                help=f"cloned repositories to read (default: {learning_share.HARVEST_REPOS_KEY})")
+    harvest_action.add_argument("--export", dest="exports", action="append", metavar="FILE",
+                                help="an export of agent-ready learn export a client handed over; repeatable")
+    harvest_action.add_argument("--threshold", type=int,
+                                help=f"repositories that must have learned it (default: "
+                                     f"{learning_share.HARVEST_THRESHOLD_KEY})")
+    harvest_action.add_argument("--provider", choices=PROVIDERS, default="claude",
+                                help="provider that groups and generalizes the statements (default: claude)")
+    harvest_action.add_argument("--json", action="store_true", help="print the result as JSON")
+    # It reads other repositories: it runs from anywhere.
+    harvest_action.set_defaults(needs_repository=False)

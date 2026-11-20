@@ -92,6 +92,34 @@
       "type": "integer",
       "minimum": 1,
       "default": 90
+    },
+    "share": {
+      "description": "Encendido, este repositorio participa de agent-ready learn harvest: el desarrollador, a pedido y sobre su clon local, lee solo los statements de lo aprendido (nunca las citas ni documentos). Un cliente que no quiere participar lo apaga en su manifest y harvest no lee nada del repo. Nada sale solo del repositorio en ningún caso.",
+      "type": "boolean",
+      "default": true,
+      "x-security": { "strictness": [true, false] }
+    },
+    "harvest": {
+      "description": "agent-ready learn harvest, en la máquina del desarrollador (references/learning.md, «Aprender de varios clientes»).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "repos": {
+          "description": "Repositorios clonados que harvest lee cuando no recibe --repos, cada uno por su ruta. Es una lista del desarrollador: vive en su config de usuario, nunca en la de un repositorio.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true,
+          "default": [],
+          "x-layers": ["user"]
+        },
+        "threshold": {
+          "description": "Repositorios distintos que tienen que haber aprendido lo mismo para que harvest lo proponga como candidato para el pack.",
+          "type": "integer",
+          "minimum": 2,
+          "default": 2,
+          "x-layers": ["user"]
+        }
+      }
     }
   }
 }
