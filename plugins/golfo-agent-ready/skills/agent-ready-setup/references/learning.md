@@ -229,7 +229,14 @@ importar, así que el plan de actualización lo muestra:
   asset que la rule aprendida no reemplaza se recibe normal.
 - El desarrollador decide: `agent-ready learn keep <id>` se queda con la versión aprendida (guarda la
   huella nueva en un commit y una línea `keep` del log, y la marca desaparece) y `agent-ready learn
-  revert <id>` deshace el aprendizaje para recibir la versión nueva del profile.
+  retire <id>` saca la rule aprendida con su `overrides=`, así el próximo apply vuelve a proyectar la
+  versión nueva del profile. `retire` no trae de vuelta lo que la rule reemplazó antes: `learn revert`
+  sí, y por eso no sirve para esto cuando la rule aprendida reemplazó a otra aprendida (pino → winston
+  volvería a pino).
+
+`learn retire` deja la entrada `retired`: si el cliente vuelve a pedirlo, cuenta como evidencia nueva,
+igual que una revertida. No retira una rule `locked` ni una que otra pide con `requires=`, ni una skill
+(esa se saca a mano o con `learn revert`).
 
 El plan solo lee el repo: la huella de lo que el profile publica la guarda en la caché del usuario, y
 `learn keep` la toma de ahí, así que primero hay que correr `agent-ready plan`. Un reemplazo escrito a
@@ -349,8 +356,10 @@ agent-ready learn record --kind rule --key records.header \
 # Escribirla como rule del proyecto y commitearla.
 agent-ready learn apply learn-5db4a07240
 
-# Quedarse con una rule aprendida aunque el profile cambió la que reemplaza («customized, review»).
+# Quedarse con una rule aprendida aunque el profile cambió la que reemplaza («customized, review»), o
+# sacarla para volver a la del profile.
 agent-ready learn keep learn-5db4a07240
+agent-ready learn retire learn-5db4a07240
 
 # Qué espera una repetición y con qué configuración.
 agent-ready learn status

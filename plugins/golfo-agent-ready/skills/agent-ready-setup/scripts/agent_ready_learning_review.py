@@ -156,6 +156,52 @@ def revert_rule(project_root, entry):
     write_text_atomically(path, new_text)
 
 
+def retire(project_root, candidate_id, settings):
+    """Remove a learned rule, and its overrides= with it, without bringing back what it replaced: the
+    rules of the profile it replaced are projected again on the next apply. Returns (entry, sha)."""
+    with learning.RegistryLock(project_root):
+        registry = learning.read_registry(project_root)
+        entry = find_entry(registry, candidate_id)
+        learned = entry.get("learned") or {}
+        if entry["status"] != learning.STATUS_LEARNED:
+            raise StateError(f"{candidate_id} is {entry['status']}, not learned: there is nothing to retire")
+        if not learned.get("ruleId"):
+            raise StateError(f"{candidate_id} is a skill: remove {learned.get('skill')} by hand, or undo it with "
+                             f"agent-ready learn revert {candidate_id}")
+        path = os.path.join(project_root, learned["path"])
+        text = read_text(path) if os.path.exists(path) else ""
+        rules, _ = agent_ready_rules.parse_rule_text(text, learned["path"])
+        rule = next((item for item in rules if item.id == learned["ruleId"]), None)
+        if rule is None:
+            raise StateError(f"rule {learned['ruleId']} of {candidate_id} is no longer in {learned['path']}; "
+                             "nothing was retired")
+        if rule.locked:
+            raise StateError(f"rule {rule.id} in {learned['path']} is locked: nothing was retired")
+        incoming = learning_reorganize.incoming_requires(project_root, {rule.id})
+        if incoming:
+            raise StateError(f"{incoming[0].id} requires {rule.id}: change that rule first; nothing was retired")
+        new_text = agent_ready_rules.remove_rules(text, {rule.id})
+        learned_path, header = learned_file(project_root, entry.get("paths") or [])
+        if learned_path == learned["path"] and new_text.replace("\r\n", "\n").strip() == header.strip():
+            os.remove(path)
+        else:
+            write_text_atomically(path, new_text)
+        today = settings["today"].isoformat()
+        entry["status"] = learning.STATUS_RETIRED
+        # What the rule replaced, from its marker: an entry that edited it in place has no overrides of its own.
+        restores = ",".join(sorted(rule.overrides))
+        entry["retired"] = {"date": today}
+        if restores:
+            entry["retired"]["restores"] = restores
+        learning.write_registry(project_root, registry)
+        replaced = f", {restores} comes back" if restores else ""
+        log_path = append_log(project_root, f"- {today} retire {entry['id']} ({learned['path']}{replaced}): "
+                                            f"{entry['statement']}\n")
+        sha = commit_paths(project_root, [path, learning.candidates_path(project_root), log_path],
+                           f"learn: retire {entry['statement']}\n\nLearning-Id: {entry['id']}\n")
+    return entry, sha
+
+
 def revert_reorganization(project_root, registry, entry, sha, settings):
     """Undo the whole reorganization ``entry`` came from, inside the lock of revert."""
     paths, reverted = learning_reorganize.revert(project_root, registry, entry, settings)

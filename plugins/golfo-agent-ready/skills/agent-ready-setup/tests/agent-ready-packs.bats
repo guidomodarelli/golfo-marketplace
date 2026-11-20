@@ -1388,4 +1388,16 @@ catalog["profiles"]["kafka-interno"]["mcpServers"] = {"docs": {"url": "https://m
   run_bootstrap --plan
   [ "$status" -eq 0 ]
   [[ "$output" == *"customized, review: the profile changed acme:conventions/logger since $newer_id replaced it"* ]]
+
+  # The developer takes the version of the profile: retire removes the learned rule and does not bring
+  # back pino, as revert would.
+  run python3 -B "$skill_dir/scripts/agent-ready" learn retire "$newer_id"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"acme:conventions/logger comes back on the next apply"* ]]
+  ! grep -qs 'Log with' .agents/rules/learned.md
+  [ "$(git log -1 --format=%s)" = "learn: retire Log with winston." ]
+  run_bootstrap
+  [ "$status" -eq 0 ]
+  grep -q 'Log with the Acme logger, at level warn.' .agents/rules/acme-conventions.md
+  [[ "$output" != *"Rule overridden: acme:conventions/logger"* ]]
 }

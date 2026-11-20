@@ -686,7 +686,7 @@ def print_plan(project_root, skill_dir, plan, provider, skip_marketplace_upgrade
             learning_id = override["customized"]["learningId"]
             write_line(f"  customized, review: the profile changed {override['replaces']} since {learning_id} replaced "
                        f"it; the learned version stays. Keep it (agent-ready learn keep {learning_id}) or take the "
-                       f"new one (agent-ready learn revert {learning_id})")
+                       f"profile's (agent-ready learn retire {learning_id})")
     for workspace in plan.get("workspaces", []):
         write_line(f"Workspace {workspace_selection.describe(workspace)}")
         if workspace.get("rules"):

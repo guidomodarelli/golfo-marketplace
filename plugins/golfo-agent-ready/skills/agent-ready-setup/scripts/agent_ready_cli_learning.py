@@ -156,6 +156,21 @@ def command_learn_keep(arguments):
     return EXIT_OK
 
 
+def command_learn_retire(arguments):
+    """Remove a learned rule without bringing back what it replaced."""
+    project_root = find_repository_root(arguments.project)
+    entry, sha = learning_review.retire(project_root, arguments.id, settings_of(project_root))
+    if arguments.json:
+        sys.stdout.write(serialize_json({"id": entry["id"], "status": entry["status"], "commit": sha,
+                                         "restores": entry["retired"].get("restores")}))
+        return EXIT_OK
+    restores = entry["retired"].get("restores")
+    restores = f"; {restores} comes back on the next apply" if restores else ""
+    sys.stdout.write(f"{entry['id']}  retired: {entry['learned']['ruleId']} removed from {entry['learned']['path']}"
+                     f"{restores} (commit {sha[:12]})\n")
+    return EXIT_OK
+
+
 def learning_active(project_root, settings):
     """The hooks stay silent unless the learning profile is in use and learning.enabled is on."""
     return settings["enabled"] and learning_episodes.learning_selected(project_root)
@@ -532,7 +547,7 @@ def command_learn_harvest(arguments):
 
 
 def register(subparsers, new_subparser):
-    """Add learn record|apply|accept|reject|revert|keep|status|list|episode|summary|sweep|schedule|reorganize|
+    """Add learn record|apply|accept|reject|revert|keep|retire|status|list|episode|summary|sweep|schedule|reorganize|
     export|harvest to the CLI parser."""
     learn = new_subparser(subparsers, "learn", "Record and read what the agent learns from the user.",
                           "  agent-ready learn status\n  agent-ready learn list --status candidate", None,
@@ -579,7 +594,11 @@ def register(subparsers, new_subparser):
         actions, "keep", "Keep a learned rule over the new version of the profile rule it replaces "
                          "(«customized, review» in the plan).",
         "  agent-ready learn keep learn-5db4a07240", command_learn_keep)
-    for action in (apply_action, accept_action, reject_action, revert_action, keep_action):
+    retire_action = new_subparser(
+        actions, "retire", "Remove a learned rule and its overrides without bringing back what it replaced: the "
+                           "rule of the profile comes back on the next apply.",
+        "  agent-ready learn retire learn-5db4a07240", command_learn_retire)
+    for action in (apply_action, accept_action, reject_action, revert_action, keep_action, retire_action):
         action.add_argument("id", help="id of the entry, as record and list print it")
         if action in (apply_action, accept_action):
             action.add_argument("--skill", help="the directory of the skill the agent wrote, for an entry of kind skill")
