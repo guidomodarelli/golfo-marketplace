@@ -1375,4 +1375,17 @@ catalog["profiles"]["kafka-interno"]["mcpServers"] = {"docs": {"url": "https://m
   run_bootstrap --plan
   [ "$status" -eq 0 ]
   [[ "$output" != *"customized, review"* ]]
+
+  # The user changes the learned instruction: the new entry supersedes it and still tracks the profile rule.
+  run python3 -B "$skill_dir/scripts/agent-ready" learn record --kind rule --key logging.library \
+    --statement "Log with winston." --quote "mejor logueá con winston" --explicit --session s2
+  [ "$status" -eq 0 ]
+  newer_id="$(printf '%s' "$output" | head -n 1 | cut -d' ' -f1)"
+  run python3 -B "$skill_dir/scripts/agent-ready" learn apply "$newer_id"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"supersede"* ]]
+  perl -pi -e 's/at level info\./at level warn./' "$pack_dir/profiles/base/rules/acme-conventions.md"
+  run_bootstrap --plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"customized, review: the profile changed acme:conventions/logger since $newer_id replaced it"* ]]
 }

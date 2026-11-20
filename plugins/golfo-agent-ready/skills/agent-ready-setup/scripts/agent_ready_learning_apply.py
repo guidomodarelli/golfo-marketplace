@@ -227,8 +227,14 @@ def plan_rule(project_root, entry, registry):
                          and item["status"] == learning.STATUS_LEARNED
                          and item.get("learned", {}).get("ruleId") == rule.id), None)
         path, text = replaced_statement(project_root, rule, entry["statement"])
+        # The rule keeps its overrides=, so the new entry keeps what the profile said when they were written:
+        # the previous entry stops being learned, and with it the mark «customized, review» would go.
+        overridden = {reference: fingerprint
+                      for reference, fingerprint in ((previous or {}).get("learned", {}).get("overridden") or {}).items()
+                      if reference in rule.overrides}
         return {"action": ACTION_SUPERSEDE if previous else ACTION_UPDATE, "path": path, "text": text,
-                "ruleId": rule.id, "overrides": None, "supersedes": previous["id"] if previous else None,
+                "ruleId": rule.id, "overrides": None, "overridden": overridden or None,
+                "supersedes": previous["id"] if previous else None,
                 # What learn revert writes back.
                 "previousStatement": rule.statement}
     replaced, overridden = [], {}
