@@ -1208,6 +1208,17 @@ def test_env_save_neutralizes_duplicate_lines_so_the_new_value_wins(monkeypatch,
     assert jira_ticket.load_config({"JIRA_TICKET_ENV_FILE": str(env_file)}).get("PROJECT_KEY") == "SHIP"
 
 
+def test_env_save_keeps_the_requested_value_when_the_last_duplicate_already_had_it(monkeypatch, capsys, tmp_path):
+    env_file = tmp_path / "env"
+    env_file.write_text("export JIRA_TICKET_PROJECT_KEY=OLD\nexport JIRA_TICKET_PROJECT_KEY=SHIP\n", encoding="utf-8")
+    exit_code, out, _ = env_save(monkeypatch, capsys, env_file, {"JIRA_TICKET_PROJECT_KEY": "SHIP", "JIRA_TICKET_BOARD_ID": "202"})
+    assert exit_code == 0
+    assert json.loads(out)["unchanged"] == ["JIRA_TICKET_PROJECT_KEY"]
+    config = jira_ticket.load_config({"JIRA_TICKET_ENV_FILE": str(env_file)})
+    assert config.get("PROJECT_KEY") == "SHIP"
+    assert config.get("BOARD_ID") == "202"
+
+
 @pytest.mark.parametrize(
     ("updates", "fragment"),
     [

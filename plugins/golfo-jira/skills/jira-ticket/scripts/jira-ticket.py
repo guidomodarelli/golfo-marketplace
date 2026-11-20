@@ -174,13 +174,17 @@ def parse_env_file(path: pathlib.Path) -> dict[str, str]:
         match = ENV_LINE_REGEX.match(line)
         if not match:
             continue
-        raw_value = match["value"].strip()
-        try:
-            parts = shlex.split(raw_value, comments=True, posix=True)
-        except ValueError as error:
-            raise JiraTicketError(f"jira-ticket: valor mal citado para {match['name']} en {path}", EXIT_CONFIG) from error
-        values[match["name"]] = parts[0] if len(parts) == 1 else " ".join(parts)
+        values[match["name"]] = _env_line_value(match, path)
     return values
+
+
+def _env_line_value(match: re.Match[str], path: pathlib.Path) -> str:
+    """Devuelve el valor de una línea `[export] NOMBRE=valor` ya matcheada, con las comillas resueltas como en shell."""
+    try:
+        parts = shlex.split(match["value"].strip(), comments=True, posix=True)
+    except ValueError as error:
+        raise JiraTicketError(f"jira-ticket: valor mal citado para {match['name']} en {path}", EXIT_CONFIG) from error
+    return parts[0] if len(parts) == 1 else " ".join(parts)
 
 
 def load_config(environ: dict[str, str] | None = None) -> Config:
@@ -259,11 +263,14 @@ def save_env_settings(path: pathlib.Path, updates: Any, dry_run: bool = False) -
             lines[index] = f"# {line}  (duplicada: reemplazada por la línea anterior)"
             continue
         written.add(name)
+        # La línea que se conserva debe quedar con el valor pedido: con duplicadas, `current` refleja la última
+        # línea y esta puede tener un valor viejo que volvería a regir al comentar las siguientes.
+        if _env_line_value(match, path) != wanted[name]:
+            lines[index] = f"export {key}={shlex.quote(wanted[name])}"
         if current.get(key) == wanted[name]:
             result["unchanged"].append(key)
-            continue
-        result["changed"].append({"name": key, "previous": current.get(key), "value": wanted[name]})
-        lines[index] = f"export {key}={shlex.quote(wanted[name])}"
+        else:
+            result["changed"].append({"name": key, "previous": current.get(key), "value": wanted[name]})
     for name, value in wanted.items():
         if name not in written:
             result["added"].append({"name": ENV_PREFIX + name, "value": value})
