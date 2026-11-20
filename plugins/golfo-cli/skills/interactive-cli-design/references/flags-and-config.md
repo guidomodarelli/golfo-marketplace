@@ -11,6 +11,7 @@ Completa «Flags» y «Paridad» del [SKILL.md](../SKILL.md) con lo que apareci�
 5. [Valores que vuelven al comando equivalente](#valores-que-vuelven-al-comando-equivalente)
 6. [Lo que vino por flag](#lo-que-vino-por-flag)
 7. [El error de la fila 5](#el-error-de-la-fila-5)
+8. [Atajo del comando](#atajo-del-comando)
 
 ## Cortos de una letra
 
@@ -82,6 +83,7 @@ Una clave desconocida se ignora o se informa según el proyecto; lo que no vale 
 - **Allow-list además de citar.** Si un valor no puede traer metacaracteres de shell (un mail, un ID, una región), validarlo con una allow-list: un mail con `$(...)`, `;` o comillas termina impreso en el comando para copiar y pegar. La regex, sin backtracking catastrófico: `.` fuera de las clases que se repiten en el dominio, como `^[A-Za-z0-9._-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$`.
 - **IDs numéricos: enteros positivos con dígitos ASCII**, en el flag y en el prompt: `text.isascii() and text.isdigit() and int(text) > 0`. Un `0` aceptado se lee como «sin valor» en `if user_id:` y cambia la acción (`--user-id 0` terminaba creando un usuario nuevo).
 - **Los defaults también se escriben.** Lo que salió del default, o se eligió con la opción por defecto, va en el comando equivalente (`--scope release`, `--email auto`): así reproduce lo mismo aunque el default cambie en otra versión.
+- **Flags que pueden traer un secreto sin ser el secreto declarado.** Un header (`-H "Authorization: Bearer …"`) o un hook que se pasa como comando (`curl -H …`) no van en el comando para seguir ni en el comando equivalente. El resumen avisa en una línea que hay que volver a sumarlos y por qué. Repetir la selección (scopes, `--config`, `--url`) y los valores sin riesgo (`--interval`, `--ttl`) alcanza para seguir.
 
 ## Lo que vino por flag
 
@@ -90,3 +92,21 @@ Si un valor con nombre se guarda internamente como `None` (`--user nuevo` → `u
 ## El error de la fila 5
 
 El error dice por qué no se pudo preguntar: sin terminal, con `--no-input` o con `CI`. Así el usuario sabe qué cambiar. Sin argumentos, el mensaje es otro que con flags incompletos: «Sin flags el CLI pregunta todo, pero acá no puede preguntar (sin terminal, con `--no-input` o con `CI`). Faltan: …».
+
+## Atajo del comando
+
+Un nombre largo que se escribe muchas veces por día (`keepwarm`) gana un atajo de 2 o 3 letras.
+
+- **Candidatos.** Salen del nombre: `kwm` (**k**eep **w**ar**m**), `km` (primera y última letra). Se miden por dos cosas que tiran para lados distintos: que se recuerde y que se tipee cómodo en QWERTY, con teclas vecinas o manos alternadas y sin estirar el meñique. `km` es cómodo (la `m` está justo abajo de la `k`) y `kwm` se recuerda mejor. Ofrecer dos o tres candidatos con su contra y que elija la persona: es gusto, y la primera elección suele cambiar.
+- **Que no exista.** Buscar cada candidato antes de proponerlo, y decir qué se buscó:
+  - Windows: `Get-Command <nombre>`.
+  - Linux: `command -v <nombre>`. Desde Windows, con WSL: `wsl.exe -e sh -c 'command -v <nombre>'`.
+  - macOS y Homebrew: las URLs `https://formulae.brew.sh/api/formula/<nombre>.json` y `https://formulae.brew.sh/api/cask/<nombre>.json` dan 404 si no existe ni fórmula ni cask con ese nombre. Para el sistema base de macOS hace falta una Mac (`command -v`). Si no hay una, decirlo: Homebrew cubre lo que se instala, no lo que trae el sistema.
+  - Los alias y funciones de los dotfiles del usuario (`alias <nombre>=`, `Set-Alias`, `function <nombre>`).
+- **Cómo se instala.** Como un segundo ejecutable del mismo programa:
+  - En Python, dos entradas en `[project.scripts]`.
+  - En Node, dos claves en `bin` de `package.json`.
+  - Sin paquete, un segundo symlink.
+
+  Un alias de shell solo existe en el shell donde se definió, y no llega a scripts, a cron ni al otro sistema operativo. El programa no cambia de comportamiento según el nombre con que lo llamaron.
+- **Dónde se nombra.** En la ayuda principal, como una fila «Atajo» pintada como comando, y en el README. Los comandos que el CLI imprime (el equivalente, el «para seguir», los «Corré `…`» de los errores) usan el nombre completo, que funciona con cualquier forma de instalarlo.

@@ -932,6 +932,82 @@
           "description": "Deja el color de la marca solo para el nombre"
         }
       ]
+    },
+    {
+      "id": "command-alias-checks-collisions",
+      "description": "Un atajo para un nombre largo se busca en los tres sistemas y en Homebrew antes de proponerlo, se mide por comodidad de tipeo y no cambia los comandos que el CLI sugiere.",
+      "input": "Mi CLI en Python se llama `releasewatch` (pyproject con setuptools) y lo escribo decenas de veces por día. Quiero tipearlo más rápido. Proponé cómo y dejalo listo en el pyproject.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "Get-Command|command -v|\\bwhich\\b|where\\.exe",
+          "description": "Verifica que el nombre corto no exista ya en Windows o Linux"
+        },
+        {
+          "type": "regex",
+          "pattern": "Homebrew|formulae\\.brew|\\bbrew\\b",
+          "description": "También lo busca en macOS y Homebrew"
+        },
+        {
+          "type": "regex",
+          "pattern": "QWERTY|teclas? (vecinas|cercanas|juntas|contiguas|pegadas)|manos alternadas|altern[a-z]* (de )?manos|mano (izquierda|derecha)|misma mano|alternating hands|home row",
+          "description": "Mide cuán cómodo es de tipear, no solo cuán corto es"
+        },
+        {
+          "type": "regex",
+          "pattern": "nombre completo|full name",
+          "description": "Los comandos que imprime el CLI siguen usando el nombre completo"
+        }
+      ]
+    },
+    {
+      "id": "native-menu-windows-and-cbreak-session",
+      "description": "Un menú propio lee las teclas con msvcrt en Windows y entra en cbreak una sola vez por menú, porque volver al modo normal entre teclas hace eco y corre el redibujo.",
+      "input": "Tengo un menú con flechas en Python 3.10 sin dependencias para elegir subcomando. El lector usa termios: en cada read_key entra en cbreak, lee una tecla con os.read y restaura el modo. Dos problemas: en Windows ni arranca porque no hay termios, y en Linux, si tipeo rápido mientras se redibuja, aparecen letras sueltas en pantalla y el menú queda corrido una fila. Arreglá las dos cosas y mostrame el lector de teclas.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "msvcrt",
+          "description": "En Windows lee las teclas con msvcrt"
+        },
+        {
+          "type": "regex",
+          "pattern": "xe0|0xe0|\\b224\\b",
+          "description": "Maneja el prefijo con que msvcrt entrega las flechas"
+        },
+        {
+          "type": "regex",
+          "pattern": "(una (sola )?vez|once)[^.]{0,80}(men[uú]|bucle|loop)|contextmanager|context manager|__enter__|session\\(|antes del (primer dibujo|bucle)",
+          "description": "Entra en cbreak una sola vez para todo el menú"
+        },
+        {
+          "type": "regex",
+          "pattern": "\\beco\\b|\\becho\\b",
+          "description": "Explica que el eco del modo normal entre teclas es lo que corre el menú"
+        }
+      ]
+    },
+    {
+      "id": "ctrl-c-test-windows-and-linux",
+      "description": "Un test de Ctrl+C que corre en Windows sin pseudoconsola usa Ctrl+Break sobre un grupo de procesos nuevo, y el CLI maneja SIGBREAK.",
+      "input": "Necesito un test automático con unittest (nada de node) que pruebe que mi CLI en Python, durante una espera larga, termina con exit 130 al cortarlo con Ctrl+C y no deja traceback. Tiene que correr tanto en el CI de Windows como en el de Linux. Escribí el test.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "CTRL_BREAK_EVENT",
+          "description": "En Windows manda Ctrl+Break en vez de matar con SIGINT"
+        },
+        {
+          "type": "regex",
+          "pattern": "CREATE_NEW_PROCESS_GROUP",
+          "description": "Lanza el CLI en un grupo de procesos nuevo para poder mandarle la señal"
+        },
+        {
+          "type": "regex",
+          "pattern": "SIGBREAK",
+          "description": "El CLI maneja SIGBREAK igual que SIGINT"
+        }
+      ]
     }
   ]
 }

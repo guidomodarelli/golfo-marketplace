@@ -8,8 +8,9 @@ Correr el CLI real, no una versión escrita para el chequeo. La herramienta de s
 2. [Sin terminal](#sin-terminal)
 3. [Con terminal](#con-terminal)
 4. [Python, sin node-pty](#python-sin-node-pty)
-5. [Servidor de prueba](#servidor-de-prueba)
-6. [Trampas al automatizar](#trampas-al-automatizar)
+5. [Windows: ConPTY con pywinpty](#windows-conpty-con-pywinpty)
+6. [Servidor de prueba](#servidor-de-prueba)
+7. [Trampas al automatizar](#trampas-al-automatizar)
 
 ## Matriz
 
@@ -54,7 +55,7 @@ Si el CLI resuelve secretos en un wrapper, chequea permisos, crea recursos por A
 | ff | Menú con etiquetas de color: escribir `m` y después algo que no coincide con nada | Con terminal | Con `m` solo quedan las opciones con «m» en el texto visible. Sin coincidencias se ve «nada coincide…» y Enter no elige. Al cambiar el filtro, el resaltado va a la primera. La pista «escribí para filtrar» está al lado de la pregunta |
 | gg | `--dry-run` cuando el valor inicial lo decide el servidor | Sin terminal | Una rama por cada valor inicial posible, sin efectos |
 | hh | Registro con un `\|` y un salto de línea en un dato, y después `--history` | Sin terminal | La fila del índice queda alineada y `--history` la muestra con el `\|` original |
-| jj | Menú nativo: tipear una tecla mientras se redibuja, o pegar texto | Con terminal | No se pierde ninguna tecla |
+| jj | Menú nativo: tipear una tecla mientras se redibuja, o pegar texto | Con terminal | No se pierde ninguna tecla, y lo tipeado no aparece como eco ni corre el menú una fila |
 | mm | 500, 429, 400 y 2xx inesperado en un GET; 500 en un POST; 503 de API que levanta en un POST | Sin terminal | Se reintentan solo el 500 y el 429 del GET y el 503 del POST, con esperas 1, 2 y 4 (verificadas con `sleep` inyectado). El error dice cuántos intentos |
 | nn | Token con un `\n` al final (por ejemplo, pegado) | Ambos | El error no muestra el token |
 | oo | `-ssx` cuando existen `-s` y un corto de dos letras | Sin terminal | No se definen cortos de varias letras; si existieran, el test documenta que `-ssx` es `-s sx` |
@@ -70,6 +71,10 @@ Si el CLI resuelve secretos en un wrapper, chequea permisos, crea recursos por A
 | bbb | `CI=False` y `CI=FALSE` con terminal | Con terminal | Pregunta: no cuenta como CI |
 | ccc | Servidor de prueba que responde 503 dos veces y después 200; otra espera sin tope ni máximo | Ambos | Con terminal, la nota del spinner dice `reintentando, 2/N` y `3/N`, con N de la constante de esperas (otra constante en el test, otro N), y el tope si lo hay; sin terminal, una línea por cambio. La espera sin tope no muestra `/N` ni un tope. Ctrl+C sigue cortando con 130 |
 | ddd | Consulta sin resultados | Sin terminal | Exit 0, stdout vacío (con `--json`, la lista vacía) y stderr dice qué se buscó y cómo ampliarlo |
+| eee | Menú de subcomandos: escribir la primera letra de uno cuyo nombre empieza así, cuando otra opción la tiene en la descripción | Con terminal | Resalta el que empieza así, no el primero de la lista |
+| fff | Sin subcomando (con y sin un flag global), elegir uno en el menú, y repetir | Con terminal | Una sola tarjeta. Corre con los mismos defaults que escrito a mano, conserva el flag global que ya vino y al final imprime el comando equivalente con él. En la segunda corrida, el elegido aparece primero con su marca entera aunque la fila se corte |
+| ggg | Menú en Windows: ↓, ↑, Enter y Ctrl+C en una ConPTY | Con terminal | Las flechas mueven el resaltado, Enter elige y Ctrl+C sale con 130 y el cursor visible |
+| hhh | `--help` después de un flag desconocido o de un valor inválido (`--json=x --help`) | Sin terminal | Exit 0 con la ayuda del subcomando, como en a |
 
 Modo agente ([agent-mode.md](agent-mode.md)):
 
@@ -84,7 +89,7 @@ Modo agente ([agent-mode.md](agent-mode.md)):
 | ag7 | Acción peligrosa en modo agente sin su flag | Ambos | Exit 2 con el flag exacto y la sugerencia de `--dry-run`. No pregunta |
 | ag8 | `SIGTERM` después del primer efecto, en modo agente | Sin terminal | Lista lo hecho y el comando para seguir. Exit 143. Cursor y terminal restaurados |
 
-Para ag1 a ag4, lanzar el CLI en la pseudoconsola con el entorno del agente (`env CLAUDECODE=1 tool`) o con `<TOOL>_AGENT=1`. La sesión del propio agente ya trae sus variables: para probar ag2 desde ahí, `<TOOL>_AGENT=0`. Por lo mismo, un test que corre bajo un agente y usa el entorno del proceso (un `Terminal()` sin entorno explícito) entra en modo agente y cambia la salida esperada: sacar las señales al empezar el módulo de tests (`setUpModule` con `mock.patch.dict(os.environ)`) o pasar siempre un entorno explícito.
+Para ag1 a ag4, lanzar el CLI en la pseudoconsola con el entorno del agente (`env CLAUDECODE=1 tool`) o con `<TOOL>_AGENT=1`. La sesión del propio agente ya trae sus variables: para probar ag2 desde ahí, `<TOOL>_AGENT=0`. Por lo mismo, un test que corre bajo un agente y usa el entorno del proceso (un `Terminal()` sin entorno explícito) entra en modo agente y cambia la salida esperada: sacar las señales al empezar el módulo de tests (`setUpModule` con `mock.patch.dict(os.environ)`) o pasar siempre un entorno explícito. Los tests que lanzan el CLI como subproceso heredan esas señales: su entorno lleva `<TOOL>_AGENT=0`, salvo en los tests del modo agente, que ponen `<TOOL>_AGENT=1`.
 
 Los casos de la salida visual (cortes con color, banderas y ZWJ, tablas con una columna larga, ancho medido en stderr, URLs en un recuadro y emojis sin color) no se repiten acá: están en `vivid-visual-output` (`references/terminal.md`, «Verificar», tabla «Casos que los kits tienen que pasar»).
 
@@ -212,9 +217,73 @@ def run_in_pty(argv, keys_after=(), limit_seconds=RUN_LIMIT_SECONDS):
     return os.waitstatus_to_exitcode(status), output.decode(errors="replace")
 ```
 
+**Con `subprocess` y `pty.openpty()`** (para quedarse con el `Popen` y su exit code), dos cosas que `pty.fork()` hace solo:
+
+- **Terminal de control.** La pty tiene que ser la terminal de control del hijo, o `\x03` no se convierte en `SIGINT` y el test de Ctrl+C mide otra cosa. Lanzar con `start_new_session=True` y `preexec_fn=lambda: fcntl.ioctl(0, termios.TIOCSCTTY, 0)`: el `preexec_fn` corre después del `setsid`.
+- **Tamaño.** Fijarlo con `fcntl.ioctl(lado_esclavo, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 80, 0, 0))`, porque una pty nueva informa 0 columnas.
+
+Desde Windows, estos tests corren en WSL (`wsl.exe -e sh -c 'cd /tmp/copia && python3 -m unittest …'`), con una copia del proyecto en el disco de Linux.
+
 - Ctrl+C es `"\x03"`. A través de un wrapper, aceptar `130` o `-SIGINT`: el Ctrl+C le llega a todo el grupo y el wrapper puede morir por la señal.
 - Si el primer Ctrl+C no canceló, volver a mandarlo una vez: a veces se pierde mientras el prompt cambia el modo de la terminal.
-- Lo que no necesita pty (duraciones, reintentos, redibujo, camino con color) se prueba con reloj y `sleep` inyectados, un stream que dice ser TTY y un emulador de pantalla mínimo: `vivid-visual-output` (`references/terminal.md`, «Verificar»).
+- Lo que no necesita pty (duraciones, reintentos, redibujo, camino con color) se prueba con reloj y `sleep` inyectados, un stream que dice ser TTY y un emulador de pantalla mínimo: `vivid-visual-output` (`references/terminal.md`, «Verificar»). El menú, con un lector de teclas falso que devuelve un guion de teclas (`"down"`, `"enter"`, una excepción para Ctrl+C) y un emulador que también entiende `ESC[nA`: lo que queda en pantalla después de elegir es solo la línea `✔ pregunta › respuesta`.
+
+## Windows: ConPTY con pywinpty
+
+En Windows no hay `pty`. `pywinpty` abre una ConPTY real desde Python, con la misma consola que vería una persona. Se instala aparte, nunca como dependencia del proyecto: `uv run --no-project --isolated --with pywinpty python check.py`.
+
+```python
+import queue, threading, time
+from winpty import PtyProcess
+
+READY_TEXT = "filtrar"            # un texto que aparece cuando el menú ya está dibujado
+LIMIT_SECONDS = 20
+POLL_SECONDS = 0.1
+KEY_DELAY_SECONDS = 0.3
+READ_CHUNK = 4096
+
+def run_in_conpty(argv, keys, environment):
+    """Corre argv en una ConPTY y manda las teclas cuando aparece READY_TEXT. Nunca espera más que
+    LIMIT_SECONDS: `finished` en False quiere decir que se cortó por el plazo."""
+    process = PtyProcess.spawn(argv, env=environment, dimensions=(30, 100))
+    chunks = queue.Queue()
+
+    def pump():  # process.read() bloquea sin timeout: se lee en un hilo y se espera la cola con plazo
+        try:
+            while True:
+                chunks.put(process.read(READ_CHUNK))
+        except EOFError:
+            chunks.put(None)
+
+    threading.Thread(target=pump, daemon=True).start()
+    output, keys_sent, finished = "", False, False
+    deadline = time.monotonic() + LIMIT_SECONDS
+    try:
+        while not finished and time.monotonic() < deadline:
+            try:
+                chunk = chunks.get(timeout=POLL_SECONDS)
+            except queue.Empty:
+                continue
+            if chunk is None:
+                finished = True
+                continue
+            output += chunk
+            if not keys_sent and READY_TEXT in output:
+                for key in keys:          # "\x1b[B", "\x1b[A", "\r", o "\x03" para Ctrl+C
+                    process.write(key)
+                    time.sleep(KEY_DELAY_SECONDS)
+                keys_sent = True
+    finally:
+        if process.isalive():  # pasado el plazo, el chequeo falla en vez de colgar el job de CI
+            process.terminate(force=True)
+    cursor_visible = output.rfind("\x1b[?25h") > output.rfind("\x1b[?25l")
+    return process.exitstatus, cursor_visible, finished
+```
+
+- `process.read()` bloquea hasta que llega algo, y un CLI vivo que dejó de escribir lo deja esperando para siempre. Por eso la lectura va en un hilo y el plazo se mira sobre la cola. Pasado el plazo, `terminate(force=True)` cierra el hijo y el chequeo falla con `finished` en `False`.
+- ConPTY traduce las secuencias VT que se escriben en teclas de consola: `\x1b[B` le llega a `msvcrt.getwch()` como `\xe0` seguido de `P`, y `\x03` sale como Ctrl+C (exit 130).
+- La salida trae las secuencias propias de ConPTY: para leer el texto, sacar los escapes. Para saber qué quedó en pantalla, mirar el final del flujo, no contar escapes.
+- Es un chequeo manual o de CI de Windows. Los tests de unidad del menú usan el lector de teclas falso.
 
 ## Servidor de prueba
 
@@ -288,7 +357,11 @@ Checklist de tests de un wrapper con broker (caso s): sesión activa usa el CLI 
 
 ## Trampas al automatizar
 
-- **Ctrl+C.** En Windows, `child.kill('SIGINT')` mata el proceso sin correr sus handlers. Mandar `\x03` a la pseudoconsola.
+- **Ctrl+C.** En Windows, `child.kill('SIGINT')` mata el proceso sin correr sus handlers. Mandar `\x03` a la pseudoconsola. Sin pseudoconsola, desde Python, se puede probar el handler con Ctrl+Break:
+  - Lanzar el CLI con `creationflags=subprocess.CREATE_NEW_PROCESS_GROUP` y mandarle `process.send_signal(signal.CTRL_BREAK_EVENT)` cuando ya está en la espera (por ejemplo, cuando su archivo de estado dice que está arriba).
+  - El CLI tiene que manejar `SIGBREAK`.
+  - Si `send_signal` lanza `OSError` porque el test no comparte consola, el test se saltea con ese motivo.
+  - `SIGTERM` no le llega a un proceso de Windows con sus handlers (lo termina en el acto): el caso de 143 va con skip fuera de POSIX.
 - **Escapes bajo ConPTY.** ConPTY escribe sus propias secuencias, así que bajo pseudoconsola no se cuentan escapes: ese chequeo se hace por pipe. Para saber si hay color en un prompt, reproducir la salida en `@xterm/headless` y mirar las celdas con `isFgDefault()` e `isBgDefault()`.
 - **Cursor.** Gana la última secuencia entre `\x1b[?25l` y `\x1b[?25h` del flujo crudo.
 - **Teclas antes de tiempo.** Un menú puede pintarse después de la pregunta, y el texto mandado a un menú se pierde o se cuela en el prompt siguiente. Esperar un texto de la opción, no solo de la pregunta, si hace falta.
