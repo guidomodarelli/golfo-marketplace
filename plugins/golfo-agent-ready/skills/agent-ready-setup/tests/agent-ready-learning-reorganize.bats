@@ -336,3 +336,92 @@ PY
   agent_ready learn reorganize
   [ -e "$FAKE_INPUTS/3.txt" ]
 }
+
+@test "a rule another rule requires is never reorganized away" {
+  learn "Records carry the case number in the header."
+  learn "Records carry the date at the end."
+  over_budget
+  header="$(rule_id_of 'Records carry the case number in the header.')"
+  footer="$(rule_id_of 'Records carry the date at the end.')"
+  printf '%s\n' '# Team' '' "<!-- rule id=team/header-format requires=$header -->" '- Write the case number in bold.' \
+    > .agents/rules/team.md
+  git add .agents && git commit -q -m team
+  respond 1 "$(consolidation "$header" "$footer" "Records carry the case number in the header and the date at the end.")"
+
+  agent_ready learn reorganize --json
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s' "$output" | python3 -c 'import json, sys; report = json.load(sys.stdin); print(report["dropped"], len(report["applied"]))' | tr -d '\r')" = "1 0" ]
+  [ ! -e "$FAKE_INPUTS/2.txt" ]
+  grep -q "id=$header" .agents/rules/learned.md
+}
+
+@test "learn revert leaves a reorganized rule whose marker the team changed" {
+  learn "Records carry the case number in the header."
+  learn "Records carry the date at the end."
+  over_budget
+  header="$(rule_id_of 'Records carry the case number in the header.')"
+  footer="$(rule_id_of 'Records carry the date at the end.')"
+  respond 1 "$(consolidation "$header" "$footer" "Records carry the case number in the header and the date at the end.")"
+  respond 2 '{"findings": [{"equivalent": true, "reason": "Both instructions stay."}]}'
+  agent_ready learn reorganize
+  merged="$(id_of 'Records carry the case number in the header and the date at the end.')"
+  merged_rule="$(rule_id_of 'Records carry the case number in the header and the date at the end.')"
+  sed -i "s#<!-- rule id=$merged_rule -->#<!-- rule id=$merged_rule locked -->#" .agents/rules/learned.md
+  grep -q "id=$merged_rule locked" .agents/rules/learned.md
+
+  agent_ready learn revert "$merged"
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"changed after the reorganization"* ]]
+  grep -q "id=$merged_rule locked" .agents/rules/learned.md
+  ! grep -q "id=$header -->" .agents/rules/learned.md
+}
+
+@test "a background run without a trigger does not start the interval" {
+  mkdir -p .agents
+  printf '%s\n' '{"assets": {}, "profileOrder": ["software-development", "learning"]}' > .agents/agent-ready.lock.json
+  learn "Records carry the case number in the header."
+  export AGENT_READY_LEARNING_NOW=2026-03-10T09:00:00+0000
+  agent_ready learn sweep --reorganize
+  [ "$status" -eq 0 ]
+  [ ! -e .git/info/agent-ready/reorganize.json ]
+
+  learn "Records carry the date at the end."
+  over_budget
+  header="$(rule_id_of 'Records carry the case number in the header.')"
+  footer="$(rule_id_of 'Records carry the date at the end.')"
+  respond 1 "$(consolidation "$header" "$footer" "Records carry the case number.")"
+  respond 2 '{"findings": [{"equivalent": false, "reason": "A rule is lost."}]}'
+  agent_ready learn sweep --reorganize
+  [ "$status" -eq 0 ]
+  [ -e "$FAKE_INPUTS/1.txt" ]
+  [ -e .git/info/agent-ready/reorganize.json ]
+}
+
+@test "the same operation proposed again on rules that changed replaces the stale proposal" {
+  learn "Records carry the case number in the header."
+  learn "Records carry the date at the end."
+  over_budget
+  header="$(rule_id_of 'Records carry the case number in the header.')"
+  footer="$(rule_id_of 'Records carry the date at the end.')"
+  respond 1 "$(consolidation "$header" "$footer" "Records carry the case number.")"
+  respond 2 '{"findings": [{"equivalent": false, "reason": "A rule is lost."}]}'
+  agent_ready learn reorganize
+  proposal="$(proposal_id)"
+  python3 - <<'PY'
+path = ".agents/rules/learned.md"
+text = open(path, encoding="utf-8").read().replace("- Records carry the date at the end.", "- Records carry the date at the end.\n  - Details the team added.")
+open(path, "w", encoding="utf-8", newline="\n").write(text)
+PY
+  git add .agents && git commit -q -m details
+  agent_ready learn reorganize --plan
+  [[ "$output" != *"$proposal"* ]]
+
+  respond 3 "$(consolidation "$header" "$footer" "Records carry the case number.")"
+  agent_ready learn reorganize
+  [ "$status" -eq 0 ]
+  agent_ready learn reorganize --plan
+  [[ "$output" == *"$proposal  consolidate"* ]]
+  [ "$(PYTHONIOENCODING=utf-8 python3 -c 'import json; print(len(json.load(open(".agents/learning/reorganize.json", encoding="utf-8"))["proposals"]))' | tr -d '\r')" -eq 1 ]
+  agent_ready learn reorganize --accept "$proposal"
+  [ "$status" -eq 0 ]
+}

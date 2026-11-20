@@ -317,6 +317,11 @@ def structural_problem(project_root, operation, items):
         return "the rules apply to different paths"
     if is_managed(project_root, rules[0].path):
         return f"{rules[0].path} is managed by a profile"
+    # The ids of the rules go away: a rule that requires one of them would point at nothing.
+    for other, _, _, _ in repository_rules(project_root):
+        required = sorted(set(other.requires) & set(operation["ruleIds"]))
+        if other.id not in operation["ruleIds"] and required:
+            return f"{other.id} requires {', '.join(required)}"
     if operation["type"] == OPERATION_TO_SKILL:
         skill_directory = os.path.join(project_root, PROJECT_SKILLS_RELATIVE_PATH, operation["skill"]["name"])
         if os.path.exists(skill_directory):
@@ -438,7 +443,8 @@ def write_operation(project_root, registry, operation, items, settings, accepted
         else:
             new_keys = [keys[0]] + [None] * (len(operation["statements"]) - 1)
             overrides = [",".join(sorted(rules[0].overrides)) or None] + [None] * (len(operation["statements"]) - 1)
-        taken = {rule.id for rule, _, _, _ in repository_rules(project_root)} - set(operation["ruleIds"])
+        # The ids of the replaced rules stay taken: a new rule never inherits the id of another one.
+        taken = {rule.id for rule, _, _, _ in repository_rules(project_root)}
         evidence = merged_evidence([source["entry"] for source in sources])
         blocks = []
         for statement, key, override in zip(operation["statements"], new_keys, overrides):
@@ -491,11 +497,14 @@ def write_operation(project_root, registry, operation, items, settings, accepted
 def store_proposals(project_root, waiting):
     """Add the operations that wait for the developer to the proposals file; returns its path, or None."""
     data = read_proposals(project_root)
-    known = {proposal["id"] for proposal in data["proposals"]}
-    added = [proposal for proposal in waiting if proposal["id"] not in known]
-    if not added:
+    stored = {proposal["id"]: proposal for proposal in data["proposals"]}
+    # The same operation proposed on rules that changed since replaces the stale one.
+    changed = [proposal for proposal in waiting
+               if proposal["id"] not in stored or stored[proposal["id"]].get("fingerprint") != proposal["fingerprint"]]
+    if not changed:
         return None
-    data["proposals"].extend(added)
+    replaced = {proposal["id"] for proposal in changed}
+    data["proposals"] = [proposal for proposal in data["proposals"] if proposal["id"] not in replaced] + changed
     write_text_atomically(proposals_path(project_root), serialize_json(data))
     return proposals_path(project_root)
 
@@ -660,8 +669,12 @@ def revert(project_root, registry, entry, settings):
             continue
         rules, _ = agent_ready_rules.parse_rule_text(read_text(path) if os.path.exists(path) else "", learned["path"])
         rule = next((rule for rule in rules if rule.id == learned["ruleId"]), None)
+        marker = learned.get("marker") or {}
+        written_marker = (marker.get("key"), marker.get("paths") or [],
+                          sorted(learned["overrides"].split(",")) if learned.get("overrides") else [], [], False)
         if rule is None or learning.normalized_statement(rule.statement) != learning.normalized_statement(item["statement"]) \
-                or rule.exceptions or rule.details:
+                or rule.exceptions or rule.details \
+                or (rule.key, sorted(rule.paths), sorted(rule.overrides), sorted(rule.requires), rule.locked) != written_marker:
             raise StateError(f"rule {learned['ruleId']} in {learned['path']} changed after the reorganization: nothing "
                              "was reverted, undo it by hand")
     for item in created:
@@ -719,13 +732,15 @@ def run_when_due(project_root, settings, provider, write):
     if not is_due(project_root, settings, now):
         return None
     report = reorganize(project_root, settings, provider)
-    if report["status"] != "reviewed" and report["triggers"]:
+    if not report["triggers"]:
+        # Nothing was reviewed, so the interval does not start: a trigger tomorrow is reviewed tomorrow.
+        return report
+    if report["status"] != "reviewed":
         # A failed or blocked review is tried again by the next sweep, not after the interval.
         write(f"reorganize: {report['status']}")
         return report
     os.makedirs(os.path.dirname(state_path(project_root)), exist_ok=True)
     write_text_atomically(state_path(project_root), serialize_json({"lastRunAt": learning_episodes.format_time(now)}))
-    if report["triggers"]:
-        write(f"reorganize: {len(report['applied'])} applied, {len(report['proposed'])} proposed for the developer, "
-              f"{report['dropped']} dropped")
+    write(f"reorganize: {len(report['applied'])} applied, {len(report['proposed'])} proposed for the developer, "
+          f"{report['dropped']} dropped")
     return report

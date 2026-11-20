@@ -240,8 +240,8 @@ el momento, sin esperar el intervalo. En CI y en review mode no llama a ningún 
 como datos. Cada operación pasa por estos filtros:
 
 1. Se descarta si nombra una rule que no es aprendida, mezcla rules de distintos archivos o alcances,
-   toca una rule `locked` o un archivo gestionado, repite un statement que ya está en el registro, o no
-   tiene la forma de su tipo. Una rule entra en una sola operación por corrida.
+   toca una rule `locked` o un archivo gestionado, saca una rule que otra pide con `requires=`, repite un
+   statement que ya está en el registro, o no tiene la forma de su tipo. Una rule entra en una sola operación por corrida.
 2. Queda como **propuesta** para el desarrollador si `learning.mode` es `developer-review`, si
    `learning.reorganize.auto` está apagado, si es `to-skill`, si una de sus rules no la creó el
    aprendizaje (una rule del equipo que el aprendizaje editó), si tiene excepciones, detalles o
@@ -255,7 +255,12 @@ Antes de escribir, la reorganización vuelve a leer las rules: si cambiaron mien
 provider, la operación se descarta. Cada operación aplicada es un commit con un `Learning-Id:` por rule
 nueva, `Reorganizes:` con las entradas que reemplaza y `Learned-from:`, y una línea `reorganize` en
 `log.md`. Las rules nuevas son entradas `learned` del registro con la evidencia de las que reemplazan,
-que pasan a `superseded`. Las rules nuevas conservan la `key` común y la unión de los `overrides`.
+que pasan a `superseded`. Las rules nuevas conservan la `key` común y la unión de los `overrides`, y
+llevan ids nuevos: nunca heredan el de una rule que reemplazan.
+
+Una corrida sin disparador no cuenta para el intervalo, así que un disparador que aparece mañana se
+revisa mañana. Si el provider vuelve a proponer una operación que ya espera y sus rules cambiaron desde
+entonces, la propuesta nueva reemplaza a la vieja.
 
 **Propuestas.** Las operaciones que esperan quedan en `.agents/learning/reorganize.json`, versionado y
 commiteado, con el motivo y el veredicto de la revisión. `learn status` dice cuántas esperan.
@@ -265,7 +270,7 @@ commiteado, con el motivo y el veredicto de la revisión. `learn status` dice cu
 | `learn reorganize --plan` | muestra los disparadores de ahora y las propuestas que siguen valiendo, sin modelo y sin cambiar nada. Una propuesta cuyas rules cambiaron o ya no están deja de mostrarse |
 | `learn reorganize --accept <id>` | el desarrollador aplica una propuesta sin pasar por la revisión de equivalencia. La rechaza si sus rules cambiaron desde que se propuso, o si es `locked`, gestionada o de otro alcance. Una `to-skill` escribe `.agents/skills/<nombre>/SKILL.md` y saca la rule; el archivo aprendido se borra si quedó solo el encabezado. El log la marca `(accepted)` |
 | `learn reorganize --dismiss <id>` | descarta la propuesta; una reorganización posterior puede volver a proponerla |
-| `learn revert <id>` | con el id de cualquier entrada nueva, deshace la operación completa: saca sus rules (o su skill, si nadie la cambió) y devuelve las rules que reemplazó tal como estaban, con su id y marcador. Las entradas nuevas quedan `reverted` y las anteriores vuelven a `learned`. No toca nada si una rule nueva cambió después o una entrada de la operación cambió de estado |
+| `learn revert <id>` | con el id de cualquier entrada nueva, deshace la operación completa: saca sus rules (o su skill, si nadie la cambió) y devuelve las rules que reemplazó tal como estaban, con su id y marcador. Las entradas nuevas quedan `reverted` y las anteriores vuelven a `learned`. No toca nada si una rule nueva cambió después (su statement, sus excepciones o detalles, o su marcador: `key`, alcance, `overrides`, `requires=` o `locked`) o una entrada de la operación cambió de estado |
 
 ## Comandos
 
