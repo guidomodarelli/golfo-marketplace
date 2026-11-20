@@ -27,6 +27,10 @@ LEARNING_ENABLED_KEY = "learning.enabled"
 LEARNING_MODE_KEY = "learning.mode"
 LEARNING_THRESHOLD_KEY = "learning.threshold"
 LEARNING_TTL_KEY = "learning.candidateTtlDays"
+LEARNING_NOTIFY_KEY = "learning.notify"
+LEARNING_CLARIFY_KEY = "learning.clarify"
+# learning.clarify off: the agent never asks the scope question.
+CLARIFY_OFF = "off"
 LEARNING_GAP_KEY = "learning.episodeGapHours"
 LEARNING_SESSION_END_KEY = "learning.hooks.sessionEnd"
 LEARNING_SESSION_START_KEY = "learning.hooks.sessionStart"
@@ -39,6 +43,12 @@ PROVIDERS = ("claude", "codex")
 SUMMARY_LOG_LINES = 5
 SUMMARY_CANDIDATES = 5
 MAX_STATEMENT_CHARS_KEY = "rules.maxStatementChars"
+
+NOTIFY_ON_MESSAGE = ("  Tell the user in one line that you will keep it in mind, without calling it a rule, a skill or "
+                     "a learning.\n")
+NOTIFY_OFF_MESSAGE = f"  {LEARNING_NOTIFY_KEY} is off: do not tell the user.\n"
+CLARIFY_OFF_ERROR = (f"{LEARNING_CLARIFY_KEY} is off: do not ask the scope question, apply the instruction to the "
+                     "current document only and record it without --explicit")
 
 DECISION_MESSAGES = {
     learning.DECISION_LEARN: "learn it now as a {kind} of the project: agent-ready learn apply {id}",
@@ -56,6 +66,8 @@ def settings_of(project_root):
         "mode": configuration.value(LEARNING_MODE_KEY),
         "threshold": configuration.value(LEARNING_THRESHOLD_KEY),
         "ttl_days": configuration.value(LEARNING_TTL_KEY),
+        "notify": configuration.value(LEARNING_NOTIFY_KEY),
+        "clarify": configuration.value(LEARNING_CLARIFY_KEY),
         "gap_hours": configuration.value(LEARNING_GAP_KEY),
         "session_review": configuration.value(LEARNING_SESSION_END_KEY),
         "session_start": configuration.value(LEARNING_SESSION_START_KEY),
@@ -110,13 +122,16 @@ def command_learn_apply(arguments):
     learned = written["entry"]["learned"]
     if arguments.json:
         sys.stdout.write(serialize_json({"id": arguments.id, "commit": written["commit"], "learned": learned,
-                                         "supersedes": written["supersedes"]}))
+                                         "supersedes": written["supersedes"], "notify": settings["notify"]}))
         return EXIT_OK
     target = learned.get("ruleId") or learned.get("skill")
     extras = "".join(f", {label} {value}" for label, value in (("overrides", learned.get("overrides")),
                                                                 ("replaces", written["supersedes"])) if value)
     sys.stdout.write(f"{arguments.id}  {learned['action']}: {target} in {learned['path']}{extras} "
                      f"(commit {written['commit'][:12]})\n")
+    # The one-line notice is for what the agent learned in the chat; accept is the developer's own decision.
+    if arguments.learn_action == "apply":
+        sys.stdout.write(NOTIFY_ON_MESSAGE if settings["notify"] else NOTIFY_OFF_MESSAGE)
     return EXIT_OK
 
 
@@ -231,6 +246,8 @@ def command_learn_episode(arguments):
         if not arguments.touch:
             return EXIT_OK
     elif arguments.scope_question:
+        if settings["clarify"] == CLARIFY_OFF:
+            raise StateError(CLARIFY_OFF_ERROR)
         if not learning_episodes.mark_scope_question(project_root, arguments.session):
             raise StateError(f"the scope question of this episode was already asked: apply the instruction to the "
                              "current document only and record it without --explicit")
@@ -243,7 +260,8 @@ def command_learn_episode(arguments):
     if arguments.json:
         sys.stdout.write(serialize_json({"session": arguments.session, "episode": session}))
     elif not hook_modes:
-        asked = "asked" if session.get("scopeQuestionAsked") else "not asked"
+        asked = ("off" if settings["clarify"] == CLARIFY_OFF
+                 else "asked" if session.get("scopeQuestionAsked") else "not asked")
         sys.stdout.write(f"{session['episodeId']}  since {session['episodeStartedAt']}, scope question {asked}\n")
     return EXIT_OK
 
@@ -390,7 +408,8 @@ def command_learn_status(arguments):
     if arguments.json:
         sys.stdout.write(serialize_json({
             "enabled": settings["enabled"], "mode": settings["mode"], "threshold": settings["threshold"],
-            "candidateTtlDays": settings["ttl_days"], "counts": counts,
+            "candidateTtlDays": settings["ttl_days"], "notify": settings["notify"], "clarify": settings["clarify"],
+            "counts": counts,
             "candidates": [learning.public_view(item, settings["ttl_days"]) for item in waiting],
             "proposals": [item["id"] for item in proposals],
             "reorganizations": [item["id"] for item in reorganizations]}))
@@ -398,6 +417,9 @@ def command_learn_status(arguments):
     state = settings["mode"] if settings["enabled"] else "off"
     sys.stdout.write(f"Learning: {state}, {settings['threshold']} episodes to learn an implicit instruction, "
                      f"candidates expire after {settings['ttl_days']} days without evidence.\n")
+    notice = "on" if settings["notify"] else "off"
+    question = "off" if settings["clarify"] == CLARIFY_OFF else "at most one per episode"
+    sys.stdout.write(f"  Notice to the user: {notice}. Scope question: {question}.\n")
     sys.stdout.write("  " + ", ".join(f"{counts[status]} {status}" for status in learning.STATUSES) + "\n")
     for item in waiting:
         if item in proposals:
@@ -655,7 +677,8 @@ def register(subparsers, new_subparser):
     episode_modes.add_argument("--touch", action="store_true",
                                help="a message of the user arrived now; prints a line only when it opens an episode")
     episode_modes.add_argument("--scope-question", action="store_true",
-                               help="record the one scope question of the episode; fails when it was already asked")
+                               help="record the one scope question of the episode; fails when it was already asked "
+                                    "or learning.clarify is off")
     episode_modes.add_argument("--end", action="store_true",
                                help="the chat ended: close its episode and review it in the background")
     episode_modes.add_argument("--review-now", action="store_true",

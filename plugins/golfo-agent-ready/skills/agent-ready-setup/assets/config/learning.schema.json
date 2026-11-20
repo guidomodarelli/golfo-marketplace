@@ -19,6 +19,17 @@
       "default": "auto",
       "x-security": { "strictness": ["auto", "developer-review"] }
     },
+    "notify": {
+      "description": "Encendido, después de aprender algo el agente le avisa al usuario en una línea que lo va a tener en cuenta, sin llamarlo rule ni skill. Apagado, no avisa nada: lo aprendido queda igual en el commit y en .agents/learning/log.md.",
+      "type": "boolean",
+      "default": true
+    },
+    "clarify": {
+      "description": "once: ante una instrucción de alcance ambiguo que contradice algo aprendido o una rule de un profile, el agente pregunta si vale para todos los casos, como mucho una vez por episodio. off: no pregunta nunca; aplica la instrucción solo al documento actual y la registra como candidata, que espera la repetición.",
+      "type": "string",
+      "enum": ["once", "off"],
+      "default": "once"
+    },
     "threshold": {
       "description": "Episodios distintos en los que tiene que aparecer una instrucción implícita (una corrección o una preferencia sin «siempre») para aprenderla. Una explícita se aprende con uno.",
       "type": "integer",
