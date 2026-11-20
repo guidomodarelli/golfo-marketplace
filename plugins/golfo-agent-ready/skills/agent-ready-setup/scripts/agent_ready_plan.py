@@ -10,6 +10,7 @@ import sys
 import agent_ready_blocks as managed_blocks
 import agent_ready_conflicts as conflicts_review
 import agent_ready_learning_customized as learning_customized
+import agent_ready_learning_promote as learning_promote
 import agent_ready_nested as nested
 import agent_ready_pack_tools as pack_tools
 import agent_ready_rule_changes as rule_changes
@@ -338,6 +339,7 @@ def compute_plan(project_root, skill_dir, catalog, profile_names):
     edited_views, preserved_views = detached_views(project_root, assets, locked_assets) if lock else ([], [])
     identity = source_identity(skill_dir, golfo_assets, merged, golfo_blocks(root_blocks), golfo_blocks(targets),
                                workspace_origins)
+    published_rules = selection_rules(skill_dir, catalog, resolved)
     return {
         "schemaVersion": SCHEMA_VERSION,
         "profiles": resolved,
@@ -371,9 +373,11 @@ def compute_plan(project_root, skill_dir, catalog, profile_names):
                       for target, paths in sorted(shared_overrides(skill_dir, catalog, resolved, workspace_profiles).items())
                       for path, by in sorted(paths.items())],
         # An override of a learned rule whose managed rule the profile changed since: «customized, review».
-        "ruleOverrides": learning_customized.mark(project_root, selection_rules(skill_dir, catalog, resolved),
+        "ruleOverrides": learning_customized.mark(project_root, published_rules,
                                                   resolved_rule_overrides(skill_dir, catalog, resolved, project_root,
                                                                           workspace_rule_destinations(workspace_rules))),
+        # A learned rule that says what a rule of the profiles says now, as after a promotion: to retire.
+        "learnedDuplicates": learning_promote.duplicates(project_root, published_rules),
     }
 
 
@@ -679,14 +683,20 @@ def print_plan(project_root, skill_dir, plan, provider, skip_marketplace_upgrade
         write_line(f"Defaults left out: {', '.join(excluded)} ({EXCLUDED_DEFAULTS_KEY})")
     for override in plan.get("overrides", []):
         write_line(f"Overridden: {override['replaces']} by {override['profile']} (only its own asset is projected)")
+    duplicated = {duplicate["learningId"] for duplicate in plan.get("learnedDuplicates", [])}
     for override in plan.get("ruleOverrides", []):
         write_line(f"Rule overridden: {override['replaces']} by {override['rule']} of {override['profile']} "
                    f"({override['targetPath']} keeps its other rules)")
-        if override.get("customized"):
+        # A learned rule the profile now says too is reported as a duplicate below, not to review.
+        if override.get("customized") and override["customized"]["learningId"] not in duplicated:
             learning_id = override["customized"]["learningId"]
             write_line(f"  customized, review: the profile changed {override['replaces']} since {learning_id} replaced "
                        f"it; the learned version stays. Keep it (agent-ready learn keep {learning_id}) or take the "
                        f"profile's (agent-ready learn retire {learning_id})")
+    for duplicate in plan.get("learnedDuplicates", []):
+        write_line(f"Learned rule duplicated: {duplicate['rule']} ({duplicate['learningId']}) says what "
+                   f"{duplicate['duplicates']} of {duplicate['profile']} says now. Retire it with agent-ready learn "
+                   f"retire {duplicate['learningId']}")
     for workspace in plan.get("workspaces", []):
         write_line(f"Workspace {workspace_selection.describe(workspace)}")
         if workspace.get("rules"):

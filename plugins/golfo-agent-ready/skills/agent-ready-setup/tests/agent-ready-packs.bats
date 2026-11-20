@@ -1401,3 +1401,45 @@ catalog["profiles"]["kafka-interno"]["mcpServers"] = {"docs": {"url": "https://m
   grep -q 'Log with the Acme logger, at level warn.' .agents/rules/acme-conventions.md
   [[ "$output" != *"Rule overridden: acme:conventions/logger"* ]]
 }
+
+@test "a learned rule promoted to the pack shows up as a duplicate after the update, and retire leaves the pack's" {
+  export XDG_CONFIG_HOME="$test_root/config"
+  copy_example_pack
+  write_atomic_pack_rules ""
+  git -C "$pack_dir" init -q
+  git -C "$pack_dir" add -A
+  git -C "$pack_dir" commit -q -m pack
+  write_manifest acme/kafka-interno "acme=path:../acme-pack"
+  run_bootstrap
+  [ "$status" -eq 0 ]
+  git add -A && git commit -q -m apply
+  run python3 -B "$skill_dir/scripts/agent-ready" learn record --kind rule --key logging.library \
+    --statement "Log with pino." --quote "de ahora en más, logueá con pino" --explicit --session s1
+  [ "$status" -eq 0 ]
+  learning_id="$(printf '%s' "$output" | head -n 1 | cut -d' ' -f1)"
+  run python3 -B "$skill_dir/scripts/agent-ready" learn apply "$learning_id"
+  [ "$status" -eq 0 ]
+
+  # The rule of the pack with the same key gets the learned statement; its exception stays.
+  run python3 -B "$skill_dir/scripts/agent-ready" learn promote "$learning_id" --to "$pack_dir" --profile base \
+    --yes --no-pr
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"change the statement of acme:conventions/logger in profiles/base/rules/acme-conventions.md"* ]]
+  [[ "$output" == *"Committed on learn/promote-conventions-logger"* ]]
+  git -C "$pack_dir" merge -q learn/promote-conventions-logger
+  grep -q '^- Log with pino.$' "$pack_dir/profiles/base/rules/acme-conventions.md"
+  grep -q 'Except: scripts that run once' "$pack_dir/profiles/base/rules/acme-conventions.md"
+
+  # After the update the learned rule says what the profile says: the plan offers to retire it, not to review it.
+  run_bootstrap --plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Learned rule duplicated: learned/logging-library ($learning_id) says what acme:conventions/logger of acme/base says now"* ]]
+  [[ "$output" == *"agent-ready learn retire $learning_id"* ]]
+  [[ "$output" != *"customized, review"* ]]
+  run python3 -B "$skill_dir/scripts/agent-ready" learn retire "$learning_id"
+  [ "$status" -eq 0 ]
+  run_bootstrap
+  [ "$status" -eq 0 ]
+  grep -q '^- Log with pino.$' .agents/rules/acme-conventions.md
+  [[ "$output" != *"Learned rule duplicated"* ]]
+}

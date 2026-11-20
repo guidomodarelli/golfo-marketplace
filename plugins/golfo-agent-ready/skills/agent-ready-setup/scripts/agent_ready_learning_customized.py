@@ -4,7 +4,7 @@ When learn apply replaces a managed rule with overrides, the entry keeps the fin
 it was (its statement, exceptions and details). An update of the profile that changes the rule keeps the
 learned version, since the override still holds, and the plan marks the override «customized, review»:
 the developer decides whether the learned version still applies (agent-ready learn keep) or the new one of
-the profile should come back (agent-ready learn revert). The plan only reads the repository: what the
+the profile should come back (agent-ready learn retire). The plan only reads the repository: what the
 profile publishes now is kept in the cache of the user, where learn keep takes it from
 (references/learning.md, «Cuando el profile cambia una rule reemplazada»).
 """

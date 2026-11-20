@@ -6,9 +6,8 @@ agente, con reglas de evidencia fijas. Al usuario nunca se le pregunta «¿lo gu
 
 Esta referencia cubre el registro, la evidencia, la decisión de `agent-ready learn record`, cómo
 `agent-ready learn apply` escribe lo aprendido, cómo lo revisa el desarrollador (`accept`, `reject` y
-`revert`), cómo se reorganiza (`reorganize`) y cómo el desarrollador junta lo que aprendieron varios
-clientes (`export` y `harvest`). Promover un candidato a un pack (`promote`) es la parte siguiente de la
-issue #156.
+`revert`), cómo se reorganiza (`reorganize`), cómo el desarrollador junta lo que aprendieron varios
+clientes (`export` y `harvest`) y cómo lo sube a un pack (`promote`).
 
 ## Qué se aprende y qué no
 
@@ -345,6 +344,43 @@ frena a los demás. Un repo o export que se pasa dos veces se lee una, y dos fue
 (un clon y el export del mismo cliente) cuentan como un solo repo: nada suma evidencia de más. Un
 statement viaja con sus `paths`, y un grupo nunca junta alcances distintos: el candidato conserva el suyo.
 
+## Promover a un pack
+
+Lo que aprendieron varios clientes puede pasar al profile, para que lo reciba todo repo que lo usa. Lo
+decide siempre el desarrollador, y llega al pack por pull request.
+
+**`learn promote <id> --to <pack>`.** El id es un candidato del último `harvest` (`harvest-…`) o una
+entrada aprendida del repo actual (`learn-…`). `--to` es el clon del pack que el desarrollador tiene (la
+carpeta con `agent-ready-pack.json`) y `--profile`, el profile que recibe la rule; sin `--profile` alcanza
+si el pack tiene un solo profile con assets.
+
+- **Sin `--yes`** imprime el cambio (el archivo, la rule y el diff) y no toca el clon.
+- **Con `--yes`** escribe la rule en una rama nueva del clon (`learn/promote-<id de la rule>`), la
+  commitea con `Promoted-from: <id>`, pushea la rama y abre el pull request con `gh pr create`. El clon
+  vuelve a la rama en la que estaba. Con `--no-pr` solo commitea, para pushear después.
+- **Qué escribe.** Si el profile tiene una rule con la misma `key`, le cambia el statement y conserva su
+  marcador, sus excepciones y sus detalles: la rule aprendida que la reemplazaba pide eso. Si no, agrega
+  una rule nueva al final de `--file` (por defecto `rules/promoted.md` del profile), con un id que no use
+  otra rule del pack, la `key` y los `paths` de lo aprendido. La rule pasa el lint de una rule atómica antes
+  de escribir nada.
+- **No escribe** sobre una rule `locked`, sobre una de la misma `key` para otro alcance, cuando el profile
+  ya dice lo mismo, en un clon con cambios sin commitear ni si la rama ya existe. Una skill se sube a mano.
+- **Nada de un cliente llega al pack.** El statement es el general de `harvest`, y el pull request dice
+  cuántos repos lo aprendieron, nunca cuáles. El candidato del `harvest` queda marcado `promoted` en la
+  caché.
+
+**El duplicado después de actualizar.** Cuando el pack publica la rule y un repo actualiza el profile,
+`agent-ready plan` (y el plan de cada apply) encuentra la rule aprendida que dice lo mismo que una del
+profile (el mismo statement, salvo mayúsculas, espacios y el punto final, y el mismo alcance):
+
+```text
+Learned rule duplicated: learned/logging-library (learn-5db4a07240) says what acme:conventions/logger of acme/base says now. Retire it with agent-ready learn retire learn-5db4a07240
+```
+
+En `--json` sale en `learnedDuplicates`. Si la rule aprendida reemplazaba a esa misma rule, el plan no la
+marca además «customized, review». El retiro lo confirma el desarrollador corriendo `learn retire`: saca
+la rule aprendida y el próximo apply proyecta la del profile, que ahora dice lo mismo.
+
 ## Comandos
 
 ```bash
@@ -391,6 +427,10 @@ agent-ready learn export --output learned.json
 
 # Lo que aprendieron varios repos (y los exports que pasaron los clientes), como candidatos para un pack.
 agent-ready learn harvest --repos ../cliente-a ../cliente-b --export cliente-c.json
+
+# Ver el cambio que haría un candidato en un profile del pack, y escribirlo en una rama con su pull request.
+agent-ready learn promote harvest-1a2b3c4d5e --to ../mi-pack --profile base
+agent-ready learn promote harvest-1a2b3c4d5e --to ../mi-pack --profile base --yes
 ```
 
 `record` acepta `--date` con la fecha del mensaje, por ejemplo cuando la revisión de fin de sesión
