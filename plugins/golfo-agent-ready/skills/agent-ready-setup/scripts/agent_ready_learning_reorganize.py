@@ -46,6 +46,7 @@ from agent_ready_learning_apply import (
     unique_rule_id,
 )
 from agent_ready_learning_session_review import provider_blocked
+from agent_ready_rule_graph import referenced_id
 
 ACTION_REORGANIZE = "reorganize"
 OPERATION_CONSOLIDATE = "consolidate"
@@ -305,6 +306,17 @@ def clean_operation(operation, items, settings, registry):
     return cleaned
 
 
+def incoming_requires(project_root, removed_ids):
+    """(rule, required ids) of the first rule outside ``removed_ids`` that requires one of them, or None.
+
+    A reference may name the source of the rule (``project:learned/one``): it names the same rule."""
+    for other, _, _, _ in repository_rules(project_root):
+        required = sorted({referenced_id(reference) for reference in other.requires} & set(removed_ids))
+        if other.id not in removed_ids and required:
+            return other, required
+    return None
+
+
 def structural_problem(project_root, operation, items):
     """Why the operation cannot be written on these rules, or None. Holds for the developer too."""
     rules = [items[rule_id]["rule"] for rule_id in operation["ruleIds"]]
@@ -318,10 +330,9 @@ def structural_problem(project_root, operation, items):
     if is_managed(project_root, rules[0].path):
         return f"{rules[0].path} is managed by a profile"
     # The ids of the rules go away: a rule that requires one of them would point at nothing.
-    for other, _, _, _ in repository_rules(project_root):
-        required = sorted(set(other.requires) & set(operation["ruleIds"]))
-        if other.id not in operation["ruleIds"] and required:
-            return f"{other.id} requires {', '.join(required)}"
+    incoming = incoming_requires(project_root, operation["ruleIds"])
+    if incoming:
+        return f"{incoming[0].id} requires {', '.join(incoming[1])}"
     if operation["type"] == OPERATION_TO_SKILL:
         skill_directory = os.path.join(project_root, PROJECT_SKILLS_RELATIVE_PATH, operation["skill"]["name"])
         if os.path.exists(skill_directory):
@@ -675,11 +686,10 @@ def revert(project_root, registry, entry, settings):
     # The rules of the reorganization go away: a rule written since that requires one would point at nothing,
     # and the restored rules have other ids.
     created_ids = {item["learned"]["ruleId"] for item in created if item["learned"].get("ruleId")}
-    for other, _, _, _ in repository_rules(project_root):
-        required = sorted(set(other.requires) & created_ids)
-        if other.id not in created_ids and required:
-            raise StateError(f"{other.id} requires {', '.join(required)}, which the revert would remove: nothing was "
-                             "reverted; change that rule first, or undo it by hand")
+    incoming = incoming_requires(project_root, created_ids)
+    if incoming:
+        raise StateError(f"{incoming[0].id} requires {', '.join(incoming[1])}, which the revert would remove: nothing "
+                         "was reverted; change that rule first, or undo it by hand")
     written = set()
     for item in created:
         learned = item["learned"]

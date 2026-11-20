@@ -344,13 +344,13 @@ PY
   [ -e "$FAKE_INPUTS/3.txt" ]
 }
 
-@test "a rule another rule requires is never reorganized away" {
+@test "a rule another rule requires, by its id or with its source, is never reorganized away" {
   learn "Records carry the case number in the header."
   learn "Records carry the date at the end."
   over_budget
   header="$(rule_id_of 'Records carry the case number in the header.')"
   footer="$(rule_id_of 'Records carry the date at the end.')"
-  printf '%s\n' '# Team' '' "<!-- rule id=team/header-format requires=$header -->" '- Write the case number in bold.' \
+  printf '%s\n' '# Team' '' "<!-- rule id=team/header-format requires=project:$header -->" '- Write the case number in bold.' \
     > .agents/rules/team.md
   git add .agents && git commit -q -m team
   respond 1 "$(consolidation "$header" "$footer" "Records carry the case number in the header and the date at the end.")"
@@ -493,6 +493,18 @@ PY
     > .agents/rules/team.md
   git add .agents && git commit -q -m team
 
+  agent_ready learn revert "$merged"
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"team/header-format requires $merged_rule"* ]]
+  # With the source of the rule in the reference, the same.
+  python3 - "$merged_rule" <<'PY'
+import sys
+path = ".agents/rules/team.md"
+rule = sys.argv[1]
+text = open(path, encoding="utf-8").read().replace(f"requires={rule} -->", f"requires=project:{rule} -->")
+open(path, "w", encoding="utf-8", newline="\n").write(text)
+PY
+  grep -q "requires=project:$merged_rule" .agents/rules/team.md
   agent_ready learn revert "$merged"
   [ "$status" -ne 0 ]
   [[ "$stderr" == *"team/header-format requires $merged_rule"* ]]
