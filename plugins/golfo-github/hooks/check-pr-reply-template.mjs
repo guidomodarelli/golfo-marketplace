@@ -10,6 +10,7 @@
 import { homedir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { COMMAND_KIND, analyzeCommand } from './lib/pr-reply-command.mjs';
+import { SHELL } from './lib/shell-segments.mjs';
 import { FOOTER_MARK, loadReplyTemplates, normalizeForComparison } from './lib/reply-templates.mjs';
 
 /** Variable de entorno de Claude Code que apaga el chequeo; solo la puede definir la persona. */
@@ -36,21 +37,42 @@ function findMatchingTemplates(templates, normalizedText) {
 }
 
 /**
+ * Revisa una invocación que responde en un PR contra los templates.
+ *
+ * @param {{ kind: string, label: string, texts: string[], unreadablePaths: string[] }} reply Invocación analizada.
+ * @param {{ signature: string, requiresFooter: boolean }[]} templates Firmas cargadas.
+ * @returns {{ problem: string, unreadablePaths: string[] } | null} El problema, o `null` si cumple.
+ */
+function findReplyProblem(reply, templates) {
+  const normalizedText = normalizeForComparison(reply.texts.join('\n'));
+  const matchingTemplates = findMatchingTemplates(templates, normalizedText);
+  const hasFooter = normalizedText.includes(normalizeForComparison(FOOTER_MARK));
+  if (matchingTemplates.some((template) => !template.requiresFooter || hasFooter)) {
+    return null;
+  }
+  const problem = matchingTemplates.length > 0
+    ? `${KIND_DESCRIPTIONS[reply.kind]} tiene el encabezado «${matchingTemplates[0].signature}» pero le falta el pie ${FOOTER_MARK} …</sub> de su template`
+    : `${KIND_DESCRIPTIONS[reply.kind]} no usa ninguno de los templates de respuesta`;
+  return { problem: `${problem}: \`${reply.label}\``, unreadablePaths: reply.unreadablePaths };
+}
+
+/**
  * Arma el motivo que lee el agente cuando el hook frena el comando.
  *
  * @param {object} details Datos del rechazo.
- * @param {string} details.kind Tipo de escritura detectada.
+ * @param {{ problem: string, unreadablePaths: string[] }[]} details.problems Una entrada por respuesta que no cumple.
+ * @param {number} details.replyCount Cuántas respuestas publica el comando.
  * @param {string[]} details.signatures Encabezados aceptados.
- * @param {string | undefined} details.headerWithoutFooter Encabezado encontrado sin su pie.
- * @param {string[]} details.unreadablePaths Rutas de body que no se pudieron leer.
  * @returns {string} Motivo en español, con los pasos para corregirlo.
  */
-function buildDenyReason({ kind, signatures, headerWithoutFooter, unreadablePaths }) {
-  const problem = headerWithoutFooter
-    ? `${KIND_DESCRIPTIONS[kind]} tiene el encabezado «${headerWithoutFooter}» pero le falta el pie ${FOOTER_MARK} …</sub> de su template.`
-    : `${KIND_DESCRIPTIONS[kind]} no usa ninguno de los templates de respuesta.`;
+function buildDenyReason({ problems, replyCount, signatures }) {
+  const unreadablePaths = [...new Set(problems.flatMap((problem) => problem.unreadablePaths))];
+  const summary = replyCount > 1
+    ? `${problems.length} de las ${replyCount} respuestas de este comando no cumplen; cada una se revisa por separado:`
+    : 'esta respuesta no cumple:';
   const lines = [
-    `${LOG_PREFIX}: ${problem}`,
+    `${LOG_PREFIX}: ${summary}`,
+    ...problems.map((problem) => `- ${problem.problem}.`),
     'Antes de publicar, cargá la skill `codex-comment-closeout` si el comentario es de Codex o de Claude (chatgpt-codex-connector[bot], claude[bot]), o `inline-thread-autofix` si es de una persona, y armá el body con su variante.',
     `El body tiene que llevar uno de estos encabezados y, salvo «Closeout realizado sin reply», el pie ${FOOTER_MARK} …</sub>:`,
     ...signatures.map((signature) => `- ${signature}`),
@@ -90,8 +112,9 @@ export function evaluateHookInput(hookInput, {
     return null;
   }
   const cwd = typeof hookInput.cwd === 'string' ? hookInput.cwd : process.cwd();
-  const analysis = analyzeCommand(command, { cwd, platform, homeDirectory });
-  if (analysis.kind === COMMAND_KIND.none) {
+  const shell = hookInput.tool_name === 'PowerShell' ? SHELL.powershell : SHELL.bash;
+  const replies = analyzeCommand(command, { cwd, platform, homeDirectory, shell });
+  if (replies.length === 0) {
     return null;
   }
   const { templates, errors } = loadReplyTemplates(pluginRoot);
@@ -100,10 +123,8 @@ export function evaluateHookInput(hookInput, {
       systemMessage: `${LOG_PREFIX}: no pude leer los templates de respuesta (${errors.join('; ')}), así que no revisé esta respuesta de PR.`,
     };
   }
-  const normalizedText = normalizeForComparison(analysis.texts.join('\n'));
-  const matchingTemplates = findMatchingTemplates(templates, normalizedText);
-  const hasFooter = normalizedText.includes(normalizeForComparison(FOOTER_MARK));
-  if (matchingTemplates.some((template) => !template.requiresFooter || hasFooter)) {
+  const problems = replies.map((reply) => findReplyProblem(reply, templates)).filter(Boolean);
+  if (problems.length === 0) {
     return null;
   }
   return {
@@ -111,10 +132,9 @@ export function evaluateHookInput(hookInput, {
       hookEventName: HOOK_EVENT_NAME,
       permissionDecision: 'deny',
       permissionDecisionReason: buildDenyReason({
-        kind: analysis.kind,
+        problems,
+        replyCount: replies.length,
         signatures: templates.map((template) => template.signature),
-        headerWithoutFooter: matchingTemplates[0]?.signature,
-        unreadablePaths: analysis.unreadablePaths,
       }),
     },
   };

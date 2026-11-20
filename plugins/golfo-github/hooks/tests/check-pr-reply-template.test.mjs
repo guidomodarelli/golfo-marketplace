@@ -196,6 +196,63 @@ describe('comandos que no publican', () => {
   });
 });
 
+describe('comandos con varias respuestas o con el body aparte', () => {
+  test('lee una ruta con espacios cuando el campo entero va citado', () => {
+    const templatePath = writeBodyFile('reply body.md', RESOLVED_BODY);
+    const freeFormPath = writeBodyFile('free body.md', FREE_FORM_BODY);
+    assert.equal(decide(`gh api ${REPLIES_ENDPOINT} -F "body=@${templatePath}"`).decision, 'allow');
+    assert.equal(decide(`gh api ${REPLIES_ENDPOINT} -F 'body=@${freeFormPath}'`).decision, 'deny');
+  });
+
+  test('revisa cada respuesta de un comando compuesto por separado', () => {
+    const templated = `gh api ${REPLIES_ENDPOINT} -f body=${shellQuote(RESOLVED_BODY)}`;
+    const freeForm = `gh api repos/acme/widgets/pulls/7/comments/4637729133/replies -f body='Corregido.'`;
+    const { decision, reason } = decide(`${templated} && ${freeForm}`);
+    assert.equal(decision, 'deny');
+    assert.match(reason, /1 de las 2 respuestas/);
+    assert.match(reason, /4637729133\/replies/);
+    assert.equal(decide(`${templated} && ${templated}`).decision, 'allow');
+  });
+
+  test('un body que menciona gh no se parte en otra invocación', () => {
+    const bodyMentioningGh = RESOLVED_BODY.replace('el menú conserva', 'el ejemplo de `gh pr comment` conserva');
+    assert.equal(decide(`gh api ${REPLIES_ENDPOINT} -f body=${shellQuote(bodyMentioningGh)}`).decision, 'allow');
+  });
+
+  test('lee el body de una variable asignada con un heredoc antes del gh', () => {
+    const command = `body=$(cat <<'EOF'\n${RESOLVED_BODY}\nEOF\n)\ngh api ${REPLIES_ENDPOINT} -f body="$body"`;
+    assert.equal(decide(command).decision, 'allow');
+  });
+
+  test('con dos variables, cada respuesta usa solo la suya', () => {
+    const command = [
+      `good=${shellQuote(RESOLVED_BODY)}`,
+      "bad='Corregido.'",
+      `gh api ${REPLIES_ENDPOINT} -f body="$good"`,
+      'gh api repos/acme/widgets/pulls/7/comments/4637729133/replies -f body="$bad"',
+    ].join('\n');
+    assert.equal(decide(command).decision, 'deny');
+  });
+
+  test('avisa cuando el body es una variable que el comando no asigna', () => {
+    const { decision, reason } = decide(`gh api ${REPLIES_ENDPOINT} -f body="$REPLY_BODY"`);
+    assert.equal(decision, 'deny');
+    assert.match(reason, /No pude leer el body de: \$REPLY_BODY/);
+  });
+
+  test('lee una variable de PowerShell asignada con un here-string', () => {
+    const command = `$body = @'\n${RESOLVED_BODY}\n'@\ngh api ${REPLIES_ENDPOINT} -f "body=$body"`;
+    assert.equal(decide(command, { toolName: 'PowerShell' }).decision, 'allow');
+  });
+
+  test('reconoce gh pr comment con flags antes del subcomando', () => {
+    const body = '"Fixed. Addressed by [Claude Code](https://claude.com/claude-code)"';
+    assert.equal(decide(`gh --repo acme/widgets pr comment 7 --body ${body}`).decision, 'deny');
+    assert.equal(decide(`gh -R acme/widgets pr comment 7 --body ${body}`).decision, 'deny');
+    assert.equal(decide(`gh pr --repo acme/widgets comment 7 --body ${body}`).decision, 'deny');
+  });
+});
+
 describe('controles y fallas del hook', () => {
   test('la persona lo puede apagar desde el entorno de Claude Code', () => {
     const command = `gh api ${REPLIES_ENDPOINT} -f body=${shellQuote(FREE_FORM_BODY)}`;

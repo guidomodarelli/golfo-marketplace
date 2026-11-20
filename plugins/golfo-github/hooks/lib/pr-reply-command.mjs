@@ -1,12 +1,14 @@
 /**
- * Reconoce si un comando de shell (Bash o PowerShell) publica o edita una respuesta en un PR de
- * GitHub y junta los textos donde puede estar el body: el propio comando y los archivos que lee.
- * El comando no se ejecuta ni se expande: un body que depende de una variable no se puede leer.
+ * Reconoce qué invocaciones de `gh` de un comando (Bash o PowerShell) publican o editan una
+ * respuesta en un PR de GitHub y junta, para cada una, los textos donde puede estar su body: la
+ * propia invocación, los archivos que lee y las variables que usa, si el comando las asigna.
+ * El comando no se ejecuta ni se expande.
  */
 import { readFileSync } from 'node:fs';
 import { posix, win32 } from 'node:path';
+import { SEGMENT_TYPE, SHELL, splitCommandSegments } from './shell-segments.mjs';
 
-/** Qué tipo de escritura hace el comando. */
+/** Qué tipo de escritura hace una invocación. */
 export const COMMAND_KIND = {
   /** No publica nada en un PR, o publica algo que no responde a otro comentario. */
   none: 'none',
@@ -19,9 +21,12 @@ export const COMMAND_KIND = {
 /** Tamaño máximo de un archivo de body que se lee, para no cargar un archivo enorme por error. */
 export const MAX_BODY_FILE_BYTES = 1024 * 1024;
 
+/** Largo máximo con que se muestra una invocación en el motivo del rechazo. */
+export const INVOCATION_LABEL_MAX_LENGTH = 100;
+
+const MAX_VARIABLE_DEPTH = 5;
 const PATH_SEGMENT = String.raw`[^/\s"'\x60]+`;
-const GH_COMMAND_PATTERN = /(^|[\s;&|(`'"])gh(\.exe)?\s/;
-const WRITE_FLAG_PATTERN = /(^|\s)(-f|-F|--field|--raw-field|--input)(\s|=)|(-X\s*|--method[=\s]+)(POST|PATCH|PUT)\b/i;
+const WRITE_FLAG_PATTERN = /(^|\s)["']?(-f|-F|--field|--raw-field|--input)(\s|=)|(-X\s*|--method[=\s]+)(POST|PATCH|PUT)\b/i;
 
 const THREAD_REPLY_PATTERNS = [
   new RegExp(String.raw`pulls/${PATH_SEGMENT}/comments/${PATH_SEGMENT}/replies\b`),
@@ -37,7 +42,9 @@ const COMMENT_WRITE_PATTERNS = [
   new RegExp(String.raw`issues/comments/${PATH_SEGMENT}`),
   new RegExp(String.raw`pulls/${PATH_SEGMENT}/reviews/${PATH_SEGMENT}(?![/\w])`),
 ];
-const GH_COMMENT_SUBCOMMAND_PATTERN = /\bgh(\.exe)?\s+(pr|issue)\s+comment\b/;
+/** Flags de `gh` (con o sin valor) que pueden ir antes o entre los subcomandos, como `--repo o/r`. */
+const GH_FLAGS = String.raw`(?:\s+--?[\w-]+(?:=\S+|\s+(?!-)[^\s;&|]+)?)*`;
+const GH_COMMENT_SUBCOMMAND_PATTERN = new RegExp(String.raw`^gh(?:\.exe)?${GH_FLAGS}\s+(?:pr|issue)${GH_FLAGS}\s+comment\b`);
 const COMMENT_GRAPHQL_PATTERN = /\b(updatePullRequestReviewComment|addComment|updateIssueComment|updatePullRequestReview)\b/;
 
 /**
@@ -50,9 +57,11 @@ const REPLY_SIGNAL_PATTERNS = [
   IN_REPLY_TO_PATTERN,
 ];
 
-const PATH_TOKEN = String.raw`("[^"]+"|'[^']+'|[^\s"'\x60;|&()]+)`;
+const PATH_TOKEN = String.raw`(?<path>"[^"]+"|'[^']+'|[^\s"'\x60;|&()]+)`;
 const BODY_FILE_PATTERNS = [
-  new RegExp(String.raw`[A-Za-z_]+=@${PATH_TOKEN}`, 'g'),
+  // Campo citado entero: -F "body=@/tmp/reply body.md".
+  /(?<quote>["'])[A-Za-z_]+=@(?<path>(?:(?!\k<quote>)[^\n])+)\k<quote>/g,
+  new RegExp(String.raw`(?<!["'\w])[A-Za-z_]+=@${PATH_TOKEN}`, 'g'),
   new RegExp(String.raw`--input(?:=|\s+)${PATH_TOKEN}`, 'g'),
   new RegExp(String.raw`--body-file(?:=|\s+)${PATH_TOKEN}`, 'g'),
   new RegExp(String.raw`\$\(\s*(?:cat\s+|<\s*)${PATH_TOKEN}\s*\)`, 'g'),
@@ -60,6 +69,8 @@ const BODY_FILE_PATTERNS = [
   new RegExp(String.raw`ReadAllText\(\s*${PATH_TOKEN}`, 'g'),
 ];
 const GH_COMMENT_BODY_FILE_PATTERN = new RegExp(String.raw`\s-F\s+${PATH_TOKEN}`, 'g');
+const VARIABLE_REFERENCE_PATTERN = /\$\{?([A-Za-z_]\w*)\}?/g;
+const BODY_VARIABLE_PATTERN = /(?:body=@?|--body(?:-file)?(?:=|\s+)|(?:^|\s)-b\s+)["']?[^\s"']*?\$\{?([A-Za-z_]\w*)/g;
 const STDIN_PATH = '-';
 const UNRESOLVED_EXPANSION_PATTERN = /[$`%]/;
 const GIT_BASH_DRIVE_PATTERN = /^\/([a-zA-Z])\//;
@@ -77,16 +88,16 @@ function unquote(token) {
 }
 
 /**
- * Lista las rutas de archivo de donde el comando lee el body.
+ * Lista las rutas de archivo de donde un texto de comando lee el body.
  *
- * @param {string} command Comando completo.
+ * @param {string} command Invocación o asignación.
  * @returns {string[]} Rutas sin resolver, sin repetir.
  */
 export function findBodyFilePaths(command) {
-  const patterns = GH_COMMENT_SUBCOMMAND_PATTERN.test(command)
+  const patterns = GH_COMMENT_SUBCOMMAND_PATTERN.test(command.trimStart())
     ? [...BODY_FILE_PATTERNS, GH_COMMENT_BODY_FILE_PATTERN]
     : BODY_FILE_PATTERNS;
-  const paths = patterns.flatMap((pattern) => [...command.matchAll(pattern)].map((match) => unquote(match[1])));
+  const paths = patterns.flatMap((pattern) => [...command.matchAll(pattern)].map((match) => unquote(match.groups.path)));
   // Un token con salto de línea es un here-string de PowerShell (`body=@'…'@`): el body va en el comando.
   return [...new Set(paths)].filter((path) => path !== STDIN_PATH && !path.includes('=') && !path.includes('\n'));
 }
@@ -149,17 +160,15 @@ function readBodyFile(path) {
 }
 
 /**
- * Decide qué tipo de escritura hace el texto del comando, ya sumados los archivos que lee.
+ * Decide qué tipo de escritura hace una invocación de `gh`, ya sumados sus bodies.
  *
- * @param {string} command Comando original.
- * @param {string} combinedText Comando más el contenido de los archivos de body.
+ * @param {string} invocation Texto de la invocación.
+ * @param {string} combinedText Invocación más sus archivos y variables de body.
  * @returns {string} Un valor de {@link COMMAND_KIND}.
  */
-function classify(command, combinedText) {
-  if (!GH_COMMAND_PATTERN.test(command)) {
-    return COMMAND_KIND.none;
-  }
-  const writes = WRITE_FLAG_PATTERN.test(command) || GH_COMMENT_SUBCOMMAND_PATTERN.test(command);
+function classify(invocation, combinedText) {
+  const isCommentSubcommand = GH_COMMENT_SUBCOMMAND_PATTERN.test(invocation.trimStart());
+  const writes = WRITE_FLAG_PATTERN.test(invocation) || isCommentSubcommand;
   const isGraphqlMutation = /\bmutation\b/.test(combinedText);
   const createsThreadReply = THREAD_REPLY_PATTERNS.some((pattern) => pattern.test(combinedText))
     || ((REVIEW_COMMENT_CREATE_PATTERN.test(combinedText) || REVIEW_COMMENT_GRAPHQL_PATTERN.test(combinedText))
@@ -168,7 +177,7 @@ function classify(command, combinedText) {
     return COMMAND_KIND.threadReply;
   }
   const writesComment = (writes && COMMENT_WRITE_PATTERNS.some((pattern) => pattern.test(combinedText)))
-    || GH_COMMENT_SUBCOMMAND_PATTERN.test(command)
+    || isCommentSubcommand
     || (isGraphqlMutation && COMMENT_GRAPHQL_PATTERN.test(combinedText));
   if (writesComment && REPLY_SIGNAL_PATTERNS.some((pattern) => pattern.test(combinedText))) {
     return COMMAND_KIND.commentReply;
@@ -177,17 +186,20 @@ function classify(command, combinedText) {
 }
 
 /**
- * Analiza un comando antes de que se ejecute.
+ * Junta los textos de un tramo: el propio texto, los archivos que lee y, de forma transitiva, lo
+ * asignado a las variables que usa.
  *
- * @param {string} command Comando del tool Bash o PowerShell.
- * @param {{ cwd: string, platform: string, homeDirectory: string }} context Directorio, plataforma y home.
- * @returns {{ kind: string, texts: string[], unreadablePaths: string[] }} Tipo de escritura, textos donde
- *   buscar el body y las rutas de body que no se pudieron leer.
+ * @param {string} text Texto del tramo.
+ * @param {Map<string, string[]>} assignments Textos asignados a cada variable del comando.
+ * @param {object} context Directorio, plataforma y home.
+ * @param {Set<string>} visitedVariables Variables ya sumadas, para no entrar en ciclos.
+ * @param {number} depth Profundidad actual de variables anidadas.
+ * @returns {{ texts: string[], unreadablePaths: string[] }} Textos y rutas que no se pudieron leer.
  */
-export function analyzeCommand(command, context) {
-  const texts = [command];
+function collectSegmentTexts(text, assignments, context, visitedVariables, depth) {
+  const texts = [text];
   const unreadablePaths = [];
-  for (const rawPath of findBodyFilePaths(command)) {
+  for (const rawPath of findBodyFilePaths(text)) {
     const resolvedPath = resolveBodyFilePath(rawPath, context);
     if (resolvedPath === null) {
       unreadablePaths.push(rawPath);
@@ -199,5 +211,56 @@ export function analyzeCommand(command, context) {
       unreadablePaths.push(rawPath);
     }
   }
-  return { kind: classify(command, texts.join('\n')), texts, unreadablePaths };
+  if (depth >= MAX_VARIABLE_DEPTH) {
+    return { texts, unreadablePaths };
+  }
+  for (const [, variableName] of text.matchAll(VARIABLE_REFERENCE_PATTERN)) {
+    if (visitedVariables.has(variableName) || !assignments.has(variableName)) {
+      continue;
+    }
+    visitedVariables.add(variableName);
+    for (const assignedText of assignments.get(variableName)) {
+      const nested = collectSegmentTexts(assignedText, assignments, context, visitedVariables, depth + 1);
+      texts.push(...nested.texts);
+      unreadablePaths.push(...nested.unreadablePaths);
+    }
+  }
+  return { texts, unreadablePaths };
+}
+
+/**
+ * Analiza un comando antes de que se ejecute y devuelve solo las invocaciones de `gh` que
+ * publican o editan una respuesta, cada una con sus propios textos de body.
+ *
+ * @param {string} command Comando del tool Bash o PowerShell.
+ * @param {{ cwd: string, platform: string, homeDirectory: string, shell?: string }} context Directorio,
+ *   plataforma, home y shell (`bash` por defecto).
+ * @returns {{ kind: string, label: string, texts: string[], unreadablePaths: string[] }[]} Una entrada por
+ *   invocación que responde en un PR.
+ */
+export function analyzeCommand(command, context) {
+  const segments = splitCommandSegments(command, context.shell ?? SHELL.bash);
+  const assignments = new Map();
+  for (const segment of segments.filter((candidate) => candidate.type === SEGMENT_TYPE.variableAssignment)) {
+    assignments.set(segment.name, [...(assignments.get(segment.name) ?? []), segment.text]);
+  }
+  const replies = [];
+  for (const segment of segments.filter((candidate) => candidate.type === SEGMENT_TYPE.ghInvocation)) {
+    const { texts, unreadablePaths } = collectSegmentTexts(segment.text, assignments, context, new Set(), 0);
+    const kind = classify(segment.text, texts.join('\n'));
+    if (kind === COMMAND_KIND.none) {
+      continue;
+    }
+    for (const [, variableName] of segment.text.matchAll(BODY_VARIABLE_PATTERN)) {
+      if (!assignments.has(variableName)) {
+        unreadablePaths.push(`$${variableName}`);
+      }
+    }
+    const firstLine = segment.text.trim().split('\n')[0];
+    const label = firstLine.length > INVOCATION_LABEL_MAX_LENGTH
+      ? `${firstLine.slice(0, INVOCATION_LABEL_MAX_LENGTH)}…`
+      : firstLine;
+    replies.push({ kind, label, texts, unreadablePaths: [...new Set(unreadablePaths)] });
+  }
+  return replies;
 }

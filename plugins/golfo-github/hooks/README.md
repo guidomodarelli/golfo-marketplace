@@ -19,7 +19,9 @@ Solo corre cuando el tool `Bash` o `PowerShell` ejecuta `gh` (campo `if` de `hoo
 
 Un comentario que no responde a nadie (por ejemplo, el que pide una review a Codex) pasa sin revisar.
 
-El body se busca en el comando y en los archivos que lee: `-F body=@<ruta>`, `--input <ruta>` (también JSON con escapes `\uXXXX`), `--body-file <ruta>`, `-F <ruta>` de `gh pr comment`, `$(cat <ruta>)` y `Get-Content <ruta>`. Una ruta con variables (`$SCRATCH/reply.md`) no se puede leer sin ejecutar el comando: el hook la frena y pide una ruta literal.
+Cada invocación de `gh` se revisa por separado: en un comando que publica dos respuestas (`gh api … && gh api …`), las dos tienen que cumplir. El comando se parte respetando comillas, heredocs y here-strings, así que un body que menciona `gh api` no abre otra invocación. Los flags de `gh` pueden ir antes o entre los subcomandos (`gh --repo o/r pr comment`).
+
+El body de cada invocación se busca en su propio texto, en los archivos que lee y en las variables que usa, si el mismo comando las asigna (`body=$(cat <<'EOF' … EOF)` en Bash, `$body = @' … '@` en PowerShell). Los archivos se leen de `-F body=@<ruta>` (también `-F "body=@<ruta con espacios>"`), `--input <ruta>` (JSON con escapes `\uXXXX` incluido), `--body-file <ruta>`, `-F <ruta>` de `gh pr comment`, `$(cat <ruta>)` y `Get-Content <ruta>`. Una ruta con variables (`$SCRATCH/reply.md`) o una variable que el comando no asigna no se pueden leer sin ejecutarlo: el hook las frena y pide una ruta literal.
 
 ## Cuándo deja pasar
 
