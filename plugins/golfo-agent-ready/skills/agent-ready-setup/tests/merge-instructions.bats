@@ -1,0 +1,1062 @@
+#!/usr/bin/env bats
+
+setup() {
+  repository_root="$(cd "$BATS_TEST_DIRNAME/../../../../.." && pwd)"
+  skill_dir="$repository_root/plugins/golfo-agent-ready/skills/agent-ready-setup"
+  # The hook runs the sync right here: the detached update has its own suite.
+  export AGENT_READY_SETUP_SYNC_FOREGROUND=1
+  test_root="$(mktemp -d)"
+  # Native Windows symlinks under Git Bash (needs Developer Mode); ignored elsewhere.
+  export MSYS="${MSYS:+$MSYS }winsymlinks:nativestrict"
+  project_dir="$test_root/project"
+  fake_bin="$test_root/bin"
+  mkdir -p "$project_dir" "$fake_bin" "$test_root/tmp"
+  export TMPDIR="$test_root/tmp"
+  # Keeps the SessionStart upgrade window stamp out of the user's real cache.
+  export XDG_CACHE_HOME="$test_root/cache"
+  source "$BATS_TEST_DIRNAME/content-pack.bash"
+  use_content_pack
+  git -C "$project_dir" -c init.defaultBranch=main init -q
+  cd "$project_dir"
+  managed_placeholder='<!-- AGENT-READY MANAGED BLOCK -->'
+}
+
+# Background tasks run detached from the hook; wait for their observable effect.
+wait_for_file_containing() {
+  local path="$1"
+  local expected="$2"
+  local attempt
+
+  for attempt in $(seq 1 100); do
+    if [[ -f "$path" ]] && grep -Fq -- "$expected" "$path"; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  return 1
+}
+
+teardown() {
+  # Background processes may outlive a timed-out test; stop them so bats can finish.
+  if [[ -n "${background_pids:-}" ]]; then
+    kill $background_pids 2>/dev/null || true
+  fi
+  cd "$repository_root"
+  # Windows cannot delete files that a detached background review still has open;
+  # retry for a few seconds so it can finish before failing the test.
+  local removal_attempt
+  for removal_attempt in $(seq 1 50); do
+    rm -rf "$test_root" 2>/dev/null && return 0
+    sleep 0.2
+  done
+  rm -rf "$test_root"
+}
+
+# The skill directory with the content of this repository composed with the engine (content-source).
+content_skill() {
+  python3 "$skill_dir/scripts/agent-ready-state.py" content-source --project . --skill-dir "$skill_dir" | tr -d '\r'
+}
+
+render_managed_block() {
+  local stack="$1"
+  local source_dir="${2:-$(content_skill)}"
+
+  bash "$source_dir/scripts/render-instruction-template.sh" \
+    --template "$source_dir/assets/common/agents-template.md" \
+    --rules-dir "$source_dir/assets/stacks/$stack/rules" \
+    --common-rules-dir "$source_dir/assets/common/rules" \
+    --centralization "$source_dir/assets/instruction-centralization.md" \
+    --managed-block
+}
+
+write_review_response() {
+  local project_content="$1"
+  local removed_json="${2:-[]}"
+  local inconsistencies_json="${3:-[]}"
+
+  jq -n \
+    --arg content "$project_content" \
+    --argjson removed "$removed_json" \
+    --argjson inconsistencies "$inconsistencies_json" \
+    '{project_content:$content, removed:$removed, inconsistencies:$inconsistencies, reason:"Reviewed project content."}' \
+    > "$test_root/provider-response.json"
+  cat > "$fake_bin/claude" <<EOF
+#!/bin/bash
+printf '%s\\n' called >> "$test_root/provider-calls.log"
+printf '%s\\n' "\$*" > "$test_root/provider-args.log"
+{ cat "$test_root/provider-args.log"; cat; } > "$test_root/provider-prompt.log"
+cat "$test_root/provider-response.json"
+EOF
+  chmod +x "$fake_bin/claude"
+}
+
+run_merge() {
+  local stack="$1"
+  local source_dir="${2:-$skill_dir}"
+
+  PATH="$fake_bin:$PATH" run bash "$source_dir/scripts/merge-instructions.sh" \
+    --provider claude --stack "$stack" --skill-dir "$source_dir"
+}
+
+provider_call_count() {
+  if [[ -f "$test_root/provider-calls.log" ]]; then
+    wc -l < "$test_root/provider-calls.log" | tr -d ' '
+  else
+    printf '0\n'
+  fi
+}
+
+# Prints the cached review of AGENTS.md, from the cache that every worktree of the repository
+# shares; fails when there is none.
+instructions_review_entry() {
+  local cache_file
+  cache_file="$(git rev-parse --path-format=absolute --git-common-dir)/info/agent-ready/reviews.json"
+  [[ -f "$cache_file" ]] || return 1
+  jq -ce '[.entries | to_entries[] | select(.key | startswith("instructions:")) | .value]
+    | if length == 1 then .[0] else error("expected one instructions entry") end' "$cache_file"
+}
+
+# Git Bash without native symlinks copies instead of linking; these tests check real symlinks.
+skip_without_symlinks() {
+  local probe_target="$test_root/symlink-probe-target"
+  local probe_link="$test_root/symlink-probe-link"
+  : > "$probe_target"
+  ln -s "$probe_target" "$probe_link" 2>/dev/null || true
+  if [[ ! -L "$probe_link" ]]; then
+    rm -f "$probe_target" "$probe_link"
+    skip "requiere symlinks reales (en Windows: Modo de desarrollador o una shell elevada)"
+  fi
+  rm -f "$probe_target" "$probe_link"
+  # Where git checks symlinks out as files, the engine makes the views hard links (asset-sync-common.sh).
+  if [[ "$(git config --type=bool --get core.symlinks 2>/dev/null)" == "false" ]]; then
+    skip "core.symlinks=false: git saca los symlinks como archivos, así que las vistas son hard links"
+  fi
+}
+
+# bats test_tags=area:managed-block
+@test "legacy AGENTS receives the verbatim managed block and keeps project content" {
+  cat > AGENTS.md <<'EOF'
+# Existing project instructions
+
+Run make verify before merging.
+
+## Rules
+
+@./rules/coding-style.md
+@./rules/security.md
+EOF
+  write_review_response $'# Existing project instructions\n\nRun make verify before merging.\n\n'"$managed_placeholder" \
+    '["## Rules — replaced by managed block", "@./rules/coding-style.md — replaced by managed block", "@./rules/security.md — replaced by managed block"]'
+
+  run_merge node
+
+  [ "$status" -eq 0 ]
+  [ "$(cat AGENTS.md)" = "$(printf '%s\n\n%s\n\n%s' '# Existing project instructions' 'Run make verify before merging.' "$(render_managed_block node)")" ]
+  ! grep -Eq '@[^[:space:]]*rules/' AGENTS.md
+  [[ "$output" == *"Removed redundant lines outside the managed block:"* ]]
+  [ "$(instructions_review_entry | jq -r '[.provider, .model, .verdict] | join(" ")')" = "claude claude-sonnet-5-5 consistent" ]
+  [ ! -e .git/info/agent-ready-instructions-reviewed.sha256 ]
+
+  cat > "$fake_bin/claude" <<'EOF'
+#!/bin/bash
+exit 42
+EOF
+  run_merge node
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"already reviewed; AI review not required."* ]]
+}
+
+# bats test_tags=area:managed-block
+@test "managed block is replaced verbatim and content outside markers is preserved" {
+  cat > AGENTS.md <<'EOF'
+# Project
+
+Project description.
+
+<!-- BEGIN AGENT-READY MANAGED -->
+## Rules
+
+- Read and follow `.agents/rules/retired.md`.
+Local edit inside the block.
+<!-- END AGENT-READY MANAGED -->
+
+## Ownership
+
+Team Astra owns this service.
+EOF
+  write_review_response $'# Project\n\nProject description.\n\n'"$managed_placeholder"$'\n\n## Ownership\n\nTeam Astra owns this service.'
+
+  run_merge node
+
+  [ "$status" -eq 0 ]
+  expected="$(printf '%s\n\n%s\n\n%s\n%s\n\n%s\n\n%s' '# Project' 'Project description.' \
+    "$(render_managed_block node)" '' '## Ownership' 'Team Astra owns this service.')"
+  [ "$(cat AGENTS.md)" = "$(sed '/^$/N;/^\n$/D' <<< "$expected")" ]
+  ! grep -Fq 'Local edit inside the block.' AGENTS.md
+  ! grep -Fq 'retired.md' AGENTS.md
+  bash "$skill_dir/scripts/render-instruction-template.sh" --validate AGENTS.md \
+    --rules-dir "$content_pack/stacks/node/rules" \
+    --common-rules-dir "$content_pack/base/rules"
+}
+
+# bats test_tags=area:managed-block
+@test "managed block omits skill lists because providers discover skills natively" {
+  printf '%s\n' '# Project' > AGENTS.md
+  write_review_response $'# Project\n\n'"$managed_placeholder"
+
+  run_merge react
+
+  [ "$status" -eq 0 ]
+  ! grep -Fxq '## Skills' AGENTS.md
+  ! grep -Fq 'AGENT-READY RULE REFERENCES' AGENTS.md
+  grep -Fq 'Claude Code already loads these rules from `.claude/rules/`; do not read them again.' AGENTS.md
+  ! grep -Fq '{{AGENT_READY_' AGENTS.md
+  grep -Fxq '## Centralización recursiva de instrucciones' AGENTS.md
+  [ "$(grep -c '^<!-- BEGIN AGENT-READY MANAGED -->$' AGENTS.md)" -eq 1 ]
+}
+
+# bats test_tags=area:review
+@test "Claude review defaults to Sonnet 5 with medium effort" {
+  unset AGENT_READY_SETUP_MERGE_MODEL AGENT_READY_SETUP_MERGE_REASONING_EFFORT
+  printf '%s\n' '# Existing project instructions' > AGENTS.md
+  write_review_response $'# Existing project instructions\n\n'"$managed_placeholder"
+
+  run_merge node
+
+  [ "$status" -eq 0 ]
+  grep -Fq -- '--model claude-sonnet-5-5 --effort medium' "$test_root/provider-prompt.log"
+}
+
+# bats test_tags=area:review
+@test "review deletes project lines already covered by rules" {
+  cat > AGENTS.md <<'EOF'
+# Project
+
+Use Jest and React Testing Library for tests.
+Deploy with make release.
+EOF
+  write_review_response $'# Project\n\nDeploy with make release.\n\n'"$managed_placeholder" \
+    '["Use Jest and React Testing Library for tests. — covered by .agents/rules/testing.md"]'
+
+  run_merge react
+
+  [ "$status" -eq 0 ]
+  ! grep -Fq 'Use Jest and React Testing Library for tests.' AGENTS.md
+  grep -Fxq 'Deploy with make release.' AGENTS.md
+  [[ "$output" == *"covered by .agents/rules/testing.md"* ]]
+}
+
+# bats test_tags=area:review
+@test "review reports inconsistencies and keeps the conflicting content" {
+  cat > AGENTS.md <<'EOF'
+# Project
+
+Mock design system components in every test.
+EOF
+  write_review_response $'# Project\n\nMock design system components in every test.\n\n'"$managed_placeholder" '[]' \
+    '["Mock design system components in every test. — conflicts with .agents/rules/testing.md: design system components must not be mocked"]'
+
+  run_merge react
+
+  [ "$status" -eq 0 ]
+  grep -Fxq 'Mock design system components in every test.' AGENTS.md
+  [[ "$output" == *"Instruction inconsistencies (manual review required; content preserved):"* ]]
+  [[ "$output" == *"conflicts with .agents/rules/testing.md"* ]]
+  [ "$(instructions_review_entry | jq -r '.verdict')" = findings ]
+
+  # The next sync takes the verdict from the cache and still reports what it found.
+  cat > "$fake_bin/claude" <<'EOF'
+#!/bin/bash
+exit 42
+EOF
+  run_merge react
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"already reviewed; AI review not required."* ]]
+  [[ "$output" == *"Instruction inconsistencies from the last review"* ]]
+  [[ "$output" == *"conflicts with .agents/rules/testing.md"* ]]
+}
+
+# bats test_tags=area:review
+@test "the cached review of AGENTS.md stays until the model changes or --recheck asks for a new one" {
+  printf '%s\n' '# Existing project instructions' > AGENTS.md
+  write_review_response $'# Existing project instructions\n\n'"$managed_placeholder"
+
+  run_merge node
+  [ "$status" -eq 0 ]
+  run_merge node
+  [ "$(provider_call_count)" -eq 1 ]
+
+  AGENT_READY_SETUP_MERGE_MODEL=claude-other-model run_merge node
+  [ "$status" -eq 0 ]
+  [ "$(provider_call_count)" -eq 2 ]
+  [ "$(instructions_review_entry | jq -r '.model')" = claude-other-model ]
+
+  PATH="$fake_bin:$PATH" run bash "$skill_dir/scripts/merge-instructions.sh" \
+    --provider claude --stack node --skill-dir "$skill_dir" --recheck
+  [ "$status" -eq 0 ]
+  [ "$(provider_call_count)" -eq 3 ]
+}
+
+# bats test_tags=area:review
+@test "an AGENTS.md created from the template needs no review from any provider" {
+  run_merge node
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"no project instructions existed"* ]]
+  [ "$(instructions_review_entry | jq -r '.provider')" = template ]
+
+  run_merge node
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"already reviewed; AI review not required."* ]]
+  [ "$(provider_call_count)" -eq 0 ]
+}
+
+# bats test_tags=area:review
+@test "review that adds or rewrites lines is rejected and only the managed block is applied" {
+  printf '%s\n' '# Keep this file' > AGENTS.md
+  write_review_response $'# Keep this file, reworded\n\n'"$managed_placeholder"
+
+  run_merge node
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"review rejected: reviewed content adds or rewrites a line"* ]]
+  [ "$(cat AGENTS.md)" = "$(printf '%s\n\n%s' '# Keep this file' "$(render_managed_block node)")" ]
+  ! instructions_review_entry
+}
+
+# bats test_tags=area:review
+@test "review output without the placeholder or with fences is rejected" {
+  printf '%s\n' '# Keep this file' > AGENTS.md
+  write_review_response '# Keep this file'
+
+  run_merge node
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"must keep the managed block placeholder exactly once"* ]]
+  grep -Fxq '# Keep this file' AGENTS.md
+
+  write_review_response $'```markdown\n# Keep this file\n'"$managed_placeholder"$'\n```'
+  run_merge node
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"fenced instead of Markdown"* ]]
+  grep -Fxq '# Keep this file' AGENTS.md
+}
+
+# AGENTS.md with the managed block, the section of the node stack and project content after it.
+write_agents_with_section() {
+  {
+    printf '%s\n\n' '# Project'
+    render_managed_block node
+    printf '\n%s\n%s\n%s\n%s\n' '<!-- BEGIN AGENT-READY MANAGED: node -->' '## Node.js' \
+      'Review a pull request with /node-review-pr.' '<!-- END AGENT-READY MANAGED: node -->'
+    printf '\n%s\n\n%s\n%s\n' '## Ownership' 'Team Astra owns this service.' 'Review a pull request with /node-review-pr.'
+  } > AGENTS.md
+}
+
+# Number of lines of AGENTS.md that are exactly the given marker.
+marker_count() {
+  grep -Fxc -- "$1" AGENTS.md || true
+}
+
+# bats test_tags=area:review
+@test "the review never sees a stack section as project content, and the section stays verbatim" {
+  write_agents_with_section
+  section_placeholder='<!-- AGENT-READY MANAGED SECTION: node -->'
+  write_review_response $'# Project\n\n'"$managed_placeholder"$'\n\n'"$section_placeholder"$'\n\n## Ownership\n\nTeam Astra owns this service.' \
+    '["Review a pull request with /node-review-pr. — covered by the node section"]'
+
+  run_merge node
+
+  [ "$status" -eq 0 ]
+  # The section goes to the provider as managed content; the project content carries its placeholder.
+  awk '/^<managed_block>$/,/^<\/managed_block>$/' "$test_root/provider-prompt.log" | grep -Fxq '## Node.js'
+  awk '/^<project_content>$/,/^<\/project_content>$/' "$test_root/provider-prompt.log" | grep -Fxq "$section_placeholder"
+  ! awk '/^<project_content>$/,/^<\/project_content>$/' "$test_root/provider-prompt.log" | grep -Fxq '## Node.js'
+  [ "$(marker_count '<!-- BEGIN AGENT-READY MANAGED: node -->')" -eq 1 ]
+  [ "$(marker_count '<!-- END AGENT-READY MANAGED: node -->')" -eq 1 ]
+  grep -Fxq '## Node.js' AGENTS.md
+  [ "$(grep -Fxc 'Review a pull request with /node-review-pr.' AGENTS.md)" -eq 1 ]
+  grep -Fxq 'Team Astra owns this service.' AGENTS.md
+  ! grep -Fq "$section_placeholder" AGENTS.md
+  bash "$skill_dir/scripts/render-instruction-template.sh" --validate AGENTS.md \
+    --rules-dir "$content_pack/stacks/node/rules" \
+    --common-rules-dir "$content_pack/base/rules"
+}
+
+# bats test_tags=area:review
+@test "a review that drops, repeats or rewrites a stack section is rejected and the file keeps it" {
+  write_agents_with_section
+  cp AGENTS.md "$test_root/before"
+  section_placeholder='<!-- AGENT-READY MANAGED SECTION: node -->'
+
+  # Dropped.
+  write_review_response $'# Project\n\n'"$managed_placeholder"$'\n\n## Ownership\n\nTeam Astra owns this service.'
+  run_merge node
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"must keep the stack section placeholder $section_placeholder exactly once"* ]]
+  cmp -s AGENTS.md "$test_root/before"
+
+  # Repeated: a second copy of the section would duplicate its markers.
+  write_review_response $'# Project\n\n'"$managed_placeholder"$'\n\n'"$section_placeholder"$'\n\n## Ownership\n\n'"$section_placeholder"
+  run_merge node
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"must keep the stack section placeholder $section_placeholder exactly once"* ]]
+  cmp -s AGENTS.md "$test_root/before"
+
+  # Markers written by the review itself, with or without the placeholder.
+  for written_marker in '<!-- END AGENT-READY MANAGED: node -->' '<!-- BEGIN AGENT-READY MANAGED: other -->'; do
+    write_review_response $'# Project\n\n'"$managed_placeholder"$'\n\n'"$section_placeholder"$'\n'"$written_marker"
+    run_merge node
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"contains managed markers outside the managed block"* ]]
+    cmp -s AGENTS.md "$test_root/before"
+  done
+
+  # The content of the section never comes from the review: rewriting it is a line the input did not have.
+  write_review_response $'# Project\n\n'"$managed_placeholder"$'\n\n'"$section_placeholder"$'\n## Node.js, reworded'
+  run_merge node
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"reviewed content adds or rewrites a line"* ]]
+  cmp -s AGENTS.md "$test_root/before"
+}
+
+# bats test_tags=area:review
+@test "markers of a stack section that do not pair up keep the review from deleting them" {
+  write_agents_with_section
+  # A second start of the node section, as a bad hand edit leaves it.
+  printf '%s\n' '<!-- BEGIN AGENT-READY MANAGED: node -->' >> AGENTS.md
+  cp AGENTS.md "$test_root/before"
+  # The review deletes every marker line it sees: only deletions, so the line check alone would accept it.
+  write_review_response $'# Project\n\n'"$managed_placeholder"$'\n\n## Node.js\nReview a pull request with /node-review-pr.\n\n## Ownership\n\nTeam Astra owns this service.'
+
+  run_merge node
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"the markers of a stack section do not pair up"* ]]
+  cmp -s AGENTS.md "$test_root/before"
+}
+
+# bats test_tags=area:managed-block
+@test "apply-managed-block keeps each stack section once and verbatim, run after run" {
+  write_agents_with_section
+  awk '/^<!-- BEGIN AGENT-READY MANAGED: node -->$/,/^<!-- END AGENT-READY MANAGED: node -->$/' AGENTS.md \
+    > "$test_root/section-before"
+
+  for run_number in 1 2; do
+    run_apply_managed_block node
+    [ "$status" -eq 0 ]
+    [ "$(provider_call_count)" -eq 0 ]
+    [ "$(marker_count '<!-- BEGIN AGENT-READY MANAGED -->')" -eq 1 ]
+    [ "$(marker_count '<!-- BEGIN AGENT-READY MANAGED: node -->')" -eq 1 ]
+    [ "$(marker_count '<!-- END AGENT-READY MANAGED: node -->')" -eq 1 ]
+    awk '/^<!-- BEGIN AGENT-READY MANAGED: node -->$/,/^<!-- END AGENT-READY MANAGED: node -->$/' AGENTS.md \
+      | cmp -s - "$test_root/section-before"
+  done
+}
+
+# bats test_tags=area:review
+@test "provider failure applies the managed block and retries the review next sync" {
+  printf '%s\n' '# Keep this file' > AGENTS.md
+  cat > "$fake_bin/claude" <<EOF
+#!/bin/bash
+printf '%s\\n' called >> "$test_root/provider-calls.log"
+exit 1
+EOF
+  chmod +x "$fake_bin/claude"
+
+  run_merge node
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Claude review provider failed; applying the managed block without redundancy review."* ]]
+  [ "$(cat AGENTS.md)" = "$(printf '%s\n\n%s' '# Keep this file' "$(render_managed_block node)")" ]
+
+  run_merge node
+  [ "$status" -eq 0 ]
+  [ "$(provider_call_count)" -eq 2 ]
+}
+
+# bats test_tags=area:review
+@test "invalid structured output keeps project content and applies the managed block" {
+  printf '%s\n' '# Keep this file' > AGENTS.md
+  cat > "$fake_bin/claude" <<'EOF'
+#!/bin/bash
+printf '%s\n' 'not-json'
+EOF
+  chmod +x "$fake_bin/claude"
+
+  run_merge react
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"invalid structured output"* ]]
+  grep -Fxq '# Keep this file' AGENTS.md
+  grep -Fxq '<!-- BEGIN AGENT-READY MANAGED -->' AGENTS.md
+}
+
+# bats test_tags=area:managed-block
+@test "malformed managed markers require human review without invoking the provider" {
+  cat > AGENTS.md <<'EOF'
+<!-- BEGIN AGENT-READY MANAGED -->
+<!-- BEGIN AGENT-READY MANAGED -->
+<!-- END AGENT-READY MANAGED -->
+EOF
+  before_hash="$(shasum AGENTS.md | cut -d ' ' -f 1)"
+  write_review_response "$managed_placeholder"
+
+  run_merge node
+
+  [ "$status" -eq 2 ]
+  [ "$(shasum AGENTS.md | cut -d ' ' -f 1)" = "$before_hash" ]
+  [ "$(provider_call_count)" -eq 0 ]
+  [[ "$output" == *"Human confirmation required"* ]]
+}
+
+# bats test_tags=area:review
+@test "provider prompt includes managed block, rule contents, and project content" {
+  printf '%s\n' '# Existing project instructions' > AGENTS.md
+  write_review_response $'# Existing project instructions\n\n'"$managed_placeholder"
+
+  run_merge node
+
+  [ "$status" -eq 0 ]
+  grep -Fq '<rule path=".agents/rules/node-security.md">' "$test_root/provider-prompt.log"
+  grep -Fq "$(sed -n '1p' "$content_pack/stacks/node/rules/node-security.md")" "$test_root/provider-prompt.log"
+  grep -Fq '# Existing project instructions' "$test_root/provider-prompt.log"
+  grep -Fq '<!-- BEGIN AGENT-READY MANAGED -->' "$test_root/provider-prompt.log"
+  ! grep -Fq '{{AGENT_READY_' "$test_root/provider-prompt.log"
+  # Documents travel through stdin, never as one oversized command-line argument.
+  ! grep -Fq '# Existing project instructions' "$test_root/provider-args.log"
+}
+
+# bats test_tags=area:managed-block
+@test "new rule files enter the managed block and rule changes trigger a new review" {
+  copy_content_pack
+  printf '%s\n' '# Runtime-specific rules' > "$content_dir/stacks/node/rules/runtime.md"
+  printf '%s\n' '# Existing project instructions' > AGENTS.md
+  write_review_response $'# Existing project instructions\n\n'"$managed_placeholder"
+
+  run_merge node
+
+  [ "$status" -eq 0 ]
+  grep -Fxq -- '- Read and follow `.agents/rules/runtime.md`.' AGENTS.md
+  [ "$(provider_call_count)" -eq 1 ]
+
+  run_merge node
+  [ "$(provider_call_count)" -eq 1 ]
+
+  printf '%s\n' '# Runtime-specific rules, revised' > "$content_dir/stacks/node/rules/runtime.md"
+  run_merge node
+  [ "$status" -eq 0 ]
+  [ "$(provider_call_count)" -eq 2 ]
+}
+
+# bats test_tags=area:managed-block
+@test "common rules are template rules for every stack and never project rules" {
+  mkdir -p .agents/rules
+  cp "$content_pack/base/rules/verify-changes.md" .agents/rules/verify-changes.md
+  printf '%s\n' '# Project' > AGENTS.md
+  write_review_response $'# Project\n\n'"$managed_placeholder"
+
+  run_merge go
+
+  [ "$status" -eq 0 ]
+  grep -Fxq -- '- Read and follow `.agents/rules/language-consistency.md`.' AGENTS.md
+  grep -Fxq -- '- Read and follow `.agents/rules/verify-changes.md`.' AGENTS.md
+  [ "$(grep -c 'rules/verify-changes.md' AGENTS.md)" -eq 1 ]
+  ! grep -Fxq '### Project rules' AGENTS.md
+  grep -Fq '<rule path=".agents/rules/language-consistency.md">' "$test_root/provider-prompt.log"
+}
+
+# bats test_tags=area:managed-block
+@test "a rule defined in both common and stack rules is rejected" {
+  copy_content_pack
+  cp "$content_dir/base/rules/verify-changes.md" "$content_dir/stacks/node/rules/verify-changes.md"
+
+  run bash "$skill_dir/scripts/render-instruction-template.sh" --list-rules \
+    --rules-dir "$content_dir/stacks/node/rules" \
+    --common-rules-dir "$content_dir/base/rules"
+
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"rule is defined in both common and stack rules: verify-changes.md"* ]]
+}
+
+# bats test_tags=area:managed-block
+@test "project rules are listed in the managed block and reviewed with template rules" {
+  skip_without_symlinks
+  mkdir -p .agents/rules/area
+  printf '%s\n' '# Team conventions' 'Deploy only on Tuesdays.' > .agents/rules/team-conventions.md
+  printf '%s\n' '# Area rule' > .agents/rules/area/payments.md
+  cp "$content_pack/stacks/node/rules/node-security.md" .agents/rules/node-security.md
+  ln -s /etc/hosts .agents/rules/linked.md
+  printf '%s\n' '# Project' > AGENTS.md
+  write_review_response $'# Project\n\n'"$managed_placeholder"
+
+  run_merge node
+
+  [ "$status" -eq 0 ]
+  grep -Fxq '### Project rules' AGENTS.md
+  grep -Fxq -- '- Read and follow `.agents/rules/team-conventions.md`.' AGENTS.md
+  grep -Fxq -- '- Read and follow `.agents/rules/area/payments.md`.' AGENTS.md
+  [ "$(grep -c 'rules/node-security.md' AGENTS.md)" -eq 1 ]
+  ! grep -Fq 'linked.md' AGENTS.md
+  grep -Fq '<rule path=".agents/rules/team-conventions.md">' "$test_root/provider-prompt.log"
+  grep -Fq 'Deploy only on Tuesdays.' "$test_root/provider-prompt.log"
+  bash "$skill_dir/scripts/render-instruction-template.sh" --validate AGENTS.md \
+    --rules-dir "$content_pack/stacks/node/rules" \
+    --common-rules-dir "$content_pack/base/rules" --project-rules-dir .agents/rules
+  [ "$(provider_call_count)" -eq 1 ]
+
+  printf '%s\n' 'Deploy only on Wednesdays.' >> .agents/rules/team-conventions.md
+  run_merge node
+  [ "$status" -eq 0 ]
+  [ "$(provider_call_count)" -eq 2 ]
+
+  rm .agents/rules/team-conventions.md
+  write_review_response "$(awk '/^<!-- BEGIN AGENT-READY MANAGED -->$/ { print "<!-- AGENT-READY MANAGED BLOCK -->"; skip = 1; next } /^<!-- END AGENT-READY MANAGED -->$/ { skip = 0; next } !skip' AGENTS.md)"
+  run_merge node
+  [ "$status" -eq 0 ]
+  ! grep -Fq 'team-conventions.md' AGENTS.md
+}
+
+# bats test_tags=area:review
+@test "linked worktrees share the review cache of the repository" {
+  git config user.email "agent-ready-tests@example.com"
+  git config user.name "Agent Ready Tests"
+  printf '%s\n' '# Initial repository content' > README.md
+  git add README.md
+  git commit -qm "Initialize linked worktree test"
+
+  linked_project_dir="$test_root/linked-project"
+  git worktree add -q -b linked-worktree "$linked_project_dir"
+  printf '%s\n' '# Existing project instructions' > AGENTS.md
+  write_review_response $'# Existing project instructions\n\n'"$managed_placeholder"
+
+  run_merge node
+  [ "$status" -eq 0 ]
+  cp AGENTS.md "$linked_project_dir/AGENTS.md"
+  cd "$linked_project_dir"
+  run_merge node
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"already reviewed; AI review not required."* ]]
+  [ "$(provider_call_count)" -eq 1 ]
+  [ -f "$(git -C "$project_dir" rev-parse --absolute-git-dir)/info/agent-ready/reviews.json" ]
+  [ ! -e "$(git rev-parse --absolute-git-dir)/info/agent-ready/reviews.json" ]
+}
+
+# bats test_tags=area:merge-safety
+@test "successful merge replaces AGENTS atomically without temporary residue" {
+  printf '%s\n' '# Existing project instructions' > AGENTS.md
+  write_review_response $'# Existing project instructions\n\n'"$managed_placeholder"
+  original_inode="$(ls -di AGENTS.md | awk '{print $1}')"
+
+  run_merge node
+
+  [ "$status" -eq 0 ]
+  [ "$(ls -di AGENTS.md | awk '{print $1}')" != "$original_inode" ]
+  temporary_files=(.AGENTS.md.agent-ready-merge.*)
+  [ ! -e "${temporary_files[0]}" ]
+}
+
+# bats test_tags=area:merge-safety
+@test "concurrent AGENTS changes are not overwritten by a stale merge" {
+  printf '%s\n' '# Original instructions' > AGENTS.md
+  write_review_response $'# Original instructions\n\n'"$managed_placeholder"
+  cat > "$fake_bin/claude" <<EOF
+#!/bin/bash
+printf '%s\n' '# Newer user instructions' > AGENTS.md
+cat "$test_root/provider-response.json"
+EOF
+  chmod +x "$fake_bin/claude"
+
+  run_merge node
+
+  [ "$status" -ne 0 ]
+  [ "$(cat AGENTS.md)" = '# Newer user instructions' ]
+  [[ "$output" == *"changed before descriptor write"* ]]
+}
+
+# bats test_tags=area:merge-safety
+@test "atomic replacement rejects stale descriptor write" {
+  printf '%s\n' '# Original instructions' > AGENTS.md
+  write_review_response $'# Original instructions\n\n'"$managed_placeholder"
+  real_python="$(command -v python3)"
+  # Only the four-argument descriptor writer races; split and assembly run first.
+  cat > "$fake_bin/python3" <<EOF
+#!/bin/bash
+if [[ \$# -eq 4 ]]; then
+  printf '%s\n' '# Newer descriptor instructions' > .AGENTS.md.new
+  mv .AGENTS.md.new AGENTS.md
+fi
+exec "$real_python" "\$@"
+EOF
+  chmod +x "$fake_bin/python3"
+
+  run_merge node
+
+  [ "$status" -ne 0 ]
+  [ "$(cat AGENTS.md)" = '# Newer descriptor instructions' ]
+  [[ "$output" == *"changed before descriptor write"* ]]
+}
+
+# bats test_tags=area:merge-safety
+@test "directory lock protects against pathname replacement during atomic update" {
+  printf '%s\n' '# Original instructions' '' 'Project line' > AGENTS.md
+  # Keeps the merge inside its locked section long enough for the writer to see the
+  # temporary file, which otherwise lives for a few milliseconds on a fast disk.
+  slow_fsync_directory="$test_root/slow-fsync"
+  mkdir -p "$slow_fsync_directory"
+  cat > "$slow_fsync_directory/sitecustomize.py" <<'PY'
+import os
+import time
+
+original_fsync = os.fsync
+
+
+def slow_fsync(file_descriptor):
+    time.sleep(0.5)
+    original_fsync(file_descriptor)
+
+
+os.fsync = slow_fsync
+PY
+  cat > "$fake_bin/claude" <<'EOF'
+#!/bin/bash
+exit 1
+EOF
+  chmod +x "$fake_bin/claude"
+  race_marker="$test_root/race-detected"
+  writer_script="$test_root/replace-after-merge.py"
+  cat > "$writer_script" <<'PY'
+import glob
+import os
+import sys
+import time
+
+# Same protocol as managed-block.sh: directory flock on POSIX, msvcrt lock file on Windows.
+try:
+    import fcntl
+except ImportError:
+    fcntl = None
+    import msvcrt
+
+
+race_marker = sys.argv[1]
+windows_lock_path = sys.argv[2]
+open(sys.argv[3], 'w').close()
+deadline = time.monotonic() + 30
+while not glob.glob('.AGENTS.md.agent-ready-merge.*'):
+    if time.monotonic() >= deadline:
+        sys.exit('merge temporary file was not created')
+    time.sleep(0.001)
+
+directory_descriptor = None
+windows_lock_file = None
+try:
+    if fcntl is not None:
+        directory_descriptor = os.open('.', os.O_RDONLY)
+        fcntl.flock(directory_descriptor, fcntl.LOCK_EX)
+    else:
+        windows_lock_file = open(windows_lock_path, 'a+b')
+        while True:
+            try:
+                windows_lock_file.seek(0)
+                msvcrt.locking(windows_lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+                break
+            except PermissionError:
+                time.sleep(0.01)
+    if glob.glob('.AGENTS.md.agent-ready-merge.*'):
+        open(race_marker, 'w').close()
+    replacement_path = '.concurrent-agents.md'
+    with open(replacement_path, 'w', encoding='utf-8') as replacement_file:
+        replacement_file.write('# Newer user instructions\n')
+        replacement_file.flush()
+        os.fsync(replacement_file.fileno())
+    os.replace(replacement_path, 'AGENTS.md')
+finally:
+    if directory_descriptor is not None:
+        os.close(directory_descriptor)
+    if windows_lock_file is not None:
+        windows_lock_file.close()
+PY
+
+  # The writer polls before the merge starts: a slow Python startup would otherwise
+  # miss the short-lived temporary file and wait for it until the deadline.
+  ready_marker="$test_root/writer-ready"
+  windows_lock_path="$(git rev-parse --absolute-git-dir)/agent-ready-agents-md.lock"
+  python3 "$writer_script" "$race_marker" "$windows_lock_path" "$ready_marker" \
+    > "$test_root/writer-output.log" 2>&1 3>&- &
+  writer_pid=$!
+  background_pids="$writer_pid"
+  local wait_attempt
+  for wait_attempt in $(seq 1 300); do
+    [ -e "$ready_marker" ] && break
+    sleep 0.1
+  done
+  PATH="$fake_bin:$PATH" PYTHONPATH="$slow_fsync_directory" bash "$skill_dir/scripts/merge-instructions.sh" \
+    --provider claude --stack node --skill-dir "$skill_dir" \
+    > "$test_root/merge-output.log" 2>&1 3>&- &
+  merge_pid=$!
+  background_pids="$merge_pid $writer_pid"
+
+  if wait "$merge_pid"; then
+    merge_status=0
+  else
+    merge_status=$?
+  fi
+  if wait "$writer_pid"; then
+    writer_status=0
+  else
+    writer_status=$?
+  fi
+
+  # bats shows this output only when the test fails.
+  cat "$test_root/merge-output.log" "$test_root/writer-output.log"
+  [ "$merge_status" -eq 0 ]
+  [ "$writer_status" -eq 0 ]
+  [ ! -e "$race_marker" ]
+  [ "$(cat AGENTS.md)" = '# Newer user instructions' ]
+  [ ! -e .concurrent-agents.md ]
+}
+
+# bats test_tags=area:review
+@test "review works with Codex structured output" {
+  printf '%s\n' '# Existing project instructions' > AGENTS.md
+  write_review_response $'# Existing project instructions\n\n'"$managed_placeholder"
+  cat > "$fake_bin/codex" <<EOF
+#!/bin/bash
+printf '%s\\n' "\$*" > "$test_root/codex-args.log"
+result_file=""
+while [[ \$# -gt 0 ]]; do
+  if [[ "\$1" == "--output-last-message" ]]; then
+    result_file="\$2"
+    shift 2
+  else
+    shift
+  fi
+done
+cat "$test_root/provider-response.json" > "\$result_file"
+EOF
+  chmod +x "$fake_bin/codex"
+
+  unset AGENT_READY_SETUP_MERGE_MODEL AGENT_READY_SETUP_MERGE_REASONING_EFFORT
+  PATH="$fake_bin:$PATH" run bash "$skill_dir/scripts/merge-instructions.sh" \
+    --provider codex --stack node --skill-dir "$skill_dir"
+
+  [ "$status" -eq 0 ]
+  grep -Fq -- '--model gpt-6-luna -c model_reasoning_effort="high"' "$test_root/codex-args.log"
+  [ "$(cat AGENTS.md)" = "$(printf '%s\n\n%s' '# Existing project instructions' "$(render_managed_block node)")" ]
+  [ "$(instructions_review_entry | jq -r '[.provider, .model] | join(" ")')" = "codex gpt-6-luna" ]
+}
+
+# bats test_tags=area:merge-safety
+@test "existing merge lock prevents a second provider invocation" {
+  printf '%s\n' '# Keep this file' > AGENTS.md
+  mkdir -p .agents/.agent-ready-instructions.lock
+  cat > "$fake_bin/claude" <<'EOF'
+#!/bin/bash
+printf '%s\n' called > "$CLAUDE_CALL_LOG"
+EOF
+  chmod +x "$fake_bin/claude"
+
+  CLAUDE_CALL_LOG="$test_root/claude-called.log" PATH="$fake_bin:$PATH" \
+    run bash "$skill_dir/scripts/merge-instructions.sh" \
+      --provider claude --stack node --skill-dir "$skill_dir"
+
+  [ "$status" -eq 2 ]
+  [ ! -e "$test_root/claude-called.log" ]
+  [[ "$output" == *"another instruction merge is running"* ]]
+}
+
+# bats test_tags=area:managed-block
+@test "missing AGENTS is created from template without invoking provider" {
+  cat > "$fake_bin/claude" <<'EOF'
+#!/bin/bash
+printf '%s\n' called > "$CLAUDE_CALL_LOG"
+EOF
+  chmod +x "$fake_bin/claude"
+
+  CLAUDE_CALL_LOG="$test_root/claude-called.log" PATH="$fake_bin:$PATH" \
+    run bash "$skill_dir/scripts/merge-instructions.sh" \
+      --provider claude --stack node --skill-dir "$skill_dir"
+
+  [ "$status" -eq 0 ]
+  [ -f AGENTS.md ]
+  grep -Fq '# [Project Name]' AGENTS.md
+  grep -Fxq '<!-- BEGIN AGENT-READY MANAGED -->' AGENTS.md
+  grep -Fxq '## Centralización recursiva de instrucciones' AGENTS.md
+  [ ! -e "$test_root/claude-called.log" ]
+}
+
+run_apply_managed_block() {
+  local stack="$1"
+
+  cat > "$fake_bin/claude" <<EOF
+#!/bin/bash
+printf '%s\\n' called >> "$test_root/provider-calls.log"
+exit 1
+EOF
+  chmod +x "$fake_bin/claude"
+  PATH="$fake_bin:$PATH" run bash "$skill_dir/scripts/apply-managed-block.sh" --stack "$stack" --skill-dir "$skill_dir"
+}
+
+# bats test_tags=area:managed-block
+@test "apply-managed-block replaces the verbatim block without invoking the provider" {
+  cat > AGENTS.md <<'EOF'
+# Project
+
+<!-- BEGIN AGENT-READY MANAGED -->
+- Read and follow `.agents/rules/retired.md`.
+<!-- END AGENT-READY MANAGED -->
+
+## Ownership
+
+Team Astra owns this service.
+EOF
+
+  run_apply_managed_block node
+
+  [ "$status" -eq 0 ]
+  [ "$(provider_call_count)" -eq 0 ]
+  ! grep -Fq 'retired.md' AGENTS.md
+  grep -Fxq 'Team Astra owns this service.' AGENTS.md
+  [[ "$output" == *"redundancy review runs in the background"* ]]
+  bash "$skill_dir/scripts/render-instruction-template.sh" --validate AGENTS.md \
+    --rules-dir "$content_pack/stacks/node/rules" \
+    --common-rules-dir "$content_pack/base/rules"
+
+  run_apply_managed_block node
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"managed block is current"* ]]
+}
+
+# bats test_tags=area:managed-block
+@test "apply-managed-block leaves legacy AGENTS for the background review" {
+  printf '%s\n' '# Legacy project' '' '## Rules' '' '- Legacy rule list.' > AGENTS.md
+  cp AGENTS.md "$test_root/original-agents.md"
+
+  run_apply_managed_block node
+
+  [ "$status" -eq 0 ]
+  [ "$(provider_call_count)" -eq 0 ]
+  cmp -s AGENTS.md "$test_root/original-agents.md"
+  [[ "$output" == *"no managed markers yet"* ]]
+}
+
+# bats test_tags=area:managed-block
+@test "apply-managed-block creates missing AGENTS from the template" {
+  run_apply_managed_block react
+
+  [ "$status" -eq 0 ]
+  [ "$(provider_call_count)" -eq 0 ]
+  [ "$(grep -c '^<!-- BEGIN AGENT-READY MANAGED -->$' AGENTS.md)" -eq 1 ]
+}
+
+# bats test_tags=area:merge-safety
+@test "automatic sync hook runs upgrade, projection, and merge in order" {
+  source_dir="$test_root/agent-ready-setup"
+  event_log="$test_root/hook-events.log"
+  merge_log="$test_root/hook-merge.log"
+  mkdir -p \
+    "$source_dir/assets/common/hooks" \
+    "$source_dir/assets/codex" \
+    "$source_dir/scripts"
+  touch "$source_dir/SKILL.md"
+  cp "$skill_dir/assets/common/hooks/sync-marketplace.sh" \
+    "$source_dir/assets/common/hooks/sync-marketplace.sh"
+  cp "$skill_dir/assets/common/hooks/agent-ready-skill-source.sh" "$source_dir/assets/common/hooks/"
+  # The engine reads rule files with the format the hooks share.
+  cp "$skill_dir/assets/common/hooks/rule-format.py" "$source_dir/assets/common/hooks/"
+  cp "$skill_dir/scripts/asset-sync-common.sh" "$source_dir/scripts/asset-sync-common.sh"
+  # Minimal sources still need the configuration schemas and the state helper the hook resolves; the
+  # content comes from the content pack of the tests.
+  cp "$skill_dir/scripts/agent-ready-state.py" "$source_dir/scripts/agent-ready-state.py"
+  cp "$skill_dir/scripts/"agent_ready_*.py "$source_dir/scripts/"
+  cp -R "$skill_dir/assets/config" "$source_dir/assets/config"
+  cp "$skill_dir/scripts/merge-managed-settings.py" "$source_dir/scripts/merge-managed-settings.py"
+  # The stacks of the content pack publish rules, so the sync renders their Claude views.
+  cp "$skill_dir/scripts/render-instruction-template.sh" "$source_dir/scripts/render-instruction-template.sh"
+  printf '%s\n' '#!/bin/bash' > "$source_dir/scripts/normalize-instructions.sh"
+  cp "$skill_dir/scripts/run-detached.py" "$source_dir/scripts/run-detached.py"
+  printf '%s\n' '{}' > "$source_dir/assets/common/settings.json"
+  printf '%s\n' '{}' > "$source_dir/assets/codex/hooks.json"
+  cat > "$source_dir/scripts/apply-managed-block.sh" <<'EOF'
+#!/bin/bash
+printf 'apply\n' >> "$EVENT_LOG"
+EOF
+  cat > "$source_dir/scripts/merge-instructions.sh" <<'EOF'
+#!/bin/bash
+[[ "${AGENT_READY_SETUP_NON_INTERACTIVE:-0}" == "1" ]] || exit 99
+printf '%s\n' "$*" > "$MERGE_LOG"
+printf 'merge\n' >> "$EVENT_LOG"
+EOF
+  chmod +x "$source_dir/scripts/merge-instructions.sh"
+  cat > "$fake_bin/claude" <<'EOF'
+#!/bin/bash
+printf 'upgrade\n' >> "$EVENT_LOG"
+EOF
+  chmod +x "$fake_bin/claude"
+  printf '%s\n' '{"dependencies":{"react":"1.0.0"}}' > package.json
+
+  EVENT_LOG="$event_log" \
+    MERGE_LOG="$merge_log" \
+    AGENT_READY_SETUP_SKILL_DIR="$source_dir" \
+    AGENT_READY_SETUP_TOOLS=0 \
+    PATH="$fake_bin:$PATH" \
+    run bash "$skill_dir/assets/common/hooks/sync-marketplace.sh" \
+      --provider claude
+  [ "$status" -eq 0 ]
+  wait_for_file_containing "$event_log" "merge"
+  [ "$(sed -n '1p' "$event_log")" = "upgrade" ]
+  [ "$(sed -n '2p' "$event_log")" = "apply" ]
+  [ "$(sed -n '3p' "$event_log")" = "merge" ]
+  [ "$(wc -l < "$event_log")" -eq 3 ]
+  grep -Fq -- "Sync hook updated; restarting with latest version." <<< "$output"
+  [ -f .agents/hooks/sync-marketplace.sh ]
+  cmp -s .agents/hooks/sync-marketplace.sh "$source_dir/assets/common/hooks/sync-marketplace.sh"
+  # The merge reads the content composed with that engine, in the cache of the user.
+  grep -Fq -- "--provider claude --stack react --skill-dir " "$merge_log"
+  grep -Eq -- '--skill-dir .*/agent-ready-setup/content/[0-9a-f]+/plugins/golfo-agent-ready/skills/agent-ready-setup$' "$merge_log"
+}
+
+# bats test_tags=area:merge-safety
+@test "automatic sync hook preserves session when the managed block needs human review" {
+  source_dir="$test_root/agent-ready-setup"
+  mkdir -p \
+    "$source_dir/assets/common/hooks" \
+    "$source_dir/assets/codex" \
+    "$source_dir/scripts"
+  touch "$source_dir/SKILL.md"
+  cp "$skill_dir/assets/common/hooks/sync-marketplace.sh" \
+    "$source_dir/assets/common/hooks/sync-marketplace.sh"
+  cp "$skill_dir/assets/common/hooks/agent-ready-skill-source.sh" "$source_dir/assets/common/hooks/"
+  # The engine reads rule files with the format the hooks share.
+  cp "$skill_dir/assets/common/hooks/rule-format.py" "$source_dir/assets/common/hooks/"
+  cp "$skill_dir/scripts/asset-sync-common.sh" "$source_dir/scripts/asset-sync-common.sh"
+  # Minimal sources still need the configuration schemas and the state helper the hook resolves; the
+  # content comes from the content pack of the tests.
+  cp "$skill_dir/scripts/agent-ready-state.py" "$source_dir/scripts/agent-ready-state.py"
+  cp "$skill_dir/scripts/"agent_ready_*.py "$source_dir/scripts/"
+  cp -R "$skill_dir/assets/config" "$source_dir/assets/config"
+  cp "$skill_dir/scripts/merge-managed-settings.py" "$source_dir/scripts/merge-managed-settings.py"
+  # The stacks of the content pack publish rules, so the sync renders their Claude views.
+  cp "$skill_dir/scripts/render-instruction-template.sh" "$source_dir/scripts/render-instruction-template.sh"
+  printf '%s\n' '#!/bin/bash' > "$source_dir/scripts/normalize-instructions.sh"
+  printf '%s\n' '{}' > "$source_dir/assets/common/settings.json"
+  printf '%s\n' '{}' > "$source_dir/assets/codex/hooks.json"
+  cat > "$source_dir/scripts/apply-managed-block.sh" <<'EOF'
+#!/bin/bash
+exit 2
+EOF
+  cat > "$fake_bin/claude" <<'EOF'
+#!/bin/bash
+exit 0
+EOF
+  chmod +x "$fake_bin/claude"
+  printf '%s\n' '{}' > package.json
+
+  AGENT_READY_SETUP_SKILL_DIR="$source_dir" PATH="$fake_bin:$PATH" \
+    run bash "$skill_dir/assets/common/hooks/sync-marketplace.sh" \
+      --provider claude --stack node
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"requires human review"* ]]
+}

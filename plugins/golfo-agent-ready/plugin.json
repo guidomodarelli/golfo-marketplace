@@ -1,0 +1,18 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "golfo-agent-ready",
+  "version": "0.133.0",
+  "description": "Setup Agent Ready de un repositorio para Claude Code y Codex: detección de stack, profiles y packs, AGENTS.md gestionado, hooks, sync, revisiones con IA y aprendizaje de las instrucciones del usuario.",
+  "author": {
+    "name": "Guido Modarelli"
+  },
+  "repository": "https://github.com/guidomodarelli/golfo-marketplace",
+  "license": "MIT",
+  "keywords": [
+    "golfo",
+    "agent-ready",
+    "agents-md",
+    "hooks",
+    "setup"
+  ]
+}

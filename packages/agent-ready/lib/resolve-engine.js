@@ -1,5 +1,5 @@
 /**
- * Finds the agent-ready-setup engine of an installed golfo-kit plugin.
+ * Finds the agent-ready-setup engine of an installed golfo-agent-ready plugin.
  *
  * The launcher never ships a copy of the engine: it runs the one that Claude Code,
  * Codex or Hermes already installed, so a person and their agents use the same version.
@@ -8,7 +8,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 export const MARKETPLACE_NAME = "golfo-marketplace";
-export const PLUGIN_NAME = "golfo-kit";
+export const PLUGIN_NAME = "golfo-agent-ready";
 export const SKILL_NAME = "agent-ready-setup";
 export const ENGINE_ENTRY_POINT = join("scripts", "agent-ready");
 /** Same variable the engine honors: a development checkout wins over every installation. */
@@ -17,21 +17,21 @@ const PLUGIN_MANIFESTS = ["plugin.json", join(".claude-plugin", "plugin.json"), 
 const SEMANTIC_VERSION = /^(\d+)\.(\d+)\.(\d+)/;
 
 export const INSTALL_HINT = [
-  "Install the golfo-kit plugin for one of your agents:",
+  "Install the golfo-agent-ready plugin for one of your agents:",
   "  Claude Code: claude plugin marketplace add --scope user guidomodarelli/golfo-marketplace",
-  "               claude plugin install --scope user golfo-kit@golfo-marketplace",
+  "               claude plugin install --scope user golfo-agent-ready@golfo-marketplace",
   "  Codex:       codex plugin marketplace add <a clone of guidomodarelli/golfo-marketplace>",
-  "               codex plugin add golfo-kit@golfo-marketplace",
-  "  Hermes:      hermes plugins install guidomodarelli/golfo-marketplace#plugins/golfo-kit --enable",
+  "               codex plugin add golfo-agent-ready@golfo-marketplace",
+  "  Hermes:      hermes plugins install guidomodarelli/golfo-marketplace#plugins/golfo-agent-ready --enable",
   `Or point ${SKILL_DIRECTORY_VARIABLE} at an agent-ready-setup directory.`,
 ].join("\n");
 
 export const UPDATE_HINT = [
   "Update the plugin:",
   "  Claude Code: claude plugin marketplace update golfo-marketplace",
-  "               claude plugin update golfo-kit@golfo-marketplace",
+  "               claude plugin update golfo-agent-ready@golfo-marketplace",
   "  Codex:       codex plugin marketplace upgrade golfo-marketplace",
-  "  Hermes:      hermes plugins update golfo-kit",
+  "  Hermes:      hermes plugins update golfo-agent-ready",
 ].join("\n");
 
 /** A configuration that names an engine that is not there; the launcher exits 1 with it. */
@@ -55,7 +55,7 @@ function isFile(path) {
 
 /**
  * @param {string} skillDirectory
- * @returns {string | null} the golfo-kit version from the plugin manifest two levels up
+ * @returns {string | null} the golfo-agent-ready version from the plugin manifest two levels up
  */
 export function pluginVersion(skillDirectory) {
   const pluginRoot = join(skillDirectory, "..", "..");
@@ -152,7 +152,7 @@ function codexMarketplaceRoot(codexDirectory) {
 }
 
 /**
- * Every place where a provider installs golfo-kit, the same ones the session hook reads.
+ * Every place where a provider installs golfo-agent-ready, the same ones the session hook reads.
  * @param {NodeJS.ProcessEnv} environment
  * @param {string} home
  * @returns {{ provider: string, skillDirectory: string }[]}
@@ -197,7 +197,7 @@ export function newestInstallationWithoutEngine(environment, home) {
 }
 
 /**
- * The engine to run: the override, or else the newest golfo-kit any provider installed.
+ * The engine to run: the override, or else the newest golfo-agent-ready any provider installed.
  * @param {NodeJS.ProcessEnv} environment
  * @param {string} home
  * @returns {{ provider: string, skillDirectory: string, version: string | null } | null}

@@ -132,7 +132,7 @@ Una funcionalidad `disabled` lista las alternativas investigadas y ninguna es vi
 
 **Identificación**
 
-- Nombre: Agent Ready Setup; versión: 1.5.0; SKILL.md: `plugins/golfo-kit/skills/agent-ready-setup/SKILL.md`.
+- Nombre: Agent Ready Setup; versión: 1.5.0; SKILL.md: `plugins/golfo-agent-ready/skills/agent-ready-setup/SKILL.md`.
 - Propósito: Prepara la configuración multi-provider (Claude Code y Codex) de un repo: .claude/, .agents/, .codex/, AGENTS.md y hooks.
 - Funcionalidades principales: detección de stack; bootstrap de assets; bloque gestionado de AGENTS.md; hooks y sync.
 - Agentes soportados declarados: no declara.
@@ -191,7 +191,7 @@ Hermes no es provider de destino; desde su instalación, resolve-provider.sh eli
 **Implementación**
 
 - Adaptaciones: Sección «Compatibilidad entre agentes»: Hermes como excepción explícita y override manual; resolve-provider.sh reconoce instalaciones de Hermes (incluido HERMES_HOME en formato Windows).
-- Archivos modificados: `plugins/golfo-kit/skills/agent-ready-setup/SKILL.md`, `plugins/golfo-kit/skills/agent-ready-setup/scripts/resolve-provider.sh`, `plugins/golfo-kit/skills/agent-ready-setup/tests/bootstrap.bats`, `plugins/golfo-kit/skills/agent-ready-setup/evals/eval-config.json`.
+- Archivos modificados: `plugins/golfo-agent-ready/skills/agent-ready-setup/SKILL.md`, `plugins/golfo-agent-ready/skills/agent-ready-setup/scripts/resolve-provider.sh`, `plugins/golfo-agent-ready/skills/agent-ready-setup/tests/bootstrap.bats`, `plugins/golfo-agent-ready/skills/agent-ready-setup/evals/eval-config.json`.
 - Fallback: Override manual del provider..
 - Cambios de comportamiento respecto del original: Ninguno..
 
@@ -200,10 +200,10 @@ Hermes no es provider de destino; desde su instalación, resolve-provider.sh eli
 | Prueba | Agente | Tipo | Comando | Resultado | Evidencia |
 |---|---|---|---|---|---|
 | `static-inspection` | `any` | static | `grep -rE "AskUserQuestion\|request_user_input\|Monitor\|Cron(Create\|List\|Delete)\|PushNotification\|TaskStop\|Agent\|subagent\|mcp__\|claude -p\|codex exec\|~/.claude\|~/.codex\|apply_patch\|update_plan" plugins/golfo-kit/skills/<skill>` | `passed` | Inspección de SKILL.md, references y scripts del 2026-10-23; las coincidencias de "hook" son hooks de React o de git, no hooks de agente. |
-| `agent-ready-bats` | `any` | bats | `bats plugins/golfo-kit/skills/agent-ready-setup/tests/merge-instructions.bats` | `passed` | Suite de merge de instrucciones (agnóstica de agente). |
-| `hermes-real-resolve-provider` | `hermes` | real_run | `hermes chat -Q -q "<correr resolve-provider.sh --skill-dir $HERMES_HOME/plugins/golfo-kit/skills/agent-ready-setup con PATH completo y con solo codex>"` | `passed` | Con HERMES_HOME=C:\Users\guido\AppData\Local\hermes (formato Windows) y ambos CLIs: exit 1 'belongs to Hermes and both claude and codex are in PATH; ask the user …'. Con PATH reducido a codex: exit 0, stdout 'codex'. |
-| `resolve-provider-hermes-bats` | `any` | bats | `bats -f 'resolve-provider' plugins/golfo-kit/skills/agent-ready-setup/tests/bootstrap.bats` | `passed` | 4 casos: un solo CLI → ese provider; ambos → error que pide elegir; ninguno → error; HERMES_HOME en formato Windows reconocido. |
-| `eval-sim-hermes-provider-choice` | `hermes` | simulated_eval | `run-evals <copia filtrada>/plugins/golfo-kit/skills/agent-ready-setup --provider claude (solo los casos nuevos o modificados)` | `passed` | Claude (claude-sonnet-5-5) simulando el agente: hermes-install-asks-provider-when-both-clis: pregunta con clarify y relanza con AGENT_READY_SETUP_ACTIVE_PROVIDER. |
+| `agent-ready-bats` | `any` | bats | `bats plugins/golfo-agent-ready/skills/agent-ready-setup/tests/merge-instructions.bats` | `passed` | Suite de merge de instrucciones (agnóstica de agente). |
+| `hermes-real-resolve-provider` | `hermes` | real_run | `hermes chat -Q -q "<correr resolve-provider.sh --skill-dir $HERMES_HOME/plugins/golfo-agent-ready/skills/agent-ready-setup con PATH completo y con solo codex>"` | `passed` | Con HERMES_HOME=C:\Users\guido\AppData\Local\hermes (formato Windows) y ambos CLIs: exit 1 'belongs to Hermes and both claude and codex are in PATH; ask the user …'. Con PATH reducido a codex: exit 0, stdout 'codex'. |
+| `resolve-provider-hermes-bats` | `any` | bats | `bats -f 'resolve-provider' plugins/golfo-agent-ready/skills/agent-ready-setup/tests/bootstrap.bats` | `passed` | 4 casos: un solo CLI → ese provider; ambos → error que pide elegir; ninguno → error; HERMES_HOME en formato Windows reconocido. |
+| `eval-sim-hermes-provider-choice` | `hermes` | simulated_eval | `run-evals <copia filtrada>/plugins/golfo-agent-ready/skills/agent-ready-setup --provider claude (solo los casos nuevos o modificados)` | `passed` | Claude (claude-sonnet-5-5) simulando el agente: hermes-install-asks-provider-when-both-clis: pregunta con clarify y relanza con AGENT_READY_SETUP_ACTIVE_PROVIDER. |
 
 Pendiente de verificar:
 

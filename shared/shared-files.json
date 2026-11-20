@@ -3,7 +3,7 @@
   "entries": [
     {
       "source": "references/agent-capabilities.md",
-      "plugins": ["golfo-kit", "golfo-frontend", "golfo-git", "golfo-github", "golfo-nextjs", "golfo-planning", "golfo-react-web", "golfo-web"]
+      "plugins": ["golfo-kit", "golfo-agent-ready", "golfo-frontend", "golfo-git", "golfo-github", "golfo-nextjs", "golfo-planning", "golfo-react-web", "golfo-web"]
     },
     {
       "source": "references/review-convergence.md",

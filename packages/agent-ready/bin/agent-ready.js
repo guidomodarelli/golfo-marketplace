@@ -2,7 +2,7 @@
 /**
  * agent-ready: puts the CLI of agent-ready-setup on the PATH of a person.
  *
- * It finds the engine of the installed golfo-kit plugin and runs its own CLI with the
+ * It finds the engine of the installed golfo-agent-ready plugin and runs its own CLI with the
  * same arguments, standard streams and exit status. Every subcommand, flag and question
  * belongs to the engine; the launcher only adds the error for a missing engine or Python.
  */
@@ -113,8 +113,8 @@ function main() {
   if (!engine) {
     const outdated = newestInstallationWithoutEngine(process.env, homedir());
     const problem = outdated
-      ? `the installed golfo-kit ${outdated.version ?? "(unknown version)"} (${outdated.provider}) predates the agent-ready CLI.\n${UPDATE_HINT}`
-      : `no installed golfo-kit plugin has the agent-ready-setup engine.\n${INSTALL_HINT}`;
+      ? `the installed golfo-agent-ready ${outdated.version ?? "(unknown version)"} (${outdated.provider}) predates the agent-ready CLI.\n${UPDATE_HINT}`
+      : `no installed golfo-agent-ready plugin has the agent-ready-setup engine.\n${INSTALL_HINT}`;
     if (engineArguments.some((argument) => INFORMATION_FLAGS.has(argument))) {
       process.stdout.write(`@golfo/agent-ready ${launcherVersion()}: ${problem}\n`);
       return;

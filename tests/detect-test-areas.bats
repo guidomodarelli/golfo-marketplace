@@ -4,13 +4,13 @@ setup() {
   repository_root="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   test_root="$(mktemp -d)"
   repo_dir="$test_root/repo"
-  mkdir -p "$repo_dir/scripts" "$repo_dir/plugins/golfo-kit/.claude-plugin" "$repo_dir/plugins/golfo-kit/.codex-plugin" \
-    "$repo_dir/plugins/golfo-kit/skills/agent-ready-setup/scripts" "$repo_dir/plugins/golfo-kit/skills/vivid-visual-output"
+  mkdir -p "$repo_dir/scripts" "$repo_dir/plugins/golfo-agent-ready/.claude-plugin" "$repo_dir/plugins/golfo-agent-ready/.codex-plugin" \
+    "$repo_dir/plugins/golfo-agent-ready/skills/agent-ready-setup/scripts" "$repo_dir/plugins/golfo-kit/skills/vivid-visual-output"
   cp "$repository_root/scripts/detect-test-areas.js" "$repo_dir/scripts/"
   for manifest in plugin.json .claude-plugin/plugin.json .codex-plugin/plugin.json; do
     write_manifest "$manifest" 1.0.0 "https://github.com/example/repo"
   done
-  printf '%s\n' 'echo bootstrap' > "$repo_dir/plugins/golfo-kit/skills/agent-ready-setup/scripts/bootstrap.sh"
+  printf '%s\n' 'echo bootstrap' > "$repo_dir/plugins/golfo-agent-ready/skills/agent-ready-setup/scripts/bootstrap.sh"
   printf '%s\n' 'skill' > "$repo_dir/plugins/golfo-kit/skills/vivid-visual-output/SKILL.md"
   printf '%s\n' '{}' > "$repo_dir/package.json"
 
@@ -30,10 +30,10 @@ teardown() {
   rm -rf "$test_root"
 }
 
-# write_manifest <path under plugins/golfo-kit> <version> <repository>
+# write_manifest <path under plugins/golfo-agent-ready> <version> <repository>
 write_manifest() {
-  printf '{\n  "name": "golfo-kit",\n  "version": "%s",\n  "repository": "%s"\n}\n' "$2" "$3" \
-    > "$repo_dir/plugins/golfo-kit/$1"
+  printf '{\n  "name": "golfo-agent-ready",\n  "version": "%s",\n  "repository": "%s"\n}\n' "$2" "$3" \
+    > "$repo_dir/plugins/golfo-agent-ready/$1"
 }
 
 commit_all() {
@@ -55,7 +55,7 @@ run_detect() {
 }
 
 @test "a change under agent-ready-setup runs the agent_ready area" {
-  printf '%s\n' 'echo changed' >> plugins/golfo-kit/skills/agent-ready-setup/scripts/bootstrap.sh
+  printf '%s\n' 'echo changed' >> plugins/golfo-agent-ready/skills/agent-ready-setup/scripts/bootstrap.sh
   commit_all "Change agent-ready-setup"
 
   run_detect
@@ -88,7 +88,7 @@ run_detect() {
   [[ "$output" == *"scripts/run-bats.sh changed"* ]]
 }
 
-@test "a pure version bump of the golfo-kit manifests skips the agent_ready area" {
+@test "a pure version bump of the golfo-agent-ready manifests skips the agent_ready area" {
   for manifest in plugin.json .claude-plugin/plugin.json .codex-plugin/plugin.json; do
     write_manifest "$manifest" 1.1.0 "https://github.com/example/repo"
   done
@@ -110,7 +110,7 @@ run_detect() {
 }
 
 @test "adding a file to a manifest folder runs the agent_ready area" {
-  printf '%s\n' 'readme' > plugins/golfo-kit/.codex-plugin/README.md
+  printf '%s\n' 'readme' > plugins/golfo-agent-ready/.codex-plugin/README.md
   commit_all "Add a file to the Codex manifest folder"
 
   run_detect

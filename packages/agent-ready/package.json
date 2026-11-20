@@ -1,7 +1,7 @@
 {
   "name": "@golfo/agent-ready",
-  "version": "0.1.0",
-  "description": "agent-ready on your PATH: runs the agent-ready-setup CLI of the golfo-kit plugin that Claude Code, Codex or Hermes installed.",
+  "version": "0.2.0",
+  "description": "agent-ready on your PATH: runs the agent-ready-setup CLI of the golfo-agent-ready plugin that Claude Code, Codex or Hermes installed.",
   "type": "module",
   "license": "MIT",
   "author": "Guido Modarelli",
@@ -17,7 +17,7 @@
     "ai-agents",
     "claude-code",
     "codex",
-    "golfo-kit"
+    "golfo-agent-ready"
   ],
   "bin": {
     "agent-ready": "./bin/agent-ready.js"

@@ -12,7 +12,7 @@
     {
       "name": "golfo-kit",
       "source": "./plugins/golfo-kit",
-      "description": "Núcleo de los plugins golfo: setup Agent Ready y skills para trabajar con agentes (optimizar skills, profundizar prompts, máxima ambición). Las demás skills viven en los plugins golfo-* por plataforma y tecnología.",
+      "description": "Núcleo de los plugins golfo: skills para trabajar con agentes (optimizar skills, profundizar prompts, máxima ambición, portabilidad entre agentes). El setup Agent Ready vive en golfo-agent-ready y las demás skills en los plugins golfo-* por plataforma y tecnología.",
       "author": {
         "name": "Guido Modarelli"
       },
@@ -21,9 +21,25 @@
       "keywords": [
         "golfo",
         "skills",
-        "agent-ready",
         "prompts",
         "skill-optimizer"
+      ]
+    },
+    {
+      "name": "golfo-agent-ready",
+      "source": "./plugins/golfo-agent-ready",
+      "description": "Setup Agent Ready de un repositorio para Claude Code y Codex: detección de stack, profiles y packs, AGENTS.md gestionado, hooks, sync, revisiones con IA y aprendizaje de las instrucciones del usuario.",
+      "author": {
+        "name": "Guido Modarelli"
+      },
+      "repository": "https://github.com/guidomodarelli/golfo-marketplace",
+      "category": "productivity",
+      "keywords": [
+        "golfo",
+        "agent-ready",
+        "agents-md",
+        "hooks",
+        "setup"
       ]
     },
     {

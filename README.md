@@ -55,7 +55,8 @@ Cada plugin tiene un ámbito: una plataforma o una tecnología. Una skill va al 
 
 | Plugin | Ámbito | Skills |
 |---|---|---|
-| `golfo-kit` | Núcleo para trabajar con agentes | agent-ready-setup, skill-optimizer, be-ambitious, deepen-prompt, cross-agent-skill-portability, windows-git-bash-agent-gotchas |
+| `golfo-kit` | Núcleo para trabajar con agentes | skill-optimizer, be-ambitious, deepen-prompt, cross-agent-skill-portability, windows-git-bash-agent-gotchas |
+| `golfo-agent-ready` | Setup Agent Ready de un repositorio (Claude Code y Codex) | agent-ready-setup |
 | `golfo-engineering` | Cualquier lenguaje, front, back o CLI | constants-refactor, refactor-modularize-code, simplify-code, async-operation-error-handling, error-observability-diagnostics, review-maintainability, review-performance, review-security, vivid-visual-output, undocumented-protocol-client |
 | `golfo-javascript` | Solo JavaScript y TypeScript, front o back | typed-errors-refactor, enforce-jsdoc-tsdoc, test-best-practices, mock-first-testing-design, golfo-lint-adoption, golfo-npm-package-release |
 | `golfo-testing` | Testing en cualquier lenguaje | test-planning, fix-tests-intelligently |
@@ -90,7 +91,7 @@ Lo que usan varios plugins vive una sola vez en `shared/`: `references/agent-cap
 
 ## 🤖 Agent Ready multi-provider
 
-`plugins/golfo-kit/skills/agent-ready-setup` prepara siempre los tres planos sin acoplar assets compartidos a un provider:
+`plugins/golfo-agent-ready/skills/agent-ready-setup` prepara siempre los tres planos sin acoplar assets compartidos a un provider:
 
 ```text
 AGENTS.md                  # instrucciones canónicas
@@ -105,14 +106,14 @@ CLAUDE.md                  # raíz y subdirectorios: proxy exacto + regla
 
 Si `CLAUDE.md` ya contiene instrucciones, el setup las promueve a un `AGENTS.md` hermano y deja `CLAUDE.md` como copia exacta de `assets/claude-proxy.md`. Esto también aplica a `.claude/CLAUDE.md` y cualquier subnivel. Si ambos archivos existen y difieren, no sobrescribe ninguno y reporta conflicto para resolución manual. La normalización recursiva parte de la raíz Git y omite paths ignorados no trackeados, incluidos `node_modules/` y worktrees, sin perder archivos trackeados bajo esas rutas; los destinos explícitos `.claude/`, `.agents/` y `.codex/` se siguen preparando aunque estén ignorados. El bootstrap requiere ejecutarse dentro de un worktree Git y actualiza automáticamente `golfo-marketplace` para provider activo antes de proyectar assets.
 
-Después de `marketplace upgrade`, la actualización global no reproyecta assets sobre proyectos ya preparados. La ejecución directa de `agent-ready-setup` y el hook canónico `.agents/hooks/sync-marketplace.sh` seleccionan la versión cacheada semver más nueva y actualizan los assets gestionados bajo `.claude/`, `.agents/` y `.codex/`; ambos providers usan el mismo comportamiento con sus caches respectivas. La proyección recorre `assets/common/` y `assets/stacks/<stack>/`, incluyendo rules, agents, commands, skills, MCP y hooks; los hooks permanecen canónicos bajo `.agents/hooks/`, mientras `.claude/` recibe symlinks para assets no-hook. El hook normaliza instrucciones mediante `bootstrap.sh --normalize-only` cuando la versión instalada lo soporta y ejecuta el merge semántico de `AGENTS.md`. La normalización ocurre desde la raíz Git e incluye `.claude/CLAUDE.md`; conflictos, symlinks y destinos inseguros se preservan y reportan. Muestra diffs y aplica siempre los templates: un asset gestionado editado se sobrescribe, un asset que ya no publica ningún profile se retira aunque tenga cambios, y solo se preservan como conflicto los archivos que ningún apply escribió según `.agents/agent-ready.lock.json`. En repos con `"updates": "pinned"` en `.agents/agent-ready.json` (default) el hook solo informa el estado; `bootstrap.sh --plan` y `--status` muestran qué cambiaría sin escribir. Profiles, manifest y lockfile: `plugins/golfo-kit/skills/agent-ready-setup/references/profiles-and-lockfile.md`. También combina el template con los settings JSON y preserva sus campos custom. El merge IA de `AGENTS.md` conserva cambios compatibles; si falla o queda sin resolución, aplica template y guarda backup temporal. `CLAUDE.md` nunca se modifica directamente por el merge IA.
+Después de `marketplace upgrade`, la actualización global no reproyecta assets sobre proyectos ya preparados. La ejecución directa de `agent-ready-setup` y el hook canónico `.agents/hooks/sync-marketplace.sh` seleccionan la versión cacheada semver más nueva y actualizan los assets gestionados bajo `.claude/`, `.agents/` y `.codex/`; ambos providers usan el mismo comportamiento con sus caches respectivas. La proyección recorre `assets/common/` y `assets/stacks/<stack>/`, incluyendo rules, agents, commands, skills, MCP y hooks; los hooks permanecen canónicos bajo `.agents/hooks/`, mientras `.claude/` recibe symlinks para assets no-hook. El hook normaliza instrucciones mediante `bootstrap.sh --normalize-only` cuando la versión instalada lo soporta y ejecuta el merge semántico de `AGENTS.md`. La normalización ocurre desde la raíz Git e incluye `.claude/CLAUDE.md`; conflictos, symlinks y destinos inseguros se preservan y reportan. Muestra diffs y aplica siempre los templates: un asset gestionado editado se sobrescribe, un asset que ya no publica ningún profile se retira aunque tenga cambios, y solo se preservan como conflicto los archivos que ningún apply escribió según `.agents/agent-ready.lock.json`. En repos con `"updates": "pinned"` en `.agents/agent-ready.json` (default) el hook solo informa el estado; `bootstrap.sh --plan` y `--status` muestran qué cambiaría sin escribir. Profiles, manifest y lockfile: `plugins/golfo-agent-ready/skills/agent-ready-setup/references/profiles-and-lockfile.md`. También combina el template con los settings JSON y preserva sus campos custom. El merge IA de `AGENTS.md` conserva cambios compatibles; si falla o queda sin resolución, aplica template y guarda backup temporal. `CLAUDE.md` nunca se modifica directamente por el merge IA.
 
 El flujo manual y `SessionStart` usan el hook sin flags de confirmación. La resolución IA trata documentos como datos no confiables, aplica cambios compatibles automáticamente y usa fallback template + backup ante salida inválida o conflicto irresoluble. `CLAUDE.md` permanece como proxy.
 
 ### `agent-ready` en el PATH
 
 Los agentes corren el CLI por ruta, desde la skill. Una persona lo tiene en su PATH con el paquete
-npm [`@golfo/agent-ready`](packages/agent-ready/README.md), que usa el motor del plugin golfo-kit
+npm [`@golfo/agent-ready`](packages/agent-ready/README.md), que usa el motor del plugin golfo-agent-ready
 instalado en vez de traer otra copia:
 
 ```bash
@@ -350,7 +351,7 @@ de 1 minuto, o casi 3 con un filtro de tags, y después algunos segundos por tes
 
 Las suites de `agent-ready-setup` proyectan el pack oficial de contenido
 ([golfo-agent-profiles](https://github.com/guidomodarelli/golfo-agent-profiles)) en el tag de
-`plugins/golfo-kit/skills/agent-ready-setup/tests/content-pack.ref`. `tests/prepare-content-pack.sh` lo clona una
+`plugins/golfo-agent-ready/skills/agent-ready-setup/tests/content-pack.ref`. `tests/prepare-content-pack.sh` lo clona una
 sola vez en `node_modules/.cache/agent-ready-content-pack/`, así que la primera corrida necesita red y las
 siguientes no.
 
@@ -391,7 +392,7 @@ merge-base de su base:
 | Grupo | Corre cuando |
 |---|---|
 | `Shell suites` (`test:shell`, `compat:validate` y las suites de las demás skills) | Siempre |
-| Agent Ready en Linux, Windows y macOS, los shards de `bootstrap.bats` y `Browser registration` | El PR cambia `plugins/golfo-kit/skills/agent-ready-setup/**`, `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `.nvmrc`, `.gitattributes`, `.github/workflows/tests.yml`, el lanzador de bats (`scripts/run-bats.sh`) o el script de detección y su test. También cuando cambia un manifest de golfo-kit (`plugin.json`, `.claude-plugin/`, `.codex-plugin/`) en algo distinto de `version`, o se agrega o borra un archivo en esas carpetas |
+| Agent Ready en Linux, Windows y macOS, los shards de `bootstrap.bats` y `Browser registration` | El PR cambia `plugins/golfo-agent-ready/skills/agent-ready-setup/**`, `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `.nvmrc`, `.gitattributes`, `.github/workflows/tests.yml`, el lanzador de bats (`scripts/run-bats.sh`) o el script de detección y su test. También cuando cambia un manifest de golfo-agent-ready (`plugin.json`, `.claude-plugin/`, `.codex-plugin/`) en algo distinto de `version`, o se agrega o borra un archivo en esas carpetas |
 
 - Un bump de versión solo no dispara Agent Ready: las suites nunca leen la versión real, y
   `check-version-bump.js` ya la valida en cada PR.
@@ -419,19 +420,19 @@ se vuelve más lento. Durante una tarea, corré solo lo que cubre el cambio y de
 
 | Cambio | Comando local |
 |---|---|
-| La ref del pack de contenido de los tests (`tests/content-pack.ref`) o el bloque gestionado de `AGENTS.md` | `bash scripts/run-bats.sh plugins/golfo-kit/skills/agent-ready-setup/tests/merge-instructions.bats` y `bash scripts/run-bats.sh --filter 'rules' plugins/golfo-kit/skills/agent-ready-setup/tests/bootstrap.bats` (las rules y el template viven en [golfo-agent-profiles](https://github.com/guidomodarelli/golfo-agent-profiles)) |
-| Un flujo puntual de `agent-ready-setup` | `bash scripts/run-bats.sh --filter '<parte del nombre del test>' plugins/golfo-kit/skills/agent-ready-setup/tests/bootstrap.bats` |
+| La ref del pack de contenido de los tests (`tests/content-pack.ref`) o el bloque gestionado de `AGENTS.md` | `bash scripts/run-bats.sh plugins/golfo-agent-ready/skills/agent-ready-setup/tests/merge-instructions.bats` y `bash scripts/run-bats.sh --filter 'rules' plugins/golfo-agent-ready/skills/agent-ready-setup/tests/bootstrap.bats` (las rules y el template viven en [golfo-agent-profiles](https://github.com/guidomodarelli/golfo-agent-profiles)) |
+| Un flujo puntual de `agent-ready-setup` | `bash scripts/run-bats.sh --filter '<parte del nombre del test>' plugins/golfo-agent-ready/skills/agent-ready-setup/tests/bootstrap.bats` |
 | Scripts de bash de `agent-ready-setup` (`scripts/*.sh`, `assets/common/hooks/*.sh`) | el área de `bootstrap.bats` o de `merge-instructions.bats` que cubre el script ([Áreas](#áreas-de-bootstrapbats-y-merge-instructionsbats)); la suite entera, en la CI |
-| Profiles, manifest, lockfile u ownership de `agent-ready-setup` (`scripts/agent-ready-state.py`, `scripts/agent_ready_*.py`, `assets/providers.json`) | `bash scripts/run-bats.sh plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-state.bats` y las áreas `area:projection` y `area:managed-assets` de `bootstrap.bats` |
-| Configuración por capas de `agent-ready-setup` (`assets/config/*.schema.json`, `scripts/agent_ready_config.py`) | `bash scripts/run-bats.sh plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-config.bats` |
-| CLI `agent-ready` (`scripts/agent-ready`, `scripts/agent_ready_cli.py`) | `bash scripts/run-bats.sh plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-cli.bats` |
-| Caché de las revisiones de IA de `agent-ready-setup` (`assets/common/hooks/review-cache.py`, `harness-review.py`, `check-harness-consistency.sh`) | `bash scripts/run-bats.sh plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-reviews.bats`, y para la revisión de `AGENTS.md` también `merge-instructions.bats` |
-| Rules atómicas de `agent-ready-setup` (`scripts/agent_ready_rules.py`, `agent-ready rules`) | `bash scripts/run-bats.sh plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-rules.bats` |
-| Aprendizaje de `agent-ready-setup` (`scripts/agent_ready_learning.py`, `agent-ready learn`) | `bash scripts/run-bats.sh plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-learning.bats` |
-| El contenido de `agent-ready-setup` (`sources.golfo`, `scripts/agent_ready_content.py`) | `bash scripts/run-bats.sh plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-content.bats` |
-| Conflictos semánticos entre rules gestionadas y propias de `agent-ready-setup` (`scripts/agent_ready_conflicts.py`) | `bash scripts/run-bats.sh plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-conflicts.bats` |
-| Archivos de CI por proveedor de `agent-ready-setup` (`assets/ci/`, `ci.provider`, `agent-ready ci setup`) | `bash scripts/run-bats.sh plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-ci.bats` |
-| Herramientas de un pack y política de seguridad de `agent-ready-setup` (`scripts/agent_ready_pack_tools.py`, `agent-ready trust`) | `bash scripts/run-bats.sh plugins/golfo-kit/skills/agent-ready-setup/tests/agent-ready-pack-tools.bats` |
+| Profiles, manifest, lockfile u ownership de `agent-ready-setup` (`scripts/agent-ready-state.py`, `scripts/agent_ready_*.py`, `assets/providers.json`) | `bash scripts/run-bats.sh plugins/golfo-agent-ready/skills/agent-ready-setup/tests/agent-ready-state.bats` y las áreas `area:projection` y `area:managed-assets` de `bootstrap.bats` |
+| Configuración por capas de `agent-ready-setup` (`assets/config/*.schema.json`, `scripts/agent_ready_config.py`) | `bash scripts/run-bats.sh plugins/golfo-agent-ready/skills/agent-ready-setup/tests/agent-ready-config.bats` |
+| CLI `agent-ready` (`scripts/agent-ready`, `scripts/agent_ready_cli.py`) | `bash scripts/run-bats.sh plugins/golfo-agent-ready/skills/agent-ready-setup/tests/agent-ready-cli.bats` |
+| Caché de las revisiones de IA de `agent-ready-setup` (`assets/common/hooks/review-cache.py`, `harness-review.py`, `check-harness-consistency.sh`) | `bash scripts/run-bats.sh plugins/golfo-agent-ready/skills/agent-ready-setup/tests/agent-ready-reviews.bats`, y para la revisión de `AGENTS.md` también `merge-instructions.bats` |
+| Rules atómicas de `agent-ready-setup` (`scripts/agent_ready_rules.py`, `agent-ready rules`) | `bash scripts/run-bats.sh plugins/golfo-agent-ready/skills/agent-ready-setup/tests/agent-ready-rules.bats` |
+| Aprendizaje de `agent-ready-setup` (`scripts/agent_ready_learning.py`, `agent-ready learn`) | `bash scripts/run-bats.sh plugins/golfo-agent-ready/skills/agent-ready-setup/tests/agent-ready-learning.bats` |
+| El contenido de `agent-ready-setup` (`sources.golfo`, `scripts/agent_ready_content.py`) | `bash scripts/run-bats.sh plugins/golfo-agent-ready/skills/agent-ready-setup/tests/agent-ready-content.bats` |
+| Conflictos semánticos entre rules gestionadas y propias de `agent-ready-setup` (`scripts/agent_ready_conflicts.py`) | `bash scripts/run-bats.sh plugins/golfo-agent-ready/skills/agent-ready-setup/tests/agent-ready-conflicts.bats` |
+| Archivos de CI por proveedor de `agent-ready-setup` (`assets/ci/`, `ci.provider`, `agent-ready ci setup`) | `bash scripts/run-bats.sh plugins/golfo-agent-ready/skills/agent-ready-setup/tests/agent-ready-ci.bats` |
+| Herramientas de un pack y política de seguridad de `agent-ready-setup` (`scripts/agent_ready_pack_tools.py`, `agent-ready trust`) | `bash scripts/run-bats.sh plugins/golfo-agent-ready/skills/agent-ready-setup/tests/agent-ready-pack-tools.bats` |
 | `review-fix-loop`, `sibling-worktree`, `create-version`, `check-version-bump`, `validate-portable-plugins` o el eval runner | Su suite (`pnpm run test:review-fix-loop`, `pnpm run test:sibling-worktree`, `bash scripts/run-bats.sh tests/create-version.bats tests/check-version-bump.bats tests/validate-portable-plugins.bats`, `bash scripts/run-bats.sh skill-eval-runner/tests/*.bats`) |
 | Motor de cobertura de skills (`shared/tools/skill-coverage/**`) | `pnpm run test:skill-coverage` y `pnpm sync-shared-files` |
 | Un archivo de `shared/`, `shared/shared-files.json`, un link entre skills o `metadata.plugin-dependencies` | `pnpm sync-shared-files --check`, `pnpm check-plugin-boundaries` y `bash scripts/run-bats.sh tests/sync-shared-files.bats tests/check-plugin-boundaries.bats` |
@@ -462,7 +463,7 @@ Cada test de esas dos suites lleva un tag de área (`# bats test_tags=area:<áre
 contando el arranque de bats.
 
 ```bash
-LC_ALL=C.UTF-8 bash scripts/run-bats.sh --filter-tags area:skill-source plugins/golfo-kit/skills/agent-ready-setup/tests/bootstrap.bats
+LC_ALL=C.UTF-8 bash scripts/run-bats.sh --filter-tags area:skill-source plugins/golfo-agent-ready/skills/agent-ready-setup/tests/bootstrap.bats
 ```
 
 | Suite | Área | Qué cubre | Archivos | Tests | En Windows |
