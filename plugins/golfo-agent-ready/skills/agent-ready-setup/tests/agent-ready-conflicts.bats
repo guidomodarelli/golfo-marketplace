@@ -611,4 +611,13 @@ sys.exit(0)
   [ "$status" -eq 0 ]
   [[ "$output" != *"competing skills"* ]]
   ! grep -Fq 'team-review/SKILL.md' "$FAKE_INPUT"
+
+  # Without complements but with the check off, the pair is not reviewed either.
+  printf '%s\n' '{"schemaVersion": 1, "name": "acme", "version": "1.0.0", "profiles": {"team": {"kind": "capability", "description": "Team skills.", "assets": "profiles/team"}}}' > agent-packs/acme/agent-ready-pack.json
+  write_manifest '{"profiles": ["node", "acme/team"], "sources": {"packs": [{"name": "acme", "source": "path:./agent-packs/acme"}]}, "conflicts": {"competingSkills": {"enabled": false}}}'
+  : > "$FAKE_INPUT"
+  agent_ready plan
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"competing skills"* ]]
+  ! grep -Fq 'team-review/SKILL.md' "$FAKE_INPUT"
 }

@@ -394,6 +394,26 @@ PY
   [ "$(value_and_origin updates.mode)" = '"auto" environment' ]
 }
 
+@test "agent-ready preset delivered pins every source, stops the refresh, applies from the lock and fails the CI" {
+  run python3 "$skill_dir/scripts/agent-ready" preset delivered
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"updates.fromLock=true"* ]]
+  # Only the preset key goes to the manifest: the values it sets stay out of the file.
+  [ "$(python3 -c 'import json; print(json.load(open(".agents/agent-ready.json", encoding="utf-8")))' | tr -d '\r')" = "{'updates': {'preset': 'delivered'}}" ]
+  resolve_config
+  [ "$(value_and_origin updates.mode)" = '"pinned" project (preset updates.preset=delivered)' ]
+  [ "$(value_and_origin sources.golfo.updates)" = '"pinned" project (preset updates.preset=delivered)' ]
+  [ "$(value_and_origin updates.refresh)" = 'false project (preset updates.preset=delivered)' ]
+  [ "$(value_and_origin updates.fromLock)" = 'true project (preset updates.preset=delivered)' ]
+  [ "$(value_and_origin ci.mode)" = '"fail" project (preset updates.preset=delivered)' ]
+
+  # One value of the preset can be overridden in the same layer, and the others stay.
+  write_project '{"updates": {"preset": "delivered", "refresh": true}}'
+  resolve_config
+  [ "$(value_and_origin updates.refresh)" = 'true project' ]
+  [ "$(value_and_origin updates.fromLock)" = 'true project (preset updates.preset=delivered)' ]
+}
+
 @test "a new feature only needs its schema: the resolver loads a fixture module unchanged" {
   copy_skill
   cat > "$source_copy/assets/config/audit.schema.json" <<'EOF'

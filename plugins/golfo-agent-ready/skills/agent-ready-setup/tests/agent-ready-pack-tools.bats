@@ -412,6 +412,23 @@ PY
   assert_json .mcp.json '"acme-docs" in data["mcpServers"]'
 }
 
+@test "with conflicts.userServers off, plan does not compare the pack servers with the user's and the apply registers them" {
+  unset CLAUDE_CONFIG_DIR
+  printf '{"mcpServers": {"my-docs": {"command": "acme", "args": ["mcp"], "env": {"ACME_TOKEN": "${ACME_TOKEN}"}}}}
+' > "$HOME/.claude.json"
+  run_cli trust add acme
+  run_cli config set conflicts.userServers.enabled false
+  [ "$status" -eq 0 ]
+  run_cli plan
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"is the user's my-docs"* ]]
+
+  run_cli apply
+  [ "$status" -eq 0 ]
+  [[ "$stderr" != *"the user already has it"* ]]
+  assert_json .mcp.json '"acme-docs" in data["mcpServers"]'
+}
+
 @test "plan names the skills and subagents that something on the machine shadows, and who wins" {
   unset CLAUDE_CONFIG_DIR
   mkdir -p "$HOME/.claude/skills/component-creation" "$HOME/.claude/agents" "$HOME/.agents/skills/component-creation"
@@ -452,6 +469,12 @@ name: react-review-pr
   run_cli plan
   [ "$status" -eq 0 ]
   [[ "$output" == *"~ variable ACME_TOKEN (acme/kafka-interno) is already listed in .env.example"* ]]
+
+  run_cli config set conflicts.environment.enabled false
+  [ "$status" -eq 0 ]
+  run_cli plan
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"is already listed in .env.example"* ]]
 }
 
 @test "two tools of different profiles with a capability in common compete, unless one complements the other" {
@@ -467,6 +490,14 @@ PY2
   run_cli plan
   [ "$status" -eq 0 ]
   [[ "$output" == *"MCP server base-docs (acme/base) and MCP server acme-docs (acme/kafka-interno) both provide docs-search"* ]]
+
+  run_cli config set conflicts.competingTools.enabled false
+  [ "$status" -eq 0 ]
+  run_cli plan
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"both provide docs-search"* ]]
+  run_cli config unset conflicts.competingTools.enabled
+  [ "$status" -eq 0 ]
 
   python3 - "$pack_repository/agent-ready-pack.json" <<'PY2'
 import json, sys

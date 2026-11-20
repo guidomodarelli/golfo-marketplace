@@ -988,6 +988,15 @@ plan_text() {
   [[ "$output" != *"runs two formatters"* ]]
   [[ "$output" != *"! permission"* ]]
   [[ "$output" == *"is registered in"* ]]
+
+  # With the hooks check off, neither the duplicated hook nor the formatters are compared.
+  printf '%s\n' '{"hooks": {"PostToolUse": [{"matcher": "Edit", "hooks": [{"type": "command", "command": "npx biome format --write ."}]}]}}' > .claude/settings.local.json
+  printf '{"conflicts": {"hooks": {"enabled": false}}}\n' > .agents/agent-ready.json
+  run env -u CLAUDE_CONFIG_DIR HOME="$test_root/home" python3 "$skill_dir/scripts/agent-ready-state.py" plan --project "$project_dir" --skill-dir "$skill_dir" --profiles node
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"is registered in"* ]]
+  [[ "$output" != *"runs two formatters"* ]]
+  [[ "$output" == *"! permission Bash(npm run *)"* ]]
 }
 
 @test "plan shows what each provider sees, the hooks only one runs and a CI job that already checks" {
