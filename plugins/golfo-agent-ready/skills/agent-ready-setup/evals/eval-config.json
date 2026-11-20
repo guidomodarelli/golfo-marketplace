@@ -3601,7 +3601,7 @@
         },
         {
           "type": "regex",
-          "pattern": "learning\\.share",
+          "pattern": "learning\\.share|\"share\": ?false|share: ?false",
           "description": "El cliente que no participa apaga learning.share",
           "critical": true
         },
