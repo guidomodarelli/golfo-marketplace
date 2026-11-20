@@ -3551,8 +3551,39 @@
         },
         {
           "type": "regex",
-          "pattern": "(no|nunca)[^.]{0,40}falla|sigue[^.]{0,60}(apply|funcionando)",
+          "pattern": "(no|nunca)[^.]{0,40}falla|sigue[^.]{0,60}(apply|funcionando)|apply[^.]{0,60}sigue",
           "description": "El apply no falla si el sistema rechaza la tarea",
+          "critical": true
+        }
+      ]
+    },
+    {
+      "id": "learn-reorganize-equivalent-only",
+      "description": "La reorganización de lo aprendido aplica sola solo lo que la revisión confirma equivalente; lo demás queda como propuesta en learn reorganize --plan, se acepta con --accept y learn revert la deshace.",
+      "input": "En un repo con el profile learning de agent-ready-setup el agente ya aprendió unas diez rules sueltas sobre las actas y algunas dicen casi lo mismo. ¿La skill las ordena sola? ¿Puede cambiar lo que hace el agente sin que yo me entere? ¿Dónde veo lo que quedó pendiente, cómo lo acepto y cómo deshago una reorganización que no me gustó? Respondé desde la skill, sin ejecutar comandos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "reorganize --plan",
+          "description": "Lo pendiente se ve en learn reorganize --plan",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "equivalen|mismo comportamiento|no cambia (el )?comportamiento",
+          "description": "Solo se aplica sola una reorganización equivalente",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "--accept",
+          "description": "El desarrollador acepta una propuesta con --accept",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "learn revert",
+          "description": "learn revert deshace una reorganización",
           "critical": true
         }
       ]

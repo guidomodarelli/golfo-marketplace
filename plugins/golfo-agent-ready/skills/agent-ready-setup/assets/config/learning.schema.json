@@ -62,6 +62,31 @@
         }
       }
     },
+    "reorganize": {
+      "description": "La reorganización de lo aprendido: consolidar rules redundantes, dividir una larga o pasar una a skill (references/learning.md, «Reorganizar lo aprendido»).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "auto": {
+          "description": "Encendido, un cambio estructural que la revisión de IA confirma como equivalente (consolidar o dividir rules que escribió el aprendizaje) se aplica solo, con su commit. Apagado, todo queda como propuesta para el desarrollador en agent-ready learn reorganize --plan.",
+          "type": "boolean",
+          "default": true,
+          "x-security": { "strictness": [true, false] }
+        },
+        "maxRuleLines": {
+          "description": "Líneas no vacías, desde el bullet, a partir de las cuales una rule aprendida se revisa para dividirla.",
+          "type": "integer",
+          "minimum": 1,
+          "default": 12
+        },
+        "minIntervalDays": {
+          "description": "Días mínimos entre dos reorganizaciones en background (al cerrar el chat o desde el barrido programado). agent-ready learn reorganize la corre en el momento.",
+          "type": "integer",
+          "minimum": 0,
+          "default": 7
+        }
+      }
+    },
     "candidateTtlDays": {
       "description": "Días sin evidencia nueva después de los cuales un candidato vence. Si la instrucción vuelve, se cuenta desde cero: la evidencia vencida no suma.",
       "type": "integer",

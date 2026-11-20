@@ -133,7 +133,7 @@ jobs:
           - os: windows-latest
             python: "3.13"
             shard: 2/5
-            suites: agent-ready-state.bats agent-ready-updates.bats agent-ready-ci.bats
+            suites: agent-ready-state.bats agent-ready-updates.bats agent-ready-ci.bats agent-ready-learning-reorganize.bats
           - os: windows-latest
             python: "3.13"
             shard: 3/5
@@ -156,7 +156,7 @@ jobs:
           - os: macos-latest
             python: "3.13"
             shard: 2/3
-            suites: agent-ready-content.bats agent-ready-state.bats agent-ready-updates.bats agent-ready-detection.bats agent-ready-reviews.bats
+            suites: agent-ready-content.bats agent-ready-state.bats agent-ready-updates.bats agent-ready-detection.bats agent-ready-reviews.bats agent-ready-learning-reorganize.bats
           - os: macos-latest
             python: "3.13"
             shard: 3/3
@@ -170,7 +170,7 @@ jobs:
           - os: macos-latest
             python: "3.9"
             shard: 2/2
-            suites: agent-ready-packs.bats agent-ready-pack-tools.bats agent-ready-conflicts.bats agent-ready-workspaces.bats agent-ready-cli.bats agent-ready-detection.bats agent-ready-pack-scripts.bats agent-ready-ci.bats agent-ready-pack-clis.bats agent-ready-pack-examples.bats
+            suites: agent-ready-packs.bats agent-ready-pack-tools.bats agent-ready-conflicts.bats agent-ready-workspaces.bats agent-ready-cli.bats agent-ready-detection.bats agent-ready-pack-scripts.bats agent-ready-ci.bats agent-ready-pack-clis.bats agent-ready-pack-examples.bats agent-ready-learning-reorganize.bats
     defaults:
       run:
         shell: bash

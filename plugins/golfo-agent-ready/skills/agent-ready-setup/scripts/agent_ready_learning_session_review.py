@@ -274,10 +274,11 @@ def sweep_log_path(project_root):
     return os.path.join(base, *SWEEP_LOG_DIRECTORY, f"{key}.log")
 
 
-def start_sweep(project_root, cli_path, run_inline):
+def start_sweep(project_root, cli_path, run_inline, extra_arguments=()):
     """Run ``agent-ready learn sweep`` detached from the hook, with its log under the cache of the user.
 
-    ``run_inline`` runs it in this process instead, when SWEEP_FOREGROUND_VARIABLE asks for it.
+    ``run_inline`` runs it in this process instead, when SWEEP_FOREGROUND_VARIABLE asks for it;
+    ``extra_arguments`` go after the sweep (--reorganize).
     """
     if os.environ.get(SWEEP_FOREGROUND_VARIABLE) == "1":
         run_inline()
@@ -286,5 +287,5 @@ def start_sweep(project_root, cli_path, run_inline):
     specification = importlib.util.spec_from_file_location("run_detached", RUN_DETACHED_PATH)
     run_detached = importlib.util.module_from_spec(specification)
     specification.loader.exec_module(run_detached)
-    run_detached.run_detached([sys.executable, cli_path, "learn", "sweep", "--project", project_root],
+    run_detached.run_detached([sys.executable, cli_path, "learn", "sweep", "--project", project_root, *extra_arguments],
                               pathlib.Path(sweep_log_path(project_root)))
