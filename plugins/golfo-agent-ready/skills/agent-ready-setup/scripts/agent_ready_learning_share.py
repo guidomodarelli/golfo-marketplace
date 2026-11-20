@@ -6,7 +6,7 @@ reads, from each repository the developer has cloned (and from the exports a cli
 what was learned, skips a repository whose learning.share is off, and groups the instructions that
 several repositories learned. A provider writes each group as one general statement without data of
 any client; it sees the repositories only as repo-1, repo-2... The result stays in the cache of the
-developer, never in a repository (references/learning.md, «Aprender de varios clientes»).
+developer, never in a repository (references/learning-share.md, «Aprender de varios clientes»).
 """
 
 import json

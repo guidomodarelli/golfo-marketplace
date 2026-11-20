@@ -4,7 +4,7 @@ A long chat is not one episode: the evidence of an instruction counts distinct e
 with another session, another day or after learning.episodeGapHours without messages. The hook of the
 prompt of the user touches the session on every message, without any process or clock running between
 messages; the state lives in .git/info/agent-ready/episodes.json, local to the clone and never
-versioned (references/learning.md, «Episodios»).
+versioned (references/learning-episodes.md, «Episodios»).
 
 An episode closes when the next one starts, when the chat ends (SessionEnd) or when a sweep finds it
 idle for learning.episodeGapHours. Closing it queues the review of its messages of the user in

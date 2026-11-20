@@ -6,7 +6,7 @@ over the context budget, or two rules that decide one key differently. A provide
 operations, and a second call checks each one against the rules it replaces. Only a structural change it
 confirms as equivalent is applied on its own; the rest waits for the developer in
 .agents/learning/reorganize.json (agent-ready learn reorganize --plan). Each change is one commit and
-one line of the log, and learn revert undoes it (references/learning.md, «Reorganizar lo aprendido»).
+one line of the log, and learn revert undoes it (references/learning-reorganize.md, «Reorganizar lo aprendido»).
 """
 
 import datetime

@@ -90,7 +90,7 @@ def parse_date(text, label):
 
 def episode_of(session, date, episode):
     """The episode of one piece of evidence. Without the episode of a hook, another session or another
-    day starts a new one (references/learning.md, «Episodios»)."""
+    day starts a new one (references/learning-episodes.md, «Episodios»)."""
     return episode or f"{session}:{date.isoformat()}"
 
 

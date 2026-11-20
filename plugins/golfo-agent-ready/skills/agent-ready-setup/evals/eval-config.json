@@ -3408,7 +3408,7 @@
         },
         {
           "type": "regex",
-          "pattern": "(no|nunca)[^.]{0,60}(muestra|aparece|imprime|ves|ve|incluye)[^.]{0,80}(cita|frase|quote)|(cita|frase|quote)[^.]{0,80}(no|nunca)[^.]{0,40}(muestra|aparece|imprime|sale)|(sin|nunca) (las )?citas|solo (vive|queda|est(a|á))[^.]{0,40}candidates\\.json",
+          "pattern": "(no|nunca)[^.]{0,60}(muestra|aparece|imprime|ves|ve|incluye)[^.]{0,80}(cita|frase|quote)|(cita|frase|quote)[^.]{0,80}(no|nunca)[^.]{0,40}(muestra|aparece|imprime|sale)|(sin|nunca) (las )?citas|(solo|solamente|únicamente) (vive|queda|est(a|á))[^.]{0,40}candidates\\.json|(vive|queda|est(a|á)|se guarda|se almacena) (solo|solamente|únicamente) en [^ ]*candidates\\.json|muestra(n)? (solo|solamente|únicamente) (los |el )?`?statements?",
           "description": "list no muestra las citas del usuario",
           "critical": true
         }
