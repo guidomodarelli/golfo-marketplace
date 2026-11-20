@@ -68,6 +68,8 @@ jobs:
       - run: pnpm run test:sibling-worktree
       - name: Skill coverage engine (temporary git repositories)
         run: pnpm run test:skill-coverage
+      - name: golfo-github PR reply template hook
+        run: pnpm run test:pr-reply-hook
       - name: agent-ready npm launcher (@golfo/agent-ready)
         run: pnpm run test:agent-ready-launcher
       - name: jira-ticket helper (pytest)

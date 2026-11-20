@@ -72,6 +72,8 @@ Cada plugin tiene un ámbito: una plataforma o una tecnología. Una skill va al 
 | `golfo-planning` | Planificación con cualquier herramienta | create-issue, improve-spec, functionality-check |
 | `golfo-jira` | Solo Jira | jira-ticket |
 
+`golfo-github` trae además un hook de Claude Code que frena las respuestas a hilos y comentarios de PR que no usan los templates de `codex-comment-closeout` o `inline-thread-autofix`. Se instala con el plugin y no necesita configuración. Qué revisa, cómo se apaga y sus límites están en [`plugins/golfo-github/hooks/README.md`](plugins/golfo-github/hooks/README.md).
+
 ### 🔗 Dependencias entre plugins
 
 Cada plugin se instala por separado, así que una skill no enlaza archivos de otro plugin: la nombra junto con su plugin (por ejemplo, «`async-operation-error-handling` (plugin `golfo-engineering`)»). La skill que nombra skills de otros plugins los declara en `metadata.plugin-dependencies` de su `SKILL.md`, como texto separado por comas:
@@ -362,6 +364,8 @@ temporales.
 `pnpm run test:skill-coverage` corre con `node --test` la suite del motor de cobertura incremental de
 skills (`shared/tools/skill-coverage/`, la fuente que `pnpm sync-shared-files` copia a cada plugin) sobre repos git temporales; usa `@babel/parser`
 de las devDependencies para el análisis por símbolos.
+`pnpm run test:pr-reply-hook` corre con `node --test` la suite del hook de respuestas de PR de
+`golfo-github`: ejecuta el hook como proceso, igual que Claude Code, contra los templates reales del plugin.
 `pnpm run test:pr-flow-graph` corre con `node --test` las suites de `pr-flow-graph`: el
 validador del modelo, los renderers de Mermaid y HTML, la compuerta de Lean, el contrato del CLI y la
 página del grafo en un navegador real. Esta última usa `playwright-core` y su Chromium, igual que la
@@ -435,6 +439,7 @@ se vuelve más lento. Durante una tarea, corré solo lo que cubre el cambio y de
 | Herramientas de un pack y política de seguridad de `agent-ready-setup` (`scripts/agent_ready_pack_tools.py`, `agent-ready trust`) | `bash scripts/run-bats.sh plugins/golfo-agent-ready/skills/agent-ready-setup/tests/agent-ready-pack-tools.bats` |
 | `review-fix-loop`, `sibling-worktree`, `create-version`, `check-version-bump`, `validate-portable-plugins` o el eval runner | Su suite (`pnpm run test:review-fix-loop`, `pnpm run test:sibling-worktree`, `bash scripts/run-bats.sh tests/create-version.bats tests/check-version-bump.bats tests/validate-portable-plugins.bats`, `bash scripts/run-bats.sh skill-eval-runner/tests/*.bats`) |
 | Motor de cobertura de skills (`shared/tools/skill-coverage/**`) | `pnpm run test:skill-coverage` y `pnpm sync-shared-files` |
+| Hook de respuestas de PR de `golfo-github` (`plugins/golfo-github/hooks/**`) o los templates de `codex-comment-closeout` e `inline-thread-autofix` | `pnpm run test:pr-reply-hook` |
 | Un archivo de `shared/`, `shared/shared-files.json`, un link entre skills o `metadata.plugin-dependencies` | `pnpm sync-shared-files --check`, `pnpm check-plugin-boundaries` y `bash scripts/run-bats.sh tests/sync-shared-files.bats tests/check-plugin-boundaries.bats` |
 | `user-manual`: navegación de `DESIGN.md`, `scripts/check-*`, `build-manual.mjs` o `assets/` | `pnpm run test:user-manual` (con Playwright para la suite de navegador) y, si se tocó la paleta, `bash scripts/run-bats.sh plugins/golfo-web/skills/user-manual/tests/check-design-tokens.bats` |
 | `pr-flow-graph`: el modelo de flujo, `scripts/` o `assets/flow-graph-template.html` | `pnpm run test:pr-flow-graph` (con Playwright para la suite de navegador) |
