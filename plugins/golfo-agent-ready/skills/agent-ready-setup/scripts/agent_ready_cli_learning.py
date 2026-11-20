@@ -12,12 +12,14 @@ import sys
 import agent_ready_learning as learning
 import agent_ready_learning_apply as learning_apply
 import agent_ready_learning_episodes as learning_episodes
+import agent_ready_learning_reorganize as learning_reorganize
 import agent_ready_learning_review as learning_review
 import agent_ready_learning_schedule as learning_schedule
 import agent_ready_learning_session_review as session_review
 from agent_ready_cli_common import EXIT_OK, SCRIPT_DIRECTORY, find_repository_root
 from agent_ready_common import StateError, serialize_json
 from agent_ready_config import resolve_configuration
+from agent_ready_options import CONTEXT_BUDGET_ENABLED_KEY, CONTEXT_BUDGET_RULES_BYTES_KEY
 
 LEARNING_ENABLED_KEY = "learning.enabled"
 LEARNING_MODE_KEY = "learning.mode"
@@ -27,6 +29,9 @@ LEARNING_GAP_KEY = "learning.episodeGapHours"
 LEARNING_SESSION_END_KEY = "learning.hooks.sessionEnd"
 LEARNING_SESSION_START_KEY = "learning.hooks.sessionStart"
 LEARNING_SWEEP_INTERVAL_KEY = "learning.sweep.intervalMinutes"
+LEARNING_REORGANIZE_AUTO_KEY = "learning.reorganize.auto"
+LEARNING_REORGANIZE_MAX_LINES_KEY = "learning.reorganize.maxRuleLines"
+LEARNING_REORGANIZE_INTERVAL_KEY = "learning.reorganize.minIntervalDays"
 CLI_PATH = os.path.join(SCRIPT_DIRECTORY, "agent-ready")
 PROVIDERS = ("claude", "codex")
 SUMMARY_LOG_LINES = 5
@@ -54,6 +59,11 @@ def settings_of(project_root):
         "session_start": configuration.value(LEARNING_SESSION_START_KEY),
         "sweep_interval": configuration.value(LEARNING_SWEEP_INTERVAL_KEY),
         "max_statement_chars": configuration.value(MAX_STATEMENT_CHARS_KEY),
+        "reorganize_auto": configuration.value(LEARNING_REORGANIZE_AUTO_KEY),
+        "reorganize_max_rule_lines": configuration.value(LEARNING_REORGANIZE_MAX_LINES_KEY),
+        "reorganize_min_interval_days": configuration.value(LEARNING_REORGANIZE_INTERVAL_KEY),
+        "rules_budget_bytes": (configuration.value(CONTEXT_BUDGET_RULES_BYTES_KEY)
+                               if configuration.value(CONTEXT_BUDGET_ENABLED_KEY) else None),
         "today": datetime.date.today(),
     }
 
@@ -138,18 +148,28 @@ def learning_active(project_root, settings):
     return settings["enabled"] and learning_episodes.learning_selected(project_root)
 
 
-def start_sweep_when_needed(project_root, settings, now):
+def start_sweep_when_needed(project_root, settings, now, reorganize=False):
     """Start the sweep in the background when an episode waits for its review: hooks must not wait for it.
 
     With learning.hooks.sessionEnd off the sweep calls no provider, so it runs here and only drops the queue.
+    ``reorganize`` is the end of a chat, which also reorganizes what was learned when that is due.
     """
-    if not learning_episodes.needs_sweep(project_root, now, settings["gap_hours"]):
+    reorganize = reorganize and learning_reorganize.is_due(project_root, settings, now)
+    if not learning_episodes.needs_sweep(project_root, now, settings["gap_hours"]) and not reorganize:
         return
-    if not settings["session_review"]:
+    if not settings["session_review"] and not reorganize:
         session_review.sweep(project_root, settings, lambda line: None)
         return
-    session_review.start_sweep(project_root, CLI_PATH,
-                               lambda: session_review.sweep(project_root, settings, write_sweep_line))
+    session_review.start_sweep(project_root, CLI_PATH, lambda: sweep_project(project_root, settings, reorganize),
+                               ["--reorganize"] if reorganize else [])
+
+
+def sweep_project(project_root, settings, reorganize):
+    """The sweep of one repository: the queued reviews, then the reorganization when it is due."""
+    session_review.sweep(project_root, settings, write_sweep_line)
+    if reorganize:
+        learning_reorganize.run_when_due(project_root, settings, learning_episodes.latest_provider(project_root),
+                                         write_sweep_line)
 
 
 def write_sweep_line(line):
@@ -178,7 +198,7 @@ def command_learn_episode(arguments):
             learning_episodes.end(project_root, arguments.session, now, settings["gap_hours"], transcript)
         else:
             learning_episodes.review_now(project_root, arguments.session, now, transcript)
-        start_sweep_when_needed(project_root, settings, now)
+        start_sweep_when_needed(project_root, settings, now, reorganize=arguments.end)
         if not arguments.touch:
             return EXIT_OK
     elif arguments.scope_question:
@@ -246,7 +266,7 @@ def command_learn_sweep(arguments):
     settings = settings_of(project_root)
     if not learning_active(project_root, settings):
         return EXIT_OK
-    session_review.sweep(project_root, settings, write_sweep_line)
+    sweep_project(project_root, settings, arguments.reorganize)
     return EXIT_OK
 
 
@@ -263,7 +283,8 @@ def sweep_registered():
         try:
             settings = settings_of(project_root)
             if learning_active(project_root, settings):
-                session_review.sweep(project_root, settings, write_sweep_line)
+                # The scheduled task is the one that reorganizes when nobody closes a chat.
+                sweep_project(project_root, settings, True)
         except (StateError, OSError) as problem:
             write_sweep_line(f"{project_root}: {problem}")
     return EXIT_OK
@@ -336,12 +357,14 @@ def command_learn_status(arguments):
     # In developer-review mode, what the rules of evidence would learn waits for learn accept.
     proposals = [item for item in waiting if learning.decide(item, settings["mode"], settings["threshold"],
                                                              settings["ttl_days"]) == learning.DECISION_PROPOSE]
+    reorganizations = learning_reorganize.plan(find_repository_root(arguments.project), settings)["proposals"]
     if arguments.json:
         sys.stdout.write(serialize_json({
             "enabled": settings["enabled"], "mode": settings["mode"], "threshold": settings["threshold"],
             "candidateTtlDays": settings["ttl_days"], "counts": counts,
             "candidates": [learning.public_view(item, settings["ttl_days"]) for item in waiting],
-            "proposals": [item["id"] for item in proposals]}))
+            "proposals": [item["id"] for item in proposals],
+            "reorganizations": [item["id"] for item in reorganizations]}))
         return EXIT_OK
     state = settings["mode"] if settings["enabled"] else "off"
     sys.stdout.write(f"Learning: {state}, {settings['threshold']} episodes to learn an implicit instruction, "
@@ -356,6 +379,9 @@ def command_learn_status(arguments):
         sys.stdout.write("Proposals for the developer (agent-ready learn accept <id>, or reject <id>):\n")
         for item in proposals:
             sys.stdout.write(f"  {item['id']}  {item['statement']}\n")
+    if reorganizations:
+        sys.stdout.write(f"{len(reorganizations)} reorganizations wait for the developer: "
+                         "agent-ready learn reorganize --plan\n")
     return EXIT_OK
 
 
@@ -379,8 +405,74 @@ def command_learn_list(arguments):
     return EXIT_OK
 
 
+def operation_line(operation):
+    target = " | ".join(operation["statements"]) or f"skill {operation['skill']['name']}"
+    return f"{operation['type']} {', '.join(operation['ruleIds'])} -> {target}"
+
+
+def print_plan(report):
+    for trigger in report["triggers"]:
+        detail = {learning_reorganize.TRIGGER_LONG_RULE: f"over {trigger.get('maxRuleLines')} lines",
+                  learning_reorganize.TRIGGER_TOPIC: f"topic {trigger.get('topic')}",
+                  learning_reorganize.TRIGGER_CONTEXT_BUDGET: f"{trigger.get('bytes')} of {trigger.get('limitBytes')} "
+                                                              "bytes of rules loaded at the start",
+                  learning_reorganize.TRIGGER_CONFLICT: f"key {trigger.get('key')}"}[trigger["trigger"]]
+        sys.stdout.write(f"  trigger {trigger['trigger']} ({detail}): {', '.join(trigger['ruleIds'])}\n")
+    if not report["triggers"]:
+        sys.stdout.write("  no trigger holds: the learned rules need no reorganization now\n")
+
+
+def command_learn_reorganize(arguments):
+    """Reorganize the learned rules now; --plan shows what waits, --accept and --dismiss decide a proposal."""
+    project_root = find_repository_root(arguments.project)
+    settings = settings_of(project_root)
+    if arguments.accept:
+        written = learning_reorganize.accept(project_root, arguments.accept, settings)
+        if arguments.json:
+            sys.stdout.write(serialize_json(written))
+        else:
+            sys.stdout.write(f"{arguments.accept}  accepted: {operation_line(written['operation'])} "
+                             f"(commit {written['commit'][:12]})\n")
+        return EXIT_OK
+    if arguments.dismiss:
+        proposal = learning_reorganize.dismiss(project_root, arguments.dismiss)
+        if arguments.json:
+            sys.stdout.write(serialize_json({"dismissed": proposal["id"]}))
+        else:
+            sys.stdout.write(f"{proposal['id']}  dismissed: {operation_line(proposal)}\n")
+        return EXIT_OK
+    if arguments.plan:
+        report = learning_reorganize.plan(project_root, settings)
+        if arguments.json:
+            sys.stdout.write(serialize_json(report))
+            return EXIT_OK
+        sys.stdout.write("Reorganization of what was learned:\n")
+        print_plan(report)
+        for proposal in report["proposals"]:
+            sys.stdout.write(f"  {proposal['id']}  {operation_line(proposal)}\n      waits: {proposal['waiting']}"
+                             + (f" ({proposal['verdict']['reason']})" if proposal.get("verdict") else "") + "\n")
+        if report["proposals"]:
+            sys.stdout.write("Decide each one with agent-ready learn reorganize --accept <id> or --dismiss <id>.\n")
+        return EXIT_OK
+    report = learning_reorganize.reorganize(project_root, settings,
+                                            arguments.provider or learning_episodes.latest_provider(project_root))
+    if arguments.json:
+        sys.stdout.write(serialize_json(report))
+        return EXIT_OK
+    sys.stdout.write(f"Reorganization: {report['status']}\n")
+    print_plan(report)
+    for written in report["applied"]:
+        sys.stdout.write(f"  applied  {operation_line(written['operation'])} (commit {written['commit'][:12]})\n")
+    for proposal in report["proposed"]:
+        sys.stdout.write(f"  proposed {proposal['id']}  {operation_line(proposal)}: {proposal['waiting']}\n")
+    for problem in report["errors"]:
+        sys.stdout.write(f"  not written {problem}\n")
+    return EXIT_OK
+
+
 def register(subparsers, new_subparser):
-    """Add learn record|apply|accept|reject|revert|status|list|episode|summary to the CLI parser."""
+    """Add learn record|apply|accept|reject|revert|status|list|episode|summary|sweep|schedule|reorganize
+    to the CLI parser."""
     learn = new_subparser(subparsers, "learn", "Record and read what the agent learns from the user.",
                           "  agent-ready learn status\n  agent-ready learn list --status candidate", None,
                           with_project=False)
@@ -460,9 +552,24 @@ def register(subparsers, new_subparser):
         "  agent-ready learn sweep\n  agent-ready learn sweep --registered", command_learn_sweep)
     sweep_action.add_argument("--registered", action="store_true",
                               help="sweep every repository registered for the scheduled sweep (what the task runs)")
+    sweep_action.add_argument("--reorganize", action="store_true",
+                              help="also reorganize what was learned, when learning.reorganize.minIntervalDays allows it")
     # The task runs it from any directory; without --registered the command finds the repository itself.
     sweep_action.set_defaults(needs_repository=False)
     schedule_action = new_subparser(
         actions, "schedule", "Register the scheduled sweep as learning.sweep.intervalMinutes asks, as an apply does.",
         "  agent-ready learn schedule\n  agent-ready learn schedule --json", command_learn_schedule)
     schedule_action.add_argument("--json", action="store_true", help="print the result as JSON")
+    reorganize_action = new_subparser(
+        actions, "reorganize", "Consolidate, split or turn into skills the learned rules: the equivalent changes "
+                               "are applied, the rest wait for the developer.",
+        "  agent-ready learn reorganize --plan\n  agent-ready learn reorganize\n"
+        "  agent-ready learn reorganize --accept reorg-1a2b3c4d5e", command_learn_reorganize)
+    reorganize_modes = reorganize_action.add_mutually_exclusive_group()
+    reorganize_modes.add_argument("--plan", action="store_true",
+                                  help="show the triggers and the proposals that wait, without a model or a change")
+    reorganize_modes.add_argument("--accept", metavar="ID", help="the developer applies a proposal")
+    reorganize_modes.add_argument("--dismiss", metavar="ID", help="the developer drops a proposal")
+    reorganize_action.add_argument("--provider", choices=PROVIDERS,
+                                   help="provider that reviews (default: the one of the latest session)")
+    reorganize_action.add_argument("--json", action="store_true", help="print the result as JSON")

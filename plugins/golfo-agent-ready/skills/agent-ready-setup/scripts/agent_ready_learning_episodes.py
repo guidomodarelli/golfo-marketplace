@@ -197,6 +197,14 @@ def touch(project_root, session_id, now, gap_hours, transcript=None, provider=No
     return session, started
 
 
+def latest_provider(project_root):
+    """The provider of the session with the latest message of the user, or DEFAULT_PROVIDER."""
+    sessions = read_episodes(episodes_path(project_root))["sessions"].values()
+    timed = [(parse_time(session["lastUserMessageAt"]), session.get("provider") or DEFAULT_PROVIDER)
+             for session in sessions if session.get("lastUserMessageAt")]
+    return max(timed)[1] if timed else DEFAULT_PROVIDER
+
+
 def end(project_root, session_id, now, gap_hours, transcript=None):
     """The chat ended (SessionEnd): close its episode, and any other idle one. False when none was open."""
     path = episodes_path(project_root)

@@ -10,6 +10,7 @@ import os
 import subprocess
 
 import agent_ready_learning as learning
+import agent_ready_learning_reorganize as learning_reorganize
 import agent_ready_rules
 from agent_ready_common import StateError, write_text_atomically
 from agent_ready_learning_apply import (
@@ -128,6 +129,20 @@ def revert_rule(project_root, entry):
     write_text_atomically(path, new_text)
 
 
+def revert_reorganization(project_root, registry, entry, sha, settings):
+    """Undo the whole reorganization ``entry`` came from, inside the lock of revert."""
+    paths, reverted = learning_reorganize.revert(project_root, registry, entry, settings)
+    learning.write_registry(project_root, registry)
+    ids = ", ".join(item["id"] for item in reverted)
+    restored = ", ".join(entry["learned"]["reorganizes"])
+    log_path = append_log(project_root, f"- {settings['today'].isoformat()} revert {ids} (reorganization, commit "
+                                        f"{sha[:12]}): {restored} learned again\n")
+    revert_sha = commit_paths(project_root, paths + [learning.candidates_path(project_root), log_path],
+                              f"learn: revert the reorganization of {restored}\n\n"
+                              + "".join(f"Learning-Id: {item['id']}\n" for item in reverted) + f"Reverts: {sha}\n")
+    return entry, sha, revert_sha
+
+
 def revert(project_root, candidate_id, settings):
     """Undo a learning: its rule or skill goes back to what it was before, the entry it replaced is
     learned again, and a commit records it. Returns (entry, sha of the learning, sha of the revert)."""
@@ -137,6 +152,8 @@ def revert(project_root, candidate_id, settings):
         if entry["status"] != learning.STATUS_LEARNED:
             raise StateError(f"{candidate_id} is {entry['status']}, not learned: there is nothing to revert")
         sha = learning_commit(project_root, entry)
+        if entry["learned"].get("action") == learning_reorganize.ACTION_REORGANIZE:
+            return revert_reorganization(project_root, registry, entry, sha, settings)
         path = entry["learned"]["path"]
         # The text this learning replaced comes back, so its entry is learned again, whatever new evidence
         # did to it since; a rejection would not hold, so it stops the revert before anything changes.
