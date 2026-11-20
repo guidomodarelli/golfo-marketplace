@@ -10,6 +10,7 @@ import os
 import subprocess
 
 import agent_ready_learning as learning
+import agent_ready_learning_customized as learning_customized
 import agent_ready_learning_reorganize as learning_reorganize
 import agent_ready_rules
 from agent_ready_common import StateError, write_text_atomically
@@ -65,6 +66,32 @@ def reject(project_root, candidate_id, settings):
         sha = commit_paths(project_root, [learning.candidates_path(project_root), log_path],
                            f"learn: reject {entry['statement']}\n\nLearning-Id: {entry['id']}\n")
     return entry, sha
+
+
+def keep(project_root, candidate_id, settings):
+    """The developer keeps a learned rule over the new version of the managed rule it replaces: the
+    override stops being «customized, review». Returns (entry, references, sha)."""
+    versions = learning_customized.current_versions(project_root)
+    with learning.RegistryLock(project_root):
+        registry = learning.read_registry(project_root)
+        entry = find_entry(registry, candidate_id)
+        overridden = entry.get("learned", {}).get("overridden") or {}
+        if entry["status"] != learning.STATUS_LEARNED or not overridden:
+            raise StateError(f"{candidate_id} does not replace a rule of a profile: there is nothing to keep")
+        changed = sorted(reference for reference, fingerprint in overridden.items()
+                         if reference in versions and versions[reference] != fingerprint)
+        if not changed:
+            raise StateError(f"no rule {candidate_id} replaces changed since it was learned, as far as the last "
+                             "agent-ready plan saw: run agent-ready plan, and keep it if it shows «customized, review»")
+        for reference in changed:
+            overridden[reference] = versions[reference]
+        entry["learned"]["kept"] = settings["today"].isoformat()
+        learning.write_registry(project_root, registry)
+        log_path = append_log(project_root, f"- {settings['today'].isoformat()} keep {entry['id']} (over the new "
+                                            f"{', '.join(changed)}): {entry['statement']}\n")
+        sha = commit_paths(project_root, [learning.candidates_path(project_root), log_path],
+                           f"learn: keep {entry['statement']}\n\nLearning-Id: {entry['id']}\n")
+    return entry, changed, sha
 
 
 def learning_commit(project_root, entry):

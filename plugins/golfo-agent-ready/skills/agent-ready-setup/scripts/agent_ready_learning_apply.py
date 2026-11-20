@@ -16,6 +16,7 @@ import agent_ready_rules
 from agent_ready_common import ProfileError, StateError, write_text_atomically
 from agent_ready_lockfile import read_lock, was_applied
 from agent_ready_profiles import BASE_PROFILE_NAME
+from agent_ready_learning_customized import rule_fingerprint
 from agent_ready_rule_overrides import PROJECT_RULE_SOURCE, rule_source
 from agent_ready_workspaces import PATHS_LINE, WORKSPACE_RULES_DIRECTORY, frontmatter_patterns
 
@@ -230,7 +231,7 @@ def plan_rule(project_root, entry, registry):
                 "ruleId": rule.id, "overrides": None, "supersedes": previous["id"] if previous else None,
                 # What learn revert writes back.
                 "previousStatement": rule.statement}
-    replaced = []
+    replaced, overridden = [], {}
     for rule, _, source, profile in same_key:
         if profile == BASE_PROFILE_NAME:
             raise StateError(f"{source}:{rule.id} decides {key} and belongs to the core, which a rule cannot "
@@ -246,12 +247,14 @@ def plan_rule(project_root, entry, registry):
             raise StateError(f"{reference} decides {key} and {replacing[0].id} ({replacing[0].path}) already "
                              "replaces it: a rule is replaced once, so nothing was saved")
         replaced.append(reference)
+        # What the profile said when it was replaced: an update that changes it marks the override in the plan.
+        overridden[reference] = rule_fingerprint(rule)
     # Every managed rule of the key is replaced, so none of them stays next to the learned one.
     overrides = ",".join(replaced) or None
     rule_id = unique_rule_id(slug_of(entry), {item[0].id for item in described})
     path, text = appended_rule(project_root, rule_id, entry, overrides)
     return {"action": ACTION_CREATE, "path": path, "text": text, "ruleId": rule_id, "overrides": overrides,
-            "supersedes": None}
+            "overridden": overridden or None, "supersedes": None}
 
 
 def plan_skill(project_root, entry, skill_path):
@@ -340,7 +343,8 @@ def apply(project_root, candidate_id, settings, skill_path=None, accepted=False)
         today = settings["today"].isoformat()
         entry["status"] = learning.STATUS_LEARNED
         entry["learned"] = {field: written[field] for field in ("action", "ruleId", "skill", "overrides",
-                                                                "previousStatement") if written.get(field)}
+                                                                "overridden", "previousStatement")
+                            if written.get(field)}
         entry["learned"]["date"] = today
         # The marker as apply wrote it, which learn revert compares with: the entry's key and paths can
         # change afterwards with new evidence.

@@ -3618,6 +3618,37 @@
           "critical": true
         }
       ]
+    },
+    {
+      "id": "learn-profile-update-customized",
+      "description": "Una versión nueva del profile que cambia una rule que lo aprendido reemplazó deja la versión aprendida y la marca «customized, review» en el plan; el desarrollador decide con learn keep o learn revert.",
+      "input": "En un repo de cliente con agent-ready-setup y el profile learning, el agente aprendió que el cliente quiere loguear con pino, y eso reemplaza la rule de logging del pack. Ahora sale una versión nueva del pack que cambia justo esa rule. Si actualizo, ¿pierdo lo que pidió el cliente? ¿Cómo me entero de que el pack la cambió y qué hago para quedarme con lo aprendido o tomar la versión nueva? Respondé desde la skill, sin ejecutar comandos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "customized, review|personalizado, revisar",
+          "description": "El plan marca el reemplazo como «customized, review»",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "learn keep",
+          "description": "learn keep se queda con la versión aprendida",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "learn revert",
+          "description": "learn revert toma la versión nueva del profile",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(sigue|queda|se mantiene|conserva)[^.]{0,80}(aprendid|pino|del cliente)|no (la |lo )?pierd",
+          "description": "Actualizar no pierde la versión aprendida",
+          "critical": true
+        }
+      ]
     }
   ]
 }

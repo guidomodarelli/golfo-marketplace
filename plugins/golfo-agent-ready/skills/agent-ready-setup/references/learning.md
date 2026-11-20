@@ -215,6 +215,26 @@ agregó excepciones o detalles, o le cambió el marcador, a una rule que el apre
 parche de una skill no aplica: lo dice y hay que deshacerlo a mano. Una instrucción revertida vuelve
 como candidata si el usuario la da de nuevo, contando solo la evidencia nueva.
 
+## Cuando el profile cambia una rule reemplazada
+
+Una rule aprendida que reemplaza una gestionada (`overrides=`) sigue en vigor aunque una versión nueva del
+profile cambie esa rule: el repo se queda con lo que pidió su cliente. Pero el cambio del profile puede
+importar, así que el plan de actualización lo muestra:
+
+- `learn apply` guarda en la entrada la huella de cada rule gestionada que reemplaza (su statement, sus
+  excepciones y sus detalles), en `learned.overridden`. Una reorganización la pasa a las rules nuevas.
+- `agent-ready plan` (y el plan de cada apply) compara esa huella con la rule que el profile publica
+  ahora. Si cambió, el reemplazo sale como **«customized, review»** (personalizado, revisar) debajo de su
+  línea `Rule overridden:`, y en `--json` con `customized: {learningId, since}` en `ruleOverrides`. Un
+  asset que la rule aprendida no reemplaza se recibe normal.
+- El desarrollador decide: `agent-ready learn keep <id>` se queda con la versión aprendida (guarda la
+  huella nueva en un commit y una línea `keep` del log, y la marca desaparece) y `agent-ready learn
+  revert <id>` deshace el aprendizaje para recibir la versión nueva del profile.
+
+El plan solo lee el repo: la huella de lo que el profile publica la guarda en la caché del usuario, y
+`learn keep` la toma de ahí, así que primero hay que correr `agent-ready plan`. Un reemplazo escrito a
+mano, sin entrada de aprendizaje, no tiene huella y no se marca.
+
 ## Reorganizar lo aprendido
 
 Lo aprendido crece de a una rule. `agent-ready learn reorganize` lo ordena con tres operaciones:
@@ -328,6 +348,9 @@ agent-ready learn record --kind rule --key records.header \
 
 # Escribirla como rule del proyecto y commitearla.
 agent-ready learn apply learn-5db4a07240
+
+# Quedarse con una rule aprendida aunque el profile cambió la que reemplaza («customized, review»).
+agent-ready learn keep learn-5db4a07240
 
 # Qué espera una repetición y con qué configuración.
 agent-ready learn status
