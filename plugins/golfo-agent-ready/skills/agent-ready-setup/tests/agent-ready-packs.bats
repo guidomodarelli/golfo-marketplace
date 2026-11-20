@@ -1330,3 +1330,74 @@ catalog["profiles"]["kafka-interno"]["mcpServers"] = {"docs": {"url": "https://m
     [ "$status" -ne 0 ]
   done
 }
+
+@test "a profile update that changes a rule the learning replaced keeps the learned one and marks it customized, review" {
+  export XDG_CONFIG_HOME="$test_root/config"
+  copy_example_pack
+  write_atomic_pack_rules ""
+  write_manifest acme/kafka-interno "acme=path:../acme-pack"
+  run_bootstrap
+  [ "$status" -eq 0 ]
+  git add -A && git commit -q -m apply
+  run python3 -B "$skill_dir/scripts/agent-ready" learn record --kind rule --key logging.library \
+    --statement "Log with pino." --quote "de ahora en más, logueá con pino" --explicit --session s1
+  [ "$status" -eq 0 ]
+  learning_id="$(printf '%s' "$output" | head -n 1 | cut -d' ' -f1)"
+  run python3 -B "$skill_dir/scripts/agent-ready" learn apply "$learning_id"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"overrides acme:conventions/logger"* ]]
+
+  # The profile still says the same: the override is not marked.
+  run_bootstrap --plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Rule overridden: acme:conventions/logger by project:learned/logging-library"* ]]
+  [[ "$output" != *"customized, review"* ]]
+  run python3 -B "$skill_dir/scripts/agent-ready" learn keep "$learning_id"
+  [ "$status" -ne 0 ]
+  [[ "$output$stderr" == *"no rule $learning_id replaces changed"* ]]
+
+  # A new version of the profile changes the rule: the learned one stays, and the plan says to review it.
+  perl -pi -e 's/Log with the Acme logger\./Log with the Acme logger, at level info./' \
+    "$pack_dir/profiles/base/rules/acme-conventions.md"
+  run_bootstrap --plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"customized, review: the profile changed acme:conventions/logger since $learning_id replaced it"* ]]
+  run_bootstrap
+  [ "$status" -eq 0 ]
+  ! grep -q 'Acme logger' .agents/rules/acme-conventions.md
+  grep -q 'Log with pino.' .agents/rules/learned.md
+
+  # The developer keeps the learned rule: one commit, and the mark is gone.
+  run python3 -B "$skill_dir/scripts/agent-ready" learn keep "$learning_id"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"kept over the new acme:conventions/logger"* ]]
+  [ "$(git log -1 --format=%s)" = "learn: keep Log with pino." ]
+  run_bootstrap --plan
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"customized, review"* ]]
+
+  # The user changes the learned instruction: the new entry supersedes it and still tracks the profile rule.
+  run python3 -B "$skill_dir/scripts/agent-ready" learn record --kind rule --key logging.library \
+    --statement "Log with winston." --quote "mejor logueá con winston" --explicit --session s2
+  [ "$status" -eq 0 ]
+  newer_id="$(printf '%s' "$output" | head -n 1 | cut -d' ' -f1)"
+  run python3 -B "$skill_dir/scripts/agent-ready" learn apply "$newer_id"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"supersede"* ]]
+  perl -pi -e 's/at level info\./at level warn./' "$pack_dir/profiles/base/rules/acme-conventions.md"
+  run_bootstrap --plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"customized, review: the profile changed acme:conventions/logger since $newer_id replaced it"* ]]
+
+  # The developer takes the version of the profile: retire removes the learned rule and does not bring
+  # back pino, as revert would.
+  run python3 -B "$skill_dir/scripts/agent-ready" learn retire "$newer_id"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"acme:conventions/logger comes back on the next apply"* ]]
+  ! grep -qs 'Log with' .agents/rules/learned.md
+  [ "$(git log -1 --format=%s)" = "learn: retire Log with winston." ]
+  run_bootstrap
+  [ "$status" -eq 0 ]
+  grep -q 'Log with the Acme logger, at level warn.' .agents/rules/acme-conventions.md
+  [[ "$output" != *"Rule overridden: acme:conventions/logger"* ]]
+}

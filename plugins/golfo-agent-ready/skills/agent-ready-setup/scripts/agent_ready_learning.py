@@ -43,8 +43,10 @@ STATUS_EXPIRED = "expired"
 # The developer decided against it (learn reject), or undid what was learned (learn revert).
 STATUS_REJECTED = "rejected"
 STATUS_REVERTED = "reverted"
+# The developer removed the learned rule without bringing back what it replaced (learn retire).
+STATUS_RETIRED = "retired"
 STATUSES = (STATUS_CANDIDATE, STATUS_LEARNED, STATUS_SUPERSEDED, STATUS_EXPIRED, STATUS_REJECTED,
-            STATUS_REVERTED)
+            STATUS_REVERTED, STATUS_RETIRED)
 
 MODE_AUTO = "auto"
 MODE_DEVELOPER_REVIEW = "developer-review"
@@ -188,7 +190,7 @@ def decide(entry, mode, threshold, ttl_days):
     if entry["status"] == STATUS_REJECTED:
         # Only the developer brings it back, with learn accept.
         return DECISION_REJECTED
-    if entry["status"] in (STATUS_EXPIRED, STATUS_SUPERSEDED, STATUS_REVERTED):
+    if entry["status"] in (STATUS_EXPIRED, STATUS_SUPERSEDED, STATUS_REVERTED, STATUS_RETIRED):
         return DECISION_WAIT
     if is_explicit(entry, ttl_days) or live_episodes(entry, ttl_days) >= threshold:
         return DECISION_PROPOSE if mode == MODE_DEVELOPER_REVIEW else DECISION_LEARN
@@ -244,7 +246,7 @@ def record(project_root, instruction, settings):
             if instruction.get(field):
                 entry[field] = instruction[field]
         if evidence not in entry["evidence"]:
-            if entry["status"] in (STATUS_SUPERSEDED, STATUS_REVERTED):
+            if entry["status"] in (STATUS_SUPERSEDED, STATUS_REVERTED, STATUS_RETIRED):
                 # The user gives a replaced or reverted instruction again: it comes back as a candidate that
                 # counts only the evidence from now on, so it can replace the newer one again.
                 entry["status"] = STATUS_CANDIDATE
