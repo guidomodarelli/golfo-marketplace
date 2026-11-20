@@ -16,7 +16,14 @@ import agent_ready_repo_facts as repo_facts
 from agent_ready_config import format_value
 from agent_ready_layout import MANIFEST_RELATIVE_PATH, review_cache_module
 from agent_ready_manifest import print_ignored_configuration
-from agent_ready_options import PROFILES_KEY, UPDATES_MODE_KEY, WORKSPACES_KEY
+from agent_ready_options import (
+    PROFILES_KEY,
+    REVIEWS_ENABLED_KEY,
+    SESSION_START_CONFLICTS_ENABLED_KEY,
+    SESSION_START_REVIEWS_KEY,
+    UPDATES_MODE_KEY,
+    WORKSPACES_KEY,
+)
 from agent_ready_output import paint, write_line
 from agent_ready_packs import SOURCE_AVAILABLE, SOURCE_TYPE_GIT
 
@@ -115,8 +122,11 @@ def print_pack_tools(report, stream, brief=False):
     write_line("", stream)
 
 
-def print_review_summary(reviews, brief, stream):
-    """Open findings of the AI reviews and decisions to confirm, from the cache; nothing when there is no review yet."""
+def print_review_summary(reviews, brief, stream, background=False):
+    """Open findings of the AI reviews and decisions to confirm, from the cache; nothing when there is no review yet.
+
+    ``background`` says that a session start reviews the out-of-date ones again (conflicts.sessionStart.reviews).
+    """
     if not reviews or not (reviews["units"] or reviews["stale"]):
         return
     module = review_cache_module()
@@ -130,8 +140,9 @@ def print_review_summary(reviews, brief, stream):
             write_line(f"  Accept or dismiss one with: agent-ready review accept <id> --reason \"...\"", stream)
     else:
         write_line(paint(f"AI reviews: no known finding in {reviews['units']} reviewed unit(s){quiet}.", "ok", stream), stream)
-    if reviews["stale"] and not brief:
-        write_line(f"  {reviews['stale']} review(s) are out of date and run again on the next edit or apply.", stream)
+    if reviews["stale"]:
+        when = "the session start reviews them again in the background" if background else             "they run again on the next edit or apply"
+        write_line(f"  {reviews['stale']} review(s) are out of date; {when}.", stream)
 
 
 def print_status_conflicts(lines, stream):
@@ -199,7 +210,9 @@ def print_status(status, brief):
         else:
             write_line(paint("Source matches the lock: no update pending.", "ok", stream))
     print_status_conflicts(status.get("conflicts"), stream)
-    print_review_summary(status.get("reviews"), brief, stream)
+    background = all(configuration.value(key) for key in
+                     (REVIEWS_ENABLED_KEY, SESSION_START_CONFLICTS_ENABLED_KEY, SESSION_START_REVIEWS_KEY))
+    print_review_summary(status.get("reviews"), brief, stream, background)
     print_pack_tools(status.get("packTools"), stream, brief=True)
     sweep = status.get("learningSweep")
     if sweep and not sweep["ok"]:

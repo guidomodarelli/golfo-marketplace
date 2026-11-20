@@ -97,6 +97,19 @@ UNIT_SEPARATOR = "#"
 RULES_DIRECTORY_SEGMENT = "rules"
 RULE_DOCUMENT_SUFFIX = ".md"
 RULE_ID_PATTERN = re.compile(r"(?:^|\s)id=(?P<id>\S+)")
+# AGENTS.md is reviewed without the blocks the engine writes there (references/managed-agents-block.md).
+INSTRUCTIONS_FILE_NAME = "AGENTS.md"
+MARKER_BEGIN_WORD = "BEGIN"
+MARKER_END_WORD = "END"
+MANAGED_MARKER_PATTERN = re.compile(r"<!-- (?P<word>BEGIN|END) AGENT-READY MANAGED(?:: (?P<id>.+?))? -->")
+# The hooks that can stop a tool call, reviewed against the rules and skills that ask for it: one document
+# per versioned settings file, named <file>#blocking-hooks (references/structural-conflicts.md, section 4).
+BLOCKING_HOOKS_UNIT = "blocking-hooks"
+BLOCKING_HOOK_EVENT = "PreToolUse"
+HOOK_SETTINGS_FILES = (".claude/settings.json", ".codex/hooks.json")
+# How a hook command names the project root before the path of its script.
+PROJECT_DIRECTORY_PREFIXES = ("$CLAUDE_PROJECT_DIR", "${CLAUDE_PROJECT_DIR}", "./")
+HOOK_SCRIPT_MAX_CHARACTERS = 4000
 RULE_FORMAT_FILE_NAME = "rule-format.py"
 _RULE_FORMAT = None
 
@@ -180,16 +193,127 @@ def rule_units(name, text):
     return units
 
 
+def is_instructions_name(name):
+    """True for AGENTS.md, at the root or in a folder: a review reads only what the project wrote in it."""
+    return name == INSTRUCTIONS_FILE_NAME or name.endswith("/" + INSTRUCTIONS_FILE_NAME)
+
+
+def owned_instructions(text):
+    """What the project wrote in an AGENTS.md: without the managed block nor the sections of the stacks,
+    which the engine writes and an apply replaces, and without blank lines at either end.
+
+    Only whole lines are markers. Markers that do not pair up cannot tell a block apart, so all of the
+    file is reviewed. The engine (agent_ready_review_findings.py) and the edit hook read AGENTS.md with
+    this one function, so both review, and cache, the same text.
+    """
+    lines = text.replace("\r\n", "\n").split("\n")
+    kept = []
+    open_block = None
+    for line in lines:
+        marker = MANAGED_MARKER_PATTERN.fullmatch(line)
+        if not marker:
+            if open_block is None:
+                kept.append(line)
+            continue
+        word, block_id = marker.group("word"), marker.group("id") or ""
+        if word == MARKER_BEGIN_WORD and open_block is None:
+            open_block = block_id
+        elif word == MARKER_END_WORD and open_block == block_id:
+            open_block = None
+        else:
+            kept = lines
+            break
+        # A block leaves a paragraph break, so the text around it never runs together.
+        kept.append("")
+    if open_block is not None:
+        kept = lines
+    owned = re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip()
+    return owned + "\n" if owned else ""
+
+
+def is_hooks_document(name):
+    """True for the document of the hooks of a settings file that can stop a tool call."""
+    return name.endswith(UNIT_SEPARATOR + BLOCKING_HOOKS_UNIT) and document_path(name) in HOOK_SETTINGS_FILES
+
+
+def hook_script_path(project_root, command):
+    """The project file a hook command runs, when one of its words names one; None otherwise."""
+    for word in command.replace('"', "").replace("'", "").split():
+        for prefix in PROJECT_DIRECTORY_PREFIXES:
+            if word.startswith(prefix):
+                word = word[len(prefix):].lstrip("/")
+        if not word or os.path.isabs(word):
+            continue
+        candidate = os.path.normpath(os.path.join(project_root, word))
+        inside = os.path.relpath(candidate, project_root).replace(os.sep, "/")
+        if inside.startswith("../") or inside == "..":
+            continue
+        if os.path.isfile(candidate) and not os.path.islink(candidate):
+            return inside
+    return None
+
+
+def blocking_hooks_text(project_root, settings_name):
+    """What the hooks of one settings file that can stop a tool call do, for a review against the rules and
+    skills: the PreToolUse hooks, each with its matcher, its command and the script it runs. None when the
+    file has none, or cannot be read."""
+    try:
+        with open(os.path.join(project_root, *settings_name.split("/")), encoding="utf-8-sig") as file_handle:
+            data = json.load(file_handle)
+    except (OSError, ValueError):
+        return None
+    hooks = data.get("hooks") if isinstance(data, dict) else None
+    groups = hooks.get(BLOCKING_HOOK_EVENT) if isinstance(hooks, dict) else None
+    lines = []
+    for group in groups if isinstance(groups, list) else []:
+        if not isinstance(group, dict):
+            continue
+        matcher = group.get("matcher") if isinstance(group.get("matcher"), str) and group.get("matcher") else "*"
+        for hook in group.get("hooks") if isinstance(group.get("hooks"), list) else []:
+            command = hook.get("command") if isinstance(hook, dict) else None
+            if not isinstance(command, str) or not command.strip():
+                continue
+            lines.append(f"- {BLOCKING_HOOK_EVENT} hook for the tools matching `{matcher}`: runs `{command.strip()}`")
+            script = hook_script_path(project_root, command)
+            if not script:
+                continue
+            try:
+                body = normalized_text(os.path.join(project_root, *script.split("/")))
+            except OSError:
+                continue
+            if len(body) > HOOK_SCRIPT_MAX_CHARACTERS:
+                body = body[:HOOK_SCRIPT_MAX_CHARACTERS] + "\n[...]"
+            lines.append(f"  The script {script}:")
+            lines += ["    " + line for line in body.rstrip("\n").split("\n")]
+    if not lines:
+        return None
+    return (f"Hooks of {settings_name} that run before a tool call and can stop it (a hook that exits with "
+            "status 2, or denies the call, blocks it):\n" + "\n".join(lines) + "\n")
+
+
+def hook_documents(project_root):
+    """{document: text} of the blocking hooks of the versioned settings files of a project."""
+    documents = {}
+    for settings_name in HOOK_SETTINGS_FILES:
+        name = f"{settings_name}{UNIT_SEPARATOR}{BLOCKING_HOOKS_UNIT}"
+        text = blocking_hooks_text(project_root, settings_name)
+        if text:
+            documents[name] = text
+    return documents
+
+
 def unit_text(project_root, name):
-    """The text a document has on disk now: a rule of a file, the rest of a file split into rules, or a
-    whole file; None when it is gone."""
+    """The text a document has on disk now: a rule of a file, the rest of a file split into rules, what the
+    project wrote in an AGENTS.md, the blocking hooks of a settings file, or a whole file; None when it is gone."""
+    if is_hooks_document(name):
+        return blocking_hooks_text(project_root, document_path(name))
     path = document_path(name)
     try:
         text = normalized_text(os.path.join(project_root, path))
     except OSError:
         return None
     if UNIT_SEPARATOR not in name:
-        return text
+        return owned_instructions(text) if is_instructions_name(name) else text
     return rule_units(path, text).get(name)
 
 

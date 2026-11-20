@@ -1708,7 +1708,7 @@
         },
         {
           "type": "regex",
-          "pattern": "no se (re-?)?revisan|no se tocan|no (se )?vuelven? a revisar|se saltean|salen de la caché|siguen en la caché|solo participan|no compara entre sí|no entran",
+          "pattern": "no se (re-?)?revisan|no se tocan|no (se )?vuelven? a (revisar|pagar)|se saltean|salen de la caché|siguen en la caché|solo participan|no compara entre sí|no entran|solo se revisan los pares",
           "description": "Los pares que no incluyen la rule editada no se vuelven a revisar"
         }
       ]
@@ -1908,7 +1908,7 @@
         },
         {
           "type": "regex",
-          "pattern": "((volvé|volver|de nuevo|otra vez|reintent|corré|[Dd]espués).{0,80}apply|apply.{0,200}(de nuevo|otra vez|reintent))",
+          "pattern": "((volvé|volver|de nuevo|otra vez|reintent|corré|[Dd]espués).{0,80}apply|apply.{0,200}(de nuevo|otra vez|reintent)|volver a aplicar|aplicar de nuevo|reaplic)",
           "description": "Indica volver a correr el apply después de decidir"
         }
       ]
@@ -2701,6 +2701,54 @@
             "conflicts.sessionStart.enabled false"
           ],
           "description": "No apaga el aviso al iniciar sesión"
+        }
+      ]
+    },
+    {
+      "id": "stale-reviews-at-session-start-turn-off",
+      "description": "El inicio de sesión revisa en segundo plano las revisiones de IA desactualizadas: no hace esperar a la sesión y se apaga solo eso con conflicts.sessionStart.reviews, sin tocar el resto.",
+      "input": "Al abrir Claude Code en mi repo con agent-ready veo `[marketplace-sync] 4 AI review(s) are out of date; reviewing them in the background with claude.` ¿Eso hace esperar a la sesión? Quiero apagar solo eso: que sigan la revisión al editar y la lista de conflictos al iniciar. ¿Qué clave cambio? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "sessionStart.reviews",
+          "description": "Nombra la clave que apaga solo la revisión del inicio de sesión",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(sessionStart\\.reviews.{0,40}false|\\\"reviews\\\": *false)",
+          "description": "La pone en false",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "([Nn]o (te |la )?(hace|va a hacer) esperar|no (bloquea|frena|demora)|segundo plano|en background|sin (hacer )?esperar)",
+          "description": "Aclara que la sesión no espera a la revisión"
+        }
+      ]
+    },
+    {
+      "id": "hook-that-blocks-a-rule",
+      "description": "Un hallazgo de un hook PreToolUse que bloquea lo que pide una rule gestionada: se decide con agent-ready review por su id y la revisión se apaga con conflicts.hooks.enabled.",
+      "input": "agent-ready plan me muestra `! [5c1e0a9b2d] .agents/rules/git-workflow.md <-> .claude/settings.json#blocking-hooks: The rule asks to push after each commit and the hook stops every git push. (a hook of the project; a hook that blocks it)`. El hook es a propósito: acá nadie pushea desde el agente. ¿Qué compara esto, cómo hago que deje de avisar este hallazgo, y cómo apago esta revisión de hooks si no la quiero? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "review (accept|dismiss) 5c1e0a9b2d",
+          "description": "Da el comando para decidir sobre ese hallazgo por su id",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "PreToolUse",
+          "description": "Explica que compara los hooks PreToolUse, los que pueden frenar una llamada"
+        },
+        {
+          "type": "contains",
+          "value": "conflicts.hooks.enabled",
+          "description": "Nombra la clave que apaga la revisión de hooks",
+          "critical": true
         }
       ]
     },

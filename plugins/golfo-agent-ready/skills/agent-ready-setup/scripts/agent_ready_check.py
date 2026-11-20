@@ -51,7 +51,13 @@ from agent_ready_options import (
 )
 from agent_ready_output import paint, write_line
 from agent_ready_packs import KEBAB_CASE_NAME, PACK_CATALOG_FILE_NAME, is_pack_profile, refresh_declared_sources
-from agent_ready_plan import compute_plan, compute_status, nested_instruction_files, semantic_conflicts
+from agent_ready_plan import (
+    blocking_hook_documents,
+    compute_plan,
+    compute_status,
+    nested_instruction_files,
+    semantic_conflicts,
+)
 from agent_ready_profiles import load_effective_catalog, locked_sources_of
 from agent_ready_review_findings import project_owned_instructions
 from agent_ready_selection import resolve_selection
@@ -211,7 +217,8 @@ def has_review_pairs(project_root, plan, catalog):
         lock = read_lock(project_root)
         directions, _ = conflicts_review.conflict_pairs(
             project_root, plan["entries"], (lock or {}).get("assets", {}), module.normalized_text,
-            project_owned_instructions, ENGINE_SKILL_DIRECTORY, is_pack_profile, True, nested_instruction_files(plan))
+            project_owned_instructions, ENGINE_SKILL_DIRECTORY, is_pack_profile, True, nested_instruction_files(plan),
+            blocking_hook_documents(project_root, configuration))
         if directions:
             return True
     if configuration.value(COMPETING_SKILLS_ENABLED_KEY):
