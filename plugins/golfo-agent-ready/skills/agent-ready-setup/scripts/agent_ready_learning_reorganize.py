@@ -672,6 +672,14 @@ def revert(project_root, registry, entry, settings):
             any(item["status"] != learning.STATUS_SUPERSEDED for item in sources):
         raise StateError(f"the reorganization of {entry['id']} was changed by a later learning: nothing was reverted, "
                          "undo it by hand")
+    # The rules of the reorganization go away: a rule written since that requires one would point at nothing,
+    # and the restored rules have other ids.
+    created_ids = {item["learned"]["ruleId"] for item in created if item["learned"].get("ruleId")}
+    for other, _, _, _ in repository_rules(project_root):
+        required = sorted(set(other.requires) & created_ids)
+        if other.id not in created_ids and required:
+            raise StateError(f"{other.id} requires {', '.join(required)}, which the revert would remove: nothing was "
+                             "reverted; change that rule first, or undo it by hand")
     written = set()
     for item in created:
         learned = item["learned"]

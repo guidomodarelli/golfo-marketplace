@@ -477,3 +477,26 @@ PY
   grep -Fq -- "- Records carry the date at the end." .agents/rules/policies.md
   [ ! -e .agents/rules/learned.md ]
 }
+
+@test "learn revert leaves a reorganization whose new rule another rule requires" {
+  learn "Records carry the case number in the header."
+  learn "Records carry the date at the end."
+  over_budget
+  header="$(rule_id_of 'Records carry the case number in the header.')"
+  footer="$(rule_id_of 'Records carry the date at the end.')"
+  respond 1 "$(consolidation "$header" "$footer" "Records carry the case number in the header and the date at the end.")"
+  respond 2 '{"findings": [{"equivalent": true, "reason": "Both instructions stay."}]}'
+  agent_ready learn reorganize
+  merged="$(id_of 'Records carry the case number in the header and the date at the end.')"
+  merged_rule="$(rule_id_of 'Records carry the case number in the header and the date at the end.')"
+  printf '%s\n' '# Team' '' "<!-- rule id=team/header-format requires=$merged_rule -->" '- Write the case number in bold.' \
+    > .agents/rules/team.md
+  git add .agents && git commit -q -m team
+
+  agent_ready learn revert "$merged"
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"team/header-format requires $merged_rule"* ]]
+  grep -q "id=$merged_rule -->" .agents/rules/learned.md
+  agent_ready rules lint
+  [ "$status" -eq 0 ]
+}
