@@ -72,7 +72,7 @@ Si el CLI resuelve secretos en un wrapper, chequea permisos, crea recursos por A
 | ccc | Servidor de prueba que responde 503 dos veces y después 200; otra espera sin tope ni máximo | Ambos | Con terminal, la nota del spinner dice `reintentando, 2/N` y `3/N`, con N de la constante de esperas (otra constante en el test, otro N), y el tope si lo hay; sin terminal, una línea por cambio. La espera sin tope no muestra `/N` ni un tope. Ctrl+C sigue cortando con 130 |
 | ddd | Consulta sin resultados | Sin terminal | Exit 0, stdout vacío (con `--json`, la lista vacía) y stderr dice qué se buscó y cómo ampliarlo |
 | eee | Menú de subcomandos: escribir la primera letra de uno cuyo nombre empieza así, cuando otra opción la tiene en la descripción | Con terminal | Resalta el que empieza así, no el primero de la lista |
-| fff | Sin subcomando, elegir uno en el menú, y repetir | Con terminal | Una sola tarjeta. Corre con los mismos defaults que escrito a mano y al final imprime el comando equivalente. En la segunda corrida, el elegido aparece primero con su marca entera aunque la fila se corte |
+| fff | Sin subcomando (con y sin un flag global), elegir uno en el menú, y repetir | Con terminal | Una sola tarjeta. Corre con los mismos defaults que escrito a mano, conserva el flag global que ya vino y al final imprime el comando equivalente con él. En la segunda corrida, el elegido aparece primero con su marca entera aunque la fila se corte |
 | ggg | Menú en Windows: ↓, ↑, Enter y Ctrl+C en una ConPTY | Con terminal | Las flechas mueven el resaltado, Enter elige y Ctrl+C sale con 130 y el cursor visible |
 | hhh | `--help` después de un flag desconocido o de un valor inválido (`--json=x --help`) | Sin terminal | Exit 0 con la ayuda del subcomando, como en a |
 
@@ -233,28 +233,54 @@ Desde Windows, estos tests corren en WSL (`wsl.exe -e sh -c 'cd /tmp/copia && py
 En Windows no hay `pty`. `pywinpty` abre una ConPTY real desde Python, con la misma consola que vería una persona. Se instala aparte, nunca como dependencia del proyecto: `uv run --no-project --isolated --with pywinpty python check.py`.
 
 ```python
-import sys, time
+import queue, threading, time
 from winpty import PtyProcess
 
 READY_TEXT = "filtrar"            # un texto que aparece cuando el menú ya está dibujado
 LIMIT_SECONDS = 20
+POLL_SECONDS = 0.1
+KEY_DELAY_SECONDS = 0.3
+READ_CHUNK = 4096
 
-process = PtyProcess.spawn([sys.executable, "tool.py"], env=environment, dimensions=(30, 100))
-output, deadline = "", time.monotonic() + LIMIT_SECONDS
-while READY_TEXT not in output and time.monotonic() < deadline:
-    output += process.read(4096)
-for key in ("\x1b[B", "\x1b[A", "\r"):    # o "\x03" para Ctrl+C
-    process.write(key)
-    time.sleep(0.3)
-while process.isalive() and time.monotonic() < deadline:
+def run_in_conpty(argv, keys, environment):
+    """Corre argv en una ConPTY y manda las teclas cuando aparece READY_TEXT. Nunca espera más que
+    LIMIT_SECONDS: `finished` en False quiere decir que se cortó por el plazo."""
+    process = PtyProcess.spawn(argv, env=environment, dimensions=(30, 100))
+    chunks = queue.Queue()
+
+    def pump():  # process.read() bloquea sin timeout: se lee en un hilo y se espera la cola con plazo
+        try:
+            while True:
+                chunks.put(process.read(READ_CHUNK))
+        except EOFError:
+            chunks.put(None)
+
+    threading.Thread(target=pump, daemon=True).start()
+    output, keys_sent, finished = "", False, False
+    deadline = time.monotonic() + LIMIT_SECONDS
     try:
-        output += process.read(4096)
-    except EOFError:
-        break
-cursor_visible = output.rfind("\x1b[?25h") > output.rfind("\x1b[?25l")
-print(process.exitstatus, cursor_visible)
+        while not finished and time.monotonic() < deadline:
+            try:
+                chunk = chunks.get(timeout=POLL_SECONDS)
+            except queue.Empty:
+                continue
+            if chunk is None:
+                finished = True
+                continue
+            output += chunk
+            if not keys_sent and READY_TEXT in output:
+                for key in keys:          # "\x1b[B", "\x1b[A", "\r", o "\x03" para Ctrl+C
+                    process.write(key)
+                    time.sleep(KEY_DELAY_SECONDS)
+                keys_sent = True
+    finally:
+        if process.isalive():  # pasado el plazo, el chequeo falla en vez de colgar el job de CI
+            process.terminate(force=True)
+    cursor_visible = output.rfind("\x1b[?25h") > output.rfind("\x1b[?25l")
+    return process.exitstatus, cursor_visible, finished
 ```
 
+- `process.read()` bloquea hasta que llega algo, y un CLI vivo que dejó de escribir lo deja esperando para siempre. Por eso la lectura va en un hilo y el plazo se mira sobre la cola. Pasado el plazo, `terminate(force=True)` cierra el hijo y el chequeo falla con `finished` en `False`.
 - ConPTY traduce las secuencias VT que se escriben en teclas de consola: `\x1b[B` le llega a `msvcrt.getwch()` como `\xe0` seguido de `P`, y `\x03` sale como Ctrl+C (exit 130).
 - La salida trae las secuencias propias de ConPTY: para leer el texto, sacar los escapes. Para saber qué quedó en pantalla, mirar el final del flujo, no contar escapes.
 - Es un chequeo manual o de CI de Windows. Los tests de unidad del menú usan el lector de teclas falso.
