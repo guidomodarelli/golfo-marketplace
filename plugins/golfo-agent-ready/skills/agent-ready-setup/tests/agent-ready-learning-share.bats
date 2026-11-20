@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
 # Learning (#156, 156h1): learn export writes what one repository learned without the quotes of the user,
 # and learn harvest groups what several repositories learned, skipping the ones with learning.share off.
+# learn promote (156h3) writes a candidate as a rule of a profile of a pack, by pull request.
 # A fake provider groups and generalizes the statements.
 
 bats_require_minimum_version 1.5.0
@@ -296,4 +297,117 @@ JSON
   [ "$status" -eq 0 ]
   grep -q 'paths="reports/\*\*"' "$FAKE_INPUTS/1.txt"
   [ "$(json_value 'len(report["candidates"])')" = "0" ]
+}
+
+# pack_clone: the example pack as the clone of the developer, with a bare origin to push to, and a fake gh
+# that saves its arguments and prints the URL of the pull request.
+pack_clone() {
+  pack="$test_root/pack"
+  cp -R "$skill_dir/assets/examples/acme-profile-pack" "$pack"
+  git -c init.defaultBranch=main init -q "$pack"
+  git -C "$pack" config user.name Test
+  git -C "$pack" config user.email test@example.invalid
+  git -C "$pack" config core.autocrlf false
+  git -C "$pack" add -A
+  git -C "$pack" commit -q -m pack
+  git init -q --bare "$test_root/pack-origin.git"
+  git -C "$pack" remote add origin "$test_root/pack-origin.git"
+  git -C "$pack" push -q origin main
+  cat > "$fake_bin/fake-gh.py" <<'PY'
+import os, sys
+with open(os.environ["FAKE_GH_CALLS"], "a", encoding="utf-8") as calls:
+    for argument in sys.argv[1:]:
+        print(argument, file=calls)
+    # The body comes on stdin (--body-file -).
+    calls.write(sys.stdin.read())
+print("https://github.com/example/pack/pull/7")
+PY
+  export FAKE_GH_CALLS="$test_root/gh-calls.log"
+  printf '#!/bin/bash\nexec python3 "%s" "$@"\n' "$fake_bin/fake-gh.py" > "$fake_bin/gh"
+  # Windows Python finds commands by PATHEXT: a .cmd twin.
+  printf '@python3 "%%~dp0fake-gh.py" %%*\r\n' > "$fake_bin/gh.cmd"
+  chmod +x "$fake_bin/gh"
+}
+
+@test "learn promote prints the change for the pack and, with --yes, opens a pull request without the clients" {
+  repository cliente-uno
+  repository cliente-dos
+  learn_in cliente-uno "Records carry the case number in the header." "siempre arriba"
+  learn_in cliente-dos "Records carry the case number in the header." "siempre arriba"
+  export CI=true
+  agent_ready learn harvest --repos "$test_root/cliente-uno" "$test_root/cliente-dos" --json
+  [ "$status" -eq 0 ]
+  candidate="$(json_value 'report["candidates"][0]["id"]')"
+  pack_clone
+
+  # The pack has two profiles with assets: promote asks which one.
+  agent_ready learn promote "$candidate" --to "$pack"
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"name the profile with --profile"* ]]
+
+  # Without --yes, only the change: nothing in the clone.
+  agent_ready learn promote "$candidate" --to "$pack" --profile base
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"add acme:records-carry-the-case-number-in in profiles/base/rules/promoted.md"* ]]
+  [[ "$output" == *"+<!-- rule id=records-carry-the-case-number-in -->"* ]]
+  [[ "$output" == *"+- Records carry the case number in the header."* ]]
+  [[ "$output" == *"Nothing was written"* ]]
+  [ -z "$(git -C "$pack" status --porcelain)" ]
+  [ ! -e "$pack/profiles/base/rules/promoted.md" ]
+  [ ! -e "$test_root/gh-calls.log" ]
+
+  # With --yes: a branch with one commit, pushed, and a pull request; the clone stays on main.
+  agent_ready learn promote "$candidate" --to "$pack" --profile base --yes
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"pull request: https://github.com/example/pack/pull/7"* ]]
+  branch=learn/promote-records-carry-the-case-number-in
+  [ "$(git -C "$pack" branch --show-current)" = main ]
+  [ -z "$(git -C "$pack" status --porcelain)" ]
+  git -C "$pack" show "$branch:profiles/base/rules/promoted.md" | grep -q '^- Records carry the case number in the header.$'
+  git -C "$pack" log -1 --format=%B "$branch" | grep -q "^Promoted-from: $candidate$"
+  git -C "$test_root/pack-origin.git" rev-parse --verify -q "refs/heads/$branch"
+  grep -q '^Promote: Records carry the case number in the header.$' "$test_root/gh-calls.log"
+  grep -q '2 client repositories learned it' "$test_root/gh-calls.log"
+  ! grep -q 'cliente' "$test_root/gh-calls.log"
+  ! git -C "$pack" log -1 --format=%B "$branch" | grep -q 'cliente'
+  run python3 -c 'import json, sys; report = json.load(open(sys.argv[1], encoding="utf-8")); print(report["candidates"][0]["promoted"]["rule"])' \
+    "$XDG_CACHE_HOME/agent-ready-setup/learning-harvest/latest.json"
+  [ "$(printf '%s' "$output" | tr -d '\r')" = "acme:records-carry-the-case-number-in" ]
+
+  # The branch is there already: a second promotion stops.
+  agent_ready learn promote "$candidate" --to "$pack" --profile base --yes
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"the branch $branch already exists"* ]]
+
+  # Once the pull request is merged, the profile says it and there is nothing to promote.
+  git -C "$pack" merge -q --ff-only "$branch"
+  agent_ready learn promote "$candidate" --to "$pack" --profile base
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"already says it"* ]]
+}
+
+@test "learn promote never writes in a clone of the pack with changes of its own" {
+  repository cliente-uno
+  repository cliente-dos
+  learn_in cliente-uno "Dates use the long format." "siempre fecha larga"
+  learn_in cliente-dos "Dates use the long format." "siempre fecha larga"
+  export CI=true
+  agent_ready learn harvest --repos "$test_root/cliente-uno" "$test_root/cliente-dos" --json
+  candidate="$(json_value 'report["candidates"][0]["id"]')"
+  pack_clone
+  printf '%s\n' "- A rule being written." >> "$pack/profiles/base/rules/acme-conventions.md"
+  agent_ready learn promote "$candidate" --to "$pack" --profile base --yes
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"has uncommitted changes"* ]]
+  [ "$(git -C "$pack" branch --list 'learn/*')" = "" ]
+  [ ! -e "$test_root/gh-calls.log" ]
+
+  # An id that is not in the last harvest, and a folder that is not a pack.
+  git -C "$pack" checkout -q -- .
+  agent_ready learn promote harvest-0000000000 --to "$pack" --profile base
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"is not a candidate of the last harvest"* ]]
+  agent_ready learn promote "$candidate" --to "$test_root/cliente-uno" --profile base
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"is not a pack"* ]]
 }

@@ -3649,6 +3649,43 @@
           "critical": true
         }
       ]
+    },
+    {
+      "id": "learn-promote-to-pack",
+      "description": "Subir al pack lo que aprendieron varios clientes: learn promote muestra el cambio sin --yes, con --yes abre el pull request, y después del update el plan ofrece retirar la rule aprendida duplicada con learn retire.",
+      "input": "Corrí agent-ready learn harvest sobre los repos de dos clientes y me propuso un candidato harvest-3f9a1c2b7d: «Records carry the case number in the header.». Lo quiero sumar al profile base de mi pack, que tengo clonado en ../mi-pack. ¿Cómo lo subo sin romper nada en el repo del pack, y qué pasa después en los repos de los clientes, que ya tienen esa rule aprendida? Respondé desde la skill, sin ejecutar comandos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "learn promote",
+          "description": "Usa learn promote",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "--to",
+          "description": "Le pasa el clon del pack con --to",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "--yes",
+          "description": "Sin --yes solo muestra el cambio; --yes lo escribe",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "pull request|\\bPR\\b",
+          "description": "Llega al pack por pull request",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "learn retire|duplicad|duplicate",
+          "description": "Después del update la rule aprendida se ofrece para retirar",
+          "critical": true
+        }
+      ]
     }
   ]
 }

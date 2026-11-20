@@ -12,6 +12,7 @@ import sys
 import agent_ready_learning as learning
 import agent_ready_learning_apply as learning_apply
 import agent_ready_learning_episodes as learning_episodes
+import agent_ready_learning_promote as learning_promote
 import agent_ready_learning_reorganize as learning_reorganize
 import agent_ready_learning_review as learning_review
 import agent_ready_learning_schedule as learning_schedule
@@ -546,9 +547,43 @@ def command_learn_harvest(arguments):
     return EXIT_OK
 
 
+def command_learn_promote(arguments):
+    """Write a harvest candidate (or a learned rule) as a rule of a profile of a pack, by pull request."""
+    project_root = None
+    if not arguments.id.startswith(learning_share.HARVEST_ID_PREFIX):
+        project_root = find_repository_root(arguments.project)
+    configuration = resolve_configuration(os.path.abspath(project_root or arguments.project))
+    item = learning_promote.resolve_item(arguments.id, project_root)
+    pack_root = os.path.abspath(arguments.to)
+    change = learning_promote.plan(item, pack_root, arguments.profile, arguments.file,
+                                   configuration.value(MAX_STATEMENT_CHARS_KEY))
+    written = None
+    if arguments.yes:
+        written = learning_promote.write(change, pack_root, not arguments.no_pr)
+        learning_promote.record_promotion(change, written, datetime.date.today())
+    if arguments.json:
+        report = {field: change[field] for field in ("id", "statement", "pack", "profile", "file", "action", "ruleId",
+                                                     "rule", "diff")}
+        sys.stdout.write(serialize_json(dict(report, written=written)))
+        return EXIT_OK
+    verb = "add" if change["action"] == learning_promote.ACTION_ADD else "change the statement of"
+    sys.stdout.write(f"Promote {change['id']} to {change['pack']}/{change['profile']}: {verb} {change['rule']} in "
+                     f"{change['file']}\n    {change['statement']}\n\n{change['diff']}")
+    if written is None:
+        sys.stdout.write(f"\nNothing was written in {arguments.to}. Run it again with --yes to commit it on a branch "
+                         "and open the pull request.\n")
+    elif written["pullRequest"]:
+        sys.stdout.write(f"\nCommitted on {written['branch']} ({written['commit'][:12]}); pull request: "
+                         f"{written['pullRequest']}\n")
+    else:
+        sys.stdout.write(f"\nCommitted on {written['branch']} ({written['commit'][:12]}); push it and open the pull "
+                         "request when you are ready.\n")
+    return EXIT_OK
+
+
 def register(subparsers, new_subparser):
     """Add learn record|apply|accept|reject|revert|keep|retire|status|list|episode|summary|sweep|schedule|reorganize|
-    export|harvest to the CLI parser."""
+    export|harvest|promote to the CLI parser."""
     learn = new_subparser(subparsers, "learn", "Record and read what the agent learns from the user.",
                           "  agent-ready learn status\n  agent-ready learn list --status candidate", None,
                           with_project=False)
@@ -680,3 +715,19 @@ def register(subparsers, new_subparser):
     harvest_action.add_argument("--json", action="store_true", help="print the result as JSON")
     # It reads other repositories: it runs from anywhere.
     harvest_action.set_defaults(needs_repository=False)
+    promote_action = new_subparser(
+        actions, "promote", "Write a candidate of learn harvest, or a learned rule, as a rule of a profile in the clone "
+                            "of a pack; with --yes, on a new branch with a pull request.",
+        "  agent-ready learn promote harvest-1a2b3c4d5e --to ../my-pack --profile base\n"
+        "  agent-ready learn promote harvest-1a2b3c4d5e --to ../my-pack --profile base --yes", command_learn_promote)
+    promote_action.add_argument("id", help="a harvest-... id of the last harvest, or a learn-... id of this repository")
+    promote_action.add_argument("--to", required=True, metavar="PACK",
+                                help="the clone of the pack (the folder with agent-ready-pack.json)")
+    promote_action.add_argument("--profile", help="the profile of the pack (default: its only profile with assets)")
+    promote_action.add_argument("--file", default=learning_promote.DEFAULT_PROMOTED_FILE,
+                                help="the rule file of the profile for a new rule (default: %(default)s)")
+    promote_action.add_argument("--yes", action="store_true",
+                                help="write it: commit on a new branch of the pack, push it and open the pull request")
+    promote_action.add_argument("--no-pr", action="store_true", help="with --yes, commit on the branch only")
+    promote_action.add_argument("--json", action="store_true", help="print the result as JSON")
+    promote_action.set_defaults(needs_repository=False)

@@ -14,9 +14,7 @@ referencias propias:
 - [learning-reorganize.md](learning-reorganize.md): cómo `reorganize` consolida, divide o pasa a skill
   lo aprendido.
 - [learning-share.md](learning-share.md): cómo el desarrollador junta lo que aprendieron varios
-  clientes (`export` y `harvest`).
-
-Promover un candidato a un pack (`promote`) es la parte siguiente de la issue #156.
+  clientes (`export` y `harvest`) y cómo lo sube a un pack (`promote`).
 
 ## Qué se aprende y qué no
 
@@ -195,6 +193,10 @@ agent-ready learn export --output learned.json
 
 # Lo que aprendieron varios repos (y los exports que pasaron los clientes), como candidatos para un pack.
 agent-ready learn harvest --repos ../cliente-a ../cliente-b --export cliente-c.json
+
+# Ver el cambio que haría un candidato en un profile del pack, y escribirlo en una rama con su pull request.
+agent-ready learn promote harvest-1a2b3c4d5e --to ../mi-pack --profile base
+agent-ready learn promote harvest-1a2b3c4d5e --to ../mi-pack --profile base --yes
 ```
 
 `record` acepta `--date` con la fecha del mensaje, por ejemplo cuando la revisión de fin de sesión
