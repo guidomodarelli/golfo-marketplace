@@ -312,6 +312,19 @@ skip_without_pseudoterminal() {
   [ ! -e .agents/ci ]
 }
 
+@test "init in a repository without stack signals asks what it is for, and other leaves the empty selection" {
+  skip_without_pseudoterminal
+  rm .agents/agent-ready.json package.json
+  # An answer outside the list is asked again; other makes none the default of the profiles.
+  run_cli_in_terminal 'web\nother\n\n\nnone\ny\n' init
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"What is this repository for? (code|other)"* ]]
+  [[ "$output" == *"answer one of code, other"* ]]
+  [[ "$output" == *"Without code the core applies"* ]]
+  [[ "$output" == *"Equivalent command: agent-ready init --profiles none"* ]]
+  [ "$(json_value .agents/agent-ready.json 'document["profiles"]')" = '[]' ]
+}
+
 @test "check lints the rule files that use atomic rules under ci.conflicts.structural, and skips prose ones" {
   mkdir -p .agents/rules/workspaces/apps/web
   # A prose file the project never migrated: its bullets are not lint errors of the check.
