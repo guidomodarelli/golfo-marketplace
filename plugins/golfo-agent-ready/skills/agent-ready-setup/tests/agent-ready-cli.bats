@@ -834,6 +834,15 @@ PY
   run_cli identity set --id "Ana Pérez"
   [ "$status" -eq 1 ]
   [[ "$stderr" == *"identity id 'Ana Pérez' must be 1 to 64 lowercase letters"* ]]
+
+  # A broken file is replaced when both fields are given, as its error says.
+  printf '%s\n' '{"id": "Ana Pérez"}' > "$XDG_CONFIG_HOME/agent-ready-setup/identity.json"
+  run_cli identity show
+  [ "$status" -eq 1 ]
+  [[ "$stderr" == *"fix it with agent-ready identity set"* ]]
+  run_cli identity set --id ana --name Ana
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Identity: ana (Ana), set on this machine."* ]]
 }
 
 @test "collaboration auto is software with software-development in the selection and business without it" {
@@ -846,6 +855,12 @@ PY
   printf '%s\n' '{"assets": {}, "profileOrder": ["learning"]}' > .agents/agent-ready.lock.json
   run_cli identity show
   [[ "$output" == *"Collaboration: business, chosen by the selection."* ]]
+
+  # A monorepo that selects its code stacks only in a workspace.
+  printf '%s\n' '{"assets": {}, "profileOrder": [], "workspaces": {"apps/web": {"profiles": ["react"], "own": ["react", "software-development"]}}}' \
+    > .agents/agent-ready.lock.json
+  run_cli identity show --json
+  [ "$(json_value "$output" 'data["collaboration"]["effective"]')" = "software" ]
 
   printf '%s\n' '{"collaboration": "software"}' > .agents/agent-ready.json
   run_cli identity show --json

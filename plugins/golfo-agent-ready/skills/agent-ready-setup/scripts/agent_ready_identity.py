@@ -42,7 +42,8 @@ def identity_path(environment=None):
 
 def slug(text):
     """Lowercase, with anything outside ``[a-z0-9._-]`` turned into a hyphen."""
-    return re.sub(r"-{2,}", "-", re.sub(r"[^a-z0-9._-]", "-", text.lower())).strip("-.") or "user"
+    # Only a letter or a digit opens it, as validate_id asks: a user such as _ana becomes ana.
+    return re.sub(r"-{2,}", "-", re.sub(r"[^a-z0-9._-]", "-", text.lower())).strip("-._") or "user"
 
 
 def default_identity():
@@ -82,8 +83,10 @@ def read_identity(environment=None):
 
 
 def write_identity(identity_id=None, name=None, environment=None):
-    """Store the identity, keeping what is not given from the current one. Returns it."""
-    current = read_identity(environment)
+    """Store the identity, keeping what is not given from the current one. Returns it.
+
+    With both fields given, the current file is not read: that is how a broken one is replaced."""
+    current = {} if identity_id and name else read_identity(environment)
     stored = {"id": validate_id(identity_id or current["id"]), "name": validate_name(name or current["name"])}
     write_text_atomically(identity_path(environment), json.dumps(stored, indent=2, ensure_ascii=False) + "\n")
     return dict(stored, source=SOURCE_FILE)
@@ -94,13 +97,18 @@ def learned_by_trailer(environment=None):
     return f"{LEARNED_BY_TRAILER}: {read_identity(environment)['id']}\n"
 
 
-def collaboration_preset(configured, profile_order):
+def collaboration_preset(configured, lock):
     """The effective preset: the configured one, or for ``auto`` the one of the selection.
 
-    ``profile_order`` is the resolved selection of the lock; a selection with software-development (a
-    stack of code, or that capability alone) is a code repository.
+    The selection is the one the lock resolved, of the root (``profileOrder``) and of each workspace
+    (``workspaces[*].own``): a monorepo may select its code stacks only in its workspaces. One with
+    software-development (a stack of code, or that capability alone) is a code repository.
     """
     if configured in (PRESET_BUSINESS, PRESET_SOFTWARE):
         return configured
-    names = {name.rsplit("/", 1)[-1] for name in profile_order or []}
+    lock = lock or {}
+    selected = list(lock.get("profileOrder") or [])
+    for workspace in (lock.get("workspaces") or {}).values():
+        selected.extend(workspace.get("own") or [])
+    names = {name.rsplit("/", 1)[-1] for name in selected}
     return PRESET_SOFTWARE if SOFTWARE_PROFILE in names else PRESET_BUSINESS

@@ -27,8 +27,7 @@ def preset_of(project_root):
     if project_root is None:
         return None
     configured = engine().configuration_of(project_root).value(identity.COLLABORATION_PRESET_KEY)
-    lock = read_lock(project_root) or {}
-    return {"configured": configured, "effective": identity.collaboration_preset(configured, lock.get("profileOrder"))}
+    return {"configured": configured, "effective": identity.collaboration_preset(configured, read_lock(project_root))}
 
 
 def print_identity(current, preset, as_json):
