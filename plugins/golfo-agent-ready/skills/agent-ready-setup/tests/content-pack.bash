@@ -10,6 +10,9 @@
 use_content_pack() {
   content_pack="$(bash "$BATS_TEST_DIRNAME/prepare-content-pack.sh")" || return 1
   export AGENT_READY_SETUP_CONTENT_DIR="$content_pack"
+  # The content brings memory-engram to every selection, and its apply downloads Engram from its
+  # releases: the suites leave the memory off, and the tests of the memory turn it back on.
+  export AGENT_READY_SETUP_MEMORY=0
 }
 
 # A copy of the content pack in the test directory, which the test can change: the next run of the

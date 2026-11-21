@@ -109,11 +109,11 @@ wait_for_background_update() {
   [ "$status" -eq 0 ]
   [ -f .agents/rules/node-security.md ]
   [ "$(lock_value '[data["source"][key] for key in ("name", "kind", "revision", "origin", "requestedRef", "version")]')" = \
-    "['golfo', 'git', '$content_revision', 'https://github.com/guidomodarelli/golfo-agent-profiles', 'main', '1.4.0']" ]
+    "['golfo', 'git', '$content_revision', 'https://github.com/guidomodarelli/golfo-agent-profiles', 'main', '1.6.0']" ]
   # The engine projected it: its hooks are the installed engine's.
   cmp -s .agents/hooks/check-harness-consistency.sh "$skill_dir/assets/common/hooks/check-harness-consistency.sh"
   run_cli status
-  [[ "$output" == *"Locked source: golfo 1.4.0 (git, revision ${content_revision:0:12}, from https://github.com/guidomodarelli/golfo-agent-profiles"* ]]
+  [[ "$output" == *"Locked source: golfo 1.6.0 (git, revision ${content_revision:0:12}, from https://github.com/guidomodarelli/golfo-agent-profiles"* ]]
 
   # In auto, the next apply adopts what main has.
   advance_content_repository 'Content of the next commit.'
@@ -324,9 +324,9 @@ wait_for_background_update() {
 
   run_cli update golfo --dry-run
   [ "$status" -eq 0 ]
-  [[ "$output" == *"golfo 1.4.0 -> 2.0.0  (major version jump)"* ]]
+  [[ "$output" == *"golfo 1.6.0 -> 2.0.0  (major version jump)"* ]]
   [[ "$output" == *"A rule asks for something new"* ]]
-  [ "$(lock_value 'data["source"]["version"]')" = "1.4.0" ]
+  [ "$(lock_value 'data["source"]["version"]')" = "1.6.0" ]
 }
 
 @test "without a selection, detection uses the catalog of the content" {

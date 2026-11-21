@@ -5,11 +5,10 @@ decisiones de cada caso) con [Engram](https://github.com/Gentleman-Programming/e
 sobre esa memoria. Leer al explicar qué recuerda el agente entre sesiones, al apagar la memoria o al
 revisar por qué `agent-ready check` falló con `private-files`.
 
-> **Estado.** El motor ya tiene `memory.engram`, el chequeo de `.engram/` versionado, la exclusión de
-> `learn export` y `learn harvest`, y el mecanismo para que el contenido instale un CLI y registre su
-> servidor MCP con el launcher ([pack-tools.md](pack-tools.md)). El profile `memory-engram` del
-> contenido (Engram, su servidor MCP y la rule del protocolo) y `.engram/` en el `.gitignore`
-> gestionado son la parte siguiente de la issue #157: hasta entonces la selección no suma nada.
+El profile `memory-engram` llega con el contenido 1.6.0: instala Engram (versión exacta y `sha256` por
+plataforma), registra su servidor MCP como `agent-ready tool run engram -- mcp --tools=agent`
+([pack-tools.md](pack-tools.md), sección 5) y trae la rule de cuándo guardar y cuándo buscar. El
+provider necesita `agent-ready` en su PATH, que pone el paquete npm `@golfo/agent-ready`.
 
 ## Memoria y aprendizaje
 
@@ -29,9 +28,9 @@ vieja no contradice una rule que cambió. Un dato de un caso va a Engram, nunca 
 `memory-engram` del contenido, también una sin stack (`--profiles none`). El profile instala Engram,
 registra su servidor MCP para Claude Code y Codex y trae la rule de cuándo guardar y cuándo buscar.
 
-- **Apagarla.** `{"memory": {"engram": false}}` en el manifest (o `memory.enabled: false`) deja afuera
-  `memory-engram` aunque la selección lo nombre, y el próximo apply retira lo que había instalado y
-  registrado. Un profile que requiere `memory-engram` falla antes de escribir. También se puede dejar
+- **Apagarla.** `{"memory": {"engram": false}}` en el manifest (o `memory.enabled: false`, o
+  `AGENT_READY_SETUP_MEMORY=0` en una corrida) deja afuera `memory-engram` aunque la selección lo
+  nombre, y el próximo apply retira lo que había instalado y registrado. Un profile que requiere `memory-engram` falla antes de escribir. También se puede dejar
   afuera con `excludedDefaults: ["memory-engram"]`.
 - **Sin el profile en el contenido** (una versión anterior a la que lo publica), las dos claves no hacen
   nada.
