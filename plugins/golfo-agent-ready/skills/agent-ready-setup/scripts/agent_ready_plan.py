@@ -90,6 +90,7 @@ from agent_ready_options import (
     DETECTION_ENABLED_KEY,
     DETECTION_WORKSPACES_KEY,
     EXCLUDED_DEFAULTS_KEY,
+    HOOK_CONFLICTS_ENABLED_KEY,
     PROFILES_KEY,
     PROVIDERS_KEY,
     REVIEWS_CACHE_KEY,
@@ -548,7 +549,8 @@ def semantic_conflicts(arguments, plan, instructions_with_applied=False):
     nested_files = nested_instruction_files(plan)
     directions, texts = conflicts_review.conflict_pairs(
         arguments.project, plan["entries"], (lock or {}).get("assets", {}), module.normalized_text,
-        project_owned_instructions, ENGINE_SKILL_DIRECTORY, is_pack_profile, instructions_with_applied, nested_files)
+        project_owned_instructions, ENGINE_SKILL_DIRECTORY, is_pack_profile, instructions_with_applied, nested_files,
+        blocking_hook_documents(arguments.project, configuration))
     # Offline runs and automated reviews answer from the cache only.
     use_provider = not arguments.offline and os.environ.get("AGENT_READY_SETUP_REVIEW_MODE") != "1"
     # The options of this run: the hooks' copy of them only changes when an apply finishes.
@@ -566,6 +568,13 @@ def semantic_conflicts(arguments, plan, instructions_with_applied=False):
     return report
 
 
+def blocking_hook_documents(project_root, configuration):
+    """The hooks that can stop a tool call, as documents of the conflict review (conflicts.hooks.enabled)."""
+    if not configuration.value(HOOK_CONFLICTS_ENABLED_KEY):
+        return {}
+    return review_cache_module().hook_documents(project_root)
+
+
 def nested_instruction_files(plan):
     """The nested AGENTS.md files the apply writes blocks to: the ones of the workspaces and of the nested
     targets."""
@@ -574,6 +583,11 @@ def nested_instruction_files(plan):
 
 
 def describe_conflict(finding):
+    module = review_cache_module()
+    if any(module.is_hooks_document(name) for name in finding.get("files", [])):
+        # A hook that can stop what a rule or skill asks for: the hook is the project's, never a rule.
+        subject = "this update" if finding["direction"] == conflicts_review.DIRECTION_UPDATE else "a hook of the project"
+        return f"{module.finding_line(finding)} ({subject}; a hook that blocks it)"
     direction = {conflicts_review.DIRECTION_UPDATE: "this update",
                  conflicts_review.DIRECTION_PROFILES: "two profiles",
                  conflicts_review.DIRECTION_LEVELS: "two levels"}.get(finding["direction"], "a project rule")

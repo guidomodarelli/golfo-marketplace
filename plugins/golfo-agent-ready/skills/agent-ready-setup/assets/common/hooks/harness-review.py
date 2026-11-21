@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reviews the rules and skills a hook saw change, against every other one, one cached pair at a time.
+"""Reviews the rules, skills and AGENTS.md a hook saw change, against every other one, one cached pair at a time.
 
 check-harness-consistency.sh runs it after an edit. Each pair of documents is a unit of
 review-cache.py: pairs whose files did not change come from the cache, and the pairs left
@@ -23,6 +23,11 @@ CHECK_VERSION = 3
 HARNESS_ROOTS = (".agents", ".claude")
 # Instructions file of a root that is reviewed with its rules and skills.
 ROOT_INSTRUCTIONS = {".claude": "CLAUDE.md"}
+# What the project wrote in an AGENTS.md, without the blocks the engine writes there, is reviewed with the
+# rules and skills of .agents/ (review-cache.py, owned_instructions), the same text plan reviews.
+INSTRUCTIONS_ROOT = ".agents"
+INSTRUCTIONS_FILE_NAME = "AGENTS.md"
+INSTRUCTIONS_PATTERN = re.compile(r"(^|/)AGENTS\.md$")
 RULES_DIRECTORY = "rules"
 SKILLS_DIRECTORY = "skills"
 SKILL_FILE_NAME = "SKILL.md"
@@ -115,14 +120,27 @@ def provider_of(payload):
 
 
 def harness_roots(paths):
-    """Roots whose rules or skills an edit touched, as the hook always detected them."""
+    """Roots whose rules or skills an edit touched, as the hook always detected them. An edit of an
+    AGENTS.md reviews it against the rules and skills of .agents/, where the managed ones live."""
     roots = set()
     for path in paths:
         if re.search(r"(^|/)\.claude/(rules/|skills/|CLAUDE\.md$)", path):
             roots.add(".claude")
-        if re.search(r"(^|/)\.agents/(rules/|skills/)", path):
+        if re.search(r"(^|/)\.agents/(rules/|skills/)", path) or INSTRUCTIONS_PATTERN.search(path):
             roots.add(".agents")
     return sorted(roots)
+
+
+def instruction_documents(project_root, root, changed):
+    """The AGENTS.md files reviewed with a root: for .agents/, the one of the repository and every nested
+    one the edit changed, by project-relative path. A nested AGENTS.md the edit did not touch is reviewed
+    by plan, which knows the levels."""
+    if root != INSTRUCTIONS_ROOT:
+        return []
+    names = {name for name in changed if INSTRUCTIONS_PATTERN.search(name) and not name.startswith(HARNESS_ROOTS)}
+    names.add(INSTRUCTIONS_FILE_NAME)
+    return sorted(name for name in names if os.path.isfile(os.path.join(project_root, *name.split("/")))
+                  and not os.path.islink(os.path.join(project_root, *name.split("/"))))
 
 
 def documents(project_root, root):
@@ -276,12 +294,18 @@ def review_pairs(bash, provider, model, effort, pairs, texts, working_directory)
 def review_root(bash, cache_module, cache, project_root, root, changed, provider, engine):
     """Review the pairs of the changed documents of one root and print what is known about them."""
     names = documents(project_root, root)
-    edited = [name for name in names if name in changed]
+    instructions = instruction_documents(project_root, root, changed)
+    edited = [name for name in names + instructions if name in changed]
     if not edited:
         return
     texts = {}
     for name in names:
         texts.update(cache_module.rule_units(name, cache_module.normalized_text(os.path.join(project_root, name))))
+    for name in instructions:
+        # Only what the project wrote: an edit inside a managed block changes nothing this review reads.
+        owned = cache_module.owned_instructions(cache_module.normalized_text(os.path.join(project_root, *name.split("/"))))
+        if owned:
+            texts[name] = owned
     model, effort = cache_module.PROVIDER_DEFAULTS[provider]["model"], cache_module.PROVIDER_DEFAULTS[provider]["effort"]
     # A file split into rules (review-cache.py, rule_units) takes part with each rule: an edit of one rule
     # finds the pairs of its neighbors in the cache.

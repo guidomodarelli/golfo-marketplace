@@ -446,6 +446,14 @@ if [[ "$defer_to_background" -eq 1 && ( "$only_check" -eq 0 || "$updates_enabled
   python3 "$state_script" status --project . --skill-dir "$skill_dir" --conflicts-only session-start || true
 fi
 
+# The AI reviews whose files changed since (conflicts.sessionStart.reviews), whatever the update mode: the
+# hook only counts them and says so, and the review runs detached, so the session never waits for the AI.
+if [[ "$defer_to_background" -eq 1 ]] &&
+  python3 "$state_script" refresh-reviews --project . --provider "$provider" --announce; then
+  start_background_task "refresh-reviews-$(project_log_key)" \
+    python3 "$state_script" refresh-reviews --project . --provider "$provider"
+fi
+
 # Only an explicit sync runs with automatic updates off.
 if [[ "$updates_enabled" != true && "$defer_to_background" -eq 1 ]]; then
   echo "[marketplace-sync] Automatic updates are off (updates.enabled: false); nothing was checked or synchronized."

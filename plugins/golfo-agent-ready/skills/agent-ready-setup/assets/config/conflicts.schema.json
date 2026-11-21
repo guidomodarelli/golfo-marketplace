@@ -79,12 +79,12 @@
       }
     },
     "hooks": {
-      "description": "Hooks de golfo-agent-ready, del proyecto, locales y del usuario que chocan: el mismo hook registrado en dos capas, que corre dos veces, o dos formateadores en el mismo evento con matchers que se pisan.",
+      "description": "Hooks de golfo-agent-ready, del proyecto, locales y del usuario que chocan: el mismo hook registrado en dos capas, que corre dos veces, o dos formateadores en el mismo evento con matchers que se pisan. Además, la revisión de IA de los conflictos compara los hooks PreToolUse de .claude/settings.json y .codex/hooks.json, que pueden frenar una acción, con cada rule y skill gestionada que la pide.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
         "enabled": {
-          "description": "plan informa los hooks que chocan. Apagado, no se comparan.",
+          "description": "plan informa los hooks que chocan y revisa con IA los que pueden bloquear lo que pide una rule o skill gestionada. Apagado, no se comparan.",
           "type": "boolean",
           "default": true
         }
@@ -144,12 +144,17 @@
       }
     },
     "sessionStart": {
-      "description": "Los conflictos estructurales que muestra el hook de inicio de sesión con status --brief. Los hallazgos de las revisiones de IA salen de la caché, como siempre.",
+      "description": "Lo que hace el hook de inicio de sesión con los conflictos: lista los estructurales con status --brief y vuelve a revisar en segundo plano las revisiones de IA desactualizadas. Los hallazgos de las revisiones de IA salen de la caché, como siempre.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
         "enabled": {
-          "description": "Al iniciar una sesión se listan los conflictos estructurales conocidos. Apagado, no se calculan; agent-ready status y agent-ready conflicts los siguen mostrando.",
+          "description": "Al iniciar una sesión se listan los conflictos estructurales conocidos y se revisan las revisiones de IA desactualizadas (reviews). Apagado, no se hace nada de eso; agent-ready status y agent-ready conflicts los siguen mostrando.",
+          "type": "boolean",
+          "default": true
+        },
+        "reviews": {
+          "description": "Al iniciar una sesión, las revisiones de IA cuyos archivos cambiaron se vuelven a revisar en segundo plano, sin hacer esperar a la sesión, con la CLI del provider de la sesión y la caché local. Un lock por proyecto evita que dos sesiones revisen lo mismo. Apagado, esperan a la próxima edición o al próximo apply. También se apaga con reviews.enabled: false.",
           "type": "boolean",
           "default": true
         }
