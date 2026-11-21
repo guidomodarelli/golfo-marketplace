@@ -47,7 +47,7 @@ def register(subparsers, new_subparser):
     actions = tool.add_subparsers(dest="tool_action", metavar="<action>", required=True)
     run = new_subparser(actions, "run", "Run a CLI of the profiles, from the cache of this machine or the PATH, "
                                         "with the standard streams of this process.",
-                        "  agent-ready tool run engram -- mcp\n  agent-ready tool run engram --project ~/acme -- mcp",
+                        "  agent-ready tool run engram -- mcp\n  agent-ready tool run --project ~/acme engram -- mcp",
                         command_tool_run)
     run.add_argument("cli", help="name of the CLI, as the profile declares it")
     run.add_argument("arguments", nargs=argparse.REMAINDER, help="arguments for the CLI, after --")
