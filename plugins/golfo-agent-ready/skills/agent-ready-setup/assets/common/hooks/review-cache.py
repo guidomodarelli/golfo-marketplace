@@ -99,6 +99,8 @@ RULE_DOCUMENT_SUFFIX = ".md"
 RULE_ID_PATTERN = re.compile(r"(?:^|\s)id=(?P<id>\S+)")
 # AGENTS.md is reviewed without the blocks the engine writes there (references/managed-agents-block.md).
 INSTRUCTIONS_FILE_NAME = "AGENTS.md"
+# The review of merge-instructions.sh (managed-block.sh) reads the whole AGENTS.md, managed block included.
+WHOLE_INSTRUCTIONS_CHECK = "instructions"
 MARKER_BEGIN_WORD = "BEGIN"
 MARKER_END_WORD = "END"
 MANAGED_MARKER_PATTERN = re.compile(r"<!-- (?P<word>BEGIN|END) AGENT-READY MANAGED(?:: (?P<id>.+?))? -->")
@@ -302,9 +304,10 @@ def hook_documents(project_root):
     return documents
 
 
-def unit_text(project_root, name):
+def unit_text(project_root, name, check=None):
     """The text a document has on disk now: a rule of a file, the rest of a file split into rules, what the
-    project wrote in an AGENTS.md, the blocking hooks of a settings file, or a whole file; None when it is gone."""
+    project wrote in an AGENTS.md (all of it for ``check`` WHOLE_INSTRUCTIONS_CHECK), the blocking hooks of a
+    settings file, or a whole file; None when it is gone."""
     if is_hooks_document(name):
         return blocking_hooks_text(project_root, document_path(name))
     path = document_path(name)
@@ -313,7 +316,7 @@ def unit_text(project_root, name):
     except OSError:
         return None
     if UNIT_SEPARATOR not in name:
-        return owned_instructions(text) if is_instructions_name(name) else text
+        return owned_instructions(text) if is_instructions_name(name) and check != WHOLE_INSTRUCTIONS_CHECK else text
     return rule_units(path, text).get(name)
 
 
@@ -438,7 +441,7 @@ def trusted_shared_entry(local, shared):
 def matches_files(project_root, entry):
     """Whether the files of an entry are on disk as they were when it was reviewed."""
     files = entry.get("files", {}) if isinstance(entry, dict) else {}
-    return bool(files) and file_hashes(project_root, files) == files
+    return bool(files) and file_hashes(project_root, files, entry.get("check")) == files
 
 
 class ReviewCache:
@@ -698,11 +701,11 @@ def finding_id(unit, finding):
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:FINDING_ID_LENGTH]
 
 
-def file_hashes(project_root, names):
-    """{name: hash of its normalized text}, None for a file that is gone."""
+def file_hashes(project_root, names, check=None):
+    """{name: hash of what ``check`` reads of it now}, None for a file that is gone."""
     hashes = {}
     for name in names:
-        text = unit_text(project_root, name)
+        text = unit_text(project_root, name, check)
         hashes[name] = None if text is None else text_hash(text)
     return hashes
 
@@ -773,7 +776,7 @@ class Decisions:
         if decision.get("scope") == SCOPE_PAIR:
             return decision.get("decision")
         recorded = decision.get("files", {})
-        if isinstance(recorded, dict) and recorded and file_hashes(self.project_root, recorded) == recorded:
+        if isinstance(recorded, dict) and recorded and file_hashes(self.project_root, recorded, decision.get("check")) == recorded:
             return decision.get("decision")
         return STATUS_TO_CONFIRM
 
@@ -802,7 +805,7 @@ def decision_for(finding, kind, reason, scope, by, project_root):
         "check": finding.get("check"),
         "kind": finding.get("kind"),
         "text": finding.get("text", ""),
-        "files": file_hashes(project_root, files) if scope == SCOPE_CONTENT else {name: None for name in files},
+        "files": file_hashes(project_root, files, finding.get("check")) if scope == SCOPE_CONTENT else {name: None for name in files},
     }
 
 

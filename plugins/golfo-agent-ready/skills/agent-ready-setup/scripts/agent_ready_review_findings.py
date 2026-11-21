@@ -36,7 +36,7 @@ def review_findings(project_root, strict=False):
         # A semantic conflict with an AGENTS.md is about what the project wrote there, not the managed blocks.
         semantic = (isinstance(entry, dict) and entry.get("check") == conflicts_review.CONFLICT_CHECK
                     and any(conflicts_review.is_instructions(name) for name in files))
-        current = current_files(module, project_root, files)
+        current = current_files(module, project_root, files, entry.get("check") if isinstance(entry, dict) else None)
         if files and current == files:
             units += 1
             annotated = decisions.annotate(unit, entry.get("findings", []), recorded)
@@ -51,8 +51,11 @@ def review_findings(project_root, strict=False):
     return findings, recorded, units, stale
 
 
-def current_files(module, project_root, files):
-    """{name: hash} of what a review of these files reads now: of an AGENTS.md, only what the project wrote."""
+def current_files(module, project_root, files, check):
+    """{name: hash} of what ``check`` reads of these files now: of an AGENTS.md, only what the project wrote,
+    except for the review of merge-instructions.sh, which reads all of it."""
+    if check == module.WHOLE_INSTRUCTIONS_CHECK:
+        return module.file_hashes(project_root, files, check)
     return conflicts_review.current_hashes(module, project_root, files, project_owned_instructions)
 
 
@@ -71,7 +74,7 @@ def stale_entries(project_root):
         files = entry.get("files", {}) if isinstance(entry, dict) else {}
         if not files:
             continue
-        current = current_files(module, project_root, files)
+        current = current_files(module, project_root, files, entry.get("check"))
         if current != files and all(value is not None for value in current.values()):
             stale[unit] = entry
     return stale
