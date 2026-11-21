@@ -21,7 +21,9 @@ Solo en el preset `business`. En `software` no hace nada, porque lo aprendido vi
    rules distintas del mismo archivo no chocan. El merge no toca los cambios sin commitear del resto
    del repositorio. Si todavía hay un conflicto, lo aborta: el checkout **nunca queda a medio mergear**,
    y la próxima corrida lo vuelve a intentar.
-4. **Sube** la rama. Si el remoto la rechaza porque otro subió antes, vuelve a traer e integrar, hasta
+4. **Promueve a equipo** lo que varias personas enseñaron igual como rule personal y lo commitea
+   ([collaboration.md](collaboration.md#promoción-a-equipo)).
+5. **Sube** la rama. Si el remoto la rechaza porque otro subió antes, vuelve a traer e integrar, hasta
    `sync.pushRetries` veces (3). **Nunca hace force push.**
 
 Sin red, los commits quedan locales y salen con la primera corrida que llega al remoto. Git nunca pide

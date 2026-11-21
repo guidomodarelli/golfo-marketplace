@@ -1005,3 +1005,99 @@ PY
   [ "$status" -eq 0 ]
   [ -z "$(git status --porcelain -- .agents/rules)" ]
 }
+
+# 169e: what two people taught alike as personal rules goes to the team in the next sync.
+teach_personal() {
+  local config="$1" statement="$2"
+  XDG_CONFIG_HOME="$config" run_cli learn record --kind rule --key reports.summary --scope personal --explicit \
+    --session "s-$RANDOM" --statement "$statement" --quote "a mí me gusta así" --json
+  [ "$status" -eq 0 ]
+  local entry
+  entry="$(json_value "$output" 'data["candidate"]["id"]')"
+  XDG_CONFIG_HOME="$config" run_cli learn apply "$entry"
+  [ "$status" -eq 0 ]
+}
+
+be_person_at() {
+  mkdir -p "$1/agent-ready-setup"
+  printf '{"id": "%s", "name": "%s"}\n' "$2" "$2" > "$1/agent-ready-setup/identity.json"
+}
+
+@test "two people who taught the same personal rule get it as a rule of the team, and their personal ones go" {
+  setup_office_remote
+  be_person_at "$XDG_CONFIG_HOME" ana
+  be_person_at "$test_root/config-other" juan
+  teach_personal "$XDG_CONFIG_HOME" "Reports end with a one-line summary."
+  run_cli sync
+  [ "$status" -eq 0 ]
+
+  cd "$other"
+  XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
+  [ "$status" -eq 0 ]
+  teach_personal "$test_root/config-other" "Reports end with a one-line summary."
+  XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
+  [ "$status" -eq 0 ]
+  grep -Fxq '<!-- rule id=learned/reports-summary key=reports.summary -->' .agents/rules/learned.md
+  ! grep -q 'one-line summary' .agents/rules/learned/users/ana/learned.md
+  ! grep -q 'one-line summary' .agents/rules/learned/users/juan/learned.md
+  grep -q ' promote learn-.* (learned/reports-summary, from the personal rules of ana, juan): ' .agents/learning/log.md
+
+  cd "$project_dir"
+  run_cli sync
+  [ "$status" -eq 0 ]
+  grep -Fxq -- '- Reports end with a one-line summary.' .agents/rules/learned.md
+  [ "$(python3 -c 'import json; print(sorted(entry["status"] for entry in json.load(open(".agents/learning/candidates.json"))["candidates"] if entry.get("scope") == "personal"))' | tr -d '\r')" = \
+    "['superseded', 'superseded']" ]
+  run_cli rules lint
+  [ "$status" -eq 0 ]
+}
+
+@test "two machines that promote the same rule at once end with it once" {
+  setup_office_remote
+  be_person_at "$XDG_CONFIG_HOME" ana
+  be_person_at "$test_root/config-other" juan
+  # No promotion while both personal rules travel; each machine turns it on by itself afterwards.
+  printf '%s\n' '{"profiles": ["learning"], "sync": {"promoteAfterUsers": 0}}' > .agents/agent-ready.json
+  git commit -qam "no promotion yet"
+  git push -q origin HEAD:main
+  teach_personal "$XDG_CONFIG_HOME" "Reports end with a one-line summary."
+  run_cli sync
+  [ "$status" -eq 0 ]
+  cd "$other"
+  XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
+  teach_personal "$test_root/config-other" "Reports end with a one-line summary."
+  XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
+  [ "$status" -eq 0 ]
+  cd "$project_dir"
+  run_cli sync
+  [ "$status" -eq 0 ]
+
+  # Both machines promote before either has seen the other's promotion.
+  for checkout in "$project_dir" "$other"; do
+    sed -i.bak 's/"promoteAfterUsers": 0/"promoteAfterUsers": 2/' "$checkout/.agents/agent-ready.json"
+    rm -f "$checkout/.agents/agent-ready.json.bak"
+  done
+  run_cli sync
+  [ "$status" -eq 0 ]
+  cd "$other"
+  XDG_CONFIG_HOME="$test_root/config-other" run_cli sync --json
+  [ "$status" -eq 0 ]
+  [ "$(json_value "$output" 'data["result"]')" = "synced" ]
+  [ "$(grep -c '^<!-- rule id=learned/reports-summary ' .agents/rules/learned.md)" -eq 1 ]
+  [ "$(python3 -c 'import json; print(sum(1 for entry in json.load(open(".agents/learning/candidates.json"))["candidates"] if entry.get("learned", {}).get("action") == "promote"))' | tr -d '\r')" = 1 ]
+}
+
+@test "promoteAfterUsers 1 promotes the personal rule of one person, and 0 none" {
+  setup_office_remote
+  be_person_at "$XDG_CONFIG_HOME" ana
+  python3 -c 'import json; json.dump({"profiles": ["learning"], "sync": {"promoteAfterUsers": 0}}, open(".agents/agent-ready.json", "w"))'
+  teach_personal "$XDG_CONFIG_HOME" "Reports end with a one-line summary."
+  run_cli sync
+  [ "$status" -eq 0 ]
+  ! grep -q 'learned/reports-summary' .agents/rules/learned.md 2>/dev/null
+
+  python3 -c 'import json; json.dump({"profiles": ["learning"], "sync": {"promoteAfterUsers": 1}}, open(".agents/agent-ready.json", "w"))'
+  run_cli sync
+  [ "$status" -eq 0 ]
+  grep -Fxq '<!-- rule id=learned/reports-summary key=reports.summary -->' .agents/rules/learned.md
+}

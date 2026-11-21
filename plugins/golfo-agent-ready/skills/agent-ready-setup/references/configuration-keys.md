@@ -212,6 +212,7 @@ agent-ready sync sube lo aprendido al remoto y trae lo que aprendieron los demá
 | `sync.enabled` | boolean | `true` | todas | `AGENT_READY_SETUP_TEAM_SYNC` | — | Apagado, agent-ready sync no hace commits, fetch ni push, y el inicio de sesión, lo aprendido y el barrido programado no lo disparan. |
 | `sync.remote` | string | `"origin"` | project | — | — | El remoto de Git con el que se sincroniza la rama actual. |
 | `sync.pushRetries` | integer | `3` | todas | — | — | Cuántas veces vuelve a traer e integrar cuando el remoto rechaza el push porque otro subió antes. Nunca hace force push. |
+| `sync.promoteAfterUsers` | integer | `2` | todas | — | — | Cuántas personas tienen que tener la misma rule personal (misma key y mismo enunciado) para que el sync la pase a equipo; las personales quedan reemplazadas por ella. 0 no promueve nunca, y 1 pasa a equipo cada rule personal con key que el equipo no decide. |
 
 ## `tools`: Herramientas
 

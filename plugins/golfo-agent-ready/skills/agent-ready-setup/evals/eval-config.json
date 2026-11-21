@@ -4000,6 +4000,37 @@
           "critical": false
         }
       ]
+    },
+    {
+      "id": "promotion-to-team-after-two-people",
+      "description": "Cuando dos personas tienen la misma rule personal (misma key y enunciado), el sync la pasa a equipo con un id derivado de la key; las personales quedan superseded y no se duplica aunque dos máquinas promuevan a la vez.",
+      "input": "En el estudio, Ana y Juan le enseñaron al agente lo mismo como gusto propio: que los informes terminen con un resumen de una línea, con la misma key reports.summary. ¿Qué hace agent-ready con eso, cuándo, qué pasa con sus rules personales y qué pasa si las dos computadoras lo hacen al mismo tiempo? Respondé desde la skill, sin ejecutar comandos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "promo|pasa a (ser )?(de )?equipo",
+          "description": "La promueve a equipo",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "promoteAfterUsers|dos personas|2 personas",
+          "description": "Con sync.promoteAfterUsers personas (2)",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "superseded|reemplazad",
+          "description": "Las personales quedan superseded",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "learned/reports[-.]summary|learned/<key>|id (que sale|derivado|determinista)",
+          "description": "La rule de equipo tiene un id derivado de la key",
+          "critical": true
+        }
+      ]
     }
   ]
 }
