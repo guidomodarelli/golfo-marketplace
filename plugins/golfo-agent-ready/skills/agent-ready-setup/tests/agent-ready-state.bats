@@ -1083,3 +1083,115 @@ EOF2
   [[ "$output" == *"profile 'case-notes' requires 'memory-engram', which memory.engram turned off"* ]]
   [ ! -e .agents/agent-ready.lock.json ]
 }
+
+# 169b: the learning profile names the merge drivers in .gitattributes, and each apply registers them.
+learning_with_merge_attributes() {
+  copy_skill
+  mkdir -p "$content_dir/profiles/learning/blocks"
+  printf '%s\n' '.agents/rules/**/*.md merge=agent-ready-rules' \
+    '.agents/learning/candidates.json merge=agent-ready-candidates' '.agents/learning/log.md merge=agent-ready-log' \
+    > "$content_dir/profiles/learning/blocks/.gitattributes"
+}
+
+# The learning registry with one candidate per name, as learn record writes it.
+write_registry_entries() {
+  python3 - "$@" <<'PY'
+import json, sys
+entries = [{"id": f"learn-{name}", "statement": name, "status": "candidate", "evidence": []} for name in sys.argv[1:]]
+json.dump({"version": 1, "candidates": entries}, open(".agents/learning/candidates.json", "w"), indent=2, sort_keys=True)
+PY
+}
+
+@test "two machines that learned different rules of one file, and each added a log line, merge without conflict" {
+  learning_with_merge_attributes
+  run_bootstrap_with "$source_copy" --profiles learning
+  [ "$status" -eq 0 ]
+  grep -Fq '.agents/rules/**/*.md merge=agent-ready-rules' .gitattributes
+  [[ "$(git config --local --get merge.agent-ready-rules.driver)" == *"agent-ready-merge"*"agent-ready-rules %O %A %B %P" ]]
+  mkdir -p .agents/rules .agents/learning
+  printf '%s\n' '# Learned' '' '<!-- rule id=learned/base -->' '- Keep the base.' > .agents/rules/learned.md
+  printf '%s\n' '# Learning log' '' '- base' > .agents/learning/log.md
+  write_registry_entries base
+  git add -A
+  git commit -qm base
+  remote="$test_root/remote.git"
+  git init -q --bare "$remote"
+  git remote add origin "$remote"
+  git push -q origin HEAD:main
+
+  # The second machine: its own clone, whose apply registers the drivers of its installation.
+  other="$test_root/other"
+  git clone -q -b main "$remote" "$other"
+  cd "$other"
+  run_bootstrap_with "$source_copy" --profiles learning
+  [ "$status" -eq 0 ]
+  printf '%s\n' '' '<!-- rule id=learned/dates -->' '- Dates go first.' >> .agents/rules/learned.md
+  printf '%s\n' '- dates' >> .agents/learning/log.md
+  write_registry_entries base dates
+  git commit -qam "learn dates"
+  git push -q origin HEAD:main
+
+  cd "$project_dir"
+  printf '%s\n' '' '<!-- rule id=learned/signature -->' '- Sign at the end.' >> .agents/rules/learned.md
+  printf '%s\n' '- signature' >> .agents/learning/log.md
+  write_registry_entries base signature
+  git commit -qam "learn signature"
+  git pull -q --no-rebase --no-edit origin main
+  [ -z "$(git diff --name-only --diff-filter=U)" ]
+  grep -Fxq -- '- Dates go first.' .agents/rules/learned.md
+  grep -Fxq -- '- Sign at the end.' .agents/rules/learned.md
+  grep -Fxq -- '- Keep the base.' .agents/rules/learned.md
+  ! grep -q '^<<<<<<<' .agents/rules/learned.md
+  grep -Fxq -- '- dates' .agents/learning/log.md
+  grep -Fxq -- '- signature' .agents/learning/log.md
+  [ "$(python3 -c 'import json; print(sorted(entry["id"] for entry in json.load(open(".agents/learning/candidates.json"))["candidates"]))' | tr -d '\r')" = \
+    "['learn-base', 'learn-dates', 'learn-signature']" ]
+}
+
+@test "the same rule changed in two ways is a conflict of that rule only, and the others merge" {
+  learning_with_merge_attributes
+  run_bootstrap_with "$source_copy" --profiles learning
+  [ "$status" -eq 0 ]
+  mkdir -p .agents/rules
+  printf '%s\n' '# Learned' '' '<!-- rule id=learned/header -->' '- Put the date in the header.' '' \
+    '<!-- rule id=learned/footer -->' '- Sign in the footer.' > .agents/rules/learned.md
+  git add -A
+  git commit -qm base
+  git checkout -qb other
+  sed -i.bak 's/Put the date in the header./Put the date and the case in the header./' .agents/rules/learned.md
+  rm -f .agents/rules/learned.md.bak
+  printf '%s\n' '' '<!-- rule id=learned/margin -->' '- Leave a wide margin.' >> .agents/rules/learned.md
+  git commit -qam other
+  git checkout -q -
+  sed -i.bak 's/Put the date in the header./Put the case number in the header./' .agents/rules/learned.md
+  rm -f .agents/rules/learned.md.bak
+  git commit -qam ours
+  run git merge -q --no-edit other
+  [ "$status" -ne 0 ]
+  [ "$(grep -c '^<<<<<<< ours$' .agents/rules/learned.md)" -eq 1 ]
+  grep -Fxq -- '- Put the case number in the header.' .agents/rules/learned.md
+  grep -Fxq -- '- Put the date and the case in the header.' .agents/rules/learned.md
+  # Outside the conflict, each rule is whole and once.
+  [ "$(grep -c '^- Sign in the footer.$' .agents/rules/learned.md)" -eq 1 ]
+  grep -Fxq -- '- Leave a wide margin.' .agents/rules/learned.md
+}
+
+@test "a rule removed on one side and changed on the other is a conflict of that rule, whichever side removed it" {
+  printf '%s\n' '# Learned' '' '<!-- rule id=learned/a -->' '- Use A.' '' '<!-- rule id=learned/b -->' '- Use B.' > base.md
+  printf '%s\n' '# Learned' '' '<!-- rule id=learned/a -->' '- Use A.' > removed.md
+  sed 's/- Use B./- Use B always./' base.md > changed.md
+  cp removed.md ours.md
+  run python3 "$skill_dir/scripts/agent-ready-merge" agent-ready-rules base.md ours.md changed.md learned.md
+  [ "$status" -eq 1 ]
+  grep -Fxq -- '- Use B always.' ours.md
+  [ "$(grep -c '^<<<<<<< ours$' ours.md)" -eq 1 ]
+  cp changed.md ours.md
+  run python3 "$skill_dir/scripts/agent-ready-merge" agent-ready-rules base.md ours.md removed.md learned.md
+  [ "$status" -eq 1 ]
+  grep -Fxq -- '- Use B always.' ours.md
+  # Removed on one side and untouched on the other is a removal, without conflict.
+  cp removed.md ours.md
+  run python3 "$skill_dir/scripts/agent-ready-merge" agent-ready-rules base.md ours.md base.md learned.md
+  [ "$status" -eq 0 ]
+  ! grep -q 'Use B' ours.md
+}

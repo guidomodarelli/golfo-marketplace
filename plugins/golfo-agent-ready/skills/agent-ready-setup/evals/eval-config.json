@@ -3895,6 +3895,43 @@
           "critical": true
         }
       ]
+    },
+    {
+      "id": "merge-drivers-integrate-rules-by-id",
+      "description": "Dos personas que aprenden rules distintas en el mismo archivo se integran sin conflicto por el driver agent-ready-rules, que mezcla por id; el apply registra el driver en .git/config de cada máquina.",
+      "input": "En el estudio, Ana y Juan trabajan en clones del mismo repo con el profile learning. Los dos aprendieron una rule nueva el mismo día y las dos quedaron al final de .agents/rules/learned.md. Cuando Juan trae los cambios de Ana, ¿Git le marca un conflicto? ¿Qué mecanismo lo evita, dónde se configura y qué pasa si los dos cambiaron la misma rule de forma distinta? Respondé desde la skill, sin ejecutar comandos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "agent-ready-rules",
+          "description": "Nombra el driver agent-ready-rules",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "\\bid\\b",
+          "description": "Mezcla por el id de cada rule",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "\\.git/config|git config",
+          "description": "El comando del driver vive en la configuración local de Git",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "\\.gitattributes",
+          "description": "Los archivos los declara .gitattributes",
+          "critical": false
+        },
+        {
+          "type": "regex",
+          "pattern": "(esa|la) rule sola|solo (en |a )?(esa|la) rule|conflicto[^.]{0,80}(esa|la misma) rule|resto[^.]{0,120}(se mezcla|sin conflicto)",
+          "description": "Un cambio distinto de la misma rule es un conflicto de esa rule sola",
+          "critical": true
+        }
+      ]
     }
   ]
 }
