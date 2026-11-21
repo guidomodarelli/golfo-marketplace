@@ -1708,7 +1708,7 @@
         },
         {
           "type": "regex",
-          "pattern": "no se (re-?)?revisan|no se tocan|no (se )?vuelven? a (revisar|pagar)|se saltean|salen de la caché|siguen en la caché|solo participan|no compara entre sí|no entran|solo se revisan los pares",
+          "pattern": "no se (re-?)?revisan|no se tocan|no (se )?vuelven? a (revisar|pagar)|se saltean|salen? de la caché|siguen en la caché|solo participan|no compara entre sí|no entran|solo se revisan los pares",
           "description": "Los pares que no incluyen la rule editada no se vuelven a revisar"
         }
       ]
@@ -1908,7 +1908,7 @@
         },
         {
           "type": "regex",
-          "pattern": "((volvé|volver|de nuevo|otra vez|reintent|corré|[Dd]espués).{0,80}apply|apply.{0,200}(de nuevo|otra vez|reintent)|volver a aplicar|aplicar de nuevo|reaplic)",
+          "pattern": "((volvé|volver|de nuevo|otra vez|reintent|corré|[Dd]espués).{0,80}apply|apply.{0,200}(de nuevo|otra vez|reintent)|volver a aplicar|aplicar de nuevo|reaplic)|destraba el apply",
           "description": "Indica volver a correr el apply después de decidir"
         }
       ]
@@ -2771,7 +2771,7 @@
         },
         {
           "type": "regex",
-          "pattern": "(?i)(no (te )?(va a |lo )?(frena|bloquea|detiene)|no (frena|bloquea|detiene)|nunca (frena|bloquea)|es (solo )?un aviso|no (hace|va a hacer) fallar|no (rompe|falla))",
+          "pattern": "[Nn]o (te )?(va a |lo )?(frena|bloquea|detiene)|[Nn]unca (frena|bloquea)|[Nn]i frena|es (solo )?un aviso|no (hace|va a hacer) fallar|no (rompe|falla)",
           "description": "Aclara que es un aviso: no frena el apply ni hace fallar el check",
           "critical": true
         }
