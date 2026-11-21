@@ -3969,6 +3969,37 @@
           "critical": true
         }
       ]
+    },
+    {
+      "id": "personal-learning-only-for-its-person",
+      "description": "En el preset business, una preferencia personal se registra con --scope personal, va a la carpeta de su persona en .agents/rules/learned/users/ y solo la carga esa persona al iniciar sesión, ganándole a la rule de equipo con la misma key salvo locked.",
+      "input": "Somos un estudio jurídico sin stack de código, con el aprendizaje activo. Lucía le dice al agente: «a mí me gusta que el resumen vaya al final», pero el estudio ya tiene la rule de equipo de ponerlo arriba. ¿Cómo lo registra el agente, dónde queda escrito, quién lo ve en su sesión y qué pasa con la rule del estudio? Respondé desde la skill, sin ejecutar comandos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "--scope personal",
+          "description": "Lo registra con --scope personal",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "learned/users/",
+          "description": "Queda en .agents/rules/learned/users/<persona>/",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(solo|s[oó]lamente)[^.]{0,80}(Luc[ií]a|esa persona|su persona|ella)|(Luc[ií]a|esa persona|su persona)[^.]{0,80}solo",
+          "description": "Solo la carga la persona que la enseñó",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "locked|bloquead",
+          "description": "Gana a la de equipo salvo que esté locked",
+          "critical": false
+        }
+      ]
     }
   ]
 }

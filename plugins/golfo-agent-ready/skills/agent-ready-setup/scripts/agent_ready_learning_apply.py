@@ -27,6 +27,12 @@ LEARNED_RULES_RELATIVE_PATH = ".agents/rules/learned.md"
 LOG_RELATIVE_PATH = ".agents/learning/log.md"
 SKILL_FILE_NAME = "SKILL.md"
 LEARNED_RULE_PREFIX = "learned/"
+# The personal rules of each person (#169): one file per person, never projected for the others.
+PERSONAL_RULES_DIRECTORY = "learned/users"
+PERSONAL_RULES_HEADER = ("# Personal rules\n\nRules the agent learned from one person, for that person only "
+                         "(agent-ready learn --scope personal, references/collaboration.md of agent-ready-setup). "
+                         "The start of a session gives them to that person; they win over a rule of the team "
+                         "with the same key, unless that rule is locked.\n")
 SLUG_WORDS = 5
 LEARNED_RULES_HEADER = ("# Learned\n\nRules the agent learned from the instructions of the user "
                         "(agent-ready learn, references/learning.md of agent-ready-setup).\n")
@@ -53,10 +59,29 @@ def slug_of(entry):
     return "-".join(words) or entry["id"]
 
 
-def unique_rule_id(slug, taken):
-    rule_id, suffix = LEARNED_RULE_PREFIX + slug, 2
+def person_slug(owner):
+    """The folder and id segment of a person: the id of the identity with only [a-z0-9-]."""
+    return re.sub(r"-{2,}", "-", re.sub(r"[^a-z0-9]+", "-", owner.lower())).strip("-") or "user"
+
+
+def rule_prefix(entry):
+    owner = learning.owner_of(entry)
+    return f"{PERSONAL_RULES_DIRECTORY}/{person_slug(owner)}/" if owner else LEARNED_RULE_PREFIX
+
+
+def personal_file(entry):
+    """The relative path of the personal rules of the person of ``entry``."""
+    return f"{PROJECT_RULES_RELATIVE_PATH}/{rule_prefix(entry)}learned.md"
+
+
+def is_personal(rule):
+    return agent_ready_rules.personal_owner(rule) is not None
+
+
+def unique_rule_id(slug, taken, prefix=LEARNED_RULE_PREFIX):
+    rule_id, suffix = prefix + slug, 2
     while rule_id in taken:
-        rule_id, suffix = f"{LEARNED_RULE_PREFIX}{slug}-{suffix}", suffix + 1
+        rule_id, suffix = f"{prefix}{slug}-{suffix}", suffix + 1
     return rule_id
 
 
@@ -147,7 +172,10 @@ def learned_file(project_root, paths):
 
 def appended_rule(project_root, rule_id, entry, overrides):
     """(path, new text) of the learned file of the scope of the entry, with the new rule at its end."""
-    relative, header = learned_file(project_root, entry.get("paths") or [])
+    if learning.owner_of(entry):
+        relative, header = personal_file(entry), PERSONAL_RULES_HEADER
+    else:
+        relative, header = learned_file(project_root, entry.get("paths") or [])
     if is_managed(project_root, relative):
         raise StateError(f"{relative} is managed by a profile; a learned rule never goes there")
     path = os.path.join(project_root, relative)
@@ -199,8 +227,21 @@ def scope(paths):
 
 def plan_rule(project_root, entry, registry):
     """What writing the entry as a rule does: {action, path, text, ruleId, overrides, supersedes}."""
-    described = repository_rules(project_root)
+    every_rule = repository_rules(project_root)
     key = entry.get("key")
+    owner = learning.owner_of(entry)
+    # A locked rule of the team stops a personal learning too: precedence ends where locked starts.
+    for rule, _, source, _ in every_rule:
+        if key and rule.key == key and rule.locked and not is_personal(rule):
+            raise LockedRuleError(f"{source}:{rule.id} decides {key} and is locked: it cannot change, so "
+                                  "nothing was saved; tell the user so in one line")
+    # A personal learning competes only with the personal rules of its person, and a team one only with
+    # the rules of the team: a personal rule never replaces anything, it wins in the session of its person.
+    if owner:
+        prefix = rule_prefix(entry)
+        described = [item for item in every_rule if item[0].id.startswith(prefix)]
+    else:
+        described = [item for item in every_rule if not is_personal(item[0])]
     same_key = [item for item in described if key and item[0].key == key]
     # A locked rule stops the learning wherever it is, before anything else is decided.
     for rule, _, source, _ in same_key:
@@ -258,7 +299,7 @@ def plan_rule(project_root, entry, registry):
         overridden[reference] = rule_fingerprint(rule)
     # Every managed rule of the key is replaced, so none of them stays next to the learned one.
     overrides = ",".join(replaced) or None
-    rule_id = unique_rule_id(slug_of(entry), {item[0].id for item in described})
+    rule_id = unique_rule_id(slug_of(entry), {item[0].id for item in every_rule}, rule_prefix(entry))
     path, text = appended_rule(project_root, rule_id, entry, overrides)
     return {"action": ACTION_CREATE, "path": path, "text": text, "ruleId": rule_id, "overrides": overrides,
             "overridden": overridden or None, "supersedes": None}

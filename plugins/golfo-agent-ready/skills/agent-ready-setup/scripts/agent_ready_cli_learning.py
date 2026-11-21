@@ -18,6 +18,7 @@ import agent_ready_learning_review as learning_review
 import agent_ready_learning_schedule as learning_schedule
 import agent_ready_learning_session_review as session_review
 import agent_ready_learning_share as learning_share
+import agent_ready_rules
 from agent_ready_cli_common import EXIT_OK, SCRIPT_DIRECTORY, find_repository_root
 from agent_ready_common import StateError, serialize_json, write_text_atomically
 from agent_ready_config import resolve_configuration
@@ -96,6 +97,8 @@ def command_learn_record(arguments):
                    "paths": arguments.paths or None, "quote": arguments.quote, "session": arguments.session,
                    "episode": arguments.episode, "date": date, "source": arguments.source,
                    "explicit": arguments.explicit}
+    if arguments.scope == learning.SCOPE_PERSONAL:
+        instruction.update(personal_scope(project_root, arguments))
     entry, decision, same_key = learning.record(project_root, instruction, settings)
     episodes = learning.live_episodes(entry, settings["ttl_days"])
     if arguments.json:
@@ -110,6 +113,21 @@ def command_learn_record(arguments):
     for item in same_key:
         sys.stdout.write(f"  same key {entry['key']}: {item['id']} ({item['status']}) {item['statement']}\n")
     return EXIT_OK
+
+
+def personal_scope(project_root, arguments):
+    """{scope, owner} of a personal instruction: the person of this machine, in the business preset only."""
+    import agent_ready_identity as identity
+    from agent_ready_cli_sync import settings_for
+
+    if settings_for(project_root)["preset"] == identity.PRESET_SOFTWARE:
+        raise StateError("this repository uses the software collaboration preset, where everything learned is for "
+                         "the team: record it without --scope personal, or keep the preference in your own "
+                         "configuration of the provider")
+    if arguments.kind != learning.KIND_RULE or arguments.paths:
+        raise StateError("a personal instruction is a rule for the whole repository: record it with --kind rule "
+                         "and without --paths")
+    return {"scope": learning.SCOPE_PERSONAL, "owner": identity.read_identity()["id"]}
 
 
 def command_learn_apply(arguments):
@@ -276,6 +294,34 @@ def log_lines(project_root):
         return [line.rstrip("\n") for line in handle if line.startswith("- ")]
 
 
+def print_personal_rules(project_root):
+    """Print the personal rules of the person of this machine (#169); returns the id of that person.
+
+    They live in .agents/rules/learned/users/<person>/ and no view projects them, so only the person who
+    taught them gets them, on any of their machines (agent-ready identity link)."""
+    import agent_ready_identity as identity
+
+    try:
+        person = identity.read_identity()["id"]
+    except StateError as broken:
+        sys.stdout.write(f"[agent-ready learn] The personal rules are not loaded: {broken}\n")
+        return None
+    folder = os.path.join(project_root, learning_apply.PROJECT_RULES_RELATIVE_PATH,
+                          *learning_apply.PERSONAL_RULES_DIRECTORY.split("/"), learning_apply.person_slug(person))
+    if not os.path.isdir(folder):
+        return person
+    files = [os.path.join(folder, name) for name in sorted(os.listdir(folder)) if name.endswith(".md")]
+    rules, _ = agent_ready_rules.read_rules(files, project_root)
+    if not rules:
+        return person
+    sys.stdout.write(f"[agent-ready learn] Personal rules of {person}: follow them in this session. Each one wins "
+                     "over a rule of the team or of a profile with the same key, unless that rule is locked:\n")
+    for rule in rules:
+        key = f" (key {rule.key})" if rule.key else ""
+        sys.stdout.write(f"  - {rule.statement}{key}\n")
+    return person
+
+
 def command_learn_summary(arguments):
     """A few lines for the start of a session: what was learned lately and what waits. Silent when the
     learning profile is not in use or there is nothing to tell."""
@@ -285,11 +331,18 @@ def command_learn_summary(arguments):
         return EXIT_OK
     # The start of a session also sweeps: the episodes other chats left idle get their review.
     start_sweep_when_needed(project_root, settings, learning_episodes.current_time())
+    # The personal rules of this person load here, whatever the summary says: no view projects them.
+    person = print_personal_rules(project_root)
     if not settings["session_start"]:
         return EXIT_OK
     items = learning.entries(project_root, settings["today"], settings["ttl_days"])
-    waiting = [item for item in items if item["status"] == learning.STATUS_CANDIDATE]
-    recent = log_lines(project_root)[-SUMMARY_LOG_LINES:]
+    waiting = [item for item in items if item["status"] == learning.STATUS_CANDIDATE
+               and learning.owner_of(item) in (None, person)]
+    # The personal learnings of the others stay theirs, also in the summary of the log.
+    own_folder = f"({learning_apply.PERSONAL_RULES_DIRECTORY}/{learning_apply.person_slug(person)}/" if person else None
+    recent = [line for line in log_lines(project_root)
+              if f"({learning_apply.PERSONAL_RULES_DIRECTORY}/" not in line
+              or (own_folder and own_folder in line)][-SUMMARY_LOG_LINES:]
     if not waiting and not recent:
         return EXIT_OK
     sys.stdout.write("[agent-ready learn] What this project learned from the user (references/learning.md):\n")
@@ -656,6 +709,9 @@ def register(subparsers, new_subparser):
     record_action.add_argument("--date", help="date of the message, as YYYY-MM-DD (default: today)")
     record_action.add_argument("--source", choices=learning.SOURCES, default=learning.SOURCE_IN_SESSION,
                                help="in-session (the agent, while working) or session-end (the review at the end)")
+    record_action.add_argument("--scope", choices=learning.SCOPES, default=learning.SCOPE_TEAM,
+                               help="team (default): for everyone; personal: only for the person of this machine "
+                                    "(agent-ready identity), in the business collaboration preset")
     record_action.add_argument("--json", action="store_true", help="print the result as JSON")
     apply_action = new_subparser(
         actions, "apply", "Write an instruction record decided to learn as a rule or skill of the project, and commit it.",

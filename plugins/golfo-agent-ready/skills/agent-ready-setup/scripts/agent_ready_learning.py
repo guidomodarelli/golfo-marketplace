@@ -59,6 +59,10 @@ DECISION_ALREADY_LEARNED = "already-learned"
 DECISION_REJECTED = "rejected"
 
 CANDIDATE_ID_PREFIX = "learn-"
+# Who a learning is for (#169): the team, or only the person that taught it.
+SCOPE_TEAM = "team"
+SCOPE_PERSONAL = "personal"
+SCOPES = (SCOPE_TEAM, SCOPE_PERSONAL)
 CANDIDATE_ID_HASH_CHARS = 10
 UNKNOWN_SESSION = "unknown"
 LOCK_WAIT_SECONDS = 10
@@ -76,9 +80,16 @@ def normalized_statement(statement):
     return WHITESPACE.sub(" ", statement).strip().rstrip(TRAILING_PUNCTUATION).strip().casefold()
 
 
-def candidate_id(statement):
-    """A stable id from the first statement of the entry: a later rewording keeps it."""
-    return CANDIDATE_ID_PREFIX + sha256_of_text(normalized_statement(statement))[:CANDIDATE_ID_HASH_CHARS]
+def candidate_id(statement, owner=None):
+    """A stable id from the first statement of the entry: a later rewording keeps it. A personal entry
+    hashes its person too, so two people who teach the same preference keep an entry each."""
+    text = normalized_statement(statement) if owner is None else f"{owner}\n{normalized_statement(statement)}"
+    return CANDIDATE_ID_PREFIX + sha256_of_text(text)[:CANDIDATE_ID_HASH_CHARS]
+
+
+def owner_of(entry):
+    """The person of a personal entry, or None for one of the team."""
+    return entry.get("owner") if entry.get("scope") == SCOPE_PERSONAL else None
 
 
 def parse_date(text, label):
@@ -236,11 +247,14 @@ def record(project_root, instruction, settings):
         registry = read_registry(project_root)
         refresh_expiry(registry, settings["today"], settings["ttl_days"])
         wanted = normalized_statement(statement)
+        owner = instruction.get("owner") if instruction.get("scope") == SCOPE_PERSONAL else None
         entry = next((item for item in registry["candidates"]
-                      if normalized_statement(item["statement"]) == wanted), None)
+                      if normalized_statement(item["statement"]) == wanted and owner_of(item) == owner), None)
         if entry is None:
-            entry = {"id": candidate_id(statement), "statement": statement, "kind": instruction["kind"],
+            entry = {"id": candidate_id(statement, owner), "statement": statement, "kind": instruction["kind"],
                      "status": STATUS_CANDIDATE, "created": date.isoformat(), "evidence": []}
+            if owner is not None:
+                entry.update(scope=SCOPE_PERSONAL, owner=owner)
             registry["candidates"].append(entry)
         for field in ("key", "paths"):
             if instruction.get(field):
@@ -262,7 +276,7 @@ def record(project_root, instruction, settings):
         write_registry(project_root, registry)
     same_key = [item for item in registry["candidates"]
                 if item is not entry and entry.get("key") and item.get("key") == entry["key"]
-                and item["status"] in (STATUS_CANDIDATE, STATUS_LEARNED)]
+                and owner_of(item) == owner_of(entry) and item["status"] in (STATUS_CANDIDATE, STATUS_LEARNED)]
     return entry, decision, same_key
 
 
@@ -276,7 +290,7 @@ def entries(project_root, today, ttl_days):
 def public_view(entry, ttl_days):
     """An entry without the quotes of the user: what list, status and anything outside this file show."""
     view = {field: entry[field] for field in ("id", "statement", "kind", "status", "created", "updated",
-                                               "key", "paths") if field in entry}
+                                               "key", "paths", "scope", "owner") if field in entry}
     view["episodes"] = live_episodes(entry, ttl_days)
     view["explicit"] = is_explicit(entry, ttl_days)
     view["evidence"] = [{field: item[field] for field in ("session", "episode", "date", "source", "explicit")

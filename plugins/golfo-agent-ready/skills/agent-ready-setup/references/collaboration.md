@@ -4,9 +4,9 @@ Cómo comparten lo aprendido las personas de un repositorio, y quién es cada un
 cuenta de Git. Leer al explicar `agent-ready identity`, el trailer `Learned-by:` o qué preset de
 colaboración usa un repositorio.
 
-> **Estado.** La identidad, el preset, los merge drivers y la sincronización
-> ([team-sync.md](team-sync.md)) son las partes 169a a 169c de la issue #169. El aprendizaje personal,
-> la promoción a equipo y la explicación de un conflicto llegan en las partes siguientes.
+> **Estado.** La identidad, el preset, los merge drivers, la sincronización
+> ([team-sync.md](team-sync.md)) y el aprendizaje personal son las partes 169a a 169d de la issue #169.
+> La promoción a equipo y la explicación de un conflicto llegan en las partes siguientes.
 
 ## Identidad
 
@@ -67,3 +67,29 @@ archivo, o que suman evidencia al registro, chocan aunque cambiaron cosas distin
   por línea con `git merge-file`, como si no hubiera driver.
 - En una máquina sin el driver registrado (un clon donde nunca se corrió `apply`), Git mezcla línea por
   línea. Para que nunca pase, el `apply` de cada máquina lo registra.
+
+## Aprendizaje personal y de equipo
+
+En el preset `business`, una instrucción es **de equipo** («en el estudio siempre…», un formato o un
+procedimiento del estudio) o **personal** («a mí me gusta…»). En `software` todo es de equipo: las
+preferencias de un desarrollador viven en su configuración del provider o en Engram, nunca en el repo.
+
+- **Registrarla.** `agent-ready learn record --scope personal` la guarda para la persona de esta máquina
+  (`agent-ready identity`), con su `owner` en el registro. Sin `--scope`, es de equipo. Una personal es
+  una rule para todo el repositorio: `--kind rule` y sin `--paths`.
+- **Dónde va.** `learn apply` la escribe en `.agents/rules/learned/users/<persona>/learned.md`, con ids
+  `learned/users/<persona>/<slug>`, donde `<persona>` es el id de la identidad con solo `[a-z0-9-]`. Se
+  sincroniza como lo demás ([team-sync.md](team-sync.md)), así sigue a la persona en todas sus máquinas
+  (`identity link`).
+- **Quién la carga.** Ninguna vista la proyecta: no tiene vista en `.claude/rules/` ni línea en
+  `AGENTS.md`. El hook del inicio de sesión (`learn summary`) le da a cada persona solo las suyas, en
+  Claude Code y en Codex. Las de los demás tampoco aparecen en el resumen ni entre lo que espera.
+- **Precedencia.** personal > equipo > profile, salvo una rule `locked`: una rule de equipo bloqueada
+  frena también el aprendizaje personal de su `key`. Una rule personal nunca reemplaza otra con
+  `overrides`, porque vale solo en la sesión de su persona, y compite solo con las otras rules personales
+  de esa persona: con la misma `key`, la edita. Por eso `agent-ready rules lint` no marca como conflicto
+  una rule personal que decide la misma `key` que una de equipo.
+- **Alcance dudoso.** El agente hace la pregunta de alcance del aprendizaje («¿Lo querés así solo vos o
+  para todo el estudio?»), como mucho una por episodio. Sin respuesta, o con `learning.clarify: off`,
+  queda como personal.
+

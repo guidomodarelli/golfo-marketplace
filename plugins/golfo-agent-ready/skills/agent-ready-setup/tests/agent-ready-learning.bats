@@ -1552,3 +1552,50 @@ sweep_lines() {
   [ "$(sweep_lines)" = "0" ]
   [ ! -e "$XDG_CACHE_HOME/agent-ready-setup/learning-schedule/projects/"*.json ]
 }
+
+# 169d: a personal learning is for the person of this machine only, in the business preset.
+be_person() {
+  mkdir -p "$XDG_CONFIG_HOME/agent-ready-setup"
+  printf '{"id": "%s", "name": "%s"}\n' "$1" "$1" > "$XDG_CONFIG_HOME/agent-ready-setup/identity.json"
+}
+
+@test "a personal instruction goes to the folder of its person, wins on its key in their session only, and lints" {
+  commit_identity
+  # An office: learning without software-development, so the preset is business.
+  mkdir -p .agents
+  printf '%s\n' '{"assets": {}, "profileOrder": ["learning"]}' > .agents/agent-ready.lock.json
+  header_rule --quote "de ahora en más, número arriba" --explicit --session s1
+  agent_ready learn apply "$(id_of 'header')"
+  [ "$status" -eq 0 ]
+
+  be_person ana@notebook
+  agent_ready learn record --kind rule --key records.header --scope personal --explicit --session s2 \
+    --statement "Records carry the date in the header." --quote "a mí me gusta la fecha arriba"
+  [ "$status" -eq 0 ]
+  personal="$(id_of 'the date in the header')"
+  [ "$(registry_value '[entry.get("owner") for entry in data["candidates"] if entry.get("scope") == "personal"]')" = "['ana@notebook']" ]
+  agent_ready learn apply "$personal"
+  [ "$status" -eq 0 ]
+  [[ "$output" == "$personal  create: learned/users/ana-notebook/records-header in .agents/rules/learned/users/ana-notebook/learned.md"* ]]
+  # The rule of the team stays as it was, and two rules on the key are not a conflict: one is personal.
+  grep -Fxq -- '- Records carry the case number in the header.' .agents/rules/learned.md
+  agent_ready rules lint
+  [ "$status" -eq 0 ]
+
+  agent_ready learn summary
+  [[ "$output" == *"Personal rules of ana@notebook"*"- Records carry the date in the header. (key records.header)"* ]]
+  be_person juan@desktop
+  agent_ready learn summary
+  [[ "$output" != *"Records carry the date in the header."* ]]
+}
+
+@test "the software preset has no personal learning" {
+  commit_identity
+  mkdir -p .agents
+  printf '%s\n' '{"assets": {}, "profileOrder": ["software-development", "node", "learning"]}' > .agents/agent-ready.lock.json
+  agent_ready learn record --kind rule --scope personal --explicit --session s1 \
+    --statement "Answers come in Spanish." --quote "a mí respondeme en castellano"
+  [ "$status" -eq 1 ]
+  [[ "$stderr" == *"software collaboration preset, where everything learned is for the team"* ]]
+  [ ! -e .agents/learning/candidates.json ]
+}

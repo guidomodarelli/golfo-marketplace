@@ -70,6 +70,10 @@ todas.
 leyendo el registro. Las claves y sus defaults: [configuration-keys.md](configuration-keys.md), sección
 `learning`.
 
+Una instrucción puede ser **personal**, para la persona de esta máquina solamente, en el preset de
+colaboración `business` (`learn record --scope personal`). Va a su carpeta de `.agents/rules/learned/users/`
+y solo la carga esa persona: [collaboration.md](collaboration.md#aprendizaje-personal-y-de-equipo).
+
 ## Escribir lo aprendido
 
 Cuando `record` dice `learn`, el agente corre `agent-ready learn apply <id>`. Solo escribe en la zona del
