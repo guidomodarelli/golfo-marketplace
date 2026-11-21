@@ -989,3 +989,19 @@ PY
   grep -Fxq -- '- Put the date and the case in the header.' .agents/rules/learned.md
   [ "$(git -C "$remote" rev-parse main)" = "$theirs" ]
 }
+
+@test "sync waits for the learning: while learn holds the registry, it merges and commits nothing" {
+  setup_office_remote
+  learn_rule dates 'Dates go first.'
+  lock_path="$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import agent_ready_learning as learning; print(learning.RegistryLock(sys.argv[2]).path)' \
+    "$skill_dir/scripts" "$project_dir" | tr -d '\r')"
+  mkdir -p "$lock_path"
+  run_cli sync --json
+  rmdir "$lock_path"
+  [ "$status" -eq 0 ]
+  [ "$(json_value "$output" 'data["result"]')" = "busy" ]
+  [ -n "$(git status --porcelain -- .agents/rules)" ]
+  run_cli sync
+  [ "$status" -eq 0 ]
+  [ -z "$(git status --porcelain -- .agents/rules)" ]
+}

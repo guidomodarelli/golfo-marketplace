@@ -39,6 +39,9 @@ credenciales en una corrida (`GIT_TERMINAL_PROMPT=0`): sin credenciales es un er
 
 `--background` corre desacoplado del hook, con su salida en `~/.cache/agent-ready-setup/team-sync/`, y
 nunca hace esperar al agente. Dos corridas del mismo checkout no se pisan: la segunda sale con `running`.
+El commit y el merge esperan al aprendizaje: corren con el lock del registro, el mismo de `learn record`
+y `learn apply`, así ninguno guarda una copia vieja encima de lo que trajo el sync. El fetch y el push
+corren sin él, para que un remoto lento no haga esperar al aprendizaje.
 
 ## Resultados
 
@@ -49,7 +52,7 @@ lo muestra en la línea `Sync:`.
 |---|---|---|
 | `synced` | todo subido y traído | nada |
 | `offline` | no llegó al remoto; dice cuántos commits esperan | nada: sale solo con la próxima corrida con red |
-| `no-remote`, `detached`, `busy`, `running` | sin remoto, sin rama, con un merge o rebase a mano en curso, u otra corrida | configurar el remoto o terminar lo que está en curso |
+| `no-remote`, `detached`, `busy`, `running` | sin remoto, sin rama, con un merge o rebase a mano en curso o el registro del aprendizaje tomado, u otra corrida | configurar el remoto o terminar lo que está en curso |
 | `conflict` | la misma parte cambió en dos máquinas; el merge se abortó | por ahora, resolverlo a mano; la explicación al usuario llega en una parte siguiente de #169 |
 | `blocked`, `push-failed` | Git no pudo commitear, integrar (un cambio sin commitear choca con lo que viene) o subir | leer el mensaje: credenciales vencidas, permisos o un archivo modificado a mano |
 

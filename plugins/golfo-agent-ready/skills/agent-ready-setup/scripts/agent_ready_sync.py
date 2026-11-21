@@ -22,6 +22,7 @@ import os
 import subprocess
 
 import agent_ready_identity as identity
+import agent_ready_learning as learning
 from agent_ready_common import acquire_directory_lock, write_text_atomically
 from agent_ready_lockfile import read_lock
 
@@ -133,6 +134,19 @@ def commit_knowledge(project_root):
     return True
 
 
+def with_registry(project_root, operation, *arguments):
+    """Run a step that writes the files of the learning while no learn record or apply holds them.
+
+    The lock of the learning registry (agent_ready_learning.RegistryLock) is held only for the local
+    steps (the commit and the merge), never while the network answers: a writer waits at most
+    LOCK_WAIT_SECONDS, and a slow remote must not make it fail."""
+    try:
+        with learning.RegistryLock(project_root):
+            return operation(project_root, *arguments)
+    except learning.RegistryLockedError as locked:
+        raise SyncError(RESULT_BUSY, f"the learning is writing its registry: {locked}") from locked
+
+
 class SyncError(Exception):
     def __init__(self, result, message):
         super().__init__(message)
@@ -207,13 +221,13 @@ def synchronize(project_root, settings):
         return {"result": RESULT_NO_REMOTE, "message": f"the repository has no remote {remote}"}
     if in_progress(project_root):
         return {"result": RESULT_BUSY, "message": "a merge or rebase of this checkout waits for a person"}
-    committed = commit_knowledge(project_root)
+    committed = with_registry(project_root, commit_knowledge)
     remote_has_branch = False
     try:
         for _ in range(settings["retries"] + 1):
             remote_has_branch = fetch(project_root, remote, branch)
             if remote_has_branch:
-                merge(project_root, remote, branch)
+                with_registry(project_root, merge, remote, branch)
             if to_push(project_root, remote, branch, remote_has_branch) == 0:
                 return {"result": RESULT_SYNCED, "committed": committed, "toPush": 0}
             if push(project_root, remote, branch):
