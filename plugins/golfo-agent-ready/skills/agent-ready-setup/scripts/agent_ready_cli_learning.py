@@ -120,6 +120,8 @@ def command_learn_apply(arguments):
     written = learning_apply.apply(project_root, arguments.id, settings, arguments.skill,
                                    accepted=arguments.learn_action == "accept")
     learned = written["entry"]["learned"]
+    # What was learned reaches the others now (agent-ready sync, detached), not at the next session.
+    start_team_sync(project_root)
     if arguments.json:
         sys.stdout.write(serialize_json({"id": arguments.id, "commit": written["commit"], "learned": learned,
                                          "supersedes": written["supersedes"], "notify": settings["notify"]}))
@@ -332,9 +334,31 @@ def sweep_registered():
             if learning_active(project_root, settings):
                 # The scheduled task is the one that reorganizes when nobody closes a chat.
                 sweep_project(project_root, settings, True)
+            # The scheduled task is also the timer of the team sync: it runs here, already detached.
+            run_team_sync(project_root)
         except (StateError, OSError) as problem:
             write_sweep_line(f"{project_root}: {problem}")
     return EXIT_OK
+
+
+def start_team_sync(project_root):
+    """Start agent-ready sync in the background; a learning never fails because the sync could not start."""
+    from agent_ready_cli_sync import start_in_background
+
+    try:
+        start_in_background(project_root)
+    except (StateError, OSError) as problem:
+        sys.stderr.write(f"agent-ready: the team sync did not start: {problem}\n")
+
+
+def run_team_sync(project_root):
+    """One run of agent-ready sync in this process, for the scheduled task."""
+    import agent_ready_sync as team_sync
+    from agent_ready_cli_sync import settings_for
+
+    report = team_sync.run(project_root, settings_for(project_root))
+    if report["result"] in team_sync.FAILED_RESULTS:
+        write_sweep_line(f"{project_root}: sync {report['result']}: {report.get('message', '')}")
 
 
 def schedule_blocked():

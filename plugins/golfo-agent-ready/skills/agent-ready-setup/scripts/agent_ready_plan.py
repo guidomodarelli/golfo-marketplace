@@ -14,6 +14,7 @@ import agent_ready_learning_promote as learning_promote
 import agent_ready_nested as nested
 import agent_ready_pack_tools as pack_tools
 import agent_ready_rule_changes as rule_changes
+import agent_ready_sync as team_sync
 import agent_ready_workspaces as workspace_selection
 from agent_ready_actions import (
     ACTION_ADOPT,
@@ -940,6 +941,8 @@ def compute_status(project_root, skill_dir, conflicts_key=None):
                 else:
                     status["errors"].append(f"provider '{provider}' is not supported by agent-ready-setup")
     status["learningSweep"] = learning_sweep_status(project_root)
+    # The last run of agent-ready sync on this checkout, or None when it never ran here.
+    status["teamSync"] = team_sync.read_state(project_root) or None
     return status
 
 

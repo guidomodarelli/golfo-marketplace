@@ -16,7 +16,7 @@ description: >-
   descartar un hallazgo de sus revisiones de IA.
 license: MIT
 metadata:
-  version: "1.81.0"
+  version: "1.82.0"
   author: "guponce"
   category: "developer-experience"
   tags: "agent-ready, multi-provider, claude-code, codex, bootstrap, setup, scaffold, context-optimized-v1.20.1"
@@ -144,6 +144,7 @@ explícito fuera del cache conservan prioridad para desarrollo local.
 | `agent-ready remove [--dry-run] [--yes]` | saca agent-ready-setup del repo y conserva lo que escribió el proyecto |
 | `agent-ready ci detect [--json]` | el proveedor de CI cuyos archivos tiene el repo y el archivo que lo muestra, o `none`; solo lee |
 | `agent-ready ci setup [--provider github\|gitlab\|jenkins\|generic\|none] [--no-apply] [--no-input]` | elige el proveedor de CI (`ci.provider`) y aplica: crea el script `.agents/ci/agent-ready-check.sh` y el workflow, el job de GitLab con su `include` o el stage de Jenkins para copiar; cambiarlo retira los archivos del anterior ([references/ci-check.md](references/ci-check.md)) |
+| `agent-ready sync [--json]` | sube lo aprendido al remoto y trae lo de los demás, sin Git, en el preset business; lo disparan el inicio de sesión, cada aprendizaje y el barrido programado ([references/team-sync.md](references/team-sync.md)) |
 | `agent-ready identity show\|set\|link` | quién usa esta máquina, aparte de la cuenta de Git, y el preset de colaboración del repo ([references/collaboration.md](references/collaboration.md)) |
 | `agent-ready tool run <cli> -- <args>` | corre un CLI que un profile instaló para el repo, desde la caché o el PATH; es lo que lanza un servidor MCP `cli` ([references/pack-tools.md](references/pack-tools.md), sección 5) |
 | `agent-ready trust list\|add\|remove` | confía en una fuente o aprueba el repo en esta máquina; las herramientas de un pack pasan por la política de seguridad ([references/pack-tools.md](references/pack-tools.md)) |

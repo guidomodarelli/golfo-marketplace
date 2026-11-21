@@ -3932,6 +3932,43 @@
           "critical": true
         }
       ]
+    },
+    {
+      "id": "team-sync-offline-and-conflict",
+      "description": "En el preset business, agent-ready sync deja lo aprendido en commits locales sin red y lo sube después; ante un conflicto aborta el merge sin dejar el repo a medio mergear y nunca hace force push.",
+      "input": "Somos un estudio contable sin stack de código, con el aprendizaje activo. Marta aprendió algo nuevo en la notebook mientras viajaba sin internet. ¿Qué pasa con eso, cuándo les llega a los demás y quién tiene que correr git? Y si ella y Pedro cambiaron la misma rule de forma distinta, ¿qué hace agent-ready con el repo? Respondé desde la skill, sin ejecutar comandos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "agent-ready sync",
+          "description": "Nombra agent-ready sync",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(commits? local|quedan? local|en cola|esperan?)",
+          "description": "Sin red, lo aprendido queda en commits locales",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(abort|vuelve atr[aá]s|nunca queda a medio|no deja el repo a medio)",
+          "description": "Ante un conflicto aborta el merge y no deja el repo a medio mergear",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "force",
+          "description": "Nunca hace force push",
+          "critical": false
+        },
+        {
+          "type": "regex",
+          "pattern": "(inicio de (la )?sesi[oó]n|SessionStart|cada aprendizaje|learn apply|barrido|timer)",
+          "description": "Lo disparan el inicio de sesión, cada aprendizaje o el barrido",
+          "critical": true
+        }
+      ]
     }
   ]
 }
