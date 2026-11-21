@@ -18,7 +18,9 @@
       "type": "string",
       "minLength": 1,
       "default": "origin",
-      "x-layers": ["project"]
+      "x-layers": [
+        "project"
+      ]
     },
     "pushRetries": {
       "description": "Cuántas veces vuelve a traer e integrar cuando el remoto rechaza el push porque otro subió antes. Nunca hace force push.",
@@ -26,6 +28,12 @@
       "minimum": 0,
       "maximum": 10,
       "default": 3
+    },
+    "promoteAfterUsers": {
+      "description": "Cuántas personas tienen que tener la misma rule personal (misma key y mismo enunciado) para que el sync la pase a equipo; las personales quedan reemplazadas por ella. 0 no promueve nunca.",
+      "type": "integer",
+      "minimum": 0,
+      "default": 2
     }
   }
 }

@@ -5,8 +5,8 @@ cuenta de Git. Leer al explicar `agent-ready identity`, el trailer `Learned-by:`
 colaboración usa un repositorio.
 
 > **Estado.** La identidad, el preset, los merge drivers, la sincronización
-> ([team-sync.md](team-sync.md)) y el aprendizaje personal son las partes 169a a 169d de la issue #169.
-> La promoción a equipo y la explicación de un conflicto llegan en las partes siguientes.
+> ([team-sync.md](team-sync.md)), el aprendizaje personal y la promoción a equipo son las partes 169a a
+> 169e de la issue #169. La explicación de un conflicto llega en una parte siguiente.
 
 ## Identidad
 
@@ -92,4 +92,21 @@ preferencias de un desarrollador viven en su configuración del provider o en En
 - **Alcance dudoso.** El agente hace la pregunta de alcance del aprendizaje («¿Lo querés así solo vos o
   para todo el estudio?»), como mucho una por episodio. Sin respuesta, o con `learning.clarify: off`,
   queda como personal.
+
+## Promoción a equipo
+
+Lo que varias personas enseñaron igual como preferencia propia pasa a ser del estudio.
+
+- **Cuándo.** En cada sync, después de traer lo de los demás: una `key` que `sync.promoteAfterUsers`
+  personas (2) deciden con el mismo enunciado (sin contar mayúsculas, espacios ni el punto final) en sus
+  rules personales.
+- **Qué hace.** Escribe la rule de equipo en `.agents/rules/learned.md`, saca las personales de sus
+  archivos, marca sus entradas `superseded` con `supersededBy` y suma una línea `promote` al log con las
+  personas. La entrada nueva junta la evidencia de todas. Todo va en un commit del sync.
+- **Sin duplicados.** La rule de equipo tiene un id que sale de su `key`, con los puntos como guiones (`reports.summary` da `learned/reports-summary`), y su entrada uno
+  que sale del enunciado. Dos máquinas que promueven a la vez escriben lo mismo, y los merge drivers lo
+  unen por id.
+- **Lo que no promueve.** Una `key` que ya decide una rule del equipo, una instrucción sin `key` y la
+  preferencia distinta de otra persona, que queda como personal. Con `sync.promoteAfterUsers: 0` no
+  promueve nunca.
 

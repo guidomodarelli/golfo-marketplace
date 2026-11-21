@@ -23,6 +23,7 @@ import subprocess
 
 import agent_ready_identity as identity
 import agent_ready_learning as learning
+import agent_ready_learning_promotion as promotion
 from agent_ready_common import acquire_directory_lock, write_text_atomically
 from agent_ready_lockfile import read_lock
 
@@ -72,11 +73,12 @@ def git_path(project_root, relative):
 
 
 def settings_of(configuration, project_root):
-    """{enabled, remote, retries, preset} of the repository."""
+    """{enabled, remote, retries, promote_after, preset} of the repository."""
     preset = identity.collaboration_preset(configuration.value(identity.COLLABORATION_PRESET_KEY),
                                            read_lock(project_root))
     return {"enabled": configuration.value(ENABLED_KEY), "remote": configuration.value(REMOTE_KEY),
-            "retries": configuration.value(PUSH_RETRIES_KEY), "preset": preset}
+            "retries": configuration.value(PUSH_RETRIES_KEY),
+            "promote_after": configuration.value(promotion.PROMOTE_AFTER_USERS_KEY), "preset": preset}
 
 
 def now_text():
@@ -107,7 +109,7 @@ def in_progress(project_root):
     return any(os.path.exists(git_path(project_root, marker)) for marker in markers)
 
 
-def commit_knowledge(project_root):
+def commit_knowledge(project_root, subject=COMMIT_SUBJECT):
     """Commit the files of the learning that changed, and nothing else; True when it made a commit."""
     # The files that changed, by name: a pathspec that matches nothing would make git add fail.
     pending = git(project_root, "status", "--porcelain", "-z", "--untracked-files=all", "--", *KNOWLEDGE_PATHSPECS)
@@ -127,7 +129,7 @@ def commit_knowledge(project_root):
     added = git(project_root, "add", "-A", "--", *paths)
     if added.returncode != 0:
         raise SyncError(RESULT_BLOCKED, f"git add failed: {added.stderr.strip()}")
-    message = f"{COMMIT_SUBJECT}\n\n{identity.learned_by_trailer()}"
+    message = f"{subject}\n\n{identity.learned_by_trailer()}"
     committed = git(project_root, "commit", "--quiet", "-m", message, "--", *paths)
     if committed.returncode != 0:
         raise SyncError(RESULT_BLOCKED, f"git commit failed: {(committed.stderr or committed.stdout).strip()}")
@@ -145,6 +147,14 @@ def with_registry(project_root, operation, *arguments):
             return operation(project_root, *arguments)
     except learning.RegistryLockedError as locked:
         raise SyncError(RESULT_BUSY, f"the learning is writing its registry: {locked}") from locked
+
+
+def promote_and_commit(project_root, threshold):
+    """Promote to the team what enough people taught alike, and commit it; the promoted rule ids."""
+    written = promotion.promote(project_root, threshold, datetime.date.today().isoformat())
+    if written:
+        commit_knowledge(project_root, "sync: promote to the team what several people learned alike")
+    return written
 
 
 class SyncError(Exception):
@@ -228,6 +238,9 @@ def synchronize(project_root, settings):
             remote_has_branch = fetch(project_root, remote, branch)
             if remote_has_branch:
                 with_registry(project_root, merge, remote, branch)
+            # With the personal rules of everybody here, what several people taught alike goes to the team.
+            if with_registry(project_root, promote_and_commit, settings["promote_after"]):
+                committed = True
             if to_push(project_root, remote, branch, remote_has_branch) == 0:
                 return {"result": RESULT_SYNCED, "committed": committed, "toPush": 0}
             if push(project_root, remote, branch):
