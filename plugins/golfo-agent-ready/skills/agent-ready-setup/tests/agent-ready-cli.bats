@@ -872,17 +872,38 @@ PY
 setup_office_remote() {
   export AGENT_READY_LEARNING_SCHEDULER=none
   export AGENT_READY_TEAM_SYNC_FOREGROUND=1
+  remote="$test_root/remote.git"
+  other="$test_root/other"
+  # The two applies are the slow part: the first test builds the office, the others copy it.
+  local office="$BATS_FILE_TMPDIR/office"
+  if [ ! -d "$office" ]; then
+    build_office
+    mkdir -p "$office"
+    cp -R "$project_dir" "$office/project"
+    cp -R "$remote" "$office/remote.git"
+    cp -R "$other" "$office/other"
+    return
+  fi
+  rm -rf "$project_dir"
+  cp -R "$office/project" "$project_dir"
+  cp -R "$office/remote.git" "$remote"
+  cp -R "$office/other" "$other"
+  git -C "$project_dir" remote set-url origin "$remote"
+  git -C "$other" remote set-url origin "$remote"
+  # The drivers point to this engine on every copy, as each apply wrote them.
+  cd "$project_dir"
+}
+
+build_office() {
   run_cli apply --profiles learning
   [ "$status" -eq 0 ]
   git add -A
   git commit -qm "agent-ready"
-  remote="$test_root/remote.git"
   git init -q --bare "$remote"
   git -C "$remote" symbolic-ref HEAD refs/heads/main
   git remote add origin "$remote"
   git push -q origin HEAD:main
   git branch -q --set-upstream-to=origin/main
-  other="$test_root/other"
   git clone -q "$remote" "$other"
   cd "$other"
   XDG_CONFIG_HOME="$test_root/config-other" run_cli apply
