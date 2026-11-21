@@ -1,6 +1,7 @@
 """What a pack declares besides rules and skills, and whether the security policy lets it run.
 
-A profile of a pack can declare ``clis``, ``mcpServers`` and ``scripts``. This module validates
+A profile of a pack can declare ``clis``, ``mcpServers`` and ``scripts``; a profile of the content
+source, only ``clis`` and ``mcpServers``. This module validates
 those declarations (a closed schema: no free fields, environment values only by reference) and
 evaluates, for each one, the ``security`` policy of the layered configuration:
 
@@ -26,6 +27,7 @@ TOOL_CLI = "cli"
 TOOL_MCP_SERVER = "mcpServer"
 TOOL_SCRIPT = "script"
 DECLARATION_KEYS = ("clis", "mcpServers", "scripts")
+SCRIPTS_KEY = "scripts"
 
 EVENT_INSTALL = "install"
 EVENT_POST_APPLY = "post-apply"
@@ -42,6 +44,11 @@ ARTIFACT_KEYS = ("platform", "url", "sha256", "binary")
 PACKAGE_KEYS = ("manager", "name", "binary", "sha256")
 MCP_COMMAND_KEYS = ("command", "args", "env", "provides")
 MCP_URL_KEYS = ("url", "headers", "provides")
+# A server that is a CLI of the same profile: the launcher runs it from the cache (agent-ready tool run).
+MCP_CLI_KEYS = ("cli", "args", "env", "provides")
+LAUNCHER_COMMAND = "agent-ready"
+LAUNCHER_RUN_ARGUMENTS = ("tool", "run")
+LAUNCHER_SEPARATOR = "--"
 # What a CLI or a server is for ("browser-automation"): the review of competing tools (#72c) reads it.
 PROVIDES_KEY = "provides"
 CAPABILITY_NAME = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
@@ -71,6 +78,8 @@ APPLIED_TOOL_TYPES = (TOOL_CLI, TOOL_MCP_SERVER, TOOL_SCRIPT)
 DECISION_ALLOWED = "allowed"
 DECISION_BLOCKED = "blocked"
 SOURCE_TYPE_PATH = "path"
+# The content source: trusted when it is the one the engine names by default (see report).
+SOURCE_TYPE_CONTENT = "content"
 
 EXECUTION_ENABLED_KEY = "security.execution.enabled"
 EXECUTION_EVENTS_KEY = "security.execution.events"
@@ -221,21 +230,38 @@ def validate_headers(values, what):
                                    "for Authorization), never a value")
 
 
-def validate_mcp_server(name, server, what):
+def validate_arguments(arguments, what):
+    require_list(arguments, f"{what} args")
+    if any(not isinstance(argument, str) for argument in arguments):
+        raise DeclarationError(f"{what} args must be strings")
+
+
+def launched_command(server):
+    """(command, args) a provider runs for a server: a cli server goes through the launcher."""
+    if "cli" in server:
+        return LAUNCHER_COMMAND, [*LAUNCHER_RUN_ARGUMENTS, server["cli"], LAUNCHER_SEPARATOR, *server.get("args", [])]
+    return server["command"], list(server.get("args", []))
+
+
+def validate_mcp_server(name, server, what, cli_names=()):
     validate_name(name, what)
     what = f"mcpServer '{name}'"
     require_object(server, what)
     validate_provides(server, what)
-    if ("command" in server) == ("url" in server):
-        raise DeclarationError(f"{what} declares either a command or a url")
+    if sum(key in server for key in ("command", "url", "cli")) != 1:
+        raise DeclarationError(f"{what} declares one of a command, a url or a cli")
+    if "cli" in server:
+        require_keys(server, MCP_CLI_KEYS, what)
+        if server["cli"] not in cli_names:
+            raise DeclarationError(f"{what} runs the cli '{server['cli']}', which this profile does not declare in clis")
+        validate_arguments(server.get("args", []), what)
+        validate_environment(server.get("env", {}), f"{what} env")
+        return
     if "command" in server:
         require_keys(server, MCP_COMMAND_KEYS, what)
         if not isinstance(server["command"], str) or not COMMAND_NAME.fullmatch(server["command"]):
             raise DeclarationError(f"{what} command is the name of an executable, without a path or arguments")
-        arguments = server.get("args", [])
-        require_list(arguments, f"{what} args")
-        if any(not isinstance(argument, str) for argument in arguments):
-            raise DeclarationError(f"{what} args must be strings")
+        validate_arguments(server.get("args", []), what)
         validate_environment(server.get("env", {}), f"{what} env")
         return
     require_keys(server, MCP_URL_KEYS, what)
@@ -289,7 +315,7 @@ def validate_declarations(entry, pack_root, is_contained):
     servers = entry.get("mcpServers", {})
     require_object(servers, "mcpServers")
     for name, server in sorted(servers.items()):
-        validate_mcp_server(name, server, f"mcpServer '{name}'")
+        validate_mcp_server(name, server, f"mcpServer '{name}'", names)
     scripts = entry.get("scripts", [])
     require_list(scripts, "scripts")
     for index, script in enumerate(scripts):
@@ -346,8 +372,10 @@ def without_provides(declaration):
     return {key: value for key, value in declaration.items() if key != PROVIDES_KEY}
 
 
-def declared_tools(catalog, resolved, source_of_profile, is_pack_profile):
-    """Every tool the selected pack profiles declare, in a stable order.
+def declared_tools(catalog, resolved, source_of_profile, is_pack_profile, content_source_name):
+    """Every tool the selected profiles of packs and of the content declare, in a stable order.
+
+    A profile of the content has no namespace: its tools come from ``content_source_name``.
 
     The same name declared differently by two profiles (another version, command, URL or arguments)
     is a conflict, raised as DeclarationError before anything is written. Declared alike, both stay:
@@ -371,10 +399,13 @@ def declared_tools(catalog, resolved, source_of_profile, is_pack_profile):
         tools.append(tool)
 
     for profile in resolved:
-        if not is_pack_profile(profile):
-            continue
         entry = catalog["profiles"].get(profile, {})
-        source_name = source_of_profile(profile)
+        if is_pack_profile(profile):
+            source_name = source_of_profile(profile)
+        elif any(key in entry for key in TOOL_REFERENCE_KINDS.values()):
+            source_name = content_source_name
+        else:
+            continue
         common = {"source": source_name, "profile": profile}
         for cli in entry.get("clis", []):
             package = cli.get("package")
@@ -384,8 +415,9 @@ def declared_tools(catalog, resolved, source_of_profile, is_pack_profile):
                       sha256=bool(package.get("sha256")) if package else True, cli=cli), cli)
         for name, server in sorted(entry.get("mcpServers", {}).items()):
             # The whole declaration: an apply registers it as it is, references and all.
-            keep(dict(common, type=TOOL_MCP_SERVER, name=name, command=server.get("command"),
-                      url=server.get("url"), server=server), server)
+            # A cli server is judged by the CLI it runs: deny.commands and allow.commands name the CLI.
+            keep(dict(common, type=TOOL_MCP_SERVER, name=name, command=server.get("command") or server.get("cli"),
+                      url=server.get("url"), cli=server.get("cli"), server=server), server)
         for script in entry.get("scripts", []):
             tools.append(dict(common, type=TOOL_SCRIPT, name=f"{source_name}/{script['path']}", event=script["event"],
                               interpreter=script["interpreter"], path=script["path"],
@@ -411,6 +443,8 @@ def source_is_trusted(source, policy, project_approved):
     """A Git source is trusted by its origin; a path source lives in the repository, so its approval."""
     if source.get("type") == SOURCE_TYPE_PATH:
         return project_approved
+    if source.get("type") == SOURCE_TYPE_CONTENT and source.get("default"):
+        return True
     trusted = {normalized_origin(origin) for origin in policy[TRUSTED_SOURCES_KEY]}
     return bool(source.get("origin")) and normalized_origin(source["origin"]) in trusted
 
@@ -514,18 +548,24 @@ def evaluate(tool, policy, source, project_approved, signature=(False, None)):
     return DECISION_ALLOWED, None
 
 
-def report(tools, catalog, configuration, verify_signature=None):
+def report(tools, catalog, configuration, verify_signature=None, content_source=None):
     """The policy with the layer of each value and the verdict of every declared tool, or None without tools.
 
     ``verify_signature(source name, source)`` gives (verified, reason) for security.checks.signature;
-    without it no source counts as signed.
+    without it no source counts as signed. ``content_source`` is (name, {"type": "content", "origin",
+    "default"}): the content the engine names by default is trusted like the engine itself, since
+    the engine pins its revision; any other content needs security.trustedSources like a pack.
     """
     if not tools:
         return None
     policy = {key: configuration.value(key) for key in POLICY_KEYS}
+    content_name, content_declaration = content_source or (None, None)
     evaluated = []
     for tool in tools:
-        source = catalog.get("sources", {}).get(tool["source"], {})
+        if content_name is not None and tool["source"] == content_name:
+            source = content_declaration
+        else:
+            source = catalog.get("sources", {}).get(tool["source"], {})
         checked = dict(tool)
         if tool["type"] == TOOL_SCRIPT and source.get("root"):
             # Only to read the text a rule may match; the report keeps the path inside the pack.
@@ -539,6 +579,13 @@ def report(tools, catalog, configuration, verify_signature=None):
             # Where the runner finds the script and the pack it belongs to (agent_ready_pack_scripts.py).
             entry.update(file=checked["file"], root=source["root"])
         evaluated.append(entry)
+    blocked_clis = {(tool["profile"], tool["name"]) for tool in evaluated
+                    if tool["type"] == TOOL_CLI and tool["decision"] == DECISION_BLOCKED}
+    for tool in evaluated:
+        if (tool["type"] == TOOL_MCP_SERVER and tool.get("cli") and tool["decision"] == DECISION_ALLOWED
+                and (tool["profile"], tool["cli"]) in blocked_clis):
+            # Registered without its CLI, the server would only fail when the agent starts it.
+            tool.update(decision=DECISION_BLOCKED, reason=f"it runs the cli {tool['cli']}, which the policy blocks")
     return {
         "applies": list(APPLIED_TOOL_TYPES),
         "policy": {key: {"value": policy[key], "origin": configuration.origin(key)} for key in POLICY_KEYS},
@@ -551,5 +598,6 @@ def describe_tool(tool):
         origin = f"{tool['package']} package" if tool.get("package") else "artifacts"
         return f"cli {tool['name']} {tool['version']} ({origin})"
     if tool["type"] == TOOL_MCP_SERVER:
-        return f"mcpServer {tool['name']} ({tool['command'] or tool['url']})"
+        launched = f"cli {tool['cli']} through {LAUNCHER_COMMAND}" if tool.get("cli") else tool["command"] or tool["url"]
+        return f"mcpServer {tool['name']} ({launched})"
     return f"script {tool['name']} on {tool['event']} ({tool['interpreter']})"

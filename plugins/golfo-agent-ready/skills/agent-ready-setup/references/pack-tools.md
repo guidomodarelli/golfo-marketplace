@@ -1,7 +1,7 @@
 # Herramientas de un pack y política de seguridad
 
-Qué puede declarar un profile de un pack además de archivos (CLIs, servidores MCP y scripts), y la
-política que decide, en cada máquina, si cada herramienta puede ejecutarse. Leer al publicar un pack
+Qué puede declarar un profile de un pack o del contenido además de archivos (CLIs, servidores MCP y
+scripts), y la política que decide, en cada máquina, si cada herramienta puede ejecutarse. Leer al publicar un pack
 con herramientas, al explicar por qué una herramienta quedó bloqueada, al confiar en una fuente o al
 cambiar las claves `security.*`. Cómo publicar un pack así, personal o corporativo firmado, está en
 [publishing-packs-with-tools.md](publishing-packs-with-tools.md).
@@ -55,7 +55,10 @@ un valor fuera del schema frena el apply antes de escribir y nombra el pack y el
   - `binary` es el nombre del ejecutable, si no es el `name` del CLI.
 - **`mcpServers`**
   - Por nombre en kebab-case: un `command` (el nombre de un ejecutable, sin ruta ni argumentos), con
-    `args` y `env`, o una `url` https con `headers`.
+    `args` y `env`; un `cli`, con `args` y `env`; o una `url` https con `headers`.
+  - `cli` nombra un CLI que el mismo profile declara en `clis`: el servidor es ese CLI, instalado en
+    la caché, y se registra con el launcher (sección 5). Si la política bloquea el CLI, el servidor
+    queda bloqueado con él. `deny.commands` y `allow.commands` lo juzgan por el nombre del CLI.
   - Los valores son solo referencias, nunca un valor: ningún secreto entra al pack, al manifest, al
     lock ni a la config de los providers. En `env`, cada variable pasa con su propio nombre
     (`"ACME_TOKEN": "${ACME_TOKEN}"`). En `headers`, el valor es `${VAR}`, y solo `Authorization`
@@ -69,6 +72,9 @@ un valor fuera del schema frena el apply antes de escribir y nombra el pack y el
 - **El mismo CLI o servidor en dos profiles.** Declarado igual (sin contar `provides`), se instala o
   registra una vez. Con el mismo nombre y otra versión, paquete, comando, URL o argumentos, es un
   conflicto: el plan y el apply fallan antes de escribir y nombran los dos profiles.
+- **Profiles del contenido.** Un profile del contenido (`sources.golfo`) declara `clis` y
+  `mcpServers` con el mismo schema, nunca `scripts`: un script va en un pack. Sus herramientas tienen
+  la fuente `golfo` en el plan, el lock y las reglas de la política.
 - **`scripts`**
   - `event` es `install`, `post-apply` o `session-start`.
   - `path` es un archivo dentro del pack, sin symlinks.
@@ -134,6 +140,11 @@ agent-ready trust list [--json]     # si el repo está aprobado y en qué fuente
 - **Quien agrega una fuente la aprueba.** `agent-ready sources add` confía en ella en la máquina de
   quien la agrega. Un compañero que la recibe por Git la aprueba una vez con `agent-ready trust add <fuente>`.
 - **Fuentes `path:`.** Viven en el repositorio, así que son de confianza si el repositorio está aprobado.
+- **El contenido.** El que el motor nombra por defecto (el `default` de `sources.golfo.source`) es de
+  confianza como el motor mismo, que fija su revisión; también un directorio de contenido de la máquina
+  (`AGENT_READY_SETUP_CONTENT_DIR`), que pone la persona y nunca el repositorio. Si
+  `sources.golfo.source` apunta a otro origen, sus herramientas esperan `agent-ready trust add golfo`,
+  como un pack.
 
 ### Claves que firman una fuente
 
@@ -185,10 +196,14 @@ Un apply registra cada servidor MCP permitido para los providers del repo (`prov
   idéntico (endpoint, argumentos y configuración), no se registra la copia del proyecto en ese provider y se
   informa (`references/structural-conflicts.md`, «Choques con la máquina»).
 - **El `command` se busca en el PATH del provider.** Claude Code y Codex lanzan el comando tal cual.
-  Un CLI que instala un pack queda en el caché del usuario (sección 6), fuera de ese PATH, así que un
-  servidor no puede lanzarse con él. La entrada no lleva la ruta del caché porque `.mcp.json` y
-  `.codex/config.toml` se versionan en el repo. Para un servidor propio, usar uno remoto (`url`) o un
-  comando instalado en cada máquina.
+  Un CLI que instala un profile queda en el caché del usuario (sección 6), fuera de ese PATH, y la
+  entrada no lleva la ruta del caché porque `.mcp.json` y `.codex/config.toml` se versionan en el repo.
+- **Un servidor `cli` pasa por el launcher.** Se registra como `agent-ready tool run <cli> -- <args>`,
+  igual en todas las máquinas. `agent-ready tool run` busca la instalación que este repositorio usa en
+  esta máquina (su registro en la caché) y, si no hay, el CLI del PATH. Pasa los streams estándar sin
+  tocarlos, porque un servidor MCP habla por ellos, y sale con el código del CLI. Si no encuentra el
+  CLI, sale con 1 y dice que hay que correr `agent-ready apply`. El provider tiene que encontrar
+  `agent-ready` en su PATH: lo pone el paquete npm `@golfo/agent-ready`.
 
 ## 6. Instalación de CLIs
 

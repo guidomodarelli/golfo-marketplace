@@ -17,6 +17,7 @@ import json
 import os
 import re
 
+import agent_ready_pack_tools as pack_tools
 from agent_ready_common import is_link, write_text_atomically
 
 try:
@@ -73,9 +74,10 @@ def claude_entry(server):
         if server.get("headers"):
             entry["headers"] = dict(server["headers"])
         return entry
-    entry = {"command": server["command"]}
-    if server.get("args"):
-        entry["args"] = list(server["args"])
+    command, arguments = pack_tools.launched_command(server)
+    entry = {"command": command}
+    if arguments:
+        entry["args"] = arguments
     if server.get("env"):
         entry["env"] = dict(server["env"])
     return entry
@@ -182,9 +184,10 @@ def codex_entry(server):
         if environment_headers:
             entry["env_http_headers"] = environment_headers
         return entry
-    entry = {"command": server["command"]}
-    if server.get("args"):
-        entry["args"] = list(server["args"])
+    command, arguments = pack_tools.launched_command(server)
+    entry = {"command": command}
+    if arguments:
+        entry["args"] = arguments
     if server.get("env"):
         entry["env_vars"] = sorted(server["env"])
     return entry

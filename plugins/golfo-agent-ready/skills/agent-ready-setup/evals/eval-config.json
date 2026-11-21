@@ -3827,6 +3827,37 @@
           "critical": true
         }
       ]
+    },
+    {
+      "id": "content-cli-mcp-server-through-launcher",
+      "description": "Un servidor MCP del contenido que corre un CLI de la caché se registra como agent-ready tool run, y el contenido de otro origen necesita trust add golfo.",
+      "input": "En nuestra empresa apuntamos sources.golfo.source a un fork propio del contenido (git+https://git.acme.dev/golfo-fork). Un profile del fork declara el CLI acme-memory con artifacts y un mcpServer que lo corre. Después del apply, ¿qué comando queda en .mcp.json para ese servidor, cómo encuentra el binario que está en la caché, y por qué el apply no instaló nada? Respondé desde la skill, sin ejecutar comandos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "agent-ready tool run",
+          "description": "El servidor se registra con agent-ready tool run",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "trust add golfo",
+          "description": "El fork necesita agent-ready trust add golfo",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "\"cli\"|`cli`|\\bcli:",
+          "description": "El mcpServer declara cli, el CLI del mismo profile",
+          "critical": false
+        },
+        {
+          "type": "regex",
+          "pattern": "(registro|record|projects/)[^.]{0,200}(cach[eé]|m[aá]quina)|(cach[eé])[^.]{0,200}(registro|record|repositorio usa)",
+          "description": "Encuentra la instalación por el registro del repo en la caché",
+          "critical": true
+        }
+      ]
     }
   ]
 }
