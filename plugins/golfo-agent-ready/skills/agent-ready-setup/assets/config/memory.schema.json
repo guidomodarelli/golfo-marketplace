@@ -15,7 +15,8 @@
     "engram": {
       "description": "Encendido, toda selección trae por defecto el profile memory-engram del contenido, también una sin stack. Apagado, el apply lo deja afuera aunque la selección lo nombre y retira lo que había instalado y registrado. Ninguna clave hace que la memoria se exporte: agent-ready check falla igual si hay archivos de .engram/ versionados.",
       "type": "boolean",
-      "default": true
+      "default": true,
+      "x-env": "AGENT_READY_SETUP_MEMORY"
     }
   }
 }

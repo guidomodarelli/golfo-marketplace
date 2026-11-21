@@ -10,6 +10,9 @@
 use_content_pack() {
   content_pack="$(bash "$BATS_TEST_DIRNAME/prepare-content-pack.sh")" || return 1
   export AGENT_READY_SETUP_CONTENT_DIR="$content_pack"
+  # The content brings memory-engram to every selection, and its apply downloads Engram from its
+  # releases: the suites leave the memory off, and the tests of the memory turn it back on.
+  export AGENT_READY_SETUP_MEMORY=0
 }
 
 # A copy of the content pack in the test directory, which the test can change: the next run of the
@@ -22,6 +25,20 @@ copy_content_pack() {
   rm -rf "$content_dir/.git"
   content_dir="$(cd "$content_dir" && (pwd -W 2>/dev/null || pwd))"
   export AGENT_READY_SETUP_CONTENT_DIR="$content_dir"
+}
+
+# A copy of the content pack without the profile memory-engram, for a suite that keeps
+# memory.engram at its default: with no profile to bring, the default downloads nothing.
+copy_content_pack_without_memory() {
+  copy_content_pack
+  python3 - "$content_dir/agent-ready-pack.json" <<'PY'
+import json, sys
+path = sys.argv[1]
+catalog = json.load(open(path, encoding="utf-8"))
+catalog["profiles"].pop("memory-engram", None)
+json.dump(catalog, open(path, "w", encoding="utf-8"), indent=2)
+PY
+  rm -rf "$content_dir/profiles/memory-engram"
 }
 
 # The content pack as a Git repository reached at its real URL through url.insteadOf, for the tests

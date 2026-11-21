@@ -556,7 +556,7 @@ EOF2
 @test "unknown profiles are rejected with the catalog, and a selection without a stack applies" {
   run_bootstrap_with "$skill_dir" --profiles cobol
   [ "$status" -ne 0 ]
-  [[ "$output" == *"unknown profile 'cobol'; available profiles: android, browser, business-flows, go, java, learning, nextjs, nextjs-app-router, node, react, software-development"* ]]
+  [[ "$output" == *"unknown profile 'cobol'; available profiles: android, browser, business-flows, go, java, learning, memory-engram, nextjs, nextjs-app-router, node, react, software-development"* ]]
 
   run_bootstrap_with "$skill_dir" --profiles browser
   [ "$status" -eq 0 ]
@@ -1024,6 +1024,7 @@ plan_text() {
 # 157: the memory of Engram. A copy of the content that publishes the profile memory-engram, with a rule
 # and, as an option, a capability that requires it.
 add_memory_profile() {
+  unset AGENT_READY_SETUP_MEMORY
   copy_skill
   mkdir -p "$content_dir/profiles/memory-engram/rules"
   printf '%s\n' '# Memory' '' '<!-- rule id=memory/facts-in-engram -->' '- Save the facts of a case in Engram.' \

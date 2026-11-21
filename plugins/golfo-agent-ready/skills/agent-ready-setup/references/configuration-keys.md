@@ -102,7 +102,7 @@ La memoria de lo que pasó (personas, clientes, expedientes, decisiones de un ca
 | Clave | Tipo | Default | Capas | Variable | Seguridad | Descripción |
 |---|---|---|---|---|---|---|
 | `memory.enabled` | boolean | `true` | todas | — | — | Apagado, ninguna memoria entra por defecto: es como memory.engram apagado. |
-| `memory.engram` | boolean | `true` | todas | — | — | Encendido, toda selección trae por defecto el profile memory-engram del contenido, también una sin stack. Apagado, el apply lo deja afuera aunque la selección lo nombre y retira lo que había instalado y registrado. Ninguna clave hace que la memoria se exporte: agent-ready check falla igual si hay archivos de .engram/ versionados. |
+| `memory.engram` | boolean | `true` | todas | `AGENT_READY_SETUP_MEMORY` | — | Encendido, toda selección trae por defecto el profile memory-engram del contenido, también una sin stack. Apagado, el apply lo deja afuera aunque la selección lo nombre y retira lo que había instalado y registrado. Ninguna clave hace que la memoria se exporte: agent-ready check falla igual si hay archivos de .engram/ versionados. |
 
 ## `nested`: AGENTS.md anidados
 
