@@ -11,6 +11,7 @@ import types
 import agent_ready_cli_rules as project_rules
 import agent_ready_conflicts as conflicts_review
 import agent_ready_content as content_source
+import agent_ready_memory as memory
 import agent_ready_skill_overlap as skill_overlap
 from agent_ready_actions import ACTION_UNCHANGED
 from agent_ready_common import (
@@ -60,6 +61,7 @@ from agent_ready_state_contract import (
     CHECK_CONFLICTS,
     CHECK_EXIT_STATUSES,
     CHECK_OUTDATED,
+    CHECK_PRIVATE_FILES,
     CHECK_SKIPPED,
     CHECK_SOURCE_UNAVAILABLE,
     CHECK_UP_TO_DATE,
@@ -380,6 +382,7 @@ def print_check_text(result):
         CHECK_CONFIG_ERROR: ("configuration error", "error"),
         CHECK_SKIPPED: ("skipped", "muted"),
         CHECK_CONFLICTS: ("conflicts between the profiles or rule lint errors", "error"),
+        CHECK_PRIVATE_FILES: ("files of the memory of Engram are versioned", "error"),
     }
     headline, color = headlines[result["status"]]
     ci = result["ci"]
@@ -412,16 +415,28 @@ def print_check_text(result):
         write_line("Apply with bootstrap.sh, review the diff of the assets and the lockfile, and commit it.")
 
 
+def private_files_result(paths):
+    """The memory of Engram stays on the machine of the user: a versioned file of it fails the check before
+    anything else, with no ci key able to skip it or to turn it into a warning."""
+    problems = [f"{path} is a file of the memory of Engram: remove it from Git with git rm --cached and keep "
+                f"{memory.ENGRAM_DIRECTORY}/ in .gitignore" for path in paths]
+    return {"status": CHECK_PRIVATE_FILES, "ci": None, "problems": problems, "unavailable": []}
+
+
 def command_check(arguments):
     """Compare sources, lock and committed assets; any CI provider can run this.
 
     It needs python3, git and bash, and reaches private sources only through Git.
     """
     project_root = find_repository_root(arguments.project)
-    try:
-        result = evaluate_check(project_root, arguments.skill_dir, arguments.offline)
-    except (ProfileError, StateError) as configuration_error:
-        result = {"status": CHECK_CONFIG_ERROR, "ci": None, "problems": [str(configuration_error)], "unavailable": []}
+    private_files = memory.versioned_engram_files(project_root)
+    if private_files:
+        result = private_files_result(private_files)
+    else:
+        try:
+            result = evaluate_check(project_root, arguments.skill_dir, arguments.offline)
+        except (ProfileError, StateError) as configuration_error:
+            result = {"status": CHECK_CONFIG_ERROR, "ci": None, "problems": [str(configuration_error)], "unavailable": []}
     exit_status = CHECK_EXIT_STATUSES[result["status"]]
     if result["ci"] and result["ci"]["mode"] == CI_WARN:
         exit_status = 0

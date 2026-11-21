@@ -1020,3 +1020,65 @@ plan_text() {
   [[ "$output" != *"Providers: Claude Code sees"* ]]
   [[ "$output" != *"already runs the Agent Ready check"* ]]
 }
+
+# 157: the memory of Engram. A copy of the content that publishes the profile memory-engram, with a rule
+# and, as an option, a capability that requires it.
+add_memory_profile() {
+  copy_skill
+  mkdir -p "$content_dir/profiles/memory-engram/rules"
+  printf '%s\n' '# Memory' '' '<!-- rule id=memory/facts-in-engram -->' '- Save the facts of a case in Engram.' \
+    > "$content_dir/profiles/memory-engram/rules/memory-engram.md"
+  python3 - "$content_dir/agent-ready-pack.json" "${1:-}" <<'EOF2'
+import json, sys
+path, with_requirer = sys.argv[1], sys.argv[2]
+catalog = json.load(open(path))
+catalog["profiles"]["memory-engram"] = {"kind": "capability", "description": "Engram memory.", "assets": "profiles/memory-engram"}
+if with_requirer:
+    catalog["profiles"]["case-notes"] = {"kind": "capability", "description": "Needs the memory.", "requires": ["memory-engram"]}
+json.dump(catalog, open(path, "w"), indent=2)
+EOF2
+}
+
+@test "memory.engram brings the memory-engram profile to every selection, even one without a stack" {
+  add_memory_profile
+  run_bootstrap_with "$source_copy" --stack node
+  [ "$status" -eq 0 ]
+  [ "$(lock_value 'lock["profileOrder"]')" = "['software-development', 'node', 'browser', 'memory-engram']" ]
+  [ -f .agents/rules/memory-engram.md ]
+
+  rm -rf .agents .claude .codex AGENTS.md CLAUDE.md .gitignore .mcp.json
+  run_bootstrap_with "$source_copy" --profiles none
+  [ "$status" -eq 0 ]
+  [ "$(lock_value 'lock["profileOrder"]')" = "['memory-engram']" ]
+  [ -f .agents/rules/memory-engram.md ]
+}
+
+@test "memory.engram false leaves memory-engram out even when the selection names it, and retires what it wrote" {
+  add_memory_profile
+  run_bootstrap_with "$source_copy" --profiles browser
+  [ "$status" -eq 0 ]
+  [ -f .agents/rules/memory-engram.md ]
+
+  python3 - <<'EOF2'
+import json
+path = ".agents/agent-ready.json"
+manifest = json.load(open(path))
+manifest["memory"] = {"engram": False}
+manifest["profiles"] = ["browser", "memory-engram"]
+json.dump(manifest, open(path, "w"), indent=2)
+EOF2
+  run_bootstrap_with "$source_copy"
+  [ "$status" -eq 0 ]
+  [ "$(lock_value 'lock["profileOrder"]')" = "['browser']" ]
+  [ ! -e .agents/rules/memory-engram.md ]
+}
+
+@test "with memory.engram false a profile that requires memory-engram fails before writing" {
+  add_memory_profile with-requirer
+  mkdir -p .agents
+  printf '%s\n' '{"memory": {"engram": false}}' > .agents/agent-ready.json
+  run_bootstrap_with "$source_copy" --profiles case-notes
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"profile 'case-notes' requires 'memory-engram', which memory.engram turned off"* ]]
+  [ ! -e .agents/agent-ready.lock.json ]
+}

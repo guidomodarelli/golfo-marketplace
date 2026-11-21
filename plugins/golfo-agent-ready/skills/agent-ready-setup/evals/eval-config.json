@@ -3723,6 +3723,37 @@
           "critical": true
         }
       ]
+    },
+    {
+      "id": "memory-engram-never-versioned",
+      "description": "La memoria de Engram nunca se versiona: commitear .engram/ hace fallar agent-ready check con private-files, ninguna clave lo evita, y la memoria no se comparte entre máquinas.",
+      "input": "En el repo del estudio usamos agent-ready-setup con la memoria de Engram. Mi socio trabaja en otra máquina y quiere ver lo que el agente recuerda de los expedientes, así que pensé en correr engram sync y commitear la carpeta .engram/, y si el chequeo de CI se queja, ponerlo en ci.mode warn. ¿Funciona? Respondé desde la skill, sin ejecutar comandos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "private-files",
+          "description": "Nombra el estado private-files de agent-ready check",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "\\b8\\b",
+          "description": "El chequeo sale con 8",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(warn|ci\\.enabled)[^.]{0,160}(no|nunca|tampoco|ni)|(no|nunca|ni)[^.]{0,160}(warn|ci\\.enabled)",
+          "description": "Ni ci.mode warn ni ci.enabled lo saltean",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(no se comparte|no la comparte|cada (uno|m[aá]quina)|entre m[aá]quinas|otra m[aá]quina)",
+          "description": "La memoria no se comparte entre máquinas",
+          "critical": true
+        }
+      ]
     }
   ]
 }

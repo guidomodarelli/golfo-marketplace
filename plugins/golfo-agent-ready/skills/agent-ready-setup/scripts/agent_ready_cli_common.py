@@ -48,6 +48,7 @@ EXIT_USAGE = 2
 EXIT_OUTDATED = 4
 EXIT_SOURCE_UNAVAILABLE = 5
 EXIT_CONFLICTS = 6
+EXIT_PRIVATE_FILES = 8
 EXIT_CANCELLED = 130
 
 EXIT_STATUS_HELP = f"""exit status:
@@ -57,6 +58,7 @@ EXIT_STATUS_HELP = f"""exit status:
   {EXIT_OUTDATED}    outdated (check)
   {EXIT_SOURCE_UNAVAILABLE}    a profile source is not available
   {EXIT_CONFLICTS}    conflicts between the profiles (conflicts, and check with ci.conflicts)
+  {EXIT_PRIVATE_FILES}    files of the memory of Engram (.engram/) are versioned (check)
   {EXIT_CANCELLED}  cancelled"""
 
 

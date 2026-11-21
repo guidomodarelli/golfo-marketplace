@@ -255,6 +255,34 @@ JSON
   [ "$status" -ne 0 ]
 }
 
+@test "export and harvest never read the memory of Engram, neither its base nor the .engram/ of a repository" {
+  repository acme
+  repository globex
+  learn_in acme "Records carry the case number in the header." "siempre arriba"
+  learn_in globex "Records carry the case number in the header." "siempre arriba"
+  # What Engram keeps of a case: the base of the machine and the chunks a sync would write in the repository.
+  mkdir -p "$HOME/.engram" "$test_root/acme/.engram/chunks"
+  printf '%s\n' 'Expediente 4512/23 del cliente Acme' > "$HOME/.engram/engram.db"
+  printf '%s\n' 'Expediente 4512/23 del cliente Acme' > "$test_root/acme/.engram/chunks/0001.jsonl"
+  # An engram CLI that records each call: nothing may run it.
+  cat > "$fake_bin/engram" <<EOF
+#!/bin/bash
+echo "engram \$*" >> "$test_root/engram-calls"
+EOF
+  chmod +x "$fake_bin/engram"
+  respond 1 '{"findings": [{"statement": "Records carry the case number in the header.", "kind": "rule", "key": "", "items": [0, 1], "reason": "Both ask the same."}]}'
+
+  agent_ready learn export --project "$test_root/acme" --output "$test_root/acme-export.json"
+  [ "$status" -eq 0 ]
+  agent_ready learn harvest --repos "$test_root/acme" "$test_root/globex" --export "$test_root/acme-export.json" --json
+  [ "$status" -eq 0 ]
+  [ "$(json_value 'len(report["candidates"])')" = "1" ]
+
+  ! grep -rq '4512' "$test_root/acme-export.json" "$FAKE_INPUTS" "$XDG_CACHE_HOME/agent-ready-setup/learning-harvest"
+  [[ "$output" != *"4512"* ]]
+  [ ! -e "$test_root/engram-calls" ]
+}
+
 @test "a repository or an export given twice counts once" {
   repository acme
   learn_in acme "Records carry the case number in the header." "siempre arriba"

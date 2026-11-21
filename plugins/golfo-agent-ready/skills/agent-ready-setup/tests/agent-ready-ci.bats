@@ -83,6 +83,39 @@ PY
   [ "$status" -eq 0 ]
 }
 
+@test "a versioned file of .engram/ fails the check with private-files, and no ci key can skip it or soften it" {
+  run_cli apply
+  [ "$status" -eq 0 ]
+  mkdir -p .engram/chunks
+  printf 'chunk\n' > .engram/chunks/0001.jsonl.gz
+  git add -f .engram/chunks/0001.jsonl.gz
+
+  run_cli check --offline
+  [ "$status" -eq 8 ]
+  [[ "$output" == *"Agent Ready check: files of the memory of Engram are versioned"* ]]
+  [[ "$output" == *".engram/chunks/0001.jsonl.gz is a file of the memory of Engram: remove it from Git with git rm --cached"* ]]
+  run_cli check --offline --format json
+  [ "$status" -eq 8 ]
+  [ "$(printf '%s' "$output" | python3 -c 'import json, sys; data = json.load(sys.stdin); print(data["status"], data["exitStatus"])' | tr -d '\r')" = "private-files 8" ]
+
+  # Neither a warn mode nor turning the check off lets the memory into the repository.
+  python3 - <<'PY'
+import json
+path = ".agents/agent-ready.json"
+manifest = json.load(open(path))
+manifest["ci"] = {"mode": "warn", "enabled": False}
+json.dump(manifest, open(path, "w"), indent=2)
+PY
+  run_cli check --offline
+  [ "$status" -eq 8 ]
+
+  # Only staged or committed files count: once out of Git, the check goes on as usual.
+  git rm -q --cached .engram/chunks/0001.jsonl.gz
+  run_cli check --offline
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"skipped"* ]]
+}
+
 @test "changing ci.provider without an apply leaves the check outdated, and the apply follows it" {
   run_cli ci setup --provider github
   [ "$status" -eq 0 ]

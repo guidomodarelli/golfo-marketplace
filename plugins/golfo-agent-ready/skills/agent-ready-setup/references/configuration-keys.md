@@ -94,6 +94,15 @@ agent-ready learn registra las instrucciones del usuario que pueden quedar como 
 | `learning.harvest.repos` | lista de string | `[]` | user | — | — | Repositorios clonados que harvest lee cuando no recibe --repos, cada uno por su ruta. Es una lista del desarrollador: vive en su config de usuario, nunca en la de un repositorio. |
 | `learning.harvest.threshold` | integer | `2` | user | — | — | Repositorios distintos que tienen que haber aprendido lo mismo para que harvest lo proponga como candidato para el pack. |
 
+## `memory`: Memoria
+
+La memoria de lo que pasó (personas, clientes, expedientes, decisiones de un caso) con Engram, que vive solo en la máquina del usuario y nunca se exporta al repositorio (references/memory.md).
+
+| Clave | Tipo | Default | Capas | Variable | Seguridad | Descripción |
+|---|---|---|---|---|---|---|
+| `memory.enabled` | boolean | `true` | todas | — | — | Apagado, ninguna memoria entra por defecto: es como memory.engram apagado. |
+| `memory.engram` | boolean | `true` | todas | — | — | Encendido, toda selección trae por defecto el profile memory-engram del contenido, también una sin stack. Apagado, el apply lo deja afuera aunque la selección lo nombre y retira lo que había instalado y registrado. Ninguna clave hace que la memoria se exporte: agent-ready check falla igual si hay archivos de .engram/ versionados. |
+
 ## `nested`: AGENTS.md anidados
 
 Bloques que los profiles publican en el AGENTS.md de una carpeta del repositorio (por ejemplo, app/ de Next.js App Router), cada uno con su CLAUDE.md proxy. El contenido fuera del bloque es del proyecto.
