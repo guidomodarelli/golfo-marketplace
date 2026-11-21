@@ -12,6 +12,7 @@ security policy (agent_ready_pack_tools.py).
 import subprocess
 import sys
 
+import agent_ready_content as content_source
 import agent_ready_pack_signatures as pack_signatures
 import agent_ready_pack_tools as pack_tools
 from agent_ready_cli_common import (
@@ -33,7 +34,13 @@ SECURITY_FIELD = "security"
 
 
 def declaration_of(project_root, name):
-    """The declaration of a source of the manifest, or a usage error that lists them."""
+    """The declaration of a source of the manifest, or a usage error that lists them.
+
+    The content source (sources.golfo) counts too: content from another origin than the default of
+    the engine declares CLIs and MCP servers only once this machine trusts it.
+    """
+    if name == content_source.CONTENT_SOURCE_NAME:
+        return content_source.declaration_of(engine().configuration_of(project_root))
     declarations = declared_sources(project_root) or []
     for declaration in declarations:
         if declaration["name"] == name:

@@ -51,6 +51,7 @@ from agent_ready_cli_reviews import register as register_review_commands
 from agent_ready_cli_rules import register as register_rules_commands
 from agent_ready_content import CONTENT_SOURCE_NAME
 from agent_ready_cli_selection import register as register_selection_commands
+from agent_ready_cli_tool import register as register_tool_commands
 from agent_ready_cli_trust import register as register_trust_commands
 from agent_ready_cli_workspaces import register as register_workspace_commands
 from agent_ready_prompts import Cancelled
@@ -406,6 +407,7 @@ def build_parser():
     register_ci_commands(subparsers, new_subparser)
     register_rules_commands(subparsers, new_subparser)
     register_learning_commands(subparsers, new_subparser)
+    register_tool_commands(subparsers, new_subparser)
     return parser
 
 

@@ -5,10 +5,11 @@ decisiones de cada caso) con [Engram](https://github.com/Gentleman-Programming/e
 sobre esa memoria. Leer al explicar qué recuerda el agente entre sesiones, al apagar la memoria o al
 revisar por qué `agent-ready check` falló con `private-files`.
 
-> **Estado.** El motor ya tiene `memory.engram`, el chequeo de `.engram/` versionado y la exclusión de
-> `learn export` y `learn harvest`. El profile `memory-engram` del contenido (la instalación de Engram,
-> su servidor MCP y la rule del protocolo) y `.engram/` en el `.gitignore` gestionado son la parte
-> siguiente de la issue #157: hasta entonces la selección no suma nada.
+> **Estado.** El motor ya tiene `memory.engram`, el chequeo de `.engram/` versionado, la exclusión de
+> `learn export` y `learn harvest`, y el mecanismo para que el contenido instale un CLI y registre su
+> servidor MCP con el launcher ([pack-tools.md](pack-tools.md)). El profile `memory-engram` del
+> contenido (Engram, su servidor MCP y la rule del protocolo) y `.engram/` en el `.gitignore`
+> gestionado son la parte siguiente de la issue #157: hasta entonces la selección no suma nada.
 
 ## Memoria y aprendizaje
 

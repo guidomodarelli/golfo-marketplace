@@ -37,6 +37,7 @@ from agent_ready_common import (
 from agent_ready_compatibility import require_engine, semver_key
 from agent_ready_detection import is_contained_pattern
 import agent_ready_nested as nested
+import agent_ready_pack_tools as pack_tools
 from agent_ready_options import (
     SOURCES_GOLFO_REF_KEY,
     SOURCES_GOLFO_SOURCE_KEY,
@@ -91,7 +92,7 @@ COMPOSED_DIRECTORY_NAME = "content"
 CONTENT_PACK_TOP_LEVEL_KEYS = ("schemaVersion", "name", "version", "minEngine", "changes", "baseAssets", "profiles")
 # The fields of a profile of the catalog (agent-ready-state.py validates their values).
 CONTENT_PACK_PROFILE_KEYS = ("kind", "description", "assets", "requires", "conflicts", "defaults", "overrides",
-                             "complements", "tools", "detect", nested.NESTED_KEY)
+                             "complements", "tools", "detect", "clis", "mcpServers", nested.NESTED_KEY)
 CONTENT_PACK_PROFILE_KINDS = ("stack", "capability", "bundle")
 # The name the engine gives the base in the lock, the blocks and the digests: no profile can take it.
 RESERVED_PROFILE_NAMES = ("common",)
@@ -150,6 +151,20 @@ def declaration_of(configuration):
     except StateError as source_error:
         raise ProfileError(f"sources.golfo: {source_error}") from source_error
     return dict(declared, updates=configuration.value(SOURCES_GOLFO_UPDATES_KEY))
+
+
+def tool_source(configuration):
+    """How the security policy sees the content source when a profile of it declares a CLI or an MCP server.
+
+    The content the engine names by default is trusted like the engine, which pins its revision. So
+    is a directory of content on this machine (AGENT_READY_SETUP_CONTENT_DIR), set by the person and
+    never by the repository. Any other origin needs security.trustedSources, like a pack.
+    """
+    declaration = declaration_of(configuration)
+    default_origin = configuration.schema.default(SOURCES_GOLFO_SOURCE_KEY)[len(GIT_SOURCE_PREFIX):]
+    is_default = (bool(os.environ.get(CONTENT_DIRECTORY_VARIABLE))
+                  or pack_tools.normalized_origin(declaration["origin"]) == pack_tools.normalized_origin(default_origin))
+    return {"type": pack_tools.SOURCE_TYPE_CONTENT, "origin": declaration["origin"], "default": is_default}
 
 
 def locked_source_of(declaration, locked_source):
@@ -449,8 +464,15 @@ def compose_pack_content(engine_dir, tree, staged_skill, label):
         if entry.get("kind") not in CONTENT_PACK_PROFILE_KINDS:
             raise content_pack_error(label, f"profile '{name}' must have kind {', '.join(repr(kind) for kind in CONTENT_PACK_PROFILE_KINDS)}")
         extra_keys = sorted(set(entry) - set(CONTENT_PACK_PROFILE_KEYS))
+        if pack_tools.SCRIPTS_KEY in extra_keys:
+            raise content_pack_error(label, f"profile '{name}' declares scripts: the content declares only clis and "
+                                            "mcpServers; a script goes in a profile pack")
         if extra_keys:
             raise content_pack_error(label, f"profile '{name}' has unknown keys: {', '.join(extra_keys)}")
+        try:
+            pack_tools.validate_declarations(entry, None, lambda path: False)
+        except pack_tools.DeclarationError as declaration_error:
+            raise content_pack_error(label, f"profile '{name}': {declaration_error}") from declaration_error
         translated = dict(entry)
         if "assets" in entry:
             asset_root = require_tree(label, tree, entry["assets"], f"the assets of '{name}'",

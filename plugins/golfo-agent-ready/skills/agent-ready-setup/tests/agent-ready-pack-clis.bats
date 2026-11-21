@@ -441,3 +441,97 @@ PY
   [ "$status" -ne 0 ]
   [[ "$stderr" == *"package name must be a npm registry name, not a path or URL"* ]]
 }
+
+# 157b: a profile of the content that declares the CLI acme and an MCP server that runs it. The
+# content is a copy (copy_content_pack) or, with an origin, a Git repository reached at that origin.
+add_content_tool_profile() {
+  local declaration="$1" origin="${2:-}"
+  copy_content_pack
+  python3 - "$content_dir/agent-ready-pack.json" "$declaration" <<'PY'
+import json, sys
+path = sys.argv[1]
+catalog = json.load(open(path, encoding="utf-8"))
+catalog["profiles"]["acme-tools"] = dict({"kind": "capability", "description": "The acme CLI and its server."},
+                                         **json.loads(sys.argv[2]))
+json.dump(catalog, open(path, "w", encoding="utf-8"), indent=2)
+PY
+  if [ -n "$origin" ]; then
+    git -C "$content_dir" init -q
+    git -C "$content_dir" add -A
+    git -C "$content_dir" commit -qm content
+    git config --global "url.file:///$(native_path "$content_dir" | sed 's#^/##').insteadOf" "$origin"
+    unset AGENT_READY_SETUP_CONTENT_DIR
+  fi
+}
+
+# The release of acme with a Windows launcher too: a provider starts the CLI by name, which needs an
+# extension on Windows.
+content_tool_declaration() {
+  printf '@echo acme works\r\n' > "$test_root/release-acme/bin/acme.cmd"
+  tar -czf "$served/acme.tar.gz" -C "$test_root/release-acme" bin
+  printf '{"clis": %s, "mcpServers": {"acme": {"cli": "acme", "args": ["serve"]}}}' "$(artifact_cli)"
+}
+
+@test "a profile of the content installs its CLI without trust and registers its MCP server through the launcher" {
+  add_content_tool_profile "$(content_tool_declaration)"
+  printf '%s\n' '{"profiles": ["acme-tools"]}' > .agents/agent-ready.json
+  run_cli apply
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"CLIs of profile packs installed in"*"acme 1.4.2"* ]]
+  python3 - <<'PY'
+import json
+entry = json.load(open(".mcp.json", encoding="utf-8"))["mcpServers"]["acme"]
+assert entry == {"command": "agent-ready", "args": ["tool", "run", "acme", "--", "serve"]}, entry
+lock = json.load(open(".agents/agent-ready.lock.json", encoding="utf-8"))
+assert lock["clis"]["acme"]["source"] == "golfo" and lock["clis"]["acme"]["profile"] == "acme-tools", lock["clis"]
+PY
+  grep -q 'command = "agent-ready"' .codex/config.toml
+  grep -q 'args = \["tool", "run", "acme", "--", "serve"\]' .codex/config.toml
+
+  # What the provider runs: the launcher finds the install of this repository, with the PATH it has.
+  run_cli tool run acme -- serve
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s' "$output" | tr -d '
+')" = "acme works" ]
+  run_cli tool run absent -- serve
+  [ "$status" -eq 1 ]
+  [[ "$stderr" == *"absent is not installed for this repository and is not on the PATH"* ]]
+}
+
+@test "content from another origin needs trust like a pack, and its MCP server is blocked with its CLI" {
+  add_content_tool_profile "$(content_tool_declaration)" "https://content.example.invalid/golfo"
+  printf '%s\n' '{"profiles": ["acme-tools"], "sources": {"golfo": {"source": "git+https://content.example.invalid/golfo", "ref": "main"}}}' \
+    > .agents/agent-ready.json
+  run_cli apply
+  [ "$status" -eq 0 ]
+  [ "$(installed_versions)" = 0 ]
+  [ ! -e .mcp.json ] || ! grep -q '"acme"' .mcp.json
+  run_cli status --json
+  python3 - "$output" <<'PY'
+import json, sys
+tools = {tool["type"]: tool for tool in json.loads(sys.argv[1])["packTools"]["tools"]}
+assert tools["cli"]["decision"] == "blocked" and "not trusted" in tools["cli"]["reason"], tools["cli"]
+assert tools["mcpServer"]["decision"] == "blocked", tools["mcpServer"]
+PY
+
+  run_cli trust add golfo
+  [ "$status" -eq 0 ]
+  run_cli apply
+  [ "$status" -eq 0 ]
+  [ "$(installed_versions)" = 1 ]
+  grep -q '"agent-ready"' .mcp.json
+}
+
+@test "the content declares no scripts, and an MCP server runs only a CLI its own profile declares" {
+  add_content_tool_profile '{"scripts": [{"event": "install", "path": "x.sh", "interpreter": "bash", "timeoutSeconds": 5}]}'
+  printf '%s\n' '{"profiles": ["acme-tools"]}' > .agents/agent-ready.json
+  run_cli apply
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"profile 'acme-tools' declares scripts: the content declares only clis and mcpServers"* ]]
+
+  add_content_tool_profile '{"mcpServers": {"acme": {"cli": "acme"}}}'
+  run_cli apply
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"mcpServer 'acme' runs the cli 'acme', which this profile does not declare in clis"* ]]
+  [ ! -e .agents/agent-ready.lock.json ]
+}

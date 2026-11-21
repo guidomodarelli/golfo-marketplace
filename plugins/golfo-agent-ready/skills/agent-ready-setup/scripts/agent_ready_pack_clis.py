@@ -386,6 +386,14 @@ def declaration_identity(cli, machine_platform):
     return sha256_of_text(json.dumps(identity, sort_keys=True))[:INSTALL_IDENTITY_LENGTH]
 
 
+def binary_of(cli, machine_platform):
+    """The name of the executable the CLI installs: the declared binary, else the name of the CLI."""
+    if "package" in cli:
+        return cli["package"].get("binary", cli["name"])
+    artifact = next((item for item in cli["artifacts"] if item["platform"] == machine_platform), {})
+    return artifact.get("binary", cli["name"])
+
+
 def expected_sha256(cli, machine_platform):
     if "package" in cli:
         return cli["package"].get("sha256")
@@ -416,7 +424,8 @@ def install_one(cli, machine_platform):
             details = install_npm(cli, staging)
         else:
             details = install_pip(cli, staging)
-        marker = dict(details, name=cli["name"], version=cli["version"], origin=origin_of(cli, machine_platform))
+        marker = dict(details, name=cli["name"], version=cli["version"], origin=origin_of(cli, machine_platform),
+                      binary=binary_of(cli, machine_platform))
         publish(staging, key, marker)
     except (InstallError, OSError, tarfile.TarError, zipfile.BadZipFile) as problem:
         shutil.rmtree(staging, ignore_errors=True)
@@ -614,3 +623,27 @@ def uninstall_all(project_root):
         removed = clean_unused()
     write_cli_path(project_root, [])
     return removed
+
+
+# ---------------------------------------------------------------------------
+# Running an installed CLI
+# ---------------------------------------------------------------------------
+
+def installed_executable(project_root, name):
+    """The executable of the CLI name that this repository uses on this machine, or None.
+
+    The record of the repository in the cache says which install it uses; the key of an install
+    depends on the platform, so the lock, shared by every machine, cannot say it.
+    """
+    for key in read_project_record(project_root).get("clis", []):
+        if key.split("/", 1)[0] != name:
+            continue
+        directory = install_directory(key)
+        marker = read_marker(directory)
+        if not marker:
+            continue
+        path_directory = os.path.join(directory, *marker.get("pathDirectory", "").split("/"))
+        executable = shutil.which(marker.get("binary", name), path=path_directory)
+        if executable:
+            return executable
+    return None

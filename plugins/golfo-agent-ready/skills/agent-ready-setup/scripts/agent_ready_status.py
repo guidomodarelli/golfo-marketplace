@@ -96,7 +96,8 @@ def status_has_drift(status):
 def pack_tools_report(plan, catalog, configuration):
     """The verdict of every tool the selected profiles declare, with the signature of each source checked locally."""
     return pack_tools.report(plan["packToolDeclarations"], catalog, configuration,
-                             verify_signature=pack_signatures.verifier(configuration))
+                             verify_signature=pack_signatures.verifier(configuration),
+                             content_source=(content_source.CONTENT_SOURCE_NAME, content_source.tool_source(configuration)))
 
 
 def print_pack_tools(report, stream, brief=False):

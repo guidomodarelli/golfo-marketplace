@@ -103,7 +103,7 @@ from agent_ready_options import (
     WORKSPACES_KEY,
 )
 from agent_ready_output import ANSI_COLORS, paint, write_line
-from agent_ready_packs import SOURCE_TYPE_GIT, is_pack_profile, pack_cache_root, source_of_profile
+from agent_ready_packs import CONTENT_SOURCE_NAME, SOURCE_TYPE_GIT, is_pack_profile, pack_cache_root, source_of_profile
 from agent_ready_profiles import (
     ASSET_REFERENCE_SEPARATOR,
     CI_PROFILE_KIND,
@@ -386,7 +386,7 @@ def compute_plan(project_root, skill_dir, catalog, profile_names):
 def declared_pack_tools(catalog, resolved):
     """pack_tools.declared_tools, with a conflict between two declarations as a ProfileError."""
     try:
-        return pack_tools.declared_tools(catalog, resolved, source_of_profile, is_pack_profile)
+        return pack_tools.declared_tools(catalog, resolved, source_of_profile, is_pack_profile, CONTENT_SOURCE_NAME)
     except pack_tools.DeclarationError as declaration_error:
         raise ProfileError(str(declaration_error)) from declaration_error
 
