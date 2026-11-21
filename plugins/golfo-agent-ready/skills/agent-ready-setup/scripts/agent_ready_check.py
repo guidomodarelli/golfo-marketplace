@@ -52,7 +52,13 @@ from agent_ready_options import (
 )
 from agent_ready_output import paint, write_line
 from agent_ready_packs import KEBAB_CASE_NAME, PACK_CATALOG_FILE_NAME, is_pack_profile, refresh_declared_sources
-from agent_ready_plan import compute_plan, compute_status, nested_instruction_files, semantic_conflicts
+from agent_ready_plan import (
+    blocking_hook_documents,
+    compute_plan,
+    compute_status,
+    nested_instruction_files,
+    semantic_conflicts,
+)
 from agent_ready_profiles import load_effective_catalog, locked_sources_of
 from agent_ready_review_findings import project_owned_instructions
 from agent_ready_selection import resolve_selection
@@ -179,22 +185,33 @@ def semantic_conflict_lines(report):
     return lines, unchecked
 
 
+def redundancy_lines(report):
+    """One line per pair of redundant rules: a warning, never part of the conflicts nor of an exit status."""
+    module = review_cache_module()
+    review = report.get("semanticConflicts") or {}
+    return [f"  {module.finding_line(finding)}" for finding in review.get("redundancies", [])]
+
+
 def report_conflicts(plan, as_json):
     """agent-ready conflicts: every conflict of the selection, and exit 6 when there is one."""
     structural = structural_conflict_lines(plan)
     semantic, unchecked = semantic_conflict_lines(plan)
+    # Redundant rules are listed but are no conflict: they never change the exit status.
+    redundant = redundancy_lines(plan)
     found = bool(structural or semantic)
     if as_json:
         keys = ("machine", "repoReality", "ruleKeys", "parity", "competingTools", "settingsConflicts", "semanticConflicts",
                 "competingSkills")
-        write_line(serialize_json({"structural": structural, "semantic": semantic, "unchecked": unchecked,
-                                   "found": found, "details": {key: plan[key] for key in keys if key in plan}})
+        write_line(serialize_json({"structural": structural, "semantic": semantic, "redundant": redundant,
+                                   "unchecked": unchecked, "found": found,
+                                   "details": {key: plan[key] for key in keys if key in plan}})
                    .rstrip("\n"))
         return CONFLICTS_STATUS if found else 0
     stream = sys.stdout
     if not found:
         write_line(paint("No conflicts between the profiles", "ok", stream))
-    for title, lines in (("Structural conflicts", structural), ("AI review findings", semantic)):
+    for title, lines in (("Structural conflicts", structural), ("AI review findings", semantic),
+                         ("Redundant rules (a warning, not a conflict)", redundant)):
         if lines:
             write_line(paint(f"{title}:", "warning", stream))
             for line in lines:
@@ -213,7 +230,8 @@ def has_review_pairs(project_root, plan, catalog):
         lock = read_lock(project_root)
         directions, _ = conflicts_review.conflict_pairs(
             project_root, plan["entries"], (lock or {}).get("assets", {}), module.normalized_text,
-            project_owned_instructions, ENGINE_SKILL_DIRECTORY, is_pack_profile, True, nested_instruction_files(plan))
+            project_owned_instructions, ENGINE_SKILL_DIRECTORY, is_pack_profile, True, nested_instruction_files(plan),
+            blocking_hook_documents(project_root, configuration))
         if directions:
             return True
     if configuration.value(COMPETING_SKILLS_ENABLED_KEY):
@@ -330,7 +348,7 @@ def check_conflicts(project_root, content_dir, offline):
     structural_mode = configuration.value(CI_CONFLICTS_STRUCTURAL_KEY)
     semantic_mode = configuration.value(CI_CONFLICTS_SEMANTIC_KEY)
     result = {"structuralMode": structural_mode, "semanticMode": semantic_mode, "structural": [], "semantic": [],
-              "rules": [], "unchecked": 0}
+              "redundant": [], "rules": [], "unchecked": 0}
     if structural_mode == CI_CONFLICTS_OFF and semantic_mode == CI_CONFLICTS_OFF:
         return result, False
     if structural_mode != CI_CONFLICTS_OFF:
@@ -367,6 +385,8 @@ def check_conflicts(project_root, content_dir, offline):
         reviews = {"semanticConflicts": semantic_conflicts(run, plan, instructions_with_applied=True),
                    "competingSkills": competing_skills_report(run, plan, catalog, configuration)}
         result["semantic"], result["unchecked"] = semantic_conflict_lines(reviews)
+        # Shown, never failing: ci.conflicts.semantic only counts the conflicts.
+        result["redundant"] = redundancy_lines(reviews)
     failing = ((structural_mode == CI_CONFLICTS_FAIL and bool(result["structural"] or result["rules"]))
                or (semantic_mode == CI_CONFLICTS_FAIL and bool(result["semantic"] or result["unchecked"])))
     return result, failing
@@ -401,6 +421,10 @@ def print_check_text(result):
             write_line(f"Conflicts ({mode_key}: {conflicts[kind + 'Mode']}):")
             for line in conflicts[kind]:
                 write_line(line)
+    if conflicts.get("redundant"):
+        write_line("Redundant rules (a warning, it never fails the check):")
+        for line in conflicts["redundant"]:
+            write_line(line)
     if conflicts.get("rules"):
         write_line(f"Rules lint ({CI_CONFLICTS_STRUCTURAL_KEY}: {conflicts['structuralMode']}):")
         for line in conflicts["rules"]:

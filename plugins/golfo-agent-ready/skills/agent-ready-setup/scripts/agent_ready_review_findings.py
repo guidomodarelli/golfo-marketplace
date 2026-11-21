@@ -4,13 +4,17 @@ provider, and the review settings an apply leaves where the hooks read them.
 
 import sys
 
-import agent_ready_blocks as managed_blocks
 import agent_ready_conflicts as conflicts_review
 from agent_ready_config import ConfigurationError
 from agent_ready_layout import review_cache_module
 from agent_ready_manifest import configuration_of
-from agent_ready_options import REVIEWS_CACHE_KEY, REVIEWS_COMMIT_KEY, REVIEWS_ENABLED_KEY, REVIEWS_TTL_KEY
-from agent_ready_removal import without_instruction_blocks
+from agent_ready_options import (
+    REVIEWS_CACHE_KEY,
+    REVIEWS_COMMIT_KEY,
+    REVIEWS_ENABLED_KEY,
+    REVIEWS_REDUNDANCY_KEY,
+    REVIEWS_TTL_KEY,
+)
 
 
 def review_findings(project_root, strict=False):
@@ -24,9 +28,10 @@ def review_findings(project_root, strict=False):
     # The effective configuration, not the options of the last apply: a fresh clone shows the
     # committed reviews before anyone applies.
     try:
-        commit = configuration_of(project_root).value(REVIEWS_COMMIT_KEY)
+        configuration = configuration_of(project_root)
+        commit, redundancy = configuration.value(REVIEWS_COMMIT_KEY), configuration.value(REVIEWS_REDUNDANCY_KEY)
     except ConfigurationError:
-        commit = None
+        commit, redundancy = None, True
     entries = module.ReviewCache(project_root).entries(commit=commit)
     decisions = module.Decisions(project_root)
     recorded = decisions.read(strict=strict)
@@ -38,8 +43,7 @@ def review_findings(project_root, strict=False):
         # A semantic conflict with an AGENTS.md is about what the project wrote there, not the managed blocks.
         semantic = (isinstance(entry, dict) and entry.get("check") == conflicts_review.CONFLICT_CHECK
                     and any(conflicts_review.is_instructions(name) for name in files))
-        current = (conflicts_review.current_hashes(module, project_root, files, project_owned_instructions)
-                   if semantic else module.file_hashes(project_root, files))
+        current = current_files(module, project_root, files, entry.get("check") if isinstance(entry, dict) else None)
         if files and current == files:
             units += 1
             annotated = decisions.annotate(unit, entry.get("findings", []), recorded)
@@ -48,10 +52,41 @@ def review_findings(project_root, strict=False):
                     finding["reviewedFiles"] = current
                     if finding["decision"]:
                         finding["status"] = conflicts_review.decision_status(module, finding["decision"], current)
-            findings += [dict(finding, check=entry.get("check")) for finding in annotated]
+            # With reviews.redundancy.enabled off, a redundancy found before is not reported either.
+            findings += [dict(finding, check=entry.get("check")) for finding in annotated
+                         if redundancy or not module.is_redundancy(finding)]
         else:
             stale += 1
     return findings, recorded, units, stale
+
+
+def current_files(module, project_root, files, check):
+    """{name: hash} of what ``check`` reads of these files now: of an AGENTS.md, only what the project wrote,
+    except for the review of merge-instructions.sh, which reads all of it."""
+    if check == module.WHOLE_INSTRUCTIONS_CHECK:
+        return module.file_hashes(project_root, files, check)
+    return conflicts_review.current_hashes(module, project_root, files, project_owned_instructions)
+
+
+def stale_entries(project_root):
+    """{unit: entry} of the reviews whose files changed since, and are all still there to review again.
+
+    Same rule as review_findings: an entry is current while its files hash as when it was reviewed.
+    """
+    module = review_cache_module()
+    try:
+        commit = configuration_of(project_root).value(REVIEWS_COMMIT_KEY)
+    except ConfigurationError:
+        commit = None
+    stale = {}
+    for unit, entry in module.ReviewCache(project_root).entries(commit=commit).items():
+        files = entry.get("files", {}) if isinstance(entry, dict) else {}
+        if not files:
+            continue
+        current = current_files(module, project_root, files, entry.get("check"))
+        if current != files and all(value is not None for value in current.values()):
+            stale[unit] = entry
+    return stale
 
 
 def review_summary(project_root):
@@ -71,18 +106,13 @@ def record_review_settings(project_root):
         module.ReviewCache(project_root).write_settings(configuration.value(REVIEWS_ENABLED_KEY),
                                                         configuration.value(REVIEWS_CACHE_KEY),
                                                         configuration.value(REVIEWS_TTL_KEY),
-                                                        configuration.value(REVIEWS_COMMIT_KEY))
+                                                        configuration.value(REVIEWS_COMMIT_KEY),
+                                                        configuration.value(REVIEWS_REDUNDANCY_KEY))
     except (OSError, module.CacheLockTimeout) as caught_error:
         sys.stderr.write(f"WARNING: the review settings were not recorded: {caught_error}\n")
 
 
 def project_owned_instructions(text):
     """What the project wrote in AGENTS.md: the managed block and the stack sections are the engine's,
-    and an update replaces them."""
-    destination = managed_blocks.INSTRUCTION_SECTIONS_DESTINATION
-    try:
-        remaining = without_instruction_blocks(text, sorted(managed_blocks.parse(text, destination)))
-    except (ValueError, managed_blocks.MarkerError):
-        # Markers that are not one pair: nothing can tell the block apart, so all of it is reviewed.
-        return text
-    return text if remaining is None else remaining
+    and an update replaces them. review-cache.py reads it, so the edit hook caches the same text."""
+    return review_cache_module().owned_instructions(text)

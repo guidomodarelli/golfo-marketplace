@@ -105,7 +105,7 @@ nombra el archivo, la línea, el código y la rule:
 | `statement-too-long` | error | El statement pasa `rules.maxStatementChars` (300 por defecto). |
 | `statement-long` | aviso | El statement pasa `rules.statementWarnChars` (200 por defecto). |
 | `key-conflict` | error | Dos rules tienen la misma `key` y distinto statement o excepciones. Se detecta sin llamar a ningún modelo. |
-| `duplicate-rule` | aviso | Dos rules tienen la misma `key` y el mismo contenido, o el mismo statement. |
+| `duplicate-rule` | aviso | Dos rules tienen la misma `key` y el mismo contenido, o el mismo statement. Dos rules que dicen lo mismo con otras palabras y sin `key` común las encuentra la revisión de IA por par, como `redundancy` ([ai-reviews.md](ai-reviews.md), sección 1). |
 | `unknown-requires` | error | `requires` nombra un id sin fuente que no está en el conjunto. |
 
 El largo cuenta solo el statement, no las excepciones ni los detalles: el motivo de una rule va en un sub-bullet.

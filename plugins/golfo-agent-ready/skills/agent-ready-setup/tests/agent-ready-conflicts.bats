@@ -32,6 +32,7 @@ setup() {
   unset CODEX_HOME AGENT_READY_SETUP_UPDATES AGENT_READY_SETUP_REVIEW_MODE AGENT_READY_SETUP_STACK_DIR
   export FAKE_CALLS="$test_root/provider-calls.log"
   export FAKE_INPUT="$test_root/provider-input.log"
+  export FAKE_PROMPTS="$test_root/provider-prompts.log"
   export FAKE_CONFLICT_FIRST="verify-changes.md"
   export FAKE_CONFLICT_SECOND=".agents/rules/team.md"
   : > "$FAKE_CALLS"
@@ -71,12 +72,23 @@ if "competition" in os.environ.get("FAKE_MODE", "") and '<document path=".agents
 if os.environ.get("FAKE_REQUIRE_TEXT", "") not in text:
     print(json.dumps({"structured_output": {"findings": []}}))
     sys.exit(0)
+# FAKE_KIND=redundancy answers a redundancy instead, and only when the prompt asked for one, as the
+# schema of a real provider would; each prompt that asked for one is logged in FAKE_PROMPTS.
+asked = any("with kind redundancy" in argument for argument in sys.argv[1:])
+if asked:
+    with open(os.environ["FAKE_PROMPTS"], "a", encoding="utf-8") as log:
+        log.write("redundancy\n")
+redundancy = os.environ.get("FAKE_KIND") == "redundancy"
 for number, first, second in re.findall(r"^(\d+)\. (\S+) <-> (\S+)$", text, re.M):
     names = (first, second)
     if any(os.environ["FAKE_CONFLICT_FIRST"] in name for name in names) and any(
             os.environ["FAKE_CONFLICT_SECOND"] in name for name in names):
-        findings.append({"pair": int(number), "lines": ["Verify every change.", "Never verify changes."],
-                         "kind": "contradiction", "text": "One rule verifies every change and the other forbids it."})
+        if redundancy and asked:
+            findings.append({"pair": int(number), "lines": ["Verify every change.", "Check each change you make."],
+                             "kind": "redundancy", "text": "Both rules ask to verify each change; keep the managed one."})
+        elif not redundancy:
+            findings.append({"pair": int(number), "lines": ["Verify every change.", "Never verify changes."],
+                             "kind": "contradiction", "text": "One rule verifies every change and the other forbids it."})
 print(json.dumps({"structured_output": {"findings": findings}}))
 PY
   cat > "$fake_bin/claude" <<EOF
@@ -84,7 +96,7 @@ PY
 [[ "\$1" == -p ]] || exit 0
 printf 'claude\n' >> "\$FAKE_CALLS"
 [[ "\${FAKE_FAIL:-0}" == 1 ]] && { cat > /dev/null; exit 1; }
-python3 "$fake_bin/fake-provider.py"
+python3 "$fake_bin/fake-provider.py" "\$@"
 EOF
   chmod +x "$fake_bin/claude"
   cat > "$fake_bin/codex" <<EOF
@@ -92,11 +104,12 @@ EOF
 [[ "\$1" == exec ]] || exit 0
 printf 'codex\n' >> "\$FAKE_CALLS"
 [[ "\${FAKE_FAIL:-0}" == 1 ]] && { cat > /dev/null; exit 1; }
+arguments=("\$@")
 while [[ \$# -gt 0 ]]; do
   [[ "\$1" == --output-last-message ]] && result_path="\$2"
   shift
 done
-python3 "$fake_bin/fake-provider.py" > "\$result_path"
+python3 "$fake_bin/fake-provider.py" "\${arguments[@]}" > "\$result_path"
 EOF
   chmod +x "$fake_bin/codex"
 }
@@ -238,6 +251,98 @@ first_conflict_id() {
   [ "$status" -ne 0 ]
   [[ "$stderr" == *"conflicts.block: this apply brings 1 semantic conflict(s)"* ]]
   [[ "$stderr" == *"accepted before the files changed"* ]]
+}
+
+redundancy_id() {
+  agent_ready plan --json
+  printf '%s' "$output" | python3 -c 'import json,sys; print(json.load(sys.stdin)["semanticConflicts"]["redundancies"][0]["id"])' | tr -d '\r'
+}
+
+@test "two rules that say the same thing are a redundancy warning: it never stops an apply and can be dismissed" {
+  write_manifest '{"profiles": ["node"], "conflicts": {"block": true}}'
+  agent_ready apply
+  [ "$status" -eq 0 ]
+  project_rule
+  change_managed_rule
+  export FAKE_KIND=redundancy
+
+  agent_ready plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Redundant rules (a warning; keep one of each pair):"* ]]
+  [[ "$output" == *".agents/rules/team.md <-> .agents/rules/verify-changes.md: redundancy: Both rules ask to verify each change; keep the managed one. (this update)"* ]]
+  [[ "$output" != *"No conflicts found"* ]]
+  grep -Fxq redundancy "$FAKE_PROMPTS"
+  reviewed_calls="$(calls)"
+  agent_ready plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"redundancy: Both rules ask to verify each change"* ]]
+  [ "$(calls)" -eq "$reviewed_calls" ]
+
+  # conflicts.block only stops on a conflict: the apply writes the rule and warns.
+  agent_ready apply
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"WARNING: redundant rules"*"redundancy: Both rules ask to verify each change"* ]]
+  grep -Fq 'Verify every change.' .agents/rules/verify-changes.md
+  agent_ready conflicts --offline
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Redundant rules (a warning, not a conflict):"* ]]
+  agent_ready status
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"redundancy: Both rules ask to verify each change"* ]]
+
+  finding="$(redundancy_id)"
+  agent_ready review dismiss "$finding" --reason "The team keeps both on purpose"
+  [ "$status" -eq 0 ]
+  agent_ready plan
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"redundancy: Both rules ask to verify each change"* ]]
+}
+
+@test "with reviews.redundancy.enabled off the review neither asks for redundant rules nor reports them" {
+  write_manifest '{"profiles": ["node"], "reviews": {"redundancy": {"enabled": false}}}'
+  agent_ready apply
+  [ "$status" -eq 0 ]
+  project_rule
+  export FAKE_KIND=redundancy
+
+  agent_ready plan
+  [ "$status" -eq 0 ]
+  [ "$(pair_reviews)" -ge 1 ]
+  [[ "$output" != *"Redundant rules"* ]]
+  [[ "$output" != *"redundancy:"* ]]
+  [ ! -s "$FAKE_PROMPTS" ]
+  # The hooks follow the last apply: their copy of the options has the key off too.
+  run python3 -B -c 'import importlib.util, sys
+spec = importlib.util.spec_from_file_location("review_cache", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+print(module.ReviewCache(".").settings()["redundancy"])' "$engine_copy/assets/common/hooks/review-cache.py"
+  [ "$(printf '%s' "$output" | tr -d '\r')" = "False" ]
+}
+
+@test "agent-ready check lists a redundancy, but only a conflict fails it" {
+  # Without the cache, each check asks the provider again with its own answer.
+  write_manifest '{"profiles": ["node"], "ci": {"conflicts": {"semantic": "fail"}}, "reviews": {"cache": false}}'
+  agent_ready apply
+  [ "$status" -eq 0 ]
+  project_rule
+  # The exit status of the same check without any finding.
+  FAKE_CONFLICT_SECOND=no-such-rule agent_ready check --format json
+  without_findings="$status"
+  [[ "$output" == *'"semantic": []'* ]]
+
+  export FAKE_KIND=redundancy
+  agent_ready check
+  [ "$status" -eq "$without_findings" ]
+  [[ "$output" == *"Redundant rules (a warning, it never fails the check):"* ]]
+  [[ "$output" == *"redundancy: Both rules ask to verify each change"* ]]
+  agent_ready check --format json
+  [[ "$output" == *'"semantic": []'* ]]
+
+  # The same pair as a contradiction is a conflict of ci.conflicts.semantic.
+  unset FAKE_KIND
+  agent_ready check --format json
+  [[ "$output" == *'"semantic": ['*"One rule verifies every change and the other forbids it."* ]]
 }
 
 @test "a review without an answer is incomplete, never clean, and conflicts.block stops on it" {
@@ -620,4 +725,164 @@ sys.exit(0)
   [ "$status" -eq 0 ]
   [[ "$output" != *"competing skills"* ]]
   ! grep -Fq 'team-review/SKILL.md' "$FAKE_INPUT"
+}
+
+# A PreToolUse hook of the project that stops a tool call, with its script.
+blocking_hook() {
+  mkdir -p .claude/hooks
+  printf '#!/bin/bash\n# Stops every change verification command.\necho "verification is forbidden" >&2\nexit 2\n' > .claude/hooks/no-verify.sh
+  python3 - <<'PY'
+import json
+path = ".claude/settings.json"
+with open(path, encoding="utf-8") as settings_file:
+    settings = json.load(settings_file)
+settings.setdefault("hooks", {}).setdefault("PreToolUse", []).append(
+    {"matcher": "Bash", "hooks": [{"type": "command", "command": 'bash "$CLAUDE_PROJECT_DIR"/.claude/hooks/no-verify.sh'}]})
+with open(path, "w", encoding="utf-8") as settings_file:
+    json.dump(settings, settings_file, indent=2)
+PY
+}
+
+# The summary the session hook prints (agent-ready status has no --brief).
+brief_status() {
+  run env PATH="$fake_bin:$PATH" python3 "$engine_copy/scripts/agent-ready-state.py" status --project . --brief
+}
+
+# The session start runs its background review right away, so a test sees what it leaves; the background
+# update, which this suite does not check, does not run.
+run_background_review_inline() {
+  printf '%s\n' 'import subprocess, sys' 'command = sys.argv[sys.argv.index("--") + 1:]' \
+    'sys.exit(subprocess.call(command) if "refresh-reviews" in command else 0)' > "$engine_copy/scripts/run-detached.py"
+}
+
+@test "a hook that can stop a tool call is reviewed against the managed rules, unless conflicts.hooks is off" {
+  agent_ready apply --stack node
+  [ "$status" -eq 0 ]
+  blocking_hook
+  export FAKE_CONFLICT_SECOND=".claude/settings.json#blocking-hooks"
+
+  agent_ready plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *".agents/rules/verify-changes.md <-> .claude/settings.json#blocking-hooks: One rule verifies every change and the other forbids it. (a hook of the project; a hook that blocks it)"* ]]
+  # The review reads the hook with its matcher, its command and the script it runs.
+  grep -Fq 'PreToolUse hook for the tools matching `Bash`' "$FAKE_INPUT"
+  grep -Fq 'echo "verification is forbidden" >&2' "$FAKE_INPUT"
+  # The pair is cached, so status shows it without the provider.
+  reviewed_calls="$(calls)"
+  agent_ready status
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"One rule verifies every change and the other forbids it."* ]]
+  [ "$(calls)" -eq "$reviewed_calls" ]
+  # A managed rule the update changes is paired with the hook as part of the update.
+  change_managed_rule
+  agent_ready plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"<-> .claude/settings.json#blocking-hooks: One rule verifies every change and the other forbids it. (this update; a hook that blocks it)"* ]]
+
+  agent_ready config set conflicts.hooks.enabled false
+  : > "$FAKE_INPUT"
+  agent_ready plan
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"blocking-hooks"* ]]
+  ! grep -Fq 'blocking-hooks' "$FAKE_INPUT"
+}
+
+@test "the session start reviews the out-of-date reviews in the background, once, and the key turns it off" {
+  agent_ready apply --stack node
+  [ "$status" -eq 0 ]
+  project_rule
+  agent_ready plan
+  [ "$status" -eq 0 ]
+  printf '# Team\nNever verify changes, not even once.\n' > .agents/rules/team.md
+  brief_status
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ [1-9][0-9]*\ review\(s\)\ are\ out\ of\ date\;\ the\ session\ start\ reviews\ them\ again\ in\ the\ background ]]
+  run_background_review_inline
+  before="$(calls)"
+
+  run env PATH="$fake_bin:$PATH" AGENT_READY_SETUP_SKILL_DIR="$engine_copy" bash .agents/hooks/sync-marketplace.sh --provider claude
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"AI review(s) are out of date; reviewing them in the background with claude (conflicts.sessionStart.reviews)."* ]]
+  # One call reviewed them all, on what the files hold now.
+  [ "$(calls)" -eq $((before + 1)) ]
+  grep -Fq 'Never verify changes, not even once.' "$FAKE_INPUT"
+  agent_ready status
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"out of date"* ]]
+  [[ "$output" == *"One rule verifies every change and the other forbids it."* ]]
+  # Nothing is out of date now: the next session start announces nothing and calls no provider.
+  run env PATH="$fake_bin:$PATH" AGENT_READY_SETUP_SKILL_DIR="$engine_copy" bash .agents/hooks/sync-marketplace.sh --provider claude
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"reviewing them in the background"* ]]
+  [ "$(calls)" -eq $((before + 1)) ]
+
+  # A review of the same project that already runs keeps a second one from reviewing it again.
+  printf '# Team\nNever verify changes, ever.\n' > .agents/rules/team.md
+  lock="$(env PATH="$fake_bin:$PATH" python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import agent_ready_review_refresh as refresh; print(refresh.refresh_lock_path("."))' "$engine_copy/scripts" | tr -d '\r')"
+  mkdir -p "$lock"
+  run env PATH="$fake_bin:$PATH" python3 "$engine_copy/scripts/agent-ready-state.py" refresh-reviews --project . --provider claude
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Another background review of this project is running."* ]]
+  [ "$(calls)" -eq $((before + 1)) ]
+  rmdir "$lock"
+
+  agent_ready config set conflicts.sessionStart.reviews false
+  run env PATH="$fake_bin:$PATH" AGENT_READY_SETUP_SKILL_DIR="$engine_copy" bash .agents/hooks/sync-marketplace.sh --provider claude
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"reviewing them in the background"* ]]
+  [ "$(calls)" -eq $((before + 1)) ]
+  brief_status
+  [[ "$output" == *"review(s) are out of date; they run again on the next edit or apply."* ]]
+}
+
+@test "an edit of what the project wrote in AGENTS.md is reviewed against the managed rules, an edit inside its managed block is not" {
+  agent_ready apply --stack node
+  [ "$status" -eq 0 ]
+  export FAKE_CONFLICT_SECOND="AGENTS.md"
+  export FAKE_REQUIRE_TEXT="Never verify changes."
+  printf '\nNever verify changes.\n' >> AGENTS.md
+
+  run env PATH="$fake_bin:$PATH" AGENT_READY_SETUP_SKILL_DIR="$engine_copy" bash .agents/hooks/check-harness-consistency.sh <<< '{"tool_name":"Edit","tool_input":{"file_path":"AGENTS.md"}}'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *".agents/rules/verify-changes.md <-> AGENTS.md: One rule verifies every change and the other forbids it."* ]]
+  # Of AGENTS.md the review read what the project wrote, never the managed block.
+  ! grep -Fq 'BEGIN AGENT-READY MANAGED' "$FAKE_INPUT"
+  # status reads AGENTS.md the same way, so the finding is current there, without the provider.
+  reviewed_calls="$(calls)"
+  agent_ready status
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"One rule verifies every change and the other forbids it."* ]]
+  [[ "$output" != *"out of date"* ]]
+  [ "$(calls)" -eq "$reviewed_calls" ]
+
+  # The same line inside the managed block is the engine's, and the next apply replaces it.
+  python3 - <<'PY'
+path = "AGENTS.md"
+text = open(path, encoding="utf-8").read().replace("\nNever verify changes.\n", "\n")
+text = text.replace("<!-- END AGENT-READY MANAGED -->", "Never verify changes.\n<!-- END AGENT-READY MANAGED -->", 1)
+open(path, "w", encoding="utf-8").write(text)
+PY
+  : > "$FAKE_INPUT"
+  run env PATH="$fake_bin:$PATH" AGENT_READY_SETUP_SKILL_DIR="$engine_copy" bash .agents/hooks/check-harness-consistency.sh <<< '{"tool_name":"Edit","tool_input":{"file_path":"AGENTS.md"}}'
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"One rule verifies every change and the other forbids it."* ]]
+  ! grep -Fq 'Never verify changes.' "$FAKE_INPUT"
+}
+
+@test "a background review that gets no valid answer three times in a row waits before the next session start tries" {
+  agent_ready apply --stack node
+  [ "$status" -eq 0 ]
+  project_rule
+  agent_ready plan
+  [ "$status" -eq 0 ]
+  printf '# Team\nNever verify changes, not even once.\n' > .agents/rules/team.md
+  export FAKE_FAIL=1
+  for attempt in 1 2 3; do
+    run env PATH="$fake_bin:$PATH" python3 "$engine_copy/scripts/agent-ready-state.py" refresh-reviews --project . --provider claude
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"got no valid answer"* ]]
+  done
+  run env PATH="$fake_bin:$PATH" python3 "$engine_copy/scripts/agent-ready-state.py" refresh-reviews --project . --provider claude --announce
+  [ "$status" -eq 1 ]
+  [ -z "$output" ]
 }

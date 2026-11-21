@@ -8,7 +8,10 @@ Two directions, both reported by plan (and by status, from the cache):
 - profiles: two managed rules of different profiles, one of them from a pack;
 - levels: a rule of the root against one of a workspace (a pack on either side), or a managed rule of
   the root the apply changes against what the project wrote in a nested ``AGENTS.md``. They apply to
-  the same files at two levels; two workspaces never load each other's rules, so they are not paired.
+  the same files at two levels; two workspaces never load each other's rules, so they are not paired;
+- hooks: the hooks of ``.claude/settings.json`` and ``.codex/hooks.json`` that can stop a tool call
+  (PreToolUse) against each managed rule and skill, as an update (the rule or skill the apply changes)
+  or as the project's own (one already applied): a hook that blocks what a rule asks for is a conflict.
 
 Each document also has its level (document_levels), so a finding names both.
 
@@ -31,6 +34,8 @@ import tempfile
 
 RULES_PREFIX = ".agents/rules/"
 RULE_SUFFIX = ".md"
+SKILLS_PREFIX = ".agents/skills/"
+SKILL_FILE_SUFFIX = "/SKILL.md"
 AGENTS_FILE = "AGENTS.md"
 CLAUDE_FILE = "CLAUDE.md"
 # The root CLAUDE.md that only points to AGENTS.md (instruction-normalization.sh).
@@ -68,6 +73,12 @@ def load_harness_review(engine_dir):
 
 def is_rule(destination):
     return destination.startswith(RULES_PREFIX) and destination.endswith(RULE_SUFFIX)
+
+
+def is_skill(destination):
+    """True for the SKILL.md of a skill directly under .agents/skills/."""
+    return (destination.startswith(SKILLS_PREFIX) and destination.endswith(SKILL_FILE_SUFFIX)
+            and destination.count("/") == SKILLS_PREFIX.count("/") + 1)
 
 
 def project_rules(project_root, managed):
@@ -158,7 +169,7 @@ def document_levels(entries, nested_instructions=()):
 
 
 def conflict_pairs(project_root, entries, locked_assets, read_text, project_owned, engine_dir, is_pack_profile=None,
-                   instructions_with_applied=False, nested_instructions=()):
+                   instructions_with_applied=False, nested_instructions=(), hook_documents=None):
     """Pairs to review, the text of each document and the direction of each pair.
 
     ``entries`` are the plan entries; a managed rule the apply creates or changes is reviewed
@@ -167,7 +178,9 @@ def conflict_pairs(project_root, entries, locked_assets, read_text, project_owne
     block is the engine's, and the same apply may replace it). Before the first apply, the root
     CLAUDE.md that the apply promotes takes its place, under the name AGENTS.md. ``nested_instructions``
     are the nested AGENTS.md files the apply writes blocks to: what the project wrote in each one is
-    paired with the managed rules of the root (DIRECTION_LEVELS).
+    paired with the managed rules of the root (DIRECTION_LEVELS). ``hook_documents`` ({document: text},
+    review-cache.py hook_documents) are the hooks that can stop a tool call, paired with every managed rule
+    and skill of the root: as an update with the ones the apply changes, as the project's with the rest.
     """
     desired = {entry["destination"]: entry for entry in entries if entry.get("sha256") and is_rule(entry["destination"])}
     managed = set(desired) | {destination for destination in locked_assets if is_rule(destination)}
@@ -227,7 +240,29 @@ def conflict_pairs(project_root, entries, locked_assets, read_text, project_owne
         texts[name] = owned
         for managed_rule in root_rules:
             directions.setdefault(tuple(sorted((managed_rule, name))), DIRECTION_LEVELS)
+    if hook_documents:
+        hook_pairs(project_root, entries, read_text, hook_documents, directions, texts)
     return directions, texts
+
+
+def hook_pairs(project_root, entries, read_text, hook_documents, directions, texts):
+    """Pair each blocking hook document with the managed rules and skills of the root: the ones the apply
+    creates or changes, with the content it would write (DIRECTION_UPDATE), and the ones already applied
+    (DIRECTION_PROJECT). A hook of a workspace's settings is not read: Claude and Codex load the root's."""
+    for entry in entries:
+        destination = entry["destination"]
+        if not entry.get("sha256") or entry.get("workspace") or not (is_rule(destination) or is_skill(destination)):
+            continue
+        if entry["action"] in ("create", "update", "adopt"):
+            direction, path = DIRECTION_UPDATE, entry["sourcePath"]
+        elif entry["action"] == "unchanged" and os.path.isfile(os.path.join(project_root, destination)):
+            direction, path = DIRECTION_PROJECT, os.path.join(project_root, destination)
+        else:
+            continue
+        texts.setdefault(destination, read_text(path))
+        for name, text in hook_documents.items():
+            texts[name] = text
+            directions.setdefault(tuple(sorted((destination, name))), direction)
 
 
 def engine_can_review(engine_dir):
@@ -246,17 +281,18 @@ def review_conflicts(project_root, engine_dir, cache_module, provider, direction
     results in the local cache, so it never changes a file of the repository.
     """
     harness = load_harness_review(engine_dir)
-    # The check to run: the contradictions of harness-review by default, or another one with its own
-    # CHECK, CHECK_VERSION and review_pairs (the competing skills of agent_ready_skill_overlap.py).
-    check = check or harness
+    cache = cache_module.ReviewCache(project_root, settings=settings)
+    # The check to run: the contradictions of harness-review by default (and the redundancies, with
+    # reviews.redundancy.enabled), or another one with its own CHECK, CHECK_VERSION and review_pairs (the
+    # competing skills of agent_ready_skill_overlap.py).
+    check = check or harness.reviewer(cache.settings().get("redundancy", True))
     # A rule file with atomic rules is reviewed rule by rule, so the cache keeps one entry per pair of rules.
     directions, texts = cache_module.unit_pairs(directions, texts)
     pairs = sorted(directions)
     report = {"pairs": len(pairs), "fromCache": 0, "reviewed": 0, "unchecked": 0, "uncheckedUpdate": 0,
-              "reason": None, "findings": [], "quiet": 0}
+              "reason": None, "findings": [], "redundancies": [], "quiet": 0}
     if not pairs:
         return report
-    cache = cache_module.ReviewCache(project_root, settings=settings)
     shares = bool(cache.settings().get("commit"))
     writer = cache if publish or not shares else cache_module.ReviewCache(
         project_root, settings=dict(cache.settings(), commit=False))
@@ -322,8 +358,11 @@ def review_conflicts(project_root, engine_dir, cache_module, provider, direction
             if finding["decision"]:
                 finding["status"] = decision_status(cache_module, finding["decision"], reviewed_files)
             annotated.append(dict(finding, direction=directions[pair], check=check.CHECK, reviewedFiles=reviewed_files))
-    report["findings"] = cache_module.visible(annotated)
-    report["quiet"] = len(annotated) - len(report["findings"])
+    visible = cache_module.visible(annotated)
+    # A redundancy is a warning: it is listed apart, so conflicts.block and agent-ready check never count it.
+    report["findings"] = [finding for finding in visible if not cache_module.is_redundancy(finding)]
+    report["redundancies"] = [finding for finding in visible if cache_module.is_redundancy(finding)]
+    report["quiet"] = len(annotated) - len(visible)
     # Every finding of these directions, decided ones included: their files are not on disk yet, so
     # only this list lets agent-ready review find them before the apply.
     report["pending"] = [finding for finding in annotated if finding["direction"] in pending_directions]

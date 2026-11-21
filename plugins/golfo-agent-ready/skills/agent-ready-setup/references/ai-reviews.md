@@ -22,10 +22,13 @@ paridad), las skills que compiten y todos los conflictos juntos están en [struc
 | Revisión | Quién la corre | Unidad |
 |---|---|---|
 | `instructions` | `merge-instructions.sh` en el apply y en la sincronización en segundo plano ([managed-agents-block.md](managed-agents-block.md)) | `AGENTS.md` junto con todas las rules que ve la revisión, del template y propias |
-| `harness-consistency` | el hook `PostToolUse` `.agents/hooks/check-harness-consistency.sh`, después de editar una rule, una skill o `.claude/CLAUDE.md` | un par de documentos del mismo root (`.agents/` o `.claude/`) |
-| `harness-consistency` (conflictos semánticos) | `agent-ready plan` y el plan de cada apply (sección 7) | un par: una rule gestionada y una rule propia o el `AGENTS.md` del proyecto |
+| `harness-consistency` | el hook `PostToolUse` `.agents/hooks/check-harness-consistency.sh`, después de editar una rule, una skill, `.claude/CLAUDE.md` o un `AGENTS.md` | un par de documentos del mismo root (`.agents/` o `.claude/`) |
+| `harness-consistency` (conflictos semánticos) | `agent-ready plan` y el plan de cada apply (sección 7) | un par: una rule gestionada y una rule propia, el `AGENTS.md` del proyecto o un hook que puede bloquear |
 
-El hook compara cada documento editado contra todos los demás de su root, de a pares.
+El hook compara cada documento editado contra todos los demás de su root, de a pares. Con
+`.agents/` entra también lo que el proyecto escribió en el `AGENTS.md` raíz y en cada `AGENTS.md`
+anidado que la edición cambió, sin los bloques gestionados: editar solo dentro de un bloque no cambia
+lo que se revisa. Es el mismo texto que lee `agent-ready plan`, así que los dos comparten la caché.
 Los pares que ya están en la caché no se vuelven a revisar. Los que faltan van al provider
 que hizo la edición en una sola llamada: `claude -p` en Claude Code y `codex exec
 --sandbox read-only` en Codex (eventos `apply_patch`). Los documentos le llegan por stdin
@@ -33,6 +36,21 @@ y se tratan como datos, nunca como instrucciones. Si falta la CLI del provider, 
 chequeo se omite con un aviso. Si el provider no da una respuesta válida, el hook informa el
 chequeo como incompleto, nunca como limpio, y esos pares se revisan en la próxima edición. Un
 documento borrado no deja nada que comparar.
+
+**Rules redundantes.** Con `reviews.redundancy.enabled` (default `true`), la misma revisión por par
+también informa dos rules que piden lo mismo con otras palabras y sin la misma `key` (por ejemplo, una
+del pack y otra del proyecto), con el tipo `redundancy`. El texto dice cuál conservar y, si las dos son
+del proyecto, una `key` común para unirlas. Es un aviso, nunca un fallo:
+
+- **No frena ni falla:** `conflicts.block` no frena el apply que la trae, y `agent-ready check` y
+  `agent-ready conflicts` la listan aparte sin cambiar su código de salida.
+- **Misma caché y mismas decisiones:** sale de la misma llamada al provider que las contradicciones, se
+  guarda en la entrada del par y se acepta o descarta con `agent-ready review` (sección 6).
+- **Apagada:** el prompt no la pide y ningún reporte la muestra. La clave entra en la versión del chequeo,
+  así que cambiarla vuelve a revisar los pares; los hooks la toman del último apply.
+
+Dos rules con la misma `key` no esperan a la IA: el lint las informa como `key-conflict` o
+`duplicate-rule` ([atomic-rules.md](atomic-rules.md)).
 
 ## 2. Unidad y clave
 
@@ -112,6 +130,7 @@ Módulo `reviews` de la configuración ([configuration.md](configuration.md), cl
 | `reviews.cache` | `true` | `false` revisa todo cada vez y nunca reutiliza una entrada; igual guarda el último resultado, así `status` lo muestra y se puede decidir sobre sus hallazgos |
 | `reviews.ttl` | sin vencimiento | horas que vale una entrada; pasado ese tiempo se revisa otra vez aunque nada haya cambiado |
 | `reviews.commit` | `false` | `true` guarda además cada resultado en `.agents/agent-ready.review-cache.json` para commitearlo (ver «Caché compartida») |
+| `reviews.redundancy.enabled` | `true` | la revisión por par también informa las rules redundantes, como aviso (sección 1); `false` no las pide ni las muestra |
 
 Los hooks corren sin el motor, así que cada apply deja las opciones efectivas en la
 caché, una vez por worktree, y los hooks las leen de ahí: un cambio de configuración vale
@@ -128,7 +147,18 @@ guardadas sí se comparten entre worktrees.
 - `agent-ready status` y `agent-ready plan` muestran los hallazgos conocidos sin llamar al
   provider (`--json`: objeto `reviews` con `units`, `stale`, `findings`, `quiet` y
   `decisions`). Una entrada cuyos archivos cambiaron desde su revisión cuenta como
-  desactualizada y vuelve a correr en la próxima edición o apply.
+  desactualizada, también en el resumen de `status --brief` del inicio de sesión.
+- **Al iniciar sesión:** con `conflicts.sessionStart.reviews` (default `true`), el hook de
+  `SessionStart` dice cuántas hay y las vuelve a revisar en segundo plano, sin hacer esperar a la
+  sesión, con la CLI del provider de la sesión y lo que tienen sus archivos ahora. Lo revisado queda en
+  la caché local; la versionada solo cambia con un apply. Un lock por proyecto hace que dos sesiones que
+  arrancan juntas no revisen lo mismo, y el log queda en `~/.cache/agent-ready-setup/refresh-reviews-*.log`.
+  Tras tres corridas seguidas sin una respuesta válida del provider, espera una hora antes de reintentar.
+  Apagado, o con `conflicts.sessionStart.enabled: false`, esperan a la próxima edición o apply.
+
+  ```text
+  [marketplace-sync] 3 AI review(s) are out of date; reviewing them in the background with claude (conflicts.sessionStart.reviews).
+  ```
 - La revisión de `AGENTS.md` que sale de la caché repite sus inconsistencias en cada sync,
   hasta que alguien edite el archivo o la rule, o decida sobre ellas.
 - `agent-ready apply --recheck` ignora la caché de `AGENTS.md` y lo revisa otra vez.
@@ -171,13 +201,14 @@ agent-ready review reset <id>... | --all                               # vuelven
 ## 7. Conflictos semánticos con lo propio del proyecto
 
 `agent-ready plan`, y el plan que corre antes de cada apply, revisan con IA si las rules
-gestionadas contradicen lo que el proyecto escribió, o las de otro profile o de otro nivel, en cuatro
+gestionadas contradicen lo que el proyecto escribió, o las de otro profile o de otro nivel, en cinco
 direcciones:
 
 | Dirección | Qué se compara | Marca en el plan |
 |---|---|---|
 | update | cada rule gestionada que el apply crea, actualiza o adopta, con el contenido que va a escribir, contra cada rule propia (`.agents/rules/` sin equivalente gestionado) y contra lo que el proyecto escribió en su `AGENTS.md`, fuera del bloque gestionado que el mismo apply puede reemplazar | `(this update)` |
 | project | cada rule propia contra cada rule gestionada ya aplicada que no cambia | `(a project rule)` |
+| hooks | los hooks `PreToolUse` de `.claude/settings.json` y `.codex/hooks.json`, que pueden frenar una llamada a una herramienta, con su matcher, su comando y el script del proyecto que corren, contra cada rule y skill gestionada de la raíz: como update si el apply la cambia (y `conflicts.block` lo frena), como lo propio del proyecto si ya está aplicada. Se apaga con `conflicts.hooks.enabled` | `(this update; a hook that blocks it)` o `(a hook of the project; a hook that blocks it)` |
 | profiles | cada rule de un pack contra cada rule gestionada de otro profile del mismo nivel; las de los profiles del contenido (`golfo`) no se revisan entre sí. Como llega con el apply, `conflicts.block` lo frena igual que un update. Para quedarse con una de las dos, `overrides` | `(two profiles)` |
 | levels | una rule de la raíz contra una de un workspace de un monorepo, con un pack de alguno de los dos lados, y lo que el proyecto escribió en un `AGENTS.md` anidado (de un workspace o de un destino anidado) contra cada rule gestionada de la raíz que el apply cambia; `agent-ready check` la compara también con las ya aplicadas. Las rules de dos workspaces no se comparan, porque nunca se cargan juntas. Llega con el apply, como profiles | `(two levels; root and apps/web/)` |
 

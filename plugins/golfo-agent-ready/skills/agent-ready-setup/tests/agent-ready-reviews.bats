@@ -119,13 +119,14 @@ argument_after() {
 
 # write_settings ENABLED CACHE TTL [COMMIT]: the reviews options as an apply records them.
 write_settings() {
-  python3 -B - "$skill_dir" "$1" "$2" "$3" "${4:-false}" <<'PY'
+  python3 -B - "$skill_dir" "$1" "$2" "$3" "${4:-false}" "${5:-true}" <<'PY'
 import importlib.util, os, sys
 spec = importlib.util.spec_from_file_location("review_cache", os.path.join(sys.argv[1], "assets/common/hooks/review-cache.py"))
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 ttl = None if sys.argv[4] == "none" else int(sys.argv[4])
-module.ReviewCache(".").write_settings(sys.argv[2] == "true", sys.argv[3] == "true", ttl, sys.argv[5] == "true")
+module.ReviewCache(".").write_settings(sys.argv[2] == "true", sys.argv[3] == "true", ttl, sys.argv[5] == "true",
+                                       sys.argv[6] == "true")
 PY
 }
 
@@ -255,6 +256,26 @@ PY
   [[ "$output" == *"Check incomplete: 2 of 2 pairs were not reviewed."* ]]
   [[ "$output" != *"No contradictions found."* ]]
   [ ! -e "$(cache_file)" ]
+}
+
+@test "the hook reports two rules that say the same thing as a redundancy, and asks for none with the key off" {
+  printf '# Style\nMock every dependency you test.\n' > .agents/rules/style.md
+  printf '%s\n' '{"findings": [{"pair": 1, "lines": ["Mock every dependency you test.", "Mock every dependency."], "kind": "redundancy", "text": "Both rules ask to mock dependencies; keep testing.md."}]}' > "$FAKE_RESPONSE"
+  run_hook .agents/rules/testing.md
+  [ "$status" -eq 0 ]
+  grep -Fq 'with kind redundancy' "$FAKE_ARGUMENTS"
+  [[ "$output" == *"! ["*"] .agents/rules/style.md <-> .agents/rules/testing.md: redundancy: Both rules ask to mock dependencies; keep testing.md."* ]]
+  # A redundancy is a warning: the rules can still agree.
+  [[ "$output" == *"No contradictions found."* ]]
+
+  # reviews.redundancy.enabled off, as the last apply leaves it: a new key, and the prompt does not ask.
+  write_settings true true none false false
+  : > "$FAKE_ARGUMENTS"
+  run_hook .agents/rules/testing.md
+  [ "$status" -eq 0 ]
+  [ "$(calls)" -eq 2 ]
+  ! grep -Fq 'with kind redundancy' "$FAKE_ARGUMENTS"
+  [[ "$output" != *"redundancy:"* ]]
 }
 
 @test "a finding is kept per pair and status shows it without calling the provider" {

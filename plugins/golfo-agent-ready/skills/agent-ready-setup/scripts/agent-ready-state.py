@@ -10,7 +10,7 @@ actual writes (atomic replacements, Claude views, settings merges); it consults 
 ``plan`` emits so locally modified assets are preserved instead of overwritten.
 
 Subcommands: resolve, manifest, detect, fetch-sources, plan, finalize, status,
-check, background-update, update-report. Only fetch-sources and check use the
+check, background-update, refresh-reviews, update-report. Only fetch-sources and check use the
 network; plan and status read what the cache already has.
 """
 
@@ -31,6 +31,7 @@ from agent_ready_content import content_dir_of  # noqa: E402
 from agent_ready_layout import PROFILE_CATALOG_RELATIVE_PATH  # noqa: E402
 from agent_ready_options import SUPPORTED_PROVIDERS, UPDATE_MODES  # noqa: E402
 from agent_ready_profiles import load_profile_catalog  # noqa: E402
+from agent_ready_review_refresh import command_refresh_reviews  # noqa: E402
 from agent_ready_state_commands import (  # noqa: E402
     command_config,
     command_config_reference,
@@ -178,6 +179,14 @@ def build_parser():
     background_parser.add_argument("--hook", required=True, help="sync hook to run")
     background_parser.add_argument("--provider", required=True, choices=SUPPORTED_PROVIDERS)
     background_parser.set_defaults(handler=command_background_update)
+
+    refresh_parser = subparsers.add_parser("refresh-reviews",
+                                           help="review again the AI reviews whose files changed (session start)")
+    add_common(refresh_parser, needs_skill=False)
+    refresh_parser.add_argument("--provider", required=True, choices=SUPPORTED_PROVIDERS)
+    refresh_parser.add_argument("--announce", action="store_true",
+                                help="only print how many are out of date; exit 1 when there is nothing to review")
+    refresh_parser.set_defaults(handler=command_refresh_reviews)
 
     report_parser = subparsers.add_parser("update-report", help="show the last background update once")
     add_common(report_parser, needs_skill=False)

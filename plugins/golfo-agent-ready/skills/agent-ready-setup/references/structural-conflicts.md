@@ -158,11 +158,12 @@ del proyecto, `.claude/settings.local.json` y la configuración del usuario (`~/
   ~ claude PostToolUse runs two formatters that can rewrite the same files: prettier (.claude/settings.json) and biome (.claude/settings.local.json)
 ```
 
-Que un hook de un profile bloquee una acción que pide otro profile lo cubre la revisión semántica.
+Que un hook `PreToolUse` bloquee lo que pide una rule o una skill gestionada lo cubre la revisión de IA de
+los conflictos, con la misma clave (dirección `hooks`, [ai-reviews.md](ai-reviews.md), sección 7).
 
 | Clave | Default | Efecto |
 |---|---|---|
-| `conflicts.hooks.enabled` | `true` | `false` no compara los hooks |
+| `conflicts.hooks.enabled` | `true` | `false` no compara los hooks ni los revisa con IA |
 | `conflicts.permissions.enabled` | `true` | `false` no compara los permisos |
 
 ## 5. Paridad entre providers, variables de entorno y CI
@@ -248,13 +249,13 @@ separado:
 
 - **Al iniciar sesión:** el hook de `SessionStart` (`sync-marketplace.sh`) los lista con el prefijo
   `[conflicts]`, cualquiera sea `updates.mode`. Los hallazgos de IA salen de la caché, en la línea
-  `AI reviews:` de `status`.
+  `AI reviews:` de `status`, y las desactualizadas se revisan en segundo plano ([ai-reviews.md](ai-reviews.md), sección 5).
 - **Al editar:** el hook de `PostToolUse` (`check-harness-consistency.sh`) le pasa los archivos
   editados a `.agents/hooks/check-conflicts.sh`, que los recalcula si alguno es una de sus entradas:
   `AGENTS.md`, `CLAUDE.md`, lo que hay bajo `.agents/`, `.claude/` y `.codex/`, `.mcp.json`,
   los archivos de CI y de ejemplo de `.env` que lee la paridad (sección 5) y los que leen los `assumes` (`package.json`, `.editorconfig`,
   Prettier y los de `assets/repo-facts.json`, como lockfiles o `jest.config.js`). Corre sin red y sin
-  la CLI del provider. La revisión de IA de rules y skills sigue igual que antes ([ai-reviews.md](ai-reviews.md), sección 1).
+  la CLI del provider. La revisión de IA de rules, skills y `AGENTS.md` sigue aparte ([ai-reviews.md](ai-reviews.md), sección 1).
 
 ```text
 [conflicts] ! .agents/rules/ours.md (project) assumes test runner vitest, but the repository uses jest (package.json)
