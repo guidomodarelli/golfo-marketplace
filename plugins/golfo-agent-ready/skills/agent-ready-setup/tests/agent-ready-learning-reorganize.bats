@@ -154,6 +154,7 @@ proposal_id() {
   [ -z "$(git status --porcelain .agents)" ]
   git log -1 --format=%B | grep -q "^Reorganizes: "
   git log -1 --format=%B | grep -q "^Learned-from: s1:"
+  git log -1 --format=%B | grep -Eq "^Learned-by: [a-z0-9]"
   grep -q " reorganize learn-.* (consolidate of " .agents/learning/log.md
   merged="$(id_of 'Records carry the case number in the header and the date at the end.')"
   [ "$(registry_value "[e['status'] for e in data['candidates'] if e['id'] == '$merged'][0]")" = "learned" ]

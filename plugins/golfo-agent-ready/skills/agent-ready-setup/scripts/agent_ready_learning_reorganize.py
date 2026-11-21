@@ -16,6 +16,7 @@ import re
 import subprocess
 import tempfile
 
+import agent_ready_identity as identity
 import agent_ready_learning as learning
 import agent_ready_learning_episodes as learning_episodes
 import agent_ready_rules
@@ -510,7 +511,8 @@ def write_operation(project_root, registry, operation, items, settings, accepted
     message = (f"learn: reorganize ({operation['type']}) {', '.join(operation['ruleIds'])}\n\n"
                + "".join(f"Learning-Id: {entry_id}\n" for entry_id in new_ids)
                + f"Reorganizes: {', '.join(sorted(source_ids))}\n"
-               + (f"Learned-from: {', '.join(episodes)}\n" if episodes else ""))
+               + (f"Learned-from: {', '.join(episodes)}\n" if episodes else "")
+               + identity.learned_by_trailer())
     sha = commit_paths(project_root, written_paths + [learning.candidates_path(project_root), log_path], message)
     return {"operation": operation, "entries": [learning.public_view(entry, settings["ttl_days"]) for entry in created],
             "commit": sha}

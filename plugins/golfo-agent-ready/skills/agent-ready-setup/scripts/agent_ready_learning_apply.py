@@ -11,6 +11,7 @@ import re
 import subprocess
 import unicodedata
 
+import agent_ready_identity as identity
 import agent_ready_learning as learning
 import agent_ready_rules
 from agent_ready_common import ProfileError, StateError, write_text_atomically
@@ -288,9 +289,12 @@ def log_line(date, action, entry, written):
 
 
 def commit(project_root, paths, entry, episodes):
-    """One commit with only the files of this learning, whatever else is staged."""
+    """One commit with only the files of this learning, whatever else is staged.
+
+    Learned-by names the person of this machine (agent_ready_identity.py): the commit may go out with a
+    Git account that several people share."""
     message = (f"learn: {entry['statement']}\n\nLearning-Id: {entry['id']}\n"
-               f"Learned-from: {', '.join(episodes)}\n")
+               f"Learned-from: {', '.join(episodes)}\n" + identity.learned_by_trailer())
     return commit_paths(project_root, paths, message)
 
 

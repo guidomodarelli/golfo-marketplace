@@ -92,7 +92,8 @@ proyecto, nunca en un asset que escribió un apply (los que el lockfile registra
 
 Cada aprendizaje es **un commit** con solo sus archivos (la rule o la skill, `candidates.json` y
 `log.md`), aunque haya otros cambios en el índice. El mensaje es `learn: <statement>` con los trailers
-`Learning-Id: <id>` y `Learned-from: <episodios>`. `.agents/learning/log.md` suma una línea con la fecha,
+`Learning-Id: <id>`, `Learned-from: <episodios>` y `Learned-by: <id de la persona>`
+([collaboration.md](collaboration.md)). `.agents/learning/log.md` suma una línea con la fecha,
 la acción, el id, la rule y el statement, y nunca la cita.
 
 Antes de escribir, la rule resultante pasa el lint de una rule atómica ([atomic-rules.md](atomic-rules.md)):
