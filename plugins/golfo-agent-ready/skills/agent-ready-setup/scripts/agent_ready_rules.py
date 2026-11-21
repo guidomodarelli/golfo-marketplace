@@ -92,6 +92,9 @@ ABBREVIATIONS = re.compile(r"\b(?:e\.g|i\.e|etc|vs|cf)\.", re.IGNORECASE)
 WHITESPACE = re.compile(r"\s+")
 
 RULES_DIRECTORY_NAME = "rules"
+# The personal rules of each person live in .agents/rules/learned/users/<person>/ (#169): one decides
+# its key for that person only, so it never conflicts with a rule of the team or of someone else.
+PERSONAL_RULES_PATTERN = re.compile(r"(?:^|/)rules/learned/users/(?P<person>[^/]+)/")
 RULE_FILE_SUFFIX = ".md"
 SKIPPED_DIRECTORIES = (".git", "node_modules")
 
@@ -316,17 +319,29 @@ def lint_rules(rules, warn_chars=DEFAULT_STATEMENT_WARN_CHARS, max_chars=DEFAULT
     return findings
 
 
+def personal_owner(rule):
+    """The person whose personal rule this is, or None for a rule of the team."""
+    match = PERSONAL_RULES_PATTERN.search(rule.path.replace("\\", "/"))
+    return match.group("person") if match else None
+
+
+def decision_of(rule):
+    """What a rule decides: its key, for the team or for one person."""
+    return (personal_owner(rule), rule.key)
+
+
 def key_conflicts(rules):
     """[{key, rules}] of each decision key that two or more rules decide with different content.
 
-    Rules that decide a key alike are a duplicate, not a conflict, and are left out.
+    Rules that decide a key alike are a duplicate, not a conflict, and are left out. A personal rule
+    decides its key only for its person, so it is compared only with the other rules of that person.
     """
     by_key = {}
     for rule in rules:
         if rule.key:
-            by_key.setdefault(rule.key, []).append(rule)
+            by_key.setdefault(decision_of(rule), []).append(rule)
     conflicts = []
-    for key, deciding in sorted(by_key.items()):
+    for (_, key), deciding in sorted(by_key.items(), key=lambda item: (item[0][1], item[0][0] or "")):
         contents = {json.dumps(rule.content(), sort_keys=True) for rule in deciding}
         if len(contents) > 1:
             conflicts.append({"key": key, "rules": deciding})
@@ -350,7 +365,7 @@ def set_findings(rules, known_ids=()):
     first_by_statement = {}
     for rule in rules:
         if rule.key:
-            first = first_by_key.setdefault(rule.key, rule)
+            first = first_by_key.setdefault(decision_of(rule), rule)
             if first is not rule:
                 if first.content() == rule.content():
                     findings.append(Finding(LEVEL_WARNING, CODE_DUPLICATE_RULE, rule.path, rule.line,

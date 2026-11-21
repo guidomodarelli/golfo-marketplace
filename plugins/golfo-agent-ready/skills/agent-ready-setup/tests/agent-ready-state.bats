@@ -1195,3 +1195,17 @@ PY
   [ "$status" -eq 0 ]
   ! grep -q 'Use B' ours.md
 }
+
+@test "the personal rules of each person get no Claude view and no line in AGENTS.md, unlike the rules of the team" {
+  copy_skill
+  mkdir -p .agents/rules/learned/users/ana-notebook
+  printf '%s\n' '# Learned' '' '<!-- rule id=learned/team-dates -->' '- Dates go first.' > .agents/rules/learned.md
+  printf '%s\n' '# Personal rules' '' '<!-- rule id=learned/users/ana-notebook/dates -->' '- Dates go last.' \
+    > .agents/rules/learned/users/ana-notebook/learned.md
+  run_bootstrap_with "$source_copy" --profiles learning
+  [ "$status" -eq 0 ]
+  [ -e .claude/rules/learned.md ]
+  grep -Fq '.agents/rules/learned.md' AGENTS.md
+  [ ! -e .claude/rules/learned/users ]
+  ! grep -Fq 'learned/users' AGENTS.md
+}

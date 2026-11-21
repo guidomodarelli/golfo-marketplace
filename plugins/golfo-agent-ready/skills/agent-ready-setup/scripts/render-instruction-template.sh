@@ -22,6 +22,8 @@ MANAGED_BLOCK_ONLY=0
 LIST_RULES=0
 # Under .agents/rules/: the rules of each workspace of a monorepo (agent_ready_workspaces.py).
 WORKSPACE_RULES_DIRECTORY="workspaces"
+# The personal rules of each person (#169): the hook of the session start gives each one only theirs.
+PERSONAL_RULES_DIRECTORY="learned/users"
 
 usage() {
   cat >&2 <<'EOF'
@@ -225,6 +227,7 @@ list_project_rule_paths() {
     esac
     is_template_rule "$relative_path" && continue
     [[ "$relative_path" == "$WORKSPACE_RULES_DIRECTORY"/* ]] && continue
+    [[ "$relative_path" == "$PERSONAL_RULES_DIRECTORY"/* ]] && continue
     printf '%s\n' "$relative_path"
   done < <(find "$PROJECT_RULES_DIRECTORY" -type f -name '*.md' -print | LC_ALL=C sort)
 }
