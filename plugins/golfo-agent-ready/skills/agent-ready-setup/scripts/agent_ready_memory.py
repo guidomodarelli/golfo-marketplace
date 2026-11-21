@@ -8,6 +8,7 @@ fails when a file of ``.engram/`` is versioned, whatever the configuration of th
 How to work (rules and skills) is the learning of agent_ready_learning, never this memory.
 """
 
+import os
 import subprocess
 
 # memory.enabled and memory.engram: both on, every selection brings the profile memory-engram of the
@@ -30,7 +31,13 @@ def selection_effects(catalog, engram_enabled):
 
 
 def versioned_engram_files(project_root):
-    """The files of .engram/ that Git tracks in the repository, sorted. Empty outside Git."""
+    """The files of .engram/ that Git tracks in the repository, sorted. Empty outside Git.
+
+    Without .engram/ in the working tree Git is never run: a checkout has every file Git tracks, so
+    nothing of it can be versioned, and a check with ci.enabled false keeps running nothing.
+    """
+    if not os.path.lexists(os.path.join(project_root, ENGRAM_DIRECTORY)):
+        return []
     completed = subprocess.run(["git", "-C", project_root, "ls-files", "-z", "--", ENGRAM_DIRECTORY],
                                capture_output=True, check=False)
     if completed.returncode != 0:
