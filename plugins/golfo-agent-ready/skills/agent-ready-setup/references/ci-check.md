@@ -22,6 +22,7 @@ assets faltantes o modificados, archivos fusionados y una versión nueva del con
 | `config-error` | 2 | una capa de configuración, el catálogo, un pack o la selección inválidos, o una variable con un valor que no existe |
 | `skipped` | 0 | `ci.enabled: false`: no evalúa nada, no usa la red y no ejecuta nada |
 | `conflicts` | 6 | está al día, pero hay conflictos entre los perfiles con `ci.conflicts.*: fail`; los lista |
+| `private-files` | 8 | Git tiene versionado un archivo de `.engram/`, la memoria de Engram: falla antes de cualquier otro chequeo y en cualquier modo, aunque `ci.enabled` esté apagado ([memory.md](memory.md)) |
 
 `ci.mode: warn` informa lo mismo pero sale con 0 ante `outdated` y `source-unavailable`. `config-error` sale con 2 en
 cualquier modo, y un argumento inválido del comando también sale con 2. Una fuente en `pinned` que sigue una `ref` también cuenta como

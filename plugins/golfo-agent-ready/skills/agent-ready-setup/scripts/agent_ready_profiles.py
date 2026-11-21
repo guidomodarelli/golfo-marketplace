@@ -5,6 +5,7 @@ repository, and how a selection resolves into profiles, with their defaults, exc
 import os
 
 import agent_ready_compatibility as compatibility
+import agent_ready_memory as memory
 import agent_ready_content as content_source
 import agent_ready_nested as nested
 from agent_ready_common import IncompleteEvaluationError, ProfileError, StateError, read_json_file
@@ -332,7 +333,8 @@ def profiles_for_stack(catalog, stack):
     return [stack]
 
 
-def resolve_profiles(catalog, requested_names, ci_profile=None, excluded_defaults=()):
+def resolve_profiles(catalog, requested_names, ci_profile=None, excluded_defaults=(), core_defaults=(),
+                     disabled=()):
     """Expand requires and defaults in declaration order and validate conflicts.
 
     Returns the ordered list of profile names, each one after the layers it requires and
@@ -342,6 +344,11 @@ def resolve_profiles(catalog, requested_names, ci_profile=None, excluded_default
     primary stack is the most specific layer (primary_stack); every stack adds its section to
     AGENTS.md. ``ci_profile`` is the CI profile
     that ci.provider picks (ci_profile_of); a selection cannot name one itself.
+
+    ``core_defaults`` come by default with every selection, even one without a stack, and
+    ``disabled`` never come: a key of the configuration turned them off (memory.engram, through
+    memory_selection), so they are left out even when the selection names them. A profile that
+    requires a disabled one fails.
     """
     profiles = catalog["profiles"]
     resolved = []
@@ -357,6 +364,9 @@ def resolve_profiles(catalog, requested_names, ci_profile=None, excluded_default
             raise ProfileError(f"profile dependency cycle: {cycle}")
         if name not in profiles:
             raise_unknown_profile(catalog, name, requested_by)
+        if name in disabled:
+            raise ProfileError(f"profile '{requested_by}' requires '{name}', which {memory.MEMORY_ENGRAM_KEY} "
+                               f"turned off; turn it on or drop '{requested_by}'")
         visiting.append(name)
         for dependency in profiles[name].get("requires", []):
             visit(dependency, name)
@@ -368,7 +378,7 @@ def resolve_profiles(catalog, requested_names, ci_profile=None, excluded_default
         # Defaults come after every requested profile, so a requested profile keeps its place.
         while pending_defaults:
             default, brought_by = pending_defaults.pop(0)
-            if default in excluded_defaults or default in resolved:
+            if default in excluded_defaults or default in disabled or default in resolved:
                 continue
             if profiles.get(default, {}).get("kind") == CI_PROFILE_KIND:
                 raise ProfileError(f"profile '{brought_by}' lists the CI profile '{default}' in '{DEFAULTS_KEY}'; "
@@ -381,7 +391,10 @@ def resolve_profiles(catalog, requested_names, ci_profile=None, excluded_default
             provider = requested_name[len(CI_PROFILE_PREFIX):] if requested_name.startswith(CI_PROFILE_PREFIX) else "generic"
             raise ProfileError(f"profile '{requested_name}' comes from {CI_PROVIDER_KEY}, not from the selection; "
                                f"drop it and run: agent-ready ci setup --provider {provider}")
+        if requested_name in disabled:
+            continue
         visit(requested_name, None)
+    pending_defaults.extend((default, None) for default in core_defaults)
     visit_defaults()
     if ci_profile:
         visit(ci_profile, None)
@@ -424,8 +437,17 @@ def resolve_project_profiles(catalog, names, project_root):
     last apply: they are dropped and taken again from ci.provider, which can have changed.
     """
     selection = [name for name in names if catalog["profiles"].get(name, {}).get("kind") != CI_PROFILE_KIND]
-    excluded = configuration_of(project_root).value(EXCLUDED_DEFAULTS_KEY) or []
-    return resolve_profiles(catalog, selection, ci_profile_of(catalog, project_root), excluded)
+    configuration = configuration_of(project_root)
+    excluded = configuration.value(EXCLUDED_DEFAULTS_KEY) or []
+    core_defaults, disabled = memory_selection(catalog, configuration)
+    return resolve_profiles(catalog, selection, ci_profile_of(catalog, project_root), excluded, core_defaults, disabled)
+
+
+def memory_selection(catalog, configuration):
+    """The profiles memory.engram adds to every selection and the ones it leaves out
+    (agent_ready_memory.selection_effects)."""
+    enabled = configuration.value(memory.MEMORY_ENABLED_KEY) and configuration.value(memory.MEMORY_ENGRAM_KEY)
+    return memory.selection_effects(catalog, enabled)
 
 
 def primary_stack(catalog, resolved):

@@ -7,6 +7,9 @@ what was learned, skips a repository whose learning.share is off, and groups the
 several repositories learned. A provider writes each group as one general statement without data of
 any client; it sees the repositories only as repo-1, repo-2... The result stays in the cache of the
 developer, never in a repository (references/learning-share.md, «Aprender de varios clientes»).
+
+Neither command reads the memory of Engram: only .agents/learning/candidates.json of each repository,
+never ~/.engram/, the .engram/ of a repository nor the engram CLI (references/memory.md).
 """
 
 import json

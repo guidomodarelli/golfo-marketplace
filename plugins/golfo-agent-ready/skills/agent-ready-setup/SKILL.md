@@ -16,7 +16,7 @@ description: >-
   descartar un hallazgo de sus revisiones de IA.
 license: MIT
 metadata:
-  version: "1.76.0"
+  version: "1.77.0"
   author: "guponce"
   category: "developer-experience"
   tags: "agent-ready, multi-provider, claude-code, codex, bootstrap, setup, scaffold, context-optimized-v1.20.1"
@@ -189,8 +189,9 @@ Con manifest, usar sus profiles: correr `agent-ready apply` sin `--stack` ni `--
 la selección con `agent-ready profiles add|remove`. Si
 el usuario pide otros, pasar `--profiles a,b` (cada stack suma su sección a `AGENTS.md`,
 sobre un template base único). Cada profile trae sus `defaults` (`react`, `node`, `java` y `go`
-traen `browser`; `android` no), que el repo deja afuera con `excludedDefaults`; `--stack <s>` es
-`--profiles <s>`. El manifest guarda lo elegido y el lock lo resuelto. Sin manifest, inspeccionar el proyecto con la
+traen `browser`; `android` no), que el repo deja afuera con `excludedDefaults`; toda selección, también
+`none`, trae además `memory-engram` si el contenido lo publica, salvo con `memory.engram: false`
+([references/memory.md](references/memory.md)); `--stack <s>` es `--profiles <s>`. El manifest guarda lo elegido y el lock lo resuelto. Sin manifest, inspeccionar el proyecto con la
 detección, que solo lee archivos:
 
 ```bash
