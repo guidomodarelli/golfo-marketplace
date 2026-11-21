@@ -8,6 +8,7 @@ import sys
 import agent_ready_blocks as managed_blocks
 import agent_ready_conflicts as conflicts_review
 import agent_ready_machine as machine
+import agent_ready_merge_drivers as merge_drivers
 import agent_ready_nested as nested
 import agent_ready_pack_clis as pack_clis
 import agent_ready_pack_mcp as pack_mcp
@@ -312,10 +313,22 @@ def finalize(project_root, skill_dir, plan, updates):
     conflicts_review.record_pending(project_root, [])
     # After the lockfile: the sweep follows the profiles it records and the settings of learning.
     sweep_report = schedule_learning_sweep(project_root)
+    register_merge_drivers(project_root, skill_dir)
 
     return {"removed": removed, "retireConflicts": retire_conflicts, "failed": failed, "conflicts": conflicts,
             "blocks": block_report, "mcpServers": mcp_report, "clis": cli_report, "scripts": script_report,
             "learningSweep": sweep_report}
+
+
+def register_merge_drivers(project_root, skill_dir):
+    """Point the merge drivers of the learning to this installation, in the local Git configuration.
+
+    The .gitattributes block of the learning profile names them; a command cannot be versioned, so each
+    apply writes it again (the engine moves to another folder of the cache when the plugin updates).
+    An automated review never touches the Git configuration."""
+    if os.environ.get("AGENT_READY_SETUP_REVIEW_MODE") == "1":
+        return
+    merge_drivers.register(project_root, os.path.join(skill_dir, "scripts", merge_drivers.MERGE_DRIVER_SCRIPT))
 
 
 def schedule_learning_sweep(project_root):
