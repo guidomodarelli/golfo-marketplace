@@ -1175,3 +1175,23 @@ PY
   [ "$(grep -c '^- Sign in the footer.$' .agents/rules/learned.md)" -eq 1 ]
   grep -Fxq -- '- Leave a wide margin.' .agents/rules/learned.md
 }
+
+@test "a rule removed on one side and changed on the other is a conflict of that rule, whichever side removed it" {
+  printf '%s\n' '# Learned' '' '<!-- rule id=learned/a -->' '- Use A.' '' '<!-- rule id=learned/b -->' '- Use B.' > base.md
+  printf '%s\n' '# Learned' '' '<!-- rule id=learned/a -->' '- Use A.' > removed.md
+  sed 's/- Use B./- Use B always./' base.md > changed.md
+  cp removed.md ours.md
+  run python3 "$skill_dir/scripts/agent-ready-merge" agent-ready-rules base.md ours.md changed.md learned.md
+  [ "$status" -eq 1 ]
+  grep -Fxq -- '- Use B always.' ours.md
+  [ "$(grep -c '^<<<<<<< ours$' ours.md)" -eq 1 ]
+  cp changed.md ours.md
+  run python3 "$skill_dir/scripts/agent-ready-merge" agent-ready-rules base.md ours.md removed.md learned.md
+  [ "$status" -eq 1 ]
+  grep -Fxq -- '- Use B always.' ours.md
+  # Removed on one side and untouched on the other is a removal, without conflict.
+  cp removed.md ours.md
+  run python3 "$skill_dir/scripts/agent-ready-merge" agent-ready-rules base.md ours.md base.md learned.md
+  [ "$status" -eq 0 ]
+  ! grep -q 'Use B' ours.md
+}

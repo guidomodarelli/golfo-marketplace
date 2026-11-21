@@ -141,11 +141,12 @@ def merge_rules(base_text, ours_text, theirs_text):
                                                       as_text(theirs_prefix))
     conflicts += int(prefix_conflict)
 
-    # The order is ours; a rule only theirs added goes after the rule that precedes it on their side.
+    # The order is ours; a rule ours does not have (theirs added it, or ours removed it and theirs may have
+    # changed it) goes after the rule that precedes it on their side, so three_way judges it too.
     order = [(rule_id, gap) for rule_id, gap, _ in ours_segments]
     previous = None
     for rule_id, gap, _ in theirs_segments:
-        if rule_id not in ours_rules and rule_id not in base_rules:
+        if rule_id not in ours_rules:
             known = [index for index, (other, _) in enumerate(order) if other == previous]
             order.insert(known[0] + 1 if known else (0 if previous is None else len(order)), (rule_id, gap))
         previous = rule_id
