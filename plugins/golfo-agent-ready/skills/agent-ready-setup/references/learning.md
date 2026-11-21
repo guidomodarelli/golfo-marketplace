@@ -98,6 +98,11 @@ la acción, el id, la rule y el statement, y nunca la cita.
 Antes de escribir, la rule resultante pasa el lint de una rule atómica ([atomic-rules.md](atomic-rules.md)):
 un statement con varias decisiones o demasiado largo no se escribe.
 
+**El aviso al usuario.** Después de escribir, `apply` le recuerda al agente que le avise al usuario en
+una línea que lo va a tener en cuenta («Lo tengo en cuenta para las próximas»), sin llamarlo rule ni
+skill. Con `learning.notify` apagado le dice que no avise: lo aprendido queda igual en el commit y en
+`log.md`. `accept`, que corre el desarrollador, no pide el aviso. En `--json` sale en `notify`.
+
 `apply` se niega con un error si la entrada no está decidida para aprender: espera otro episodio,
 venció, ya está aprendida, fue reemplazada (`superseded`) o `learning.mode` es `developer-review`.
 Una instrucción reemplazada vuelve solo si el usuario la da de nuevo: pasa otra vez a `candidate` y

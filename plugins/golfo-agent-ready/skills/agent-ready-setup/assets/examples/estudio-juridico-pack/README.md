@@ -22,6 +22,19 @@ repositorio propio y declarala en `.agents/agent-ready.json`:
 - Trae por `defaults` la capability `estudio-juridico/actas-infraccion`: rules de formato, citas
   normativas y datos personales (`actas-*`), y la skill `redactar-acta` con su plantilla en
   `templates/acta.md`.
+- Trae también por `defaults` la capability `learning` del contenido: lo que el abogado pide que dure
+  («de ahora en más, el número de expediente va en el encabezado») queda como rule del repo, sin que nadie
+  la escriba. Solo aprende de los mensajes del usuario, nunca del texto de un expediente
+  (`references/learning.md`). Su configuración va en el mismo manifest; por ejemplo, para que el agente
+  no avise lo que guarda ni pregunte el alcance de una instrucción ambigua:
+
+  ```json
+  {
+    "learning": { "notify": false, "clarify": "off" }
+  }
+  ```
+
+  Un repo que no la quiere la deja afuera con `"excludedDefaults": ["learning"]`.
 - El mismo caso funciona sin el stack, eligiendo solo la capability
   (`--profiles estudio-juridico/actas-infraccion`).
 - Un `AGENTS.md` anidado en `actas/` se suma cuando agent-ready-setup soporte instrucciones por carpeta

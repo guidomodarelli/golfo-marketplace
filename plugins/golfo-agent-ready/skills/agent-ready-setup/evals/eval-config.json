@@ -3734,6 +3734,43 @@
           "critical": true
         }
       ]
+    },
+    {
+      "id": "learning-notify-clarify-off",
+      "description": "Apagar el aviso de una línea y la pregunta de alcance del aprendizaje: learning.notify false y learning.clarify off en el manifest del repo.",
+      "input": "En el repo del estudio jurídico el agente aprende lo que le pido que dure. No quiero que me avise cada vez que guarda algo, y tampoco que me pregunte si una instrucción vale para todos los casos o solo para este escrito. ¿Qué configuro y qué hace el agente entonces con una instrucción dudosa? Respondé desde la skill, sin ejecutar comandos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "learning\\.notify|\"notify\"",
+          "description": "Apaga el aviso con learning.notify",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "learning\\.clarify|\"clarify\"",
+          "description": "Apaga la pregunta con learning.clarify",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "\"?off\"?",
+          "description": "clarify toma el valor off",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "agent-ready\\.json|config set",
+          "description": "Va en el manifest del repo o con agent-ready config set",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "documento actual|solo (a|en) (este|ese) (escrito|documento)|candidat",
+          "description": "Con clarify off aplica solo al documento actual y lo deja como candidato",
+          "critical": true
+        }
+      ]
     }
   ]
 }

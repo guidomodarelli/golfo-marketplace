@@ -84,8 +84,8 @@ publica `beam/elixir`:
 - Dos stacks que publican el mismo destino fallan antes de escribir, como cualquier par de profiles.
 - Un stack de un pack no tiene que ser de software: `assets/examples/estudio-juridico-pack/` publica
   `estudio-juridico/estudio`, que se detecta por la estructura de carpetas (`actas/**/*.md`), no requiere
-  `software-development` y trae por `defaults` la capability `actas-infraccion`. El mismo caso funciona con
-  la capability sola.
+  `software-development` y trae por `defaults` la capability `actas-infraccion` y la capability `learning`
+  del contenido. El mismo caso funciona con la capability sola.
 
 **Compatibilidad declarada.** El catálogo de un pack, y el del contenido (`agent-ready-pack.json`),
 pueden declarar tres campos opcionales (en el contenido, `version` es obligatoria):
