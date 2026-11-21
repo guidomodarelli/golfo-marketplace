@@ -13,6 +13,7 @@ import agent_ready_pack_signatures as pack_signatures
 import agent_ready_pack_tools as pack_tools
 import agent_ready_parity as parity
 import agent_ready_repo_facts as repo_facts
+from agent_ready_sync import describe as describe_team_sync
 from agent_ready_config import format_value
 from agent_ready_layout import MANIFEST_RELATIVE_PATH, review_cache_module
 from agent_ready_manifest import print_ignored_configuration
@@ -215,6 +216,9 @@ def print_status(status, brief):
                      (REVIEWS_ENABLED_KEY, SESSION_START_CONFLICTS_ENABLED_KEY, SESSION_START_REVIEWS_KEY))
     print_review_summary(status.get("reviews"), brief, stream, background)
     print_pack_tools(status.get("packTools"), stream, brief=True)
+    team_sync_line = describe_team_sync(status.get("teamSync"))
+    if team_sync_line and (not brief or not team_sync_line.startswith("Sync: up to date")):
+        write_line(paint(team_sync_line, "ok" if team_sync_line.startswith("Sync: up to date") else "warning", stream))
     sweep = status.get("learningSweep")
     if sweep and not sweep["ok"]:
         write_line(paint(f"Scheduled learning sweep missing: {sweep['detail']}. Episodes still close when a chat ends "

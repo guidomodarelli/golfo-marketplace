@@ -4,9 +4,9 @@ Cómo comparten lo aprendido las personas de un repositorio, y quién es cada un
 cuenta de Git. Leer al explicar `agent-ready identity`, el trailer `Learned-by:` o qué preset de
 colaboración usa un repositorio.
 
-> **Estado.** Esta es la base de la issue #169: la identidad, el preset y los merge drivers. La
-> sincronización automática, el aprendizaje personal y la resolución de conflictos llegan en las partes
-> siguientes; hasta entonces el preset solo se informa.
+> **Estado.** La identidad, el preset, los merge drivers y la sincronización
+> ([team-sync.md](team-sync.md)) son las partes 169a a 169c de la issue #169. El aprendizaje personal,
+> la promoción a equipo y la explicación de un conflicto llegan en las partes siguientes.
 
 ## Identidad
 
