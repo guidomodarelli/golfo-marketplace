@@ -2753,6 +2753,31 @@
       ]
     },
     {
+      "id": "redundant-rules-warning",
+      "description": "Un hallazgo redundancy de la revisión por par: es un aviso que no frena el apply con conflicts.block ni falla agent-ready check, se descarta con agent-ready review por su id y se apaga con reviews.redundancy.enabled.",
+      "input": "agent-ready plan me lista `! [7d2f9c41ab] .agents/rules/team.md <-> .agents/rules/testing.md: redundancy: Both rules ask to run Vitest for unit tests; keep testing.md. (a project rule)`. Tengo conflicts.block en true y el CI corre agent-ready check con los conflictos semánticos en fail. ¿Esto me va a frenar el apply o romper el CI? Si quiero conservar las dos rules a propósito, ¿cómo hago que deje de avisar este hallazgo, y cómo apago este tipo de aviso para todo el repo? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "review (accept|dismiss) 7d2f9c41ab",
+          "description": "Da el comando para decidir sobre ese hallazgo por su id",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "reviews.redundancy.enabled",
+          "description": "Nombra la clave que apaga los avisos de redundancia",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(?i)(no (te )?(va a |lo )?(frena|bloquea|detiene)|no (frena|bloquea|detiene)|nunca (frena|bloquea)|es (solo )?un aviso|no (hace|va a hacer) fallar|no (rompe|falla))",
+          "description": "Aclara que es un aviso: no frena el apply ni hace fallar el check",
+          "critical": true
+        }
+      ]
+    },
+    {
       "id": "pack-author-conflicts-check",
       "description": "El autor de un profile pack quiere que el CI del pack detecte contradicciones con golfo-agent-ready antes de publicarlo.",
       "input": "Mantengo un profile pack de agent-ready en su propio repo y quiero que su CI falle si alguno de sus perfiles choca con la base del pack oficial o con los perfiles que requiere, sin tener un repo consumidor. ¿Qué comando corro? No ejecutes Bash ni escribas archivos.",

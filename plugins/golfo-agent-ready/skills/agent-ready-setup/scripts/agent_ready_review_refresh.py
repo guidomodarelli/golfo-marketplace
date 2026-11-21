@@ -88,9 +88,11 @@ def refresh_enabled(project_root):
                (REVIEWS_ENABLED_KEY, SESSION_START_CONFLICTS_ENABLED_KEY, SESSION_START_REVIEWS_KEY))
 
 
-def checks(harness):
-    """{check: reviewer} of the reviews a unit of the cache can come from."""
-    return {conflicts_review.CONFLICT_CHECK: harness, skill_overlap.CHECK: skill_overlap.reviewer(harness)}
+def checks(harness, redundancy=True):
+    """{check: reviewer} of the reviews a unit of the cache can come from; ``redundancy`` is
+    reviews.redundancy.enabled, as the last apply left it for the hooks."""
+    return {conflicts_review.CONFLICT_CHECK: harness.reviewer(redundancy),
+            skill_overlap.CHECK: skill_overlap.reviewer(harness)}
 
 
 def refreshable(stale, known_checks):
@@ -103,11 +105,11 @@ def review_stale(project_root, provider, bash):
     """Review the stale units again and store what they find. Returns (reviewed, unchecked)."""
     module = review_cache_module()
     harness = conflicts_review.load_harness_review(ENGINE_SKILL_DIRECTORY)
-    reviewers = checks(harness)
+    cache = module.ReviewCache(project_root)
+    reviewers = checks(harness, cache.settings().get("redundancy", True))
     units = refreshable(stale_entries(project_root), reviewers)
     if not units:
         return 0, 0
-    cache = module.ReviewCache(project_root)
     # The local cache only: a background review never changes a file of the repository.
     writer = module.ReviewCache(project_root, settings=dict(cache.settings(), commit=False))
     model = module.PROVIDER_DEFAULTS[provider]["model"]

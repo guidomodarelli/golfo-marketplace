@@ -37,6 +37,21 @@ chequeo se omite con un aviso. Si el provider no da una respuesta válida, el ho
 chequeo como incompleto, nunca como limpio, y esos pares se revisan en la próxima edición. Un
 documento borrado no deja nada que comparar.
 
+**Rules redundantes.** Con `reviews.redundancy.enabled` (default `true`), la misma revisión por par
+también informa dos rules que piden lo mismo con otras palabras y sin la misma `key` (por ejemplo, una
+del pack y otra del proyecto), con el tipo `redundancy`. El texto dice cuál conservar y, si las dos son
+del proyecto, una `key` común para unirlas. Es un aviso, nunca un fallo:
+
+- **No frena ni falla:** `conflicts.block` no frena el apply que la trae, y `agent-ready check` y
+  `agent-ready conflicts` la listan aparte sin cambiar su código de salida.
+- **Misma caché y mismas decisiones:** sale de la misma llamada al provider que las contradicciones, se
+  guarda en la entrada del par y se acepta o descarta con `agent-ready review` (sección 6).
+- **Apagada:** el prompt no la pide y ningún reporte la muestra. La clave entra en la versión del chequeo,
+  así que cambiarla vuelve a revisar los pares; los hooks la toman del último apply.
+
+Dos rules con la misma `key` no esperan a la IA: el lint las informa como `key-conflict` o
+`duplicate-rule` ([atomic-rules.md](atomic-rules.md)).
+
 ## 2. Unidad y clave
 
 Cada revisión se guarda por unidad, nunca con un hash global: editar una rule solo vuelve
@@ -115,6 +130,7 @@ Módulo `reviews` de la configuración ([configuration.md](configuration.md), cl
 | `reviews.cache` | `true` | `false` revisa todo cada vez y nunca reutiliza una entrada; igual guarda el último resultado, así `status` lo muestra y se puede decidir sobre sus hallazgos |
 | `reviews.ttl` | sin vencimiento | horas que vale una entrada; pasado ese tiempo se revisa otra vez aunque nada haya cambiado |
 | `reviews.commit` | `false` | `true` guarda además cada resultado en `.agents/agent-ready.review-cache.json` para commitearlo (ver «Caché compartida») |
+| `reviews.redundancy.enabled` | `true` | la revisión por par también informa las rules redundantes, como aviso (sección 1); `false` no las pide ni las muestra |
 
 Los hooks corren sin el motor, así que cada apply deja las opciones efectivas en la
 caché, una vez por worktree, y los hooks las leen de ahí: un cambio de configuración vale
