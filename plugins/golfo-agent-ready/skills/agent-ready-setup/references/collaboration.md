@@ -108,5 +108,5 @@ Lo que varias personas enseñaron igual como preferencia propia pasa a ser del e
   unen por id.
 - **Lo que no promueve.** Una `key` que ya decide una rule del equipo, una instrucción sin `key` y la
   preferencia distinta de otra persona, que queda como personal. Con `sync.promoteAfterUsers: 0` no
-  promueve nunca.
+  promueve nunca; con `1`, cada rule personal con `key` pasa a equipo en el próximo sync.
 

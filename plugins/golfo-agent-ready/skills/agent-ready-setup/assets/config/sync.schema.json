@@ -30,7 +30,7 @@
       "default": 3
     },
     "promoteAfterUsers": {
-      "description": "Cuántas personas tienen que tener la misma rule personal (misma key y mismo enunciado) para que el sync la pase a equipo; las personales quedan reemplazadas por ella. 0 no promueve nunca.",
+      "description": "Cuántas personas tienen que tener la misma rule personal (misma key y mismo enunciado) para que el sync la pase a equipo; las personales quedan reemplazadas por ella. 0 no promueve nunca, y 1 pasa a equipo cada rule personal con key que el equipo no decide.",
       "type": "integer",
       "minimum": 0,
       "default": 2

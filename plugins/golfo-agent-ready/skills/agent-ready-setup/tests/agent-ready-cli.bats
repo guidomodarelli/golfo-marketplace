@@ -1086,3 +1086,18 @@ be_person_at() {
   [ "$(grep -c '^<!-- rule id=learned/reports-summary ' .agents/rules/learned.md)" -eq 1 ]
   [ "$(python3 -c 'import json; print(sum(1 for entry in json.load(open(".agents/learning/candidates.json"))["candidates"] if entry.get("learned", {}).get("action") == "promote"))' | tr -d '\r')" = 1 ]
 }
+
+@test "promoteAfterUsers 1 promotes the personal rule of one person, and 0 none" {
+  setup_office_remote
+  be_person_at "$XDG_CONFIG_HOME" ana
+  python3 -c 'import json; json.dump({"profiles": ["learning"], "sync": {"promoteAfterUsers": 0}}, open(".agents/agent-ready.json", "w"))'
+  teach_personal "$XDG_CONFIG_HOME" "Reports end with a one-line summary."
+  run_cli sync
+  [ "$status" -eq 0 ]
+  ! grep -q 'learned/reports-summary' .agents/rules/learned.md 2>/dev/null
+
+  python3 -c 'import json; json.dump({"profiles": ["learning"], "sync": {"promoteAfterUsers": 1}}, open(".agents/agent-ready.json", "w"))'
+  run_cli sync
+  [ "$status" -eq 0 ]
+  grep -Fxq '<!-- rule id=learned/reports-summary key=reports.summary -->' .agents/rules/learned.md
+}

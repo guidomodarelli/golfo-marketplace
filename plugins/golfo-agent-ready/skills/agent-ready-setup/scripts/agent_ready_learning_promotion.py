@@ -63,7 +63,8 @@ def promotable(project_root, threshold):
 
 def promote(project_root, threshold, today):
     """Promote what is promotable, under the lock of the registry the caller holds; the paths it wrote."""
-    if threshold < 2:
+    # 0 turns promotion off; 1 promotes each personal rule with a key that the team does not decide.
+    if threshold < 1:
         return []
     found = promotable(project_root, threshold)
     if not found:
