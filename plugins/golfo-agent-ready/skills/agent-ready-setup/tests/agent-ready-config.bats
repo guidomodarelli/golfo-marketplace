@@ -32,7 +32,9 @@ setup() {
   git config --global core.autocrlf false
   unset CODEX_HOME AGENT_READY_SETUP_UPDATES AGENT_READY_SETUP_STACK_DIR AGENT_READY_SETUP_REVIEW_MODE
   unset AGENT_READY_SETUP_STACK AGENT_READY_SETUP_PROFILES AGENT_READY_SETUP_SYNC_FOREGROUND
+  # The defaults of every option, memory.engram too: the content of this suite has no memory-engram.
   unset AGENT_READY_SETUP_CI AGENT_READY_SETUP_REFRESH AGENT_READY_SETUP_DETECTION AGENT_READY_SETUP_TOOLS AGENT_READY_SETUP_MEMORY
+  copy_content_pack_without_memory
   for provider_cli in claude codex; do
     cat > "$fake_bin/$provider_cli" <<EOF
 #!/bin/bash
@@ -109,7 +111,7 @@ run_bootstrap() {
 copy_skill() {
   source_copy="$test_root/skill"
   cp -R "$skill_dir" "$source_copy"
-  copy_content_pack
+  copy_content_pack_without_memory
 }
 
 @test "a repository without a manifest is configured with every default, and the apply writes none of them" {

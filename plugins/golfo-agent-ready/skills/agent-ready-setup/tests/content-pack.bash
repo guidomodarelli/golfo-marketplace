@@ -27,6 +27,20 @@ copy_content_pack() {
   export AGENT_READY_SETUP_CONTENT_DIR="$content_dir"
 }
 
+# A copy of the content pack without the profile memory-engram, for a suite that keeps
+# memory.engram at its default: with no profile to bring, the default downloads nothing.
+copy_content_pack_without_memory() {
+  copy_content_pack
+  python3 - "$content_dir/agent-ready-pack.json" <<'PY'
+import json, sys
+path = sys.argv[1]
+catalog = json.load(open(path, encoding="utf-8"))
+catalog["profiles"].pop("memory-engram", None)
+json.dump(catalog, open(path, "w", encoding="utf-8"), indent=2)
+PY
+  rm -rf "$content_dir/profiles/memory-engram"
+}
+
 # The content pack as a Git repository reached at its real URL through url.insteadOf, for the tests
 # of sources.golfo itself: refs, pins and updates. Its copy can change, committed, like a release.
 publish_content_pack_repository() {
