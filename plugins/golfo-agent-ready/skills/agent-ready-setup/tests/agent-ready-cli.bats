@@ -807,3 +807,62 @@ PY
   [ "$status" -eq 0 ]
   [ ! -s "$FAKE_SCHEDULER_STATE/calls.log" ]
 }
+
+# 169a: the identity of the user of the system, apart from the Git account, and the collaboration preset.
+@test "identity defaults to user@machine, and set and link store it for this user of the system only" {
+  run_cli identity show --json
+  [ "$status" -eq 0 ]
+  [ "$(json_value "$output" 'data["source"]')" = "default" ]
+  [[ "$(json_value "$output" 'data["id"]')" =~ ^[a-z0-9][a-z0-9._-]*@[a-z0-9._-]+$ ]]
+  [ ! -e "$XDG_CONFIG_HOME/agent-ready-setup/identity.json" ]
+
+  run_cli identity set --name "Ana Pérez" --id ana
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Identity: ana (Ana Pérez), set on this machine."* ]]
+  [ "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["id"])' \
+    "$XDG_CONFIG_HOME/agent-ready-setup/identity.json" | tr -d '\r')" = "ana" ]
+
+  # The same person on a second machine adopts the id and keeps the name of this one.
+  run_cli identity link ana-perez
+  [ "$status" -eq 0 ]
+  run_cli identity show --json
+  [ "$(json_value "$output" 'data["id"]')" = "ana-perez" ]
+  [ "$(json_value "$output" 'data["name"]')" = "Ana Pérez" ]
+  # It lives outside the repository: nothing to commit.
+  [ -z "$(git status --porcelain --untracked-files=all -- .agents)" ]
+
+  run_cli identity set --id "Ana Pérez"
+  [ "$status" -eq 1 ]
+  [[ "$stderr" == *"identity id 'Ana Pérez' must be 1 to 64 lowercase letters"* ]]
+
+  # A broken file is replaced when both fields are given, as its error says.
+  printf '%s\n' '{"id": "Ana Pérez"}' > "$XDG_CONFIG_HOME/agent-ready-setup/identity.json"
+  run_cli identity show
+  [ "$status" -eq 1 ]
+  [[ "$stderr" == *"fix it with agent-ready identity set"* ]]
+  run_cli identity set --id ana --name Ana
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Identity: ana (Ana), set on this machine."* ]]
+}
+
+@test "collaboration auto is software with software-development in the selection and business without it" {
+  mkdir -p .agents
+  printf '%s\n' '{"assets": {}, "profileOrder": ["node", "software-development"]}' > .agents/agent-ready.lock.json
+  run_cli identity show --json
+  [ "$status" -eq 0 ]
+  [ "$(json_value "$output" 'data["collaboration"]["effective"]')" = "software" ]
+
+  printf '%s\n' '{"assets": {}, "profileOrder": ["learning"]}' > .agents/agent-ready.lock.json
+  run_cli identity show
+  [[ "$output" == *"Collaboration: business, chosen by the selection."* ]]
+
+  # A monorepo that selects its code stacks only in a workspace.
+  printf '%s\n' '{"assets": {}, "profileOrder": [], "workspaces": {"apps/web": {"profiles": ["react"], "own": ["react", "software-development"]}}}' \
+    > .agents/agent-ready.lock.json
+  run_cli identity show --json
+  [ "$(json_value "$output" 'data["collaboration"]["effective"]')" = "software" ]
+
+  printf '%s\n' '{"collaboration": "software"}' > .agents/agent-ready.json
+  run_cli identity show --json
+  [ "$(json_value "$output" 'data["collaboration"]')" = "{'configured': 'software', 'effective': 'software'}" ]
+}

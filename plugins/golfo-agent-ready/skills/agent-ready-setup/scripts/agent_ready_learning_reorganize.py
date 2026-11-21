@@ -16,6 +16,7 @@ import re
 import subprocess
 import tempfile
 
+import agent_ready_identity as identity
 import agent_ready_learning as learning
 import agent_ready_learning_episodes as learning_episodes
 import agent_ready_rules
@@ -418,6 +419,8 @@ def without_rules(project_root, relative_path, rule_ids, paths):
 
 def write_operation(project_root, registry, operation, items, settings, accepted):
     """Write one operation, register it and commit it. Returns {operation, entries, commit}."""
+    # Read before anything is written: a broken identity must leave the rules as they were.
+    learned_by = identity.learned_by_trailer()
     sources = [items[rule_id] for rule_id in operation["ruleIds"]]
     rules = [source["rule"] for source in sources]
     relative_path = rules[0].path
@@ -510,7 +513,8 @@ def write_operation(project_root, registry, operation, items, settings, accepted
     message = (f"learn: reorganize ({operation['type']}) {', '.join(operation['ruleIds'])}\n\n"
                + "".join(f"Learning-Id: {entry_id}\n" for entry_id in new_ids)
                + f"Reorganizes: {', '.join(sorted(source_ids))}\n"
-               + (f"Learned-from: {', '.join(episodes)}\n" if episodes else ""))
+               + (f"Learned-from: {', '.join(episodes)}\n" if episodes else "")
+               + learned_by)
     sha = commit_paths(project_root, written_paths + [learning.candidates_path(project_root), log_path], message)
     return {"operation": operation, "entries": [learning.public_view(entry, settings["ttl_days"]) for entry in created],
             "commit": sha}

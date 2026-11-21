@@ -11,6 +11,7 @@ import re
 import subprocess
 import unicodedata
 
+import agent_ready_identity as identity
 import agent_ready_learning as learning
 import agent_ready_rules
 from agent_ready_common import ProfileError, StateError, write_text_atomically
@@ -287,10 +288,13 @@ def log_line(date, action, entry, written):
     return f"- {date} {action} {entry['id']} ({target}{overrides}{replaced}): {entry['statement']}\n"
 
 
-def commit(project_root, paths, entry, episodes):
-    """One commit with only the files of this learning, whatever else is staged."""
+def commit(project_root, paths, entry, episodes, learned_by):
+    """One commit with only the files of this learning, whatever else is staged.
+
+    Learned-by names the person of this machine (agent_ready_identity.py): the commit may go out with a
+    Git account that several people share."""
     message = (f"learn: {entry['statement']}\n\nLearning-Id: {entry['id']}\n"
-               f"Learned-from: {', '.join(episodes)}\n")
+               f"Learned-from: {', '.join(episodes)}\n" + learned_by)
     return commit_paths(project_root, paths, message)
 
 
@@ -319,6 +323,8 @@ def apply(project_root, candidate_id, settings, skill_path=None, accepted=False)
 
     ``accepted`` is learn accept: the developer decides, so the rules of evidence and learning.mode do
     not stop it; what the entry may never do (locked, managed, scope) still does."""
+    # Read before anything is written: a broken identity must leave the entry as it was, to retry.
+    learned_by = identity.learned_by_trailer()
     with learning.RegistryLock(project_root):
         registry = learning.read_registry(project_root)
         learning.refresh_expiry(registry, settings["today"], settings["ttl_days"])
@@ -370,6 +376,6 @@ def apply(project_root, candidate_id, settings, skill_path=None, accepted=False)
                                                      entry, written))
         episodes = sorted({item["episode"] for item in learning.live_evidence(entry, settings["ttl_days"])})
         written["commit"] = commit(project_root, [written["path"], learning.candidates_path(project_root), log_path],
-                                   entry, episodes)
+                                   entry, episodes, learned_by)
     written["entry"] = entry
     return written

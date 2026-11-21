@@ -222,6 +222,9 @@ managed_rule() {
   [[ "$output" == *"agent-ready learn apply learn-"* ]]
   candidate="$(id_of 'header')"
 
+  # The person of this machine, whatever Git account makes the commit (#169).
+  mkdir -p "$XDG_CONFIG_HOME/agent-ready-setup"
+  printf '%s\n' '{"id": "ana", "name": "Ana"}' > "$XDG_CONFIG_HOME/agent-ready-setup/identity.json"
   agent_ready learn apply "$candidate"
   [ "$status" -eq 0 ]
   [[ "$output" == "$candidate  create: learned/records-header in .agents/rules/learned.md (commit "* ]]
@@ -234,6 +237,7 @@ managed_rule() {
   # One commit with the rule, the registry and the log; what the user had staged stays out of it.
   [ "$(git log -1 --format=%B | grep -c "^Learning-Id: $candidate$")" -eq 1 ]
   git log -1 --format=%B | grep -q '^Learned-from: s1:'
+  git log -1 --format=%B | grep -qx 'Learned-by: ana'
   [ "$(git show --name-only --format= HEAD | sort | tr '\n' ' ')" = \
     ".agents/learning/candidates.json .agents/learning/log.md .agents/rules/learned.md " ]
   git diff --cached --name-only | grep -Fxq notes.txt
@@ -245,6 +249,25 @@ managed_rule() {
 
 json_field() {
   printf '%s' "$output" | python3 -c 'import json, sys; print(json.load(sys.stdin)[sys.argv[1]])' "$1" | tr -d '\r'
+}
+
+@test "a broken identity stops apply before it writes, so it applies once the identity is fixed" {
+  commit_identity
+  header_rule --quote "de ahora en más, número arriba" --explicit --session s1
+  candidate="$(id_of 'header')"
+  mkdir -p "$XDG_CONFIG_HOME/agent-ready-setup"
+  printf '%s\n' '{"id": "Ana Pérez", "name": "Ana"}' > "$XDG_CONFIG_HOME/agent-ready-setup/identity.json"
+  agent_ready learn apply "$candidate"
+  [ "$status" -eq 1 ]
+  [[ "$stderr" == *"identity id 'Ana Pérez' must be"* ]]
+  [ ! -e .agents/rules/learned.md ]
+  [ "$(registry_value 'data["candidates"][0]["status"]')" = "candidate" ]
+
+  agent_ready identity set --id ana --name Ana
+  [ "$status" -eq 0 ]
+  agent_ready learn apply "$candidate"
+  [ "$status" -eq 0 ]
+  git log -1 --format=%B | grep -qx 'Learned-by: ana'
 }
 
 @test "learning.notify: apply asks the agent for the one-line notice, and off asks it to stay silent" {

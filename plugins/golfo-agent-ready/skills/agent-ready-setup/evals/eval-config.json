@@ -3858,6 +3858,43 @@
           "critical": true
         }
       ]
+    },
+    {
+      "id": "identity-learned-by-with-shared-git-account",
+      "description": "Con una cuenta de Git compartida, la persona de cada aprendizaje sale de agent-ready identity y queda en el trailer Learned-by, y el preset de un estudio sin stack de código es business.",
+      "input": "En nuestro estudio contable tres personas usan la misma cuenta de Git en sus computadoras, y el repo no tiene stack de código. ¿Cómo sabe agent-ready quién aprendió cada rule, dónde se guarda eso en cada máquina, qué comando lo configura y en la segunda computadora de Marta cómo hacemos que sea la misma persona? ¿Qué preset de colaboración nos toca? Respondé desde la skill, sin ejecutar comandos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "Learned-by",
+          "description": "La persona queda en el trailer Learned-by",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "identity (set|link)",
+          "description": "Se configura con agent-ready identity set o link",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "identity link",
+          "description": "La segunda máquina usa identity link",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "identity\\.json",
+          "description": "Vive en identity.json de la configuración del usuario",
+          "critical": false
+        },
+        {
+          "type": "regex",
+          "pattern": "business",
+          "description": "Sin stack de código, el preset es business",
+          "critical": true
+        }
+      ]
     }
   ]
 }

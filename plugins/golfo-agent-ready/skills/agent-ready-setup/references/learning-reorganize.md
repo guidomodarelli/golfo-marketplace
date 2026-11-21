@@ -41,7 +41,7 @@ como datos. Cada operación pasa por estos filtros:
 
 Antes de escribir, la reorganización vuelve a leer las rules: si cambiaron mientras respondía el
 provider, la operación se descarta. Cada operación aplicada es un commit con un `Learning-Id:` por rule
-nueva, `Reorganizes:` con las entradas que reemplaza y `Learned-from:`, y una línea `reorganize` en
+nueva, `Reorganizes:` con las entradas que reemplaza, `Learned-from:` y `Learned-by:`, y una línea `reorganize` en
 `log.md`. Las rules nuevas son entradas `learned` del registro con la evidencia de las que reemplazan,
 que pasan a `superseded`. Las rules nuevas conservan la `key` común y la unión de los `overrides`, y
 llevan ids nuevos: nunca heredan el de una rule que reemplazan.
