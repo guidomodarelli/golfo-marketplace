@@ -16,10 +16,15 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import types
 
 CHECK = "harness-consistency"
 # Bump when the prompt or the schema changes: it is part of every cache key.
-CHECK_VERSION = 3
+CHECK_VERSION = 4
+# The kinds of finding of a contradiction, and the one of two rules that say the same thing in other words
+# (reviews.redundancy.enabled), which is only asked for when the key is on.
+CONFLICT_KINDS = ("contradiction", "inconsistency")
+REDUNDANCY_KIND = "redundancy"
 HARNESS_ROOTS = (".agents", ".claude")
 # Instructions file of a root that is reviewed with its rules and skills.
 ROOT_INSTRUCTIONS = {".claude": "CLAUDE.md"}
@@ -44,28 +49,35 @@ RUN_ARGUMENTS_FILE_THROUGH_BASH = ('arguments=(); while IFS= read -r -d "" argum
                                    'done < "$1"; exec "${arguments[@]}"')
 FIND_THROUGH_BASH = 'command -v "$0" >/dev/null 2>&1'
 ARGUMENTS_FILE_NAME = "arguments"
-RESULT_SCHEMA = {
-    "type": "object",
-    "additionalProperties": False,
-    "required": ["findings"],
-    "properties": {
-        "findings": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "additionalProperties": False,
-                "required": ["pair", "documents", "lines", "kind", "text"],
-                "properties": {
-                    "pair": {"type": "integer"},
-                    "documents": {"type": "array", "items": {"type": "string"}},
-                    "lines": {"type": "array", "items": {"type": "string"}},
-                    "kind": {"type": "string", "enum": ["contradiction", "inconsistency"]},
-                    "text": {"type": "string"},
+
+
+def result_schema(kinds):
+    """The answer of the provider: the findings of the numbered pairs, each of one of ``kinds``."""
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["findings"],
+        "properties": {
+            "findings": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["pair", "documents", "lines", "kind", "text"],
+                    "properties": {
+                        "pair": {"type": "integer"},
+                        "documents": {"type": "array", "items": {"type": "string"}},
+                        "lines": {"type": "array", "items": {"type": "string"}},
+                        "kind": {"type": "string", "enum": list(kinds)},
+                        "text": {"type": "string"},
+                    },
                 },
-            },
-        }
-    },
-}
+            }
+        },
+    }
+
+
+RESULT_SCHEMA = result_schema(CONFLICT_KINDS)
 # The pairs travel with the documents on stdin: a bulk edit has thousands of pairs, more than one
 # command-line argument can hold.
 PROMPT = """You review agent instruction files (rules and skills) for contradictions.
@@ -86,6 +98,32 @@ the two documents involved, as written in <document path="...">), lines (the
 quoted line of each document involved), kind (contradiction or inconsistency)
 and text (one sentence). Return an empty findings list when the pairs agree.
 """
+# Appended to PROMPT with reviews.redundancy.enabled.
+REDUNDANCY_PROMPT = """
+Also report, with kind redundancy, two rules of a pair that ask for the same thing
+in other words, so that one of them adds nothing to the other. A rule that is
+broader, stricter or about other files is not redundant. Say in text which one
+to keep and why and, when both are rules the project wrote, a common key to merge
+them under. A redundancy is never a contradiction: report each problem once.
+"""
+
+
+def review_prompt(redundancy):
+    """The prompt of a review, with the redundancy part when reviews.redundancy.enabled is on."""
+    return PROMPT + REDUNDANCY_PROMPT if redundancy else PROMPT
+
+
+def check_version(redundancy):
+    """The version in the cache key: a review that also looked for redundancy is not one that did not."""
+    return f"{CHECK_VERSION}+{REDUNDANCY_KIND}" if redundancy else CHECK_VERSION
+
+
+def reviewer(redundancy):
+    """This check as review_conflicts and the background review run it, with or without redundancy."""
+    def review(bash, provider, model, effort, pairs, texts, working_directory):
+        return review_pairs(bash, provider, model, effort, pairs, texts, working_directory, redundancy)
+
+    return types.SimpleNamespace(CHECK=CHECK, CHECK_VERSION=check_version(redundancy), review_pairs=review)
 
 
 def load_review_cache():
@@ -269,21 +307,25 @@ def finding_pair(finding, left, rights, texts):
     return rights[0][1]
 
 
-def review_pairs(bash, provider, model, effort, pairs, texts, working_directory):
-    """Findings of each pair, or None when the provider gave no valid answer."""
+def review_pairs(bash, provider, model, effort, pairs, texts, working_directory, redundancy=False):
+    """Findings of each pair, or None when the provider gave no valid answer. ``redundancy`` also asks for
+    two rules that say the same thing (reviews.redundancy.enabled)."""
     names = sorted({name for pair in pairs for name in pair})
     groups = pair_groups(pairs)
     listing = "".join(f"{number}. {left} <-> {', '.join(right for right, _ in rights)}\n"
                       for number, (left, rights) in enumerate(groups, start=1))
     documents_text = f"<pairs>\n{listing}</pairs>\n\n" + "".join(
         f'<document path="{name}">\n{texts[name]}\n</document>\n\n' for name in names)
-    result = run_provider(bash, provider, model, effort, documents_text, working_directory)
+    kinds = CONFLICT_KINDS + ((REDUNDANCY_KIND,) if redundancy else ())
+    result = run_provider(bash, provider, model, effort, documents_text, working_directory,
+                          prompt=review_prompt(redundancy), schema=result_schema(kinds))
     if result is None:
         return None
     findings = {pair: [] for pair in pairs}
     for finding in result["findings"]:
         number = finding.get("pair") if isinstance(finding, dict) else None
-        if isinstance(number, int) and 1 <= number <= len(groups):
+        # A kind the review did not ask for (redundancy with the key off) is not reported.
+        if isinstance(number, int) and 1 <= number <= len(groups) and finding.get("kind", CONFLICT_KINDS[1]) in kinds:
             left, rights = groups[number - 1]
             pair = finding_pair(finding, left, rights, texts)
             findings[pair].append({"files": list(pair), "lines": [str(line) for line in finding.get("lines", [])],
@@ -307,6 +349,8 @@ def review_root(bash, cache_module, cache, project_root, root, changed, provider
         if owned:
             texts[name] = owned
     model, effort = cache_module.PROVIDER_DEFAULTS[provider]["model"], cache_module.PROVIDER_DEFAULTS[provider]["effort"]
+    # reviews.redundancy.enabled, as the last apply left it: it changes the prompt, so it is in the cache key.
+    check = reviewer(cache.settings().get("redundancy", True))
     # A file split into rules (review-cache.py, rule_units) takes part with each rule: an edit of one rule
     # finds the pairs of its neighbors in the cache.
     edited_documents = [document for document in texts if cache_module.document_path(document) in edited]
@@ -317,7 +361,7 @@ def review_root(bash, cache_module, cache, project_root, root, changed, provider
     shared = 0
     for pair in pairs:
         contents = {name: texts[name] for name in pair}
-        key = cache_module.unit_key(CHECK, CHECK_VERSION, provider, model, engine, contents)
+        key = cache_module.unit_key(CHECK, check.CHECK_VERSION, provider, model, engine, contents)
         entry = cache.lookup(cache_module.unit_id(CHECK, pair), key)
         if entry is None:
             pending.append((pair, key, contents))
@@ -329,7 +373,8 @@ def review_root(bash, cache_module, cache, project_root, root, changed, provider
           f"({len(pairs) - len(pending)} from the cache{shared_note})...")
     unreviewed = 0
     if pending:
-        reviewed = review_pairs(bash, provider, model, effort, [pair for pair, _, _ in pending], texts, os.path.join(project_root, root))
+        reviewed = check.review_pairs(bash, provider, model, effort, [pair for pair, _, _ in pending], texts,
+                                      os.path.join(project_root, root))
         if reviewed is None:
             unreviewed = len(pending)
             print(f"{LOG_PREFIX} WARNING: {provider} gave no valid answer; the pending pairs are reviewed again on the next edit.",
@@ -339,7 +384,7 @@ def review_root(bash, cache_module, cache, project_root, root, changed, provider
             for pair, key, contents in pending:
                 verdict = cache_module.VERDICT_FINDINGS if reviewed[pair] else cache_module.VERDICT_CONSISTENT
                 records[cache_module.unit_id(CHECK, pair)] = cache_module.entry_for(
-                    CHECK, CHECK_VERSION, provider, model, engine, contents, key, verdict, reviewed[pair])
+                    CHECK, check.CHECK_VERSION, provider, model, engine, contents, key, verdict, reviewed[pair])
                 known[pair] = reviewed[pair]
             try:
                 cache.store(records)
@@ -361,7 +406,8 @@ def review_root(bash, cache_module, cache, project_root, root, changed, provider
     # A clean verdict needs every pair reviewed; pairs without an answer leave the check incomplete.
     if unreviewed:
         print(f"{LOG_PREFIX} Check incomplete: {unreviewed} of {len(pairs)} pairs were not reviewed.{quiet_note}")
-    elif not findings:
+    elif not any(not cache_module.is_redundancy(finding) for finding in findings):
+        # A redundancy is a warning: the rules can still agree.
         print(f"{LOG_PREFIX} No contradictions found.{quiet_note}")
 
 

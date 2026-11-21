@@ -32,6 +32,7 @@ setup() {
   unset CODEX_HOME AGENT_READY_SETUP_UPDATES AGENT_READY_SETUP_REVIEW_MODE AGENT_READY_SETUP_STACK_DIR
   export FAKE_CALLS="$test_root/provider-calls.log"
   export FAKE_INPUT="$test_root/provider-input.log"
+  export FAKE_PROMPTS="$test_root/provider-prompts.log"
   export FAKE_CONFLICT_FIRST="verify-changes.md"
   export FAKE_CONFLICT_SECOND=".agents/rules/team.md"
   : > "$FAKE_CALLS"
@@ -71,12 +72,23 @@ if "competition" in os.environ.get("FAKE_MODE", "") and '<document path=".agents
 if os.environ.get("FAKE_REQUIRE_TEXT", "") not in text:
     print(json.dumps({"structured_output": {"findings": []}}))
     sys.exit(0)
+# FAKE_KIND=redundancy answers a redundancy instead, and only when the prompt asked for one, as the
+# schema of a real provider would; each prompt that asked for one is logged in FAKE_PROMPTS.
+asked = any("with kind redundancy" in argument for argument in sys.argv[1:])
+if asked:
+    with open(os.environ["FAKE_PROMPTS"], "a", encoding="utf-8") as log:
+        log.write("redundancy\n")
+redundancy = os.environ.get("FAKE_KIND") == "redundancy"
 for number, first, second in re.findall(r"^(\d+)\. (\S+) <-> (\S+)$", text, re.M):
     names = (first, second)
     if any(os.environ["FAKE_CONFLICT_FIRST"] in name for name in names) and any(
             os.environ["FAKE_CONFLICT_SECOND"] in name for name in names):
-        findings.append({"pair": int(number), "lines": ["Verify every change.", "Never verify changes."],
-                         "kind": "contradiction", "text": "One rule verifies every change and the other forbids it."})
+        if redundancy and asked:
+            findings.append({"pair": int(number), "lines": ["Verify every change.", "Check each change you make."],
+                             "kind": "redundancy", "text": "Both rules ask to verify each change; keep the managed one."})
+        elif not redundancy:
+            findings.append({"pair": int(number), "lines": ["Verify every change.", "Never verify changes."],
+                             "kind": "contradiction", "text": "One rule verifies every change and the other forbids it."})
 print(json.dumps({"structured_output": {"findings": findings}}))
 PY
   cat > "$fake_bin/claude" <<EOF
@@ -84,7 +96,7 @@ PY
 [[ "\$1" == -p ]] || exit 0
 printf 'claude\n' >> "\$FAKE_CALLS"
 [[ "\${FAKE_FAIL:-0}" == 1 ]] && { cat > /dev/null; exit 1; }
-python3 "$fake_bin/fake-provider.py"
+python3 "$fake_bin/fake-provider.py" "\$@"
 EOF
   chmod +x "$fake_bin/claude"
   cat > "$fake_bin/codex" <<EOF
@@ -92,11 +104,12 @@ EOF
 [[ "\$1" == exec ]] || exit 0
 printf 'codex\n' >> "\$FAKE_CALLS"
 [[ "\${FAKE_FAIL:-0}" == 1 ]] && { cat > /dev/null; exit 1; }
+arguments=("\$@")
 while [[ \$# -gt 0 ]]; do
   [[ "\$1" == --output-last-message ]] && result_path="\$2"
   shift
 done
-python3 "$fake_bin/fake-provider.py" > "\$result_path"
+python3 "$fake_bin/fake-provider.py" "\${arguments[@]}" > "\$result_path"
 EOF
   chmod +x "$fake_bin/codex"
 }
@@ -238,6 +251,98 @@ first_conflict_id() {
   [ "$status" -ne 0 ]
   [[ "$stderr" == *"conflicts.block: this apply brings 1 semantic conflict(s)"* ]]
   [[ "$stderr" == *"accepted before the files changed"* ]]
+}
+
+redundancy_id() {
+  agent_ready plan --json
+  printf '%s' "$output" | python3 -c 'import json,sys; print(json.load(sys.stdin)["semanticConflicts"]["redundancies"][0]["id"])' | tr -d '\r'
+}
+
+@test "two rules that say the same thing are a redundancy warning: it never stops an apply and can be dismissed" {
+  write_manifest '{"profiles": ["node"], "conflicts": {"block": true}}'
+  agent_ready apply
+  [ "$status" -eq 0 ]
+  project_rule
+  change_managed_rule
+  export FAKE_KIND=redundancy
+
+  agent_ready plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Redundant rules (a warning; keep one of each pair):"* ]]
+  [[ "$output" == *".agents/rules/team.md <-> .agents/rules/verify-changes.md: redundancy: Both rules ask to verify each change; keep the managed one. (this update)"* ]]
+  [[ "$output" != *"No conflicts found"* ]]
+  grep -Fxq redundancy "$FAKE_PROMPTS"
+  reviewed_calls="$(calls)"
+  agent_ready plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"redundancy: Both rules ask to verify each change"* ]]
+  [ "$(calls)" -eq "$reviewed_calls" ]
+
+  # conflicts.block only stops on a conflict: the apply writes the rule and warns.
+  agent_ready apply
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"WARNING: redundant rules"*"redundancy: Both rules ask to verify each change"* ]]
+  grep -Fq 'Verify every change.' .agents/rules/verify-changes.md
+  agent_ready conflicts --offline
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Redundant rules (a warning, not a conflict):"* ]]
+  agent_ready status
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"redundancy: Both rules ask to verify each change"* ]]
+
+  finding="$(redundancy_id)"
+  agent_ready review dismiss "$finding" --reason "The team keeps both on purpose"
+  [ "$status" -eq 0 ]
+  agent_ready plan
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"redundancy: Both rules ask to verify each change"* ]]
+}
+
+@test "with reviews.redundancy.enabled off the review neither asks for redundant rules nor reports them" {
+  write_manifest '{"profiles": ["node"], "reviews": {"redundancy": {"enabled": false}}}'
+  agent_ready apply
+  [ "$status" -eq 0 ]
+  project_rule
+  export FAKE_KIND=redundancy
+
+  agent_ready plan
+  [ "$status" -eq 0 ]
+  [ "$(pair_reviews)" -ge 1 ]
+  [[ "$output" != *"Redundant rules"* ]]
+  [[ "$output" != *"redundancy:"* ]]
+  [ ! -s "$FAKE_PROMPTS" ]
+  # The hooks follow the last apply: their copy of the options has the key off too.
+  run python3 -B -c 'import importlib.util, sys
+spec = importlib.util.spec_from_file_location("review_cache", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+print(module.ReviewCache(".").settings()["redundancy"])' "$engine_copy/assets/common/hooks/review-cache.py"
+  [ "$(printf '%s' "$output" | tr -d '\r')" = "False" ]
+}
+
+@test "agent-ready check lists a redundancy, but only a conflict fails it" {
+  # Without the cache, each check asks the provider again with its own answer.
+  write_manifest '{"profiles": ["node"], "ci": {"conflicts": {"semantic": "fail"}}, "reviews": {"cache": false}}'
+  agent_ready apply
+  [ "$status" -eq 0 ]
+  project_rule
+  # The exit status of the same check without any finding.
+  FAKE_CONFLICT_SECOND=no-such-rule agent_ready check --format json
+  without_findings="$status"
+  [[ "$output" == *'"semantic": []'* ]]
+
+  export FAKE_KIND=redundancy
+  agent_ready check
+  [ "$status" -eq "$without_findings" ]
+  [[ "$output" == *"Redundant rules (a warning, it never fails the check):"* ]]
+  [[ "$output" == *"redundancy: Both rules ask to verify each change"* ]]
+  agent_ready check --format json
+  [[ "$output" == *'"semantic": []'* ]]
+
+  # The same pair as a contradiction is a conflict of ci.conflicts.semantic.
+  unset FAKE_KIND
+  agent_ready check --format json
+  [[ "$output" == *'"semantic": ['*"One rule verifies every change and the other forbids it."* ]]
 }
 
 @test "a review without an answer is incomplete, never clean, and conflicts.block stops on it" {

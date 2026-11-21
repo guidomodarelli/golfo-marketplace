@@ -41,7 +41,7 @@ LOCK_POLL_SECONDS = 0.05
 LOCK_PERMISSION_SECONDS = 2
 REPLACE_ATTEMPTS = 20
 SECONDS_PER_HOUR = 3600
-DEFAULT_SETTINGS = {"enabled": True, "cache": True, "ttl": None, "commit": False}
+DEFAULT_SETTINGS = {"enabled": True, "cache": True, "ttl": None, "commit": False, "redundancy": True}
 # With reviews.commit, every result is also saved here, to be committed, so CI and the team skip
 # the reviews whose key matches. Anyone can edit a versioned file: see trusted_shared_entry().
 SHARED_CACHE_RELATIVE_PATH = ".agents/agent-ready.review-cache.json"
@@ -71,6 +71,9 @@ DECISION_SCOPES = (SCOPE_CONTENT, SCOPE_PAIR)
 # A finding nobody decided on, and one whose content decision is older than its files.
 STATUS_OPEN = "open"
 STATUS_TO_CONFIRM = "to-confirm"
+# Two rules that ask for the same thing in other words (reviews.redundancy.enabled): a warning, never a
+# failure, so it neither stops an apply under conflicts.block nor fails agent-ready check.
+KIND_REDUNDANCY = "redundancy"
 FINDING_ID_LENGTH = 10
 
 
@@ -574,11 +577,12 @@ class ReviewCache:
             write_json_atomically(self.shared_path, {"schemaVersion": SCHEMA_VERSION, "entries": entries},
                                   ".agent-ready.review-cache.")
 
-    def write_settings(self, enabled, cache, ttl, commit=False):
+    def write_settings(self, enabled, cache, ttl, commit=False, redundancy=True):
         """Record the effective reviews options, so the hooks honor them without the engine."""
         if not self.path:
             return
-        settings = {"enabled": bool(enabled), "cache": bool(cache), "ttl": ttl, "commit": bool(commit)}
+        settings = {"enabled": bool(enabled), "cache": bool(cache), "ttl": ttl, "commit": bool(commit),
+                    "redundancy": bool(redundancy)}
         if self.settings() == settings:
             return
         with self.locked():
@@ -814,10 +818,17 @@ def visible(annotated):
     return [finding for finding in annotated if finding["status"] in (STATUS_OPEN, STATUS_TO_CONFIRM)]
 
 
+def is_redundancy(finding):
+    """True for two rules that say the same thing: a warning that never stops nor fails anything."""
+    return isinstance(finding, dict) and finding.get("kind") == KIND_REDUNDANCY
+
+
 def finding_line(finding):
     """One line of a hook or a report: `!` for an open finding, `?` for a decision to confirm."""
     names = finding.get("files", [])
     where = f"{' <-> '.join(names)}: " if len(names) > 1 else ""
+    if is_redundancy(finding):
+        where += f"{KIND_REDUNDANCY}: "
     if finding["status"] == STATUS_TO_CONFIRM:
         decision = finding["decision"]
         return (f"? [{finding['id']}] {where}{finding.get('text', '')} "

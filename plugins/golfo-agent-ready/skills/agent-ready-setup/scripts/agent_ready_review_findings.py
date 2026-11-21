@@ -8,7 +8,13 @@ import agent_ready_conflicts as conflicts_review
 from agent_ready_config import ConfigurationError
 from agent_ready_layout import review_cache_module
 from agent_ready_manifest import configuration_of
-from agent_ready_options import REVIEWS_CACHE_KEY, REVIEWS_COMMIT_KEY, REVIEWS_ENABLED_KEY, REVIEWS_TTL_KEY
+from agent_ready_options import (
+    REVIEWS_CACHE_KEY,
+    REVIEWS_COMMIT_KEY,
+    REVIEWS_ENABLED_KEY,
+    REVIEWS_REDUNDANCY_KEY,
+    REVIEWS_TTL_KEY,
+)
 
 
 def review_findings(project_root, strict=False):
@@ -22,9 +28,10 @@ def review_findings(project_root, strict=False):
     # The effective configuration, not the options of the last apply: a fresh clone shows the
     # committed reviews before anyone applies.
     try:
-        commit = configuration_of(project_root).value(REVIEWS_COMMIT_KEY)
+        configuration = configuration_of(project_root)
+        commit, redundancy = configuration.value(REVIEWS_COMMIT_KEY), configuration.value(REVIEWS_REDUNDANCY_KEY)
     except ConfigurationError:
-        commit = None
+        commit, redundancy = None, True
     entries = module.ReviewCache(project_root).entries(commit=commit)
     decisions = module.Decisions(project_root)
     recorded = decisions.read(strict=strict)
@@ -45,7 +52,9 @@ def review_findings(project_root, strict=False):
                     finding["reviewedFiles"] = current
                     if finding["decision"]:
                         finding["status"] = conflicts_review.decision_status(module, finding["decision"], current)
-            findings += [dict(finding, check=entry.get("check")) for finding in annotated]
+            # With reviews.redundancy.enabled off, a redundancy found before is not reported either.
+            findings += [dict(finding, check=entry.get("check")) for finding in annotated
+                         if redundancy or not module.is_redundancy(finding)]
         else:
             stale += 1
     return findings, recorded, units, stale
@@ -97,7 +106,8 @@ def record_review_settings(project_root):
         module.ReviewCache(project_root).write_settings(configuration.value(REVIEWS_ENABLED_KEY),
                                                         configuration.value(REVIEWS_CACHE_KEY),
                                                         configuration.value(REVIEWS_TTL_KEY),
-                                                        configuration.value(REVIEWS_COMMIT_KEY))
+                                                        configuration.value(REVIEWS_COMMIT_KEY),
+                                                        configuration.value(REVIEWS_REDUNDANCY_KEY))
     except (OSError, module.CacheLockTimeout) as caught_error:
         sys.stderr.write(f"WARNING: the review settings were not recorded: {caught_error}\n")
 

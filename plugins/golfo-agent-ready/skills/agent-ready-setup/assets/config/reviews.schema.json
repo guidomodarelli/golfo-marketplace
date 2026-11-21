@@ -26,6 +26,18 @@
       "description": "Además de la caché local, guarda cada resultado en .agents/agent-ready.review-cache.json para commitearlo, así el CI y el equipo saltean las revisiones cuyo hash coincide sin pagarlas de nuevo. Cualquiera puede editar un archivo versionado: un resultado de ahí solo evita repetir una revisión idéntica y nunca oculta un hallazgo que la caché local conoce. Los hooks lo toman del último apply.",
       "type": "boolean",
       "default": false
+    },
+    "redundancy": {
+      "description": "Las rules que dicen lo mismo con otras palabras y sin la misma key, en la revisión de IA por par de rules.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "description": "La revisión por par de rules también informa dos rules que piden lo mismo con otras palabras, con cuál conservar y, si las dos son del proyecto, una key común para unirlas. Es un aviso: no frena el apply con conflicts.block ni hace fallar agent-ready check ni agent-ready conflicts, y se acepta o descarta con agent-ready review. Apagado, la revisión no las pide ni las informa. Los hooks lo toman del último apply.",
+          "type": "boolean",
+          "default": true
+        }
+      }
     }
   }
 }

@@ -384,14 +384,15 @@ unidad en `.git/info/agent-ready/reviews.json`: una edición solo vuelve a revis
 participa, y `agent-ready status` muestra los hallazgos conocidos, cada uno con su id, sin llamar al
 provider. El plan y el apply también buscan conflictos semánticos entre las rules gestionadas y las
 propias del proyecto, su `AGENTS.md` o sus hooks `PreToolUse` que pueden bloquear lo que piden: solo
-informan, y `conflicts.block` frena el apply que trae uno. Al iniciar sesión, las revisiones
+informan, y `conflicts.block` frena el apply que trae uno. Dos rules que piden lo mismo con otras
+palabras salen como `redundancy`: un aviso que nunca frena ni hace fallar nada (`reviews.redundancy.enabled`). Al iniciar sesión, las revisiones
 desactualizadas se vuelven a revisar en segundo plano (`conflicts.sessionStart.reviews`).
 Cuando el usuario pide aceptar o descartar un hallazgo, correr
 `agent-ready review accept|dismiss <id> --reason "<motivo>"` con el motivo que dio. Si no dio ninguno,
 preguntárselo: nunca inventarlo. Leer [references/ai-reviews.md](references/ai-reviews.md) para
 explicar por qué una revisión corrió o no, mostrar sus hallazgos, elegir el alcance de una decisión
-(`content` o `pair`), cambiar `reviews.enabled`, `reviews.cache`, `reviews.ttl`, `conflicts.enabled` o
-`conflicts.block` o `conflicts.sessionStart.reviews`, explicar un conflicto semántico del plan (también el de un hook), o compartir la caché con el CI y el equipo
+(`content` o `pair`), cambiar `reviews.enabled`, `reviews.cache`, `reviews.ttl`, `reviews.redundancy.enabled`, `conflicts.enabled` o
+`conflicts.block` o `conflicts.sessionStart.reviews`, explicar un conflicto semántico del plan (también el de un hook) o una redundancia, o compartir la caché con el CI y el equipo
 (`reviews.commit`). Para un conflicto estructural (contexto, máquina, realidad del repo, hooks y settings,
 paridad o skills que compiten) y las demás opciones `conflicts.*`, leer
 [references/structural-conflicts.md](references/structural-conflicts.md).

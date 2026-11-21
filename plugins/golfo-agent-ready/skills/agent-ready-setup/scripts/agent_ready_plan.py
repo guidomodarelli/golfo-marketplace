@@ -96,6 +96,7 @@ from agent_ready_options import (
     REVIEWS_CACHE_KEY,
     REVIEWS_COMMIT_KEY,
     REVIEWS_ENABLED_KEY,
+    REVIEWS_REDUNDANCY_KEY,
     REVIEWS_TTL_KEY,
     SUPPORTED_PROVIDERS,
     TOOLS_ENABLED_KEY,
@@ -555,14 +556,15 @@ def semantic_conflicts(arguments, plan, instructions_with_applied=False):
     use_provider = not arguments.offline and os.environ.get("AGENT_READY_SETUP_REVIEW_MODE") != "1"
     # The options of this run: the hooks' copy of them only changes when an apply finishes.
     settings = {"enabled": True, "cache": configuration.value(REVIEWS_CACHE_KEY),
-                "ttl": configuration.value(REVIEWS_TTL_KEY), "commit": configuration.value(REVIEWS_COMMIT_KEY)}
+                "ttl": configuration.value(REVIEWS_TTL_KEY), "commit": configuration.value(REVIEWS_COMMIT_KEY),
+                "redundancy": configuration.value(REVIEWS_REDUNDANCY_KEY)}
     report = conflicts_review.review_conflicts(arguments.project, ENGINE_SKILL_DIRECTORY, module, arguments.provider,
                                                directions, texts, bash_executable(), use_provider, settings,
                                                publish=arguments.format == "protected")
     conflicts_review.record_pending(arguments.project, report.pop("pending", []), check=conflicts_review.CONFLICT_CHECK)
     report["block"] = configuration.value(CONFLICTS_BLOCK_KEY)
     levels = conflicts_review.document_levels(plan["entries"], nested_files)
-    for finding in report["findings"]:
+    for finding in report["findings"] + report["redundancies"]:
         finding["levels"] = [levels.get(module.document_path(name), conflicts_review.ROOT_LEVEL)
                              for name in finding.get("files", [])]
     return report
@@ -603,6 +605,8 @@ def print_conflict_warnings(report):
     """The apply shows its semantic conflicts on stderr, before writing; the protected list stays on stdout."""
     for finding in report["findings"]:
         write_line(f"WARNING: semantic conflict {describe_conflict(finding)}", sys.stderr)
+    for finding in report.get("redundancies", []):
+        write_line(f"WARNING: redundant rules {describe_conflict(finding)}", sys.stderr)
     if report["unchecked"]:
         write_line(f"WARNING: {report['unchecked']} pair(s) were not checked for semantic conflicts: {report['reason']}",
                    sys.stderr)
@@ -619,12 +623,20 @@ def print_plan_conflicts(plan):
         write_line(paint(f"  {describe_conflict(finding)}", "warning", stream))
         for line in finding.get("lines", []):
             write_line(f"      {line}")
-    if report["findings"]:
+    redundancies = report.get("redundancies", [])
+    if redundancies:
+        # A warning: it neither stops an apply under conflicts.block nor fails agent-ready check.
+        write_line(paint("  Redundant rules (a warning; keep one of each pair):", "warning", stream))
+        for finding in redundancies:
+            write_line(paint(f"  {describe_conflict(finding)}", "warning", stream))
+            for line in finding.get("lines", []):
+                write_line(f"      {line}")
+    if report["findings"] or redundancies:
         write_line("  Accept or dismiss one with: agent-ready review accept <id> --reason \"...\"")
     if report["unchecked"]:
         write_line(paint(f"  Check incomplete: {report['unchecked']} of {report['pairs']} pairs were not reviewed "
                          f"({report['reason']}).", "warning", stream))
-    elif not report["findings"]:
+    elif not report["findings"] and not redundancies:
         write_line(f"  No conflicts found ({report['pairs']} pairs, {report['fromCache']} from the cache).")
     if report["block"]:
         write_line("  conflicts.block: an apply that brings a conflict stops before writing.")

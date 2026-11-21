@@ -281,17 +281,18 @@ def review_conflicts(project_root, engine_dir, cache_module, provider, direction
     results in the local cache, so it never changes a file of the repository.
     """
     harness = load_harness_review(engine_dir)
-    # The check to run: the contradictions of harness-review by default, or another one with its own
-    # CHECK, CHECK_VERSION and review_pairs (the competing skills of agent_ready_skill_overlap.py).
-    check = check or harness
+    cache = cache_module.ReviewCache(project_root, settings=settings)
+    # The check to run: the contradictions of harness-review by default (and the redundancies, with
+    # reviews.redundancy.enabled), or another one with its own CHECK, CHECK_VERSION and review_pairs (the
+    # competing skills of agent_ready_skill_overlap.py).
+    check = check or harness.reviewer(cache.settings().get("redundancy", True))
     # A rule file with atomic rules is reviewed rule by rule, so the cache keeps one entry per pair of rules.
     directions, texts = cache_module.unit_pairs(directions, texts)
     pairs = sorted(directions)
     report = {"pairs": len(pairs), "fromCache": 0, "reviewed": 0, "unchecked": 0, "uncheckedUpdate": 0,
-              "reason": None, "findings": [], "quiet": 0}
+              "reason": None, "findings": [], "redundancies": [], "quiet": 0}
     if not pairs:
         return report
-    cache = cache_module.ReviewCache(project_root, settings=settings)
     shares = bool(cache.settings().get("commit"))
     writer = cache if publish or not shares else cache_module.ReviewCache(
         project_root, settings=dict(cache.settings(), commit=False))
@@ -357,8 +358,11 @@ def review_conflicts(project_root, engine_dir, cache_module, provider, direction
             if finding["decision"]:
                 finding["status"] = decision_status(cache_module, finding["decision"], reviewed_files)
             annotated.append(dict(finding, direction=directions[pair], check=check.CHECK, reviewedFiles=reviewed_files))
-    report["findings"] = cache_module.visible(annotated)
-    report["quiet"] = len(annotated) - len(report["findings"])
+    visible = cache_module.visible(annotated)
+    # A redundancy is a warning: it is listed apart, so conflicts.block and agent-ready check never count it.
+    report["findings"] = [finding for finding in visible if not cache_module.is_redundancy(finding)]
+    report["redundancies"] = [finding for finding in visible if cache_module.is_redundancy(finding)]
+    report["quiet"] = len(annotated) - len(visible)
     # Every finding of these directions, decided ones included: their files are not on disk yet, so
     # only this list lets agent-ready review find them before the apply.
     report["pending"] = [finding for finding in annotated if finding["direction"] in pending_directions]

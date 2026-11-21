@@ -1708,7 +1708,7 @@
         },
         {
           "type": "regex",
-          "pattern": "no se (re-?)?revisan|no se tocan|no (se )?vuelven? a (revisar|pagar)|se saltean|salen de la caché|siguen en la caché|solo participan|no compara entre sí|no entran|solo se revisan los pares",
+          "pattern": "no se (re-?)?revisan|no se tocan|no (se )?vuelven? a (revisar|pagar)|se saltean|salen? de la caché|siguen en la caché|solo participan|no compara entre sí|no entran|solo se revisan los pares",
           "description": "Los pares que no incluyen la rule editada no se vuelven a revisar"
         }
       ]
@@ -1908,7 +1908,7 @@
         },
         {
           "type": "regex",
-          "pattern": "((volvé|volver|de nuevo|otra vez|reintent|corré|[Dd]espués).{0,80}apply|apply.{0,200}(de nuevo|otra vez|reintent)|volver a aplicar|aplicar de nuevo|reaplic)",
+          "pattern": "((volvé|volver|de nuevo|otra vez|reintent|corré|[Dd]espués).{0,80}apply|apply.{0,200}(de nuevo|otra vez|reintent)|volver a aplicar|aplicar de nuevo|reaplic)|destraba el apply",
           "description": "Indica volver a correr el apply después de decidir"
         }
       ]
@@ -2748,6 +2748,31 @@
           "type": "contains",
           "value": "conflicts.hooks.enabled",
           "description": "Nombra la clave que apaga la revisión de hooks",
+          "critical": true
+        }
+      ]
+    },
+    {
+      "id": "redundant-rules-warning",
+      "description": "Un hallazgo redundancy de la revisión por par: es un aviso que no frena el apply con conflicts.block ni falla agent-ready check, se descarta con agent-ready review por su id y se apaga con reviews.redundancy.enabled.",
+      "input": "agent-ready plan me lista `! [7d2f9c41ab] .agents/rules/team.md <-> .agents/rules/testing.md: redundancy: Both rules ask to run Vitest for unit tests; keep testing.md. (a project rule)`. Tengo conflicts.block en true y el CI corre agent-ready check con los conflictos semánticos en fail. ¿Esto me va a frenar el apply o romper el CI? Si quiero conservar las dos rules a propósito, ¿cómo hago que deje de avisar este hallazgo, y cómo apago este tipo de aviso para todo el repo? No ejecutes Bash ni escribas archivos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "review (accept|dismiss) 7d2f9c41ab",
+          "description": "Da el comando para decidir sobre ese hallazgo por su id",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "reviews.redundancy.enabled",
+          "description": "Nombra la clave que apaga los avisos de redundancia",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "[Nn]o (te )?(va a |lo )?(frena|bloquea|detiene)|[Nn]unca (frena|bloquea)|[Nn]i frena|es (solo )?un aviso|no (hace|va a hacer) fallar|no (rompe|falla)",
+          "description": "Aclara que es un aviso: no frena el apply ni hace fallar el check",
           "critical": true
         }
       ]
