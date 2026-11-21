@@ -203,6 +203,16 @@ Campos de cada elemento de `sources.packs`:
 - `ref` (string, opcional): Rama o tag a seguir de una fuente Git, si la URL no trae #<revisión>.
 - `updates` (`auto` | `pinned`, opcional): Modo de actualización de esta fuente; pisa updates.mode del repositorio.
 
+## `sync`: Sincronización del equipo
+
+agent-ready sync sube lo aprendido al remoto y trae lo que aprendieron los demás, sin que nadie use Git (references/team-sync.md). Solo en el preset de colaboración business: en software, lo aprendido viaja en el PR del cambio.
+
+| Clave | Tipo | Default | Capas | Variable | Seguridad | Descripción |
+|---|---|---|---|---|---|---|
+| `sync.enabled` | boolean | `true` | todas | `AGENT_READY_SETUP_TEAM_SYNC` | — | Apagado, agent-ready sync no hace commits, fetch ni push, y el inicio de sesión, lo aprendido y el barrido programado no lo disparan. |
+| `sync.remote` | string | `"origin"` | project | — | — | El remoto de Git con el que se sincroniza la rama actual. |
+| `sync.pushRetries` | integer | `3` | todas | — | — | Cuántas veces vuelve a traer e integrar cuando el remoto rechaza el push porque otro subió antes. Nunca hace force push. |
+
 ## `tools`: Herramientas
 
 Herramientas que declaran los profiles seleccionados (hoy browser) y que el apply instala y registra fuera de los assets.

@@ -866,3 +866,126 @@ PY
   run_cli identity show --json
   [ "$(json_value "$output" 'data["collaboration"]')" = "{'configured': 'software', 'effective': 'software'}" ]
 }
+
+# 169c: agent-ready sync between two machines of an office, against a local bare remote.
+# Each machine is a clone with its own configuration (its identity) whose apply registered the drivers.
+setup_office_remote() {
+  export AGENT_READY_LEARNING_SCHEDULER=none
+  export AGENT_READY_TEAM_SYNC_FOREGROUND=1
+  run_cli apply --profiles learning
+  [ "$status" -eq 0 ]
+  git add -A
+  git commit -qm "agent-ready"
+  remote="$test_root/remote.git"
+  git init -q --bare "$remote"
+  git -C "$remote" symbolic-ref HEAD refs/heads/main
+  git remote add origin "$remote"
+  git push -q origin HEAD:main
+  git branch -q --set-upstream-to=origin/main
+  other="$test_root/other"
+  git clone -q "$remote" "$other"
+  cd "$other"
+  XDG_CONFIG_HOME="$test_root/config-other" run_cli apply
+  [ "$status" -eq 0 ]
+  cd "$project_dir"
+}
+
+# A learned rule as learn apply leaves it, written by hand so the test controls the content.
+learn_rule() {
+  mkdir -p .agents/rules
+  [ -f .agents/rules/learned.md ] || printf '%s\n' '# Learned rules' > .agents/rules/learned.md
+  printf '%s\n' '' "<!-- rule id=learned/$1 -->" "- $2" >> .agents/rules/learned.md
+}
+
+@test "sync brings to the other machine what one learned, and both rules of one file stay, without Git commands" {
+  setup_office_remote
+  learn_rule dates 'Dates go first.'
+  run_cli sync --json
+  [ "$status" -eq 0 ]
+  [ "$(json_value "$output" 'data["result"]')" = "synced" ]
+  [ "$(json_value "$output" 'data["committed"]')" = "True" ]
+  git log -1 --format=%B | grep -q '^Learned-by: '
+
+  cd "$other"
+  learn_rule signature 'Sign at the end.'
+  XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
+  [ "$status" -eq 0 ]
+  [[ "$output" == "Sync: up to date with the remote."* ]]
+  grep -Fxq -- '- Dates go first.' .agents/rules/learned.md
+  grep -Fxq -- '- Sign at the end.' .agents/rules/learned.md
+
+  cd "$project_dir"
+  run_cli sync
+  [ "$status" -eq 0 ]
+  grep -Fxq -- '- Sign at the end.' .agents/rules/learned.md
+  [ "$(git rev-parse HEAD)" = "$(git -C "$remote" rev-parse main)" ]
+  run_cli status
+  [[ "$output" == *"Sync: up to date"* ]]
+}
+
+@test "without network the commit waits, and the first sync that reaches the remote pushes it" {
+  setup_office_remote
+  mv "$remote" "$test_root/away.git"
+  learn_rule dates 'Dates go first.'
+  run_cli sync --json
+  [ "$status" -eq 0 ]
+  [ "$(json_value "$output" 'data["result"]')" = "offline" ]
+  [ "$(json_value "$output" 'data["toPush"]')" = "1" ]
+  [ -z "$(git status --porcelain -- .agents/rules)" ]
+  run_cli status
+  [[ "$output" == *"Sync: offline, 1 commit waiting to go out"* ]]
+
+  mv "$test_root/away.git" "$remote"
+  run_cli sync
+  [ "$status" -eq 0 ]
+  [ "$(git rev-parse HEAD)" = "$(git -C "$remote" rev-parse main)" ]
+}
+
+@test "sync off, or the software preset, makes no commit, fetch nor push" {
+  setup_office_remote
+  before="$(git -C "$remote" rev-parse main)"
+  learn_rule dates 'Dates go first.'
+  AGENT_READY_SETUP_TEAM_SYNC=0 run_cli sync
+  [ "$status" -eq 0 ]
+  [[ "$output" == "Sync: off"* ]]
+  [ -n "$(git status --porcelain -- .agents/rules)" ]
+
+  python3 - <<'PY'
+import json
+path = ".agents/agent-ready.json"
+manifest = json.load(open(path, encoding="utf-8"))
+manifest["collaboration"] = "software"
+json.dump(manifest, open(path, "w", encoding="utf-8"), indent=2)
+PY
+  run_cli sync
+  [ "$status" -eq 0 ]
+  [[ "$output" == "Sync: nothing to do in the software preset"* ]]
+  [ -n "$(git status --porcelain -- .agents/rules)" ]
+  [ "$(git -C "$remote" rev-parse main)" = "$before" ]
+}
+
+@test "a rule changed two ways is aborted: the checkout is never left half merged, and nothing is forced" {
+  setup_office_remote
+  learn_rule header 'Put the date in the header.'
+  run_cli sync
+  [ "$status" -eq 0 ]
+  cd "$other"
+  XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
+  [ "$status" -eq 0 ]
+  sed -i.bak 's/Put the date in the header./Put the case in the header./' .agents/rules/learned.md
+  rm -f .agents/rules/learned.md.bak
+  XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
+  [ "$status" -eq 0 ]
+  theirs="$(git -C "$remote" rev-parse main)"
+
+  cd "$project_dir"
+  sed -i.bak 's/Put the date in the header./Put the date and the case in the header./' .agents/rules/learned.md
+  rm -f .agents/rules/learned.md.bak
+  run_cli sync --json
+  [ "$status" -eq 1 ]
+  [ "$(json_value "$output" 'data["result"]')" = "conflict" ]
+  [[ "$(json_value "$output" 'data["message"]')" == *".agents/rules/learned.md"* ]]
+  [ ! -e "$(git rev-parse --git-path MERGE_HEAD)" ]
+  grep -Fxq -- '- Put the date and the case in the header.' .agents/rules/learned.md
+  [ "$(git -C "$remote" rev-parse main)" = "$theirs" ]
+}

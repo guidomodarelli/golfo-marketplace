@@ -59,6 +59,8 @@ cli="$skill_dir/scripts/agent-ready"
 
 if [[ "$event" == session-start ]]; then
   python3 "$cli" learn summary --project . 2>/dev/null || true
+  # Bring what the others learned before working (agent-ready sync, detached; the business preset only).
+  python3 "$cli" sync --project . --background >/dev/null 2>&1 || true
   exit 0
 fi
 # The session and the transcript, one per line; a payload that is not JSON gives two empty lines.

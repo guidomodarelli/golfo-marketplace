@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Sincronización del equipo",
+  "description": "agent-ready sync sube lo aprendido al remoto y trae lo que aprendieron los demás, sin que nadie use Git (references/team-sync.md). Solo en el preset de colaboración business: en software, lo aprendido viaja en el PR del cambio.",
+  "x-module": "sync",
+  "x-mount": "sync",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "enabled": {
+      "description": "Apagado, agent-ready sync no hace commits, fetch ni push, y el inicio de sesión, lo aprendido y el barrido programado no lo disparan.",
+      "type": "boolean",
+      "default": true,
+      "x-env": "AGENT_READY_SETUP_TEAM_SYNC"
+    },
+    "remote": {
+      "description": "El remoto de Git con el que se sincroniza la rama actual.",
+      "type": "string",
+      "minLength": 1,
+      "default": "origin",
+      "x-layers": ["project"]
+    },
+    "pushRetries": {
+      "description": "Cuántas veces vuelve a traer e integrar cuando el remoto rechaza el push porque otro subió antes. Nunca hace force push.",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 10,
+      "default": 3
+    }
+  }
+}
