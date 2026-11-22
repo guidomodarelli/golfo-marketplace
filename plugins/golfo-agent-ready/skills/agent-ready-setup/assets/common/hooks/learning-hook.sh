@@ -59,7 +59,8 @@ cli="$skill_dir/scripts/agent-ready"
 
 if [[ "$event" == session-start ]]; then
   python3 "$cli" learn summary --project . 2>/dev/null || true
-  # Bring what the others learned before working (agent-ready sync, detached; the business preset only).
+  # What two people changed in two ways, for the agent to explain; then bring what the others learned.
+  python3 "$cli" sync --project . --conflicts 2>/dev/null || true
   python3 "$cli" sync --project . --background >/dev/null 2>&1 || true
   exit 0
 fi

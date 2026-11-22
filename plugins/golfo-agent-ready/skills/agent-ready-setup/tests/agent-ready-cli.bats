@@ -890,7 +890,7 @@ setup_office_remote() {
   cp -a "$office/other" "$other"
   git -C "$project_dir" remote set-url origin "$remote"
   git -C "$other" remote set-url origin "$remote"
-  # The drivers point to this engine on every copy, as each apply wrote them.
+  # The drivers of each copy still name the engine of the test that built it; every sync points them to its own.
   cd "$project_dir"
 }
 
@@ -1121,4 +1121,72 @@ be_person_at() {
   run_cli sync
   [ "$status" -eq 0 ]
   grep -Fxq '<!-- rule id=learned/reports-summary key=reports.summary -->' .agents/rules/learned.md
+}
+
+# 169f: a rule two people changed in two ways waits for a person, who decides it once.
+make_rule_conflict() {
+  setup_office_remote
+  mkdir -p "$XDG_CONFIG_HOME/agent-ready-setup" "$test_root/config-other/agent-ready-setup"
+  printf '%s\n' '{"id": "ana", "name": "Ana"}' > "$XDG_CONFIG_HOME/agent-ready-setup/identity.json"
+  printf '%s\n' '{"id": "juan", "name": "Juan"}' > "$test_root/config-other/agent-ready-setup/identity.json"
+  learn_rule header 'Put the date in the header.'
+  run_cli sync
+  [ "$status" -eq 0 ]
+  cd "$other"
+  XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
+  sed -i.bak 's/Put the date in the header./Put the case in the header./' .agents/rules/learned.md
+  rm -f .agents/rules/learned.md.bak
+  XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
+  [ "$status" -eq 0 ]
+  cd "$project_dir"
+  sed -i.bak 's/Put the date in the header./Put the date at the top of the header./' .agents/rules/learned.md
+  rm -f .agents/rules/learned.md.bak
+  run_cli sync
+  [ "$status" -eq 1 ]
+  conflict_id='.agents/rules/learned.md#learned/header'
+}
+
+@test "a rule changed two ways is explained at the next session, and keeping theirs merges, pushes and logs it" {
+  make_rule_conflict
+  run_cli sync --conflicts
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Two people changed the same rule in different ways"* ]]
+  [[ "$output" == *"$conflict_id"* ]]
+  [[ "$output" == *"this machine, ana at "*": Put the date at the top of the header."* ]]
+  [[ "$output" == *"the other, juan at "*": Put the case in the header."* ]]
+
+  run_cli sync --resolve "$conflict_id" --keep theirs
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Sync: up to date with the remote."* ]]
+  grep -Fxq -- '- Put the case in the header.' .agents/rules/learned.md
+  ! grep -q '^<<<<<<<' .agents/rules/learned.md
+  ! grep -q 'top of the header' .agents/rules/learned.md
+  grep -q ' resolve learned/header (theirs, decided by ana): ' .agents/learning/log.md
+  [ "$(git rev-parse HEAD)" = "$(git -C "$remote" rev-parse main)" ]
+  run_cli sync --conflicts
+  [ -z "$output" ]
+}
+
+@test "a combined statement replaces both versions of the rule" {
+  make_rule_conflict
+  run_cli sync --resolve "$conflict_id" --merged "Put the date and the case at the top of the header."
+  [ "$status" -eq 0 ]
+  grep -Fxq '<!-- rule id=learned/header -->' .agents/rules/learned.md
+  grep -Fxq -- '- Put the date and the case at the top of the header.' .agents/rules/learned.md
+  run_cli rules lint
+  [ "$status" -eq 0 ]
+}
+
+@test "each one keeps their own: the rule of the team leaves, and each version is personal for who taught it" {
+  make_rule_conflict
+  run_cli sync --resolve "$conflict_id"
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"--resolve needs exactly one of"* ]]
+  run_cli sync --resolve "$conflict_id" --each-their-own
+  [ "$status" -eq 0 ]
+  ! grep -q 'learned/header -->' .agents/rules/learned.md
+  grep -Fxq -- '- Put the date at the top of the header.' .agents/rules/learned/users/ana/learned.md
+  grep -Fxq -- '- Put the case in the header.' .agents/rules/learned/users/juan/learned.md
+  run_cli rules lint
+  [ "$status" -eq 0 ]
 }

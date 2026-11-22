@@ -5,8 +5,8 @@ cuenta de Git. Leer al explicar `agent-ready identity`, el trailer `Learned-by:`
 colaboración usa un repositorio.
 
 > **Estado.** La identidad, el preset, los merge drivers, la sincronización
-> ([team-sync.md](team-sync.md)), el aprendizaje personal y la promoción a equipo son las partes 169a a
-> 169e de la issue #169. La explicación de un conflicto llega en una parte siguiente.
+> ([team-sync.md](team-sync.md)), el aprendizaje personal, la promoción a equipo y los conflictos que
+> decide una persona son las partes 169a a 169f de la issue #169.
 
 ## Identidad
 

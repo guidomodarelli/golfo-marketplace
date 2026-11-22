@@ -23,7 +23,10 @@ import subprocess
 
 import agent_ready_identity as identity
 import agent_ready_learning as learning
+import agent_ready_learning_apply as learning_apply
 import agent_ready_learning_promotion as promotion
+import agent_ready_merge_drivers as merge_drivers
+import agent_ready_sync_conflicts as sync_conflicts
 from agent_ready_common import acquire_directory_lock, write_text_atomically
 from agent_ready_lockfile import read_lock
 
@@ -59,9 +62,9 @@ FAILED_RESULTS = (RESULT_CONFLICT, RESULT_BLOCKED, RESULT_PUSH_FAILED)
 REJECTED_PUSH_HINTS = ("[rejected]", "non-fast-forward", "fetch first", "rejected")
 
 
-def git(project_root, *arguments):
+def git(project_root, *arguments, extra_environment=None):
     """A Git command that never asks for credentials: a background run has nobody to answer."""
-    environment = dict(os.environ, GIT_TERMINAL_PROMPT="0", GIT_MERGE_AUTOEDIT="no")
+    environment = dict(os.environ, GIT_TERMINAL_PROMPT="0", GIT_MERGE_AUTOEDIT="no", **(extra_environment or {}))
     return subprocess.run(["git", "-C", project_root, *arguments], capture_output=True, text=True, check=False,
                           env=environment)
 
@@ -183,15 +186,50 @@ def merge(project_root, remote, branch):
     reference = remote_ref(remote, branch)
     if git(project_root, "merge-base", "--is-ancestor", reference, "HEAD").returncode == 0:
         return
-    result = git(project_root, "merge", "--no-edit", "--quiet", reference)
+    # The drivers point to this installation: the one the last apply wrote may have left the cache.
+    merge_drivers.register(project_root, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                                      merge_drivers.MERGE_DRIVER_SCRIPT))
+    # The conflicts a person already decided go to the drivers, which merge them as decided.
+    resolutions = sync_conflicts.resolutions_file(project_root)
+    environment = {sync_conflicts.RESOLUTIONS_VARIABLE: resolutions} if resolutions else None
+    result = git(project_root, "merge", "--no-edit", "--quiet", reference, extra_environment=environment)
     if result.returncode == 0:
+        if resolutions:
+            finish_resolutions(project_root)
         return
     if os.path.exists(git_path(project_root, "MERGE_HEAD")):
         files = git(project_root, "diff", "--name-only", "--diff-filter=U").stdout.split()
+        # Before the abort: the versions of each rule, its people and its times, for the next session.
+        recorded, unexplained = sync_conflicts.record(project_root, files, reference)
         git(project_root, "merge", "--abort")
-        raise SyncError(RESULT_CONFLICT, "the same part changed on two machines: " + ", ".join(files))
+        waiting = [conflict["id"] for conflict in recorded if not conflict.get("decision")]
+        if not files:
+            # Git stopped without a file in conflict (a driver that failed): its own words say why.
+            unexplained = [(result.stderr or result.stdout).strip().splitlines()[-1] if (result.stderr or result.stdout).strip()
+                           else "git merge stopped"]
+        raise SyncError(RESULT_CONFLICT, "the same part changed on two machines: " + ", ".join(waiting + unexplained)
+                        + ("; the next session explains it and offers what to keep" if waiting else ""))
     raise SyncError(RESULT_BLOCKED, (result.stderr or result.stdout).strip().splitlines()[0]
                     if (result.stderr or result.stdout).strip() else "git merge failed")
+
+
+def append_personal(project_root, person, conflict, statement):
+    """Write one version of a decided conflict as the personal rule of the person who taught it."""
+    entry = {"scope": learning.SCOPE_PERSONAL, "owner": person, "statement": statement,
+             "key": conflict.get("key"), "paths": []}
+    rule_id = learning_apply.rule_prefix(entry) + conflict["ruleId"].rsplit("/", 1)[-1]
+    path, text = learning_apply.appended_rule(project_root, rule_id, entry, None)
+    write_text_atomically(path, text)
+    return path
+
+
+def finish_resolutions(project_root):
+    """After the merge with the decisions: the personal rules of «each one keeps theirs», a resolve line in
+    the log per decision, and a commit with them."""
+    sync_conflicts.finish(project_root,
+                          lambda person, conflict, statement: append_personal(project_root, person, conflict, statement),
+                          lambda line: learning_apply.append_log(project_root, line))
+    commit_knowledge(project_root, "sync: what the people decided about two versions of a rule")
 
 
 def to_push(project_root, remote, branch, remote_has_branch):

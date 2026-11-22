@@ -4,9 +4,8 @@ Cómo llega lo que aprendió una persona de una oficina a las demás, sin que na
 `agent-ready sync`, por qué algo aprendido no llegó a otra máquina o qué dice la línea `Sync:` de
 `agent-ready status`. La identidad y los presets están en [collaboration.md](collaboration.md).
 
-> **Estado.** Parte 169c de la issue #169. El aprendizaje personal, la promoción a equipo y la
-> explicación de un conflicto al usuario llegan en las partes siguientes: hasta entonces un conflicto
-> queda en la línea `Sync:` de `status` y el sync lo vuelve a intentar.
+> **Estado.** Partes 169c a 169f de la issue #169: la sincronización, la promoción a equipo y los
+> conflictos que decide una persona. La convención de documentos y `sync.mode: pr` llegan en la última.
 
 ## Qué hace una corrida
 
@@ -55,7 +54,7 @@ lo muestra en la línea `Sync:`.
 | `synced` | todo subido y traído | nada |
 | `offline` | no llegó al remoto; dice cuántos commits esperan | nada: sale solo con la próxima corrida con red |
 | `no-remote`, `detached`, `busy`, `running` | sin remoto, sin rama, con un merge o rebase a mano en curso o el registro del aprendizaje tomado, u otra corrida | configurar el remoto o terminar lo que está en curso |
-| `conflict` | la misma parte cambió en dos máquinas; el merge se abortó | por ahora, resolverlo a mano; la explicación al usuario llega en una parte siguiente de #169 |
+| `conflict` | la misma parte cambió en dos máquinas; el merge se abortó | la próxima sesión lo explica y la persona decide (sección «Conflictos») |
 | `blocked`, `push-failed` | Git no pudo commitear, integrar (un cambio sin commitear choca con lo que viene) o subir | leer el mensaje: credenciales vencidas, permisos o un archivo modificado a mano |
 
 `agent-ready sync` sale con 1 en `conflict`, `blocked` y `push-failed`, y con 0 en el resto.
@@ -71,3 +70,34 @@ sync no hace commits, fetch ni push, y ningún disparador lo corre. Las claves e
 Engram, los episodios del aprendizaje, la caché de revisiones y la identidad viven fuera del
 repositorio (`.git/info/`, la caché o la configuración del usuario), así que ningún commit del sync
 los lleva.
+
+## Conflictos
+
+Cuando dos máquinas cambiaron la misma rule de forma distinta, el merge driver deja el conflicto solo en
+esa rule, y el sync lo aborta. Antes de abortar guarda, por cada rule en conflicto, las dos versiones,
+quién escribió cada una (su `Learned-by:`) y cuándo, en `.git/info/agent-ready/sync-conflicts.json`. Lo
+guarda en la máquina que se encontró con el conflicto, porque es la que tiene las dos versiones.
+
+- **Se le explica a la persona.** El inicio de sesión corre `agent-ready sync --conflicts`, que le da al
+  agente los datos para contarlo sin términos de Git: quién lo cambió, cuándo y la diferencia. Por
+  ejemplo: «Juan puso el número de expediente arriba a las 10:40, y vos la fecha a las 10:15».
+- **Decide la persona,** con una de cuatro opciones:
+
+  | Opción | Comando |
+  |---|---|
+  | conservar la versión de esta máquina | `agent-ready sync --resolve <id> --keep mine` |
+  | conservar la del otro | `agent-ready sync --resolve <id> --keep theirs` |
+  | fusionar las dos: el agente muestra el enunciado combinado y lo guarda recién cuando la persona está de acuerdo | `agent-ready sync --resolve <id> --merged "<enunciado>"` |
+  | cada uno la suya, solo para una rule de equipo: cada versión queda como rule personal de quien la enseñó, y la de equipo sale | `agent-ready sync --resolve <id> --each-their-own` |
+
+- **Una sola vez.** `--resolve` guarda la decisión y sincroniza: el merge se repite con la decisión (los
+  drivers la leen de `AGENT_READY_MERGE_RESOLUTIONS`), se commitea con una línea `resolve` en el log, con
+  quién decidió, y nadie más vuelve a ver esa pregunta.
+- **Mientras tanto,** cada máquina conserva su versión, el resto sigue sincronizando y nada se pierde:
+  las dos versiones quedan en el historial.
+- **Lo que no es una rule** (un JSON que no se puede leer, un archivo fuera de `.agents/rules/`) queda en
+  la línea `Sync:` de `status` con su archivo.
+
+Cada corrida vuelve a apuntar los drivers de `.git/config` a la instalación que corre: así un driver
+nunca queda nombrando una copia del motor que ya salió de la caché.
+
