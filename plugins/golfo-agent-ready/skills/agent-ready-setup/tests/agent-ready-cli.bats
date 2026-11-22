@@ -879,15 +879,15 @@ setup_office_remote() {
   if [ ! -d "$office" ]; then
     build_office
     mkdir -p "$office"
-    cp -R "$project_dir" "$office/project"
-    cp -R "$remote" "$office/remote.git"
-    cp -R "$other" "$office/other"
+    cp -a "$project_dir" "$office/project"
+    cp -a "$remote" "$office/remote.git"
+    cp -a "$other" "$office/other"
     return
   fi
   rm -rf "$project_dir"
-  cp -R "$office/project" "$project_dir"
-  cp -R "$office/remote.git" "$remote"
-  cp -R "$office/other" "$other"
+  cp -a "$office/project" "$project_dir"
+  cp -a "$office/remote.git" "$remote"
+  cp -a "$office/other" "$other"
   git -C "$project_dir" remote set-url origin "$remote"
   git -C "$other" remote set-url origin "$remote"
   # The drivers point to this engine on every copy, as each apply wrote them.
@@ -1079,7 +1079,7 @@ be_person_at() {
   be_person_at "$test_root/config-other" juan
   # No promotion while both personal rules travel; each machine turns it on by itself afterwards.
   printf '%s\n' '{"profiles": ["learning"], "sync": {"promoteAfterUsers": 0}}' > .agents/agent-ready.json
-  git commit -qam "no promotion yet"
+  git commit -qm "no promotion yet" -- .agents/agent-ready.json
   git push -q origin HEAD:main
   teach_personal "$XDG_CONFIG_HOME" "Reports end with a one-line summary."
   run_cli sync
@@ -1088,7 +1088,7 @@ be_person_at() {
   XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
   teach_personal "$test_root/config-other" "Reports end with a one-line summary."
   XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
-  [ "$status" -eq 0 ]
+  [ "$status" -eq 0 ] || { printf '%s\n%s\n' "$output" "$stderr"; git status --short; false; }
   cd "$project_dir"
   run_cli sync
   [ "$status" -eq 0 ]
