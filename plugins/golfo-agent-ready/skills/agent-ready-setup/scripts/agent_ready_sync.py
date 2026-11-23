@@ -27,6 +27,7 @@ import agent_ready_learning_apply as learning_apply
 import agent_ready_learning_promotion as promotion
 import agent_ready_merge_drivers as merge_drivers
 import agent_ready_sync_conflicts as sync_conflicts
+import agent_ready_sync_documents as documents
 from agent_ready_common import acquire_directory_lock, write_text_atomically
 from agent_ready_lockfile import read_lock
 
@@ -79,9 +80,11 @@ def settings_of(configuration, project_root):
     """{enabled, remote, retries, promote_after, preset} of the repository."""
     preset = identity.collaboration_preset(configuration.value(identity.COLLABORATION_PRESET_KEY),
                                            read_lock(project_root))
+    lock = read_lock(project_root)
     return {"enabled": configuration.value(ENABLED_KEY), "remote": configuration.value(REMOTE_KEY),
             "retries": configuration.value(PUSH_RETRIES_KEY),
-            "promote_after": configuration.value(promotion.PROMOTE_AFTER_USERS_KEY), "preset": preset}
+            "promote_after": configuration.value(promotion.PROMOTE_AFTER_USERS_KEY), "preset": preset,
+            "scope": documents.effective_scope(configuration.value(documents.SCOPE_KEY), lock)}
 
 
 def now_text():
@@ -112,10 +115,11 @@ def in_progress(project_root):
     return any(os.path.exists(git_path(project_root, marker)) for marker in markers)
 
 
-def commit_knowledge(project_root, subject=COMMIT_SUBJECT):
-    """Commit the files of the learning that changed, and nothing else; True when it made a commit."""
+def commit_knowledge(project_root, subject=COMMIT_SUBJECT, pathspecs=KNOWLEDGE_PATHSPECS):
+    """Commit the files of ``pathspecs`` that changed (the learning, and the documents with that scope), and
+    nothing else; True when it made a commit."""
     # The files that changed, by name: a pathspec that matches nothing would make git add fail.
-    pending = git(project_root, "status", "--porcelain", "-z", "--untracked-files=all", "--", *KNOWLEDGE_PATHSPECS)
+    pending = git(project_root, "status", "--porcelain", "-z", "--untracked-files=all", "--", *pathspecs)
     records = [record for record in pending.stdout.split("\0") if record]
     paths = []
     index = 0
@@ -203,11 +207,15 @@ def merge(project_root, remote, branch):
         # The merge went through: a conflict that waited (the other side went back) no longer exists.
         sync_conflicts.clear_pending(project_root)
         return
-    if os.path.exists(git_path(project_root, "MERGE_HEAD")) and resolutions and \
-            resolve_file_conflicts(project_root, resolutions):
-        finish_resolutions(project_root, applied)
-        sync_conflicts.clear_pending(project_root)
-        return
+    if os.path.exists(git_path(project_root, "MERGE_HEAD")):
+        unmerged = git(project_root, "diff", "--name-only", "--diff-filter=U").stdout.split()
+        # Two uploaded files with one name are both kept, without asking anybody.
+        documents.settle_inputs(project_root, unmerged, git)
+        if unmerged and resolve_file_conflicts(project_root, resolutions):
+            if resolutions:
+                finish_resolutions(project_root, applied)
+            sync_conflicts.clear_pending(project_root)
+            return
     if os.path.exists(git_path(project_root, "MERGE_HEAD")):
         files = git(project_root, "diff", "--name-only", "--diff-filter=U").stdout.split()
         # Before the abort: the versions of each rule, its people and its times, for the next session.
@@ -236,15 +244,26 @@ def resolve_file_conflicts(project_root, resolutions_path):
     Git does not run the merge driver when one side deleted a rule file and the other changed it, so the
     decision of such a conflict is applied here, with the same merge of rules as the driver."""
     files = git(project_root, "diff", "--name-only", "--diff-filter=U").stdout.split()
-    try:
-        with open(resolutions_path, encoding="utf-8") as handle:
-            resolutions = json.load(handle)
-    except (OSError, ValueError):
-        return False
-    if not files or any(path not in resolutions for path in files):
+    resolutions = {}
+    if resolutions_path:
+        try:
+            with open(resolutions_path, encoding="utf-8") as handle:
+                resolutions = json.load(handle)
+        except (OSError, ValueError):
+            return False
+    if any(path not in resolutions for path in files):
         return False
     for path in files:
         versions = [stage_text(project_root, stage, path) for stage in (1, 2, 3)]
+        decided = resolutions[path].get(documents.KIND_DOCUMENT)
+        if decided is not None:
+            # A document the person decided: the whole version they chose, while both sides are the ones seen.
+            if not documents.decision_holds(decided, versions[1], versions[2]):
+                return False
+            write_text_atomically(os.path.join(project_root, path), decided["text"])
+            if git(project_root, "add", "--", path).returncode != 0:
+                return False
+            continue
         try:
             merged, conflicts = merge_drivers.merge_rules(*versions, resolutions[path])
             _, segments, _ = merge_drivers.rule_segments(merged)
@@ -355,7 +374,10 @@ def synchronize(project_root, settings):
         return {"result": RESULT_NO_REMOTE, "message": f"the repository has no remote {remote}"}
     if in_progress(project_root):
         return {"result": RESULT_BUSY, "message": "a merge or rebase of this checkout waits for a person"}
-    committed = with_registry(project_root, commit_knowledge)
+    pathspecs = KNOWLEDGE_PATHSPECS
+    if settings.get("scope") == documents.SCOPE_DOCUMENTS:
+        pathspecs = KNOWLEDGE_PATHSPECS + documents.DOCUMENT_PATHSPECS
+    committed = with_registry(project_root, commit_knowledge, COMMIT_SUBJECT, pathspecs)
     remote_has_branch = False
     try:
         for _ in range(settings["retries"] + 1):

@@ -1152,7 +1152,7 @@ make_rule_conflict() {
   make_rule_conflict
   run_cli sync --conflicts
   [ "$status" -eq 0 ]
-  [[ "$output" == *"Two people changed the same rule in different ways"* ]]
+  [[ "$output" == *"Two people changed the same rule or the same part of a document in different ways"* ]]
   [[ "$output" == *"$conflict_id"* ]]
   [[ "$output" == *"this machine, ana at "*": Put the date at the top of the header."* ]]
   [[ "$output" == *"the other, juan at "*": Put the case in the header."* ]]
@@ -1500,4 +1500,105 @@ PY
   run_cli sync --resolve "$conflict_id" --keep theirs
   [ "$status" -eq 1 ]
   [[ "$output" == *"the same part changed on two machines: .agents/rules/learned.md"* ]]
+}
+
+# 169h: the documents of an office, with sync.scope knowledge+documents on both machines.
+setup_office_documents() {
+  setup_office_remote
+  mkdir -p "$XDG_CONFIG_HOME/agent-ready-setup" "$test_root/config-other/agent-ready-setup"
+  printf '%s\n' '{"id": "ana", "name": "Ana"}' > "$XDG_CONFIG_HOME/agent-ready-setup/identity.json"
+  printf '%s\n' '{"id": "juan", "name": "Juan"}' > "$test_root/config-other/agent-ready-setup/identity.json"
+  for machine in "$project_dir" "$other"; do
+    python3 - "$machine/.agents/agent-ready.json" <<'PY'
+import json, sys
+path = sys.argv[1]
+manifest = json.load(open(path, encoding="utf-8"))
+manifest["sync"] = {"scope": "knowledge+documents"}
+json.dump(manifest, open(path, "w", encoding="utf-8"))
+PY
+  done
+  mkdir -p actas output
+  printf '%s\n' '# Acta 4512' '' 'Fecha: 12 de marzo.' '' 'Partes: Ruiz y Gómez.' '' 'Firma: al pie.' > actas/acta-4512.md
+  printf 'generated\n' > output/acta-4512.pdf
+  run_cli sync
+  [ "$status" -eq 0 ]
+  cd "$other"
+  XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
+  [ "$status" -eq 0 ]
+  cd "$project_dir"
+}
+
+# Machine $1 (project or other) replaces $2 with $3 in the acta and syncs; the status is left in $status.
+edit_acta() {
+  local directory="$project_dir" config="$XDG_CONFIG_HOME"
+  [ "$1" = other ] && directory="$other" && config="$test_root/config-other"
+  cd "$directory"
+  sed -i.bak "s/$2/$3/" actas/acta-4512.md
+  rm -f actas/acta-4512.md.bak
+  XDG_CONFIG_HOME="$config" run_cli sync
+  cd "$project_dir"
+}
+
+@test "documents: changes in different parts merge alone, and what output/ holds never leaves the machine" {
+  setup_office_documents
+  git cat-file -e HEAD:actas/acta-4512.md
+  ! git cat-file -e HEAD:output/acta-4512.pdf 2> /dev/null
+  [ -f "$other/actas/acta-4512.md" ]
+  edit_acta other 'Fecha: 12 de marzo.' 'Fecha: 21 de marzo.'
+  [ "$status" -eq 0 ]
+  edit_acta project 'Firma: al pie.' 'Firma: al pie, con aclaración.'
+  [ "$status" -eq 0 ]
+  grep -Fxq 'Fecha: 21 de marzo.' actas/acta-4512.md
+  grep -Fxq 'Firma: al pie, con aclaración.' actas/acta-4512.md
+  [ "$(git rev-parse HEAD)" = "$(git -C "$remote" rev-parse main)" ]
+}
+
+@test "documents: the same part changed on two machines is explained with the difference and decided once" {
+  setup_office_documents
+  edit_acta other 'Partes: Ruiz y Gómez.' 'Partes: Ruiz, Gómez y Pérez.'
+  edit_acta project 'Partes: Ruiz y Gómez.' 'Partes: Ruiz y Gómez (apoderados).'
+  [ "$status" -eq 1 ]
+  [ ! -e "$(git rev-parse --git-path MERGE_HEAD)" ]
+  run_cli sync --conflicts
+  [[ "$output" == *"actas/acta-4512.md (a document changed in the same part on two machines)"* ]]
+  [[ "$output" == *"this machine, ana at "*"the other, juan at "* ]]
+  [[ "$output" == *"-Partes: Ruiz y Gómez (apoderados)."* ]]
+  [[ "$output" == *"+Partes: Ruiz, Gómez y Pérez."* ]]
+  run_cli sync --resolve actas/acta-4512.md --each-their-own
+  [ "$status" -ne 0 ]
+  printf '%s\n' '# Acta 4512' '' 'Fecha: 12 de marzo.' '' 'Partes: Ruiz, Gómez y Pérez (apoderados).' '' 'Firma: al pie.' \
+    > "$test_root/combined.md"
+  run_cli sync --resolve actas/acta-4512.md --merged-file "$test_root/combined.md"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Sync: up to date with the remote."* ]]
+  grep -Fxq 'Partes: Ruiz, Gómez y Pérez (apoderados).' actas/acta-4512.md
+  ! grep -q '^<<<<<<<' actas/acta-4512.md
+  grep -q ' resolve actas/acta-4512.md (merged, decided by ana): two versions of the same document' \
+    .agents/learning/log.md
+  [ "$(git rev-parse HEAD)" = "$(git -C "$remote" rev-parse main)" ]
+}
+
+@test "documents: two uploaded files with one name are both kept, the other one with its date" {
+  setup_office_documents
+  mkdir -p entradas "$other/entradas"
+  printf 'poder de ana\n' > entradas/poder.pdf
+  printf 'poder de juan\n' > "$other/entradas/poder.pdf"
+  cd "$other"
+  XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
+  [ "$status" -eq 0 ]
+  cd "$project_dir"
+  run_cli sync
+  [ "$status" -eq 0 ]
+  [ "$(cat entradas/poder.pdf)" = "poder de ana" ]
+  [ "$(cat "entradas/poder-$(date +%Y-%m-%d).pdf")" = "poder de juan" ]
+  [ "$(git rev-parse HEAD)" = "$(git -C "$remote" rev-parse main)" ]
+}
+
+@test "documents stay out of the sync when sync.scope is knowledge, the default without the documents profile" {
+  setup_office_remote
+  mkdir -p actas
+  printf '%s\n' '# Acta' > actas/acta-1.md
+  run_cli sync
+  [ "$status" -eq 0 ]
+  ! git cat-file -e HEAD:actas/acta-1.md 2> /dev/null
 }

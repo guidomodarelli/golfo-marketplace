@@ -65,6 +65,26 @@ lo muestra en la línea `Sync:`.
 sync no hace commits, fetch ni push, y ningún disparador lo corre. Las claves están en
 [configuration-keys.md](configuration-keys.md).
 
+## Documentos
+
+Con `sync.scope: knowledge+documents`, el sync también sube y trae los documentos de la oficina. El valor
+`auto`, que es el default, lo activa cuando la selección tiene la capability `documents` del contenido.
+La convención es la de esa capability: el Markdown es la fuente, y un PDF o un Word es una salida o una
+entrada.
+
+- **Qué entra.** Los `.md` del repositorio y los `.pdf`, `.docx`, `.doc`, `.odt` y `.rtf` que subió
+  alguien. Nunca entran `output/` (lo que se genera desde el Markdown), `.agents/`, `.claude/`, `.codex/`
+  ni los `AGENTS.md` y `CLAUDE.md`.
+- **Cambios en partes distintas** de un Markdown se combinan solos, línea por línea.
+- **La misma parte cambiada en dos máquinas** queda como conflicto del documento entero, como el de una
+  rule:
+  - `--conflicts` muestra quién y cuándo, con las líneas que difieren;
+  - la persona elige `--keep mine`, `--keep theirs` o `--merged-file <archivo>` con el documento entero
+    combinado, que el agente muestra antes de guardar;
+  - un documento no tiene «cada uno la suya».
+- **Dos archivos subidos con el mismo nombre** se conservan los dos, sin preguntar: el de esta máquina
+  queda con su nombre, y el que llegó del remoto se guarda al lado con la fecha (`poder-2026-11-23.pdf`).
+
 ## Nunca se sincroniza
 
 Engram, los episodios del aprendizaje, la caché de revisiones y la identidad viven fuera del
