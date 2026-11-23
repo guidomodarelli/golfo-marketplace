@@ -118,7 +118,8 @@ def read_state(project_root):
 def write_state(project_root, report):
     state = read_state(project_root)
     state.update({"lastRun": report["at"], "result": report["result"], "message": report.get("message", ""),
-                  "toPush": report.get("toPush", 0)})
+                  "toPush": report.get("toPush", 0),
+                  "pullRequestPending": bool(report.get("pullRequestPending"))})
     if report["result"] == RESULT_SYNCED:
         state["lastSynced"] = report["at"]
     write_text_atomically(git_path(project_root, STATE_GIT_PATH), json.dumps(state, indent=2, sort_keys=True) + "\n")
@@ -420,13 +421,13 @@ def ensure_pull_request(project_root, head, base, person):
 
 def push_to_person_branch(project_root, remote, branch, person):
     """The pr mode: the branch of this person takes the commits, merged with what another machine of the same
-    person pushed there; never forced. Returns the message of the run."""
+    person pushed there; never forced. Returns (url of its pull request or None, message of the run)."""
     head = person_branch(person)
     if fetch(project_root, remote, head):
         with_registry(project_root, merge, remote, head)
     if not push(project_root, remote, head):
         raise SyncError(RESULT_PUSH_FAILED, f"{head} moved while this machine pushed; the next run merges it")
-    return ensure_pull_request(project_root, head, branch, person)[1]
+    return ensure_pull_request(project_root, head, branch, person)
 
 
 def synchronize(project_root, settings):
@@ -460,8 +461,11 @@ def synchronize(project_root, settings):
                 return {"result": RESULT_SYNCED, "committed": committed, "toPush": 0}
             if settings.get("mode") == MODE_PR:
                 # The branch only takes pull requests: what this machine has goes to the one of its person.
-                message = push_to_person_branch(project_root, remote, branch, identity.read_identity()["id"])
-                return {"result": RESULT_SYNCED, "committed": committed, "toPush": 0, "message": message}
+                url, message = push_to_person_branch(project_root, remote, branch,
+                                                     identity.read_identity()["id"])
+                # Without a pull request, what was pushed reaches nobody: status keeps saying so.
+                return {"result": RESULT_SYNCED, "committed": committed, "toPush": 0, "message": message,
+                        "pullRequestPending": url is None}
             if push(project_root, remote, branch):
                 fetch(project_root, remote, branch)
                 return {"result": RESULT_SYNCED, "committed": committed, "toPush": 0}
@@ -498,6 +502,8 @@ def describe(state):
     result = state.get("result")
     last = state.get("lastSynced")
     since = f", last synced {last}" if last else ""
+    if result == RESULT_SYNCED and state.get("pullRequestPending"):
+        return f"Sync: a pull request is missing ({state.get('lastRun')}): {state.get('message', '')}".rstrip(": ")
     if result == RESULT_SYNCED:
         return f"Sync: up to date ({state.get('lastRun')})"
     waiting = state.get("toPush") or 0

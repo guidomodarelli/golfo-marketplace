@@ -32,7 +32,8 @@ MARKDOWN_SUFFIX = ".md"
 INPUT_SUFFIXES = (".pdf", ".docx", ".doc", ".odt", ".rtf")
 # What a document of the office is, and what is not one even when it is Markdown: the files of the engine
 # and of the agents, and what is generated.
-DOCUMENT_PATHSPECS = tuple(f":(glob)**/*{suffix}" for suffix in (MARKDOWN_SUFFIX,) + INPUT_SUFFIXES) + (
+# icase: an upload named scan.PDF is a document too, as is_input and the merge attributes take it.
+DOCUMENT_PATHSPECS = tuple(f":(glob,icase)**/*{suffix}" for suffix in (MARKDOWN_SUFFIX,) + INPUT_SUFFIXES) + (
     ":(exclude,glob).agents/**",
     ":(exclude,glob).claude/**",
     ":(exclude,glob).codex/**",
@@ -157,6 +158,11 @@ def settle_inputs(project_root, files, git):
                 handle.write(theirs)
             added = git(project_root, "add", "--", path, other)
             settled.append(other)
+        elif ours is None and theirs is None:
+            # Both sides renamed it, each to another name: the renamed files are kept, the old name goes.
+            if os.path.exists(absolute):
+                os.remove(absolute)
+            added = git(project_root, "rm", "--cached", "--quiet", "--force", "--ignore-unmatch", "--", path)
         else:
             # One side removed it, or both brought the same bytes: the file that exists stays.
             kept = ours if ours is not None else theirs

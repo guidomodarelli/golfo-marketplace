@@ -1665,6 +1665,38 @@ PY
   [ "$(printf '%s' "$output" | tr -d '\r' | paste -sd,)" = "b,0" ]
 }
 
+@test "documents: an upload with its extension in capitals goes out too" {
+  setup_office_documents
+  mkdir -p entradas
+  printf 'scan\n' > entradas/scan.PDF
+  run_cli sync
+  [ "$status" -eq 0 ]
+  git cat-file -e HEAD:entradas/scan.PDF
+}
+
+@test "documents: an upload renamed on both machines to different names keeps both names" {
+  setup_office_documents
+  mkdir -p entradas
+  printf 'poder\n' > entradas/poder.pdf
+  run_cli sync
+  [ "$status" -eq 0 ]
+  cd "$other"
+  XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
+  [ "$status" -eq 0 ]
+  mv entradas/poder.pdf entradas/poder-juan.pdf
+  XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
+  [ "$status" -eq 0 ]
+  cd "$project_dir"
+  mv entradas/poder.pdf entradas/poder-ana.pdf
+  run_cli sync
+  [ "$status" -eq 0 ]
+  [ ! -e entradas/poder.pdf ]
+  [ "$(cat entradas/poder-ana.pdf)" = "poder" ]
+  [ "$(cat entradas/poder-juan.pdf)" = "poder" ]
+  [ ! -e "$(git rev-parse --git-path MERGE_HEAD)" ]
+  [ "$(git rev-parse HEAD)" = "$(git -C "$remote" rev-parse main)" ]
+}
+
 @test "documents stay out of the sync when sync.scope is knowledge, the default without the documents profile" {
   setup_office_remote
   mkdir -p actas
@@ -1703,6 +1735,28 @@ SH
   MSYS2_ARG_CONV_EXCL='agent-ready/sync/' git -C "$remote" show "agent-ready/sync/ana:.agents/rules/learned.md" | grep -q 'Dates go first.'
   ! MSYS2_ARG_CONV_EXCL="$base:" git -C "$remote" show "$base:.agents/rules/learned.md" 2> /dev/null | grep -q 'Dates go first.'
   grep -q "pr create --head agent-ready/sync/ana --base $base" "$test_root/gh.log"
+}
+
+@test "sync.mode pr without a pull request keeps telling the person in status" {
+  setup_office_remote
+  mkdir -p "$XDG_CONFIG_HOME/agent-ready-setup"
+  printf '%s\n' '{"id": "ana", "name": "Ana"}' > "$XDG_CONFIG_HOME/agent-ready-setup/identity.json"
+  python3 - <<'PY'
+import json
+path = ".agents/agent-ready.json"
+manifest = json.load(open(path, encoding="utf-8"))
+manifest["sync"] = {"mode": "pr"}
+json.dump(manifest, open(path, "w", encoding="utf-8"))
+PY
+  # gh cannot open the pull request.
+  printf '%s\n' '#!/bin/bash' '[[ "$1 $2" == "pr create" ]] && { echo "no permission" >&2; exit 1; }' 'exit 0' > "$fake_bin/gh"
+  chmod +x "$fake_bin/gh"
+  learn_rule dates 'Dates go first.'
+  run_cli sync
+  [ "$status" -eq 0 ]
+  # The brief status of the start of a session, as the hook prints it.
+  run python3 "$skill_dir/scripts/agent-ready-state.py" status --project . --skill-dir "$skill_dir" --brief
+  [[ "$output" == *"Sync: a pull request is missing"*"could not be opened: no permission"* ]]
 }
 
 @test "doctor checks the remote of the team sync and lists the conflicts that wait for a person" {
