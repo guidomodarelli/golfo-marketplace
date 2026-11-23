@@ -45,8 +45,14 @@ def merge_head(project_root):
 
 
 def unmerged_rule_files(project_root):
-    files = git(project_root, "diff", "--name-only", "--diff-filter=U").stdout.split()
+    # NUL-separated: a name with spaces or accents comes as it is, never split nor quoted by Git.
+    files = git(project_root, "diff", "--name-only", "-z", "--diff-filter=U").stdout.split("\0")
     return [path for path in files if path.startswith(RULES_PREFIX)]
+
+
+def holds(choice, conflict):
+    """True while the rule still has the two versions the developer decided about."""
+    return choice.get("mine") == conflict["mine"]["lines"] and choice.get("theirs") == conflict["theirs"]["lines"]
 
 
 def read_decisions(project_root, head):
@@ -76,7 +82,7 @@ def conflicts(project_root):
     found = []
     for path in unmerged_rule_files(project_root):
         found.extend(conflict for conflict in sync_conflicts.rule_conflicts(project_root, path, MERGE_HEAD)
-                     if conflict["id"] not in decided)
+                     if conflict["id"] not in decided or not holds(decided[conflict["id"]], conflict))
     return found
 
 
@@ -102,11 +108,13 @@ def stage_text(project_root, stage, path):
     return result.stdout if result.returncode == 0 else ""
 
 
-def resolve(project_root, conflict_id, decision, statement=None):
+def resolve(project_root, conflict_id, decision, statement=None, check_statement=None):
     """Write the decision into the file of the rule; returns (path, staged).
 
     The file is merged again from its three versions with every rule decided in this merge, so the
-    decisions of the other rules of the file stay. It is staged only when no rule of it conflicts."""
+    decisions of the other rules of the file stay while their versions are the ones decided. It is staged
+    only when no rule of it conflicts. ``check_statement(lines)`` raises when the rule a combined statement
+    makes would not pass the lint of the project."""
     head = merge_head(project_root)
     if not head:
         raise ValueError("no merge is in progress in this checkout")
@@ -125,13 +133,22 @@ def resolve(project_root, conflict_id, decision, statement=None):
             sync_conflicts.details_of(conflict["mine"]["lines"]) != sync_conflicts.details_of(conflict["theirs"]["lines"]):
         raise ValueError("the two versions also differ in their exceptions or details, which a combined statement "
                          "would lose: keep one (--keep mine or --keep theirs) and change it afterwards")
-    decided[conflict_id] = {"decision": decision, "statement": " ".join((statement or "").split()) or None}
-    write_decisions(project_root, head, decided)
     path = conflict["path"]
+    if sync_conflicts.outside_rules_conflict(project_root, path, MERGE_HEAD):
+        # The file is rebuilt from its three versions: what the developer merged by hand there would go.
+        raise ValueError(f"{path} also conflicts outside its rules (its title, paragraphs or frontmatter): "
+                         "resolve that file by hand")
+    combined = " ".join((statement or "").split()) or None
+    if decision == sync_conflicts.DECISION_MERGED and check_statement:
+        # Nothing is written for a combined statement that would not be a valid rule.
+        check_statement(sync_conflicts.resolution_lines(dict(conflict, decision=decision, statement=combined)))
+    decided[conflict_id] = {"decision": decision, "statement": combined, "mine": conflict["mine"]["lines"],
+                            "theirs": conflict["theirs"]["lines"]}
+    write_decisions(project_root, head, decided)
     resolutions = {}
     for other_id, choice in decided.items():
         other = every.get(other_id)
-        if other is None or other["path"] != path:
+        if other is None or other["path"] != path or not holds(choice, other):
             continue
         lines = sync_conflicts.resolution_lines(dict(other, decision=choice["decision"], statement=choice["statement"]))
         resolutions[other["ruleId"]] = {"lines": lines, "mine": other["mine"]["lines"], "theirs": other["theirs"]["lines"]}

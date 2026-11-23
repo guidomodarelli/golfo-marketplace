@@ -121,7 +121,8 @@ def command_resolve(project_root, arguments):
     decision, statement = decision_of(arguments)
     if software_preset(project_root):
         try:
-            path, staged = branch_conflicts.resolve(project_root, arguments.resolve, decision, statement)
+            path, staged = branch_conflicts.resolve(project_root, arguments.resolve, decision, statement,
+                                                    lambda lines: check_combined_rule(project_root, lines))
         except ValueError as invalid:
             raise StateError(str(invalid)) from invalid
         sys.stdout.write(f"Decided {arguments.resolve}: {decision}, written to {path}"

@@ -1549,6 +1549,11 @@ PY
   [[ "$output" == *"the other branch, "*": Put the case in the header."* ]]
   run_cli sync --resolve '.agents/rules/learned.md#learned/header' --each-their-own
   [ "$status" -ne 0 ]
+  # A combined statement that would not pass the lint writes nothing.
+  run_cli sync --resolve '.agents/rules/learned.md#learned/header' --merged "Put the date in the header. Put the case in it."
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"the combined statement would not be a valid rule"* ]]
+  [ -n "$(git diff --name-only --diff-filter=U)" ]
   run_cli sync --resolve '.agents/rules/learned.md#learned/header' --merged "Put the date and the case at the top of the header."
   [ "$status" -eq 0 ]
   [[ "$output" == *"staged; finish the merge with git commit"* ]]
@@ -1559,4 +1564,60 @@ PY
   git commit -q --no-edit
   run_cli sync --conflicts
   [ -z "$output" ]
+}
+
+# Both branches change the rule $1 of $2: this one with sed $3, other-work with sed $4; the merge conflicts.
+branches_change_rule() {
+  git checkout -q other-work
+  sed -i.bak "$4" "$2"
+  rm -f "$2.bak"
+  git commit -qam "other-work changes $1"
+  git checkout -q "$base_branch"
+  sed -i.bak "$3" "$2"
+  rm -f "$2.bak"
+  git commit -qam "this branch changes $1"
+  ! git merge -q --no-edit other-work
+}
+
+@test "software: a rule file with accents in its name is found and resolved" {
+  setup_code_repository
+  RULE_FILE=.agents/rules/política.md learn_rule firma 'Firmá al final.'
+  git add -A
+  git commit -qm "learn: firma"
+  git checkout -q "$base_branch"
+  git merge -q --no-edit other-work
+  branches_change_rule firma .agents/rules/política.md 's/Firmá al final./Firmá al pie./' 's/Firmá al final./Firmá con aclaración./'
+  run_cli sync --conflicts
+  [[ "$output" == *".agents/rules/política.md#learned/firma"* ]]
+  run_cli sync --resolve '.agents/rules/política.md#learned/firma' --keep theirs
+  [ "$status" -eq 0 ]
+  grep -Fxq -- '- Firmá con aclaración.' .agents/rules/política.md
+}
+
+@test "software: a file that also conflicts in its title is left to the developer, never rewritten" {
+  setup_code_repository
+  git checkout -q "$base_branch"
+  branches_change_rule header .agents/rules/learned.md \
+    's/Put the date in the header./Put the date at the top./; s/^# Learned rules$/# Our rules/' \
+    's/Put the date in the header./Put the case in the header./; s/^# Learned rules$/# Team rules/'
+  run_cli sync --resolve '.agents/rules/learned.md#learned/header' --keep mine
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"also conflicts outside its rules"* ]]
+  grep -q '^<<<<<<<' .agents/rules/learned.md
+}
+
+@test "software: a decision of an aborted merge does not hide a rule that changed since" {
+  setup_code_repository
+  git checkout -q "$base_branch"
+  branches_change_rule header .agents/rules/learned.md \
+    's/Put the date in the header./Put the date at the top./' 's/Put the date in the header./Put the case in the header./'
+  run_cli sync --resolve '.agents/rules/learned.md#learned/header' --keep mine
+  [ "$status" -eq 0 ]
+  git merge --abort
+  sed -i.bak 's/Put the date at the top./Put the date at the very top./' .agents/rules/learned.md
+  rm -f .agents/rules/learned.md.bak
+  git commit -qam "this branch changes header again"
+  ! git merge -q --no-edit other-work
+  run_cli sync --conflicts
+  [[ "$output" == *"this branch, "*": Put the date at the very top."* ]]
 }
