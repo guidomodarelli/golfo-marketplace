@@ -6,7 +6,8 @@ colaboración usa un repositorio.
 
 > **Estado.** La identidad, el preset, los merge drivers, la sincronización
 > ([team-sync.md](team-sync.md)), el aprendizaje personal, la promoción a equipo y los conflictos que
-> decide una persona son las partes 169a a 169f de la issue #169.
+> decide una persona son las partes 169a a 169f de la issue #169; los conflictos del merge en un
+> repositorio de código, la 169g.
 
 ## Identidad
 
@@ -67,6 +68,22 @@ archivo, o que suman evidencia al registro, chocan aunque cambiaron cosas distin
   por línea con `git merge-file`, como si no hubiera driver.
 - En una máquina sin el driver registrado (un clon donde nunca se corrió `apply`), Git mezcla línea por
   línea. Para que nunca pase, el `apply` de cada máquina lo registra.
+
+## Conflictos en un repositorio de código
+
+En el preset `software` no hay sync propio: lo aprendido es un commit de la rama actual y viaja en su PR.
+Los merge drivers combinan dos ramas que aprendieron rules distintas. Si dos ramas cambiaron la misma
+rule de forma distinta, el conflicto aparece en el merge que hace el desarrollador (`git merge`, un pull,
+el merge local de un PR), solo en esa rule.
+
+- **Se explica.** `agent-ready sync --conflicts`, que corre al iniciar la sesión, lista cada rule del merge
+  en curso: quién la cambió en cada rama, cuándo y la diferencia.
+- **Se propone qué conservar:** esta rama (`--keep mine`), la otra (`--keep theirs`) o un enunciado que
+  combina las dos (`--merged "<enunciado>"`), que el agente muestra antes de guardarlo. No hay «cada uno
+  la suya»: en un repositorio de código no hay rules personales.
+- **El merge sigue siendo del desarrollador.** `agent-ready sync --resolve <id> <opción>` escribe la rule
+  en su archivo y lo agrega al index cuando no le queda otra rule en conflicto. Nunca hace commit, pull ni
+  push: el desarrollador termina el merge con `git commit`.
 
 ## Aprendizaje personal y de equipo
 

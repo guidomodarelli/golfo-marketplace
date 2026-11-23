@@ -1501,3 +1501,181 @@ PY
   [ "$status" -eq 1 ]
   [[ "$output" == *"the same part changed on two machines: .agents/rules/learned.md"* ]]
 }
+
+# 169g: in the software preset, the rules of the merge the developer does; nothing syncs by itself.
+setup_code_repository() {
+  run_cli apply --profiles learning
+  [ "$status" -eq 0 ]
+  python3 - <<'PY'
+import json
+path = ".agents/agent-ready.json"
+manifest = json.load(open(path, encoding="utf-8"))
+manifest["collaboration"] = "software"
+json.dump(manifest, open(path, "w", encoding="utf-8"))
+PY
+  learn_rule header 'Put the date in the header.'
+  git add -A
+  git commit -qm "agent-ready and a learned rule"
+  base_branch="$(git symbolic-ref --short HEAD)"
+  git checkout -qb other-work
+}
+
+@test "software: two branches that learned different rules merge with the drivers, without a conflict" {
+  setup_code_repository
+  learn_rule closing 'Sign at the end.'
+  git commit -qam "learn: closing"
+  git checkout -q "$base_branch"
+  learn_rule summary 'Start with a summary.'
+  git commit -qam "learn: summary"
+  git merge -q --no-edit other-work
+  grep -Fxq -- '- Sign at the end.' .agents/rules/learned.md
+  grep -Fxq -- '- Start with a summary.' .agents/rules/learned.md
+}
+
+@test "software: the same rule changed on two branches is explained and written into the merge, which stays the developer's" {
+  setup_code_repository
+  sed -i.bak 's/Put the date in the header./Put the case in the header./' .agents/rules/learned.md
+  rm -f .agents/rules/learned.md.bak
+  git commit -qam "learn: the case in the header"
+  git checkout -q "$base_branch"
+  sed -i.bak 's/Put the date in the header./Put the date at the top of the header./' .agents/rules/learned.md
+  rm -f .agents/rules/learned.md.bak
+  git commit -qam "learn: the date at the top"
+  ! git merge -q --no-edit other-work
+  run_cli sync --conflicts
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"the two branches changed in different ways"* ]]
+  [[ "$output" == *"this branch, "*": Put the date at the top of the header."* ]]
+  [[ "$output" == *"the other branch, "*": Put the case in the header."* ]]
+  run_cli sync --resolve '.agents/rules/learned.md#learned/header' --each-their-own
+  [ "$status" -ne 0 ]
+  # A combined statement that would not pass the lint writes nothing.
+  run_cli sync --resolve '.agents/rules/learned.md#learned/header' --merged "Put the date in the header. Put the case in it."
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"the combined statement would not be a valid rule"* ]]
+  [ -n "$(git diff --name-only --diff-filter=U)" ]
+  run_cli sync --resolve '.agents/rules/learned.md#learned/header' --merged "Put the date and the case at the top of the header."
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"staged; finish the merge with git commit"* ]]
+  grep -Fxq -- '- Put the date and the case at the top of the header.' .agents/rules/learned.md
+  [ -z "$(git diff --name-only --diff-filter=U)" ]
+  # Nothing was committed nor pushed: the merge is still the developer's.
+  [ -e "$(git rev-parse --git-path MERGE_HEAD)" ]
+  git commit -q --no-edit
+  run_cli sync --conflicts
+  [ -z "$output" ]
+}
+
+# Both branches change the rule $1 of $2: this one with sed $3, other-work with sed $4; the merge conflicts.
+branches_change_rule() {
+  git checkout -q other-work
+  sed -i.bak "$4" "$2"
+  rm -f "$2.bak"
+  git commit -qam "other-work changes $1"
+  git checkout -q "$base_branch"
+  sed -i.bak "$3" "$2"
+  rm -f "$2.bak"
+  git commit -qam "this branch changes $1"
+  ! git merge -q --no-edit other-work
+}
+
+@test "software: a rule file with accents in its name is found and resolved" {
+  setup_code_repository
+  RULE_FILE=.agents/rules/política.md learn_rule firma 'Firmá al final.'
+  git add -A
+  git commit -qm "learn: firma"
+  git checkout -q "$base_branch"
+  git merge -q --no-edit other-work
+  branches_change_rule firma .agents/rules/política.md 's/Firmá al final./Firmá al pie./' 's/Firmá al final./Firmá con aclaración./'
+  run_cli sync --conflicts
+  [[ "$output" == *".agents/rules/política.md#learned/firma"* ]]
+  run_cli sync --resolve '.agents/rules/política.md#learned/firma' --keep theirs
+  [ "$status" -eq 0 ]
+  grep -Fxq -- '- Firmá con aclaración.' .agents/rules/política.md
+}
+
+@test "software: a file that also conflicts in its title is left to the developer, never rewritten" {
+  setup_code_repository
+  git checkout -q "$base_branch"
+  branches_change_rule header .agents/rules/learned.md \
+    's/Put the date in the header./Put the date at the top./; s/^# Learned rules$/# Our rules/' \
+    's/Put the date in the header./Put the case in the header./; s/^# Learned rules$/# Team rules/'
+  run_cli sync --resolve '.agents/rules/learned.md#learned/header' --keep mine
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"also conflicts outside its rules"* ]]
+  grep -q '^<<<<<<<' .agents/rules/learned.md
+}
+
+@test "software: a decision of an aborted merge does not hide a rule that changed since" {
+  setup_code_repository
+  git checkout -q "$base_branch"
+  branches_change_rule header .agents/rules/learned.md \
+    's/Put the date in the header./Put the date at the top./' 's/Put the date in the header./Put the case in the header./'
+  run_cli sync --resolve '.agents/rules/learned.md#learned/header' --keep mine
+  [ "$status" -eq 0 ]
+  git merge --abort
+  sed -i.bak 's/Put the date at the top./Put the date at the very top./' .agents/rules/learned.md
+  rm -f .agents/rules/learned.md.bak
+  git commit -qam "this branch changes header again"
+  ! git merge -q --no-edit other-work
+  run_cli sync --conflicts
+  [[ "$output" == *"this branch, "*": Put the date at the very top."* ]]
+  # The file the first attempt resolved is not a manual edit of the second one.
+  run_cli sync --resolve '.agents/rules/learned.md#learned/header' --keep mine
+  [ "$status" -eq 0 ]
+  grep -Fxq -- '- Put the date at the very top.' .agents/rules/learned.md
+}
+
+@test "software: a file edited by hand after a --resolve is not rewritten by the next one" {
+  setup_code_repository
+  learn_rule closing 'Sign at the end.'
+  git commit -qam "learn: closing"
+  git checkout -q "$base_branch"
+  git merge -q --no-edit other-work
+  branches_change_rule header .agents/rules/learned.md \
+    's/Put the date in the header./Put the date at the top./; s/Sign at the end./Sign at the foot./' \
+    's/Put the date in the header./Put the case in the header./; s/Sign at the end./Sign with a stamp./'
+  run_cli sync --resolve '.agents/rules/learned.md#learned/header' --keep mine
+  [ "$status" -eq 0 ]
+  sed -i.bak 's/Put the date at the top./Put the date at the very top./' .agents/rules/learned.md
+  rm -f .agents/rules/learned.md.bak
+  run_cli sync --resolve '.agents/rules/learned.md#learned/closing' --keep theirs
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"changed by hand since the merge or the last agent-ready sync --resolve"* ]]
+  grep -Fxq -- '- Put the date at the very top.' .agents/rules/learned.md
+}
+
+@test "software: a rule file the other branch renamed is found at its new name" {
+  setup_code_repository
+  mkdir -p .agents/rules/learned
+  git mv .agents/rules/learned.md .agents/rules/learned/office.md
+  sed -i.bak 's/Put the date in the header./Put the case in the header./' .agents/rules/learned/office.md
+  rm -f .agents/rules/learned/office.md.bak
+  git commit -qam "other-work renames the rules and changes header"
+  git checkout -q "$base_branch"
+  sed -i.bak 's/Put the date in the header./Put the date at the top./' .agents/rules/learned.md
+  rm -f .agents/rules/learned.md.bak
+  git commit -qam "this branch changes header"
+  ! git merge -q --no-edit other-work
+  run_cli sync --conflicts
+  [[ "$output" == *".agents/rules/learned/office.md#learned/header"* ]]
+  run_cli sync --resolve '.agents/rules/learned/office.md#learned/header' --keep theirs
+  [ "$status" -eq 0 ]
+  grep -Fxq -- '- Put the case in the header.' .agents/rules/learned/office.md
+}
+
+@test "software: a rule edited by hand before the first --resolve is kept, never rewritten" {
+  setup_code_repository
+  learn_rule closing 'Sign at the end.'
+  git commit -qam "learn: closing"
+  git checkout -q "$base_branch"
+  git merge -q --no-edit other-work
+  branches_change_rule header .agents/rules/learned.md \
+    's/Put the date in the header./Put the date at the top./' 's/Put the date in the header./Put the case in the header./'
+  sed -i.bak 's/Sign at the end./Sign at the end, with a stamp./' .agents/rules/learned.md
+  rm -f .agents/rules/learned.md.bak
+  run_cli sync --resolve '.agents/rules/learned.md#learned/header' --keep mine
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"changed by hand since the merge"* ]]
+  grep -Fxq -- '- Sign at the end, with a stamp.' .agents/rules/learned.md
+}
