@@ -138,13 +138,34 @@ def file_change(project_root, revision, path):
     return person_of(author, body), moment.strip()
 
 
+def renamed_from(project_root, revision, other, path):
+    """The name ``path`` has in ``revision`` when ``other`` renamed it to ``path`` since their merge base."""
+    base = git(project_root, "merge-base", revision, other).stdout.strip()
+    if not base:
+        return None
+    records = git(project_root, "diff", "--name-status", "-M", "-z", base, other).stdout.split("\0")
+    for index, status in enumerate(records):
+        if status.startswith("R") and index + 2 < len(records) and records[index + 2] == path:
+            return records[index + 1]
+    return None
+
+
+def document_side(project_root, revision, other, path):
+    """(exists, text, path in ``revision``) of the document Git reports at ``path``: when ``other`` renamed it,
+    ``revision`` still has it at its old name, which is what the merge puts in its stage."""
+    for name in (path, renamed_from(project_root, revision, other, path)):
+        if name and git(project_root, "cat-file", "-e", f"{revision}:{name}").returncode == 0:
+            return True, show(project_root, revision, name), name
+    return False, "", path
+
+
 def document_conflicts(project_root, path, reference):
     """The Markdown document ``path`` changed in the same part on both sides, as one conflict."""
-    mine, theirs = show(project_root, "HEAD", path), show(project_root, reference, path)
-    exists = [git(project_root, "cat-file", "-e", f"{revision}:{path}").returncode == 0
-              for revision in ("HEAD", reference)]
-    return [documents.document_conflict(path, mine, theirs, file_change(project_root, "HEAD", path),
-                                        file_change(project_root, reference, path), *exists)]
+    mine_exists, mine, mine_path = document_side(project_root, "HEAD", reference, path)
+    theirs_exists, theirs, theirs_path = document_side(project_root, reference, "HEAD", path)
+    return [documents.document_conflict(path, mine, theirs, file_change(project_root, "HEAD", mine_path),
+                                        file_change(project_root, reference, theirs_path), mine_exists,
+                                        theirs_exists)]
 
 
 def last_change(project_root, revision, path, rule_id, lines):

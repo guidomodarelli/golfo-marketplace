@@ -69,8 +69,12 @@ sync no hace commits, fetch ni push, y ningún disparador lo corre. Las claves e
 
 - **`sync.mode: pr`.** Para una rama que solo acepta pull requests: lo de esta máquina sube a la rama de
   su persona, `agent-ready/sync/<persona>`, sin force push, y `gh` abre un pull request hacia la rama
-  actual si no hay uno abierto. Lo que traen los demás sigue llegando de la rama actual. Sin `gh`, la
-  línea `Sync:` dice qué rama abrir.
+  actual si no hay uno abierto, en el repositorio del remoto del sync. Lo que traen los demás sigue
+  llegando de la rama actual. Si no se pudo abrir el pull request, la línea `Sync:` lo sigue avisando, con
+  el motivo.
+  - **Merge del pull request:** con merge commit o rebase. Un squash crea commits nuevos, y esta máquina
+    sigue teniendo los suyos: el próximo sync los ve como trabajo sin subir y puede marcar un conflicto
+    con lo que otro cambió después.
 - **`agent-ready doctor`** revisa, en el preset `business`, que el remoto exista y acepte las
   credenciales de Git de esta máquina (`git ls-remote`; con `--offline` no lo contacta). También avisa los
   commits que esperan salir y los conflictos que esperan a una persona, con sus ids.

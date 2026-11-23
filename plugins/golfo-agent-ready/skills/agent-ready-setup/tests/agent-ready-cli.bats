@@ -1697,6 +1697,27 @@ PY
   [ "$(git rev-parse HEAD)" = "$(git -C "$remote" rev-parse main)" ]
 }
 
+@test "documents: a document renamed and edited on one machine and edited on the other is decided at its new name" {
+  setup_office_documents
+  cd "$other"
+  git mv actas/acta-4512.md actas/acta-4512-firmada.md
+  sed -i 's/^Partes: Ruiz y Gómez.$/Partes: Ruiz, Gómez y Pérez./' actas/acta-4512-firmada.md
+  git commit -qm "rename and edit the acta"
+  XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
+  [ "$status" -eq 0 ]
+  cd "$project_dir"
+  edit_acta project 'Partes: Ruiz y Gómez.' 'Partes: Ruiz y Gómez (apoderados).'
+  [ "$status" -eq 1 ]
+  run_cli sync --conflicts
+  [[ "$output" == *"actas/acta-4512-firmada.md"* ]]
+  [[ "$output" == *"+Partes: Ruiz, Gómez y Pérez."* ]]
+  run_cli sync --resolve actas/acta-4512-firmada.md --keep theirs
+  [ "$status" -eq 0 ]
+  grep -Fxq 'Partes: Ruiz, Gómez y Pérez.' actas/acta-4512-firmada.md
+  [ ! -e actas/acta-4512.md ]
+  [ "$(git rev-parse HEAD)" = "$(git -C "$remote" rev-parse main)" ]
+}
+
 @test "documents stay out of the sync when sync.scope is knowledge, the default without the documents profile" {
   setup_office_remote
   mkdir -p actas
@@ -1735,6 +1756,22 @@ SH
   MSYS2_ARG_CONV_EXCL='agent-ready/sync/' git -C "$remote" show "agent-ready/sync/ana:.agents/rules/learned.md" | grep -q 'Dates go first.'
   ! MSYS2_ARG_CONV_EXCL="$base:" git -C "$remote" show "$base:.agents/rules/learned.md" 2> /dev/null | grep -q 'Dates go first.'
   grep -q "pr create --head agent-ready/sync/ana --base $base" "$test_root/gh.log"
+}
+
+@test "sync.mode pr opens the pull request in the repository of the remote of the sync" {
+  setup_office_remote
+  run python3 - "$skill_dir/scripts" "$project_dir" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1])
+import agent_ready_sync as sync
+root = sys.argv[2]
+for url in ("https://github.com/acme/office.git", "git@github.com:acme/office.git",
+            "ssh://git@ghe.acme.io/acme/office", "/srv/office.git"):
+    sync.git(root, "remote", "set-url", "origin", url)
+    print(sync.remote_repository(root, "origin"))
+PY
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s' "$output" | tr -d '\r' | paste -sd,)" = "github.com/acme/office,github.com/acme/office,ghe.acme.io/acme/office,None" ]
 }
 
 @test "sync.mode pr without a pull request keeps telling the person in status" {

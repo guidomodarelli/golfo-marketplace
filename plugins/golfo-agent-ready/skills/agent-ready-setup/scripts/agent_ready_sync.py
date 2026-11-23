@@ -19,6 +19,7 @@ of the last run lives in ``.git/info/agent-ready/sync.json``, never in the repos
 import datetime
 import json
 import os
+import re
 import subprocess
 
 import agent_ready_identity as identity
@@ -401,15 +402,30 @@ def run_gh(project_root, *arguments):
                           capture_output=True, text=True, encoding="utf-8", errors="replace", check=False)
 
 
-def ensure_pull_request(project_root, head, base, person):
-    """The pull request of ``head`` into ``base``, opened with gh when there is none; (url or None, message)."""
+# [HOST/]OWNER/REPO of a remote URL, https or scp-like (git@host:owner/repo.git), as gh --repo takes it.
+REMOTE_REPOSITORY = re.compile(r"^(?:[a-z+]+://(?:[^@/]+@)?|[^@/]+@)(?P<host>[^/:]+)[:/]+(?P<path>[^/]+/[^/]+?)(?:\.git)?/?$")
+
+
+def remote_repository(project_root, remote):
+    """The repository of ``remote`` for gh --repo, or None when its URL is not one of a host (a local path)."""
+    url = git(project_root, "remote", "get-url", remote).stdout.strip()
+    match = REMOTE_REPOSITORY.match(url)
+    return f"{match.group('host')}/{match.group('path')}" if match else None
+
+
+def ensure_pull_request(project_root, head, base, person, repository=None):
+    """The pull request of ``head`` into ``base``, opened with gh when there is none; (url or None, message).
+
+    ``repository`` is the one of the remote of the sync: gh would otherwise pick its own default (the
+    upstream of a fork), where the branch of the person does not exist."""
     if run_gh(project_root, "--version").returncode != 0:
         return None, f"pushed to {head}; open a pull request into {base} (gh is not installed)"
-    listed = run_gh(project_root, "pr", "list", "--head", head, "--base", base, "--state", "open", "--json", "url",
-                    "--jq", ".[0].url")
+    target = ("--repo", repository) if repository else ()
+    listed = run_gh(project_root, "pr", "list", *target, "--head", head, "--base", base, "--state", "open",
+                    "--json", "url", "--jq", ".[0].url")
     if listed.returncode == 0 and listed.stdout.strip():
         return listed.stdout.strip(), f"pushed to {head}, in its open pull request {listed.stdout.strip()}"
-    created = run_gh(project_root, "pr", "create", "--head", head, "--base", base,
+    created = run_gh(project_root, "pr", "create", *target, "--head", head, "--base", base,
                      "--title", PULL_REQUEST_TITLE.format(person=person),
                      "--body", "What was learned and the documents of the office, from agent-ready sync.")
     if created.returncode == 0 and created.stdout.strip():
@@ -427,7 +443,7 @@ def push_to_person_branch(project_root, remote, branch, person):
         with_registry(project_root, merge, remote, head)
     if not push(project_root, remote, head):
         raise SyncError(RESULT_PUSH_FAILED, f"{head} moved while this machine pushed; the next run merges it")
-    return ensure_pull_request(project_root, head, branch, person)
+    return ensure_pull_request(project_root, head, branch, person, remote_repository(project_root, remote))
 
 
 def synchronize(project_root, settings):
