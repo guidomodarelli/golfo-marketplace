@@ -91,8 +91,9 @@ def command_resolve(project_root, arguments):
     """Store what the person decided and synchronize with it."""
     decision, statement = decision_of(arguments)
     try:
-        conflict = sync_conflicts.decide(project_root, arguments.resolve, decision, identity.read_identity()["id"],
-                                         statement)
+        conflict = sync_conflicts.decide(
+            project_root, arguments.resolve, decision, identity.read_identity()["id"], statement,
+            lambda person, item: team_sync.personal_rule_exists(project_root, person, item))
     except ValueError as invalid:
         raise StateError(str(invalid)) from invalid
     sys.stdout.write(f"Decided {conflict['id']}: {decision}.\n")

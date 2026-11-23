@@ -190,8 +190,16 @@ def pending(project_root):
     return [conflict for conflict in read_state(project_root)["conflicts"] if not conflict.get("decision")]
 
 
-def decide(project_root, conflict_id, decision, person, statement=None):
-    """Store the decision of a person for one conflict; returns the conflict."""
+def details_of(lines):
+    """The exceptions and details of a rule: the lines after the marker and its statement."""
+    return list((lines or [])[2:])
+
+
+def decide(project_root, conflict_id, decision, person, statement=None, personal_rule_exists=None):
+    """Store the decision of a person for one conflict; returns the conflict.
+
+    ``personal_rule_exists(person, conflict)`` says whether a person already has the personal rule that
+    each-their-own would write for them."""
     state = read_state(project_root)
     conflict = next((item for item in state["conflicts"] if item["id"] == conflict_id), None)
     if conflict is None:
@@ -204,6 +212,17 @@ def decide(project_root, conflict_id, decision, person, statement=None):
             conflict["mine"].get("by") == conflict["theirs"].get("by"):
         raise ValueError("both versions are from the same person, who cannot keep two of their own: keep one "
                          "(--keep mine or --keep theirs) or combine them (--merged)")
+    sides = [side for side in (conflict["mine"], conflict["theirs"]) if side.get("statement")]
+    if decision == DECISION_EACH and any(not side.get("by") for side in sides):
+        raise ValueError("who wrote one of the versions is not known, and it would be lost: keep one (--keep mine "
+                         "or --keep theirs) or combine them (--merged)")
+    if decision == DECISION_EACH and personal_rule_exists and \
+            any(personal_rule_exists(side["by"], conflict) for side in sides):
+        raise ValueError("one of them already has a personal rule with this id: keep one (--keep mine or --keep "
+                         "theirs) or combine them (--merged), and change the personal rule if it should go")
+    if decision == DECISION_MERGED and details_of(conflict["mine"]["lines"]) != details_of(conflict["theirs"]["lines"]):
+        raise ValueError("the two versions also differ in their exceptions or details, which a combined statement "
+                         "would lose: keep one (--keep mine or --keep theirs) and change it afterwards")
     if decision == DECISION_EACH and conflict.get("scoped"):
         raise ValueError("this rule applies to some files only, and a personal rule applies to the whole "
                          "repository: keep one (--keep mine or --keep theirs) or combine them (--merged)")
@@ -226,7 +245,8 @@ def resolution_lines(conflict):
         return None
     marker = next((line for line in (conflict["mine"]["lines"] or conflict["theirs"]["lines"])
                    if line.lstrip().startswith("<!--")), f"<!-- rule id={conflict['ruleId']} -->")
-    return [marker, f"- {conflict['statement']}"]
+    # The exceptions and details both versions share stay: the person only combined the statements.
+    return [marker, f"- {conflict['statement']}"] + details_of(conflict["mine"]["lines"] or conflict["theirs"]["lines"])
 
 
 def resolutions_file(project_root):

@@ -259,11 +259,31 @@ def resolve_file_conflicts(project_root, resolutions_path):
     return git(project_root, "commit", "--no-edit", "--quiet").returncode == 0
 
 
+def personal_entry(person, conflict, statement=None):
+    return {"scope": learning.SCOPE_PERSONAL, "owner": person, "statement": statement,
+            "key": conflict.get("key"), "paths": []}
+
+
+def personal_rule_id(person, conflict):
+    return learning_apply.rule_prefix(personal_entry(person, conflict)) + conflict["ruleId"].rsplit("/", 1)[-1]
+
+
+def personal_rule_exists(project_root, person, conflict):
+    """True when the personal rules of ``person`` already have the id that each-their-own would write."""
+    path = os.path.join(project_root, learning_apply.personal_file(personal_entry(person, conflict)))
+    try:
+        with open(path, encoding="utf-8") as handle:
+            text = handle.read()
+    except OSError:
+        return False
+    rule_id = personal_rule_id(person, conflict)
+    return any(f"id={rule_id}" in line.split() for line in text.splitlines() if line.lstrip().startswith("<!--"))
+
+
 def append_personal(project_root, person, conflict, statement):
     """Write one version of a decided conflict as the personal rule of the person who taught it."""
-    entry = {"scope": learning.SCOPE_PERSONAL, "owner": person, "statement": statement,
-             "key": conflict.get("key"), "paths": []}
-    rule_id = learning_apply.rule_prefix(entry) + conflict["ruleId"].rsplit("/", 1)[-1]
+    entry = personal_entry(person, conflict, statement)
+    rule_id = personal_rule_id(person, conflict)
     path, text = learning_apply.appended_rule(project_root, rule_id, entry, None)
     write_text_atomically(path, text)
     return path

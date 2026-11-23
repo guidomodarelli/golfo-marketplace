@@ -1335,3 +1335,50 @@ other_edits() {
   grep -Fxq -- '- Poné la fecha arriba de todo, en el encabezado.' .agents/rules/learned/users/ana/learned.md
   grep -Fxq -- '- Poné el número de expediente en el encabezado.' .agents/rules/learned/users/juan/learned.md
 }
+
+@test "each one keeps their own is refused when a version has no known author or its personal rule already exists" {
+  make_rule_conflict
+  mkdir -p .agents/rules/learned/users/ana
+  printf '%s\n' '# Personal rules' '' '<!-- rule id=learned/users/ana/header -->' '- Put the logo in the header.' \
+    > .agents/rules/learned/users/ana/learned.md
+  run_cli sync --resolve "$conflict_id" --each-their-own
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"already has a personal rule with this id"* ]]
+  rm -rf .agents/rules/learned/users
+  python3 - "$(git rev-parse --git-path info/agent-ready/sync-conflicts.json)" <<'PY'
+import json, sys
+path = sys.argv[1]
+state = json.load(open(path, encoding="utf-8"))
+state["conflicts"][0]["theirs"]["by"] = None
+json.dump(state, open(path, "w", encoding="utf-8"))
+PY
+  run_cli sync --resolve "$conflict_id" --each-their-own
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"who wrote one of the versions is not known"* ]]
+}
+
+@test "a combined statement keeps the exceptions both versions share" {
+  setup_office_remote
+  mkdir -p "$XDG_CONFIG_HOME/agent-ready-setup" "$test_root/config-other/agent-ready-setup"
+  printf '%s\n' '{"id": "ana", "name": "Ana"}' > "$XDG_CONFIG_HOME/agent-ready-setup/identity.json"
+  printf '%s\n' '{"id": "juan", "name": "Juan"}' > "$test_root/config-other/agent-ready-setup/identity.json"
+  learn_rule header 'Put the date in the header.'
+  printf '%s\n' '  - Except: leave archived records unchanged.' >> .agents/rules/learned.md
+  run_cli sync
+  [ "$status" -eq 0 ]
+  cd "$other"
+  XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
+  sed -i.bak 's/Put the date in the header./Put the case in the header./' .agents/rules/learned.md
+  rm -f .agents/rules/learned.md.bak
+  XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
+  [ "$status" -eq 0 ]
+  cd "$project_dir"
+  sed -i.bak 's/Put the date in the header./Put the date at the top of the header./' .agents/rules/learned.md
+  rm -f .agents/rules/learned.md.bak
+  run_cli sync
+  [ "$status" -eq 1 ]
+  run_cli sync --resolve '.agents/rules/learned.md#learned/header' --merged "Put the date and the case at the top of the header."
+  [ "$status" -eq 0 ]
+  grep -Fxq -- '- Put the date and the case at the top of the header.' .agents/rules/learned.md
+  grep -Fxq -- '  - Except: leave archived records unchanged.' .agents/rules/learned.md
+}
