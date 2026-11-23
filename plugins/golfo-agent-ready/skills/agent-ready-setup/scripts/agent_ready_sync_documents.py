@@ -63,7 +63,8 @@ def effective_scope(configured, lock):
 
 
 def is_markdown_document(path):
-    return path.endswith(MARKDOWN_SUFFIX) and not path.startswith((".agents/", ".claude/", ".codex/")) and \
+    # In any case, as DOCUMENT_PATHSPECS select it (icase): acta.MD is a document whose conflicts are explained.
+    return path.lower().endswith(MARKDOWN_SUFFIX) and not path.startswith((".agents/", ".claude/", ".codex/")) and \
         os.path.basename(path) not in ("AGENTS.md", "CLAUDE.md")
 
 

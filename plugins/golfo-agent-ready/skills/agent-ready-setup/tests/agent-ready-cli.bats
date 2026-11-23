@@ -1718,6 +1718,29 @@ PY
   [ "$(git rev-parse HEAD)" = "$(git -C "$remote" rev-parse main)" ]
 }
 
+@test "documents: a Markdown document with its extension in capitals has its conflict explained and decided" {
+  setup_office_documents
+  printf '%s\n' '# Nota' '' 'Estado: abierta.' > notas.MD
+  run_cli sync
+  [ "$status" -eq 0 ]
+  cd "$other"
+  XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
+  [ "$status" -eq 0 ]
+  sed -i 's/^Estado: abierta.$/Estado: cerrada./' notas.MD
+  XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
+  [ "$status" -eq 0 ]
+  cd "$project_dir"
+  sed -i 's/^Estado: abierta.$/Estado: en revisión./' notas.MD
+  run_cli sync
+  [ "$status" -eq 1 ]
+  run_cli sync --conflicts
+  [[ "$output" == *"notas.MD (a document changed in the same part on two machines)"* ]]
+  run_cli sync --resolve notas.MD --keep mine
+  [ "$status" -eq 0 ]
+  grep -Fxq 'Estado: en revisión.' notas.MD
+  [ "$(git rev-parse HEAD)" = "$(git -C "$remote" rev-parse main)" ]
+}
+
 @test "documents stay out of the sync when sync.scope is knowledge, the default without the documents profile" {
   setup_office_remote
   mkdir -p actas
