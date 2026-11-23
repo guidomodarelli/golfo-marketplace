@@ -12,6 +12,7 @@ The agent explains it at the start of the session, or whenever it runs ``agent-r
 the file conflicts. It never commits, pulls nor pushes: the merge stays the developer's.
 """
 
+import hashlib
 import json
 import os
 import subprocess
@@ -55,22 +56,38 @@ def holds(choice, conflict):
     return choice.get("mine") == conflict["mine"]["lines"] and choice.get("theirs") == conflict["theirs"]["lines"]
 
 
-def read_decisions(project_root, head):
-    """{conflict id: {decision, statement}} taken for the merge of ``head``; another merge starts empty."""
+def read_state(project_root, head):
+    """{decisions: {conflict id: {decision, statement, mine, theirs}}, written: {path: hash}} of the merge of
+    ``head``: the decisions taken and the hash of each file this module wrote; another merge starts empty."""
     try:
         with open(git_path(project_root, STATE_GIT_PATH), encoding="utf-8") as handle:
             state = json.load(handle)
     except (OSError, ValueError):
-        return {}
-    return state.get("decisions", {}) if isinstance(state, dict) and state.get("mergeHead") == head else {}
+        state = {}
+    if not isinstance(state, dict) or state.get("mergeHead") != head:
+        return {"decisions": {}, "written": {}}
+    return {"decisions": state.get("decisions") or {}, "written": state.get("written") or {}}
 
 
-def write_decisions(project_root, head, decisions):
+def read_decisions(project_root, head):
+    return read_state(project_root, head)["decisions"]
+
+
+def write_state(project_root, head, state):
     path = git_path(project_root, STATE_GIT_PATH)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8", newline="\n") as handle:
-        json.dump({"mergeHead": head, "decisions": decisions}, handle, indent=2, sort_keys=True, ensure_ascii=False)
+        json.dump(dict(state, mergeHead=head), handle, indent=2, sort_keys=True, ensure_ascii=False)
         handle.write("\n")
+
+
+def text_hash(text):
+    return hashlib.sha256(text.replace("\r\n", "\n").encode("utf-8")).hexdigest()
+
+
+def stage_versions(project_root, path):
+    """(base, ours, theirs) of ``path`` from the stages of the merge: they follow a rename of the file."""
+    return [stage_text(project_root, stage, path) for stage in (1, 2, 3)]
 
 
 def conflicts(project_root):
@@ -81,7 +98,8 @@ def conflicts(project_root):
     decided = read_decisions(project_root, head)
     found = []
     for path in unmerged_rule_files(project_root):
-        found.extend(conflict for conflict in sync_conflicts.rule_conflicts(project_root, path, MERGE_HEAD)
+        found.extend(conflict for conflict in sync_conflicts.rule_conflicts(project_root, path, MERGE_HEAD,
+                                                                          stage_versions(project_root, path))
                      if conflict["id"] not in decided or not holds(decided[conflict["id"]], conflict))
     return found
 
@@ -121,9 +139,11 @@ def resolve(project_root, conflict_id, decision, statement=None, check_statement
     if decision not in DECISIONS:
         raise ValueError("a repository of code has no personal rules: keep one version (--keep mine or --keep "
                          "theirs) or combine them (--merged)")
-    decided = read_decisions(project_root, head)
+    state = read_state(project_root, head)
+    decided = state["decisions"]
     every = {conflict["id"]: conflict for path in unmerged_rule_files(project_root)
-             for conflict in sync_conflicts.rule_conflicts(project_root, path, MERGE_HEAD)}
+             for conflict in sync_conflicts.rule_conflicts(project_root, path, MERGE_HEAD,
+                                                           stage_versions(project_root, path))}
     conflict = every.get(conflict_id)
     if conflict is None:
         raise ValueError(f"no rule of the merge in progress has the id {conflict_id} (see agent-ready sync --conflicts)")
@@ -134,7 +154,18 @@ def resolve(project_root, conflict_id, decision, statement=None, check_statement
         raise ValueError("the two versions also differ in their exceptions or details, which a combined statement "
                          "would lose: keep one (--keep mine or --keep theirs) and change it afterwards")
     path = conflict["path"]
-    if sync_conflicts.outside_rules_conflict(project_root, path, MERGE_HEAD):
+    absolute = os.path.join(project_root, path)
+    written = state["written"].get(path)
+    if written:
+        try:
+            with open(absolute, encoding="utf-8", newline="") as handle:
+                current = handle.read()
+        except OSError:
+            current = ""
+        if text_hash(current) != written:
+            # The developer edited the file after the last --resolve: rebuilding it would lose that.
+            raise ValueError(f"{path} changed after agent-ready sync --resolve wrote it: finish it by hand")
+    if sync_conflicts.outside_rules_conflict(project_root, path, MERGE_HEAD, stage_versions(project_root, path)):
         # The file is rebuilt from its three versions: what the developer merged by hand there would go.
         raise ValueError(f"{path} also conflicts outside its rules (its title, paragraphs or frontmatter): "
                          "resolve that file by hand")
@@ -144,7 +175,6 @@ def resolve(project_root, conflict_id, decision, statement=None, check_statement
         check_statement(sync_conflicts.resolution_lines(dict(conflict, decision=decision, statement=combined)))
     decided[conflict_id] = {"decision": decision, "statement": combined, "mine": conflict["mine"]["lines"],
                             "theirs": conflict["theirs"]["lines"]}
-    write_decisions(project_root, head, decided)
     resolutions = {}
     for other_id, choice in decided.items():
         other = every.get(other_id)
@@ -152,9 +182,10 @@ def resolve(project_root, conflict_id, decision, statement=None, check_statement
             continue
         lines = sync_conflicts.resolution_lines(dict(other, decision=choice["decision"], statement=choice["statement"]))
         resolutions[other["ruleId"]] = {"lines": lines, "mine": other["mine"]["lines"], "theirs": other["theirs"]["lines"]}
-    versions = [stage_text(project_root, stage, path) for stage in (1, 2, 3)]
-    merged, left = drivers.merge_rules(*versions, resolutions)
-    with open(os.path.join(project_root, path), "w", encoding="utf-8", newline="") as handle:
+    merged, left = drivers.merge_rules(*stage_versions(project_root, path), resolutions)
+    with open(absolute, "w", encoding="utf-8", newline="") as handle:
         handle.write(merged)
+    state["written"][path] = text_hash(merged)
+    write_state(project_root, head, state)
     staged = not left and git(project_root, "add", "--", path).returncode == 0
     return path, staged

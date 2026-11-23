@@ -157,10 +157,14 @@ def statement_of(lines):
     return (rules[0].statement, rules[0].key) if rules else (None, None)
 
 
-def rule_conflicts(project_root, path, reference):
-    """The rules of ``path`` that changed two ways between HEAD and ``reference``."""
-    base_revision = git(project_root, "merge-base", "HEAD", reference).stdout.strip()
-    versions = [show(project_root, revision, path) for revision in (base_revision, "HEAD", reference)]
+def rule_conflicts(project_root, path, reference, versions=None):
+    """The rules of ``path`` that changed two ways between HEAD and ``reference``.
+
+    ``versions`` are the (base, ours, theirs) texts when the caller already has them, like the stages of a
+    merge in progress, which follow a rename that the revisions alone do not."""
+    if versions is None:
+        base_revision = git(project_root, "merge-base", "HEAD", reference).stdout.strip()
+        versions = [show(project_root, revision, path) for revision in (base_revision, "HEAD", reference)]
     try:
         _, base_segments, _ = drivers.rule_segments(versions[0])
         _, ours_segments, _ = drivers.rule_segments(versions[1])
@@ -246,12 +250,15 @@ def details_of(lines):
     return lines[start:]
 
 
-def outside_rules_conflict(project_root, path, reference):
-    """True when the file also conflicts outside its rules: its title, its paragraphs or its frontmatter."""
-    base_revision = git(project_root, "merge-base", "HEAD", reference).stdout.strip()
+def outside_rules_conflict(project_root, path, reference, versions=None):
+    """True when the file also conflicts outside its rules: its title, its paragraphs or its frontmatter.
+
+    ``versions`` are the (base, ours, theirs) texts when the caller already has them."""
+    if versions is None:
+        base_revision = git(project_root, "merge-base", "HEAD", reference).stdout.strip()
+        versions = [show(project_root, revision, path) for revision in (base_revision, "HEAD", reference)]
     try:
-        segments = [drivers.rule_segments(show(project_root, revision, path))
-                    for revision in (base_revision, "HEAD", reference)]
+        segments = [drivers.rule_segments(version) for version in versions]
     except drivers.Unparsable:
         return True
     for part in (0, 2):

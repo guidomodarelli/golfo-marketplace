@@ -1621,3 +1621,41 @@ branches_change_rule() {
   run_cli sync --conflicts
   [[ "$output" == *"this branch, "*": Put the date at the very top."* ]]
 }
+
+@test "software: a file edited by hand after a --resolve is not rewritten by the next one" {
+  setup_code_repository
+  learn_rule closing 'Sign at the end.'
+  git commit -qam "learn: closing"
+  git checkout -q "$base_branch"
+  git merge -q --no-edit other-work
+  branches_change_rule header .agents/rules/learned.md \
+    's/Put the date in the header./Put the date at the top./; s/Sign at the end./Sign at the foot./' \
+    's/Put the date in the header./Put the case in the header./; s/Sign at the end./Sign with a stamp./'
+  run_cli sync --resolve '.agents/rules/learned.md#learned/header' --keep mine
+  [ "$status" -eq 0 ]
+  sed -i.bak 's/Put the date at the top./Put the date at the very top./' .agents/rules/learned.md
+  rm -f .agents/rules/learned.md.bak
+  run_cli sync --resolve '.agents/rules/learned.md#learned/closing' --keep theirs
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"changed after agent-ready sync --resolve wrote it"* ]]
+  grep -Fxq -- '- Put the date at the very top.' .agents/rules/learned.md
+}
+
+@test "software: a rule file the other branch renamed is found at its new name" {
+  setup_code_repository
+  mkdir -p .agents/rules/learned
+  git mv .agents/rules/learned.md .agents/rules/learned/office.md
+  sed -i.bak 's/Put the date in the header./Put the case in the header./' .agents/rules/learned/office.md
+  rm -f .agents/rules/learned/office.md.bak
+  git commit -qam "other-work renames the rules and changes header"
+  git checkout -q "$base_branch"
+  sed -i.bak 's/Put the date in the header./Put the date at the top./' .agents/rules/learned.md
+  rm -f .agents/rules/learned.md.bak
+  git commit -qam "this branch changes header"
+  ! git merge -q --no-edit other-work
+  run_cli sync --conflicts
+  [[ "$output" == *".agents/rules/learned/office.md#learned/header"* ]]
+  run_cli sync --resolve '.agents/rules/learned/office.md#learned/header' --keep theirs
+  [ "$status" -eq 0 ]
+  grep -Fxq -- '- Put the case in the header.' .agents/rules/learned/office.md
+}
