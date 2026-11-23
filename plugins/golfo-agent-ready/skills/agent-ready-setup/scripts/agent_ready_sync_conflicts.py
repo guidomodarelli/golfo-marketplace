@@ -19,16 +19,22 @@ and asks nobody again. Until then the rest goes on synchronizing and nothing is 
 in the history.
 """
 
+import contextlib
 import datetime
 import json
 import os
 import re
 import subprocess
+import time
 
 import agent_ready_merge_drivers as drivers
 import agent_ready_rules
+from agent_ready_common import acquire_directory_lock
 
 STATE_GIT_PATH = "info/agent-ready/sync-conflicts.json"
+# A decision and the background sync both write the state: each one waits this long for the other.
+STATE_LOCK_WAIT_SECONDS = 10
+STATE_LOCK_POLL_SECONDS = 0.05
 RESOLUTIONS_VARIABLE = drivers.RESOLUTIONS_VARIABLE
 DECISION_MINE = "mine"
 DECISION_THEIRS = "theirs"
@@ -52,6 +58,35 @@ def git(project_root, *arguments):
 def state_path(project_root):
     path = git(project_root, "rev-parse", "--git-path", STATE_GIT_PATH).stdout.strip()
     return path if os.path.isabs(path) else os.path.join(project_root, path)
+
+
+@contextlib.contextmanager
+def locked_state(project_root):
+    """Hold the lock of the state for one read-modify-write: a decision is never overwritten by a sync that
+    read the state before it."""
+    lock_path = state_path(project_root) + ".lock"
+    os.makedirs(os.path.dirname(lock_path), exist_ok=True)
+    deadline = time.monotonic() + STATE_LOCK_WAIT_SECONDS
+    while not acquire_directory_lock(lock_path):
+        if time.monotonic() > deadline:
+            raise ValueError("another agent-ready sync is writing its conflicts; try again in a moment")
+        time.sleep(STATE_LOCK_POLL_SECONDS)
+    try:
+        yield
+    finally:
+        try:
+            os.rmdir(lock_path)
+        except OSError:
+            pass
+
+
+def clear_pending(project_root):
+    """After a merge that went through, nothing waits for a person: the conflicts left are obsolete."""
+    with locked_state(project_root):
+        state = read_state(project_root)
+        if state["conflicts"]:
+            state["conflicts"] = []
+            write_state(project_root, state)
 
 
 def read_state(project_root):
@@ -161,6 +196,11 @@ def record(project_root, files, reference):
     A conflict that already has a decision keeps it while the versions are the same. So does a decided
     conflict of a file the decision merged: the merge was aborted for another file, and the sync needs that
     decision again when it repeats the whole merge."""
+    with locked_state(project_root):
+        return record_locked(project_root, files, reference)
+
+
+def record_locked(project_root, files, reference):
     state = read_state(project_root)
     known = {conflict["id"]: conflict for conflict in state["conflicts"]}
     current = []
@@ -201,11 +241,18 @@ def details_of(lines):
     return list((lines or [])[2:])
 
 
-def decide(project_root, conflict_id, decision, person, statement=None, personal_rule_exists=None):
+def decide(project_root, conflict_id, decision, person, statement=None, personal_rule_exists=None, required_by=None):
+    with locked_state(project_root):
+        return decide_locked(project_root, conflict_id, decision, person, statement, personal_rule_exists, required_by)
+
+
+def decide_locked(project_root, conflict_id, decision, person, statement=None, personal_rule_exists=None,
+                  required_by=None):
     """Store the decision of a person for one conflict; returns the conflict.
 
     ``personal_rule_exists(person, conflict)`` says whether a person already has the personal rule that
-    each-their-own would write for them."""
+    each-their-own would write for them; ``required_by(conflict)`` names a rule that requires the team rule
+    each-their-own would remove."""
     state = read_state(project_root)
     conflict = next((item for item in state["conflicts"] if item["id"] == conflict_id), None)
     if conflict is None:
@@ -229,6 +276,10 @@ def decide(project_root, conflict_id, decision, person, statement=None, personal
     if decision == DECISION_MERGED and details_of(conflict["mine"]["lines"]) != details_of(conflict["theirs"]["lines"]):
         raise ValueError("the two versions also differ in their exceptions or details, which a combined statement "
                          "would lose: keep one (--keep mine or --keep theirs) and change it afterwards")
+    requiring = required_by(conflict) if decision == DECISION_EACH and required_by else None
+    if requiring:
+        raise ValueError(f"the rule {requiring} requires this one, which each-their-own would remove: keep one "
+                         "(--keep mine or --keep theirs) or combine them (--merged)")
     if decision == DECISION_EACH and conflict.get("scoped"):
         raise ValueError("this rule applies to some files only, and a personal rule applies to the whole "
                          "repository: keep one (--keep mine or --keep theirs) or combine them (--merged)")
@@ -309,6 +360,11 @@ def finish(project_root, append_personal, append_log, applied=None):
     decision the merge applied (``applied``, every decided one when None), and the decided conflicts out of
     the state: a decision the merge did not need is dropped without writing anything. Returns the paths it
     wrote."""
+    with locked_state(project_root):
+        return finish_locked(project_root, append_personal, append_log, applied)
+
+
+def finish_locked(project_root, append_personal, append_log, applied):
     state = read_state(project_root)
     decided = [conflict for conflict in state["conflicts"] if conflict.get("decision")
                and (applied is None or conflict["id"] in applied)]

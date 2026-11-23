@@ -1423,3 +1423,36 @@ PY
   run_cli sync --conflicts
   [ -z "$output" ]
 }
+
+@test "a conflict that nobody decided goes away when the other side went back, and nobody is asked about it" {
+  make_rule_conflict
+  other_edits .agents/rules/learned.md 's/Put the case in the header./Put the date in the header./'
+  run_cli sync
+  [ "$status" -eq 0 ]
+  run_cli sync --conflicts
+  [ -z "$output" ]
+}
+
+@test "each one keeps their own is refused while another rule requires the team rule it would remove" {
+  setup_office_remote
+  mkdir -p "$XDG_CONFIG_HOME/agent-ready-setup" "$test_root/config-other/agent-ready-setup"
+  printf '%s\n' '{"id": "ana", "name": "Ana"}' > "$XDG_CONFIG_HOME/agent-ready-setup/identity.json"
+  printf '%s\n' '{"id": "juan", "name": "Juan"}' > "$test_root/config-other/agent-ready-setup/identity.json"
+  learn_rule header 'Put the date in the header.'
+  RULE_ATTRIBUTES='requires=learned/header' learn_rule header-format 'Write the header in bold.'
+  run_cli sync
+  [ "$status" -eq 0 ]
+  cd "$other"
+  XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
+  sed -i.bak 's/Put the date in the header./Put the case in the header./' .agents/rules/learned.md
+  rm -f .agents/rules/learned.md.bak
+  XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
+  cd "$project_dir"
+  sed -i.bak 's/Put the date in the header./Put the date at the top of the header./' .agents/rules/learned.md
+  rm -f .agents/rules/learned.md.bak
+  run_cli sync
+  [ "$status" -eq 1 ]
+  run_cli sync --resolve '.agents/rules/learned.md#learned/header' --each-their-own
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"the rule learned/header-format requires this one"* ]]
+}

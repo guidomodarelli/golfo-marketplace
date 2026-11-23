@@ -185,6 +185,8 @@ def merge(project_root, remote, branch):
     """Merge the fetched branch; a conflict is aborted and raised with its files."""
     reference = remote_ref(remote, branch)
     if git(project_root, "merge-base", "--is-ancestor", reference, "HEAD").returncode == 0:
+        # Nothing to bring: what conflicted before was settled some other way.
+        sync_conflicts.clear_pending(project_root)
         return
     # The drivers point to this installation: the one the last apply wrote may have left the cache.
     merge_drivers.register(project_root, os.path.join(os.path.dirname(os.path.abspath(__file__)),
@@ -198,10 +200,13 @@ def merge(project_root, remote, branch):
     if result.returncode == 0:
         if resolutions:
             finish_resolutions(project_root, applied)
+        # The merge went through: a conflict that waited (the other side went back) no longer exists.
+        sync_conflicts.clear_pending(project_root)
         return
     if os.path.exists(git_path(project_root, "MERGE_HEAD")) and resolutions and \
             resolve_file_conflicts(project_root, resolutions):
         finish_resolutions(project_root, applied)
+        sync_conflicts.clear_pending(project_root)
         return
     if os.path.exists(git_path(project_root, "MERGE_HEAD")):
         files = git(project_root, "diff", "--name-only", "--diff-filter=U").stdout.split()
@@ -268,6 +273,14 @@ def personal_entry(person, conflict, statement=None):
 
 def personal_rule_id(person, conflict):
     return learning_apply.rule_prefix(personal_entry(person, conflict)) + conflict["ruleId"].rsplit("/", 1)[-1]
+
+
+def team_rule_required_by(project_root, conflict):
+    """The id of a rule that requires the team rule of ``conflict``, or None: each-their-own would remove it."""
+    import agent_ready_learning_reorganize as reorganize
+
+    found = reorganize.incoming_requires(project_root, [conflict["ruleId"]])
+    return found[0].id if found else None
 
 
 def personal_rule_exists(project_root, person, conflict):

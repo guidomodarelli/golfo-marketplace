@@ -93,7 +93,8 @@ def command_resolve(project_root, arguments):
     try:
         conflict = sync_conflicts.decide(
             project_root, arguments.resolve, decision, identity.read_identity()["id"], statement,
-            lambda person, item: team_sync.personal_rule_exists(project_root, person, item))
+            lambda person, item: team_sync.personal_rule_exists(project_root, person, item),
+            lambda item: team_sync.team_rule_required_by(project_root, item))
     except ValueError as invalid:
         raise StateError(str(invalid)) from invalid
     sys.stdout.write(f"Decided {conflict['id']}: {decision}.\n")
