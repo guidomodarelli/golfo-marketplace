@@ -191,15 +191,17 @@ def merge(project_root, remote, branch):
                                                       merge_drivers.MERGE_DRIVER_SCRIPT))
     # The conflicts a person already decided go to the drivers, which merge them as decided.
     resolutions = sync_conflicts.resolutions_file(project_root)
+    # Only the decisions this merge needs are finished; the others went stale and are dropped.
+    applied = sync_conflicts.applicable(project_root, reference) if resolutions else set()
     environment = {sync_conflicts.RESOLUTIONS_VARIABLE: resolutions} if resolutions else None
     result = git(project_root, "merge", "--no-edit", "--quiet", reference, extra_environment=environment)
     if result.returncode == 0:
         if resolutions:
-            finish_resolutions(project_root)
+            finish_resolutions(project_root, applied)
         return
     if os.path.exists(git_path(project_root, "MERGE_HEAD")) and resolutions and \
             resolve_file_conflicts(project_root, resolutions):
-        finish_resolutions(project_root)
+        finish_resolutions(project_root, applied)
         return
     if os.path.exists(git_path(project_root, "MERGE_HEAD")):
         files = git(project_root, "diff", "--name-only", "--diff-filter=U").stdout.split()
@@ -280,21 +282,26 @@ def personal_rule_exists(project_root, person, conflict):
     return any(f"id={rule_id}" in line.split() for line in text.splitlines() if line.lstrip().startswith("<!--"))
 
 
-def append_personal(project_root, person, conflict, statement):
-    """Write one version of a decided conflict as the personal rule of the person who taught it."""
+def append_personal(project_root, person, conflict, statement, details=()):
+    """Write one version of a decided conflict, with its exceptions and details, as the personal rule of the
+    person who taught it."""
     entry = personal_entry(person, conflict, statement)
     rule_id = personal_rule_id(person, conflict)
     path, text = learning_apply.appended_rule(project_root, rule_id, entry, None)
+    if details:
+        newline = "\r\n" if "\r\n" in text else "\n"
+        text = text + newline.join(details) + newline
     write_text_atomically(path, text)
     return path
 
 
-def finish_resolutions(project_root):
+def finish_resolutions(project_root, applied=None):
     """After the merge with the decisions: the personal rules of «each one keeps theirs», a resolve line in
-    the log per decision, and a commit with them."""
+    the log per decision the merge applied, and a commit with them."""
     sync_conflicts.finish(project_root,
-                          lambda person, conflict, statement: append_personal(project_root, person, conflict, statement),
-                          lambda line: learning_apply.append_log(project_root, line))
+                          lambda person, conflict, statement, details=(): append_personal(project_root, person, conflict,
+                                                                                         statement, details),
+                          lambda line: learning_apply.append_log(project_root, line), applied)
     commit_knowledge(project_root, "sync: what the people decided about two versions of a rule")
 
 

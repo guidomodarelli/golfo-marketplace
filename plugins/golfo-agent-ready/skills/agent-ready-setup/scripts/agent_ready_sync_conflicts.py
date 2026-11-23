@@ -186,6 +186,12 @@ def record(project_root, files, reference):
     return current, unexplained
 
 
+def same_versions(previous, conflict):
+    """True when a conflict met again has the two versions it had when the person decided."""
+    return previous["mine"].get("lines") == conflict["mine"]["lines"] and \
+        previous["theirs"].get("lines") == conflict["theirs"]["lines"]
+
+
 def pending(project_root):
     return [conflict for conflict in read_state(project_root)["conflicts"] if not conflict.get("decision")]
 
@@ -284,18 +290,36 @@ def explanation(conflicts):
     return "\n".join(lines) + "\n"
 
 
-def finish(project_root, append_personal, append_log):
+def applicable(project_root, reference):
+    """The ids of the decided conflicts the merge with ``reference`` will apply: the ones whose rule still
+    conflicts with the two versions the person saw. A rule that no longer conflicts (the other side went
+    back to the common version) merges by itself, and its decision is not used."""
+    found = {}
+    for conflict in read_state(project_root)["conflicts"]:
+        if conflict.get("decision") and conflict["path"] not in found:
+            found[conflict["path"]] = {item["id"]: item for item in rule_conflicts(project_root, conflict["path"],
+                                                                                 reference)}
+    return {conflict["id"] for conflict in read_state(project_root)["conflicts"]
+            if conflict.get("decision") and conflict["id"] in found.get(conflict["path"], {})
+            and same_versions(conflict, found[conflict["path"]][conflict["id"]])}
+
+
+def finish(project_root, append_personal, append_log, applied=None):
     """After the merge with the decisions: the personal rules of «each one keeps theirs», a log line per
-    decision, and the decided conflicts out of the state. Returns the paths it wrote."""
+    decision the merge applied (``applied``, every decided one when None), and the decided conflicts out of
+    the state: a decision the merge did not need is dropped without writing anything. Returns the paths it
+    wrote."""
     state = read_state(project_root)
-    decided = [conflict for conflict in state["conflicts"] if conflict.get("decision")]
+    decided = [conflict for conflict in state["conflicts"] if conflict.get("decision")
+               and (applied is None or conflict["id"] in applied)]
     written = []
     today = datetime.date.today().isoformat()
     for conflict in decided:
         if conflict["decision"] == DECISION_EACH:
             for side in (conflict["mine"], conflict["theirs"]):
                 if side.get("statement") and side.get("by"):
-                    written.append(append_personal(side["by"], conflict, side["statement"]))
+                    # Its exceptions and details go with it: they are part of what that person taught.
+                    written.append(append_personal(side["by"], conflict, side["statement"], details_of(side["lines"])))
         written.append(append_log(f"- {today} resolve {conflict['ruleId']} ({conflict['decision']}, decided by "
                                   f"{conflict.get('decidedBy') or 'unknown'}): two versions of the same rule\n"))
     state["conflicts"] = [conflict for conflict in state["conflicts"] if not conflict.get("decision")]

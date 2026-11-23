@@ -1382,3 +1382,44 @@ PY
   grep -Fxq -- '- Put the date and the case at the top of the header.' .agents/rules/learned.md
   grep -Fxq -- '  - Except: leave archived records unchanged.' .agents/rules/learned.md
 }
+
+@test "each one keeps their own keeps the exceptions of each version in its personal rule" {
+  setup_office_remote
+  mkdir -p "$XDG_CONFIG_HOME/agent-ready-setup" "$test_root/config-other/agent-ready-setup"
+  printf '%s\n' '{"id": "ana", "name": "Ana"}' > "$XDG_CONFIG_HOME/agent-ready-setup/identity.json"
+  printf '%s\n' '{"id": "juan", "name": "Juan"}' > "$test_root/config-other/agent-ready-setup/identity.json"
+  learn_rule header 'Put the date in the header.'
+  printf '%s\n' '  - Except: leave archived records unchanged.' >> .agents/rules/learned.md
+  run_cli sync
+  [ "$status" -eq 0 ]
+  cd "$other"
+  XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
+  sed -i.bak 's/Put the date in the header./Put the case in the header./' .agents/rules/learned.md
+  rm -f .agents/rules/learned.md.bak
+  XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
+  cd "$project_dir"
+  sed -i.bak 's/Put the date in the header./Put the date at the top of the header./' .agents/rules/learned.md
+  rm -f .agents/rules/learned.md.bak
+  run_cli sync
+  [ "$status" -eq 1 ]
+  run_cli sync --resolve '.agents/rules/learned.md#learned/header' --each-their-own
+  [ "$status" -eq 0 ]
+  for person in ana juan; do
+    grep -Fxq -- '  - Except: leave archived records unchanged.' ".agents/rules/learned/users/$person/learned.md"
+  done
+  run_cli rules lint
+  [ "$status" -eq 0 ]
+}
+
+@test "a decision the merge no longer needs is dropped: the other went back, and nothing personal is written" {
+  make_rule_conflict
+  # Juan puts the rule back as it was: the change of this machine merges by itself.
+  other_edits .agents/rules/learned.md 's/Put the case in the header./Put the date in the header./'
+  run_cli sync --resolve "$conflict_id" --each-their-own
+  [ "$status" -eq 0 ]
+  grep -Fxq -- '- Put the date at the top of the header.' .agents/rules/learned.md
+  [ ! -e .agents/rules/learned/users ]
+  ! grep -q ' resolve learned/header ' .agents/learning/log.md
+  run_cli sync --conflicts
+  [ -z "$output" ]
+}
