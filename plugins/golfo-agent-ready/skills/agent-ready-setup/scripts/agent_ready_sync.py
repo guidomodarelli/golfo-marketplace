@@ -211,7 +211,7 @@ def merge(project_root, remote, branch):
     reference = remote_ref(remote, branch)
     if git(project_root, "merge-base", "--is-ancestor", reference, "HEAD").returncode == 0:
         # Nothing to bring: what conflicted before was settled some other way.
-        sync_conflicts.clear_pending(project_root)
+        sync_conflicts.clear_pending(project_root, reference)
         return
     # The drivers point to this installation: the one the last apply wrote may have left the cache.
     merge_drivers.register(project_root, os.path.join(os.path.dirname(os.path.abspath(__file__)),
@@ -221,12 +221,15 @@ def merge(project_root, remote, branch):
     # Only the decisions this merge needs are finished; the others went stale and are dropped.
     applied = sync_conflicts.applicable(project_root, reference) if resolutions else set()
     environment = {sync_conflicts.RESOLUTIONS_VARIABLE: resolutions} if resolutions else None
-    result = git(project_root, "merge", "--no-edit", "--quiet", reference, extra_environment=environment)
+    attributes = git_path(project_root, documents.INPUT_ATTRIBUTES_GIT_PATH)
+    write_text_atomically(attributes, documents.input_attributes())
+    result = git(project_root, "-c", f"core.attributesFile={attributes}", "merge", "--no-edit", "--quiet", reference,
+                 extra_environment=environment)
     if result.returncode == 0:
         if resolutions:
             finish_resolutions(project_root, applied)
         # The merge went through: a conflict that waited (the other side went back) no longer exists.
-        sync_conflicts.clear_pending(project_root)
+        sync_conflicts.clear_pending(project_root, reference)
         return
     if os.path.exists(git_path(project_root, "MERGE_HEAD")):
         unmerged = unmerged_files(project_root)
@@ -235,7 +238,7 @@ def merge(project_root, remote, branch):
         if unmerged and resolve_file_conflicts(project_root, resolutions):
             if resolutions:
                 finish_resolutions(project_root, applied)
-            sync_conflicts.clear_pending(project_root)
+            sync_conflicts.clear_pending(project_root, reference)
             return
     if os.path.exists(git_path(project_root, "MERGE_HEAD")):
         files = unmerged_files(project_root)
@@ -281,6 +284,11 @@ def resolve_file_conflicts(project_root, resolutions_path):
             # A document the person decided: the whole version they chose, while both sides are the ones seen.
             if not documents.decision_holds(decided, versions[1], versions[2]):
                 return False
+            if decided.get("delete"):
+                # The side that deleted the document won: the document goes, never an empty file.
+                if git(project_root, "rm", "--quiet", "--force", "--", path).returncode != 0:
+                    return False
+                continue
             write_text_atomically(os.path.join(project_root, path), decided["text"])
             if git(project_root, "add", "--", path).returncode != 0:
                 return False

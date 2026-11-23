@@ -23,6 +23,9 @@ SCOPE_AUTO = "auto"
 SCOPE_KNOWLEDGE = "knowledge"
 SCOPE_DOCUMENTS = "knowledge+documents"
 DOCUMENTS_PROFILE = "documents"
+# The attributes of the merge of the sync: an input is never merged by line, even when it is text (.rtf), so
+# two uploads of one name always conflict and both are kept (settle_inputs).
+INPUT_ATTRIBUTES_GIT_PATH = "info/agent-ready/input-attributes"
 OUTPUT_DIRECTORY = "output"
 MARKDOWN_SUFFIX = ".md"
 # The files people upload, which are inputs: two of them are never merged, they are both kept.
@@ -71,6 +74,15 @@ def text_hash(text):
     return hashlib.sha256((text or "").replace("\r\n", "\n").encode("utf-8")).hexdigest()
 
 
+def input_attributes():
+    """The lines of a Git attributes file that merge every input as a binary file, in any case of its name."""
+    lines = []
+    for suffix in INPUT_SUFFIXES:
+        lines.append(f"*{suffix} merge=binary")
+        lines.append(f"*{suffix.upper()} merge=binary")
+    return "\n".join(lines) + "\n"
+
+
 def dated_name(path, existing, today=None):
     """``path`` with the date before its extension, and a counter when that name is taken too."""
     today = today or datetime.date.today().isoformat()
@@ -93,12 +105,15 @@ def difference(mine, theirs):
     return shown
 
 
-def document_conflict(path, mine, theirs, mine_change, theirs_change):
-    """The record of a Markdown document changed in the same part on two machines."""
+def document_conflict(path, mine, theirs, mine_change, theirs_change, mine_exists=True, theirs_exists=True):
+    """The record of a Markdown document changed in the same part on two machines; a side that deleted it
+    has ``exists`` false, so keeping that side deletes the document."""
     return {
         "id": path, "path": path, "kind": KIND_DOCUMENT, "personal": False, "scoped": False,
-        "mine": {"text": mine, "hash": text_hash(mine), "by": mine_change[0], "at": mine_change[1]},
-        "theirs": {"text": theirs, "hash": text_hash(theirs), "by": theirs_change[0], "at": theirs_change[1]},
+        "mine": {"text": mine, "hash": text_hash(mine), "by": mine_change[0], "at": mine_change[1],
+                 "exists": mine_exists},
+        "theirs": {"text": theirs, "hash": text_hash(theirs), "by": theirs_change[0], "at": theirs_change[1],
+                   "exists": theirs_exists},
         "difference": difference(mine, theirs),
     }
 
@@ -126,7 +141,8 @@ def settle_inputs(project_root, files, git):
     Two people uploaded a file with the same name, or one changed an input: an input is never merged, so
     the version of this machine keeps the name and the other one is saved beside it. Returns the files
     it settled; ``git`` runs a Git command in the checkout."""
-    tracked = set(git(project_root, "ls-files").stdout.split("\n"))
+    # NUL-separated: Git quotes a name with accents otherwise, and a dated name would not see it taken.
+    tracked = set(git(project_root, "ls-files", "-z").stdout.split("\0"))
     settled = []
     for path in files:
         if not is_input(path):
@@ -151,6 +167,12 @@ def settle_inputs(project_root, files, git):
             return None
         settled.append(path)
     return settled
+
+
+def resolution_deletes(conflict):
+    """True when the decision keeps the side that deleted the document."""
+    side = {"mine": conflict["mine"], "theirs": conflict["theirs"]}.get(conflict["decision"])
+    return bool(side) and side.get("exists") is False
 
 
 def decision_holds(resolution, ours, theirs):

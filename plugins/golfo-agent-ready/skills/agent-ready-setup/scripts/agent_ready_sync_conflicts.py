@@ -81,12 +81,15 @@ def locked_state(project_root):
             pass
 
 
-def clear_pending(project_root):
-    """After a merge that went through, nothing waits for a person: the conflicts left are obsolete."""
+def clear_pending(project_root, reference=None):
+    """After a merge with ``reference`` that went through, its conflicts are obsolete; the ones of another
+    reference (the branch of the person, in the pr mode of the sync) wait for their own merge."""
     with locked_state(project_root):
         state = read_state(project_root)
-        if state["conflicts"]:
-            state["conflicts"] = []
+        kept = [conflict for conflict in state["conflicts"]
+                if reference is not None and conflict.get("source") not in (None, reference)]
+        if kept != state["conflicts"]:
+            state["conflicts"] = kept
             write_state(project_root, state)
 
 
@@ -138,8 +141,10 @@ def file_change(project_root, revision, path):
 def document_conflicts(project_root, path, reference):
     """The Markdown document ``path`` changed in the same part on both sides, as one conflict."""
     mine, theirs = show(project_root, "HEAD", path), show(project_root, reference, path)
+    exists = [git(project_root, "cat-file", "-e", f"{revision}:{path}").returncode == 0
+              for revision in ("HEAD", reference)]
     return [documents.document_conflict(path, mine, theirs, file_change(project_root, "HEAD", path),
-                                        file_change(project_root, reference, path))]
+                                        file_change(project_root, reference, path), *exists)]
 
 
 def last_change(project_root, revision, path, rule_id, lines):
@@ -239,6 +244,8 @@ def record_locked(project_root, files, reference):
                                  if field in previous})
             conflict.setdefault("detected", datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0)
                                 .isoformat())
+            # The reference it came from: the branch, or the branch of the person in the pr mode.
+            conflict["source"] = reference
             current.append(conflict)
     recorded_ids = {conflict["id"] for conflict in current}
     kept = [conflict for conflict in state["conflicts"]
@@ -379,7 +386,7 @@ def resolutions_file(project_root):
         if conflict.get("kind") == documents.KIND_DOCUMENT:
             resolutions[conflict["path"]] = {documents.KIND_DOCUMENT: {
                 "text": documents.resolution_text(conflict), "mine": conflict["mine"]["hash"],
-                "theirs": conflict["theirs"]["hash"]}}
+                "theirs": conflict["theirs"]["hash"], "delete": documents.resolution_deletes(conflict)}}
             continue
         # With the versions the person saw: a rule that changed since conflicts again (decided_lines).
         resolutions.setdefault(conflict["path"], {})[conflict["ruleId"]] = {

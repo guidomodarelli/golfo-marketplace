@@ -1599,6 +1599,72 @@ edit_acta() {
   [ "$(git rev-parse HEAD)" = "$(git -C "$remote" rev-parse main)" ]
 }
 
+@test "documents: an input changed in different parts on two machines keeps both, and a dated name taken is skipped" {
+  setup_office_documents
+  local today input dated
+  today="$(date +%Y-%m-%d)"
+  input="entradas/declaración.rtf"
+  dated="entradas/declaración-$today.rtf"
+  mkdir -p entradas
+  printf '%s\n' 'uno' 'dos' 'tres' 'cuatro' 'cinco' > "$input"
+  printf 'antes\n' > "$dated"
+  run_cli sync
+  [ "$status" -eq 0 ]
+  cd "$other"
+  XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
+  [ "$status" -eq 0 ]
+  sed -i 's/^uno$/UNO/' "$input"
+  XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
+  [ "$status" -eq 0 ]
+  cd "$project_dir"
+  sed -i 's/^cinco$/CINCO/' "$input"
+  run_cli sync
+  [ "$status" -eq 0 ]
+  # An input is never merged by line: this machine keeps the name, the other version goes beside it.
+  grep -Fxq 'CINCO' "$input"
+  ! grep -Fxq 'UNO' "$input"
+  grep -Fxq 'UNO' "entradas/declaración-$today-2.rtf"
+  [ "$(cat "$dated")" = "antes" ]
+  [ "$(git rev-parse HEAD)" = "$(git -C "$remote" rev-parse main)" ]
+}
+
+@test "documents: keeping the side that deleted a document removes it" {
+  setup_office_documents
+  cd "$other"
+  rm actas/acta-4512.md
+  XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
+  [ "$status" -eq 0 ]
+  cd "$project_dir"
+  edit_acta project 'Firma: al pie.' 'Firma: al pie, con aclaración.'
+  [ "$status" -eq 1 ]
+  run_cli sync --conflicts
+  [[ "$output" == *"actas/acta-4512.md"* ]]
+  run_cli sync --resolve actas/acta-4512.md --keep theirs
+  [ "$status" -eq 0 ]
+  [ ! -e actas/acta-4512.md ]
+  ! git cat-file -e HEAD:actas/acta-4512.md 2> /dev/null
+  [ "$(git rev-parse HEAD)" = "$(git -C "$remote" rev-parse main)" ]
+}
+
+@test "a merge that went through clears only the conflicts that came from its own reference" {
+  setup_office_remote
+  run python3 - "$skill_dir/scripts" "$project_dir" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1])
+import agent_ready_sync_conflicts as sync_conflicts
+root = sys.argv[2]
+state = sync_conflicts.read_state(root)
+state["conflicts"] = [{"id": "a", "source": "origin/main"}, {"id": "b", "source": "origin/agent-ready/sync/ana"}]
+sync_conflicts.write_state(root, state)
+sync_conflicts.clear_pending(root, "origin/main")
+print(",".join(conflict["id"] for conflict in sync_conflicts.read_state(root)["conflicts"]))
+sync_conflicts.clear_pending(root)
+print(len(sync_conflicts.read_state(root)["conflicts"]))
+PY
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s' "$output" | tr -d '\r' | paste -sd,)" = "b,0" ]
+}
+
 @test "documents stay out of the sync when sync.scope is knowledge, the default without the documents profile" {
   setup_office_remote
   mkdir -p actas
