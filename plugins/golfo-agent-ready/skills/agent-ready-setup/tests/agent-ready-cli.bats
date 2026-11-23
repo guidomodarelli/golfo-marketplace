@@ -1613,11 +1613,11 @@ edit_acta() {
   cd "$other"
   XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
   [ "$status" -eq 0 ]
-  sed -i 's/^uno$/UNO/' "$input"
+  sed -i.bak 's/^uno$/UNO/' "$input" && rm -f "$input".bak
   XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
   [ "$status" -eq 0 ]
   cd "$project_dir"
-  sed -i 's/^cinco$/CINCO/' "$input"
+  sed -i.bak 's/^cinco$/CINCO/' "$input" && rm -f "$input".bak
   run_cli sync
   [ "$status" -eq 0 ]
   # An input is never merged by line: this machine keeps the name, the other version goes beside it.
@@ -1662,7 +1662,7 @@ sync_conflicts.clear_pending(root)
 print(len(sync_conflicts.read_state(root)["conflicts"]))
 PY
   [ "$status" -eq 0 ]
-  [ "$(printf '%s' "$output" | tr -d '\r' | paste -sd,)" = "b,0" ]
+  [ "$(printf '%s' "$output" | tr -d '\r' | paste -sd, -)" = "b,0" ]
 }
 
 @test "documents: an upload with its extension in capitals goes out too" {
@@ -1701,7 +1701,7 @@ PY
   setup_office_documents
   cd "$other"
   git mv actas/acta-4512.md actas/acta-4512-firmada.md
-  sed -i 's/^Partes: Ruiz y Gómez.$/Partes: Ruiz, Gómez y Pérez./' actas/acta-4512-firmada.md
+  sed -i.bak 's/^Partes: Ruiz y Gómez.$/Partes: Ruiz, Gómez y Pérez./' actas/acta-4512-firmada.md && rm -f actas/acta-4512-firmada.md.bak
   git commit -qm "rename and edit the acta"
   XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
   [ "$status" -eq 0 ]
@@ -1726,11 +1726,11 @@ PY
   cd "$other"
   XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
   [ "$status" -eq 0 ]
-  sed -i 's/^Estado: abierta.$/Estado: cerrada./' notas.MD
+  sed -i.bak 's/^Estado: abierta.$/Estado: cerrada./' notas.MD && rm -f notas.MD.bak
   XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
   [ "$status" -eq 0 ]
   cd "$project_dir"
-  sed -i 's/^Estado: abierta.$/Estado: en revisión./' notas.MD
+  sed -i.bak 's/^Estado: abierta.$/Estado: en revisión./' notas.MD && rm -f notas.MD.bak
   run_cli sync
   [ "$status" -eq 1 ]
   run_cli sync --conflicts
@@ -1768,7 +1768,7 @@ printf '%s\n' "$*" >> "$test_root/gh.log"
 [[ "$1 $2" == "pr create" ]] && echo "https://github.example/acme/office/pull/7"
 exit 0
 SH
-  sed -i "s#\$test_root#$test_root#" "$fake_bin/gh"
+  sed -i.bak "s#\$test_root#$test_root#" "$fake_bin/gh" && rm -f "$fake_bin/gh".bak
   chmod +x "$fake_bin/gh"
   base="$(git symbolic-ref --short HEAD)"
   learn_rule dates 'Dates go first.'
@@ -1794,7 +1794,7 @@ for url in ("https://github.com/acme/office.git", "git@github.com:acme/office.gi
     print(sync.remote_repository(root, "origin"))
 PY
   [ "$status" -eq 0 ]
-  [ "$(printf '%s' "$output" | tr -d '\r' | paste -sd,)" = "github.com/acme/office,github.com/acme/office,ghe.acme.io/acme/office,None" ]
+  [ "$(printf '%s' "$output" | tr -d '\r' | paste -sd, -)" = "github.com/acme/office,github.com/acme/office,ghe.acme.io/acme/office,None" ]
 }
 
 @test "sync.mode pr without a pull request keeps telling the person in status" {
