@@ -65,7 +65,7 @@ REJECTED_PUSH_HINTS = ("[rejected]", "non-fast-forward", "fetch first", "rejecte
 def git(project_root, *arguments, extra_environment=None):
     """A Git command that never asks for credentials: a background run has nobody to answer."""
     environment = dict(os.environ, GIT_TERMINAL_PROMPT="0", GIT_MERGE_AUTOEDIT="no", **(extra_environment or {}))
-    return subprocess.run(["git", "-C", project_root, *arguments], capture_output=True, text=True, check=False,
+    return subprocess.run(["git", "-C", project_root, *arguments], capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
                           env=environment)
 
 

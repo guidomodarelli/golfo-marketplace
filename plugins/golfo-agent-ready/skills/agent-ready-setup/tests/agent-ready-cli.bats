@@ -1306,3 +1306,32 @@ other_edits() {
   [ ! -e "$(git rev-parse --git-path MERGE_HEAD)" ]
   [ "$(git rev-parse HEAD)" = "$(git -C "$remote" rev-parse main)" ]
 }
+
+@test "a rule written with accents keeps them in the explanation and in the personal rules of each one" {
+  setup_office_remote
+  mkdir -p "$XDG_CONFIG_HOME/agent-ready-setup" "$test_root/config-other/agent-ready-setup"
+  printf '%s
+' '{"id": "ana", "name": "Ana"}' > "$XDG_CONFIG_HOME/agent-ready-setup/identity.json"
+  printf '%s
+' '{"id": "juan", "name": "Juan"}' > "$test_root/config-other/agent-ready-setup/identity.json"
+  learn_rule header 'Poné la fecha en el encabezado.'
+  run_cli sync
+  [ "$status" -eq 0 ]
+  cd "$other"
+  XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
+  sed -i.bak 's/Poné la fecha en el encabezado./Poné el número de expediente en el encabezado./' .agents/rules/learned.md
+  rm -f .agents/rules/learned.md.bak
+  XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
+  [ "$status" -eq 0 ]
+  cd "$project_dir"
+  sed -i.bak 's/Poné la fecha en el encabezado./Poné la fecha arriba de todo, en el encabezado./' .agents/rules/learned.md
+  rm -f .agents/rules/learned.md.bak
+  run_cli sync
+  [ "$status" -eq 1 ]
+  run_cli sync --conflicts
+  [[ "$output" == *"the other, juan at "*": Poné el número de expediente en el encabezado."* ]]
+  run_cli sync --resolve '.agents/rules/learned.md#learned/header' --each-their-own
+  [ "$status" -eq 0 ]
+  grep -Fxq -- '- Poné la fecha arriba de todo, en el encabezado.' .agents/rules/learned/users/ana/learned.md
+  grep -Fxq -- '- Poné el número de expediente en el encabezado.' .agents/rules/learned/users/juan/learned.md
+}
