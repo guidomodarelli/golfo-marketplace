@@ -30,6 +30,7 @@ import time
 import agent_ready_merge_drivers as drivers
 import agent_ready_rules
 from agent_ready_common import acquire_directory_lock
+import agent_ready_sync_documents as documents
 
 STATE_GIT_PATH = "info/agent-ready/sync-conflicts.json"
 # A decision and the background sync both write the state: each one waits this long for the other.
@@ -80,12 +81,15 @@ def locked_state(project_root):
             pass
 
 
-def clear_pending(project_root):
-    """After a merge that went through, nothing waits for a person: the conflicts left are obsolete."""
+def clear_pending(project_root, reference=None):
+    """After a merge with ``reference`` that went through, its conflicts are obsolete; the ones of another
+    reference (the branch of the person, in the pr mode of the sync) wait for their own merge."""
     with locked_state(project_root):
         state = read_state(project_root)
-        if state["conflicts"]:
-            state["conflicts"] = []
+        kept = [conflict for conflict in state["conflicts"]
+                if reference is not None and conflict.get("source") not in (None, reference)]
+        if kept != state["conflicts"]:
+            state["conflicts"] = kept
             write_state(project_root, state)
 
 
@@ -123,6 +127,45 @@ def rule_body(project_root, revision, path, rule_id):
     except drivers.Unparsable:
         return None
     return next((body for segment_id, _, body in segments if segment_id == rule_id), None)
+
+
+def file_change(project_root, revision, path):
+    """(person, iso time) of the last commit of ``revision`` that touched ``path``: a document is one unit."""
+    result = git(project_root, "log", "-1", "--format=%aI%x00%an%x00%B", revision, "--", path)
+    if result.returncode != 0 or not result.stdout:
+        return None, None
+    moment, author, body = (result.stdout.split("\x00", 2) + ["", ""])[:3]
+    return person_of(author, body), moment.strip()
+
+
+def renamed_from(project_root, revision, other, path):
+    """The name ``path`` has in ``revision`` when ``other`` renamed it to ``path`` since their merge base."""
+    base = git(project_root, "merge-base", revision, other).stdout.strip()
+    if not base:
+        return None
+    records = git(project_root, "diff", "--name-status", "-M", "-z", base, other).stdout.split("\0")
+    for index, status in enumerate(records):
+        if status.startswith("R") and index + 2 < len(records) and records[index + 2] == path:
+            return records[index + 1]
+    return None
+
+
+def document_side(project_root, revision, other, path):
+    """(exists, text, path in ``revision``) of the document Git reports at ``path``: when ``other`` renamed it,
+    ``revision`` still has it at its old name, which is what the merge puts in its stage."""
+    for name in (path, renamed_from(project_root, revision, other, path)):
+        if name and git(project_root, "cat-file", "-e", f"{revision}:{name}").returncode == 0:
+            return True, show(project_root, revision, name), name
+    return False, "", path
+
+
+def document_conflicts(project_root, path, reference):
+    """The Markdown document ``path`` changed in the same part on both sides, as one conflict."""
+    mine_exists, mine, mine_path = document_side(project_root, "HEAD", reference, path)
+    theirs_exists, theirs, theirs_path = document_side(project_root, reference, "HEAD", path)
+    return [documents.document_conflict(path, mine, theirs, file_change(project_root, "HEAD", mine_path),
+                                        file_change(project_root, reference, theirs_path), mine_exists,
+                                        theirs_exists)]
 
 
 def last_change(project_root, revision, path, rule_id, lines):
@@ -210,18 +253,24 @@ def record_locked(project_root, files, reference):
     current = []
     unexplained = []
     for path in files:
-        conflicts = rule_conflicts(project_root, path, reference) if path.startswith(RULES_PREFIX) else []
+        if path.startswith(RULES_PREFIX):
+            conflicts = rule_conflicts(project_root, path, reference)
+        elif documents.is_markdown_document(path):
+            conflicts = document_conflicts(project_root, path, reference)
+        else:
+            conflicts = []
         # A rule decided leaves the rest of its file to merge: what conflicts there is said by its file.
-        if not conflicts or outside_rules_conflict(project_root, path, reference):
+        if not conflicts or (path.startswith(RULES_PREFIX) and outside_rules_conflict(project_root, path, reference)):
             unexplained.append(path)
         for conflict in conflicts:
             previous = known.get(conflict["id"])
-            if previous and previous.get("decision") and previous["mine"]["lines"] == conflict["mine"]["lines"] \
-                    and previous["theirs"]["lines"] == conflict["theirs"]["lines"]:
-                conflict.update({field: previous[field] for field in ("decision", "decidedBy", "statement")
+            if previous and previous.get("decision") and same_versions(previous, conflict):
+                conflict.update({field: previous[field] for field in ("decision", "decidedBy", "statement", "text")
                                  if field in previous})
             conflict.setdefault("detected", datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0)
                                 .isoformat())
+            # The reference it came from: the branch, or the branch of the person in the pr mode.
+            conflict["source"] = reference
             current.append(conflict)
     recorded_ids = {conflict["id"] for conflict in current}
     kept = [conflict for conflict in state["conflicts"]
@@ -233,6 +282,9 @@ def record_locked(project_root, files, reference):
 
 def same_versions(previous, conflict):
     """True when a conflict met again has the two versions it had when the person decided."""
+    if conflict.get("kind") == documents.KIND_DOCUMENT:
+        return previous["mine"].get("hash") == conflict["mine"]["hash"] and \
+            previous["theirs"].get("hash") == conflict["theirs"]["hash"]
     return previous["mine"].get("lines") == conflict["mine"]["lines"] and \
         previous["theirs"].get("lines") == conflict["theirs"]["lines"]
 
@@ -269,25 +321,37 @@ def outside_rules_conflict(project_root, path, reference, versions=None):
 
 
 def decide(project_root, conflict_id, decision, person, statement=None, personal_rule_exists=None, required_by=None,
-           check_statement=None):
+           check_statement=None, text=None):
     with locked_state(project_root):
         return decide_locked(project_root, conflict_id, decision, person, statement, personal_rule_exists, required_by,
-                             check_statement)
+                             check_statement, text)
 
 
 def decide_locked(project_root, conflict_id, decision, person, statement=None, personal_rule_exists=None,
-                  required_by=None, check_statement=None):
+                  required_by=None, check_statement=None, text=None):
     """Store the decision of a person for one conflict; returns the conflict.
 
     ``personal_rule_exists(person, conflict)`` says whether a person already has the personal rule that
     each-their-own would write for them; ``required_by(conflict)`` names a rule that requires the team rule
     each-their-own would remove; ``check_statement(lines)`` raises when the rule a combined statement makes
-    would not pass the lint of the project."""
+    would not pass the lint of the project. For a document, ``merged`` takes the whole ``text`` that combines
+    both versions."""
     state = read_state(project_root)
     conflict = next((item for item in state["conflicts"] if item["id"] == conflict_id), None)
     if conflict is None:
+        # The id of the rule alone, or the path of a document, names it too when only one conflict has it.
+        named = [item for item in state["conflicts"] if conflict_id in (item.get("ruleId"), item["path"])]
+        conflict = named[0] if len(named) == 1 else None
+    if conflict is None:
         raise ValueError(f"no conflict of the sync has the id {conflict_id} (see agent-ready sync --conflicts)")
-    if decision == DECISION_MERGED and not (statement or "").strip():
+    conflict_id = conflict["id"]
+    document = conflict.get("kind") == documents.KIND_DOCUMENT
+    if document and decision == DECISION_EACH:
+        raise ValueError("each one keeps theirs is for a rule of the team; a document keeps one version: --keep "
+                         "mine, --keep theirs or --merged-file")
+    if document and decision == DECISION_MERGED and not (text or "").strip():
+        raise ValueError("--merged-file needs the file with the whole document that combines both versions")
+    if not document and decision == DECISION_MERGED and not (statement or "").strip():
         raise ValueError("--merged needs the statement that combines both versions")
     if decision == DECISION_EACH and conflict.get("personal"):
         raise ValueError("each one keeps theirs is for a rule of the team; this one is already personal")
@@ -303,7 +367,7 @@ def decide_locked(project_root, conflict_id, decision, person, statement=None, p
             any(personal_rule_exists(side["by"], conflict) for side in sides):
         raise ValueError("one of them already has a personal rule with this id: keep one (--keep mine or --keep "
                          "theirs) or combine them (--merged), and change the personal rule if it should go")
-    if decision == DECISION_MERGED and details_of(conflict["mine"]["lines"]) != details_of(conflict["theirs"]["lines"]):
+    if not document and decision == DECISION_MERGED and details_of(conflict["mine"]["lines"]) != details_of(conflict["theirs"]["lines"]):
         raise ValueError("the two versions also differ in their exceptions or details, which a combined statement "
                          "would lose: keep one (--keep mine or --keep theirs) and change it afterwards")
     requiring = required_by(conflict) if decision == DECISION_EACH and required_by else None
@@ -313,11 +377,13 @@ def decide_locked(project_root, conflict_id, decision, person, statement=None, p
     if decision == DECISION_EACH and conflict.get("scoped"):
         raise ValueError("this rule applies to some files only, and a personal rule applies to the whole "
                          "repository: keep one (--keep mine or --keep theirs) or combine them (--merged)")
-    if decision == DECISION_MERGED and check_statement:
+    if not document and decision == DECISION_MERGED and check_statement:
         check_statement(resolution_lines(dict(conflict, decision=decision, statement=" ".join(statement.split()))))
     conflict["decision"] = decision
     conflict["decidedBy"] = person
-    if decision == DECISION_MERGED:
+    if decision == DECISION_MERGED and document:
+        conflict["text"] = text.replace("\r\n", "\n")
+    elif decision == DECISION_MERGED:
         conflict["statement"] = " ".join(statement.split())
     write_state(project_root, state)
     return conflict
@@ -345,6 +411,11 @@ def resolutions_file(project_root):
         return None
     resolutions = {}
     for conflict in decided:
+        if conflict.get("kind") == documents.KIND_DOCUMENT:
+            resolutions[conflict["path"]] = {documents.KIND_DOCUMENT: {
+                "text": documents.resolution_text(conflict), "mine": conflict["mine"]["hash"],
+                "theirs": conflict["theirs"]["hash"], "delete": documents.resolution_deletes(conflict)}}
+            continue
         # With the versions the person saw: a rule that changed since conflicts again (decided_lines).
         resolutions.setdefault(conflict["path"], {})[conflict["ruleId"]] = {
             "lines": resolution_lines(conflict), "mine": conflict["mine"]["lines"],
@@ -357,15 +428,25 @@ def resolutions_file(project_root):
 
 def explanation(conflicts):
     """What the agent tells the person at the start of a session, with the data to say it plainly."""
-    lines = ["[agent-ready sync] Two people changed the same rule in different ways. Explain each conflict to "
+    lines = ["[agent-ready sync] Two people changed the same rule or the same part of a document in different ways. Explain each conflict to "
              "the user in plain words, without Git terms: who changed it and when, and the difference. Offer: keep "
              "the version of this machine (`--keep mine`), keep the other one (`--keep theirs`), combine both (show "
              "the combined statement and save it only after the user agrees, `--merged \"<statement>\"`), or, for "
              "a rule of the team, each one keeps their own as a personal rule (`--each-their-own`). Run "
-             "`agent-ready sync --resolve <id> <option>` with what the user chooses; nobody is asked again."]
+             "`agent-ready sync --resolve <id> <option>` with what the user chooses; nobody is asked again. A "
+             "document has no each-their-own: to combine it, write the whole combined document to a file, show it, "
+             "and pass `--merged-file <file>`."]
     for conflict in conflicts:
         mine, theirs = conflict["mine"], conflict["theirs"]
-        lines.append(f"  {conflict['id']}" + (f" (key {conflict['key']})" if conflict.get("key") else ""))
+        if conflict.get("kind") == documents.KIND_DOCUMENT:
+            lines.append(f"  {conflict['id']} (a document changed in the same part on two machines)")
+            lines.append(f"    this machine, {mine.get('by') or 'unknown'} at {mine.get('at') or '?'}; "
+                         f"the other, {theirs.get('by') or 'unknown'} at {theirs.get('at') or '?'}")
+            lines.extend(f"    {line}" for line in conflict.get("difference", []))
+            continue
+        # Whose rule it is says whether each-their-own is an option.
+        scope = "a personal rule" if conflict.get("personal") else "a rule of the team"
+        lines.append(f"  {conflict['id']} ({scope}" + (f", key {conflict['key']})" if conflict.get("key") else ")"))
         lines.append(f"    this machine, {mine.get('by') or 'unknown'} at {mine.get('at') or '?'}: "
                      f"{mine.get('statement') or '(removed)'}")
         lines.append(f"    the other, {theirs.get('by') or 'unknown'} at {theirs.get('at') or '?'}: "
@@ -380,8 +461,11 @@ def applicable(project_root, reference):
     found = {}
     for conflict in read_state(project_root)["conflicts"]:
         if conflict.get("decision") and conflict["path"] not in found:
-            found[conflict["path"]] = {item["id"]: item for item in rule_conflicts(project_root, conflict["path"],
-                                                                                 reference)}
+            # A document is one unit: its decision holds while both sides still have the texts the person saw.
+            items = (document_conflicts(project_root, conflict["path"], reference)
+                     if conflict.get("kind") == documents.KIND_DOCUMENT
+                     else rule_conflicts(project_root, conflict["path"], reference))
+            found[conflict["path"]] = {item["id"]: item for item in items}
     return {conflict["id"] for conflict in read_state(project_root)["conflicts"]
             if conflict.get("decision") and conflict["id"] in found.get(conflict["path"], {})
             and same_versions(conflict, found[conflict["path"]][conflict["id"]])}
@@ -408,8 +492,10 @@ def finish_locked(project_root, append_personal, append_log, applied):
                 if side.get("statement") and side.get("by"):
                     # Its exceptions and details go with it: they are part of what that person taught.
                     written.append(append_personal(side["by"], conflict, side["statement"], details_of(side["lines"])))
-        written.append(append_log(f"- {today} resolve {conflict['ruleId']} ({conflict['decision']}, decided by "
-                                  f"{conflict.get('decidedBy') or 'unknown'}): two versions of the same rule\n"))
+        subject = conflict.get("ruleId") or conflict["path"]
+        what = "document" if conflict.get("kind") == documents.KIND_DOCUMENT else "rule"
+        written.append(append_log(f"- {today} resolve {subject} ({conflict['decision']}, decided by "
+                                  f"{conflict.get('decidedBy') or 'unknown'}): two versions of the same {what}\n"))
     state["conflicts"] = [conflict for conflict in state["conflicts"] if not conflict.get("decision")]
     write_state(project_root, state)
     return [path for path in written if path]

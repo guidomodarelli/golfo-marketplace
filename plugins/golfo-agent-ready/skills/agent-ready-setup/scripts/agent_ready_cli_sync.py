@@ -61,6 +61,9 @@ def print_report(report):
                                    "request of the change.",
     }
     line = lines.get(result) or f"Sync: {result}: {report.get('message', '')}"
+    if result == team_sync.RESULT_SYNCED and report.get("message"):
+        # The pr mode says where it pushed and which pull request has it.
+        line = f"Sync: {report['message'].rstrip('.')}."
     if report.get("committed"):
         line += " Committed what the learning had pending."
     if report.get("toPush"):
@@ -71,11 +74,12 @@ def print_report(report):
 def decision_of(arguments):
     """(decision, statement) that --resolve asks for, or a usage error."""
     chosen = [option for option, given in ((arguments.keep, arguments.keep), (sync_conflicts.DECISION_MERGED,
-                                                                              arguments.merged is not None),
+                                                                              arguments.merged is not None or
+                                                                              arguments.merged_file is not None),
                                            (sync_conflicts.DECISION_EACH, arguments.each_their_own)) if given]
     if len(chosen) != 1:
-        raise StateError("--resolve needs exactly one of --keep mine|theirs, --merged \"<statement>\" and "
-                         "--each-their-own")
+        raise StateError("--resolve needs exactly one of --keep mine|theirs, --merged \"<statement>\", "
+                         "--merged-file <file> and --each-their-own")
     return chosen[0], arguments.merged
 
 
@@ -129,12 +133,19 @@ def command_resolve(project_root, arguments):
                          + (" and staged; finish the merge with git commit.\n" if staged
                             else "; other rules of the file still conflict.\n"))
         return EXIT_OK
+    text = None
+    if arguments.merged_file:
+        try:
+            with open(arguments.merged_file, encoding="utf-8") as handle:
+                text = handle.read()
+        except OSError as unreadable:
+            raise StateError(f"--merged-file {arguments.merged_file} cannot be read: {unreadable}") from unreadable
     try:
         conflict = sync_conflicts.decide(
             project_root, arguments.resolve, decision, identity.read_identity()["id"], statement,
             lambda person, item: team_sync.personal_rule_exists(project_root, person, item),
             lambda item: team_sync.team_rule_required_by(project_root, item),
-            lambda lines: check_combined_rule(project_root, lines))
+            lambda lines: check_combined_rule(project_root, lines), text)
     except ValueError as invalid:
         raise StateError(str(invalid)) from invalid
     sys.stdout.write(f"Decided {conflict['id']}: {decision}.\n")
@@ -176,5 +187,8 @@ def register(subparsers, new_subparser):
                       help="with --resolve: keep the version of this machine or the other one")
     sync.add_argument("--merged", metavar="STATEMENT",
                       help="with --resolve: the statement that combines both, once the user agreed with it")
+    sync.add_argument("--merged-file", metavar="FILE",
+                      help="with --resolve, for a document: the file with the whole document that combines both, "
+                           "once the user agreed with it")
     sync.add_argument("--each-their-own", action="store_true",
                       help="with --resolve, for a rule of the team: each version stays personal for who taught it")

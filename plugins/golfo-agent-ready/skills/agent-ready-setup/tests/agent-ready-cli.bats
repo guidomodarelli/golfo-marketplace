@@ -1152,7 +1152,7 @@ make_rule_conflict() {
   make_rule_conflict
   run_cli sync --conflicts
   [ "$status" -eq 0 ]
-  [[ "$output" == *"Two people changed the same rule in different ways"* ]]
+  [[ "$output" == *"Two people changed the same rule or the same part of a document in different ways"* ]]
   [[ "$output" == *"$conflict_id"* ]]
   [[ "$output" == *"this machine, ana at "*": Put the date at the top of the header."* ]]
   [[ "$output" == *"the other, juan at "*": Put the case in the header."* ]]
@@ -1500,6 +1500,368 @@ PY
   run_cli sync --resolve "$conflict_id" --keep theirs
   [ "$status" -eq 1 ]
   [[ "$output" == *"the same part changed on two machines: .agents/rules/learned.md"* ]]
+}
+
+# 169h: the documents of an office, with sync.scope knowledge+documents on both machines.
+setup_office_documents() {
+  setup_office_remote
+  mkdir -p "$XDG_CONFIG_HOME/agent-ready-setup" "$test_root/config-other/agent-ready-setup"
+  printf '%s\n' '{"id": "ana", "name": "Ana"}' > "$XDG_CONFIG_HOME/agent-ready-setup/identity.json"
+  printf '%s\n' '{"id": "juan", "name": "Juan"}' > "$test_root/config-other/agent-ready-setup/identity.json"
+  for machine in "$project_dir" "$other"; do
+    python3 - "$machine/.agents/agent-ready.json" <<'PY'
+import json, sys
+path = sys.argv[1]
+manifest = json.load(open(path, encoding="utf-8"))
+manifest["sync"] = {"scope": "knowledge+documents"}
+json.dump(manifest, open(path, "w", encoding="utf-8"))
+PY
+  done
+  mkdir -p actas output
+  printf '%s\n' '# Acta 4512' '' 'Fecha: 12 de marzo.' '' 'Partes: Ruiz y Gómez.' '' 'Firma: al pie.' > actas/acta-4512.md
+  printf 'generated\n' > output/acta-4512.pdf
+  run_cli sync
+  [ "$status" -eq 0 ]
+  cd "$other"
+  XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
+  [ "$status" -eq 0 ]
+  cd "$project_dir"
+}
+
+# Machine $1 (project or other) replaces $2 with $3 in the acta and syncs; the status is left in $status.
+edit_acta() {
+  local directory="$project_dir" config="$XDG_CONFIG_HOME"
+  [ "$1" = other ] && directory="$other" && config="$test_root/config-other"
+  cd "$directory"
+  sed -i.bak "s/$2/$3/" actas/acta-4512.md
+  rm -f actas/acta-4512.md.bak
+  XDG_CONFIG_HOME="$config" run_cli sync
+  cd "$project_dir"
+}
+
+@test "documents: changes in different parts merge alone, and what output/ holds never leaves the machine" {
+  setup_office_documents
+  git cat-file -e HEAD:actas/acta-4512.md
+  # What was learned still goes out with the documents.
+  learn_rule dates 'Dates go first.'
+  run_cli sync
+  [ "$status" -eq 0 ]
+  git show HEAD:.agents/rules/learned.md | grep -Fxq -- '- Dates go first.'
+  ! git cat-file -e HEAD:output/acta-4512.pdf 2> /dev/null
+  [ -f "$other/actas/acta-4512.md" ]
+  edit_acta other 'Fecha: 12 de marzo.' 'Fecha: 21 de marzo.'
+  [ "$status" -eq 0 ]
+  edit_acta project 'Firma: al pie.' 'Firma: al pie, con aclaración.'
+  [ "$status" -eq 0 ]
+  grep -Fxq 'Fecha: 21 de marzo.' actas/acta-4512.md
+  grep -Fxq 'Firma: al pie, con aclaración.' actas/acta-4512.md
+  [ "$(git rev-parse HEAD)" = "$(git -C "$remote" rev-parse main)" ]
+}
+
+@test "documents: the same part changed on two machines is explained with the difference and decided once" {
+  setup_office_documents
+  edit_acta other 'Partes: Ruiz y Gómez.' 'Partes: Ruiz, Gómez y Pérez.'
+  edit_acta project 'Partes: Ruiz y Gómez.' 'Partes: Ruiz y Gómez (apoderados).'
+  [ "$status" -eq 1 ]
+  [ ! -e "$(git rev-parse --git-path MERGE_HEAD)" ]
+  run_cli sync --conflicts
+  [[ "$output" == *"actas/acta-4512.md (a document changed in the same part on two machines)"* ]]
+  [[ "$output" == *"this machine, ana at "*"the other, juan at "* ]]
+  [[ "$output" == *"-Partes: Ruiz y Gómez (apoderados)."* ]]
+  [[ "$output" == *"+Partes: Ruiz, Gómez y Pérez."* ]]
+  run_cli sync --resolve actas/acta-4512.md --each-their-own
+  [ "$status" -ne 0 ]
+  printf '%s\n' '# Acta 4512' '' 'Fecha: 12 de marzo.' '' 'Partes: Ruiz, Gómez y Pérez (apoderados).' '' 'Firma: al pie.' \
+    > "$test_root/combined.md"
+  run_cli sync --resolve actas/acta-4512.md --merged-file "$test_root/combined.md"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Sync: up to date with the remote."* ]]
+  grep -Fxq 'Partes: Ruiz, Gómez y Pérez (apoderados).' actas/acta-4512.md
+  ! grep -q '^<<<<<<<' actas/acta-4512.md
+  grep -q ' resolve actas/acta-4512.md (merged, decided by ana): two versions of the same document' \
+    .agents/learning/log.md
+  [ "$(git rev-parse HEAD)" = "$(git -C "$remote" rev-parse main)" ]
+}
+
+@test "documents: two uploaded files with one name are both kept, the other one with its date" {
+  setup_office_documents
+  mkdir -p entradas "$other/entradas"
+  printf 'poder de ana\n' > entradas/poder.pdf
+  printf 'poder de juan\n' > "$other/entradas/poder.pdf"
+  cd "$other"
+  XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
+  [ "$status" -eq 0 ]
+  cd "$project_dir"
+  run_cli sync
+  [ "$status" -eq 0 ]
+  [ "$(cat entradas/poder.pdf)" = "poder de ana" ]
+  [ "$(cat "entradas/poder-$(date +%Y-%m-%d).pdf")" = "poder de juan" ]
+  [ "$(git rev-parse HEAD)" = "$(git -C "$remote" rev-parse main)" ]
+}
+
+@test "documents: an input changed in different parts on two machines keeps both, and a dated name taken is skipped" {
+  setup_office_documents
+  local today input dated
+  today="$(date +%Y-%m-%d)"
+  input="entradas/declaración.rtf"
+  dated="entradas/declaración-$today.rtf"
+  mkdir -p entradas
+  printf '%s\n' 'uno' 'dos' 'tres' 'cuatro' 'cinco' > "$input"
+  printf 'antes\n' > "$dated"
+  run_cli sync
+  [ "$status" -eq 0 ]
+  cd "$other"
+  XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
+  [ "$status" -eq 0 ]
+  sed -i.bak 's/^uno$/UNO/' "$input" && rm -f "$input".bak
+  XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
+  [ "$status" -eq 0 ]
+  cd "$project_dir"
+  sed -i.bak 's/^cinco$/CINCO/' "$input" && rm -f "$input".bak
+  run_cli sync
+  [ "$status" -eq 0 ]
+  # An input is never merged by line: this machine keeps the name, the other version goes beside it.
+  grep -Fxq 'CINCO' "$input"
+  ! grep -Fxq 'UNO' "$input"
+  grep -Fxq 'UNO' "entradas/declaración-$today-2.rtf"
+  [ "$(cat "$dated")" = "antes" ]
+  [ "$(git rev-parse HEAD)" = "$(git -C "$remote" rev-parse main)" ]
+}
+
+@test "documents: keeping the side that deleted a document removes it" {
+  setup_office_documents
+  cd "$other"
+  rm actas/acta-4512.md
+  XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
+  [ "$status" -eq 0 ]
+  cd "$project_dir"
+  edit_acta project 'Firma: al pie.' 'Firma: al pie, con aclaración.'
+  [ "$status" -eq 1 ]
+  run_cli sync --conflicts
+  [[ "$output" == *"actas/acta-4512.md"* ]]
+  run_cli sync --resolve actas/acta-4512.md --keep theirs
+  [ "$status" -eq 0 ]
+  [ ! -e actas/acta-4512.md ]
+  ! git cat-file -e HEAD:actas/acta-4512.md 2> /dev/null
+  [ "$(git rev-parse HEAD)" = "$(git -C "$remote" rev-parse main)" ]
+}
+
+@test "a merge that went through clears only the conflicts that came from its own reference" {
+  setup_office_remote
+  run python3 - "$skill_dir/scripts" "$project_dir" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1])
+import agent_ready_sync_conflicts as sync_conflicts
+root = sys.argv[2]
+state = sync_conflicts.read_state(root)
+state["conflicts"] = [{"id": "a", "source": "origin/main"}, {"id": "b", "source": "origin/agent-ready/sync/ana"}]
+sync_conflicts.write_state(root, state)
+sync_conflicts.clear_pending(root, "origin/main")
+print(",".join(conflict["id"] for conflict in sync_conflicts.read_state(root)["conflicts"]))
+sync_conflicts.clear_pending(root)
+print(len(sync_conflicts.read_state(root)["conflicts"]))
+PY
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s' "$output" | tr -d '\r' | paste -sd, -)" = "b,0" ]
+}
+
+@test "documents: an upload with its extension in capitals goes out too" {
+  setup_office_documents
+  mkdir -p entradas
+  printf 'scan\n' > entradas/scan.PDF
+  run_cli sync
+  [ "$status" -eq 0 ]
+  git cat-file -e HEAD:entradas/scan.PDF
+}
+
+@test "documents: an upload renamed on both machines to different names keeps both names" {
+  setup_office_documents
+  mkdir -p entradas
+  printf 'poder\n' > entradas/poder.pdf
+  run_cli sync
+  [ "$status" -eq 0 ]
+  cd "$other"
+  XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
+  [ "$status" -eq 0 ]
+  mv entradas/poder.pdf entradas/poder-juan.pdf
+  XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
+  [ "$status" -eq 0 ]
+  cd "$project_dir"
+  mv entradas/poder.pdf entradas/poder-ana.pdf
+  run_cli sync
+  [ "$status" -eq 0 ]
+  [ ! -e entradas/poder.pdf ]
+  [ "$(cat entradas/poder-ana.pdf)" = "poder" ]
+  [ "$(cat entradas/poder-juan.pdf)" = "poder" ]
+  [ ! -e "$(git rev-parse --git-path MERGE_HEAD)" ]
+  [ "$(git rev-parse HEAD)" = "$(git -C "$remote" rev-parse main)" ]
+}
+
+@test "documents: a document renamed and edited on one machine and edited on the other is decided at its new name" {
+  setup_office_documents
+  cd "$other"
+  git mv actas/acta-4512.md actas/acta-4512-firmada.md
+  sed -i.bak 's/^Partes: Ruiz y Gómez.$/Partes: Ruiz, Gómez y Pérez./' actas/acta-4512-firmada.md && rm -f actas/acta-4512-firmada.md.bak
+  git commit -qm "rename and edit the acta"
+  XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
+  [ "$status" -eq 0 ]
+  cd "$project_dir"
+  edit_acta project 'Partes: Ruiz y Gómez.' 'Partes: Ruiz y Gómez (apoderados).'
+  [ "$status" -eq 1 ]
+  run_cli sync --conflicts
+  [[ "$output" == *"actas/acta-4512-firmada.md"* ]]
+  [[ "$output" == *"+Partes: Ruiz, Gómez y Pérez."* ]]
+  run_cli sync --resolve actas/acta-4512-firmada.md --keep theirs
+  [ "$status" -eq 0 ]
+  grep -Fxq 'Partes: Ruiz, Gómez y Pérez.' actas/acta-4512-firmada.md
+  [ ! -e actas/acta-4512.md ]
+  [ "$(git rev-parse HEAD)" = "$(git -C "$remote" rev-parse main)" ]
+}
+
+@test "documents: a Markdown document with its extension in capitals has its conflict explained and decided" {
+  setup_office_documents
+  printf '%s\n' '# Nota' '' 'Estado: abierta.' > notas.MD
+  run_cli sync
+  [ "$status" -eq 0 ]
+  cd "$other"
+  XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
+  [ "$status" -eq 0 ]
+  sed -i.bak 's/^Estado: abierta.$/Estado: cerrada./' notas.MD && rm -f notas.MD.bak
+  XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
+  [ "$status" -eq 0 ]
+  cd "$project_dir"
+  sed -i.bak 's/^Estado: abierta.$/Estado: en revisión./' notas.MD && rm -f notas.MD.bak
+  run_cli sync
+  [ "$status" -eq 1 ]
+  run_cli sync --conflicts
+  [[ "$output" == *"notas.MD (a document changed in the same part on two machines)"* ]]
+  run_cli sync --resolve notas.MD --keep mine
+  [ "$status" -eq 0 ]
+  grep -Fxq 'Estado: en revisión.' notas.MD
+  [ "$(git rev-parse HEAD)" = "$(git -C "$remote" rev-parse main)" ]
+}
+
+@test "documents stay out of the sync when sync.scope is knowledge, the default without the documents profile" {
+  setup_office_remote
+  mkdir -p actas
+  printf '%s\n' '# Acta' > actas/acta-1.md
+  run_cli sync
+  [ "$status" -eq 0 ]
+  ! git cat-file -e HEAD:actas/acta-1.md 2> /dev/null
+}
+
+@test "sync.mode pr pushes to the branch of the person and opens one pull request into the branch" {
+  setup_office_remote
+  mkdir -p "$XDG_CONFIG_HOME/agent-ready-setup"
+  printf '%s\n' '{"id": "ana", "name": "Ana"}' > "$XDG_CONFIG_HOME/agent-ready-setup/identity.json"
+  python3 - <<'PY'
+import json
+path = ".agents/agent-ready.json"
+manifest = json.load(open(path, encoding="utf-8"))
+manifest["sync"] = {"mode": "pr"}
+json.dump(manifest, open(path, "w", encoding="utf-8"))
+PY
+  # gh: no pull request yet, and create prints the URL of the new one.
+  cat > "$fake_bin/gh" <<'SH'
+#!/bin/bash
+printf '%s\n' "$*" >> "$test_root/gh.log"
+[[ "$1 $2" == "pr create" ]] && echo "https://github.example/acme/office/pull/7"
+exit 0
+SH
+  sed -i.bak "s#\$test_root#$test_root#" "$fake_bin/gh" && rm -f "$fake_bin/gh".bak
+  chmod +x "$fake_bin/gh"
+  base="$(git symbolic-ref --short HEAD)"
+  learn_rule dates 'Dates go first.'
+  run_cli sync
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"pushed to agent-ready/sync/ana, in the new pull request https://github.example/acme/office/pull/7"* ]]
+  # Git Bash would turn <branch>:<path> into a Windows path.
+  MSYS2_ARG_CONV_EXCL='agent-ready/sync/' git -C "$remote" show "agent-ready/sync/ana:.agents/rules/learned.md" | grep -q 'Dates go first.'
+  ! MSYS2_ARG_CONV_EXCL="$base:" git -C "$remote" show "$base:.agents/rules/learned.md" 2> /dev/null | grep -q 'Dates go first.'
+  grep -q "pr create --head agent-ready/sync/ana --base $base" "$test_root/gh.log"
+}
+
+@test "sync.mode pr opens the pull request in the repository of the remote of the sync" {
+  setup_office_remote
+  run python3 - "$skill_dir/scripts" "$project_dir" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1])
+import agent_ready_sync as sync
+root = sys.argv[2]
+for url in ("https://github.com/acme/office.git", "git@github.com:acme/office.git",
+            "ssh://git@ghe.acme.io/acme/office", "/srv/office.git"):
+    sync.git(root, "remote", "set-url", "origin", url)
+    print(sync.remote_repository(root, "origin"))
+PY
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s' "$output" | tr -d '\r' | paste -sd, -)" = "github.com/acme/office,github.com/acme/office,ghe.acme.io/acme/office,None" ]
+}
+
+@test "sync.mode pr without a pull request keeps telling the person in status" {
+  setup_office_remote
+  mkdir -p "$XDG_CONFIG_HOME/agent-ready-setup"
+  printf '%s\n' '{"id": "ana", "name": "Ana"}' > "$XDG_CONFIG_HOME/agent-ready-setup/identity.json"
+  python3 - <<'PY'
+import json
+path = ".agents/agent-ready.json"
+manifest = json.load(open(path, encoding="utf-8"))
+manifest["sync"] = {"mode": "pr"}
+json.dump(manifest, open(path, "w", encoding="utf-8"))
+PY
+  # gh cannot open the pull request.
+  printf '%s\n' '#!/bin/bash' '[[ "$1 $2" == "pr create" ]] && { echo "no permission" >&2; exit 1; }' 'exit 0' > "$fake_bin/gh"
+  chmod +x "$fake_bin/gh"
+  learn_rule dates 'Dates go first.'
+  run_cli sync
+  [ "$status" -eq 0 ]
+  # The brief status of the start of a session, as the hook prints it.
+  run python3 "$skill_dir/scripts/agent-ready-state.py" status --project . --skill-dir "$skill_dir" --brief
+  [[ "$output" == *"Sync: a pull request is missing"*"could not be opened: no permission"* ]]
+}
+
+@test "doctor checks the remote of the team sync and lists the conflicts that wait for a person" {
+  make_rule_conflict
+  run_cli doctor --json
+  python3 - "$output" <<'PY'
+import json, sys
+checks = {item["name"]: item for item in json.loads(sys.argv[1])["checks"]}
+assert checks["team sync"]["status"] == "ok", checks["team sync"]
+assert "with the credentials of this machine" in checks["team sync"]["detail"], checks["team sync"]
+assert checks["team sync conflicts"]["status"] == "warning", checks
+assert ".agents/rules/learned.md#learned/header" in checks["team sync conflicts"]["detail"], checks
+PY
+}
+
+@test "a conflict is decided by the id of its rule alone when only one conflict has it" {
+  make_rule_conflict
+  run_cli sync --resolve learned/header --keep theirs
+  [ "$status" -eq 0 ]
+  grep -Fxq -- '- Put the case in the header.' .agents/rules/learned.md
+}
+
+@test "a rule file with spaces or accents in its name is recorded and decided" {
+  setup_office_remote
+  mkdir -p "$XDG_CONFIG_HOME/agent-ready-setup" "$test_root/config-other/agent-ready-setup"
+  printf '%s\n' '{"id": "ana", "name": "Ana"}' > "$XDG_CONFIG_HOME/agent-ready-setup/identity.json"
+  printf '%s\n' '{"id": "juan", "name": "Juan"}' > "$test_root/config-other/agent-ready-setup/identity.json"
+  RULE_FILE='.agents/rules/learned/política de firma.md' learn_rule firma 'Firmá al final.'
+  run_cli sync
+  [ "$status" -eq 0 ]
+  cd "$other"
+  XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
+  sed -i.bak 's/Firmá al final./Firmá con aclaración./' '.agents/rules/learned/política de firma.md'
+  rm -f '.agents/rules/learned/política de firma.md.bak'
+  XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
+  cd "$project_dir"
+  sed -i.bak 's/Firmá al final./Firmá al pie./' '.agents/rules/learned/política de firma.md'
+  rm -f '.agents/rules/learned/política de firma.md.bak'
+  run_cli sync
+  [ "$status" -eq 1 ]
+  run_cli sync --conflicts
+  [[ "$output" == *".agents/rules/learned/política de firma.md#learned/firma"* ]]
+  run_cli sync --resolve '.agents/rules/learned/política de firma.md#learned/firma' --keep theirs
+  [ "$status" -eq 0 ]
+  grep -Fxq -- '- Firmá con aclaración.' '.agents/rules/learned/política de firma.md'
 }
 
 # 169g: in the software preset, the rules of the merge the developer does; nothing syncs by itself.

@@ -3463,6 +3463,49 @@
       ]
     },
     {
+      "id": "sync-conflict-explained-in-plain-words",
+      "description": "Al iniciar la sesión, un conflicto del sync de una oficina se le explica a la persona sin términos de Git, con quién y cuándo, y con las cuatro opciones de agent-ready sync --resolve.",
+      "input": "Trabajás en el repo de un estudio jurídico con agent-ready-setup. Al iniciar la sesión, el hook mostró esto:\n\n[agent-ready sync] Two people changed the same rule or the same part of a document in different ways. Explain each conflict to the user in plain words, without Git terms: who changed it and when, and the difference. Offer: keep the version of this machine (`--keep mine`), keep the other one (`--keep theirs`), combine both (show the combined statement and save it only after the user agrees, `--merged \"<statement>\"`), or, for a rule of the team, each one keeps their own as a personal rule (`--each-their-own`). Run `agent-ready sync --resolve <id> <option>` with what the user chooses; nobody is asked again. A document has no each-their-own: to combine it, write the whole combined document to a file, show it, and pass `--merged-file <file>`.\n  .agents/rules/learned.md#learned/header (a rule of the team, key actas.encabezado)\n    this machine, ana at 2026-11-23T10:15:00-03:00: Poné la fecha arriba de todo en el encabezado.\n    the other, juan at 2026-11-23T10:40:00-03:00: Poné el número de expediente en el encabezado.\n\nLa usuaria es Ana y no sabe nada de Git. Escribí exactamente lo que le decís, y qué comando corrés según lo que elija. No ejecutes comandos.",
+      "assertions": [
+        {
+          "type": "contains_any",
+          "values": [
+            "Juan",
+            "juan"
+          ],
+          "description": "Nombra a la otra persona que cambió la rule",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "10:40|10:15",
+          "description": "Dice cuándo cambió cada versión"
+        },
+        {
+          "type": "regex",
+          "pattern": "resolve [\"']?(\\.agents/rules/learned\\.md#)?learned/header",
+          "description": "Da el comando para guardar lo que elija, con el id del conflicto",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "--each-their-own",
+          "description": "Ofrece que cada una conserve la suya como rule personal",
+          "critical": true
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "rebase",
+            "conflicto de merge",
+            "merge conflict"
+          ],
+          "description": "No le habla a Ana en términos de Git"
+        }
+      ],
+      "control": "the explanation the hook prints already says who changed what, the four options and the command, so the agent follows it without the skill; it guards that the skill never contradicts it"
+    },
+    {
       "id": "learn-record-counts-episodes",
       "description": "agent-ready learn record cuenta episodios distintos: una instrucción implícita repetida en la misma conversación del mismo día queda como candidata, se aprende al aparecer en otro episodio, y list no muestra las citas.",
       "input": "Hoy, en la misma conversación, le dije dos veces al agente que ponga el número de expediente arriba en las actas, sin decir «siempre» ni «de ahora en más». El agente lo registró con agent-ready learn record. ¿Ya se aprende como rule del proyecto? ¿Qué tiene que pasar para que se aprenda? ¿agent-ready learn list muestra la frase que le dije? Respondé desde la skill, sin ejecutar comandos.",
