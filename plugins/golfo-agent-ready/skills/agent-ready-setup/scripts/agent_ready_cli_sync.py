@@ -17,6 +17,7 @@ from agent_ready_cli_common import EXIT_FAILED, EXIT_OK, engine, find_repository
 from agent_ready_common import StateError, serialize_json, sha256_of_text
 
 SYNC_COMMAND = "sync"
+MAX_STATEMENT_CHARS_KEY = "rules.maxStatementChars"
 CLI_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "agent-ready")
 RUN_DETACHED_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "run-detached.py")
 LOG_DIRECTORY = ("agent-ready-setup", "team-sync")
@@ -87,6 +88,20 @@ def command_conflicts(project_root, as_json):
     return EXIT_OK
 
 
+def check_combined_rule(project_root, lines):
+    """A combined statement makes a rule that passes the lint of the project: atomic and short enough."""
+    import agent_ready_rules
+
+    maximum = engine().configuration_of(project_root).value(MAX_STATEMENT_CHARS_KEY)
+    rules, findings = agent_ready_rules.parse_rule_text("\n".join(lines) + "\n", "combined")
+    findings = findings + agent_ready_rules.lint_rules(rules, maximum, maximum)
+    errors = [finding for finding in findings if finding.level == agent_ready_rules.LEVEL_ERROR
+              and finding.code != agent_ready_rules.CODE_UNKNOWN_REQUIRES]
+    if errors:
+        raise ValueError("the combined statement would not be a valid rule, so nothing was decided: "
+                         + errors[0].render())
+
+
 def command_resolve(project_root, arguments):
     """Store what the person decided and synchronize with it."""
     decision, statement = decision_of(arguments)
@@ -94,7 +109,8 @@ def command_resolve(project_root, arguments):
         conflict = sync_conflicts.decide(
             project_root, arguments.resolve, decision, identity.read_identity()["id"], statement,
             lambda person, item: team_sync.personal_rule_exists(project_root, person, item),
-            lambda item: team_sync.team_rule_required_by(project_root, item))
+            lambda item: team_sync.team_rule_required_by(project_root, item),
+            lambda lines: check_combined_rule(project_root, lines))
     except ValueError as invalid:
         raise StateError(str(invalid)) from invalid
     sys.stdout.write(f"Decided {conflict['id']}: {decision}.\n")

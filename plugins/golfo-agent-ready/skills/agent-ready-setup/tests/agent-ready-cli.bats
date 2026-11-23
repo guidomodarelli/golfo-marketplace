@@ -1456,3 +1456,48 @@ PY
   [ "$status" -ne 0 ]
   [[ "$stderr" == *"the rule learned/header-format requires this one"* ]]
 }
+
+@test "a combined statement that would not pass the lint is refused before anything is decided" {
+  make_rule_conflict
+  run_cli sync --resolve "$conflict_id" --merged "Put the date in the header. Put the case number in the header."
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"the combined statement would not be a valid rule"* ]]
+  run_cli sync --conflicts
+  [[ "$output" == *"$conflict_id"* ]]
+}
+
+@test "a statement that continues on the next line is replaced whole by the combined one" {
+  setup_office_remote
+  mkdir -p "$XDG_CONFIG_HOME/agent-ready-setup" "$test_root/config-other/agent-ready-setup"
+  printf '%s\n' '{"id": "ana", "name": "Ana"}' > "$XDG_CONFIG_HOME/agent-ready-setup/identity.json"
+  printf '%s\n' '{"id": "juan", "name": "Juan"}' > "$test_root/config-other/agent-ready-setup/identity.json"
+  learn_rule header 'Put the date'
+  printf '%s\n' '  in the header.' >> .agents/rules/learned.md
+  run_cli sync
+  [ "$status" -eq 0 ]
+  cd "$other"
+  XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
+  sed -i.bak 's/^- Put the date$/- Put the case/' .agents/rules/learned.md
+  rm -f .agents/rules/learned.md.bak
+  XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
+  cd "$project_dir"
+  sed -i.bak 's/^- Put the date$/- Put the date and the time/' .agents/rules/learned.md
+  rm -f .agents/rules/learned.md.bak
+  run_cli sync
+  [ "$status" -eq 1 ]
+  run_cli sync --resolve '.agents/rules/learned.md#learned/header' --merged "Put the date and the case in the header."
+  [ "$status" -eq 0 ]
+  grep -Fxq -- '- Put the date and the case in the header.' .agents/rules/learned.md
+  ! grep -Fxq -- '  in the header.' .agents/rules/learned.md
+}
+
+@test "a file whose title also changed two ways is named after its rule is decided" {
+  make_rule_conflict
+  other_edits .agents/rules/learned.md 's/^# Learned rules$/# Rules of the office/'
+  sed -i.bak 's/^# Learned rules$/# What we learned/' .agents/rules/learned.md
+  rm -f .agents/rules/learned.md.bak
+  run_cli sync
+  run_cli sync --resolve "$conflict_id" --keep theirs
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"the same part changed on two machines: .agents/rules/learned.md"* ]]
+}

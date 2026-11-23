@@ -207,7 +207,8 @@ def record_locked(project_root, files, reference):
     unexplained = []
     for path in files:
         conflicts = rule_conflicts(project_root, path, reference) if path.startswith(RULES_PREFIX) else []
-        if not conflicts:
+        # A rule decided leaves the rest of its file to merge: what conflicts there is said by its file.
+        if not conflicts or outside_rules_conflict(project_root, path, reference):
             unexplained.append(path)
         for conflict in conflicts:
             previous = known.get(conflict["id"])
@@ -237,22 +238,44 @@ def pending(project_root):
 
 
 def details_of(lines):
-    """The exceptions and details of a rule: the lines after the marker and its statement."""
-    return list((lines or [])[2:])
+    """The exceptions and details of a rule: from its first sub-item on. The lines before it, after the marker
+    and the bullet, continue the statement (agent_ready_learning_apply.replaced_statement does the same)."""
+    lines = list(lines or [])
+    start = next((index for index in range(2, len(lines)) if agent_ready_rules.SUB_ITEM.match(lines[index])),
+                 len(lines))
+    return lines[start:]
 
 
-def decide(project_root, conflict_id, decision, person, statement=None, personal_rule_exists=None, required_by=None):
+def outside_rules_conflict(project_root, path, reference):
+    """True when the file also conflicts outside its rules: its title, its paragraphs or its frontmatter."""
+    base_revision = git(project_root, "merge-base", "HEAD", reference).stdout.strip()
+    try:
+        segments = [drivers.rule_segments(show(project_root, revision, path))
+                    for revision in (base_revision, "HEAD", reference)]
+    except drivers.Unparsable:
+        return True
+    for part in (0, 2):
+        _, conflict = drivers.merge_text_by_line(*(drivers.as_text(versions[part]) for versions in segments))
+        if conflict:
+            return True
+    return False
+
+
+def decide(project_root, conflict_id, decision, person, statement=None, personal_rule_exists=None, required_by=None,
+           check_statement=None):
     with locked_state(project_root):
-        return decide_locked(project_root, conflict_id, decision, person, statement, personal_rule_exists, required_by)
+        return decide_locked(project_root, conflict_id, decision, person, statement, personal_rule_exists, required_by,
+                             check_statement)
 
 
 def decide_locked(project_root, conflict_id, decision, person, statement=None, personal_rule_exists=None,
-                  required_by=None):
+                  required_by=None, check_statement=None):
     """Store the decision of a person for one conflict; returns the conflict.
 
     ``personal_rule_exists(person, conflict)`` says whether a person already has the personal rule that
     each-their-own would write for them; ``required_by(conflict)`` names a rule that requires the team rule
-    each-their-own would remove."""
+    each-their-own would remove; ``check_statement(lines)`` raises when the rule a combined statement makes
+    would not pass the lint of the project."""
     state = read_state(project_root)
     conflict = next((item for item in state["conflicts"] if item["id"] == conflict_id), None)
     if conflict is None:
@@ -283,6 +306,8 @@ def decide_locked(project_root, conflict_id, decision, person, statement=None, p
     if decision == DECISION_EACH and conflict.get("scoped"):
         raise ValueError("this rule applies to some files only, and a personal rule applies to the whole "
                          "repository: keep one (--keep mine or --keep theirs) or combine them (--merged)")
+    if decision == DECISION_MERGED and check_statement:
+        check_statement(resolution_lines(dict(conflict, decision=decision, statement=" ".join(statement.split()))))
     conflict["decision"] = decision
     conflict["decidedBy"] = person
     if decision == DECISION_MERGED:
