@@ -155,15 +155,16 @@ def resolve(project_root, conflict_id, decision, statement=None, check_statement
                          "would lose: keep one (--keep mine or --keep theirs) and change it afterwards")
     path = conflict["path"]
     absolute = os.path.join(project_root, path)
-    # The file as this module or the merge driver left it: before the first --resolve, the merge of the three
-    # versions with its conflicts, which is what the driver wrote.
-    expected = state["written"].get(path) or text_hash(drivers.merge_rules(*stage_versions(project_root, path))[0])
+    # The file as this module or the merge driver left it. The driver writes the merge of the three versions
+    # with its conflicts; a new attempt of the same merge (after git merge --abort) writes it again, so the
+    # hash this module saved in a previous attempt is not the only version that is not a manual edit.
+    expected = {state["written"].get(path), text_hash(drivers.merge_rules(*stage_versions(project_root, path))[0])}
     try:
         with open(absolute, encoding="utf-8", newline="") as handle:
             current = handle.read()
     except OSError:
         current = ""
-    if text_hash(current) != expected:
+    if text_hash(current) not in expected:
         # The developer edited the file by hand: rebuilding it from its versions would lose that.
         raise ValueError(f"{path} changed by hand since the merge or the last agent-ready sync --resolve: "
                          "finish it by hand")

@@ -1620,6 +1620,10 @@ branches_change_rule() {
   ! git merge -q --no-edit other-work
   run_cli sync --conflicts
   [[ "$output" == *"this branch, "*": Put the date at the very top."* ]]
+  # The file the first attempt resolved is not a manual edit of the second one.
+  run_cli sync --resolve '.agents/rules/learned.md#learned/header' --keep mine
+  [ "$status" -eq 0 ]
+  grep -Fxq -- '- Put the date at the very top.' .agents/rules/learned.md
 }
 
 @test "software: a file edited by hand after a --resolve is not rewritten by the next one" {
