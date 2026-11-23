@@ -65,6 +65,16 @@ lo muestra en la línea `Sync:`.
 sync no hace commits, fetch ni push, y ningún disparador lo corre. Las claves están en
 [configuration-keys.md](configuration-keys.md).
 
+## Rama protegida y doctor
+
+- **`sync.mode: pr`.** Para una rama que solo acepta pull requests: lo de esta máquina sube a la rama de
+  su persona, `agent-ready/sync/<persona>`, sin force push, y `gh` abre un pull request hacia la rama
+  actual si no hay uno abierto. Lo que traen los demás sigue llegando de la rama actual. Sin `gh`, la
+  línea `Sync:` dice qué rama abrir.
+- **`agent-ready doctor`** revisa, en el preset `business`, que el remoto exista y acepte las
+  credenciales de Git de esta máquina (`git ls-remote`; con `--offline` no lo contacta). También avisa los
+  commits que esperan salir y los conflictos que esperan a una persona, con sus ids.
+
 ## Documentos
 
 Con `sync.scope: knowledge+documents`, el sync también sube y trae los documentos de la oficina. El valor

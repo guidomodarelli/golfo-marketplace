@@ -60,6 +60,9 @@ def print_report(report):
                                    "request of the change.",
     }
     line = lines.get(result) or f"Sync: {result}: {report.get('message', '')}"
+    if result == team_sync.RESULT_SYNCED and report.get("message"):
+        # The pr mode says where it pushed and which pull request has it.
+        line = f"Sync: {report['message'].rstrip('.')}."
     if report.get("committed"):
         line += " Committed what the learning had pending."
     if report.get("toPush"):

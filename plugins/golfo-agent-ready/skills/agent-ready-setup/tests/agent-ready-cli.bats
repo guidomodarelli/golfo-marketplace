@@ -1602,3 +1602,47 @@ edit_acta() {
   [ "$status" -eq 0 ]
   ! git cat-file -e HEAD:actas/acta-1.md 2> /dev/null
 }
+
+@test "sync.mode pr pushes to the branch of the person and opens one pull request into the branch" {
+  setup_office_remote
+  mkdir -p "$XDG_CONFIG_HOME/agent-ready-setup"
+  printf '%s\n' '{"id": "ana", "name": "Ana"}' > "$XDG_CONFIG_HOME/agent-ready-setup/identity.json"
+  python3 - <<'PY'
+import json
+path = ".agents/agent-ready.json"
+manifest = json.load(open(path, encoding="utf-8"))
+manifest["sync"] = {"mode": "pr"}
+json.dump(manifest, open(path, "w", encoding="utf-8"))
+PY
+  # gh: no pull request yet, and create prints the URL of the new one.
+  cat > "$fake_bin/gh" <<'SH'
+#!/bin/bash
+printf '%s\n' "$*" >> "$test_root/gh.log"
+[[ "$1 $2" == "pr create" ]] && echo "https://github.example/acme/office/pull/7"
+exit 0
+SH
+  sed -i "s#\$test_root#$test_root#" "$fake_bin/gh"
+  chmod +x "$fake_bin/gh"
+  base="$(git symbolic-ref --short HEAD)"
+  learn_rule dates 'Dates go first.'
+  run_cli sync
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"pushed to agent-ready/sync/ana, in the new pull request https://github.example/acme/office/pull/7"* ]]
+  # Git Bash would turn <branch>:<path> into a Windows path.
+  MSYS2_ARG_CONV_EXCL='agent-ready/sync/' git -C "$remote" show "agent-ready/sync/ana:.agents/rules/learned.md" | grep -q 'Dates go first.'
+  ! MSYS2_ARG_CONV_EXCL="$base:" git -C "$remote" show "$base:.agents/rules/learned.md" 2> /dev/null | grep -q 'Dates go first.'
+  grep -q "pr create --head agent-ready/sync/ana --base $base" "$test_root/gh.log"
+}
+
+@test "doctor checks the remote of the team sync and lists the conflicts that wait for a person" {
+  make_rule_conflict
+  run_cli doctor --json
+  python3 - "$output" <<'PY'
+import json, sys
+checks = {item["name"]: item for item in json.loads(sys.argv[1])["checks"]}
+assert checks["team sync"]["status"] == "ok", checks["team sync"]
+assert "with the credentials of this machine" in checks["team sync"]["detail"], checks["team sync"]
+assert checks["team sync conflicts"]["status"] == "warning", checks
+assert ".agents/rules/learned.md#learned/header" in checks["team sync conflicts"]["detail"], checks
+PY
+}

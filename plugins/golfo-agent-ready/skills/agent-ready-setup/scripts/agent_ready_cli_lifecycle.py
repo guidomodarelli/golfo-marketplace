@@ -299,7 +299,62 @@ def doctor_checks(project, offline):
         *check_engine_requirements(project, configuration, offline),
         *check_hooks(project, providers),
         *check_learning_sweep(project),
+        *check_team_sync(project, offline),
     ]
+
+
+# Words of git when the remote refused who this machine is, not when it could not reach it.
+CREDENTIAL_HINTS = ("authentication failed", "permission denied", "could not read username", "403", "401",
+                    "access denied", "invalid username or password")
+REMOTE_CHECK_TIMEOUT_SECONDS = 30
+
+
+def check_team_sync(project, offline):
+    """The team sync of an office (the business preset): its remote, the credentials of Git for it, what waits to
+    go out and the conflicts that wait for a person. Nothing in a repository of code or with sync off."""
+    import agent_ready_sync as team_sync
+    import agent_ready_sync_conflicts as sync_conflicts
+
+    try:
+        settings = team_sync.settings_of(engine().configuration_of(project), project)
+    except (ConfigurationError, StateError, OSError):
+        return []
+    if not os.path.isfile(os.path.join(project, ".agents", "agent-ready.lock.json")) or not settings["enabled"] \
+            or settings["preset"] != team_sync.identity.PRESET_BUSINESS:
+        return []
+    remote = settings["remote"]
+    if team_sync.git(project, "remote", "get-url", remote).returncode != 0:
+        return [check("team sync", CHECK_WARNING, f"the repository has no remote {remote}, so nothing is shared",
+                      f"git remote add {remote} <url>")]
+    found = []
+    if offline:
+        found.append(check("team sync", CHECK_OK, f"remote {remote} (not reached: --offline)"))
+    else:
+        try:
+            reached = subprocess.run(["git", "-C", project, "ls-remote", "--heads", remote], capture_output=True,
+                                     text=True, encoding="utf-8", errors="replace", check=False,
+                                     timeout=REMOTE_CHECK_TIMEOUT_SECONDS, env=dict(os.environ, GIT_TERMINAL_PROMPT="0"))
+            failure = "" if reached.returncode == 0 else reached.stderr.strip().splitlines()[-1:]
+        except subprocess.TimeoutExpired:
+            failure = [f"no answer in {REMOTE_CHECK_TIMEOUT_SECONDS} seconds"]
+        if not failure:
+            found.append(check("team sync", CHECK_OK, f"remote {remote}, with the credentials of this machine"))
+        elif any(hint in failure[0].lower() for hint in CREDENTIAL_HINTS):
+            found.append(check("team sync", CHECK_MISSING, f"{remote} refused the credentials of Git: {failure[0]}",
+                               f"configure the credentials of Git for {remote} on this machine"))
+        else:
+            found.append(check("team sync", CHECK_WARNING, f"{remote} could not be reached: {failure[0] if failure else ''}; "
+                               "the commits wait and go out with the next sync"))
+    waiting = team_sync.read_state(project).get("toPush") or 0
+    if waiting:
+        found.append(check("team sync pending", CHECK_WARNING, f"{waiting} commit(s) wait to go out",
+                           f"{CLI_NAME} sync"))
+    conflicts = sync_conflicts.pending(project)
+    if conflicts:
+        found.append(check("team sync conflicts", CHECK_WARNING,
+                           f"{len(conflicts)} conflict(s) wait for a person: "
+                           + ", ".join(conflict["id"] for conflict in conflicts), f"{CLI_NAME} sync --conflicts"))
+    return found
 
 
 def check_learning_sweep(project):

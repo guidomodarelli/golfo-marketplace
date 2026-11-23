@@ -29,6 +29,15 @@
       "maximum": 10,
       "default": 3
     },
+    "mode": {
+      "description": "Cómo sube lo aprendido. push: a la rama actual, con reintentos y nunca con force push. pr: a una rama de cada persona (agent-ready/sync/<persona>) con un pull request hacia la rama actual, que gh abre si no hay uno; para una rama protegida que solo acepta pull requests.",
+      "type": "string",
+      "enum": [
+        "push",
+        "pr"
+      ],
+      "default": "push"
+    },
     "scope": {
       "description": "Qué sincroniza agent-ready sync. knowledge: lo aprendido. knowledge+documents: además los documentos de la oficina, Markdown como fuente y los PDF o Word subidos como entradas (references/team-sync.md, «Documentos»); nunca output/ ni los archivos del motor. auto: knowledge+documents si la selección tiene la capability documents.",
       "type": "string",
