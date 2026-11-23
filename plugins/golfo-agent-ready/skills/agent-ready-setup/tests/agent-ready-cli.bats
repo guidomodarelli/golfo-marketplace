@@ -1653,3 +1653,28 @@ PY
   [ "$status" -eq 0 ]
   grep -Fxq -- '- Put the case in the header.' .agents/rules/learned.md
 }
+
+@test "a rule file with spaces or accents in its name is recorded and decided" {
+  setup_office_remote
+  mkdir -p "$XDG_CONFIG_HOME/agent-ready-setup" "$test_root/config-other/agent-ready-setup"
+  printf '%s\n' '{"id": "ana", "name": "Ana"}' > "$XDG_CONFIG_HOME/agent-ready-setup/identity.json"
+  printf '%s\n' '{"id": "juan", "name": "Juan"}' > "$test_root/config-other/agent-ready-setup/identity.json"
+  RULE_FILE='.agents/rules/learned/política de firma.md' learn_rule firma 'Firmá al final.'
+  run_cli sync
+  [ "$status" -eq 0 ]
+  cd "$other"
+  XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
+  sed -i.bak 's/Firmá al final./Firmá con aclaración./' '.agents/rules/learned/política de firma.md'
+  rm -f '.agents/rules/learned/política de firma.md.bak'
+  XDG_CONFIG_HOME="$test_root/config-other" run_cli sync
+  cd "$project_dir"
+  sed -i.bak 's/Firmá al final./Firmá al pie./' '.agents/rules/learned/política de firma.md'
+  rm -f '.agents/rules/learned/política de firma.md.bak'
+  run_cli sync
+  [ "$status" -eq 1 ]
+  run_cli sync --conflicts
+  [[ "$output" == *".agents/rules/learned/política de firma.md#learned/firma"* ]]
+  run_cli sync --resolve '.agents/rules/learned/política de firma.md#learned/firma' --keep theirs
+  [ "$status" -eq 0 ]
+  grep -Fxq -- '- Firmá con aclaración.' '.agents/rules/learned/política de firma.md'
+}

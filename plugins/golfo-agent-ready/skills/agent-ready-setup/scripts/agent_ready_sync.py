@@ -77,6 +77,13 @@ def git(project_root, *arguments, extra_environment=None):
                           env=environment)
 
 
+def unmerged_files(project_root):
+    """The files in conflict of the merge in progress, NUL-separated: a name with spaces or accents comes as it
+    is, never split nor quoted by Git."""
+    output = git(project_root, "diff", "--name-only", "-z", "--diff-filter=U").stdout
+    return [path for path in output.split("\0") if path]
+
+
 def git_path(project_root, relative):
     result = git(project_root, "rev-parse", "--git-path", relative)
     path = result.stdout.strip()
@@ -216,7 +223,7 @@ def merge(project_root, remote, branch):
         sync_conflicts.clear_pending(project_root)
         return
     if os.path.exists(git_path(project_root, "MERGE_HEAD")):
-        unmerged = git(project_root, "diff", "--name-only", "--diff-filter=U").stdout.split()
+        unmerged = unmerged_files(project_root)
         # Two uploaded files with one name are both kept, without asking anybody.
         documents.settle_inputs(project_root, unmerged, git)
         if unmerged and resolve_file_conflicts(project_root, resolutions):
@@ -225,7 +232,7 @@ def merge(project_root, remote, branch):
             sync_conflicts.clear_pending(project_root)
             return
     if os.path.exists(git_path(project_root, "MERGE_HEAD")):
-        files = git(project_root, "diff", "--name-only", "--diff-filter=U").stdout.split()
+        files = unmerged_files(project_root)
         # Before the abort: the versions of each rule, its people and its times, for the next session.
         recorded, unexplained = sync_conflicts.record(project_root, files, reference)
         git(project_root, "merge", "--abort")
@@ -251,7 +258,7 @@ def resolve_file_conflicts(project_root, resolutions_path):
 
     Git does not run the merge driver when one side deleted a rule file and the other changed it, so the
     decision of such a conflict is applied here, with the same merge of rules as the driver."""
-    files = git(project_root, "diff", "--name-only", "--diff-filter=U").stdout.split()
+    files = unmerged_files(project_root)
     resolutions = {}
     if resolutions_path:
         try:
