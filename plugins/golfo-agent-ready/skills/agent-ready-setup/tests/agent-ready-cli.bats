@@ -1542,6 +1542,11 @@ edit_acta() {
 @test "documents: changes in different parts merge alone, and what output/ holds never leaves the machine" {
   setup_office_documents
   git cat-file -e HEAD:actas/acta-4512.md
+  # What was learned still goes out with the documents.
+  learn_rule dates 'Dates go first.'
+  run_cli sync
+  [ "$status" -eq 0 ]
+  git show HEAD:.agents/rules/learned.md | grep -Fxq -- '- Dates go first.'
   ! git cat-file -e HEAD:output/acta-4512.pdf 2> /dev/null
   [ -f "$other/actas/acta-4512.md" ]
   edit_acta other 'Fecha: 12 de marzo.' 'Fecha: 21 de marzo.'

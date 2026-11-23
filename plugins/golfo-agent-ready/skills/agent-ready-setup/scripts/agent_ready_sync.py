@@ -130,12 +130,17 @@ def in_progress(project_root):
     return any(os.path.exists(git_path(project_root, marker)) for marker in markers)
 
 
-def commit_knowledge(project_root, subject=COMMIT_SUBJECT, pathspecs=KNOWLEDGE_PATHSPECS):
-    """Commit the files of ``pathspecs`` that changed (the learning, and the documents with that scope), and
-    nothing else; True when it made a commit."""
+def commit_knowledge(project_root, subject=COMMIT_SUBJECT, pathspec_groups=(KNOWLEDGE_PATHSPECS,)):
+    """Commit the files of ``pathspec_groups`` that changed (the learning, and the documents with that scope),
+    and nothing else; True when it made a commit.
+
+    Each group is asked on its own: an exclude pathspec of Git applies to the whole list, so the excludes of
+    the documents (``.agents/**``) would hide what was learned if both went in one call."""
     # The files that changed, by name: a pathspec that matches nothing would make git add fail.
-    pending = git(project_root, "status", "--porcelain", "-z", "--untracked-files=all", "--", *pathspecs)
-    records = [record for record in pending.stdout.split("\0") if record]
+    records = []
+    for pathspecs in pathspec_groups:
+        pending = git(project_root, "status", "--porcelain", "-z", "--untracked-files=all", "--", *pathspecs)
+        records.extend(record for record in pending.stdout.split("\0") if record)
     paths = []
     index = 0
     while index < len(records):
@@ -146,6 +151,7 @@ def commit_knowledge(project_root, subject=COMMIT_SUBJECT, pathspecs=KNOWLEDGE_P
             index += 1
             paths.append(records[index])
         index += 1
+    paths = list(dict.fromkeys(paths))
     if not paths:
         return False
     added = git(project_root, "add", "-A", "--", *paths)
@@ -429,10 +435,10 @@ def synchronize(project_root, settings):
         return {"result": RESULT_NO_REMOTE, "message": f"the repository has no remote {remote}"}
     if in_progress(project_root):
         return {"result": RESULT_BUSY, "message": "a merge or rebase of this checkout waits for a person"}
-    pathspecs = KNOWLEDGE_PATHSPECS
+    groups = (KNOWLEDGE_PATHSPECS,)
     if settings.get("scope") == documents.SCOPE_DOCUMENTS:
-        pathspecs = KNOWLEDGE_PATHSPECS + documents.DOCUMENT_PATHSPECS
-    committed = with_registry(project_root, commit_knowledge, COMMIT_SUBJECT, pathspecs)
+        groups = (KNOWLEDGE_PATHSPECS, documents.DOCUMENT_PATHSPECS)
+    committed = with_registry(project_root, commit_knowledge, COMMIT_SUBJECT, groups)
     remote_has_branch = False
     try:
         for _ in range(settings["retries"] + 1):
