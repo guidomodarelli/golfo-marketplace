@@ -3,7 +3,7 @@
 Only an apply installs, and only a CLI the security policy allows (agent_ready_pack_tools.py):
 
 - an artifact is downloaded over https for the platform of this machine and its sha256 checked
-  before anything is extracted; an archive (.tar.gz, .tgz or .zip) is extracted without links or
+  before anything is extracted; an archive (.tar.gz, .tgz, .tar.xz, .txz or .zip) is extracted without links or
   paths that leave its directory;
 - an npm package is packed first, so its tarball is checked against the declared sha256 before
   npm installs it under a prefix of its own; a pip package is downloaded and checked the same way
@@ -46,7 +46,9 @@ DOWNLOAD_CHUNK_BYTES = 1024 * 1024
 PACKAGE_COMMAND_TIMEOUT_SECONDS = 600
 CACHE_LOCK_WAIT_SECONDS = 60
 CACHE_LOCK_POLL_SECONDS = 0.2
-ARCHIVE_SUFFIXES = (".tar.gz", ".tgz", ".zip")
+# Tar archives, which tarfile opens with any of their compressions, and zip archives.
+TAR_SUFFIXES = (".tar.gz", ".tgz", ".tar.xz", ".txz")
+ARCHIVE_SUFFIXES = TAR_SUFFIXES + (".zip",)
 WINDOWS_EXECUTABLE_SUFFIXES = (".exe", ".cmd", ".bat", ".ps1")
 MACHINES = {"x86_64": "x64", "amd64": "x64", "x64": "x64", "aarch64": "arm64", "arm64": "arm64"}
 SYSTEMS = {"linux": "linux", "darwin": "darwin", "win32": "windows"}
@@ -265,7 +267,7 @@ def install_artifact(cli, key, machine_platform, staging):
     files = os.path.join(staging, "files")
     os.makedirs(files)
     lowered = file_name.lower()
-    if lowered.endswith((".tar.gz", ".tgz")):
+    if lowered.endswith(TAR_SUFFIXES):
         extract_tar(download_path, files)
     elif lowered.endswith(".zip"):
         extract_zip(download_path, files)
