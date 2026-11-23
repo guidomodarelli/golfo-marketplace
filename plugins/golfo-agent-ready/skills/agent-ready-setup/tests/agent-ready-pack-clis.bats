@@ -225,6 +225,20 @@ assert os.path.isfile(os.path.join(clis.install_directory(first_key), *first_mar
 PY
 }
 
+@test "an artifact packed as .tar.xz is extracted and installed like a .tar.gz" {
+  tar -cJf "$served/acme.tar.xz" -C "$test_root/release-acme" bin
+  PYTHONPATH="$skill_dir/scripts" python3 - "$machine_platform" "$server_url" "$(sha256_of "$served/acme.tar.xz")" <<'PY'
+import os, subprocess, sys
+import agent_ready_pack_clis as clis
+machine_platform, url, sha256 = sys.argv[1:4]
+declaration = {"name": "acme", "version": "1.4.2", "artifacts": [
+    {"platform": machine_platform, "url": f"{url}/acme.tar.xz", "sha256": sha256}]}
+key, marker, _ = clis.install_one(declaration, machine_platform)
+executable = os.path.join(clis.install_directory(key), *marker["pathDirectory"].split("/"), "acme")
+assert subprocess.run(["sh", executable], capture_output=True, text=True).stdout.strip() == "acme works"
+PY
+}
+
 # A wheel with a console script acme-tool, and a source distribution whose build would leave a mark.
 build_python_distributions() {
   mkdir -p "$test_root/wheels"

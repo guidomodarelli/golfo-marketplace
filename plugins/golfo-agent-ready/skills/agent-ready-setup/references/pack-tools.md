@@ -212,7 +212,7 @@ o `~/.cache/agent-ready-setup/clis`), nunca en el repositorio:
 
 | Origen | Qué hace el apply |
 |---|---|
-| `artifacts` | Descarga por https el archivo de la plataforma de la máquina y compara su `sha256` antes de abrirlo. Un `.tar.gz`, `.tgz` o `.zip` se extrae sin links ni rutas que salgan de su directorio; cualquier otro archivo es el ejecutable. |
+| `artifacts` | Descarga por https el archivo de la plataforma de la máquina y compara su `sha256` antes de abrirlo. Un `.tar.gz`, `.tgz`, `.tar.xz`, `.txz` o `.zip` se extrae sin links ni rutas que salgan de su directorio; cualquier otro archivo es el ejecutable. |
 | `npm` | `npm pack --ignore-scripts` baja el tarball sin correr sus scripts, se compara su `sha256` y recién después `npm install` lo instala en un prefijo propio. |
 | `pip` | Solo wheels: un paquete fuente correría su build antes de que el `sha256` pudiera rechazarlo. `pip download --no-deps --only-binary=:all:` lo baja, con el `sha256` como hash de la requirement para que pip lo verifique, y se instala en un entorno virtual propio, creado donde queda. |
 | `brew`, `winget` | Nunca se ejecutan, porque instalan para toda la máquina. El apply dice el comando para instalarlo a mano y si el ejecutable ya está en el PATH. |
