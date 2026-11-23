@@ -37,6 +37,11 @@ DECISION_EACH = "each"
 DECISIONS = (DECISION_MINE, DECISION_THEIRS, DECISION_MERGED, DECISION_EACH)
 RULES_PREFIX = ".agents/rules/"
 LEARNED_BY = re.compile(r"^Learned-by:\s*(?P<person>\S+)\s*$", re.M)
+# How far back the history is read to find the commit that wrote one version of a rule.
+RULE_HISTORY_LIMIT = 200
+# A scope of the rule: paths in the frontmatter of its file, or the paths= attribute of its marker.
+FRONTMATTER_PATHS = re.compile(r"\A---\n(?:(?!---\n).*\n)*?paths\s*:", re.M)
+MARKER_PATHS = re.compile(r"<!--.*\bpaths=")
 
 
 def git(project_root, *arguments):
@@ -71,14 +76,45 @@ def show(project_root, revision, path):
     return result.stdout if result.returncode == 0 else ""
 
 
-def last_change(project_root, revision, path):
-    """(person, iso time) of the last commit of ``revision`` that touched ``path``."""
-    result = git(project_root, "log", "-1", "--format=%aI%x00%an%x00%B", revision, "--", path)
-    if result.returncode != 0 or not result.stdout:
-        return None, None
-    moment, author, body = (result.stdout.split("\x00", 2) + ["", ""])[:3]
+def person_of(author, body):
     learned_by = LEARNED_BY.search(body)
-    return (learned_by.group("person") if learned_by else author), moment.strip()
+    return learned_by.group("person") if learned_by else author
+
+
+def rule_body(project_root, revision, path, rule_id):
+    """The lines of one rule of ``path`` at ``revision``, or None when the file or the rule is not there."""
+    try:
+        _, segments, _ = drivers.rule_segments(show(project_root, revision, path))
+    except drivers.Unparsable:
+        return None
+    return next((body for segment_id, _, body in segments if segment_id == rule_id), None)
+
+
+def last_change(project_root, revision, path, rule_id, lines):
+    """(person, iso time) of the commit of ``revision`` that left the rule ``rule_id`` as ``lines``.
+
+    A file holds several rules, and its last commit may have changed another one: the history is read back
+    to the commit whose parent had this rule different."""
+    result = git(project_root, "log", f"-{RULE_HISTORY_LIMIT}", "--format=%H%x00%aI%x00%an%x00%B%x01", revision,
+                 "--", path)
+    if result.returncode != 0:
+        return None, None
+    for entry in result.stdout.split("\x01"):
+        fields = entry.strip("\n").split("\x00", 3)
+        if len(fields) < 4:
+            continue
+        commit, moment, author, body = fields
+        if rule_body(project_root, f"{commit}^", path, rule_id) != lines:
+            return person_of(author, body), moment.strip()
+    return None, None
+
+
+def scoped(project_root, path, revisions, versions):
+    """True when the rule applies to some files only: paths= in its marker, or paths in its file's frontmatter."""
+    if any(MARKER_PATHS.search(line) for lines in versions if lines for line in lines):
+        return True
+    return any(FRONTMATTER_PATHS.search(show(project_root, revision, path).replace("\r\n", "\n"))
+               for revision in revisions)
 
 
 def statement_of(lines):
@@ -106,11 +142,12 @@ def rule_conflicts(project_root, path, reference):
             continue
         ours_statement, key = statement_of(ours.get(rule_id))
         theirs_statement, theirs_key = statement_of(theirs.get(rule_id))
-        ours_person, ours_time = last_change(project_root, "HEAD", path)
-        theirs_person, theirs_time = last_change(project_root, reference, path)
+        ours_person, ours_time = last_change(project_root, "HEAD", path, rule_id, ours.get(rule_id))
+        theirs_person, theirs_time = last_change(project_root, reference, path, rule_id, theirs.get(rule_id))
         found.append({
             "id": f"{path}#{rule_id}", "path": path, "ruleId": rule_id, "key": key or theirs_key,
             "personal": agent_ready_rules.PERSONAL_RULES_PATTERN.search(path) is not None,
+            "scoped": scoped(project_root, path, ("HEAD", reference), (ours.get(rule_id), theirs.get(rule_id))),
             "mine": {"lines": ours.get(rule_id), "statement": ours_statement, "by": ours_person, "at": ours_time},
             "theirs": {"lines": theirs.get(rule_id), "statement": theirs_statement, "by": theirs_person,
                        "at": theirs_time},
@@ -121,7 +158,9 @@ def rule_conflicts(project_root, path, reference):
 def record(project_root, files, reference):
     """Record the rule conflicts of a merge in progress; returns (recorded, files they do not explain).
 
-    A conflict that already has a decision keeps it while the versions are the same."""
+    A conflict that already has a decision keeps it while the versions are the same. So does a decided
+    conflict of a file the decision merged: the merge was aborted for another file, and the sync needs that
+    decision again when it repeats the whole merge."""
     state = read_state(project_root)
     known = {conflict["id"]: conflict for conflict in state["conflicts"]}
     current = []
@@ -139,7 +178,10 @@ def record(project_root, files, reference):
             conflict.setdefault("detected", datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0)
                                 .isoformat())
             current.append(conflict)
-    state["conflicts"] = current
+    recorded_ids = {conflict["id"] for conflict in current}
+    kept = [conflict for conflict in state["conflicts"]
+            if conflict.get("decision") and conflict["path"] not in files and conflict["id"] not in recorded_ids]
+    state["conflicts"] = kept + current
     write_state(project_root, state)
     return current, unexplained
 
@@ -158,6 +200,13 @@ def decide(project_root, conflict_id, decision, person, statement=None):
         raise ValueError("--merged needs the statement that combines both versions")
     if decision == DECISION_EACH and conflict.get("personal"):
         raise ValueError("each one keeps theirs is for a rule of the team; this one is already personal")
+    if decision == DECISION_EACH and conflict["mine"].get("by") and \
+            conflict["mine"].get("by") == conflict["theirs"].get("by"):
+        raise ValueError("both versions are from the same person, who cannot keep two of their own: keep one "
+                         "(--keep mine or --keep theirs) or combine them (--merged)")
+    if decision == DECISION_EACH and conflict.get("scoped"):
+        raise ValueError("this rule applies to some files only, and a personal rule applies to the whole "
+                         "repository: keep one (--keep mine or --keep theirs) or combine them (--merged)")
     conflict["decision"] = decision
     conflict["decidedBy"] = person
     if decision == DECISION_MERGED:
@@ -187,7 +236,10 @@ def resolutions_file(project_root):
         return None
     resolutions = {}
     for conflict in decided:
-        resolutions.setdefault(conflict["path"], {})[conflict["ruleId"]] = resolution_lines(conflict)
+        # With the versions the person saw: a rule that changed since conflicts again (decided_lines).
+        resolutions.setdefault(conflict["path"], {})[conflict["ruleId"]] = {
+            "lines": resolution_lines(conflict), "mine": conflict["mine"]["lines"],
+            "theirs": conflict["theirs"]["lines"]}
     path = state_path(project_root) + ".resolutions"
     with open(path, "w", encoding="utf-8", newline="\n") as handle:
         json.dump(resolutions, handle, ensure_ascii=False)

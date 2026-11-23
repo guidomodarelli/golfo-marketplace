@@ -38,6 +38,8 @@ DRIVER_NAMES = {
 }
 # The decided conflicts of the team sync, as {path: {rule id: lines}} (agent_ready_sync_conflicts.py).
 RESOLUTIONS_VARIABLE = "AGENT_READY_MERGE_RESOLUTIONS"
+# What decided_lines answers for a rule whose decision does not hold (None is a decision: remove it).
+NOT_DECIDED = object()
 EXIT_MERGED = 0
 EXIT_CONFLICT = 1
 OURS_MARKER = "<<<<<<< ours"
@@ -129,11 +131,22 @@ def merge_text_by_line(base, ours, theirs):
         os.rmdir(directory)
 
 
+def decided_lines(resolution, ours, theirs):
+    """The lines a decision keeps for a rule (None removes it), or NOT_DECIDED.
+
+    A decision holds only for the two versions the person saw: if either side changed the rule since, the
+    rule conflicts again and the sync asks about the new versions."""
+    if not isinstance(resolution, dict) or resolution.get("mine") != ours or resolution.get("theirs") != theirs:
+        return NOT_DECIDED
+    return resolution.get("lines")
+
+
 def merge_rules(base_text, ours_text, theirs_text, resolutions=None):
     """(text, conflicts) of three versions of a rule file, merged rule by rule.
 
-    ``resolutions`` holds {rule id: lines or None} for the conflicts a person already decided
-    (agent_ready_sync_conflicts.py): such a rule takes those lines, or leaves the file, without a conflict."""
+    ``resolutions`` holds {rule id: {"lines", "mine", "theirs"}} for the conflicts a person already decided
+    (agent_ready_sync_conflicts.py): such a rule takes those lines, or leaves the file, without a conflict,
+    while its two versions are still the ones the person decided about."""
     resolutions = resolutions or {}
     base_prefix, base_segments, _ = rule_segments(base_text)
     ours_prefix, ours_segments, ours_suffix = rule_segments(ours_text)
@@ -161,7 +174,9 @@ def merge_rules(base_text, ours_text, theirs_text, resolutions=None):
     for rule_id, gap in order:
         value, conflict = three_way(base_rules.get(rule_id), ours_rules.get(rule_id), theirs_rules.get(rule_id))
         if conflict and rule_id in resolutions:
-            value, conflict = resolutions[rule_id], False
+            lines_kept = decided_lines(resolutions[rule_id], ours_rules.get(rule_id), theirs_rules.get(rule_id))
+            if lines_kept is not NOT_DECIDED:
+                value, conflict = lines_kept, False
         if conflict:
             conflicts += 1
             value = conflict_lines(ours_rules.get(rule_id), theirs_rules.get(rule_id))

@@ -197,6 +197,10 @@ def merge(project_root, remote, branch):
         if resolutions:
             finish_resolutions(project_root)
         return
+    if os.path.exists(git_path(project_root, "MERGE_HEAD")) and resolutions and \
+            resolve_file_conflicts(project_root, resolutions):
+        finish_resolutions(project_root)
+        return
     if os.path.exists(git_path(project_root, "MERGE_HEAD")):
         files = git(project_root, "diff", "--name-only", "--diff-filter=U").stdout.split()
         # Before the abort: the versions of each rule, its people and its times, for the next session.
@@ -211,6 +215,48 @@ def merge(project_root, remote, branch):
                         + ("; the next session explains it and offers what to keep" if waiting else ""))
     raise SyncError(RESULT_BLOCKED, (result.stderr or result.stdout).strip().splitlines()[0]
                     if (result.stderr or result.stdout).strip() else "git merge failed")
+
+
+def stage_text(project_root, stage, path):
+    """The text of ``path`` at a stage of the merge in progress (1 base, 2 ours, 3 theirs); "" if absent."""
+    result = git(project_root, "show", f":{stage}:{path}")
+    return result.stdout if result.returncode == 0 else ""
+
+
+def resolve_file_conflicts(project_root, resolutions_path):
+    """Finish a merge whose remaining conflicts the decisions settle, and commit it; False if one is left.
+
+    Git does not run the merge driver when one side deleted a rule file and the other changed it, so the
+    decision of such a conflict is applied here, with the same merge of rules as the driver."""
+    files = git(project_root, "diff", "--name-only", "--diff-filter=U").stdout.split()
+    try:
+        with open(resolutions_path, encoding="utf-8") as handle:
+            resolutions = json.load(handle)
+    except (OSError, ValueError):
+        return False
+    if not files or any(path not in resolutions for path in files):
+        return False
+    for path in files:
+        versions = [stage_text(project_root, stage, path) for stage in (1, 2, 3)]
+        try:
+            merged, conflicts = merge_drivers.merge_rules(*versions, resolutions[path])
+            _, segments, _ = merge_drivers.rule_segments(merged)
+        except merge_drivers.Unparsable:
+            return False
+        if conflicts:
+            return False
+        if not segments and not (versions[1] and versions[2]):
+            # The side that deleted the file wins with its last rule: the file goes.
+            outcome = git(project_root, "rm", "--quiet", "--cached", "--", path)
+            absolute = os.path.join(project_root, path)
+            if os.path.exists(absolute):
+                os.remove(absolute)
+        else:
+            write_text_atomically(os.path.join(project_root, path), merged)
+            outcome = git(project_root, "add", "--", path)
+        if outcome.returncode != 0:
+            return False
+    return git(project_root, "commit", "--no-edit", "--quiet").returncode == 0
 
 
 def append_personal(project_root, person, conflict, statement):

@@ -88,11 +88,19 @@ guarda en la máquina que se encontró con el conflicto, porque es la que tiene 
   | conservar la versión de esta máquina | `agent-ready sync --resolve <id> --keep mine` |
   | conservar la del otro | `agent-ready sync --resolve <id> --keep theirs` |
   | fusionar las dos: el agente muestra el enunciado combinado y lo guarda recién cuando la persona está de acuerdo | `agent-ready sync --resolve <id> --merged "<enunciado>"` |
-  | cada uno la suya, solo para una rule de equipo: cada versión queda como rule personal de quien la enseñó, y la de equipo sale | `agent-ready sync --resolve <id> --each-their-own` |
+  | cada uno la suya, solo para una rule de equipo que vale para todo el repositorio y con versiones de dos personas distintas: cada versión queda como rule personal de quien la enseñó, y la de equipo sale | `agent-ready sync --resolve <id> --each-their-own` |
 
 - **Una sola vez.** `--resolve` guarda la decisión y sincroniza: el merge se repite con la decisión (los
   drivers la leen de `AGENT_READY_MERGE_RESOLUTIONS`), se commitea con una línea `resolve` en el log, con
   quién decidió, y nadie más vuelve a ver esa pregunta.
+  - **Cada versión, con su autor.** Quién y cuándo salen del commit que dejó esa rule así, no del último
+    que tocó su archivo: un archivo tiene varias rules.
+  - **Vale para lo que vio la persona.** Si una de las dos versiones cambia antes de que el merge la use,
+    la decisión no se aplica y se pregunta por las versiones nuevas.
+  - **Espera al resto.** Con varias rules en conflicto, cada decisión se guarda hasta que el merge sale
+    entero, aunque su archivo ya se haya podido combinar en un intento abortado por otro.
+  - **También si una máquina borró el archivo** y la otra cambió su rule: Git no llama al driver en ese
+    caso, así que el sync aplica la decisión él mismo y termina el merge.
 - **Mientras tanto,** cada máquina conserva su versión, el resto sigue sincronizando y nada se pierde:
   las dos versiones quedan en el historial.
 - **Lo que no es una rule** (un JSON que no se puede leer, un archivo fuera de `.agents/rules/`) queda en
