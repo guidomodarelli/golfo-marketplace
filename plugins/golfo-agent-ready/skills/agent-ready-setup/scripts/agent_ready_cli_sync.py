@@ -10,6 +10,7 @@ import os
 import pathlib
 import sys
 
+import agent_ready_branch_conflicts as branch_conflicts
 import agent_ready_identity as identity
 import agent_ready_sync as team_sync
 import agent_ready_sync_conflicts as sync_conflicts
@@ -78,8 +79,21 @@ def decision_of(arguments):
     return chosen[0], arguments.merged
 
 
+def software_preset(project_root):
+    return settings_for(project_root)["preset"] == identity.PRESET_SOFTWARE
+
+
 def command_conflicts(project_root, as_json):
-    """The conflicts that wait for a person: what the start of a session explains."""
+    """The conflicts that wait for a person: what the start of a session explains.
+
+    In the software preset they are the rules of the merge the developer is doing (#169g)."""
+    if software_preset(project_root):
+        found = branch_conflicts.conflicts(project_root)
+        if as_json:
+            sys.stdout.write(serialize_json({"conflicts": found}))
+        elif found:
+            sys.stdout.write(branch_conflicts.explanation(found))
+        return EXIT_OK
     waiting = sync_conflicts.pending(project_root)
     if as_json:
         sys.stdout.write(serialize_json({"conflicts": waiting}))
@@ -103,8 +117,17 @@ def check_combined_rule(project_root, lines):
 
 
 def command_resolve(project_root, arguments):
-    """Store what the person decided and synchronize with it."""
+    """Store what the person decided and synchronize with it; in the software preset, write it into the merge."""
     decision, statement = decision_of(arguments)
+    if software_preset(project_root):
+        try:
+            path, staged = branch_conflicts.resolve(project_root, arguments.resolve, decision, statement)
+        except ValueError as invalid:
+            raise StateError(str(invalid)) from invalid
+        sys.stdout.write(f"Decided {arguments.resolve}: {decision}, written to {path}"
+                         + (" and staged; finish the merge with git commit.\n" if staged
+                            else "; other rules of the file still conflict.\n"))
+        return EXIT_OK
     try:
         conflict = sync_conflicts.decide(
             project_root, arguments.resolve, decision, identity.read_identity()["id"], statement,

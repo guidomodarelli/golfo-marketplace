@@ -1501,3 +1501,62 @@ PY
   [ "$status" -eq 1 ]
   [[ "$output" == *"the same part changed on two machines: .agents/rules/learned.md"* ]]
 }
+
+# 169g: in the software preset, the rules of the merge the developer does; nothing syncs by itself.
+setup_code_repository() {
+  run_cli apply --profiles learning
+  [ "$status" -eq 0 ]
+  python3 - <<'PY'
+import json
+path = ".agents/agent-ready.json"
+manifest = json.load(open(path, encoding="utf-8"))
+manifest["collaboration"] = "software"
+json.dump(manifest, open(path, "w", encoding="utf-8"))
+PY
+  learn_rule header 'Put the date in the header.'
+  git add -A
+  git commit -qm "agent-ready and a learned rule"
+  base_branch="$(git symbolic-ref --short HEAD)"
+  git checkout -qb other-work
+}
+
+@test "software: two branches that learned different rules merge with the drivers, without a conflict" {
+  setup_code_repository
+  learn_rule closing 'Sign at the end.'
+  git commit -qam "learn: closing"
+  git checkout -q "$base_branch"
+  learn_rule summary 'Start with a summary.'
+  git commit -qam "learn: summary"
+  git merge -q --no-edit other-work
+  grep -Fxq -- '- Sign at the end.' .agents/rules/learned.md
+  grep -Fxq -- '- Start with a summary.' .agents/rules/learned.md
+}
+
+@test "software: the same rule changed on two branches is explained and written into the merge, which stays the developer's" {
+  setup_code_repository
+  sed -i.bak 's/Put the date in the header./Put the case in the header./' .agents/rules/learned.md
+  rm -f .agents/rules/learned.md.bak
+  git commit -qam "learn: the case in the header"
+  git checkout -q "$base_branch"
+  sed -i.bak 's/Put the date in the header./Put the date at the top of the header./' .agents/rules/learned.md
+  rm -f .agents/rules/learned.md.bak
+  git commit -qam "learn: the date at the top"
+  ! git merge -q --no-edit other-work
+  run_cli sync --conflicts
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"the two branches changed in different ways"* ]]
+  [[ "$output" == *"this branch, "*": Put the date at the top of the header."* ]]
+  [[ "$output" == *"the other branch, "*": Put the case in the header."* ]]
+  run_cli sync --resolve '.agents/rules/learned.md#learned/header' --each-their-own
+  [ "$status" -ne 0 ]
+  run_cli sync --resolve '.agents/rules/learned.md#learned/header' --merged "Put the date and the case at the top of the header."
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"staged; finish the merge with git commit"* ]]
+  grep -Fxq -- '- Put the date and the case at the top of the header.' .agents/rules/learned.md
+  [ -z "$(git diff --name-only --diff-filter=U)" ]
+  # Nothing was committed nor pushed: the merge is still the developer's.
+  [ -e "$(git rev-parse --git-path MERGE_HEAD)" ]
+  git commit -q --no-edit
+  run_cli sync --conflicts
+  [ -z "$output" ]
+}
