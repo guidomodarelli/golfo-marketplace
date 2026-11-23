@@ -1637,7 +1637,7 @@ branches_change_rule() {
   rm -f .agents/rules/learned.md.bak
   run_cli sync --resolve '.agents/rules/learned.md#learned/closing' --keep theirs
   [ "$status" -ne 0 ]
-  [[ "$stderr" == *"changed after agent-ready sync --resolve wrote it"* ]]
+  [[ "$stderr" == *"changed by hand since the merge or the last agent-ready sync --resolve"* ]]
   grep -Fxq -- '- Put the date at the very top.' .agents/rules/learned.md
 }
 
@@ -1658,4 +1658,20 @@ branches_change_rule() {
   run_cli sync --resolve '.agents/rules/learned/office.md#learned/header' --keep theirs
   [ "$status" -eq 0 ]
   grep -Fxq -- '- Put the case in the header.' .agents/rules/learned/office.md
+}
+
+@test "software: a rule edited by hand before the first --resolve is kept, never rewritten" {
+  setup_code_repository
+  learn_rule closing 'Sign at the end.'
+  git commit -qam "learn: closing"
+  git checkout -q "$base_branch"
+  git merge -q --no-edit other-work
+  branches_change_rule header .agents/rules/learned.md \
+    's/Put the date in the header./Put the date at the top./' 's/Put the date in the header./Put the case in the header./'
+  sed -i.bak 's/Sign at the end./Sign at the end, with a stamp./' .agents/rules/learned.md
+  rm -f .agents/rules/learned.md.bak
+  run_cli sync --resolve '.agents/rules/learned.md#learned/header' --keep mine
+  [ "$status" -ne 0 ]
+  [[ "$stderr" == *"changed by hand since the merge"* ]]
+  grep -Fxq -- '- Sign at the end, with a stamp.' .agents/rules/learned.md
 }
