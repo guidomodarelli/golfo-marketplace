@@ -10,11 +10,14 @@ import os
 import pathlib
 import sys
 
+import agent_ready_identity as identity
 import agent_ready_sync as team_sync
+import agent_ready_sync_conflicts as sync_conflicts
 from agent_ready_cli_common import EXIT_FAILED, EXIT_OK, engine, find_repository_root
-from agent_ready_common import serialize_json, sha256_of_text
+from agent_ready_common import StateError, serialize_json, sha256_of_text
 
 SYNC_COMMAND = "sync"
+MAX_STATEMENT_CHARS_KEY = "rules.maxStatementChars"
 CLI_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "agent-ready")
 RUN_DETACHED_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "run-detached.py")
 LOG_DIRECTORY = ("agent-ready-setup", "team-sync")
@@ -64,8 +67,64 @@ def print_report(report):
     sys.stdout.write(line.rstrip() + "\n")
 
 
+def decision_of(arguments):
+    """(decision, statement) that --resolve asks for, or a usage error."""
+    chosen = [option for option, given in ((arguments.keep, arguments.keep), (sync_conflicts.DECISION_MERGED,
+                                                                              arguments.merged is not None),
+                                           (sync_conflicts.DECISION_EACH, arguments.each_their_own)) if given]
+    if len(chosen) != 1:
+        raise StateError("--resolve needs exactly one of --keep mine|theirs, --merged \"<statement>\" and "
+                         "--each-their-own")
+    return chosen[0], arguments.merged
+
+
+def command_conflicts(project_root, as_json):
+    """The conflicts that wait for a person: what the start of a session explains."""
+    waiting = sync_conflicts.pending(project_root)
+    if as_json:
+        sys.stdout.write(serialize_json({"conflicts": waiting}))
+    elif waiting:
+        sys.stdout.write(sync_conflicts.explanation(waiting))
+    return EXIT_OK
+
+
+def check_combined_rule(project_root, lines):
+    """A combined statement makes a rule that passes the lint of the project: atomic and short enough."""
+    import agent_ready_rules
+
+    maximum = engine().configuration_of(project_root).value(MAX_STATEMENT_CHARS_KEY)
+    rules, findings = agent_ready_rules.parse_rule_text("\n".join(lines) + "\n", "combined")
+    findings = findings + agent_ready_rules.lint_rules(rules, maximum, maximum)
+    errors = [finding for finding in findings if finding.level == agent_ready_rules.LEVEL_ERROR
+              and finding.code != agent_ready_rules.CODE_UNKNOWN_REQUIRES]
+    if errors:
+        raise ValueError("the combined statement would not be a valid rule, so nothing was decided: "
+                         + errors[0].render())
+
+
+def command_resolve(project_root, arguments):
+    """Store what the person decided and synchronize with it."""
+    decision, statement = decision_of(arguments)
+    try:
+        conflict = sync_conflicts.decide(
+            project_root, arguments.resolve, decision, identity.read_identity()["id"], statement,
+            lambda person, item: team_sync.personal_rule_exists(project_root, person, item),
+            lambda item: team_sync.team_rule_required_by(project_root, item),
+            lambda lines: check_combined_rule(project_root, lines))
+    except ValueError as invalid:
+        raise StateError(str(invalid)) from invalid
+    sys.stdout.write(f"Decided {conflict['id']}: {decision}.\n")
+    report = team_sync.run(project_root, settings_for(project_root))
+    print_report(report)
+    return EXIT_FAILED if report["result"] in team_sync.FAILED_RESULTS else EXIT_OK
+
+
 def command_sync(arguments):
     project_root = find_repository_root(arguments.project)
+    if arguments.conflicts:
+        return command_conflicts(project_root, arguments.json)
+    if arguments.resolve:
+        return command_resolve(project_root, arguments)
     if arguments.background:
         start_in_background(project_root)
         return EXIT_OK
@@ -86,3 +145,12 @@ def register(subparsers, new_subparser):
     sync.add_argument("--json", action="store_true", help="print the report of the run as JSON")
     sync.add_argument("--background", action="store_true",
                       help="run detached, with its output in a log of the cache (what the hooks use)")
+    sync.add_argument("--conflicts", action="store_true",
+                      help="print the conflicts that wait for a person, explained (what the start of a session shows)")
+    sync.add_argument("--resolve", metavar="ID", help="decide one conflict (an id that --conflicts prints) and sync")
+    sync.add_argument("--keep", choices=(sync_conflicts.DECISION_MINE, sync_conflicts.DECISION_THEIRS),
+                      help="with --resolve: keep the version of this machine or the other one")
+    sync.add_argument("--merged", metavar="STATEMENT",
+                      help="with --resolve: the statement that combines both, once the user agreed with it")
+    sync.add_argument("--each-their-own", action="store_true",
+                      help="with --resolve, for a rule of the team: each version stays personal for who taught it")

@@ -4031,6 +4031,43 @@
           "critical": true
         }
       ]
+    },
+    {
+      "id": "sync-conflict-explained-with-four-options",
+      "description": "Una rule que dos personas cambiaron distinto se explica en la próxima sesión, con quién y cuándo, y la persona elige entre la suya, la del otro, fusionar (mostrada antes de guardar) o cada uno la suya; se decide con agent-ready sync --resolve.",
+      "input": "En el estudio, Juan y Ana cambiaron la misma rule del encabezado de las actas, cada uno de una forma distinta, y el sync no pudo juntarlas. ¿Qué pasa cuando Ana abre su próxima sesión, qué opciones tiene, cómo se guarda lo que elige y a quién más se le pregunta? Respondé desde la skill, sin ejecutar comandos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "--resolve",
+          "description": "Se decide con agent-ready sync --resolve",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "--keep mine|--keep theirs",
+          "description": "Ofrece conservar la suya o la del otro",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "--merged",
+          "description": "Ofrece fusionar",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "--each-their-own|cada uno (la|con la) suya",
+          "description": "Ofrece que cada uno conserve la suya",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "(nadie m[aá]s|no se le (vuelve a )?pregunta|una sola vez|no vuelve a preguntar)",
+          "description": "No se le vuelve a preguntar a nadie",
+          "critical": false
+        }
+      ]
     }
   ]
 }

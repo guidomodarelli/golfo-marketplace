@@ -23,7 +23,10 @@ import subprocess
 
 import agent_ready_identity as identity
 import agent_ready_learning as learning
+import agent_ready_learning_apply as learning_apply
 import agent_ready_learning_promotion as promotion
+import agent_ready_merge_drivers as merge_drivers
+import agent_ready_sync_conflicts as sync_conflicts
 from agent_ready_common import acquire_directory_lock, write_text_atomically
 from agent_ready_lockfile import read_lock
 
@@ -59,10 +62,10 @@ FAILED_RESULTS = (RESULT_CONFLICT, RESULT_BLOCKED, RESULT_PUSH_FAILED)
 REJECTED_PUSH_HINTS = ("[rejected]", "non-fast-forward", "fetch first", "rejected")
 
 
-def git(project_root, *arguments):
+def git(project_root, *arguments, extra_environment=None):
     """A Git command that never asks for credentials: a background run has nobody to answer."""
-    environment = dict(os.environ, GIT_TERMINAL_PROMPT="0", GIT_MERGE_AUTOEDIT="no")
-    return subprocess.run(["git", "-C", project_root, *arguments], capture_output=True, text=True, check=False,
+    environment = dict(os.environ, GIT_TERMINAL_PROMPT="0", GIT_MERGE_AUTOEDIT="no", **(extra_environment or {}))
+    return subprocess.run(["git", "-C", project_root, *arguments], capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
                           env=environment)
 
 
@@ -182,16 +185,137 @@ def merge(project_root, remote, branch):
     """Merge the fetched branch; a conflict is aborted and raised with its files."""
     reference = remote_ref(remote, branch)
     if git(project_root, "merge-base", "--is-ancestor", reference, "HEAD").returncode == 0:
+        # Nothing to bring: what conflicted before was settled some other way.
+        sync_conflicts.clear_pending(project_root)
         return
-    result = git(project_root, "merge", "--no-edit", "--quiet", reference)
+    # The drivers point to this installation: the one the last apply wrote may have left the cache.
+    merge_drivers.register(project_root, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                                      merge_drivers.MERGE_DRIVER_SCRIPT))
+    # The conflicts a person already decided go to the drivers, which merge them as decided.
+    resolutions = sync_conflicts.resolutions_file(project_root)
+    # Only the decisions this merge needs are finished; the others went stale and are dropped.
+    applied = sync_conflicts.applicable(project_root, reference) if resolutions else set()
+    environment = {sync_conflicts.RESOLUTIONS_VARIABLE: resolutions} if resolutions else None
+    result = git(project_root, "merge", "--no-edit", "--quiet", reference, extra_environment=environment)
     if result.returncode == 0:
+        if resolutions:
+            finish_resolutions(project_root, applied)
+        # The merge went through: a conflict that waited (the other side went back) no longer exists.
+        sync_conflicts.clear_pending(project_root)
+        return
+    if os.path.exists(git_path(project_root, "MERGE_HEAD")) and resolutions and \
+            resolve_file_conflicts(project_root, resolutions):
+        finish_resolutions(project_root, applied)
+        sync_conflicts.clear_pending(project_root)
         return
     if os.path.exists(git_path(project_root, "MERGE_HEAD")):
         files = git(project_root, "diff", "--name-only", "--diff-filter=U").stdout.split()
+        # Before the abort: the versions of each rule, its people and its times, for the next session.
+        recorded, unexplained = sync_conflicts.record(project_root, files, reference)
         git(project_root, "merge", "--abort")
-        raise SyncError(RESULT_CONFLICT, "the same part changed on two machines: " + ", ".join(files))
+        waiting = [conflict["id"] for conflict in recorded if not conflict.get("decision")]
+        if not files:
+            # Git stopped without a file in conflict (a driver that failed): its own words say why.
+            unexplained = [(result.stderr or result.stdout).strip().splitlines()[-1] if (result.stderr or result.stdout).strip()
+                           else "git merge stopped"]
+        raise SyncError(RESULT_CONFLICT, "the same part changed on two machines: " + ", ".join(waiting + unexplained)
+                        + ("; the next session explains it and offers what to keep" if waiting else ""))
     raise SyncError(RESULT_BLOCKED, (result.stderr or result.stdout).strip().splitlines()[0]
                     if (result.stderr or result.stdout).strip() else "git merge failed")
+
+
+def stage_text(project_root, stage, path):
+    """The text of ``path`` at a stage of the merge in progress (1 base, 2 ours, 3 theirs); "" if absent."""
+    result = git(project_root, "show", f":{stage}:{path}")
+    return result.stdout if result.returncode == 0 else ""
+
+
+def resolve_file_conflicts(project_root, resolutions_path):
+    """Finish a merge whose remaining conflicts the decisions settle, and commit it; False if one is left.
+
+    Git does not run the merge driver when one side deleted a rule file and the other changed it, so the
+    decision of such a conflict is applied here, with the same merge of rules as the driver."""
+    files = git(project_root, "diff", "--name-only", "--diff-filter=U").stdout.split()
+    try:
+        with open(resolutions_path, encoding="utf-8") as handle:
+            resolutions = json.load(handle)
+    except (OSError, ValueError):
+        return False
+    if not files or any(path not in resolutions for path in files):
+        return False
+    for path in files:
+        versions = [stage_text(project_root, stage, path) for stage in (1, 2, 3)]
+        try:
+            merged, conflicts = merge_drivers.merge_rules(*versions, resolutions[path])
+            _, segments, _ = merge_drivers.rule_segments(merged)
+        except merge_drivers.Unparsable:
+            return False
+        if conflicts:
+            return False
+        if not segments and not (versions[1] and versions[2]):
+            # The side that deleted the file wins with its last rule: the file goes.
+            outcome = git(project_root, "rm", "--quiet", "--cached", "--", path)
+            absolute = os.path.join(project_root, path)
+            if os.path.exists(absolute):
+                os.remove(absolute)
+        else:
+            write_text_atomically(os.path.join(project_root, path), merged)
+            outcome = git(project_root, "add", "--", path)
+        if outcome.returncode != 0:
+            return False
+    return git(project_root, "commit", "--no-edit", "--quiet").returncode == 0
+
+
+def personal_entry(person, conflict, statement=None):
+    return {"scope": learning.SCOPE_PERSONAL, "owner": person, "statement": statement,
+            "key": conflict.get("key"), "paths": []}
+
+
+def personal_rule_id(person, conflict):
+    return learning_apply.rule_prefix(personal_entry(person, conflict)) + conflict["ruleId"].rsplit("/", 1)[-1]
+
+
+def team_rule_required_by(project_root, conflict):
+    """The id of a rule that requires the team rule of ``conflict``, or None: each-their-own would remove it."""
+    import agent_ready_learning_reorganize as reorganize
+
+    found = reorganize.incoming_requires(project_root, [conflict["ruleId"]])
+    return found[0].id if found else None
+
+
+def personal_rule_exists(project_root, person, conflict):
+    """True when the personal rules of ``person`` already have the id that each-their-own would write."""
+    path = os.path.join(project_root, learning_apply.personal_file(personal_entry(person, conflict)))
+    try:
+        with open(path, encoding="utf-8") as handle:
+            text = handle.read()
+    except OSError:
+        return False
+    rule_id = personal_rule_id(person, conflict)
+    return any(f"id={rule_id}" in line.split() for line in text.splitlines() if line.lstrip().startswith("<!--"))
+
+
+def append_personal(project_root, person, conflict, statement, details=()):
+    """Write one version of a decided conflict, with its exceptions and details, as the personal rule of the
+    person who taught it."""
+    entry = personal_entry(person, conflict, statement)
+    rule_id = personal_rule_id(person, conflict)
+    path, text = learning_apply.appended_rule(project_root, rule_id, entry, None)
+    if details:
+        newline = "\r\n" if "\r\n" in text else "\n"
+        text = text + newline.join(details) + newline
+    write_text_atomically(path, text)
+    return path
+
+
+def finish_resolutions(project_root, applied=None):
+    """After the merge with the decisions: the personal rules of «each one keeps theirs», a resolve line in
+    the log per decision the merge applied, and a commit with them."""
+    sync_conflicts.finish(project_root,
+                          lambda person, conflict, statement, details=(): append_personal(project_root, person, conflict,
+                                                                                         statement, details),
+                          lambda line: learning_apply.append_log(project_root, line), applied)
+    commit_knowledge(project_root, "sync: what the people decided about two versions of a rule")
 
 
 def to_push(project_root, remote, branch, remote_has_branch):

@@ -13,4 +13,4 @@ if __name__ == "__main__":
     if len(sys.argv) < 5 or sys.argv[1] not in drivers.MERGERS:
         sys.stderr.write(f"usage: agent-ready-merge <{'|'.join(drivers.MERGERS)}> <base> <ours> <theirs> [<path>]\n")
         sys.exit(2)
-    sys.exit(drivers.run(*sys.argv[1:5]))
+    sys.exit(drivers.run(*sys.argv[1:6]))
