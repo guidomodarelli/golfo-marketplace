@@ -304,7 +304,12 @@ def decide_locked(project_root, conflict_id, decision, person, statement=None, p
     state = read_state(project_root)
     conflict = next((item for item in state["conflicts"] if item["id"] == conflict_id), None)
     if conflict is None:
+        # The id of the rule alone, or the path of a document, names it too when only one conflict has it.
+        named = [item for item in state["conflicts"] if conflict_id in (item.get("ruleId"), item["path"])]
+        conflict = named[0] if len(named) == 1 else None
+    if conflict is None:
         raise ValueError(f"no conflict of the sync has the id {conflict_id} (see agent-ready sync --conflicts)")
+    conflict_id = conflict["id"]
     document = conflict.get("kind") == documents.KIND_DOCUMENT
     if document and decision == DECISION_EACH:
         raise ValueError("each one keeps theirs is for a rule of the team; a document keeps one version: --keep "
@@ -404,7 +409,9 @@ def explanation(conflicts):
                          f"the other, {theirs.get('by') or 'unknown'} at {theirs.get('at') or '?'}")
             lines.extend(f"    {line}" for line in conflict.get("difference", []))
             continue
-        lines.append(f"  {conflict['id']}" + (f" (key {conflict['key']})" if conflict.get("key") else ""))
+        # Whose rule it is says whether each-their-own is an option.
+        scope = "a personal rule" if conflict.get("personal") else "a rule of the team"
+        lines.append(f"  {conflict['id']} ({scope}" + (f", key {conflict['key']})" if conflict.get("key") else ")"))
         lines.append(f"    this machine, {mine.get('by') or 'unknown'} at {mine.get('at') or '?'}: "
                      f"{mine.get('statement') or '(removed)'}")
         lines.append(f"    the other, {theirs.get('by') or 'unknown'} at {theirs.get('at') or '?'}: "

@@ -1646,3 +1646,10 @@ assert checks["team sync conflicts"]["status"] == "warning", checks
 assert ".agents/rules/learned.md#learned/header" in checks["team sync conflicts"]["detail"], checks
 PY
 }
+
+@test "a conflict is decided by the id of its rule alone when only one conflict has it" {
+  make_rule_conflict
+  run_cli sync --resolve learned/header --keep theirs
+  [ "$status" -eq 0 ]
+  grep -Fxq -- '- Put the case in the header.' .agents/rules/learned.md
+}
