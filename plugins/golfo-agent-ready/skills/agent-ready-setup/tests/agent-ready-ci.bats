@@ -337,8 +337,11 @@ skip_without_pseudoterminal() {
 @test "the full wizard of init asks for the CI provider, and none is remembered so it is not asked again" {
   skip_without_pseudoterminal
   rm .agents/agent-ready.json
-  run_cli_in_terminal 'node\n\nnone\ny\n' init
+  # Profiles, updates and the agents of the team take their defaults; then the CI provider.
+  run_cli_in_terminal 'node\n\n\nnone\ny\n' init
   [ "$status" -eq 0 ]
+  [[ "$output" == *"Agents of the team, comma separated (claude|codex|antigravity)"* ]]
+  [[ "$output" == *"--providers claude,codex"* ]]
   [[ "$output" == *"CI provider ("* ]]
   [[ "$output" == *"--ci-provider none"* ]]
   [ "$(json_value .agents/agent-ready.json 'document["ci"]["provider"]')" = '"none"' ]
@@ -349,7 +352,7 @@ skip_without_pseudoterminal() {
   skip_without_pseudoterminal
   rm .agents/agent-ready.json package.json
   # An answer outside the list is asked again; other makes none the default of the profiles.
-  run_cli_in_terminal 'web\nother\n\n\nnone\ny\n' init
+  run_cli_in_terminal 'web\nother\n\n\n\nnone\ny\n' init
   [ "$status" -eq 0 ]
   [[ "$output" == *"What is this repository for? (code|other)"* ]]
   [[ "$output" == *"answer one of code, other"* ]]
