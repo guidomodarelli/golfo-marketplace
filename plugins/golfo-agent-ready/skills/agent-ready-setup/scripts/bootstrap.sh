@@ -334,15 +334,28 @@ validate_provider_roots
 # AGENT_READY_SETUP_UPGRADE_FROM_CHECKOUT=1 refreshes it anyway.
 runs_from_checkout() {
   local agent_home
+  local requested
 
   [[ "${AGENT_READY_SETUP_UPGRADE_FROM_CHECKOUT:-0}" == 1 ]] && return 1
+  # The CLI passes a native Windows path (C:\...) and Git Bash names the homes /c/...: compare both as POSIX.
+  requested="$(posix_path "$REQUESTED_SKILL_DIR")"
   for agent_home in "$HOME/.claude" "$CODEX_HOME_DIRECTORY" "${CLAUDE_PLUGIN_ROOT:-}" "${HERMES_HOME:-}" "$HOME/.hermes"; do
     [[ -n "$agent_home" ]] || continue
-    if [[ "$REQUESTED_SKILL_DIR" == "$agent_home" || "$REQUESTED_SKILL_DIR" == "$agent_home/"* ]]; then
+    agent_home="$(posix_path "$agent_home")"
+    if [[ "$requested" == "$agent_home" || "$requested" == "$agent_home/"* ]]; then
       return 1
     fi
   done
   return 0
+}
+
+# The path in the form Git Bash uses; without cygpath it is already POSIX.
+posix_path() {
+  if command -v cygpath >/dev/null 2>&1; then
+    cygpath -u "$1"
+  else
+    printf '%s\n' "$1"
+  fi
 }
 
 # Each provider refreshes its own marketplace snapshot through its CLI.

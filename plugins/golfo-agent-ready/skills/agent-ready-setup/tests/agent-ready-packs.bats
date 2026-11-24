@@ -372,6 +372,8 @@ PY
   [ "$status" -eq 2 ]
   [ "$(json_value .agents/agent-ready.json 'data["sources"]["packs"][0]["source"]')" = "git+https://packs.example.invalid/acme#$first_commit" ]
 
+  # With updates.fromLock a plain apply replays the lock: moving the pin is still an update of that source.
+  python3 -c 'import json; path=".agents/agent-ready.json"; data=json.load(open(path)); data["updates"]["fromLock"]=True; json.dump(data, open(path, "w"))'
   run env PATH="$fake_bin:$PATH" python3 -B "$skill_dir/scripts/agent-ready" update acme --to "$pack_commit"
   [ "$status" -eq 0 ]
   [ "$(json_value .agents/agent-ready.json 'data["sources"]["packs"][0]["source"]')" = "git+https://packs.example.invalid/acme#$pack_commit" ]

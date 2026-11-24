@@ -1703,6 +1703,27 @@ EOF
 }
 
 # bats test_tags=area:marketplace-upgrade
+@test "an installed engine named by its native Windows path still upgrades the marketplace" {
+  command -v cygpath >/dev/null 2>&1 || skip "requiere cygpath (Git Bash en Windows)"
+  installed_skill_dir="$HOME/.claude/plugins/cache/golfo-marketplace/golfo-agent-ready/1.0.0/skills/agent-ready-setup"
+  mkdir -p "$installed_skill_dir"
+  cp -R "$skill_dir/." "$installed_skill_dir/"
+  invocation_log="$test_root/marketplace-invocation.log"
+  cat > "$test_root/bin/claude" <<'EOF'
+#!/bin/bash
+printf '%s %s\n' "${0##*/}" "$*" >> "$MARKETPLACE_INVOCATION_LOG"
+EOF
+  chmod +x "$test_root/bin/claude"
+
+  MARKETPLACE_INVOCATION_LOG="$invocation_log" AGENT_READY_SETUP_UPGRADE_FROM_CHECKOUT=0 \
+    run env PATH="$test_root/bin:$PATH" bash "$installed_skill_dir/scripts/bootstrap.sh" \
+    --stack react --skill-dir "$(cygpath -w "$installed_skill_dir")" --provider claude
+
+  grep -Fq 'claude plugin marketplace update golfo-marketplace' "$invocation_log"
+  [[ "$output" != *"El motor corre desde un checkout"* ]]
+}
+
+# bats test_tags=area:marketplace-upgrade
 @test "bootstrap upgrades marketplace before projecting all provider trees" {
   invocation_log="$test_root/marketplace-invocation.log"
   cat > "$test_root/bin/claude" <<'EOF'

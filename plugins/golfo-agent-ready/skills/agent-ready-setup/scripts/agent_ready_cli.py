@@ -162,8 +162,8 @@ def command_update(arguments):
     to_ref = arguments.to
     pinned = [name for name in packs if declarations[name]["type"] == SOURCE_TYPE_GIT and not follows_a_ref(declarations[name])]
     if pinned:
-        # A source pinned to a commit has no newer revision of its own: --to moves the pin in the manifest,
-        # and the apply below adopts it like any other revision the manifest names.
+        # A source pinned to a commit has no newer revision of its own: --to moves the pin in the manifest, and
+        # the apply below still updates that source to it, so updates.fromLock does not replay the old commit.
         if not to_ref:
             raise UsageError(f"profile source '{pinned[0]}' is pinned to a full commit, so it has no newer revision; "
                              f"move the pin with {CLI_NAME} update {pinned[0]} --to <commit|tag|branch>")
@@ -171,7 +171,6 @@ def command_update(arguments):
             raise UsageError(f"--dry-run cannot preview moving the pin of '{pinned[0]}': moving it writes the manifest; "
                              f"run {CLI_NAME} update {pinned[0]} --to {to_ref}, and git diff shows the change")
         repin_source(arguments, pinned[0], to_ref)
-        names, to_ref = [], None
     extra = update_source_arguments(names) + (["--update-to", to_ref] if to_ref else [])
     if arguments.dry_run:
         return run_bash(bootstrap_command(provider, "--plan", *extra), arguments.project_root)
