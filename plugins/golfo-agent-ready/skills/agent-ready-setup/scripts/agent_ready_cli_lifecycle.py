@@ -30,7 +30,7 @@ from agent_ready_compatibility import EngineRequirementError
 from agent_ready_config import ConfigurationError, resolve_configuration
 from agent_ready_layout import settings_templates
 from agent_ready_profiles import ENGINE_PROBLEM_ENGINE, engine_requirements
-from agent_ready_options import PROVIDERS_KEY
+from agent_ready_options import ANTIGRAVITY_PROVIDER, PROVIDERS_KEY
 from agent_ready_packs import SOURCE_TYPE_GIT, SOURCE_TYPE_PATH
 from agent_ready_prompts import ask_confirmation, can_prompt, equivalent_command
 
@@ -51,6 +51,13 @@ PYTHON_VERSION_PATTERN = re.compile(r"Python (\d+)\.(\d+)")
 HOOK_SCRIPTS_DIRECTORY = ".agents/hooks/"
 # Where each provider reads the hooks that an apply merges.
 PROVIDER_HOOK_FILES = {"claude": ".claude/settings.json", "codex": ".codex/hooks.json"}
+# The CLI of each provider, and the name doctor shows for it.
+PROVIDER_COMMANDS = {"claude": "claude", "codex": "codex", ANTIGRAVITY_PROVIDER: "agy"}
+PROVIDER_NAMES = {"claude": "Claude Code (claude)", "codex": "Codex (codex)", ANTIGRAVITY_PROVIDER: "Antigravity (agy)"}
+# What agy prints in headless mode when it has no cached credentials, instead of asking for them.
+ANTIGRAVITY_AUTHENTICATION_ERROR = "authentication required"
+# The smallest headless run that tells whether agy is signed in.
+ANTIGRAVITY_PROBE = ("agy", "-p", "Reply with OK.", "--mode", "plan", "--output-format", "json")
 # How each provider updates the golfo-agent-ready plugin, the engine.
 ENGINE_UPDATE_COMMANDS = ("claude plugin update golfo-agent-ready@golfo-marketplace", "codex plugin marketplace upgrade golfo-marketplace",
                           "hermes plugins update golfo-agent-ready")
@@ -125,20 +132,45 @@ def check_python():
 
 
 def configured_providers(configuration):
-    """Providers the repository declares, or both while the configuration cannot be read."""
-    return configuration.value(PROVIDERS_KEY) if configuration else list(SUPPORTED_PROVIDERS)
+    """Providers the repository declares, or Claude Code and Codex (the default) while the configuration
+    cannot be read."""
+    return configuration.value(PROVIDERS_KEY) if configuration else \
+        [provider for provider in SUPPORTED_PROVIDERS if provider != ANTIGRAVITY_PROVIDER]
 
 
 def check_provider_cli(providers):
     """At least one agent CLI of the declared providers: the hooks and the marketplace refresh run it."""
-    found = [provider for provider in providers if run_in_hook_shell(f"command -v {provider}")[0] == 0]
+    found = [provider for provider in providers
+             if run_in_hook_shell(f"command -v {PROVIDER_COMMANDS[provider]}")[0] == 0]
     if not found:
-        names = " or ".join({"claude": "Claude Code (claude)", "codex": "Codex (codex)"}[provider] for provider in providers)
+        names = " or ".join(PROVIDER_NAMES[provider] for provider in providers)
         return check("provider", CHECK_MISSING, f"{' and '.join(providers)} {'is' if len(providers) == 1 else 'are'} not on PATH",
                      f"install {names} and open a new terminal")
     missing = [provider for provider in providers if provider not in found]
     detail = ", ".join(found) + " on PATH" + (f"; {', '.join(missing)} is not, which only matters to use it" if missing else "")
     return check("provider", CHECK_OK, detail)
+
+
+def check_antigravity_signed_in(providers, offline):
+    """With Antigravity among the providers, agy on PATH and signed in: the AI reviews run it headless,
+    and a run without cached credentials stops with authentication required. Skipped offline (the probe
+    is a model call) and when agy is not on PATH (check_provider_cli reports it)."""
+    if ANTIGRAVITY_PROVIDER not in providers:
+        return []
+    if offline:
+        return [check("antigravity", CHECK_SKIPPED, "offline: whether agy is signed in was not checked")]
+    if run_in_hook_shell(f"command -v {PROVIDER_COMMANDS[ANTIGRAVITY_PROVIDER]}")[0] != 0:
+        return [check("antigravity", CHECK_MISSING, "agy is not on PATH, so the AI reviews of Antigravity are skipped",
+                      "install the Antigravity CLI (agy) and open a new terminal")]
+    status, output = run_in_hook_shell(" ".join(shlex.quote(part) for part in ANTIGRAVITY_PROBE))
+    text = " ".join(output).lower()
+    if ANTIGRAVITY_AUTHENTICATION_ERROR in text:
+        return [check("antigravity", CHECK_MISSING, "agy is not signed in (authentication required)",
+                      "run agy once in a terminal and sign in with your Google account")]
+    if status != 0:
+        return [check("antigravity", CHECK_WARNING, f"agy did not answer a headless run: {output[-1]}",
+                      "run agy -p \"hello\" to see why")]
+    return [check("antigravity", CHECK_OK, "agy is signed in and answers headless runs")]
 
 
 def check_configuration(project):
@@ -266,7 +298,8 @@ def check_hooks(project, providers):
                       f"{CLI_NAME} init sets it up")]
     templates = dict(settings_templates(SKILL_ROOT))
     checks = []
-    for provider in providers:
+    # Antigravity gets no hooks yet (providers.json, hooks: none).
+    for provider in [provider for provider in providers if provider in PROVIDER_HOOK_FILES]:
         destination = PROVIDER_HOOK_FILES[provider]
         expected = hook_handlers(read_json_file(templates[destination], "agent-ready hooks template"))
         present = present_hook_handlers(os.path.join(project, destination))
@@ -293,6 +326,7 @@ def doctor_checks(project, offline):
         check_bash(),
         check_python(),
         check_provider_cli(providers),
+        *check_antigravity_signed_in(providers, offline),
         check("engine", CHECK_OK, f"golfo-agent-ready {plugin_version(SKILL_ROOT) or 'with an unknown version'}"),
         configuration_check,
         *check_sources(project, configuration, offline),

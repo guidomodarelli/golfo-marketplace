@@ -28,6 +28,7 @@ Señales verificadas en esta máquina el 2026-10-23 (ver evidencia en el reporte
 | Claude Code | 2.1.309 | `CLAUDECODE=1`, `CLAUDE_CODE_ENTRYPOINT` (`cli`, `sdk-cli`, …), `CLAUDE_CODE_SESSION_ID` | Herramientas `Read`/`Edit`/`Bash`/`Skill`/`ToolSearch`; skills en `~/.claude/skills` o plugins con `CLAUDE_PLUGIN_ROOT` |
 | Codex CLI | 0.162.1 | `CODEX_SESSION_ID`, `CODEX_THREAD_ID`, `CODEX_VERSION`; `CODEX_CI=1` en `codex exec` | Herramientas `exec_command`, `write_stdin`, `apply_patch`; skills en `$CODEX_HOME/skills` (default `~/.codex`) o `~/.agents/skills` |
 | Hermes Agent | 0.22.4 | `HERMES_AGENT=true`, `AI_AGENT=hermes-agent`, `HERMES_SESSION_ID`, `HERMES_HOME` | Herramientas `terminal`, `clarify`, `delegate_task`, `skill_view` (con o sin prefijo `mcp__`) |
+| Antigravity | No verificado | No documentadas | CLI `agy` en `PATH`; configuración del usuario bajo `~/.gemini/` (ver [Antigravity](#antigravity-documentación-oficial-sin-verificar-en-esta-máquina)) |
 
 Las variables **se heredan**: un Claude Code lanzado desde una sesión de Hermes ve a la vez `CLAUDECODE=1` y todas las `HERMES_*` (observado en esta auditoría). Por eso:
 
@@ -114,6 +115,17 @@ Fuente: sesión real de `hermes chat -Q -q` que listó sus herramientas, `$HERME
 | `hermes send` (CLI) | Mensaje a Telegram/Slack/Discord/… sin agente | `--help` y `--list` (destino `telegram`) |
 
 No existen en la sesión CLI: `send_message`, herramientas `browser_*` separadas, `process`/`cronjob` con esos nombres (sus equivalentes son `process_manage`/`cronjob_manage`).
+
+### Antigravity (documentación oficial, sin verificar en esta máquina)
+
+Fuente: la documentación de <https://antigravity.google/docs/cli/headless/>, `…/cli/reference/` y `…/mcp/`. Ninguna fila se probó en una sesión real: verificá cada herramienta en la sesión antes de usarla.
+
+| Superficie | Qué aporta |
+|---|---|
+| `agy -p <prompt>` (`--print`, `--prompt`) | Corrida headless de un prompt; `--output-format json` devuelve un sobre con `response` y, con `--json-schema`, `structured_output`; `--model`, `--effort`, `--mode plan` (analiza sin editar). Sin credenciales en caché termina con `authentication required` en lugar de pedirlas |
+| Workspace `.agents/` | `AGENTS.md` de la raíz (no los de subcarpetas), `.agents/rules/`, `.agents/skills/`, `.agents/agents/`, `.agents/hooks.json` y `.agents/mcp_config.json` |
+| MCP | `mcpServers` en `.agents/mcp_config.json` (workspace) o `~/.gemini/config/mcp_config.json` (usuario): `command`/`args`/`env` para stdio y `serverUrl` (también acepta `url`) con `headers` para remotos (solo Streamable HTTP) |
+| Rutas de config | `~/.gemini/config/` (MCP, hooks, plugins) y `~/.gemini/antigravity-cli/settings.json` |
 
 ### Claude Code 2.1.309
 

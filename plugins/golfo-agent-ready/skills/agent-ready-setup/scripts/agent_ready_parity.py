@@ -16,6 +16,7 @@ from agent_ready_codex_agents import CODEX_AGENT_SUFFIX, CODEX_AGENTS_DIRECTORY
 
 PROVIDER_CLAUDE = "claude"
 PROVIDER_CODEX = "codex"
+PROVIDER_ANTIGRAVITY = "antigravity"
 # Hook events of the golfo-agent-ready templates that only one provider has, on purpose, and why.
 PROVIDER_SPECIFIC_HOOK_EVENTS = {
     (PROVIDER_CLAUDE, "UserPromptSubmit"): "relinks the hard-link views of .claude, which Codex does not read",
@@ -47,7 +48,8 @@ def provider_views(rule_count, scoped_rule_count, entries):
     ``entries`` are the plan entries. Claude Code reads
     the rules as .claude/rules and loads those with paths: only for matching files; Codex lists every
     rule in AGENTS.md. Subagents reach Codex as native subagents (.codex/agents/<name>.toml) and
-    commands as skills of the same name.
+    commands as skills of the same name. Antigravity reads the rules listed in AGENTS.md, .agents/skills
+    (the command adapters included) and .agents/agents as they are.
     """
     written = [entry["destination"] for entry in entries if entry.get("sha256")]
     skills = {path.split("/")[2] for path in written if path.startswith(SKILLS_PREFIX) and path.endswith("/SKILL.md")}
@@ -60,6 +62,8 @@ def provider_views(rule_count, scoped_rule_count, entries):
                           "subagents": len(agents), "commands": len(commands)},
         PROVIDER_CODEX: {"rules": rule_count, "rulesForPathsOnly": 0, "skills": len(skills | commands),
                          "subagents": len(codex_agents)},
+        PROVIDER_ANTIGRAVITY: {"rules": rule_count, "rulesForPathsOnly": 0, "skills": len(skills | commands),
+                               "subagents": len(agents)},
     }
 
 

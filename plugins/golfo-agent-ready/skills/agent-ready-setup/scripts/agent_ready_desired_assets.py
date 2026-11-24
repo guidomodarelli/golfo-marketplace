@@ -30,8 +30,8 @@ from agent_ready_layout import (
 )
 from agent_ready_manifest import configuration_of
 from agent_ready_options import (
-    CODEX_PROVIDER,
     NESTED_CODEX_INDEX_KEY,
+    NESTED_INDEX_PROVIDERS,
     NESTED_ENABLED_KEY,
     NESTED_TARGETS_KEY,
     PROVIDERS_KEY,
@@ -468,16 +468,16 @@ def desired_nested_blocks(project_root, catalog, resolved, contents, workspaces=
 def nested_index_block(project_root, nested_blocks, waiting):
     """({(AGENTS.md, id): item}, report) of the index of the nested AGENTS.md files in the root AGENTS.md.
 
-    Codex reads the AGENTS.md files from the root down to the folder it starts in, once: the index tells
-    it which nested ones to read before working in their folders. It lists every nested AGENTS.md the
-    apply writes a block to (not one that waits, or sits beyond a symlink), and only when Codex is a
-    provider of the repository and nested.codexIndex is on. The report has the files it lists and the
+    Codex reads the AGENTS.md files from the root down to the folder it starts in, once, and Antigravity
+    only the root one: the index tells them which nested ones to read before working in their folders. It
+    lists every nested AGENTS.md the apply writes a block to (not one that waits, or sits beyond a
+    symlink), and only when Codex or Antigravity is a provider of the repository and nested.codexIndex is on. The report has the files it lists and the
     bytes it adds to the root AGENTS.md, markers included.
     """
     configuration = configuration_of(project_root)
     destinations = sorted({destination for destination, _ in nested_blocks
                            if destination not in waiting and not managed_blocks.has_linked_directory(project_root, destination)})
-    if not destinations or CODEX_PROVIDER not in configuration.value(PROVIDERS_KEY) \
+    if not destinations or not set(NESTED_INDEX_PROVIDERS) & set(configuration.value(PROVIDERS_KEY)) \
             or not configuration.value(NESTED_CODEX_INDEX_KEY):
         return {}, {"destinations": [], "bytes": 0}
     destination, content = managed_blocks.INSTRUCTION_SECTIONS_DESTINATION, nested.index_content(destinations)

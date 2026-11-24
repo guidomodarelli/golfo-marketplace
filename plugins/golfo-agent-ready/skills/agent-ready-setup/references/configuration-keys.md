@@ -19,7 +19,7 @@ Qué profiles y providers usa el repositorio. No es una funcionalidad que se apa
 | `excludedDefaults` | lista de string | — | project | — | — | Profiles que no se traen por defaults (por ejemplo browser, que traen react, node, java y go). Un profile que la selección requiere o nombra no se puede excluir. |
 | `workspaces` | lista de objetos | `[]` | project | — | — | Selección de profiles por carpeta en un monorepo: cada elemento nombra una carpeta y sus profiles, que se resuelven como los de la raíz (requires, defaults, excludedDefaults). Lo que la raíz ya selecciona vale para todo el repositorio. La carpeta tiene que existir, no estar ignorada por Git ni dentro de otro workspace. agent-ready plan y status muestran la selección de cada uno. |
 | `collaboration` | `auto` \| `business` \| `software` | `"auto"` | project | — | — | Cómo comparten lo aprendido las personas del repositorio. business: una oficina (un estudio jurídico o contable), con aprendizaje personal y de equipo. software: un repositorio de código, solo con aprendizaje de equipo, que va dentro del trabajo de cada rama. auto: software si la selección tiene software-development (todo stack de código lo requiere), business si no. La identidad de cada persona vive en su máquina (agent-ready identity), nunca en el repositorio. |
-| `providers` | lista de string (`claude`, `codex`) | `["claude", "codex"]` | project | — | — | Providers para los que el repositorio declara su configuración; el lockfile los registra. |
+| `providers` | lista de string (`claude`, `codex`, `antigravity`) | `["claude", "codex"]` | project | — | — | Providers para los que el repositorio declara su configuración; el lockfile los registra. antigravity (Antigravity con Gemini, CLI agy) es opcional: sumalo cuando alguien del equipo lo usa. |
 
 Campos de cada elemento de `workspaces`:
 
@@ -112,7 +112,7 @@ Bloques que los profiles publican en el AGENTS.md de una carpeta del repositorio
 | Clave | Tipo | Default | Capas | Variable | Seguridad | Descripción |
 |---|---|---|---|---|---|---|
 | `nested.enabled` | boolean | `true` | todas | — | — | Encendido, cada destino anidado de la selección escribe su bloque en la carpeta que configura nested.targets o, si no, en la primera carpeta candidata que existe. Apagado, ninguno escribe y el apply siguiente retira los bloques que había. |
-| `nested.codexIndex` | boolean | `true` | todas | — | — | Con codex entre los providers, el AGENTS.md raíz lleva una sección que lista cada AGENTS.md anidado que se escribe, para que Codex lo lea antes de tocar esa carpeta: Codex solo carga los AGENTS.md desde la raíz hasta la carpeta donde arranca. agent-ready plan informa cuántos bytes suma al tope de 32 KiB de Codex. Apagado, no hay índice. |
+| `nested.codexIndex` | boolean | `true` | todas | — | — | Con codex o antigravity entre los providers, el AGENTS.md raíz lleva una sección que lista cada AGENTS.md anidado que se escribe, para que el agente lo lea antes de tocar esa carpeta: Codex solo carga los AGENTS.md desde la raíz hasta la carpeta donde arranca, y Antigravity solo el de la raíz. agent-ready plan informa cuántos bytes suma al tope de 32 KiB de Codex. Apagado, no hay índice. |
 | `nested.targets` | lista de objetos | `[]` | project | — | — | Carpetas o estado de cada destino anidado, por su id <profile>/<nombre> (agent-ready plan los lista). Un destino que no figura acá usa la detección. |
 
 Campos de cada elemento de `nested.targets`:

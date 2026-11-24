@@ -840,3 +840,13 @@ write_nested_manifest() {
   run_cli plan --json
   [ "$(printf '%s' "$output" | python3 -c 'import json, sys; print(json.load(sys.stdin)["claudeProxiesToNormalize"])')" = "['service/CLAUDE.md']" ]
 }
+
+@test "with antigravity among the providers the root AGENTS.md lists the nested AGENTS.md files, which Antigravity does not load" {
+  mkdir -p src/app && touch src/app/page.tsx
+  add_nested_pack '"providers": ["claude", "antigravity"]'
+  run_cli trust add --project .
+  run_cli apply
+  [ "$status" -eq 0 ]
+  grep -qx '<!-- BEGIN AGENT-READY MANAGED: agent-ready:nested-index -->' AGENTS.md
+  grep -qxF -- '- `src/app/AGENTS.md`' AGENTS.md
+}

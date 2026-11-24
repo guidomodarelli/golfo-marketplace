@@ -1060,3 +1060,42 @@ EOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"requires human review"* ]]
 }
+
+# bats test_tags=area:review
+@test "Antigravity reviews AGENTS.md with agy -p in plan mode and the result goes to the review cache" {
+  printf '%s\n' '# Project' '' 'Team Astra owns this service.' > AGENTS.md
+  jq -n --arg content $'# Project\n\nTeam Astra owns this service.\n\n'"$managed_placeholder" \
+    '{project_content:$content, removed:[], inconsistencies:[], reason:"Reviewed project content."}
+     | {status:"success", response:tojson, structured_output:.}' > "$test_root/provider-response.json"
+  cat > "$fake_bin/agy" <<EOF
+#!/bin/bash
+printf '%s\n' called >> "$test_root/provider-calls.log"
+printf '%s\n' "\$@" > "$test_root/provider-args.log"
+cat > "$test_root/provider-documents.log"
+cat "$test_root/provider-response.json"
+EOF
+  chmod +x "$fake_bin/agy"
+
+  PATH="$fake_bin:$PATH" run bash "$skill_dir/scripts/merge-instructions.sh" \
+    --provider antigravity --stack react --skill-dir "$skill_dir"
+
+  [ "$status" -eq 0 ]
+  [ "$(provider_call_count)" -eq 1 ]
+  grep -Fxq -- '-p' "$test_root/provider-args.log"
+  grep -Fxq -- '--mode' "$test_root/provider-args.log"
+  grep -Fxq plan "$test_root/provider-args.log"
+  grep -Fxq -- '--output-format' "$test_root/provider-args.log"
+  grep -Fxq json "$test_root/provider-args.log"
+  grep -Fxq -- '--json-schema' "$test_root/provider-args.log"
+  # The account's own model: no --model or --effort is passed.
+  ! grep -Fxq -- '--model' "$test_root/provider-args.log"
+  grep -Fq 'Team Astra owns this service.' "$test_root/provider-documents.log"
+  grep -Fxq 'Team Astra owns this service.' AGENTS.md
+  [ "$(instructions_review_entry | jq -r '.provider')" = "antigravity" ]
+
+  # The cached review is reused: agy is not called again for the same files.
+  PATH="$fake_bin:$PATH" run bash "$skill_dir/scripts/merge-instructions.sh" \
+    --provider antigravity --stack react --skill-dir "$skill_dir"
+  [ "$status" -eq 0 ]
+  [ "$(provider_call_count)" -eq 1 ]
+}

@@ -8,9 +8,30 @@ skill_dir=""
 provider_override="${AGENT_READY_SETUP_ACTIVE_PROVIDER:-}"
 # Codex resolves its user home from CODEX_HOME; skills installed there belong to Codex.
 readonly CODEX_HOME_DIRECTORY="${CODEX_HOME:-$HOME/.codex}"
+# Antigravity keeps its configuration, plugins and app data under ~/.gemini.
+readonly ANTIGRAVITY_HOME_DIRECTORY="$HOME/.gemini"
 # Hermes is not a target provider, but it runs this skill from its own plugin or
 # skill directories; the CLI that runs the upgrade and the review must be one of these.
-readonly SUPPORTED_PROVIDER_CLIS=(claude codex)
+readonly SUPPORTED_PROVIDER_CLIS=(claude codex agy)
+
+# The provider a CLI belongs to: agy is Antigravity.
+provider_of_cli() {
+  if [[ "$1" == agy ]]; then
+    printf '%s\n' antigravity
+  else
+    printf '%s\n' "$1"
+  fi
+}
+
+# The supported provider CLIs in PATH, one per line.
+installed_provider_clis() {
+  local provider_cli
+  for provider_cli in "${SUPPORTED_PROVIDER_CLIS[@]}"; do
+    if command -v "$provider_cli" >/dev/null 2>&1; then
+      printf '%s\n' "$provider_cli"
+    fi
+  done
+}
 
 # Prints every Hermes home that may contain this skill: $HERMES_HOME, the POSIX
 # default and, on Windows, %LOCALAPPDATA%/hermes.
@@ -49,26 +70,30 @@ is_inside_hermes_home() {
 # From a Hermes installation the provider is the only supported CLI in PATH;
 # with both or none it cannot be inferred, so the user has to choose.
 resolve_hermes_provider() {
-  local provider_cli
-  local -a installed_provider_clis=()
-  for provider_cli in "${SUPPORTED_PROVIDER_CLIS[@]}"; do
-    if command -v "$provider_cli" >/dev/null 2>&1; then
-      installed_provider_clis+=("$provider_cli")
-    fi
-  done
-  case "${#installed_provider_clis[@]}" in
+  local -a found_clis=()
+  mapfile -t found_clis < <(installed_provider_clis)
+  case "${#found_clis[@]}" in
     1)
-      printf '%s\n' "${installed_provider_clis[0]}"
+      provider_of_cli "${found_clis[0]}"
       ;;
     0)
-      printf 'ERROR: skill directory %s belongs to Hermes, which is not a target provider, and neither claude nor codex is in PATH; install one of them or set AGENT_READY_SETUP_ACTIVE_PROVIDER\n' "$skill_dir" >&2
+      printf 'ERROR: skill directory %s belongs to Hermes, which is not a target provider, and none of claude, codex or agy is in PATH; install one of them or set AGENT_READY_SETUP_ACTIVE_PROVIDER\n' "$skill_dir" >&2
       return 1
       ;;
     *)
-      printf 'ERROR: skill directory %s belongs to Hermes and both claude and codex are in PATH; ask the user which one runs the marketplace upgrade and the review, then set AGENT_READY_SETUP_ACTIVE_PROVIDER=claude|codex\n' "$skill_dir" >&2
+      printf 'ERROR: skill directory %s belongs to Hermes and several of claude, codex and agy are in PATH; ask the user which one runs the marketplace upgrade and the review, then set AGENT_READY_SETUP_ACTIVE_PROVIDER=claude|codex|antigravity\n' "$skill_dir" >&2
       return 1
       ;;
   esac
+}
+
+# From an installation no provider owns, Antigravity is inferred when agy is the only provider CLI in
+# PATH: someone with only a Google subscription has no claude or codex to fall back to.
+resolve_only_antigravity_cli() {
+  local -a found_clis=()
+  mapfile -t found_clis < <(installed_provider_clis)
+  [[ "${#found_clis[@]}" -eq 1 && "${found_clis[0]}" == agy ]] || return 1
+  printf '%s\n' antigravity
 }
 
 # A skill run from a checkout (a clone of the marketplace) is in no provider directory: the
@@ -106,12 +131,12 @@ fi
 
 if [[ -n "$provider_override" ]]; then
   case "$provider_override" in
-    claude|codex)
+    claude|codex|antigravity)
       printf '%s\n' "$provider_override"
       exit 0
       ;;
     *)
-      printf 'ERROR: AGENT_READY_SETUP_ACTIVE_PROVIDER must be claude or codex\n' >&2
+      printf 'ERROR: AGENT_READY_SETUP_ACTIVE_PROVIDER must be claude, codex or antigravity\n' >&2
       exit 1
       ;;
   esac
@@ -123,10 +148,14 @@ elif [[ "$skill_dir" == "$HOME/.claude" || "$skill_dir" == "$HOME/.claude/"* ]];
   printf '%s\n' "claude"
 elif [[ -n "${CLAUDE_PLUGIN_ROOT:-}" && ( "$skill_dir" == "$CLAUDE_PLUGIN_ROOT" || "$skill_dir" == "$CLAUDE_PLUGIN_ROOT/"* ) ]]; then
   printf '%s\n' "claude"
+elif [[ "$skill_dir" == "$ANTIGRAVITY_HOME_DIRECTORY" || "$skill_dir" == "$ANTIGRAVITY_HOME_DIRECTORY/"* ]]; then
+  printf '%s\n' "antigravity"
 elif is_inside_hermes_home; then
   resolve_hermes_provider || exit 1
 elif session_provider="$(resolve_session_provider)"; then
   printf '%s\n' "$session_provider"
+elif resolve_only_antigravity_cli; then
+  :
 else
   printf 'ERROR: could not infer provider from skill directory: %s; set AGENT_READY_SETUP_ACTIVE_PROVIDER or pass --provider\n' "$skill_dir" >&2
   exit 1

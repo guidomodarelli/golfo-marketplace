@@ -50,10 +50,15 @@ SOURCE_SHARED = "shared"
 # Model and reasoning effort of every AI review, the only copy: the hooks read it from here and the
 # Bash scripts with `defaults`. AGENT_READY_SETUP_MERGE_MODEL and
 # AGENT_READY_SETUP_MERGE_REASONING_EFFORT change them for the review of AGENTS.md.
+# Antigravity reviews with the model and effort of the account (agy picks them), so no flag is passed.
+PROVIDER_DEFAULT_SETTING = "default"
 PROVIDER_DEFAULTS = {
     "claude": {"model": "claude-sonnet-5-5", "effort": "medium"},
     "codex": {"model": "gpt-6-luna", "effort": "high"},
+    "antigravity": {"model": PROVIDER_DEFAULT_SETTING, "effort": PROVIDER_DEFAULT_SETTING},
 }
+# The command each provider runs as: Antigravity is the agy CLI.
+PROVIDER_COMMANDS = {"claude": "claude", "codex": "codex", "antigravity": "agy"}
 VERDICT_CONSISTENT = "consistent"
 VERDICT_FINDINGS = "findings"
 # Exit status of `lookup` when the unit has no current entry.

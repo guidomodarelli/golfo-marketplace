@@ -172,9 +172,10 @@ los conflictos, con la misma clave (dirección `hooks`, [ai-reviews.md](ai-revie
 
 Tres chequeos más de `agent-ready plan`, sin IA y sin escribir nada.
 
-- **Paridad entre providers** (con los dos en `providers`): `plan` dice qué ve cada uno. Claude Code
+- **Paridad entre providers** (con dos o más en `providers`): `plan` dice qué ve cada uno. Claude Code
   lee las rules como `.claude/rules` y carga las que tienen `paths:` solo al tocar esos archivos;
-  Codex lista todas en `AGENTS.md`. Los subagentes le llegan a Codex como subagentes nativos
+  Codex lista todas en `AGENTS.md`, y Antigravity (si está entre los providers) también; la línea
+  nombra solo los providers del repositorio y aparece con dos o más. Los subagentes le llegan a Codex como subagentes nativos
   (`.codex/agents/<nombre>.toml`) y los comandos como skills del mismo nombre. Avisa de un hook que corre en un provider y no en el otro: los de golfo-agent-ready (salvo
   los declarados propios de uno, como el relink de las vistas de `.claude`) y los del proyecto en
   `.claude/settings.json` contra `.codex/hooks.json`.

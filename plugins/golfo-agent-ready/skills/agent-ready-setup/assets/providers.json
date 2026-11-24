@@ -26,6 +26,19 @@
         "hooks": { "support": "native", "mechanism": ".codex/hooks.json" },
         "mcp": { "support": "native", "mechanism": ".codex/.mcp.json when a profile publishes mcp.json" }
       }
+    },
+    "antigravity": {
+      "displayName": "Antigravity",
+      "cli": "agy",
+      "capabilities": {
+        "instructions": { "support": "adapted", "mechanism": "root AGENTS.md only; the managed index lists the nested AGENTS.md files" },
+        "rules": { "support": "adapted", "mechanism": "listed in the AGENTS.md managed block; Antigravity reads each file" },
+        "skills": { "support": "native", "mechanism": ".agents/skills" },
+        "agents": { "support": "native", "mechanism": ".agents/agents subagents" },
+        "commands": { "support": "adapted", "mechanism": "skill adapter in .agents/skills; not a slash command" },
+        "hooks": { "support": "none", "mechanism": "not projected yet" },
+        "mcp": { "support": "native", "mechanism": ".agents/mcp_config.json for the pack and browser servers; remote ones with serverUrl" }
+      }
     }
   }
 }

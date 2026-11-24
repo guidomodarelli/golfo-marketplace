@@ -16,9 +16,9 @@ trap cleanup EXIT
 parse_managed_block_arguments "$@"
 
 case "$PROVIDER" in
-  claude|codex) ;;
+  claude|codex|antigravity) ;;
   *)
-    echo "ERROR: --provider must be claude or codex" >&2
+    echo "ERROR: --provider must be claude, codex or antigravity" >&2
     exit 1
     ;;
 esac
@@ -156,13 +156,33 @@ invoke_codex() {
     "$merge_prompt" < "$REVIEW_DOCUMENTS_FILE" >/dev/null
 }
 
+# Antigravity reviews with the model and effort of the account unless the review defaults name one
+# (review-cache.py, PROVIDER_DEFAULT_SETTING); --mode plan keeps it from editing.
+readonly REVIEW_DEFAULT_SETTING="default"
+
+invoke_antigravity() {
+  local schema_json
+  local -a model_arguments=()
+  schema_json="$(<"$SCHEMA_FILE")"
+  resolve_review_model
+  [[ "$REVIEW_MODEL" == "$REVIEW_DEFAULT_SETTING" ]] || model_arguments+=(--model "$REVIEW_MODEL")
+  [[ "$REVIEW_EFFORT" == "$REVIEW_DEFAULT_SETTING" ]] || model_arguments+=(--effort "$REVIEW_EFFORT")
+
+  agy -p "$merge_prompt" \
+    --mode plan \
+    --output-format json \
+    --json-schema "$schema_json" \
+    ${model_arguments[@]+"${model_arguments[@]}"} < "$REVIEW_DOCUMENTS_FILE" > "$RESULT_FILE"
+}
+
 extract_result() {
   local result_expression
   for result_expression in \
     '.' \
     '.structured_output' \
     '.result' \
-    '.result | fromjson'; do
+    '.result | fromjson' \
+    '.response | fromjson'; do
     if jq -er \
       "$result_expression | select(type == \"object\" and ((keys | sort) == [\"inconsistencies\", \"project_content\", \"reason\", \"removed\"]) and (.project_content | type == \"string\") and (.reason | type == \"string\") and (.removed | type == \"array\") and all(.removed[]; type == \"string\") and (.inconsistencies | type == \"array\") and all(.inconsistencies[]; type == \"string\"))" \
       "$RESULT_FILE" 2>/dev/null; then
@@ -251,6 +271,7 @@ else
   case "$PROVIDER" in
     claude) invoke_claude || review_failure="Claude review provider failed" ;;
     codex) invoke_codex || review_failure="Codex review provider failed" ;;
+    antigravity) invoke_antigravity || review_failure="Antigravity review provider failed" ;;
   esac
 fi
 

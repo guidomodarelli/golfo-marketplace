@@ -2074,3 +2074,74 @@ branches_change_rule() {
   [[ "$stderr" == *"changed by hand since the merge"* ]]
   grep -Fxq -- '- Sign at the end, with a stamp.' .agents/rules/learned.md
 }
+
+# A fake agy that answers a headless run with the JSON envelope, or fails with the message it is given.
+write_fake_agy() {
+  local failure="${1:-}"
+  if [[ -n "$failure" ]]; then
+    printf '#!/bin/bash\nprintf "%%s\\n" "%s" >&2\nexit 1\n' "$failure" > "$fake_bin/agy"
+  else
+    printf '#!/bin/bash\ncat >/dev/null\nprintf "{\\"status\\":\\"success\\",\\"response\\":\\"OK\\"}\\n"\n' > "$fake_bin/agy"
+  fi
+  chmod +x "$fake_bin/agy"
+}
+
+@test "Antigravity: init --providers writes the providers and apply --provider antigravity succeeds; plan shows what Antigravity sees" {
+  write_fake_agy
+  run_cli init --stack react --providers claude,antigravity --provider antigravity --yes
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"providers=claude,antigravity set in"* ]]
+  [ "$(python3 -c 'import json; print(json.load(open(".agents/agent-ready.json"))["providers"])')" = "['claude', 'antigravity']" ]
+
+  run_cli apply --provider antigravity
+  [ "$status" -eq 0 ]
+  run_cli plan --provider antigravity --offline
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"; Antigravity sees "*" rules in AGENTS.md, "*" skills and 5 subagents"* ]]
+
+  run_cli status --provider antigravity --offline
+  [[ "$output" == *"antigravity: instructions=adapted"*"hooks=none"*"mcp=native"* ]]
+
+  run_cli init --stack react --providers claude,gemini --yes
+  [ "$status" -eq 2 ]
+}
+
+@test "Antigravity: from an installation no provider owns, agy alone on PATH infers antigravity, and ~/.gemini is Antigravity's" {
+  only_agy="$test_root/only-agy"
+  mkdir -p "$only_agy"
+  printf '#!/bin/bash\nexit 0\n' > "$only_agy/agy"
+  chmod +x "$only_agy/agy"
+  system_path="$(dirname "$(command -v bash)"):$(dirname "$(command -v python3)")"
+  if PATH="$system_path" command -v claude >/dev/null || PATH="$system_path" command -v codex >/dev/null; then
+    skip "a real claude or codex is installed next to bash or python3"
+  fi
+  run env -u AGENT_READY_SETUP_ACTIVE_PROVIDER -u CLAUDECODE -u CODEX_SESSION_ID -u CODEX_THREAD_ID \
+    PATH="$only_agy:$system_path" bash "$skill_dir/scripts/resolve-provider.sh" --skill-dir "$test_root/elsewhere/agent-ready-setup"
+  [ "$status" -eq 0 ]
+  [ "$output" = "antigravity" ]
+
+  run env -u AGENT_READY_SETUP_ACTIVE_PROVIDER -u CLAUDECODE -u CODEX_SESSION_ID -u CODEX_THREAD_ID \
+    PATH="$system_path" bash "$skill_dir/scripts/resolve-provider.sh" --skill-dir "$HOME/.gemini/config/plugins/golfo-agent-ready/skills/agent-ready-setup"
+  [ "$status" -eq 0 ]
+  [ "$output" = "antigravity" ]
+
+  run env AGENT_READY_SETUP_ACTIVE_PROVIDER=gemini bash "$skill_dir/scripts/resolve-provider.sh" --skill-dir "$skill_dir"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"must be claude, codex or antigravity"* ]]
+}
+
+@test "Antigravity: doctor says when agy is missing or not signed in, and skips the probe offline" {
+  mkdir -p .agents
+  printf '{"providers": ["antigravity"]}\n' > .agents/agent-ready.json
+  run_cli doctor --offline
+  [[ "$output" == *"offline: whether agy is signed in was not checked"* ]]
+
+  write_fake_agy "Error: authentication required"
+  run_cli doctor
+  [[ "$output" == *"agy is not signed in (authentication required)"* ]]
+  [[ "$output" == *"fix: run agy once in a terminal and sign in with your Google account"* ]]
+
+  write_fake_agy
+  run_cli doctor
+  [[ "$output" == *"agy is signed in and answers headless runs"* ]]
+}

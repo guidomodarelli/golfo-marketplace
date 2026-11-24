@@ -33,7 +33,10 @@ KIND_AGENT = "agent"
 KIND_COMMAND = "command"
 PROVIDER_CLAUDE = "claude"
 PROVIDER_CODEX = "codex"
+PROVIDER_ANTIGRAVITY = "antigravity"
 CLAUDE_USER_SERVERS_FILE = ".claude.json"
+# The MCP servers Antigravity starts for every workspace of the user.
+ANTIGRAVITY_USER_SERVERS_RELATIVE_PATH = os.path.join(".gemini", "config", "mcp_config.json")
 CODEX_CONFIG_FILE = "config.toml"
 # Where Codex reads the personal custom agents of the user, inside its directory (codex_home).
 CODEX_USER_AGENTS_DIRECTORY = "agents"
@@ -225,8 +228,10 @@ def server_identity(server):
     """
     if not isinstance(server, dict):
         return None
-    if server.get("url"):
-        endpoint = ["url", str(server["url"]).rstrip("/")]
+    # Antigravity names the URL of a remote server serverUrl, and also accepts url.
+    url = server.get("url") or server.get("serverUrl")
+    if url:
+        endpoint = ["url", str(url).rstrip("/")]
     elif server.get("command"):
         command = str(server["command"])
         arguments = [str(argument) for argument in server.get("args") or []]
@@ -268,17 +273,24 @@ def user_servers():
             # A server the user turned off (enabled = false) does not stand in for the project's.
             servers[PROVIDER_CODEX] = {name: entry for name, entry in codex["mcp_servers"].items()
                                        if isinstance(entry, dict) and entry.get("enabled", True) is not False}
+    antigravity = read_json(os.path.join(user_home(), ANTIGRAVITY_USER_SERVERS_RELATIVE_PATH))
+    if isinstance(antigravity, dict) and isinstance(antigravity.get("mcpServers"), dict):
+        # A server the user turned off (disabled: true) does not stand in for the project's.
+        servers[PROVIDER_ANTIGRAVITY] = {name: entry for name, entry in antigravity["mcpServers"].items()
+                                         if isinstance(entry, dict) and entry.get("disabled") is not True}
     return servers
 
 
 def user_server_paths():
     """Where each provider keeps the servers of the user, from ~."""
     return {PROVIDER_CLAUDE: home_display(claude_user_servers_path()),
-            PROVIDER_CODEX: home_display(os.path.join(codex_home(), CODEX_CONFIG_FILE))}
+            PROVIDER_CODEX: home_display(os.path.join(codex_home(), CODEX_CONFIG_FILE)),
+            PROVIDER_ANTIGRAVITY: home_display(os.path.join(user_home(), ANTIGRAVITY_USER_SERVERS_RELATIVE_PATH))}
 
 
 # How the apply writes a pack declaration for each provider (agent_ready_pack_mcp.py).
-PROVIDER_ENTRIES = {PROVIDER_CLAUDE: pack_mcp.claude_entry, PROVIDER_CODEX: pack_mcp.codex_entry}
+PROVIDER_ENTRIES = {PROVIDER_CLAUDE: pack_mcp.claude_entry, PROVIDER_CODEX: pack_mcp.codex_entry,
+                    PROVIDER_ANTIGRAVITY: pack_mcp.antigravity_entry}
 
 
 def duplicated_servers(desired, providers):
