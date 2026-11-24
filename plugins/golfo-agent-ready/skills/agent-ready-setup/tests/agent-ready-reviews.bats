@@ -826,3 +826,24 @@ print([(entry["path"], entry["action"]) for entry in entries if "review-cache" i
   [ "$status" -eq 0 ]
   [ -z "$(find "$skill_dir/assets" -name __pycache__)" ]
 }
+
+@test "an Antigravity edit runs the consistency review with agy in plan mode, answers {} and reports on stderr" {
+  cp "$fake_bin/claude" "$fake_bin/agy"
+  two_findings
+  payload='{"conversationId": "c1", "toolCall": {"name": "replace_file_content", "args": {"TargetFile": ".agents/rules/testing.md"}}}'
+  run --separate-stderr env PATH="$fake_bin:$PATH" bash "$hook" <<< "$payload"
+  [ "$status" -eq 0 ]
+  [ "$output" = "{}" ]
+  [[ "$stderr" == *"reviewing 2 of 2 pairs with antigravity (0 from the cache)"* ]]
+  # The structural checks run for Antigravity too: no warning that they could not.
+  [[ "$stderr" != *"the structural conflicts could not be checked"* ]]
+  [[ "$stderr" == *"Mocks are both required and forbidden."* ]]
+  grep -Fxq agy "$FAKE_CALLS"
+  [ "$(argument_after --mode)" = plan ]
+  argument_after --json-schema | python3 -c 'import json, sys; assert json.load(sys.stdin)["required"] == ["findings"]'
+
+  # A tool that edits nothing, such as view_file, reviews nothing.
+  run --separate-stderr env PATH="$fake_bin:$PATH" bash "$hook" <<< '{"toolCall": {"name": "view_file", "args": {"AbsolutePath": ".agents/rules/testing.md"}}}'
+  [ "$status" -eq 0 ]
+  [ "$(calls)" -eq 1 ]
+}

@@ -19,10 +19,14 @@ import os
 import re
 import shlex
 
+import agent_ready_antigravity_hooks as antigravity_hooks
 import agent_ready_machine as machine
 
 PROVIDER_CLAUDE = "claude"
 PROVIDER_CODEX = "codex"
+PROVIDER_ANTIGRAVITY = "antigravity"
+# Where Antigravity reads the hooks of the user, under ~.
+ANTIGRAVITY_USER_HOOKS = os.path.join(".gemini", "config", "hooks.json")
 LAYER_GOLFO = "golfo-agent-ready"
 LAYER_PROJECT = "project"
 LAYER_LOCAL = "local"
@@ -96,6 +100,13 @@ def permission_rules(data):
     return rules
 
 
+def antigravity_hooks_present(project_root):
+    """True when the repository lists Antigravity among its providers, so its hooks take part."""
+    manifest = read_json(os.path.join(project_root, ".agents", "agent-ready.json")) or {}
+    providers = manifest.get("providers")
+    return isinstance(providers, list) and PROVIDER_ANTIGRAVITY in providers
+
+
 def without_template(data, template):
     """A merged project file without what the template put there: its hooks and permissions."""
     if data is None:
@@ -138,6 +149,19 @@ def layers(project_root, skill_dir, with_user=True):
         {"provider": PROVIDER_CODEX, "layer": LAYER_USER, "file": machine.home_display(codex_user),
          "data": read_json(codex_user)},
     ]
+    # Antigravity keys its hooks by name: they are read in the shape of the other two (as_claude_hooks).
+    if antigravity_hooks_present(project_root):
+        antigravity_project = read_json(os.path.join(project_root, *antigravity_hooks.HOOKS_RELATIVE_PATH.split("/")))
+        antigravity_user = os.path.join(machine.user_home(), ANTIGRAVITY_USER_HOOKS)
+        found += [
+            {"provider": PROVIDER_ANTIGRAVITY, "layer": LAYER_GOLFO,
+             "file": f"{antigravity_hooks.HOOKS_RELATIVE_PATH} ({LAYER_GOLFO})",
+             "data": antigravity_hooks.as_claude_hooks(read_json(skill_path(skill_dir, antigravity_hooks.TEMPLATE_RELATIVE_PATH)))},
+            {"provider": PROVIDER_ANTIGRAVITY, "layer": LAYER_PROJECT, "file": antigravity_hooks.HOOKS_RELATIVE_PATH,
+             "data": antigravity_hooks.as_claude_hooks(antigravity_project, only_managed=False)},
+            {"provider": PROVIDER_ANTIGRAVITY, "layer": LAYER_USER, "file": machine.home_display(antigravity_user),
+             "data": antigravity_hooks.as_claude_hooks(read_json(antigravity_user))},
+        ]
     return [layer for layer in found if layer["data"] and (with_user or layer["layer"] != LAYER_USER)]
 
 

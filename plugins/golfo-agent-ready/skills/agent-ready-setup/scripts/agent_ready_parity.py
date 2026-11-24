@@ -23,6 +23,9 @@ PROVIDER_SPECIFIC_HOOK_EVENTS = {
     (PROVIDER_CLAUDE, "PreCompact"): "reviews what the user taught before a compaction, an event Codex does not have",
     (PROVIDER_CLAUDE, "SessionEnd"): "reviews the episode when the chat ends, an event Codex does not have",
 }
+# Hooks of golfo-agent-ready that Antigravity does not get yet: the learning hooks give context back to the
+# agent, and a PostToolUse or SessionStart hook of Antigravity answers in another shape (injectSteps).
+HOOKS_NOT_FOR_ANTIGRAVITY = ("learning-hook.sh", "relink-hard-link-views.sh")
 EXAMPLE_ENVIRONMENT_FILES = (".env.example", ".env.sample", ".env.template", ".env.dist")
 ENVIRONMENT_LINE = re.compile(r"^\s*(?:export\s+)?(?P<name>[A-Z][A-Z0-9_]*)\s*=")
 # What a CI job runs when it already does the Agent Ready check.
@@ -67,9 +70,10 @@ def provider_views(rule_count, scoped_rule_count, entries):
     }
 
 
-def hook_differences(project_root, skill_dir, with_user=True):
-    """Hooks one provider runs and the other does not: the golfo-agent-ready templates (except the events
-    declared provider-specific there) and the project's own hooks.
+def hook_differences(project_root, skill_dir, with_user=True, providers=(PROVIDER_CLAUDE, PROVIDER_CODEX)):
+    """Hooks one provider of ``providers`` runs and another does not: the golfo-agent-ready templates
+    (except the events declared provider-specific there, and the hooks Antigravity does not get yet) and
+    the project's own hooks.
 
     A hook is its event and its command without the --provider it passes: the same command on
     another event does not run at the same moment. Matchers are not compared, because each provider
@@ -81,17 +85,20 @@ def hook_differences(project_root, skill_dir, with_user=True):
         layers = [layer for layer in layers if layer["provider"] != PROVIDER_CLAUDE]
     differences = []
     for layer_name in (settings_conflicts.LAYER_GOLFO, settings_conflicts.LAYER_PROJECT):
-        hooks = {provider: {} for provider in (PROVIDER_CLAUDE, PROVIDER_CODEX)}
+        hooks = {provider: {} for provider in providers}
         for layer in layers:
             if layer["layer"] == layer_name and layer["provider"] in hooks:
                 for event, _, command in settings_conflicts.hook_entries(layer["data"]):
                     hooks[layer["provider"]].setdefault((event, provider_neutral(command)), (command, layer["file"]))
-        for provider, other in ((PROVIDER_CLAUDE, PROVIDER_CODEX), (PROVIDER_CODEX, PROVIDER_CLAUDE)):
+        for provider, other in ((provider, other) for provider in providers for other in providers if provider != other):
             for (event, neutral), (command, file) in sorted(hooks[provider].items()):
                 if (event, neutral) in hooks[other]:
                     continue
                 # Only golfo-agent-ready declares hooks that belong to one provider; the project's are always compared.
                 if layer_name == settings_conflicts.LAYER_GOLFO and (provider, event) in PROVIDER_SPECIFIC_HOOK_EVENTS:
+                    continue
+                if layer_name == settings_conflicts.LAYER_GOLFO and other == PROVIDER_ANTIGRAVITY and \
+                        any(script in command for script in HOOKS_NOT_FOR_ANTIGRAVITY):
                     continue
                 differences.append({"provider": provider, "missing": other, "event": event, "command": command,
                                     "file": file})

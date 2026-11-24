@@ -71,6 +71,7 @@ PLUGIN_MANIFESTS = ("plugin.json", ".claude-plugin/plugin.json", ".codex-plugin/
 # Assets of the engine that a projection writes too (hooks, settings, CI files): they follow the installed
 # plugin, never the revision of the content, so a new engine is not a new release of the content.
 ENGINE_OWNED_ASSET_PATHS = (
+    "assets/antigravity",
     "assets/ci",
     "assets/common/hooks",
     "assets/common/settings.json",

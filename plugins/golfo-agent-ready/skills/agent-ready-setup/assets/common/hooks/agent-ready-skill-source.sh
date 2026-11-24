@@ -2,14 +2,20 @@
 # agent-ready-skill-source.sh
 # Library sourced by the hooks beside it (sync-marketplace.sh, check-conflicts.sh): finds the
 # agent-ready-setup source the session uses, from AGENT_READY_SETUP_SKILL_DIR, the provider
-# marketplace snapshot, the plugin cache or the checkout. The caller sets $provider (claude or
-# codex) before resolving; nothing here reaches the network or writes.
+# marketplace snapshot, the plugin cache or the checkout. The caller sets $provider (claude, codex
+# or antigravity) before resolving; nothing here reaches the network or writes, except
+# update_antigravity_marketplace, which the sync runs where it runs the marketplace upgrade.
 
 # shellcheck disable=SC2034
 readonly MARKETPLACE_NAME="golfo-marketplace"
 readonly SKILL_NAME="agent-ready-setup"
 # Codex resolves its user home from CODEX_HOME; config, snapshot and cache follow it.
 readonly CODEX_HOME_DIRECTORY="${CODEX_HOME:-$HOME/.codex}"
+# Antigravity has no plugin marketplace: agent-ready-setup keeps its own shallow clone of the
+# marketplace repository, per user and outside any project, as the snapshot of that provider.
+readonly MARKETPLACE_REPOSITORY_URL="https://github.com/guidomodarelli/golfo-marketplace"
+readonly ANTIGRAVITY_MARKETPLACE_ROOT="${XDG_DATA_HOME:-$HOME/.local/share}/agent-ready-setup/marketplaces/$MARKETPLACE_NAME"
+readonly ANTIGRAVITY_HOME_DIRECTORY="$HOME/.gemini"
 readonly ASSET_SYNC_HELPER_PATH="scripts/asset-sync-common.sh"
 # This library's own file name, which the sync projects before restarting a newer hook.
 readonly SKILL_SOURCE_LIBRARY_FILE_NAME="agent-ready-skill-source.sh"
@@ -128,10 +134,38 @@ PY
     return 0
   fi
 
+  if [[ "$marketplace_provider" == "antigravity" ]]; then
+    printf '%s\n' "$ANTIGRAVITY_MARKETPLACE_ROOT"
+    return 0
+  fi
+
   if is_codex_local_marketplace; then
     configured_location="$(codex_marketplace_config_value source)"
   fi
   printf '%s\n' "${configured_location:-$CODEX_HOME_DIRECTORY/.tmp/marketplaces/$MARKETPLACE_NAME}"
+}
+
+# The marketplace upgrade of Antigravity: clone the marketplace repository the first time, through a
+# staging folder so a failed clone leaves nothing half written, and move it to the remote head after.
+# The folder belongs to agent-ready-setup, so its working tree follows the remote without a merge.
+update_antigravity_marketplace() {
+  local staging
+
+  if [[ -d "$ANTIGRAVITY_MARKETPLACE_ROOT/.git" ]]; then
+    git -C "$ANTIGRAVITY_MARKETPLACE_ROOT" fetch --quiet --depth 1 origin HEAD &&
+      git -C "$ANTIGRAVITY_MARKETPLACE_ROOT" reset --quiet --hard FETCH_HEAD
+    return
+  fi
+  mkdir -p -- "${ANTIGRAVITY_MARKETPLACE_ROOT%/*}" || return 1
+  staging="$(mktemp -d "${ANTIGRAVITY_MARKETPLACE_ROOT%/*}/.clone.XXXXXX")" || return 1
+  # core.longpaths: on Windows the clone lives deep under the user's home and the engine's paths are long.
+  if git -c core.longpaths=true clone --quiet --depth 1 --config core.longpaths=true     "$MARKETPLACE_REPOSITORY_URL" "$staging/$MARKETPLACE_NAME" &&
+    mv -- "$staging/$MARKETPLACE_NAME" "$ANTIGRAVITY_MARKETPLACE_ROOT"; then
+    rm -rf -- "$staging"
+    return 0
+  fi
+  rm -rf -- "$staging"
+  return 1
 }
 
 marketplace_snapshot_skill_dir() {
@@ -178,6 +212,8 @@ resolve_skill_dir() {
 
   if [[ "$provider" == "claude" ]]; then
     provider_root="$HOME/.claude"
+  elif [[ "$provider" == "antigravity" ]]; then
+    provider_root="$ANTIGRAVITY_HOME_DIRECTORY"
   else
     provider_root="$CODEX_HOME_DIRECTORY"
   fi

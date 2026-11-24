@@ -5,7 +5,7 @@
 # Prints one "[conflicts]" line per conflict, and nothing when no changed path is an input of the
 # checks, when there is none or when conflicts.onEdit.enabled is false.
 #
-# Usage: check-conflicts.sh --provider claude|codex [--changed <path>]...
+# Usage: check-conflicts.sh --provider claude|codex|antigravity [--changed <path>]...
 
 set -euo pipefail
 
@@ -18,8 +18,8 @@ changed_arguments=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --provider|-p)
-      if [[ $# -lt 2 || ( "$2" != claude && "$2" != codex ) ]]; then
-        printf 'ERROR: %s requires claude or codex\n' "$1" >&2
+      if [[ $# -lt 2 || ( "$2" != claude && "$2" != codex && "$2" != antigravity ) ]]; then
+        printf 'ERROR: %s requires claude, codex or antigravity\n' "$1" >&2
         exit 2
       fi
       provider="$2"
@@ -34,7 +34,7 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     -h|--help)
-      printf 'Usage: %s --provider claude|codex [--changed <path>]...\n' "${0##*/}"
+      printf 'Usage: %s --provider claude|codex|antigravity [--changed <path>]...\n' "${0##*/}"
       exit 0
       ;;
     *)
@@ -44,7 +44,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 if [[ -z "$provider" ]]; then
-  printf 'ERROR: --provider claude|codex is required\n' >&2
+  printf 'ERROR: --provider claude|codex|antigravity is required\n' >&2
   exit 2
 fi
 

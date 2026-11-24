@@ -176,9 +176,11 @@ Tres chequeos más de `agent-ready plan`, sin IA y sin escribir nada.
   lee las rules como `.claude/rules` y carga las que tienen `paths:` solo al tocar esos archivos;
   Codex lista todas en `AGENTS.md`, y Antigravity (si está entre los providers) también; la línea
   nombra solo los providers del repositorio y aparece con dos o más. Los subagentes le llegan a Codex como subagentes nativos
-  (`.codex/agents/<nombre>.toml`) y los comandos como skills del mismo nombre. Avisa de un hook que corre en un provider y no en el otro: los de golfo-agent-ready (salvo
-  los declarados propios de uno, como el relink de las vistas de `.claude`) y los del proyecto en
-  `.claude/settings.json` contra `.codex/hooks.json`.
+  (`.codex/agents/<nombre>.toml`) y los comandos como skills del mismo nombre. Avisa de un hook que corre en un provider y no en otro: los de golfo-agent-ready (salvo
+  los declarados propios de uno, como el relink de las vistas de `.claude`, y los de aprendizaje,
+  que Antigravity todavía no recibe) y los del proyecto en `.claude/settings.json`,
+  `.codex/hooks.json` y `.agents/hooks.json` (este último con `antigravity` entre los providers;
+  sus hooks se leen por evento y comando, como los de los otros dos).
 - **Variables de entorno:** una variable que piden los servidores MCP de dos fuentes distintas, o
   que el proyecto ya lista en `.env.example` (o `.env.sample`, `.env.template`, `.env.dist`), se
   informa con los profiles que la piden, para confirmar que significa lo mismo.

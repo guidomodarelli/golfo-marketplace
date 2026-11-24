@@ -611,6 +611,7 @@ if [[ -f "$SRC/mcp.json" ]]; then
   sync_file "$SRC/mcp.json" "$CODEX_DIR/.mcp.json"
 fi
 sync_codex_hooks "$CODEX_ASSETS/hooks.json"
+sync_antigravity_hooks "$SKILL_DIR/assets/antigravity/hooks.json"
 
 finalize_arguments=(finalize --project . --skill-dir "$SKILL_DIR" --plan "$PLAN_FILE")
 [[ -n "$UPDATE_MODE" ]] && finalize_arguments+=(--updates "$UPDATE_MODE")

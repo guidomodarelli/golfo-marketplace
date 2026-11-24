@@ -2100,7 +2100,7 @@ write_fake_agy() {
   [[ "$output" == *"; Antigravity sees "*" rules in AGENTS.md, "*" skills and 5 subagents"* ]]
 
   run_cli status --provider antigravity --offline
-  [[ "$output" == *"antigravity: instructions=adapted"*"hooks=none"*"mcp=native"* ]]
+  [[ "$output" == *"antigravity: instructions=adapted"*"hooks=adapted"*"mcp=native"* ]]
 
   run_cli init --stack react --providers claude,gemini --yes
   [ "$status" -eq 2 ]
@@ -2144,4 +2144,83 @@ write_fake_agy() {
   write_fake_agy
   run_cli doctor
   [[ "$output" == *"agy is signed in and answers headless runs"* ]]
+}
+
+@test "Antigravity: .agents/hooks.json gets the sync and the consistency hooks, keeps the project's, and plan names a hook it lacks" {
+  write_fake_agy
+  mkdir -p .agents
+  printf '%s\n' '{"providers": ["claude", "codex", "antigravity"]}' > .agents/agent-ready.json
+  printf '%s\n' '{"my-linter": {"PostToolUse": [{"matcher": "run_command", "hooks": [{"type": "command", "command": "./lint.sh"}]}]}}' \
+    > .agents/hooks.json
+  run_cli apply --stack node --provider antigravity
+  [ "$status" -eq 0 ]
+  python3 - <<'PY'
+import json
+data = json.load(open(".agents/hooks.json", encoding="utf-8"))
+assert data["my-linter"]["PostToolUse"][0]["hooks"][0]["command"] == "./lint.sh", data
+managed = data["agent-ready"]
+assert managed["SessionStart"][0]["command"] == "bash .agents/hooks/sync-marketplace.sh --provider antigravity", managed
+assert managed["PostToolUse"][0]["matcher"] == "write_to_file|replace_file_content|multi_replace_file_content", managed
+assert managed["PostToolUse"][0]["hooks"][0]["command"] == "bash .agents/hooks/check-harness-consistency.sh", managed
+PY
+  cp .agents/hooks.json "$test_root/hooks-applied.json"
+  run_cli apply --provider antigravity
+  [ "$status" -eq 0 ]
+  cmp -s .agents/hooks.json "$test_root/hooks-applied.json"
+  run_cli plan --provider antigravity --offline
+  [[ "$output" == *".agents/hooks.json: managed entries are current"* ]]
+
+  # A deleted or edited managed hook is drift that plan and check report, as for the other providers.
+  rm .agents/hooks.json
+  run_cli plan --provider antigravity --offline
+  [[ "$output" == *".agents/hooks.json: created from the template"* ]]
+  run_cli check --offline
+  [ "$status" -ne 0 ]
+  [[ "$output$stderr" == *".agents/hooks.json: created from the template"* ]]
+  cp "$test_root/hooks-applied.json" .agents/hooks.json
+
+  # A hook the project runs in Claude Code and Codex but not in Antigravity.
+  python3 - <<'PY'
+import json
+for path in (".claude/settings.json", ".codex/hooks.json"):
+    data = json.load(open(path, encoding="utf-8"))
+    data.setdefault("hooks", {}).setdefault("Stop", []).append({"hooks": [{"type": "command", "command": "./notify.sh"}]})
+    json.dump(data, open(path, "w", encoding="utf-8"), indent=2)
+PY
+  run_cli plan --provider antigravity --offline
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"~ claude runs the Stop hook \`./notify.sh\` (.claude/settings.json) and antigravity does not"* ]]
+  # And the project's own hook of Antigravity, which the other two do not run.
+  [[ "$output" == *"~ antigravity runs the PostToolUse hook \`./lint.sh\` (.agents/hooks.json) and claude does not"* ]]
+  # The learning hooks of golfo-agent-ready do not reach Antigravity on purpose: they are not reported.
+  [[ "$output" != *"learning-hook.sh"*"antigravity does not"* ]]
+
+  # Without Antigravity the managed hooks leave and the project's stay.
+  printf '%s\n' '{"providers": ["claude", "codex"]}' > .agents/agent-ready.json
+  run_cli apply
+  [ "$status" -eq 0 ]
+  python3 -c 'import json; data = json.load(open(".agents/hooks.json")); assert list(data) == ["my-linter"], data'
+
+  # agent-ready remove takes the managed hooks out and leaves the project's.
+  printf '%s\n' '{"providers": ["claude", "codex", "antigravity"]}' > .agents/agent-ready.json
+  run_cli apply --provider antigravity
+  [ "$status" -eq 0 ]
+  run_cli remove --yes < /dev/null
+  [ "$status" -eq 0 ]
+  python3 -c 'import json; data = json.load(open(".agents/hooks.json")); assert list(data) == ["my-linter"], data'
+
+  # Invalid hooks are a conflict and stay as they are.
+  run_cli init --stack node --providers claude,antigravity --provider antigravity --yes
+  [ "$status" -eq 0 ]
+  printf '%s\n' '{ not json' > .agents/hooks.json
+  run_cli apply --provider antigravity
+  [[ "$stderr$output" == *"Antigravity hooks contain invalid configuration; original file preserved"* ]]
+  grep -Fxq '{ not json' .agents/hooks.json
+
+  # A folder where the file goes is a conflict for plan too, never an error.
+  rm .agents/hooks.json
+  mkdir .agents/hooks.json
+  run_cli plan --provider antigravity --offline
+  [ "$status" -eq 0 ]
+  [[ "$output" == *".agents/hooks.json: not a regular file; it is preserved"* ]]
 }

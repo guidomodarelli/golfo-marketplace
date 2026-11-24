@@ -1,0 +1,23 @@
+{
+  "agent-ready": {
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "bash .agents/hooks/sync-marketplace.sh --provider antigravity",
+        "timeout": 60
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "write_to_file|replace_file_content|multi_replace_file_content",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .agents/hooks/check-harness-consistency.sh",
+            "timeout": 120
+          }
+        ]
+      }
+    ]
+  }
+}
