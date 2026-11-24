@@ -1,7 +1,7 @@
 {
   "name": "golfo-planning",
   "description": "Skills de planificación y producto para cualquier herramienta: issues, specs listos para implementar y chequeo de funcionalidades contra el código.",
-  "version": "0.129.0",
+  "version": "0.129.1",
   "author": {
     "name": "Guido Modarelli"
   },
