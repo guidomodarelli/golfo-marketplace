@@ -351,31 +351,10 @@ add_accounting_pack() {
   write_manifest '{"providers": ["claude", "codex", "antigravity"], "sources": {"packs": [{"name": "estudio-contable", "source": "path:./agent-packs/estudio-contable"}]}}'
 }
 
-# The accounting example requires the orchestration capability of the content. A content release
-# without it (the ref of the tests may predate it) gets a minimal one in a copy, so the test checks the
-# pack and not the version of the content.
-use_content_with_orchestration() {
-  copy_content_pack
-  [ -d "$content_dir/profiles/orchestration" ] && return 0
-  mkdir -p "$content_dir/profiles/orchestration/skills/orchestrate-agents"
-  printf '%s\n' '---' 'name: orchestrate-agents' 'description: Dispatches a task to the subagents of a roster and consolidates one report.' '---' \
-    'Read the roster, dispatch each subagent, consolidate.' \
-    > "$content_dir/profiles/orchestration/skills/orchestrate-agents/SKILL.md"
-  python3 - "$content_dir/agent-ready-pack.json" <<'PY'
-import json, sys
-path = sys.argv[1]
-catalog = json.load(open(path, encoding="utf-8"))
-catalog["profiles"]["orchestration"] = {"kind": "capability", "description": "Orchestrate a roster of subagents.",
-                                        "assets": "profiles/orchestration"}
-json.dump(catalog, open(path, "w", encoding="utf-8"), indent=2)
-PY
-}
-
 @test "the accounting example pack: its subagents, skills and roster reach Claude Code, Codex and Antigravity with their metadata" {
   rm package.json
   mkdir -p liquidaciones/cliente-a/2026-03
   printf '%s\n' '# Recibos de marzo' > liquidaciones/cliente-a/2026-03/recibos.md
-  use_content_with_orchestration
   add_accounting_pack
 
   run python3 "$skill_dir/scripts/agent-ready-state.py" detect --project . --skill-dir "$skill_dir"
@@ -424,7 +403,6 @@ PY
 }
 
 @test "the accounting example pack: conflicts --pack passes, and fails once the roster names a subagent it does not publish" {
-  use_content_with_orchestration
   publish_example estudio-contable-pack https://git.example.invalid/estudio-contable
   cd "$pack_repository"
 

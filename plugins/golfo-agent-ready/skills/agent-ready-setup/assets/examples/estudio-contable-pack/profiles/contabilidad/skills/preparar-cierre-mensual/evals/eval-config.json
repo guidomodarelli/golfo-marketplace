@@ -39,12 +39,11 @@
       "assertions": [
         {
           "type": "contains",
-          "value": "[a verificar]",
+          "value": "\\[a verificar\\]",
           "description": "Deja el vencimiento a verificar",
           "critical": true
         }
-      ],
-      "control": "No completar de memoria un vencimiento ausente ya es el comportamiento por defecto; el caso cuida que la skill lo mantenga."
+      ]
     }
   ]
 }

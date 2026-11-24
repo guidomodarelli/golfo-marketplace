@@ -831,8 +831,15 @@ EOF
         *)
           skill_name="${relative##*/}"
           skill_name="${skill_name%.md}"
-          cmp -s ".agents/$relative" "$template"
-          cmp -s ".claude/$relative" "$template"
+          if [[ "$relative" == agents/* ]] && grep -qE '^(access|model-tier):' "$template"; then
+            # A subagent with portable metadata gets a rendered view per provider, not a copy
+            # (agent-ready-packs.bats checks the rendering).
+            grep -qx "name: $skill_name" ".agents/$relative"
+            grep -qx "name: $skill_name" ".claude/$relative"
+          else
+            cmp -s ".agents/$relative" "$template"
+            cmp -s ".claude/$relative" "$template"
+          fi
           ;;
       esac
       case "$relative" in
@@ -2699,6 +2706,8 @@ EOF
   cp "$skill_dir/scripts/agent-ready-state.py" "$source_dir/scripts/agent-ready-state.py"
   cp "$skill_dir/scripts/"agent_ready_*.py "$source_dir/scripts/"
   cp -R "$skill_dir/assets/config" "$source_dir/assets/config"
+  # The subagents of the content declare access and model-tier, rendered from its agentMetadata.
+  cp "$skill_dir/assets/providers.json" "$source_dir/assets/providers.json"
   cp "$skill_dir/scripts/render-instruction-template.sh" "$source_dir/scripts/render-instruction-template.sh"
   cp "$skill_dir/scripts/merge-managed-settings.py" "$source_dir/scripts/merge-managed-settings.py"
   cp "$skill_dir/scripts/run-detached.py" "$source_dir/scripts/run-detached.py"
@@ -2822,6 +2831,8 @@ EOF
   cp "$skill_dir/scripts/agent-ready-state.py" "$source_dir/scripts/agent-ready-state.py"
   cp "$skill_dir/scripts/"agent_ready_*.py "$source_dir/scripts/"
   cp -R "$skill_dir/assets/config" "$source_dir/assets/config"
+  # The subagents of the content declare access and model-tier, rendered from its agentMetadata.
+  cp "$skill_dir/assets/providers.json" "$source_dir/assets/providers.json"
   cp "$skill_dir/scripts/merge-managed-settings.py" "$source_dir/scripts/merge-managed-settings.py"
   # The go stack publishes a rule, so the sync renders its Claude view.
   cp "$skill_dir/scripts/render-instruction-template.sh" "$source_dir/scripts/render-instruction-template.sh"
