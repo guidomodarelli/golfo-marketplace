@@ -304,8 +304,6 @@ project_asset_tree() {
         agents/*.md)
           sync_file "$file" "$SHARED_DIR/$relative"
           project_codex_agent "$BOOTSTRAP_SCRIPTS_DIRECTORY/render-codex-agent.py" "$file" "${relative##*/}"
-          skill_name="${relative##*/}"
-          remove_claude_skill_view "${skill_name%.md}"
           ;;
         commands/*.md|skills/*.md)
           sync_file "$file" "$SHARED_DIR/$relative"

@@ -9,6 +9,7 @@ same module (render-codex-agent.py), so both write the same bytes.
 
 import json
 import os
+import re
 
 from agent_ready_common import ProfileError
 
@@ -17,6 +18,8 @@ AGENTS_TEMPLATE_DIRECTORY = "agents"
 CODEX_AGENTS_DIRECTORY = ".codex/agents"
 CODEX_AGENT_SUFFIX = ".toml"
 MARKDOWN_SUFFIX = ".md"
+# Where a YAML comment starts after a plain scalar: a # preceded by whitespace.
+YAML_COMMENT = re.compile(r"\s+#")
 FRONTMATTER_FENCE = "---"
 # Frontmatter keys Codex requires; the body becomes developer_instructions.
 REQUIRED_FRONTMATTER_KEYS = ("name", "description")
@@ -37,19 +40,45 @@ def codex_agent_destination(relative_path):
     return f"{CODEX_AGENTS_DIRECTORY}/{name}{CODEX_AGENT_SUFFIX}"
 
 
+def closing_quote_index(value):
+    """Index of the quote that closes the quoted scalar ``value`` starts with, or -1 when it is not closed.
+
+    In a 'single-quoted' scalar '' is a quote; in a "double-quoted" one a backslash escapes the next character.
+    """
+    quote = value[0]
+    index = 1
+    while index < len(value):
+        character = value[index]
+        if quote == '"' and character == "\\":
+            index += 2
+            continue
+        if character == quote:
+            if quote == "'" and value[index + 1:index + 2] == "'":
+                index += 2
+                continue
+            return index
+        index += 1
+    return -1
+
+
 def unquoted_scalar(value, key, origin):
-    """The value of a one-line YAML scalar: plain, 'single-quoted' or "double-quoted"."""
+    """The value of a one-line YAML scalar: plain, 'single-quoted' or "double-quoted", without a trailing # comment."""
     value = value.strip()
-    if len(value) >= 2 and value[0] == value[-1] == "'":
-        return value[1:-1].replace("''", "'")
-    if len(value) >= 2 and value[0] == value[-1] == '"':
-        try:
-            return json.loads(value)
-        except ValueError as caught_error:
-            raise ProfileError(f"{origin}: the frontmatter key '{key}' is not a valid double-quoted string") from caught_error
     if value[:1] in ("|", ">"):
         raise ProfileError(f"{origin}: the frontmatter key '{key}' must be a one-line string to become a Codex subagent")
-    return value
+    if value[:1] not in ("'", '"'):
+        # A plain scalar ends where a comment starts: a # after whitespace.
+        return YAML_COMMENT.split(value, 1)[0].strip()
+    closing = closing_quote_index(value)
+    rest = value[closing + 1:].strip() if closing > 0 else None
+    if rest is None or (rest and not rest.startswith("#")):
+        raise ProfileError(f"{origin}: the frontmatter key '{key}' is not a valid quoted string")
+    if value[0] == "'":
+        return value[1:closing].replace("''", "'")
+    try:
+        return json.loads(value[:closing + 1])
+    except ValueError as caught_error:
+        raise ProfileError(f"{origin}: the frontmatter key '{key}' is not a valid double-quoted string") from caught_error
 
 
 def split_subagent(text, origin):

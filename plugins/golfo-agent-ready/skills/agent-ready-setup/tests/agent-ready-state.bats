@@ -573,6 +573,22 @@ EOF
   [ "$(codex_agent_value .codex/agents/tricky-reviewer.toml developer_instructions)" = "$(subagent_body .agents/agents/tricky-reviewer.md)" ]
 }
 
+@test "a trailing YAML comment in the frontmatter is not part of the name or the description" {
+  copy_skill
+  cat > "$content_dir/stacks/node/agents/commented-reviewer.md" <<'EOF'
+---
+name: commented-reviewer # must match the file name
+description: 'Revisa lo que haga falta' # quoted, then a comment
+---
+Body.
+EOF
+
+  run_bootstrap_with "$source_copy" --stack node
+  [ "$status" -eq 0 ]
+  [ "$(codex_agent_value .codex/agents/commented-reviewer.toml name)" = "commented-reviewer" ]
+  [ "$(codex_agent_value .codex/agents/commented-reviewer.toml description)" = "Revisa lo que haga falta" ]
+}
+
 @test "a subagent whose name is not its file name stops the apply before writing" {
   copy_skill
   printf '%s\n' '---' 'name: other-name' 'description: Revisa.' '---' 'Body.' > "$content_dir/stacks/node/agents/misnamed.md"

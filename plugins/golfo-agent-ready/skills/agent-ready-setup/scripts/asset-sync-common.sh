@@ -483,9 +483,10 @@ project_codex_agent() {
   rm -f -- "$rendered"
 }
 
-# Claude registers agents and commands natively from .claude/agents and
-# .claude/commands. A .claude/skills view of their Codex adapter would register
-# the same workflow twice. The name belongs to agent-ready-setup, so the view is
+# Claude registers commands natively from .claude/commands. A .claude/skills
+# view of their Codex adapter would register the same workflow twice. A
+# subagent has no adapter, so a .claude/skills view of its name belongs to a
+# skill and stays. The name belongs to agent-ready-setup, so the view is
 # removed even when it was edited; only non-regular paths are left for manual
 # review. Consumers define record_removed.
 remove_claude_skill_view() {
@@ -495,7 +496,7 @@ remove_claude_skill_view() {
 
   [[ -e "$view_path" || -L "$view_path" ]] || return 0
   if [[ ! -L "$view_path" && ! -f "$view_path" ]]; then
-    record_conflict "$view_path duplicates Claude agent or command $skill_name but is not a regular file; preserved"
+    record_conflict "$view_path duplicates Claude command $skill_name but is not a regular file; preserved"
     return 0
   fi
   if ! rm -f -- "$view_path"; then
