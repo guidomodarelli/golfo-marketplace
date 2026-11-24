@@ -1378,6 +1378,8 @@ frontmatter_line() {
   copy_skill
   printf '%s\n' '---' 'name: deep-reviewer' 'description: Revisa a fondo.' 'access: full' 'model-tier: deep' '---' 'Body.' \
     > "$content_dir/stacks/node/agents/deep-reviewer.md"
+  printf '%s\n' '---' 'name: plain-reviewer' 'description: Revisa sin metadatos.' '---' 'Body.' \
+    > "$content_dir/stacks/node/agents/plain-reviewer.md"
   run_bootstrap_with "$source_copy" --stack node
   [ "$status" -eq 0 ]
   [ "$(frontmatter_line .claude/agents/deep-reviewer.md model)" = 'model: opus' ]
@@ -1385,9 +1387,10 @@ frontmatter_line() {
   [ "$(frontmatter_line .agents/agents/deep-reviewer.md model)" = 'model: pro' ]
   [[ "$(frontmatter_line .agents/agents/deep-reviewer.md tools)" == *'"run_command"'* ]]
   [ "$(codex_agent_value .codex/agents/deep-reviewer.toml model_reasoning_effort)" = high ]
-  # The subagents of the pack declare nothing: copy, view and TOML of part A.
-  cmp -s .agents/agents/node-perf-analyzer.md "$content_dir/stacks/node/agents/node-perf-analyzer.md"
-  [ -L .claude/agents/node-perf-analyzer.md ] || [ .claude/agents/node-perf-analyzer.md -ef .agents/agents/node-perf-analyzer.md ]
+  # A subagent that declares nothing: copy, view and TOML of part A.
+  cmp -s .agents/agents/plain-reviewer.md "$content_dir/stacks/node/agents/plain-reviewer.md"
+  [ -L .claude/agents/plain-reviewer.md ] || [ .claude/agents/plain-reviewer.md -ef .agents/agents/plain-reviewer.md ]
+  [ -f .codex/agents/plain-reviewer.toml ]
 }
 
 @test "an access or model-tier outside its values stops the apply before writing, naming the file" {

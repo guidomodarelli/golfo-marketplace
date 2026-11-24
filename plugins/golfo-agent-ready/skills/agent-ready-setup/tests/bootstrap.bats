@@ -477,7 +477,9 @@ PY
   [ -f .agents/skills/react-act-test-fixes/SKILL.md ]
   assert_claude_view .claude/skills/react-act-test-fixes/SKILL.md "../../../.agents/skills/react-act-test-fixes/SKILL.md"
   [ -f .agents/skills/react-act-test-fixes/evals/eval-config.json ]
-  assert_claude_view .claude/agents/react-security-scanner.md
+  # The scanner declares model-tier deep: Claude gets its own rendered file, not a view.
+  [ -f .claude/agents/react-security-scanner.md ]
+  grep -qx 'model: opus' .claude/agents/react-security-scanner.md
   assert_claude_view .claude/commands/react-review-pr.md
   [ -f .agents/agents/react-security-scanner.md ]
   [ -f .agents/commands/react-review-pr.md ]
@@ -885,15 +887,20 @@ EOF
 
   for workflow in agents/a11y-reviewer agents/lint-reviewer agents/react-perf-analyzer agents/react-security-scanner agents/test-reviewer commands/react-review-pr; do
     workflow_name="${workflow#*/}"
-    assert_claude_view ".claude/$workflow.md"
     [ ! -e ".claude/skills/$workflow_name" ]
     case "$workflow" in
       agents/*)
+        # The review agents declare model-tier (and some access): Claude gets its own rendered file.
+        grep -qx "name: $workflow_name" ".claude/$workflow.md"
+        grep -q '^model: ' ".claude/$workflow.md"
         python3 -c 'import sys, tomllib; assert tomllib.load(open(sys.argv[1], "rb"))["name"] == sys.argv[2]' \
           ".codex/agents/$workflow_name.toml" "$workflow_name"
         [ ! -e ".agents/skills/$workflow_name" ]
         ;;
-      *) [ -f ".agents/skills/$workflow_name/SKILL.md" ] ;;
+      *)
+        assert_claude_view ".claude/$workflow.md"
+        [ -f ".agents/skills/$workflow_name/SKILL.md" ]
+        ;;
     esac
   done
   # The sync renders the same bytes the apply wrote: the plan has nothing to update.
@@ -948,7 +955,8 @@ EOF
   run_bootstrap react
   [ "$status" -eq 0 ]
   assert_claude_view .claude/skills/test-reviewer/SKILL.md
-  assert_claude_view .claude/agents/test-reviewer.md
+  # The subagent declares access read-only: Claude gets its own rendered file, not a view.
+  grep -qx 'tools: Read, Grep, Glob' .claude/agents/test-reviewer.md
   [ -f .codex/agents/test-reviewer.toml ]
 
   run_marketplace_sync "$source_dir/assets/common/hooks/sync-marketplace.sh" "$source_dir"

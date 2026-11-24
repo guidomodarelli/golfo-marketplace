@@ -27,7 +27,7 @@
         },
         {
           "type": "contains",
-          "value": "****3344",
+          "value": "\\*\\*\\*\\*3344",
           "description": "En el cuerpo nombra la cuenta por sus últimos cuatro dígitos"
         }
       ]
