@@ -67,6 +67,26 @@ estos límites:
 - Las rules de un pack entran en la lista del bloque gestionado de `AGENTS.md`, como las de cualquier
   profile. Un pack no cambia el template ni las instrucciones propias del proyecto.
 
+**Cómo declarar un subagente.** `agents/<nombre>.md` lleva en su frontmatter `name` (igual al nombre del
+archivo) y `description`, que Codex exige, y el cuerpo con sus instrucciones. Lo que lo distingue de una
+skill (contexto aislado, herramientas restringidas, otro modelo) se declara con dos claves portables, porque
+cada provider nombra sus herramientas y modelos distinto:
+
+| Clave | Valores | Claude Code | Antigravity | Codex |
+|---|---|---|---|---|
+| `access` | `read-only` | `tools: Read, Grep, Glob` | `tools` de lectura (`view_file`, `list_dir`, `find_by_name`, `grep_search`) | `[features] shell_tool = false` |
+| | `edit` | `tools: Read, Grep, Glob, Edit, Write` | lectura y escritura (`write_to_file`, `replace_file_content`, `multi_replace_file_content`) | `[features] shell_tool = false` |
+| | `full` | todas (sin `tools`) | escritura y `run_command` | sin restricción |
+| `model-tier` | `fast` / `balanced` / `deep` | `model: haiku` / `sonnet` / `opus` | `model: flash` / `inherit` / `pro` | `model_reasoning_effort = "low"` / `"medium"` / `"high"` |
+
+Con alguna de las dos, el motor renderiza una vista por provider: `.agents/agents/<nombre>.md` (la que lee
+Antigravity) con sus `tools` y `model`, `.claude/agents/<nombre>.md` como archivo propio en lugar de una vista
+de la anterior, y `.codex/agents/<nombre>.toml`. El mapeo vive en `assets/providers.json`
+(`agentMetadata`), no en el código. Sin ninguna de las dos, el subagente se proyecta como siempre: copia,
+vista de Claude y TOML. Un valor fuera de su lista frena el apply antes de escribir, nombrando el archivo, y
+`plan` avisa lo que un provider no puede cumplir: Codex mantiene el sandbox de la sesión que arranca al
+subagente, así que uno `read-only` puede igual editar archivos.
+
 **Stacks de un pack.** Un profile `kind: stack` de un pack es un stack primario como los del contenido,
 para una tecnología que el contenido no tiene (un lenguaje, un DSL propio). `assets/examples/elixir-stack-pack/`
 publica `beam/elixir`:

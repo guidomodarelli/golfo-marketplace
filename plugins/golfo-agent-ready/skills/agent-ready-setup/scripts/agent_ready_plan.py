@@ -294,6 +294,7 @@ def compute_plan(project_root, skill_dir, catalog, profile_names):
             "baseSha256": lock_entry.get("sha256") if lock_entry else None,
             "local": local,
             "workspace": desired_entry.get("workspace"),
+            "agentMetadata": desired_entry.get("agentMetadata"),
         })
     root_blocks = desired_blocks(skill_dir, catalog, resolved, assets)
     blocks = {**root_blocks, **workspace_file_blocks(skill_dir, catalog, workspaces, assets, root_blocks, workspace_rules)}

@@ -12,6 +12,18 @@
         "commands": { "support": "native", "mechanism": ".claude/commands slash commands" },
         "hooks": { "support": "native", "mechanism": ".claude/settings.json hooks" },
         "mcp": { "support": "native", "mechanism": "project MCP registration" }
+      },
+      "agentMetadata": {
+        "access": {
+          "read-only": { "tools": "Read, Grep, Glob" },
+          "edit": { "tools": "Read, Grep, Glob, Edit, Write" },
+          "full": {}
+        },
+        "model-tier": {
+          "fast": { "model": "haiku" },
+          "balanced": { "model": "sonnet" },
+          "deep": { "model": "opus" }
+        }
       }
     },
     "codex": {
@@ -21,10 +33,25 @@
         "instructions": { "support": "native", "mechanism": "AGENTS.md, including nested AGENTS.md files" },
         "rules": { "support": "adapted", "mechanism": "listed in the AGENTS.md managed block; Codex reads each file" },
         "skills": { "support": "native", "mechanism": ".agents/skills" },
-        "agents": { "support": "native", "mechanism": ".codex/agents/*.toml custom agents rendered from .agents/agents" },
+        "agents": { "support": "native", "mechanism": ".codex/agents/*.toml custom agents rendered from .agents/agents, with access and model-tier" },
         "commands": { "support": "adapted", "mechanism": "skill adapter in .agents/skills; not a slash command" },
         "hooks": { "support": "native", "mechanism": ".codex/hooks.json" },
         "mcp": { "support": "native", "mechanism": ".codex/.mcp.json when a profile publishes mcp.json" }
+      },
+      "agentMetadata": {
+        "access": {
+          "read-only": {
+            "features": { "shell_tool": false },
+            "limitation": "Codex keeps the sandbox of the session that starts the subagent, so a read-only subagent can still edit files"
+          },
+          "edit": { "features": { "shell_tool": false } },
+          "full": {}
+        },
+        "model-tier": {
+          "fast": { "model_reasoning_effort": "low" },
+          "balanced": { "model_reasoning_effort": "medium" },
+          "deep": { "model_reasoning_effort": "high" }
+        }
       }
     },
     "antigravity": {
@@ -34,10 +61,22 @@
         "instructions": { "support": "adapted", "mechanism": "root AGENTS.md only; the managed index lists the nested AGENTS.md files" },
         "rules": { "support": "native", "mechanism": ".agents/rules with a trigger in the frontmatter; nested folders through .agents/rules.json" },
         "skills": { "support": "native", "mechanism": ".agents/skills" },
-        "agents": { "support": "native", "mechanism": ".agents/agents subagents" },
+        "agents": { "support": "native", "mechanism": ".agents/agents subagents, with tools and model rendered from access and model-tier" },
         "commands": { "support": "adapted", "mechanism": "skill adapter in .agents/skills; not a slash command" },
         "hooks": { "support": "adapted", "mechanism": ".agents/hooks.json, the agent-ready hook name merged: sync at SessionStart and the consistency review after an edit" },
         "mcp": { "support": "native", "mechanism": ".agents/mcp_config.json for the pack and browser servers; remote ones with serverUrl" }
+      },
+      "agentMetadata": {
+        "access": {
+          "read-only": { "tools": ["view_file", "list_dir", "find_by_name", "grep_search"] },
+          "edit": { "tools": ["view_file", "list_dir", "find_by_name", "grep_search", "write_to_file", "replace_file_content", "multi_replace_file_content"] },
+          "full": { "tools": ["view_file", "list_dir", "find_by_name", "grep_search", "write_to_file", "replace_file_content", "multi_replace_file_content", "run_command"] }
+        },
+        "model-tier": {
+          "fast": { "model": "flash" },
+          "balanced": { "model": "inherit" },
+          "deep": { "model": "pro" }
+        }
       }
     }
   }
