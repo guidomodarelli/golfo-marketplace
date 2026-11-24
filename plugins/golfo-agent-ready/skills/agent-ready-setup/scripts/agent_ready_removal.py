@@ -64,8 +64,6 @@ CLI_RELATIVE_PATH = os.path.join("scripts", "agent-ready")
 HARD_LINK_VIEWS_MANIFEST = ".claude/.agent-ready-hard-link-views"
 GIT_HOOK_SECTION = "hook.agent-ready-relink"
 GIT_HOOK_COMMAND = "test ! -f .agents/hooks/relink-hard-link-views.sh || sh .agents/hooks/relink-hard-link-views.sh"
-# The command earlier versions registered, which failed on a branch without the relink script.
-LEGACY_GIT_HOOK_COMMAND = "sh .agents/hooks/relink-hard-link-views.sh"
 GIT_HOOK_FILE_NAME = "post-index-change"
 GIT_HOOK_MARKER = "# agent-ready-setup: relinks .claude hard-link views detached by git."
 # Same place as review-cache.py, which writes it: the info directory every worktree shares.
@@ -468,7 +466,7 @@ def local_removal_entries(project_root):
     """Git hooks and files of agent-ready-setup that the lockfile does not list."""
     entries = []
     # Only the repository config: the setup registers the hook there, and removing it never touches the user's.
-    if run_quiet(["git", "config", "--local", "--get", f"{GIT_HOOK_SECTION}.command"], cwd=project_root) in (GIT_HOOK_COMMAND, LEGACY_GIT_HOOK_COMMAND):
+    if run_quiet(["git", "config", "--local", "--get", f"{GIT_HOOK_SECTION}.command"], cwd=project_root) == GIT_HOOK_COMMAND:
         entries.append(removal_entry(f"git config {GIT_HOOK_SECTION}", REMOVAL_REMOVE,
                                      "relinks .claude hard-link views after git operations", "git-config"))
     hook = git_path(project_root, f"hooks/{GIT_HOOK_FILE_NAME}")
