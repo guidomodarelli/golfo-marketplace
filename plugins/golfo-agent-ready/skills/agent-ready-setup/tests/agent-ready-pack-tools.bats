@@ -859,4 +859,23 @@ PY
   run_cli plan
   [ "$status" -eq 0 ]
   [[ "$output" != *"names .agents/agents/acme-auditor.md"* ]]
+
+  # A skill of the project that agent-ready never applied is kept (a conflict), so its references are the
+  # ones that count.
+  run_cli apply
+  [ "$status" -eq 0 ]
+  rm .agents/agents/acme-auditor.md
+  python3 - <<'PY'
+import json
+path = ".agents/agent-ready.lock.json"
+lock = json.load(open(path, encoding="utf-8"))
+lock["assets"].pop(".agents/skills/acme-orchestrate/SKILL.md")
+json.dump(lock, open(path, "w", encoding="utf-8"), indent=2)
+PY
+  printf '%s
+' '---' 'name: acme-orchestrate' 'description: La del proyecto, sin roster.' '---' 'Own.'     > .agents/skills/acme-orchestrate/SKILL.md
+  run_cli plan
+  printf '%s
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"names .agents/agents/acme-auditor.md"* ]]
 }

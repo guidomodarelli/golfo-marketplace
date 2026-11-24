@@ -9,7 +9,8 @@ dispatches to nothing, so agent-ready plan, conflicts, check and conflicts --pac
 import os
 import re
 
-from agent_ready_actions import ACTION_RETIRE
+from agent_ready_actions import ACTION_CONFLICT, ACTION_RETIRE
+from agent_ready_common import is_link
 
 SHARED_PREFIX = ".agents/"
 AGENTS_PREFIX = ".agents/agents/"
@@ -34,14 +35,17 @@ def installed_agents(project_root, plan):
 
 def missing_agents(project_root, plan):
     """[{file, profile, agent}] of each subagent a managed file of .agents/ names and the selection does not
-    install, in the order of the plan."""
+    install, in the order of the plan. A conflicted file is read from the project, which keeps it."""
     installed = installed_agents(project_root, plan)
     missing = []
     for entry in plan["entries"]:
         destination = entry["destination"]
         if not entry["sha256"] or not destination.startswith(SHARED_PREFIX) or not destination.endswith(MARKDOWN_SUFFIX):
             continue
-        with open(entry["sourcePath"], encoding="utf-8", errors="replace") as source_file:
+        # A conflicted entry keeps the project's file, so that is the one whose references count.
+        local_path = os.path.join(project_root, *destination.split("/"))
+        kept_local = entry["action"] == ACTION_CONFLICT and os.path.isfile(local_path) and not is_link(local_path)
+        with open(local_path if kept_local else entry["sourcePath"], encoding="utf-8", errors="replace") as source_file:
             text = source_file.read()
         for agent in sorted(set(AGENT_REFERENCE.findall(text)) - installed):
             missing.append({"file": destination, "profile": entry["profile"], "agent": agent})
