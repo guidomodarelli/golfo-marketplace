@@ -52,10 +52,12 @@ def split_frontmatter(text):
 
 
 def scalar(value):
-    """A one-line YAML value without its quotes or a trailing comment."""
+    """A one-line YAML value without its quotes or a trailing comment (after the closing quote too)."""
     value = value.strip()
-    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
-        return value[1:-1]
+    if value[:1] in ("'", '"'):
+        closing = value.find(value[0], 1)
+        if closing > 0:
+            return value[1:closing]
     return re.split(r"\s+#", value, 1)[0].strip()
 
 
@@ -181,7 +183,10 @@ def sync_rules_index(project_root, providers, previous):
             os.unlink(path)
             return {"removed": True}, None
         return {}, None
-    if current is not None and not managed and current != desired:
+    if current is not None and not managed:
+        # The project's own, even when it already says the same: it is never adopted, so never deleted.
+        if current == desired:
+            return {}, None
         return {"conflict": f"{RULES_INDEX_RELATIVE_PATH} belongs to the project, so it was not changed; Antigravity "
                             f"reads the rules of {', '.join(directories)} only if it lists them"}, None
     if current != desired:

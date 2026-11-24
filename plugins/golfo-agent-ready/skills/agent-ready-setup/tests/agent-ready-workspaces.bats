@@ -178,7 +178,7 @@ lock_value() {
   [ "$status" -eq 0 ]
   rule=.agents/rules/workspaces/apps/web/react-style.md
   [ -f "$rule" ]
-  [ "$(sed -n '1,3p' "$rule" | tr '\n' '|')" = '---|paths:|  - "apps/web/**"|' ]
+  [ "$(sed -n '1,5p' "$rule" | tr '\n' '|')" = '---|trigger: glob|globs: "apps/web/**"|paths:|  - "apps/web/**"|' ]
   [ -e .claude/rules/workspaces/apps/web/react-style.md ]
   # A rule with a frontmatter keeps it and gains paths:.
   grep -qx '  testRunner: vitest' .agents/rules/workspaces/apps/web/react-testing.md
@@ -489,4 +489,25 @@ lock_value() {
   [ "$status" -eq 0 ]
   [[ "$stderr" == *".agents/rules.json belongs to the project, so it was not changed"* ]]
   grep -Fq '../shared-rules' .agents/rules.json
+}
+
+@test "Antigravity: a project rules.json equal to the generated one is never adopted, and a quoted trigger with a comment is valid" {
+  write_manifest '{"profiles": ["node"], "providers": ["claude", "antigravity"], "workspaces": [{"path": "apps/web", "profiles": ["react"]}]}'
+  mkdir -p .agents
+  printf '%s\n' '{' '  "entries": [' '    {' '      "path": ".agents/rules/workspaces/apps/web"' '    }' '  ]' '}' > .agents/rules.json
+  cp .agents/rules.json "$test_root/own-rules.json"
+  mkdir -p .agents/rules
+  printf '%s\n' '---' 'trigger: "always_on" # every file' '---' '# Quoted' > .agents/rules/quoted.md
+  run_cli apply
+  [ "$status" -eq 0 ]
+  cmp -s .agents/rules.json "$test_root/own-rules.json"
+  [ "$(lock_value '"rulesIndex" in lock')" = "False" ]
+  run_cli plan
+  [[ "$output" != *"Antigravity drops .agents/rules/quoted.md"* ]]
+
+  # Turning Antigravity off leaves the project's file where it is.
+  write_manifest '{"profiles": ["node"], "providers": ["claude"], "workspaces": [{"path": "apps/web", "profiles": ["react"]}]}'
+  run_cli apply
+  [ "$status" -eq 0 ]
+  cmp -s .agents/rules.json "$test_root/own-rules.json"
 }
