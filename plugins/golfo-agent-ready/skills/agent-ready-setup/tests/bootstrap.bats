@@ -3333,6 +3333,15 @@ provider_cli_path() {
 
   [ "$status" -eq 0 ]
   [ "$output" = "codex" ]
+
+  # agy alone is Antigravity's CLI.
+  printf '#!/bin/bash\nexit 0\n' > "$fake_bin/agy"
+  chmod +x "$fake_bin/agy"
+  run env -u AGENT_READY_SETUP_ACTIVE_PROVIDER -u LOCALAPPDATA HERMES_HOME="$hermes_home" \
+    PATH="$(provider_cli_path agy-only agy)" \
+    bash "$skill_dir/scripts/resolve-provider.sh" --skill-dir "$hermes_skill_dir"
+  [ "$status" -eq 0 ]
+  [ "$output" = "antigravity" ]
 }
 
 # bats test_tags=area:cli
@@ -3346,7 +3355,7 @@ provider_cli_path() {
     bash "$skill_dir/scripts/resolve-provider.sh" --skill-dir "$hermes_skill_dir"
 
   [ "$status" -ne 0 ]
-  [[ "$output" == *"belongs to Hermes and both claude and codex are in PATH"* ]]
+  [[ "$output" == *"belongs to Hermes and several of claude, codex and agy are in PATH"* ]]
 }
 
 # bats test_tags=area:cli
@@ -3358,7 +3367,7 @@ provider_cli_path() {
     bash "$skill_dir/scripts/resolve-provider.sh" --skill-dir "$hermes_skill_dir"
 
   [ "$status" -ne 0 ]
-  [[ "$output" == *"belongs to Hermes, which is not a target provider, and neither claude nor codex is in PATH"* ]]
+  [[ "$output" == *"belongs to Hermes, which is not a target provider, and none of claude, codex or agy is in PATH"* ]]
 }
 
 # bats test_tags=area:cli
