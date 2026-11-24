@@ -95,7 +95,7 @@ api-gateway     3.14.2   ✓ hecho
 
 ## 3. Estados, tablas y listas
 
-Cinco estados, siempre con símbolo y palabra:
+Cinco estados, siempre con símbolo y palabra. Pintar juntos el símbolo y el texto del estado (`✓ Hecho` en verde); mostrar duración y otros metadatos de esa línea en un gris secundario (`· 1.9s`), sin extender el color semántico a toda la línea. En modo plano, conservar palabras y duración:
 
 | Estado | Glifo | Alternativa ASCII | Palabra | Color |
 |---|---|---|---|---|
@@ -109,7 +109,7 @@ Glifos y colores pueden cambiar por proyecto, siempre que los cinco sigan distin
 
 ### Un color por papel
 
-La salida de un CLI, y sobre todo su `--help`, mezcla papeles distintos. Cada papel lleva su color y dos papeles no comparten color. Lo que se suele romper es usar el color de la marca para todo: si títulos de sección, programa, subcomandos y flags salen del mismo tono, la ayuda se lee como un bloque monocromo y nada se encuentra de un vistazo.
+Diferenciar marca, texto y estados en vez de teñir todo del color de marca. Elegir un acento y reutilizarlo entre lanzador, selector y resumen; en `[1/42] Aplicación …` pintar solo el contador. Separar título, comando y flags en la ayuda con una combinación de acento, negrita, contraste y alineación. No asignar un matiz por opción del selector: el mismo acento indica foco sin importar la opción.
 
 | Papel | Dónde aparece | Color |
 |---|---|---|
@@ -124,7 +124,7 @@ La salida de un CLI, y sobre todo su `--help`, mezcla papeles distintos. Cada pa
 
 - **Tonos medios**, que se lean sobre fondo oscuro y claro: el Terminal de macOS arranca con fondo claro, y un amarillo o un cian muy claros ahí desaparecen. Renderizar la salida sobre los dos fondos antes de darla por buena.
 - Los temas de los kits traen pocos colores de ejemplo (`accent`, `muted` y los estados): al fijar el carácter, sumar los papeles que use la salida en vez de repartir todo en `accent`.
-- Fijar la regla con un test: los colores de los papeles de la paleta son todos distintos.
+- En PTY, verificar que contador, foco y títulos usen el mismo acento, que el texto común siga el primer plano del terminal y que el significado de los estados no dependa solo del color.
 
 - **Tablas:** alinear por ancho visible, con los escapes ya quitados. Números y duraciones a la derecha. Títulos en negrita o atenuados, sin grilla completa.
 - **Listas:** la jerarquía va con sangría, no solo con color. Viñetas de una celda.
