@@ -12,6 +12,7 @@ import agent_ready_blocks as managed_blocks
 import agent_ready_conflicts as conflicts_review
 import agent_ready_pack_mcp as pack_mcp
 import agent_ready_pack_tools as pack_tools
+import agent_ready_agent_metadata as agent_metadata
 import agent_ready_rule_triggers as rule_triggers
 import agent_ready_parity as parity
 import agent_ready_repo_facts as repo_facts
@@ -254,6 +255,11 @@ def parity_report(project_root, skill_dir, plan, configuration, with_user=True):
         report["hookDifferences"] = parity.hook_differences(project_root, skill_dir, with_user, hook_providers)
     if configuration.value(PROVIDER_PARITY_ENABLED_KEY) and parity.PROVIDER_ANTIGRAVITY in providers:
         report["antigravityDropped"] = antigravity_dropped_rules(project_root, plan)
+    if configuration.value(PROVIDER_PARITY_ENABLED_KEY):
+        report["agentLimitations"] = [
+            {"agent": entry["destination"], "provider": provider, "note": note}
+            for entry in plan["entries"] if entry.get("agentMetadata")
+            for provider, note in agent_metadata.limitations(skill_dir, entry["agentMetadata"]) if provider in providers]
     if configuration.value(ENVIRONMENT_CONFLICTS_ENABLED_KEY):
         report["environment"] = parity.environment_variables(plan.get("packToolDeclarations", []), project_root)
     if configuration.value(CI_JOB_CONFLICTS_ENABLED_KEY):
@@ -350,6 +356,8 @@ def parity_report_lines(report):
     if views:
         lines.append("Providers: " + "; ".join(provider_view_text(provider, views[provider])
                                                for provider in PROVIDER_VIEW_ORDER if provider in views))
+    for limitation in report.get("agentLimitations", []):
+        lines.append(f"  ~ {limitation['agent']}: {limitation['note']} ({limitation['provider']})")
     for rule in report.get("antigravityDropped", []):
         lines.append(f"  ~ Antigravity drops {rule['path']} ({rule['profile']}): {rule['problem']}; start it with a "
                      f"frontmatter with trigger: always_on, or trigger: glob and globs: for some files")

@@ -7,6 +7,7 @@ import os
 import shutil
 import tempfile
 
+import agent_ready_agent_metadata as agent_metadata
 import agent_ready_blocks as managed_blocks
 import agent_ready_codex_agents as codex_agents
 import agent_ready_nested as nested
@@ -76,21 +77,47 @@ def destinations_for_template(relative_path, is_stack_root):
 CODEX_AGENTS_CACHE = "codex-agents"
 
 
-def rendered_destinations(relative_path, source_path):
-    """[(destination, rendered path, sha256)] of the files a template produces with other bytes than its own.
+AGENT_VIEWS_CACHE = "agent-views"
+# The origin of a rendered view names the view after the template, so it is never taken for a .claude
+# view of the canonical file (agent_ready_layout.claude_view_of).
+RENDERED_VIEW_SEPARATOR = "#"
 
-    A subagent (agents/<name>.md) produces its native Codex subagent, .codex/agents/<name>.toml
-    (agent_ready_codex_agents). The text is kept in the per-user cache by its sha256, so the plan and
-    the projection compare the same bytes.
-    """
-    if not codex_agents.is_subagent_template(relative_path):
-        return []
-    text = codex_agents.render_codex_agent_file(source_path, os.path.basename(relative_path))
+
+def cached_text(cache, suffix, text):
+    """(path, sha256) of ``text`` kept in the per-user cache by its sha256."""
     sha256 = sha256_of_text(text)
-    rendered_path = skill_cache_directory(CODEX_AGENTS_CACHE, sha256 + codex_agents.CODEX_AGENT_SUFFIX)
+    rendered_path = skill_cache_directory(cache, sha256 + suffix)
     if not os.path.isfile(rendered_path):
         write_text_atomically(rendered_path, text)
-    return [(codex_agents.codex_agent_destination(relative_path), rendered_path, sha256)]
+    return rendered_path, sha256
+
+
+def rendered_destinations(relative_path, source_path, skill_dir):
+    """([(destination, rendered path, sha256, view)], declared metadata) of the files a template produces
+    with other bytes than its own, and the access and model-tier a subagent declares.
+
+    A subagent (agents/<name>.md) produces its native Codex subagent, .codex/agents/<name>.toml
+    (agent_ready_codex_agents). With access or model-tier (agent_ready_agent_metadata) it also produces
+    the .agents/agents/<name>.md that Antigravity reads, in place of the copy, and the .claude/agents/<name>.md
+    of Claude Code, a file of its own instead of a view. ``view`` names the provider of a Markdown view
+    (None for the TOML). The text is kept in the per-user cache by its sha256, so the plan and the
+    projection compare the same bytes.
+    """
+    if not codex_agents.is_subagent_template(relative_path):
+        return [], {}
+    file_name = os.path.basename(relative_path)
+    toml = codex_agents.render_codex_agent_file(source_path, file_name, skill_dir)
+    outputs = [(codex_agents.codex_agent_destination(relative_path),
+                *cached_text(CODEX_AGENTS_CACHE, codex_agents.CODEX_AGENT_SUFFIX, toml), None)]
+    with open(source_path, encoding="utf-8", newline="") as template_file:
+        text = template_file.read()
+    declared = agent_metadata.metadata(text, f"agents/{file_name}")
+    for view, destination in ((agent_metadata.VIEW_ANTIGRAVITY, ".agents/" + relative_path),
+                              (agent_metadata.VIEW_CLAUDE, ".claude/" + relative_path)):
+        rendered = agent_metadata.render_view(skill_dir, text, f"agents/{file_name}", view)
+        if rendered is not None:
+            outputs.append((destination, *cached_text(AGENT_VIEWS_CACHE, codex_agents.MARKDOWN_SUFFIX, rendered), view))
+    return outputs, declared
 
 
 def template_origin(skill_dir, catalog, profile_name, absolute_path):
@@ -194,22 +221,29 @@ def desired_assets(skill_dir, catalog, resolved, workspace_rules=None, workspace
                 continue
             source_path, sha256 = shared_texts.get((profile_name, relative_path)) or (absolute_path, None)
             sha256 = sha256 or sha256_of_file(absolute_path)
-            outputs = [(destination, source_path, sha256)
-                       for destination in destinations_for_template(relative_path, is_stack_root)]
-            outputs += rendered_destinations(relative_path, source_path)
-            for destination, output_path, output_sha256 in outputs:
+            outputs = {destination: (source_path, sha256, None)
+                       for destination in destinations_for_template(relative_path, is_stack_root)}
+            # A rendered view replaces the copy of the same destination (.agents/agents/<name>.md).
+            rendered, declared = rendered_destinations(relative_path, source_path, skill_dir)
+            outputs.update({destination: (output_path, output_sha256, view)
+                            for destination, output_path, output_sha256, view in rendered})
+            for destination, (output_path, output_sha256, view) in outputs.items():
                 previous = destinations_by_folded_name.setdefault(destination.casefold(), destination)
                 if previous in assets and assets[previous]["sourcePath"] != output_path:
                     raise ProfileError(
                         f"profiles '{assets[previous]['profile']}' and '{profile_name}' both write {destination}; "
                         "nothing was written. Rename one of the assets"
                     )
+                origin = template_origin(skill_dir, catalog, profile_name, absolute_path)
                 assets[destination] = {
                     "profile": profile_name,
-                    "source": template_origin(skill_dir, catalog, profile_name, absolute_path),
+                    "source": f"{origin}{RENDERED_VIEW_SEPARATOR}{view}" if view else origin,
                     "sourcePath": output_path,
                     "sha256": output_sha256,
                 }
+                if declared and destination == ".agents/" + relative_path:
+                    # What plan compares with what each provider can enforce (agent_ready_agent_metadata).
+                    assets[destination]["agentMetadata"] = declared
     for tree_path, entry in sorted((workspace_rules or {}).items()):
         destination = ".agents/" + tree_path
         previous = destinations_by_folded_name.setdefault(destination.casefold(), destination)

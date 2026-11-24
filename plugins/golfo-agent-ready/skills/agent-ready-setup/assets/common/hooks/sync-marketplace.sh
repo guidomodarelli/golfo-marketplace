@@ -819,9 +819,7 @@ project_assets() {
         link_claude_asset "$relative_asset"
         ;;
       agents/*.md)
-        sync_file "$source_asset" "$SHARED_DIR/$relative_asset"
-        link_claude_asset "$relative_asset"
-        project_codex_agent "$skill_dir/scripts/render-codex-agent.py" "$source_asset" "${relative_asset##*/}"
+        project_agent_views "$skill_dir/scripts/render-codex-agent.py" "$source_asset" "$relative_asset"
         ;;
       commands/*.md|skills/*.md)
         sync_file "$source_asset" "$SHARED_DIR/$relative_asset"

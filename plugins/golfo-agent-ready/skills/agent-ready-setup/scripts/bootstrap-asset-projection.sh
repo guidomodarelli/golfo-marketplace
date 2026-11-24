@@ -302,8 +302,9 @@ project_asset_tree() {
           sync_file "$file" "$SHARED_DIR/$relative"
           ;;
         agents/*.md)
-          sync_file "$file" "$SHARED_DIR/$relative"
-          project_codex_agent "$BOOTSTRAP_SCRIPTS_DIRECTORY/render-codex-agent.py" "$file" "${relative##*/}"
+          # The Claude Code file is one of the views: no link below.
+          project_agent_views "$BOOTSTRAP_SCRIPTS_DIRECTORY/render-codex-agent.py" "$file" "$relative"
+          continue
           ;;
         commands/*.md|skills/*.md)
           sync_file "$file" "$SHARED_DIR/$relative"

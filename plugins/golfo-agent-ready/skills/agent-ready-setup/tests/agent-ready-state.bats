@@ -1323,3 +1323,118 @@ PY
   [ ! -e .claude/rules/learned/users ]
   ! grep -Fq 'learned/users' AGENTS.md
 }
+
+# The frontmatter line of a key, from a Markdown view.
+frontmatter_line() {
+  sed -n '2,/^---$/p' "$1" | grep -E "^$2:" || true
+}
+
+@test "access and model-tier of a subagent render the tools and the model of each provider" {
+  require_tomllib
+  copy_skill
+  printf '%s\n' '---' 'name: quick-reviewer' 'description: Revisa rápido.' 'access: read-only' 'model-tier: fast' '---' '# Quick' 'Review.' \
+    > "$content_dir/stacks/node/agents/quick-reviewer.md"
+
+  run_bootstrap_with "$source_copy" --stack node
+  [ "$status" -eq 0 ]
+  # Antigravity reads .agents/agents/ as it is: its tools and model, without the portable keys.
+  [ "$(frontmatter_line .agents/agents/quick-reviewer.md tools)" = 'tools: ["view_file", "list_dir", "find_by_name", "grep_search"]' ]
+  [ "$(frontmatter_line .agents/agents/quick-reviewer.md model)" = 'model: flash' ]
+  [ -z "$(frontmatter_line .agents/agents/quick-reviewer.md access)" ]
+  # Claude Code gets a file of its own, not a view of the Antigravity one.
+  [ ! -L .claude/agents/quick-reviewer.md ]
+  ! [ .claude/agents/quick-reviewer.md -ef .agents/agents/quick-reviewer.md ]
+  [ "$(frontmatter_line .claude/agents/quick-reviewer.md tools)" = 'tools: Read, Grep, Glob' ]
+  [ "$(frontmatter_line .claude/agents/quick-reviewer.md model)" = 'model: haiku' ]
+  grep -Fxq 'Review.' .claude/agents/quick-reviewer.md
+  [ "$(codex_agent_value .codex/agents/quick-reviewer.toml model_reasoning_effort)" = low ]
+  python3 -c 'import tomllib; assert tomllib.load(open(".codex/agents/quick-reviewer.toml", "rb"))["features"] == {"shell_tool": False}'
+
+  run_bootstrap_with "$source_copy" --plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Summary: no changes"* ]]
+  [[ "$output" == *"~ .agents/agents/quick-reviewer.md: Codex keeps the sandbox of the session that starts the subagent, so a read-only subagent can still edit files (codex)"* ]]
+
+  # Without metadata the subagent goes back to a copy and its Claude view, as any other.
+  printf '%s\n' '---' 'name: quick-reviewer' 'description: Revisa rápido.' '---' '# Quick' 'Review.' \
+    > "$content_dir/stacks/node/agents/quick-reviewer.md"
+  run_bootstrap_with "$source_copy"
+  [ "$status" -eq 0 ]
+  cmp -s .agents/agents/quick-reviewer.md "$content_dir/stacks/node/agents/quick-reviewer.md"
+  [ -L .claude/agents/quick-reviewer.md ] || [ .claude/agents/quick-reviewer.md -ef .agents/agents/quick-reviewer.md ]
+  python3 -c 'import tomllib; data = tomllib.load(open(".codex/agents/quick-reviewer.toml", "rb")); assert "features" not in data and "model_reasoning_effort" not in data, data'
+  # The rendered Claude file is not retired: an identical apply keeps the view and changes nothing.
+  [[ "$output" != *"retire"* && "$output" != *"preserved"* ]]
+  run_bootstrap_with "$source_copy"
+  [ "$status" -eq 0 ]
+  [ -L .claude/agents/quick-reviewer.md ] || [ .claude/agents/quick-reviewer.md -ef .agents/agents/quick-reviewer.md ]
+  run_bootstrap_with "$source_copy" --plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Summary: no changes"* ]]
+}
+
+@test "model-tier deep and access full map to opus, pro and high effort, and a subagent without metadata keeps the views of A" {
+  require_tomllib
+  copy_skill
+  printf '%s\n' '---' 'name: deep-reviewer' 'description: Revisa a fondo.' 'access: full' 'model-tier: deep' '---' 'Body.' \
+    > "$content_dir/stacks/node/agents/deep-reviewer.md"
+  run_bootstrap_with "$source_copy" --stack node
+  [ "$status" -eq 0 ]
+  [ "$(frontmatter_line .claude/agents/deep-reviewer.md model)" = 'model: opus' ]
+  [ -z "$(frontmatter_line .claude/agents/deep-reviewer.md tools)" ]
+  [ "$(frontmatter_line .agents/agents/deep-reviewer.md model)" = 'model: pro' ]
+  [[ "$(frontmatter_line .agents/agents/deep-reviewer.md tools)" == *'"run_command"'* ]]
+  [ "$(codex_agent_value .codex/agents/deep-reviewer.toml model_reasoning_effort)" = high ]
+  # The subagents of the pack declare nothing: copy, view and TOML of part A.
+  cmp -s .agents/agents/node-perf-analyzer.md "$content_dir/stacks/node/agents/node-perf-analyzer.md"
+  [ -L .claude/agents/node-perf-analyzer.md ] || [ .claude/agents/node-perf-analyzer.md -ef .agents/agents/node-perf-analyzer.md ]
+}
+
+@test "an access or model-tier outside its values stops the apply before writing, naming the file" {
+  copy_skill
+  printf '%s\n' '---' 'name: odd-reviewer' 'description: Revisa.' 'access: readonly' '---' 'Body.' \
+    > "$content_dir/stacks/node/agents/odd-reviewer.md"
+  run_bootstrap_with "$source_copy" --stack node
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"agents/odd-reviewer.md: access is 'readonly'; it must be one of read-only, edit, full"* ]]
+  [ ! -e .agents/agents ]
+}
+
+@test "a subagent that gains access replaces its previous Claude view, and a block sequence of tools is replaced whole" {
+  copy_skill
+  printf '%s\n' '---' 'name: late-reviewer' 'description: Revisa.' 'tools:' '  - Read' '  - Bash' '---' 'Body.' \
+    > "$content_dir/stacks/node/agents/late-reviewer.md"
+  run_bootstrap_with "$source_copy" --stack node
+  [ "$status" -eq 0 ]
+  [ -L .claude/agents/late-reviewer.md ] || [ .claude/agents/late-reviewer.md -ef .agents/agents/late-reviewer.md ]
+
+  printf '%s\n' '---' 'name: late-reviewer' 'description: Revisa.' 'tools:' '  - Read' '  - Bash' 'access: read-only' '---' 'Body.' \
+    > "$content_dir/stacks/node/agents/late-reviewer.md"
+  run_bootstrap_with "$source_copy"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"never applied by agent-ready-setup"* ]]
+  [ ! -L .claude/agents/late-reviewer.md ]
+  [ "$(frontmatter_line .claude/agents/late-reviewer.md tools)" = 'tools: Read, Grep, Glob' ]
+  [[ "$(frontmatter_line .agents/agents/late-reviewer.md tools)" == 'tools: ["view_file"'* ]]
+  # The items of the replaced sequence leave with it.
+  ! grep -Fq -- '- Bash' .claude/agents/late-reviewer.md
+  ! grep -Fq -- '- Bash' .agents/agents/late-reviewer.md
+
+  run_bootstrap_with "$source_copy" --plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Summary: no changes"* ]]
+}
+
+@test "a subagent that declares only model-tier keeps its own tools, and one that declares only access keeps its model" {
+  copy_skill
+  printf '%s\n' '---' 'name: tier-reviewer' 'description: Revisa.' 'tools: Read, Grep' 'model-tier: fast' '---' 'Body.' \
+    > "$content_dir/stacks/node/agents/tier-reviewer.md"
+  printf '%s\n' '---' 'name: access-reviewer' 'description: Revisa.' 'model: sonnet' 'access: read-only' '---' 'Body.' \
+    > "$content_dir/stacks/node/agents/access-reviewer.md"
+  run_bootstrap_with "$source_copy" --stack node
+  [ "$status" -eq 0 ]
+  [ "$(frontmatter_line .claude/agents/tier-reviewer.md tools)" = 'tools: Read, Grep' ]
+  [ "$(frontmatter_line .claude/agents/tier-reviewer.md model)" = 'model: haiku' ]
+  [ "$(frontmatter_line .claude/agents/access-reviewer.md model)" = 'model: sonnet' ]
+  [ "$(frontmatter_line .claude/agents/access-reviewer.md tools)" = 'tools: Read, Grep, Glob' ]
+}

@@ -46,6 +46,7 @@ from agent_ready_common import (
     sha256_of_file,
 )
 from agent_ready_desired_assets import (
+    RENDERED_VIEW_SEPARATOR,
     desired_assets,
     desired_blocks,
     desired_nested_blocks,
@@ -175,6 +176,38 @@ def classify_asset(destination, desired_entry, local, lock_entry, has_lock):
     return ACTION_UPDATE, "overwrites local changes since the last apply"
 
 
+# The Claude file a subagent with access or model-tier gets (agent_ready_desired_assets.rendered_destinations).
+CLAUDE_RENDERED_VIEW_SUFFIX = RENDERED_VIEW_SEPARATOR + "claude"
+SHARED_PREFIX = ".agents/"
+CLAUDE_PREFIX = ".claude/"
+
+
+def lock_of_previous_view(project_root, destination, desired_entry, locked_assets):
+    """The lock entry that owns a Claude file rendered for a subagent, while that file is still the view
+    the subagent had before it declared access or model-tier.
+
+    Until then .claude/agents/<name>.md was the view (a symlink or a hard link) of the shared asset, so it
+    has no lock entry of its own: the lock entry of .agents/agents/<name>.md owns it. While the path still
+    is that view (a link to the shared asset or its applied bytes) the apply replaces it with the Claude
+    rendering; anything else is a project file and stays preserved. None when it does not apply.
+    """
+    if not (desired_entry["source"].endswith(CLAUDE_RENDERED_VIEW_SUFFIX) and destination.startswith(CLAUDE_PREFIX)):
+        return None
+    canonical_entry = locked_assets.get(SHARED_PREFIX + destination[len(CLAUDE_PREFIX):])
+    if not canonical_entry or not was_applied(canonical_entry):
+        return None
+    view_path = os.path.join(project_root, destination)
+    canonical_path = os.path.join(project_root, SHARED_PREFIX + destination[len(CLAUDE_PREFIX):])
+    if os.path.islink(view_path):
+        is_view = os.path.isfile(canonical_path) and os.path.realpath(view_path) == os.path.realpath(canonical_path)
+    elif os.path.isfile(view_path):
+        is_view = ((os.path.isfile(canonical_path) and os.path.samefile(view_path, canonical_path))
+                   or sha256_of_file(view_path) == canonical_entry.get("sha256"))
+    else:
+        is_view = False
+    return canonical_entry if is_view else None
+
+
 def detached_views(project_root, assets, locked_assets):
     """Claude views that became regular files holding content no apply wrote.
 
@@ -193,7 +226,9 @@ def detached_views(project_root, assets, locked_assets):
         asset_path = os.path.join(project_root, destination)
         if os.path.isfile(asset_path) and os.path.samefile(view_path, asset_path):
             continue
-        known_content = {desired_entry["sha256"], locked_assets.get(destination, {}).get("sha256"), local_state(asset_path)}
+        # The Claude file a subagent had while it declared access or model-tier is the engine's own content too.
+        known_content = {desired_entry["sha256"], locked_assets.get(destination, {}).get("sha256"), local_state(asset_path),
+                         locked_assets.get(view, {}).get("sha256")}
         if sha256_of_file(view_path) not in known_content:
             lock_entry = locked_assets.get(destination)
             is_managed_view = was_applied(lock_entry) and not lock_entry.get("viewPreserved")
@@ -282,6 +317,8 @@ def compute_plan(project_root, skill_dir, catalog, profile_names):
     for destination, desired_entry in sorted(assets.items()):
         local = local_state(os.path.join(project_root, destination))
         lock_entry = locked_assets.get(destination)
+        if not lock_entry or not was_applied(lock_entry):
+            lock_entry = lock_of_previous_view(project_root, destination, desired_entry, locked_assets) or lock_entry
         action, reason = classify_asset(destination, desired_entry, local, lock_entry, lock is not None)
         entries.append({
             "destination": destination,
@@ -294,6 +331,7 @@ def compute_plan(project_root, skill_dir, catalog, profile_names):
             "baseSha256": lock_entry.get("sha256") if lock_entry else None,
             "local": local,
             "workspace": desired_entry.get("workspace"),
+            "agentMetadata": desired_entry.get("agentMetadata"),
         })
     root_blocks = desired_blocks(skill_dir, catalog, resolved, assets)
     blocks = {**root_blocks, **workspace_file_blocks(skill_dir, catalog, workspaces, assets, root_blocks, workspace_rules)}
@@ -309,8 +347,11 @@ def compute_plan(project_root, skill_dir, catalog, profile_names):
     nested_blocks.update(nested_index)
     block_destinations = {destination for destination, _ in blocks}
     retiring_block_files = set()
+    # A Claude file rendered for a subagent that no longer declares metadata becomes its view again: the
+    # projection relinks it, so it is not retired.
+    claude_views = {claude_view_of(destination, desired_entry["source"]) for destination, desired_entry in assets.items()}
     for destination, lock_entry in sorted(locked_assets.items()):
-        if destination in assets:
+        if destination in assets or destination in claude_views:
             continue
         local = local_state(os.path.join(project_root, destination))
         action, reason = classify_retired(local, lock_entry)

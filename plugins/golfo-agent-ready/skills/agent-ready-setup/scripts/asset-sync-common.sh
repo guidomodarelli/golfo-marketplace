@@ -265,6 +265,24 @@ remember_hard_link_view() {
   grep -Fxq -- "$relative" "$manifest" 2>/dev/null || printf '%s\n' "$relative" >> "$manifest"
 }
 
+# A Claude path that stops being a view (a generated file now) leaves the manifest, so the relink hook
+# never turns it back into a hard link of the shared asset.
+forget_hard_link_view() {
+  local relative="$1"
+  local manifest
+  local remaining
+
+  manifest="$(hard_link_views_manifest)"
+  [[ -f "$manifest" && ! -L "$manifest" ]] || return 0
+  grep -Fxq -- "$relative" "$manifest" || return 0
+  remaining="$(grep -Fxv -- "$relative" "$manifest" || true)"
+  if [[ -n "$remaining" ]]; then
+    printf '%s\n' "$remaining" > "$manifest"
+  else
+    rm -f -- "$manifest"
+  fi
+}
+
 # True when path already is the managed view of the shared asset: a symlink with the
 # expected relative target, or the same file as the asset through a hard link.
 is_current_claude_view() {
@@ -455,6 +473,58 @@ replace_with_claude_view() {
     return 0
   fi
   record_updated "$destination -> managed view"
+}
+
+# One Markdown view of a subagent that declares access or model-tier (render-codex-agent.py --view):
+# the one Antigravity reads in .agents/agents/ or the one of Claude Code in .claude/agents/. Returns 1
+# when the template declares no metadata, so the caller projects the copy and its view as always.
+# Arguments: the renderer, the view, the template, its file name under agents/ and the destination.
+project_agent_view() {
+  local renderer="$1"
+  local view="$2"
+  local source="$3"
+  local file_name="$4"
+  local destination="$5"
+  local rendered
+  local render_status=0
+
+  if ! rendered="$(mktemp "${TMPDIR:-/tmp}/agent-ready-agent-view.XXXXXX")"; then
+    record_conflict "could not stage $destination; it was not changed"
+    return 0
+  fi
+  python3 "$renderer" --view "$view" --source "$source" --name "$file_name" --output "$rendered" || render_status=$?
+  if [[ "$render_status" -eq 3 ]]; then
+    rm -f -- "$rendered"
+    return 1
+  fi
+  if [[ "$render_status" -ne 0 ]]; then
+    rm -f -- "$rendered"
+    record_conflict "$destination: agents/$file_name cannot be rendered for $view; it was not changed"
+    return 0
+  fi
+  chmod 644 -- "$rendered" 2>/dev/null || true
+  sync_file "$rendered" "$destination"
+  rm -f -- "$rendered"
+}
+
+# Every view of a subagent template: the .agents/agents/ file (rendered for Antigravity when the
+# template declares access or model-tier, a copy otherwise), its Claude Code file (rendered, or the view
+# of the copy) and its native Codex subagent. Arguments: the renderer, the template and its path under
+# the asset tree. Consumers define sync_file, link_claude_asset, record_conflict, SHARED_DIR and CLAUDE_DIR.
+project_agent_views() {
+  local renderer="$1"
+  local source="$2"
+  local relative="$3"
+  local file_name="${relative##*/}"
+
+  if project_agent_view "$renderer" antigravity "$source" "$file_name" "$SHARED_DIR/$relative"; then
+    forget_hard_link_view "$relative"
+    project_agent_view "$renderer" claude "$source" "$file_name" "$CLAUDE_DIR/$relative" || true
+  else
+    sync_file "$source" "$SHARED_DIR/$relative"
+    link_claude_asset "$relative"
+  fi
+  project_codex_agent "$renderer" "$source" "$file_name"
 }
 
 # Codex reads a native subagent from .codex/agents/<name>.toml. The TOML is rendered from the
