@@ -76,7 +76,8 @@ repositorio:
   manifest; `agent-ready check` lo cuenta como un problema del CI.
 - **Rules del workspace:** cada rule de un profile que suma el workspace va a
   `.agents/rules/workspaces/<path>/`, con su vista en `.claude/rules/workspaces/<path>/`.
-  - **`paths:`:** la rule lleva `paths:` limitado a la carpeta, así que Claude Code la carga solo al leer,
+  - **`paths:`:** la rule lleva `paths:` limitado a la carpeta (y `trigger: glob` con los mismos patrones en
+    `globs`, para Antigravity), así que Claude Code la carga solo al leer,
     escribir o editar un archivo de ahí. Una rule sin frontmatter recibe `paths: ["<path>/**"]`. Una que
     ya tenía `paths:` conserva sus patrones, dentro del workspace. El resto del frontmatter, como
     `assumes:`, queda igual.

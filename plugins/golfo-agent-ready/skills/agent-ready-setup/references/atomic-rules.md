@@ -37,6 +37,31 @@ profiles de un pack y las rules propias del proyecto en `.agents/rules/`. Lo imp
   Los párrafos sirven para dar contexto al tema. Un bullet de primer nivel sin comentario arriba es un error del
   lint (`untagged-rule`): o es una rule y necesita su id, o es prosa y va como párrafo.
 
+### El frontmatter para Antigravity
+
+Antigravity carga una rule de `.agents/rules/` solo si su archivo empieza con un frontmatter con un
+`trigger` válido, y descarta en silencio el resto. El mapeo con Claude Code es directo:
+
+| En Claude Code | En Antigravity |
+|---|---|
+| Sin `paths:` (se carga siempre) | `trigger: always_on` |
+| `paths:` con patrones | `trigger: glob` y `globs: "<patrón>, <patrón>"`, con los mismos patrones |
+
+Los otros dos valores (`model_decision`, con una `description` de cuándo aplica, y `manual`) también son
+válidos. Las rules del pack oficial declaran `trigger: always_on` (golfo-agent-profiles 1.10.0) y las que
+escribe el motor llevan el suyo: las aprendidas (`learned.md` con `always_on`, `learned-<carpetas>.md` con
+`glob`) y las de un workspace, con `glob` limitado a su carpeta.
+
+Antigravity solo lee el primer nivel de `.agents/rules/`. Con `antigravity` entre los providers, el apply
+escribe `.agents/rules.json` con cada carpeta de abajo que tiene rules (las de un workspace en
+`rules/workspaces/<path>/`, o una carpeta del proyecto); las personales de `learned/users/<persona>/`
+quedan afuera, porque son de una sola persona. Es un archivo gestionado mientras tenga lo que escribió el
+último apply: uno del proyecto no se toca y el apply avisa qué carpetas no ve Antigravity.
+
+Con `antigravity` entre los providers, `plan` y `agent-ready conflicts` nombran cada rule que Antigravity
+descartaría, gestionada o del proyecto, y `agent-ready conflicts --pack` falla con una rule del pack sin un
+`trigger` válido.
+
 ### Atributos del comentario
 
 | Atributo | Valor | Para qué |

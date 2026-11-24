@@ -14,6 +14,7 @@ import agent_ready_pack_clis as pack_clis
 import agent_ready_pack_mcp as pack_mcp
 import agent_ready_pack_scripts as pack_scripts
 import agent_ready_rule_changes as rule_changes
+import agent_ready_rule_triggers as rule_triggers
 import agent_ready_workspaces as workspace_selection
 from agent_ready_actions import (
     ACTION_CONFLICT,
@@ -292,6 +293,9 @@ def finalize(project_root, skill_dir, plan, updates):
         lock["blocks"] = block_report["lock"]
     if plan["profileSources"]:
         lock["profileSources"] = plan["profileSources"]
+    rules_index_report = sync_rules_index(project_root, previous_lock)
+    if rules_index_report.get("lock"):
+        lock[rule_triggers.RULES_INDEX_LOCK_KEY] = rules_index_report["lock"]
     mcp_report = register_pack_mcp_servers(project_root, plan, previous_lock)
     if mcp_report["lock"]:
         lock["mcpServers"] = mcp_report["lock"]
@@ -316,7 +320,7 @@ def finalize(project_root, skill_dir, plan, updates):
     register_merge_drivers(project_root, skill_dir)
 
     return {"removed": removed, "retireConflicts": retire_conflicts, "failed": failed, "conflicts": conflicts,
-            "blocks": block_report, "mcpServers": mcp_report, "clis": cli_report, "scripts": script_report,
+            "blocks": block_report, "rulesIndex": rules_index_report, "mcpServers": mcp_report, "clis": cli_report, "scripts": script_report,
             "learningSweep": sweep_report}
 
 
@@ -401,6 +405,31 @@ def print_pack_cli_report(report, stream):
         write_line(paint(f"  ! {note}", "warning", stream), stream)
     for problem in report["failed"]:
         write_line(paint(f"  ! CLI not installed: {problem}", "error", stream), stream)
+
+
+def sync_rules_index(project_root, previous_lock):
+    """The .agents/rules.json of Antigravity, after the projection wrote the rules (agent_ready_rule_triggers).
+    An automated review never writes it."""
+    previous = (previous_lock or {}).get(rule_triggers.RULES_INDEX_LOCK_KEY)
+    if os.environ.get("AGENT_READY_SETUP_REVIEW_MODE") == "1":
+        return {"lock": previous}
+    report, entry = rule_triggers.sync_rules_index(project_root, configuration_of(project_root).value(PROVIDERS_KEY),
+                                                   previous)
+    return dict(report, lock=entry)
+
+
+def print_rules_index_report(report, stream):
+    """What the apply did with .agents/rules.json."""
+    if not report:
+        return
+    if report.get("written"):
+        write_line(f"Antigravity rule folders in {rule_triggers.RULES_INDEX_RELATIVE_PATH}: {', '.join(report['written'])}",
+                   stream)
+    if report.get("removed"):
+        write_line(f"Removed {rule_triggers.RULES_INDEX_RELATIVE_PATH}: Antigravity has no nested rule folder to read",
+                   stream)
+    if report.get("conflict"):
+        write_line(paint(f"  ! {report['conflict']}", "warning", stream), stream)
 
 
 def register_pack_mcp_servers(project_root, plan, previous_lock):
@@ -521,6 +550,7 @@ def print_finalize_report(report):
         for path in report["failed"]:
             write_line(f"  ! {path}")
     print_block_report(report.get("blocks"), stream)
+    print_rules_index_report(report.get("rulesIndex"), stream)
     print_pack_mcp_report(report.get("mcpServers"), stream)
     print_pack_cli_report(report.get("clis"), stream)
     print_pack_script_report(report.get("scripts"), stream)

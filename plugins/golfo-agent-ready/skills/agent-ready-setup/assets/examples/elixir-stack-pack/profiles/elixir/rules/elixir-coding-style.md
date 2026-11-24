@@ -1,3 +1,7 @@
+---
+trigger: always_on
+---
+
 # Elixir Style Rules
 
 - Run `mix format` before committing; the project's `.formatter.exs` is the source of truth for layout.

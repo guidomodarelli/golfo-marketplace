@@ -1,3 +1,7 @@
+---
+trigger: always_on
+---
+
 # Formato de las actas
 
 - Cada acta es un archivo Markdown en `actas/<año>/acta-<número>.md`, con el número de tres dígitos (`acta-007.md`).

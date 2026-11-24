@@ -1,3 +1,7 @@
+---
+trigger: always_on
+---
+
 # Citas normativas
 
 - Citar la norma completa la primera vez: tipo, número, año y artículo (`Ley 24.240, art. 4`). Después alcanza con la forma corta (`art. 4 de la Ley 24.240`).

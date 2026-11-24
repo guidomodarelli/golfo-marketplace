@@ -51,7 +51,7 @@ from agent_ready_options import (
     SUPPORTED_PROVIDERS,
 )
 from agent_ready_output import paint, write_line
-from agent_ready_packs import KEBAB_CASE_NAME, PACK_CATALOG_FILE_NAME, is_pack_profile, refresh_declared_sources
+from agent_ready_packs import KEBAB_CASE_NAME, NAMESPACE_SEPARATOR, PACK_CATALOG_FILE_NAME, is_pack_profile, refresh_declared_sources
 from agent_ready_plan import (
     blocking_hook_documents,
     compute_plan,
@@ -269,6 +269,12 @@ def pack_profile_conflicts(run, profile):
         plan["packTools"] = tools_report
     report = structural_conflicts(run.project, run.skill_dir, plan, catalog, configuration, with_context=False,
                                   with_machine=False)
+    # The rules the pack publishes are the author's to fix; the ones of the content it builds on are not.
+    pack_prefix = profile.split(NAMESPACE_SEPARATOR, 1)[0] + NAMESPACE_SEPARATOR
+    parity_section = report.get("parity") or {}
+    if "antigravityDropped" in parity_section:
+        parity_section["antigravityDropped"] = [rule for rule in parity_section["antigravityDropped"]
+                                                if str(rule["profile"]).startswith(pack_prefix)]
     report["semanticConflicts"] = semantic_conflicts(run, plan)
     report["competingSkills"] = competing_skills_report(run, plan, catalog, configuration)
     semantic, unchecked = semantic_conflict_lines(report)
@@ -301,12 +307,16 @@ def command_pack_conflicts(arguments):
         manifest_path = os.path.join(project, *MANIFEST_RELATIVE_PATH.split("/"))
         # The whole catalog is validated first, as a consumer loads it: an empty or invalid pack fails
         # here even when it publishes no profile to check.
-        write_text_atomically(manifest_path, serialize_json({"profiles": [], "sources": {"packs": [source]}}))
+        # Every provider, Antigravity included: a rule Antigravity would drop is a conflict of the pack.
+        write_text_atomically(manifest_path, serialize_json({"profiles": [], "providers": list(SUPPORTED_PROVIDERS),
+                                                             "sources": {"packs": [source]}}))
         run.skill_dir = content_dir_of(project, arguments.skill_dir, offline=arguments.offline, read_only=False)
         load_effective_catalog(project, run.skill_dir)
         profiles = [f"{pack_name}/{name}" for name in pack_catalog.get("profiles", {})]
         for profile in profiles:
-            write_text_atomically(manifest_path, serialize_json({"profiles": [profile], "sources": {"packs": [source]}}))
+            write_text_atomically(manifest_path, serialize_json({"profiles": [profile],
+                                                                 "providers": list(SUPPORTED_PROVIDERS),
+                                                                 "sources": {"packs": [source]}}))
             try:
                 structural, semantic, unchecked = pack_profile_conflicts(run, profile)
                 results[profile] = {"structural": structural, "semantic": semantic, "unchecked": unchecked}

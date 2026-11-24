@@ -16,6 +16,7 @@ import agent_ready_learning_schedule as learning_schedule
 import agent_ready_nested as nested
 import agent_ready_pack_clis as pack_clis
 import agent_ready_pack_mcp as pack_mcp
+import agent_ready_rule_triggers as rule_triggers
 from agent_ready_actions import ACTION_DROP, ACTION_RETIRE_CONFLICT, LINKED_PARENT_REASON, classify_retired
 from agent_ready_common import (
     LOCAL_ABSENT,
@@ -572,6 +573,13 @@ def remove_managed_roots_if_empty(project_root):
                 pass
 
 
+def remove_rules_index(project_root, report):
+    """Remove the .agents/rules.json the apply wrote for Antigravity; a project's own stays."""
+    lock = read_lock(project_root) or {}
+    if rule_triggers.remove_rules_index(project_root, lock.get(rule_triggers.RULES_INDEX_LOCK_KEY)):
+        report["removed"].append(rule_triggers.RULES_INDEX_RELATIVE_PATH)
+
+
 def unregister_pack_mcp_servers(project_root, report):
     """Drop every MCP server of the packs that the lock records; the project's own servers stay."""
     lock = read_lock(project_root) or {}
@@ -687,6 +695,8 @@ def apply_removal(project_root, skill_dir, plan):
     report["kept"] += [f"{entry['path']}: {entry['reason']}" for entry in plan["entries"] if entry["action"] == REMOVAL_KEEP]
     # Stack sections that stay in AGENTS.md need the lock: it is how the next remove finds them.
     sections = section_ids(read_lock(project_root))
+    # Before the lock goes: it says whether the .agents/rules.json there is the apply's.
+    remove_rules_index(project_root, report)
     browser_done = False
     pack_mcp_done = False
     inventory_left = False

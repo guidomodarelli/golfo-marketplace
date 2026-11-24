@@ -229,6 +229,8 @@ managed_rule() {
   [ "$status" -eq 0 ]
   [[ "$output" == "$candidate  create: learned/records-header in .agents/rules/learned.md (commit "* ]]
   grep -Fxq '<!-- rule id=learned/records-header key=records.header -->' .agents/rules/learned.md
+  # Antigravity loads it: the file starts with trigger: always_on.
+  [ "$(sed -n 1,3p .agents/rules/learned.md | tr '\n' '|')" = '---|trigger: always_on|---|' ]
   grep -Fxq -- '- Records carry the case number in the header.' .agents/rules/learned.md
   agent_ready rules lint
   [ "$status" -eq 0 ]
@@ -377,9 +379,10 @@ json_field() {
     --paths "billing/**" --explicit --session s1
   agent_ready learn apply "$(id_of 'Invoices')"
   [ "$status" -eq 0 ]
-  # A rule for some folders goes to a file whose frontmatter keeps the scope Claude reads.
+  # A rule for some folders goes to a file whose frontmatter keeps the scope Claude reads, and the
+  # trigger glob with the same patterns Antigravity reads.
   grep -Fq 'paths=billing/** -->' .agents/rules/learned-billing.md
-  [ "$(sed -n 1,4p .agents/rules/learned-billing.md | tr '\n' '|')" = '---|paths:|  - "billing/**"|---|' ]
+  [ "$(sed -n 1,6p .agents/rules/learned-billing.md | tr '\n' '|')" = '---|trigger: glob|globs: "billing/**"|paths:|  - "billing/**"|---|' ]
   [ ! -e .agents/rules/learned.md ]
   agent_ready rules lint
   [ "$status" -eq 0 ]

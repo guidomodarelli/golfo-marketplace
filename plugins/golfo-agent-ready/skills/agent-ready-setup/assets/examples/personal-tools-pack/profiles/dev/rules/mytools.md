@@ -1,3 +1,7 @@
+---
+trigger: always_on
+---
+
 # mytool
 
 - Run `mytool check` before committing; it reads `.mytool/config.json`.

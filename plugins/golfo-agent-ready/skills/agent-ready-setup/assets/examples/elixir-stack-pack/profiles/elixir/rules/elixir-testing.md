@@ -1,3 +1,7 @@
+---
+trigger: always_on
+---
+
 # Elixir Testing Rules
 
 - Tests use ExUnit and live under `test/`, mirroring `lib/`, with names ending in `_test.exs`.

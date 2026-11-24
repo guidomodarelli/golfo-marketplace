@@ -1,3 +1,7 @@
+---
+trigger: always_on
+---
+
 # Datos personales en las actas
 
 - Nombre, documento y domicilio de una persona humana solo van en la cabecera del acta, nunca en el relato de los hechos ni en los nombres de archivo.
