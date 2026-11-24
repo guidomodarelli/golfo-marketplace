@@ -226,7 +226,9 @@ def detached_views(project_root, assets, locked_assets):
         asset_path = os.path.join(project_root, destination)
         if os.path.isfile(asset_path) and os.path.samefile(view_path, asset_path):
             continue
-        known_content = {desired_entry["sha256"], locked_assets.get(destination, {}).get("sha256"), local_state(asset_path)}
+        # The Claude file a subagent had while it declared access or model-tier is the engine's own content too.
+        known_content = {desired_entry["sha256"], locked_assets.get(destination, {}).get("sha256"), local_state(asset_path),
+                         locked_assets.get(view, {}).get("sha256")}
         if sha256_of_file(view_path) not in known_content:
             lock_entry = locked_assets.get(destination)
             is_managed_view = was_applied(lock_entry) and not lock_entry.get("viewPreserved")
@@ -345,8 +347,11 @@ def compute_plan(project_root, skill_dir, catalog, profile_names):
     nested_blocks.update(nested_index)
     block_destinations = {destination for destination, _ in blocks}
     retiring_block_files = set()
+    # A Claude file rendered for a subagent that no longer declares metadata becomes its view again: the
+    # projection relinks it, so it is not retired.
+    claude_views = {claude_view_of(destination, desired_entry["source"]) for destination, desired_entry in assets.items()}
     for destination, lock_entry in sorted(locked_assets.items()):
-        if destination in assets:
+        if destination in assets or destination in claude_views:
             continue
         local = local_state(os.path.join(project_root, destination))
         action, reason = classify_retired(local, lock_entry)

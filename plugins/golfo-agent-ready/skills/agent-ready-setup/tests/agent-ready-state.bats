@@ -1363,6 +1363,14 @@ frontmatter_line() {
   cmp -s .agents/agents/quick-reviewer.md "$content_dir/stacks/node/agents/quick-reviewer.md"
   [ -L .claude/agents/quick-reviewer.md ] || [ .claude/agents/quick-reviewer.md -ef .agents/agents/quick-reviewer.md ]
   python3 -c 'import tomllib; data = tomllib.load(open(".codex/agents/quick-reviewer.toml", "rb")); assert "features" not in data and "model_reasoning_effort" not in data, data'
+  # The rendered Claude file is not retired: an identical apply keeps the view and changes nothing.
+  [[ "$output" != *"retire"* && "$output" != *"preserved"* ]]
+  run_bootstrap_with "$source_copy"
+  [ "$status" -eq 0 ]
+  [ -L .claude/agents/quick-reviewer.md ] || [ .claude/agents/quick-reviewer.md -ef .agents/agents/quick-reviewer.md ]
+  run_bootstrap_with "$source_copy" --plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Summary: no changes"* ]]
 }
 
 @test "model-tier deep and access full map to opus, pro and high effort, and a subagent without metadata keeps the views of A" {
