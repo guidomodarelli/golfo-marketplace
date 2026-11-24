@@ -872,10 +872,10 @@ lock = json.load(open(path, encoding="utf-8"))
 lock["assets"].pop(".agents/skills/acme-orchestrate/SKILL.md")
 json.dump(lock, open(path, "w", encoding="utf-8"), indent=2)
 PY
-  printf '%s
-' '---' 'name: acme-orchestrate' 'description: La del proyecto, sin roster.' '---' 'Own.'     > .agents/skills/acme-orchestrate/SKILL.md
+  printf '%s\n' '---' 'name: acme-orchestrate' 'description: La del proyecto, sin roster.' '---' 'Own.' \
+    > .agents/skills/acme-orchestrate/SKILL.md
   run_cli plan
-  printf '%s
   [ "$status" -eq 0 ]
+  [[ "$output" == *"conflict        .agents/skills/acme-orchestrate/SKILL.md"* ]]
   [[ "$output" != *"names .agents/agents/acme-auditor.md"* ]]
 }
