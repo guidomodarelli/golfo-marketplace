@@ -24,6 +24,8 @@ setup() {
   mkdir -p "$HOME"
   export AGENT_READY_SETUP_TOOLS=0
   export AGENT_READY_SETUP_ACTIVE_PROVIDER=claude
+  # The suites run the engine of this checkout and check the marketplace upgrade it would do installed.
+  export AGENT_READY_SETUP_UPGRADE_FROM_CHECKOUT=1
   export GIT_CONFIG_GLOBAL="$test_root/gitconfig"
   git config --global user.name Test
   git config --global user.email test@example.invalid
