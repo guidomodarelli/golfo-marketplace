@@ -835,6 +835,8 @@ print([(entry["path"], entry["action"]) for entry in entries if "review-cache" i
   [ "$status" -eq 0 ]
   [ "$output" = "{}" ]
   [[ "$stderr" == *"reviewing 2 of 2 pairs with antigravity (0 from the cache)"* ]]
+  # The structural checks run for Antigravity too: no warning that they could not.
+  [[ "$stderr" != *"the structural conflicts could not be checked"* ]]
   [[ "$stderr" == *"Mocks are both required and forbidden."* ]]
   grep -Fxq agy "$FAKE_CALLS"
   [ "$(argument_after --mode)" = plan ]

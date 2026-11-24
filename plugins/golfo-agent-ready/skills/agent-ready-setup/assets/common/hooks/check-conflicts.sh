@@ -18,8 +18,8 @@ changed_arguments=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --provider|-p)
-      if [[ $# -lt 2 || ( "$2" != claude && "$2" != codex ) ]]; then
-        printf 'ERROR: %s requires claude or codex\n' "$1" >&2
+      if [[ $# -lt 2 || ( "$2" != claude && "$2" != codex && "$2" != antigravity ) ]]; then
+        printf 'ERROR: %s requires claude, codex or antigravity\n' "$1" >&2
         exit 2
       fi
       provider="$2"

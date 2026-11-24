@@ -176,8 +176,8 @@ marketplace_upgrade_stamp="${XDG_CACHE_HOME:-$HOME/.cache}/agent-ready-setup/mar
 
 is_marketplace_upgrade_recent() {
   [[ "$force_marketplace_upgrade" -eq 0 ]] || return 1
-  # The stamp lives in the cache and the snapshot elsewhere: without the snapshot, the upgrade is due.
-  [[ -d "$(marketplace_snapshot_root "$provider")" ]] || return 1
+  # The clone of Antigravity lives apart from the stamp, in the data home: without it, the upgrade is due.
+  [[ "$provider" != "antigravity" || -d "$(marketplace_snapshot_root "$provider")/.git" ]] || return 1
   [[ -f "$marketplace_upgrade_stamp" && ! -L "$marketplace_upgrade_stamp" ]] || return 1
   [[ -n "$(find "$marketplace_upgrade_stamp" -mmin "-$MARKETPLACE_UPGRADE_INTERVAL_MINUTES" -print 2>/dev/null)" ]]
 }
