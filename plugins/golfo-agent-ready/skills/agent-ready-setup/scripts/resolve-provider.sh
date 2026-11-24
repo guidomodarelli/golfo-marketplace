@@ -70,8 +70,12 @@ is_inside_hermes_home() {
 # From a Hermes installation the provider is the only supported CLI in PATH;
 # with both or none it cannot be inferred, so the user has to choose.
 resolve_hermes_provider() {
+  local found_cli
   local -a found_clis=()
-  mapfile -t found_clis < <(installed_provider_clis)
+  # A read loop, not mapfile: the Bash 3.2 of macOS has no mapfile.
+  while IFS= read -r found_cli; do
+    found_clis+=("$found_cli")
+  done < <(installed_provider_clis)
   case "${#found_clis[@]}" in
     1)
       provider_of_cli "${found_clis[0]}"
@@ -90,8 +94,12 @@ resolve_hermes_provider() {
 # From an installation no provider owns, Antigravity is inferred when agy is the only provider CLI in
 # PATH: someone with only a Google subscription has no claude or codex to fall back to.
 resolve_only_antigravity_cli() {
+  local found_cli
   local -a found_clis=()
-  mapfile -t found_clis < <(installed_provider_clis)
+  # A read loop, not mapfile: the Bash 3.2 of macOS has no mapfile.
+  while IFS= read -r found_cli; do
+    found_clis+=("$found_cli")
+  done < <(installed_provider_clis)
   [[ "${#found_clis[@]}" -eq 1 && "${found_clis[0]}" == agy ]] || return 1
   printf '%s\n' antigravity
 }

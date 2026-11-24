@@ -788,3 +788,24 @@ PY
   [ "$status" -eq 0 ]
   assert_json .agents/mcp_config.json 'data["mcpServers"] == {"own": {"command": "own-server"}}'
 }
+
+@test "a provider configuration that cannot be read keeps its ownership in the lock while another provider registers" {
+  write_manifest '{"profiles": ["acme/kafka-interno"], "providers": ["claude", "antigravity"], "sources": {"packs": [{"name": "acme", "source": "git+https://packs.example.invalid/acme#main"}]}}'
+  run_cli trust add acme
+  run_cli apply
+  [ "$status" -eq 0 ]
+  cp .mcp.json "$test_root/mcp-applied.json"
+  claude_hash="$(python3 -c 'import json; print(json.load(open(".agents/agent-ready.lock.json"))["mcpServers"]["acme-docs"]["claudeEntrySha256"])')"
+
+  printf '%s\n' '{ not json' > .mcp.json
+  run_cli apply
+  [ "$status" -eq 0 ]
+  assert_json .agents/agent-ready.lock.json "data['mcpServers']['acme-docs']['claudeEntrySha256'] == '$claude_hash'"
+
+  # Once .mcp.json is fixed, its server is still the managed one: no conflict, nothing duplicated.
+  cp "$test_root/mcp-applied.json" .mcp.json
+  run_cli apply
+  [ "$status" -eq 0 ]
+  [[ "$stderr" != *"already has a server with that name"* ]]
+  cmp -s .mcp.json "$test_root/mcp-applied.json"
+}

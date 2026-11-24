@@ -325,9 +325,15 @@ def register(project_root, report, previous, providers, user_duplicates=None):
             registered, removed, conflicts = PROVIDER_SYNC[provider](project_root, wanted, before)
         except (RegistrationError, OSError) as problem:
             result["failed"].append(str(problem))
-            # Nothing changed for this provider: what the lock had stays recorded.
+            # Nothing changed for this provider: what the lock had stays recorded, its ownership hash
+            # included, also when another provider already added the entry in this run.
             for name in before:
-                result["lock"].setdefault(name, dict(previous[name], providers=[]))["providers"].append(provider)
+                entry = result["lock"].setdefault(name, dict(previous[name], providers=[]))
+                if provider in PROVIDER_ENTRY_FIELDS:
+                    field = PROVIDER_ENTRY_FIELDS[provider][0]
+                    if field in previous[name]:
+                        entry[field] = previous[name][field]
+                entry["providers"].append(provider)
             continue
         result["registered"][PROVIDER_FILES[provider]] = registered
         result["removed"][PROVIDER_FILES[provider]] = removed
