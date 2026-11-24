@@ -4,6 +4,18 @@
   "description": "Evalúa el contrato de la skill: qué se aplica en cada superficie, cuándo no aplica y el piso de calidad en el código que genera. run-evals fuerza la lectura de SKILL.md y no ejecuta nada, así que la activación real se mide con trigger-evals.json y el comportamiento real corriendo el código de los casos quality-*.",
   "test_cases": [
     {
+      "id": "coherent-palette-and-grouped-batch",
+      "description": "La salida de un lote usa texto neutro, acento en el contador, spinner de puntos y cierre por categoría.",
+      "input": "En mi CLI de sincronización, Bash arranca el trabajo y Python procesa 42 archivos. Al final imprime 35 veces 'omitido: ya estaba al día' mezclado con errores y sincronizados. Quiero una salida viva pero consistente con mi terminal oscura y el mismo estilo en las dos capas. Mostrame cómo se vería y proponé el comportamiento.",
+      "assertions": [
+        { "type": "regex", "pattern": "primer plano|foreground|ANSI.?39|texto (blanco|neutro)", "description": "El texto común no se pinta con el acento" },
+        { "type": "regex", "pattern": "(acento|accent).{0,80}(contador|\\[1/42\\])|(contador|\\[1/42\\]).{0,80}(acento|accent)", "description": "Distingue el contador sin teñir el renglón completo" },
+        { "type": "regex", "pattern": "[Bb]raille|⠋|⠙", "description": "Usa spinner de puntos en terminal compatible" },
+        { "type": "regex", "pattern": "[Ee]rrores", "description": "Separa los errores" },
+        { "type": "regex", "pattern": "[Oo]mitid.{0,100}(una sola vez|35|por motivo|agrup)|35.{0,80}[Oo]mitid", "description": "Compacta las omisiones con un motivo agrupado" }
+      ]
+    },
+    {
       "id": "applies-script-with-progress",
       "description": "Un script con progreso recibe degradación, cursor restaurado y pasos numerados.",
       "input": "Escribí `scripts/sync-assets.sh`: sube la carpeta `dist/` a un bucket con `aws s3 sync` y después invalida el CDN. Tarda varios minutos, así que tiene que mostrar el avance. Devolvé el archivo completo.",
@@ -222,13 +234,13 @@
     },
     {
       "id": "cli-palette-one-color-per-role",
-      "description": "La paleta de un CLI nuevo da un color a cada papel (títulos, comandos, flags, variables, datos atenuados, estados), sin repartir todo en un acento, y se prueba sobre fondo oscuro y claro.",
+      "description": "Distingue títulos, comandos y flags con una paleta reducida, legible en temas claros y oscuros.",
       "input": "Arrancamos `ferry-times`, un CLI en Node que muestra horarios de ferris. Va a tener un --help con subcomandos y flags, pasos numerados, una tabla y estados de cada salida. Definí la paleta como constantes y el módulo que pinta la ayuda. Devolvé el archivo completo.",
       "assertions": [
         {
           "type": "regex",
-          "pattern": "(un|cada) color (por|para cada) (papel|rol)|color por (papel|rol)|(papel|papeles|rol|roles)[^.]{0,80}(no comparten|distint)|no comparten (el )?(mismo )?color",
-          "description": "Da un color propio a cada papel de la salida"
+          "pattern": "negrita|bold|intensidad|atenuad|dimmed",
+          "description": "Diferencia papeles sin exigir un matiz por papel"
         },
         {
           "type": "regex",
@@ -242,8 +254,8 @@
         },
         {
           "type": "regex",
-          "pattern": "(marca|brand)[^.]{0,120}(solo|s[oó]lo|only|reserv|únicamente)[^.]{0,80}(nombre|name|tarjeta|card|banner|contador|\\[[0-9]/)",
-          "description": "Deja el color de la marca para el nombre y el contador de pasos, no repetido en todo"
+          "pattern": "primer plano|foreground|texto (blanco|neutro)|COLOR_TEXT|DEFAULT_FG",
+          "description": "Conserva el primer plano para texto común"
         }
       ]
     }

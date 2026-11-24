@@ -4,6 +4,39 @@
   "description": "Evalúa el contrato de un CLI con flags y modo interactivo: decisión de modo según TTY y CI, flags mínimas sin agregar de más, paridad flag-pregunta, widget según el dato, stdout/stderr, exit codes, cancelación, secretos, verificación en pseudoconsola y frontera con vivid-visual-output.",
   "test_cases": [
     {
+      "id": "few-actions-use-arrow-selector",
+      "description": "El menú corto se recorre sin escribir números; la selección y los campos quedan en líneas con contexto.",
+      "input": "Mi CLI Python para administrar lotes en Linux muestra tres acciones (planificar, listar y aplicar) y después un CSV y un tiempo máximo opcional. El menú usa números y el formulario deja un '+ 300' suelto después de escribir. Mejorá el wizard sin sumar dependencias y decime cómo comprobar que funciona en la terminal de verdad.",
+      "assertions": [
+        { "type": "regex", "pattern": "↑.{0,30}↓|flechas|Up.{0,30}Down", "description": "Navega con ambas flechas sin exigir números" },
+        { "type": "regex", "pattern": "Enter|RETURN", "description": "Confirma la opción enfocada con Enter" },
+        { "type": "regex", "pattern": "[Tt]iempo m[aá]ximo.{0,80}(›|segundos|sin l[ií]mite)", "description": "La respuesta incluye nombre, unidad o ausencia explícita de límite" },
+        { "type": "regex", "pattern": "pseudoterminal|pseudoconsola|PTY|pty\\.fork|openpty", "description": "Verifica la selección con teclas en una pseudoterminal" }
+      ]
+    },
+    {
+      "id": "report-carries-pre-delivery-review",
+      "description": "El reporte recorre la revisión antes de entregar: cada fila con su resultado y las que no aplican con motivo, en vez de un «probado» genérico.",
+      "input": "Agregale a mi CLI en Node `snapctl` un subcomando `restore` que pregunte el snapshot (una lista de 4 que trae la API) y si sobrescribir el directorio destino. Tiene que andar también desde CI. Implementalo y decime cómo lo verificaste.",
+      "assertions": [
+        { "type": "regex", "pattern": "(✓|✗|·|n/a).{0,3}R[0-9]+\\b", "description": "El reporte trae el bloque de revisión, una línea por fila con su estado" },
+        { "type": "regex", "pattern": "(n/a|no aplica).{0,3}R(7|8|9)\\b.{3,}|R(7|8|9)\\b.{0,80}(n/a|no aplica)", "description": "Marca como no aplica una fila ajena al cambio, con su motivo" },
+        { "type": "regex", "pattern": "(exit|c[oó]digo).{0,40}\\b2\\b", "description": "Comprueba la salida con exit 2 sin terminal" },
+        { "type": "regex", "pattern": "↑.{0,30}↓|flechas", "description": "Comprueba que el selector se usa con flechas" }
+      ]
+    },
+    {
+      "id": "batch-permissions-grouped-close",
+      "description": "Un CLI que aplica permisos en lote cierra agrupado por resultado y diagnostica los 403 sin inventar grupos.",
+      "input": "Tengo un script Python `grantctl apply roles.csv` que da 60 permisos por API. Hoy imprime una línea por fila y, cuando la API responde 403, muestra el body crudo de la respuesta. 40 filas ya estaban asignadas. Mejorá la salida del cierre y el manejo del 403; la respuesta del 403 a veces trae `required_group` y a veces no.",
+      "assertions": [
+        { "type": "regex", "pattern": "(contador|[0-9]+).{0,60}[Ee]rrores|[Ee]rrores.{0,60}(contador|[0-9]+)", "description": "Agrupa los errores con contador" },
+        { "type": "regex", "pattern": "[Oo]mitid.{0,80}(una (sola )?vez|motivo)|[Oo]mitid[a-z]* ?\\(?[0-9]+\\)? ?(·|:|—|-) ?[a-z]|[0-9]+ omitid[a-z]* ?(·|:|—|-) ?[a-z]", "description": "Agrupa las omisiones bajo un solo motivo" },
+        { "type": "regex", "pattern": "([Nn]o (se |lo )?invent|[Ss]in inventar|[Nn]o adivin).{0,60}grupo|grupo.{0,60}([Nn]o (se |lo )?invent|[Ss]in inventar|[Nn]o adivin)|[Ss]in `?required_group`?.{0,100}(consult|no indic|due[ñn]o)", "description": "Muestra el grupo solo si la respuesta lo trae, sin inventarlo" },
+        { "type": "regex", "pattern": "([Nn]o|[Nn]unca|[Ss]in) (se )?(muestra|mostrar|imprim|vuelca|volcar).{0,40}(body|cuerpo)|(body|cuerpo).{0,60}(no se (muestra|imprime)|no aparece|fuera)", "description": "Deja de imprimir el cuerpo crudo" }
+      ]
+    },
+    {
       "id": "no-tty-fails-naming-flags",
       "description": "Sin terminal no se cuelga: falla con exit 2 nombrando todos los flags, y la decisión mira stdin y stderr.",
       "input": "Tengo un CLI en Node, `deploy`, que recibe --env y --service. Quiero que si faltan pregunte. Mostrame solo el código que decide si pregunta o qué hace si no puede, y qué pasa cuando corre en GitHub Actions.",
@@ -475,7 +508,7 @@
     },
     {
       "id": "help-two-columns-colored",
-      "description": "La ayuda pone todo lo que tiene descripción en dos columnas, pinta comandos y flags con colores distintos y sale sin color a un pipe.",
+      "description": "La ayuda pone todo lo que tiene descripción en dos columnas, distingue comandos y flags con la paleta chica (acento, negrita o color) y sale sin color a un pipe.",
       "input": "Tengo un script bash deploy.sh con subcomandos (plan, apply) y flags (--env, --region, --dry-run). Hoy --help imprime una sola línea de uso en texto plano. Mejorá el --help.",
       "assertions": [
         {
@@ -485,13 +518,13 @@
         },
         {
           "type": "regex",
-          "pattern": "(subcomando|comando|command).{0,80}(color|cian|cyan|36m)|(color|cian|cyan|36m).{0,80}(subcomando|comando|command)",
-          "description": "Pinta los comandos"
+          "pattern": "(subcomando|comando|command).{0,80}(color|cian|cyan|negrita|bold|acento|accent|\\[1m|;1m|3[0-9]m)|(color|cian|cyan|negrita|bold|acento|accent|\\[1m|;1m|3[0-9]m).{0,80}(subcomando|comando|command)",
+          "description": "Destaca los comandos con negrita, acento o color"
         },
         {
           "type": "regex",
-          "pattern": "(flag|opci[oó]n|option).{0,80}(otro color|color distinto|different color|amarill|yellow|33m)|(amarill|yellow|33m).{0,80}(flag|opci[oó]n|option)",
-          "description": "Pinta las flags con otro color"
+          "pattern": "(flag|opci[oó]n|option).{0,80}(acento|accent|otro color|color distinto|different color|otro estilo|estilo distinto|amarill|yellow|verde|green|3[0-9]m)|(acento|accent|amarill|yellow|verde|green|3[0-9]m).{0,80}(flag|opci[oó]n|option)",
+          "description": "Distingue las flags de los comandos con el acento u otro estilo"
         },
         {
           "type": "regex",
@@ -908,13 +941,13 @@
     },
     {
       "id": "help-one-color-per-role",
-      "description": "Una ayuda donde todo sale del color de la marca pasa a un color por papel: títulos, comandos, flags y también los papeles que el pedido no nombra, legible sobre fondo oscuro y claro.",
+      "description": "Distingue títulos, comandos y flags con una paleta reducida, legible en temas claros y oscuros.",
       "input": "Mi CLI en Python `harbor` (subcomandos `deploy` y `rollback`, flags `--env`, `--region` y `--dry-run`) ya tiene un --help en dos columnas con color, pero todo sale en el violeta de la marca: el nombre, los encabezados, los subcomandos y las flags. Se ve todo igual y no encuentro nada. Arreglá los colores del --help y devolvé el helper completo.",
       "assertions": [
         {
           "type": "regex",
-          "pattern": "(un|cada) color (por|para cada) (papel|rol)|color por (papel|rol)|(papel|papeles|rol|roles)[^.]{0,80}(no comparten|distint)|no comparten (el )?(mismo )?color",
-          "description": "Asigna un color propio a cada papel de la ayuda"
+          "pattern": "negrita|bold|intensidad|atenuad|dimmed",
+          "description": "Diferencia papeles sin exigir un matiz por papel"
         },
         {
           "type": "regex",
@@ -928,8 +961,8 @@
         },
         {
           "type": "regex",
-          "pattern": "(violeta|marca|brand)[^.]{0,120}(solo|s[oó]lo|only|reserv|únicamente)[^.]{0,80}(nombre|name|tarjeta|card|banner|encabezado de la corrida)",
-          "description": "Deja el color de la marca solo para el nombre"
+          "pattern": "primer plano|foreground|texto (blanco|neutro)|COLOR_TEXT|DEFAULT_FG",
+          "description": "Conserva el primer plano para texto común"
         }
       ]
     },

@@ -51,7 +51,7 @@ def classify(probe, error):
     return Result(probe, "missing", groups=groups)
 ```
 
-`Result`, `Group` y el error con `status_code` y `response_body` son del proyecto; las marcas, las de su capa de autorización.
+`Result`, `Group` y el error con `status_code` y `response_body` son del proyecto; las marcas, las de su capa de autorización. Aplicá el mismo diagnóstico a los `403` de la ejecución real, no solo a `--check-access`: nombrá la operación, el recurso y el permiso o Access Group que la respuesta identifique explícitamente. Si no hay regla configurada, indicá consultar al equipo dueño; si no hay diagnóstico, decí qué permiso revisar sin inventar grupos. En terminal y JSON, extraé solo identificadores validados y acotados; no imprimas cuerpos, credenciales ni links remotos sin validar.
 
 ## Obligatorios, opcionales y lo que no se chequea
 
