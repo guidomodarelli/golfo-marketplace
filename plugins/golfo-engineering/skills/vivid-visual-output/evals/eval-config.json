@@ -70,6 +70,19 @@
       ]
     },
     {
+      "id": "tty-plan-not-tsv-rows",
+      "description": "Un plan o una confirmación para una persona no reutiliza las filas TSV/CSV: en TTY muestra candidatos con encabezados, agrupa omisiones por motivo, separa errores y apila en terminal angosta; en pipes y --json el formato parseable queda limpio.",
+      "input": "El CLI `prune-branches` en Node lista ramas viejas para borrar. Hoy, antes de preguntar «¿Borrar? [y/N]», imprime en la terminal las mismas filas TSV que usa `--format tsv` (rama, último commit, autor, motivo), con candidatas, ramas omitidas por estar protegidas o tener un PR abierto, y ramas que fallaron al leerse, todo mezclado. Rediseñá la salida del plan y la confirmación para cuando corre en una terminal, también a 40 columnas, sin romper `--format tsv` ni `--json`, que consume otro script. Mostrá el módulo de salida completo.",
+      "assertions": [
+        { "type": "regex", "pattern": "encabezad|header|t[ií]tulo.{0,40}(secci|candidat)|Candidat[ao]s? [(]", "description": "Muestra los candidatos con encabezados o títulos de sección" },
+        { "type": "regex", "pattern": "(agrup|una sola vez|una vez).{0,80}(motivo|raz[oó]n|omitid|protegid)|(motivo|omitid).{0,80}(agrup|una sola vez|debajo)", "description": "Agrupa las omisiones por motivo" },
+        { "type": "regex", "pattern": "(error|fall).{0,80}(secci[oó]n|bloque|aparte|separad|propi[ao])|(secci[oó]n|bloques?|aparte|separad).{0,120}(error|fall)|(error|fall).{0,30}[(][0-9]+[)]", "description": "Separa los errores en su propia sección" },
+        { "type": "regex", "pattern": "apil|stack|una l[ií]nea por campo|sin truncar|no truncar|nunca truncar", "description": "En terminal angosta apila campos en lugar de truncar" },
+        { "type": "regex", "pattern": "isTTY|TTY", "description": "Decide la presentación según haya TTY" },
+        { "type": "regex", "pattern": "(tsv|json|pipe|parseable).{0,120}(sin (decoraci|color|escape|ansi)|limpi|intact|igual|no cambia)|byte a byte|byte-for-byte", "description": "Mantiene el formato parseable sin decoración" }
+      ]
+    },
+    {
       "id": "skips-chat-answer",
       "description": "Una respuesta en el chat no recibe el piso de terminal ni de UI.",
       "input": "¿Qué diferencia hay entre `git merge` y `git rebase`? Respondeme en dos párrafos.",
