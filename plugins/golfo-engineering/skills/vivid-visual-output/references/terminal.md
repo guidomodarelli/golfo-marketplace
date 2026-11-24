@@ -107,23 +107,22 @@ Cinco estados, siempre con símbolo y palabra. Pintar juntos el símbolo y el te
 
 Glifos y colores pueden cambiar por proyecto, siempre que los cinco sigan distinguiéndose por texto.
 
-### Un color por papel
+### Papeles con una paleta chica
 
 Diferenciar marca, texto y estados en vez de teñir todo del color de marca. Elegir un acento y reutilizarlo entre lanzador, selector y resumen; en `[1/42] Aplicación …` pintar solo el contador. Separar título, comando y flags en la ayuda con una combinación de acento, negrita, contraste y alineación. No asignar un matiz por opción del selector: el mismo acento indica foco sin importar la opción.
 
 | Papel | Dónde aparece | Color |
 |---|---|---|
-| Marca | Nombre en la tarjeta de encabezado, contador de pasos `[2/4]` | El color o degradado del carácter del proyecto, y solo acá |
-| Títulos de sección | `Uso:`, `Opciones:`, `Variables de entorno:` | Uno propio, en negrita |
-| Programa y subcomandos | Línea de uso, ejemplos, tabla de subcomandos | Otro, en negrita |
-| Flags | Línea de uso, tabla de opciones, texto | Otro, en negrita |
-| Variables de entorno | Su tabla y el texto | Otro |
-| Comandos citados | `` `tool --stop` `` dentro de una descripción | Otro |
-| Datos secundarios | `<valores>`, `[ ]`, `\|`, `(default …)`, versión, bordes | Atenuado |
+| Marca y foco | Nombre en la tarjeta de encabezado, contador de pasos `[2/4]`, opción enfocada del selector | El acento del carácter del proyecto (o su degradado en la tarjeta) |
+| Títulos de sección | `Uso:`, `Opciones:`, `Variables de entorno:` | Acento, en negrita |
+| Programa, subcomandos y comandos citados | Línea de uso, ejemplos, tabla de subcomandos, `` `tool --stop` `` dentro de una descripción | Primer plano, en negrita |
+| Flags y variables de entorno | Línea de uso, tabla de opciones, su tabla y el texto | Acento, sin negrita |
+| Texto común | Descripciones, preguntas, etiquetas inactivas, texto de progreso | Primer plano del terminal |
+| Datos secundarios | `<valores>`, `[ ]`, `\|`, `(default …)`, duración, versión, bordes | Atenuado |
 | Estados | Los cinco de arriba, los códigos de salida (`0`, `1`, `2`) y lo destructivo (`BORRA`) | Los de los estados: lo destructivo y el `1`, con el de error |
 
 - **Tonos medios**, que se lean sobre fondo oscuro y claro: el Terminal de macOS arranca con fondo claro, y un amarillo o un cian muy claros ahí desaparecen. Renderizar la salida sobre los dos fondos antes de darla por buena.
-- Los temas de los kits traen pocos colores de ejemplo (`accent`, `muted` y los estados): al fijar el carácter, sumar los papeles que use la salida en vez de repartir todo en `accent`.
+- Los temas de los kits traen pocos colores de ejemplo (`accent`, `muted` y los estados), y alcanzan: combinarlos con negrita y atenuación en vez de sumar un matiz por papel. Agregar un segundo acento solo si dos papeles que aparecen juntos no se distinguen de ninguna otra forma.
 - En PTY, verificar que contador, foco y títulos usen el mismo acento, que el texto común siga el primer plano del terminal y que el significado de los estados no dependa solo del color.
 
 - **Tablas:** alinear por ancho visible, con los escapes ya quitados. Números y duraciones a la derecha. Títulos en negrita o atenuados, sin grilla completa.

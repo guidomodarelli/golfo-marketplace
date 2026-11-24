@@ -16,7 +16,7 @@ Correr el CLI real, no una versión escrita para el chequeo. La herramienta de s
 
 | # | Caso | Dónde | Pasa si |
 |---|---|---|---|
-| a | `--help`, `-h`, `--version` | Sin y con terminal | Exit 0, salida en stdout, sin preguntas. La ayuda lista todas las flags en dos columnas alineadas. Con terminal, comandos y flags en colores distintos; a pipe, a 40 columnas o con `NO_COLOR=1`, sin escapes, las mismas columnas y ninguna descripción cortada |
+| a | `--help`, `-h`, `--version` | Sin y con terminal | Exit 0, salida en stdout, sin preguntas. La ayuda lista todas las flags en dos columnas alineadas. Con terminal, comandos y flags con estilos distintos (acento, negrita o atenuación), sin teñir la descripción; a pipe, a 40 columnas o con `NO_COLOR=1`, sin escapes, las mismas columnas y ninguna descripción cortada |
 | b | Sin argumentos | Con terminal | Aparecen los prompts. Con teclas reales, el resultado es idéntico al de la llamada con flags, y el comando impreso lo reproduce |
 | c | Sin argumentos | Sin terminal | No se cuelga, exit 2, stderr nombra los flags faltantes, nada escrito |
 | d | Todo por flags | Con terminal | Cero prompts, exit 0 |
@@ -75,6 +75,9 @@ Si el CLI resuelve secretos en un wrapper, chequea permisos, crea recursos por A
 | fff | Sin subcomando (con y sin un flag global), elegir uno en el menú, y repetir | Con terminal | Una sola tarjeta. Corre con los mismos defaults que escrito a mano, conserva el flag global que ya vino y al final imprime el comando equivalente con él. En la segunda corrida, el elegido aparece primero con su marca entera aunque la fila se corte |
 | ggg | Menú en Windows: ↓, ↑, Enter y Ctrl+C en una ConPTY | Con terminal | Las flechas mueven el resaltado, Enter elige y Ctrl+C sale con 130 y el cursor visible |
 | hhh | `--help` después de un flag desconocido o de un valor inválido (`--json=x --help`) | Sin terminal | Exit 0 con la ayuda del subcomando, como en a |
+| iii | Selector corto (menú de acciones o radio): ↓, ↑, ↓ y Enter, sin escribir números | Con terminal | El foco se mueve con cada flecha y Enter elige la acción enfocada. El menú numerado aparece solo con `TERM=dumb` o sin poder redibujar |
+| jjj | Input opcional respondido con Enter vacío y otro con un valor (`300`) | Con terminal | El renglón queda reemplazado por `✓ Tiempo máximo › sin límite` y `✓ Tiempo máximo › 300 s`: nombre, valor y unidad en una línea, sin un `+ 300` suelto debajo. Sin terminal, la misma información en líneas planas |
+| kkk | Lote con errores, omitidos repetidos por el mismo motivo y hechos | Ambos | Secciones con título y contador, solo las que tienen datos, errores primero. El motivo de la omisión aparece una vez con los elementos debajo, y cada error lleva su identificador y su detalle |
 
 Modo agente ([agent-mode.md](agent-mode.md)):
 

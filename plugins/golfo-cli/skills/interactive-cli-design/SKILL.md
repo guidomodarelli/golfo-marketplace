@@ -3,7 +3,7 @@ name: interactive-cli-design
 description: "Diseña e implementa CLIs con flags y modo interactivo: decide el modo según argumentos, TTY y CI, fija las flags mínimas (--help, --version, --no-input y las condicionales), da paridad entre cada flag y su pregunta, elige el widget según el dato (confirm, radio, lista con búsqueda, multiselect, input, secreto) y cierra exit codes, stdout/stderr y Ctrl+C, con modo agente (Claude Code, Codex) y salida --json, verificando en una pseudoconsola real. Usar siempre, sin pedido explícito, al crear o modificar un CLI, subcomando, script con argumentos, wizard, instalador o menú que reciba o pregunte datos, en Node, Python, Go, Rust, bash, zsh o PowerShell, aunque el pedido solo diga agregar un flag, «que pregunte si falta un dato», «hacelo interactivo» o «que lo pueda usar un agente». Siempre carga vivid-visual-output, dueña de cómo se ve la salida (color, spinner, tablas): retocar solo eso no dispara esta skill. Tampoco en TUIs de pantalla completa, scripts sin entradas ni slash commands de agentes."
 license: MIT
 metadata:
-  version: "1.6.0"
+  version: "1.7.0"
   author: "Guido Modarelli"
   category: "developer-experience"
   tags: "cli, flags, interactive, prompts, wizard, tty, exit-codes, node, python, go, rust, shell"
@@ -24,7 +24,8 @@ Un CLI increíble sirve a dos públicos con el mismo comando: a una persona le p
 5. **Cargar y aplicar `vivid-visual-output`, siempre.** Todo CLI que pasa por esta skill tiene salida que mira una persona: como mínimo la ayuda, los prompts y los errores. Esta skill decide qué sale, cuándo y por qué stream; aquella decide cómo se ve, y viene en el mismo plugin. No reemplazarla por un piso propio («con `NO_COLOR` alcanza»), aunque el pedido hable solo de flags o dé lo visual por resuelto: sin ella la ayuda queda sin el carácter del proyecto y la degradación sin CI, pipes ni modo agente. Una restricción explícita del usuario o del proyecto (sin color, solo ASCII) se aplica dentro de aquella, que la hace prevalecer, no salteándola. Lo que solo consume otro programa (`--json`) queda sin decoración, y eso también lo decide aquella.
 6. **Implementar en tres capas** ([Paridad](#paridad)).
 7. **Verificar ejecutando** con [references/verification.md](references/verification.md). Lo que no se corrió no está verificado.
-8. **Cerrar** con el reporte de la sección [Cierre](#cierre).
+8. **Revisar antes de entregar** con [Revisión antes de entregar](#revisión-antes-de-entregar).
+9. **Cerrar** con el reporte de la sección [Cierre](#cierre).
 
 ## Decisión de modo
 
@@ -95,7 +96,7 @@ Evaluar en orden. Gana la primera fila que aplica.
 **Ayuda.** Va a stdout y tiene, en este orden: qué hace en una línea, uno o dos ejemplos, las flags con su default y valores válidos, qué pasa sin flags y los códigos de salida. Cada subcomando tiene la suya. Siempre con este formato, aunque el parser traiga otro:
 
 - **Todo lo que tiene descripción va en una tabla de dos columnas**: subcomandos, flags, argumentos, variables de entorno y códigos de salida. A la izquierda el nombre (`-n, --name <valor>`), a la derecha la descripción con su default y valores válidos. La izquierda se alinea a la más ancha de su sección. La tabla mide como máximo 80 columnas, o el ancho de la terminal si es menor. La descripción larga se parte dentro de su columna; si la terminal es tan angosta que no entra, se apila (el nombre en una línea y la descripción sangrada debajo), nunca se trunca.
-- **Un color por papel**, en la tabla, en la línea de uso y en los ejemplos: los títulos de sección (en negrita), el programa y sus subcomandos, las flags, las variables de entorno y los comandos citados en el texto llevan cada uno su color; los `<valores>` van atenuados y los códigos de salida con el color de su significado. Distinguir papeles con una combinación de acento, negrita, atenuación y alineación; no sumar un matiz distinto por cada elemento. Los colores salen de las constantes del carácter del proyecto, que fija `vivid-visual-output` (paso 5 del [Flujo](#flujo); tabla de papeles en su `references/terminal.md`, «Un color por papel»).
+- **Cada papel se distingue, con una paleta chica**, en la tabla, en la línea de uso y en los ejemplos: los títulos de sección, el programa y sus subcomandos, las flags, las variables de entorno y los comandos citados en el texto no se confunden entre sí; los `<valores>` van atenuados, la descripción en el primer plano y los códigos de salida con el color de su significado. Distinguirlos con una combinación de acento, negrita, atenuación y alineación (por ejemplo, títulos en acento y negrita, subcomandos en negrita, flags en acento); no sumar un matiz distinto por cada elemento ni teñir todo del color de la marca. Los colores salen de las constantes del carácter del proyecto, que fija `vivid-visual-output` (paso 5 del [Flujo](#flujo); tabla de papeles en su `references/terminal.md`, «Papeles con una paleta chica»).
 - **Sin color, el mismo formato.** Si stdout no es una terminal, hay `NO_COLOR` o `TERM=dumb`, la ayuda sale sin secuencias de escape y con las mismas dos columnas: `tool --help | less` y `tool --help > ayuda.txt` se leen igual.
 
 Cada referencia de stack dice cómo lograrlo con su parser.
@@ -181,9 +182,39 @@ Cargar solo la referencia del stack en uso. Cada una tiene parser, detección de
 
 En otro stack, aplicar el mismo contrato y leer la documentación actual de sus librerías antes de usar su API.
 
+## Revisión antes de entregar
+
+Lo que más se pierde al implementar no es una regla rara sino una de las básicas, porque el código «anda» cuando se lo prueba a mano con flags. Antes de entregar, recorrer cada fila **que el cambio toca**, comprobarla ejecutando el CLI (no leyendo el código) y corregir lo que falle antes de seguir. La regla y el detalle viven en la sección citada; acá solo está cómo se ve que se cumplió.
+
+| # | Aplica si | Se comprueba con | Pasa si |
+|---|---|---|---|
+| R1 | Siempre | Casos `c`, `g` y `j` de la [matriz](references/verification.md#matriz) | Sin terminal nunca pregunta ni se cuelga: exit 2 con **todos** los flags faltantes en una línea, o con el flag inválido y sus valores ([Decisión de modo](#decisión-de-modo)) |
+| R2 | Pregunta algo | Casos `b` y `d` | Cada pregunta tiene su flag y cada flag de dato su pregunta, con la misma función de validación; con teclas y con flags da el mismo resultado, y al final se imprime el comando equivalente sin secretos ([Paridad](#paridad)) |
+| R3 | Pregunta algo | Casos `f` y `r` | Ctrl+C sale con 130 y el cursor visible; antes de la última respuesta no hubo efectos, y después lista lo hecho y cómo seguir ([Contrato de salida](#contrato-de-salida)) |
+| R4 | Tiene un menú o un selector | Casos `iii` y `ggg` | Se elige con ↑/↓ y Enter, sin escribir números, y queda elegida la opción esperada ([Widget según el dato](#widget-según-el-dato)) |
+| R5 | Pregunta algo | Caso `jjj` | Cada respuesta queda en una sola línea `✓ pregunta › respuesta`, con unidad o «sin límite» si quedó vacía, sin un `+ 300` suelto |
+| R6 | Siempre | Casos `a` y `h` | stdout solo lleva datos; `--help` es la tabla de dos columnas y, por pipe o con `NO_COLOR`, sale sin escapes y sin cortar ([Ayuda](#flags)) |
+| R7 | Procesa varios elementos | Caso `kkk` | El cierre agrupa por resultado (errores, pendientes, hechos, omitidos) con título y contador; lo repetido dice su motivo una sola vez y cada error conserva su identificador (`vivid-visual-output`, «Los lotes se cierran por resultado») |
+| R8 | Espera o reintenta | Caso `ccc` | El paso dice qué espera y el intento actual con el máximo que sale de la constante, sin inventar un tope que el código no tiene |
+| R9 | Llama a servicios con permisos | Casos `u`, `z` y `ee` | Un `403` nombra la operación y el permiso o grupo que la respuesta identifica, sin inventar grupos ni mostrar cuerpos o tokens ([preflight.md](references/preflight.md)) |
+| R10 | Siempre | Casos `ag1` y `ag4` | Bajo un agente, aunque haya pseudoconsola, no pregunta y sale plano ([Modo agente](#modo-agente)) |
+
+El reporte lleva una línea por fila, con su estado y la evidencia en pocas palabras. Contar cómo se verificó sin este bloque no alcanza: quien lee no puede ver qué regla quedó sin probar.
+
+```text
+Revisión antes de entregar
+✓ R1 sin terminal: exit 2, «faltan --snapshot y --force»
+✓ R4 node-pty: ↓, ↓, Enter eligió snap-03
+· R5 sin correr: no hay pseudoconsola en este entorno; queda el caso jjj para correr a mano
+n/a R7 restaura un solo snapshot por corrida
+✗ R6 --help por pipe salía con escapes → corregido, vuelto a correr: ✓
+```
+
+Una fila que no se pudo correr va como `· sin correr` con el motivo, nunca como `✓`. Una que falló se corrige y se vuelve a correr antes de entregar. Cómo se ve cada salida lo revisa además el cierre de `vivid-visual-output`, que no se repite acá.
+
 ## Cierre
 
-Sumar al reporte, en pocas líneas: las flags elegidas y por qué, los casos de la matriz que corrieron con su resultado y los que no se pudieron correr con su motivo. Si el proyecto tiene tests, dejar automatizados los casos sin terminal, que no necesitan un PTY. Si el CLI llama a APIs, los flujos se prueban contra un servidor HTTP local, no mockeando el cliente: [references/verification.md](references/verification.md#servidor-de-prueba). El reporte dice también cómo se probó el modo agente (casos `ag1` a `ag8` de la matriz) y suma el cierre de `vivid-visual-output`: el carácter usado o reusado y sus chequeos.
+Sumar al reporte, en pocas líneas: el bloque de [Revisión antes de entregar](#revisión-antes-de-entregar), las flags elegidas y por qué, y los demás casos de la matriz que corrieron, con su resultado. Si el proyecto tiene tests, dejar automatizados los casos sin terminal, que no necesitan un PTY. Si el CLI llama a APIs, los flujos se prueban contra un servidor HTTP local, no mockeando el cliente: [references/verification.md](references/verification.md#servidor-de-prueba). Suma también el cierre de `vivid-visual-output`: el carácter usado o reusado y sus chequeos.
 
 ## Fuentes
 

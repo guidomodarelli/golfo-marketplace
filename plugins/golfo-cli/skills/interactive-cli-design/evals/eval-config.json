@@ -15,6 +15,28 @@
       ]
     },
     {
+      "id": "report-carries-pre-delivery-review",
+      "description": "El reporte recorre la revisión antes de entregar: cada fila con su resultado y las que no aplican con motivo, en vez de un «probado» genérico.",
+      "input": "Agregale a mi CLI en Node `snapctl` un subcomando `restore` que pregunte el snapshot (una lista de 4 que trae la API) y si sobrescribir el directorio destino. Tiene que andar también desde CI. Implementalo y decime cómo lo verificaste.",
+      "assertions": [
+        { "type": "regex", "pattern": "(✓|✗|·|n/a).{0,3}R[0-9]+\\b", "description": "El reporte trae el bloque de revisión, una línea por fila con su estado" },
+        { "type": "regex", "pattern": "(n/a|no aplica).{0,3}R(7|8|9)\\b.{3,}|R(7|8|9)\\b.{0,80}(n/a|no aplica)", "description": "Marca como no aplica una fila ajena al cambio, con su motivo" },
+        { "type": "regex", "pattern": "(exit|c[oó]digo).{0,40}\\b2\\b", "description": "Comprueba la salida con exit 2 sin terminal" },
+        { "type": "regex", "pattern": "↑.{0,30}↓|flechas", "description": "Comprueba que el selector se usa con flechas" }
+      ]
+    },
+    {
+      "id": "batch-permissions-grouped-close",
+      "description": "Un CLI que aplica permisos en lote cierra agrupado por resultado y diagnostica los 403 sin inventar grupos.",
+      "input": "Tengo un script Python `grantctl apply roles.csv` que da 60 permisos por API. Hoy imprime una línea por fila y, cuando la API responde 403, muestra el body crudo de la respuesta. 40 filas ya estaban asignadas. Mejorá la salida del cierre y el manejo del 403; la respuesta del 403 a veces trae `required_group` y a veces no.",
+      "assertions": [
+        { "type": "regex", "pattern": "(contador|[0-9]+).{0,60}[Ee]rrores|[Ee]rrores.{0,60}(contador|[0-9]+)", "description": "Agrupa los errores con contador" },
+        { "type": "regex", "pattern": "[Oo]mitid.{0,80}(una (sola )?vez|motivo)|[Oo]mitid[a-z]* ?\\(?[0-9]+\\)? ?(·|:|—|-) ?[a-z]|[0-9]+ omitid[a-z]* ?(·|:|—|-) ?[a-z]", "description": "Agrupa las omisiones bajo un solo motivo" },
+        { "type": "regex", "pattern": "([Nn]o (se |lo )?invent|[Ss]in inventar|[Nn]o adivin).{0,60}grupo|grupo.{0,60}([Nn]o (se |lo )?invent|[Ss]in inventar|[Nn]o adivin)|[Ss]in `?required_group`?.{0,100}(consult|no indic|due[ñn]o)", "description": "Muestra el grupo solo si la respuesta lo trae, sin inventarlo" },
+        { "type": "regex", "pattern": "([Nn]o|[Nn]unca|[Ss]in) (se )?(muestra|mostrar|imprim|vuelca|volcar).{0,40}(body|cuerpo)|(body|cuerpo).{0,60}(no se (muestra|imprime)|no aparece|fuera)", "description": "Deja de imprimir el cuerpo crudo" }
+      ]
+    },
+    {
       "id": "no-tty-fails-naming-flags",
       "description": "Sin terminal no se cuelga: falla con exit 2 nombrando todos los flags, y la decisión mira stdin y stderr.",
       "input": "Tengo un CLI en Node, `deploy`, que recibe --env y --service. Quiero que si faltan pregunte. Mostrame solo el código que decide si pregunta o qué hace si no puede, y qué pasa cuando corre en GitHub Actions.",

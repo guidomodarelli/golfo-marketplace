@@ -41,13 +41,14 @@ const features = flags.features?.flatMap((value) => value.split(',')).filter((va
 
 ## Ayuda
 
-Con `parseArgs` la ayuda se escribe a mano. Este helper arma cada sección en dos columnas, con un color por papel (títulos, comandos, flags; los valores atenuados), y la apila si la terminal es angosta. `styleText` con `stream` omite los escapes cuando stdout no es una terminal o hay `NO_COLOR`; necesita Node 22.13 o posterior. Mide con `.length`: alcanza para nombres ASCII y descripciones en español, no para emojis ni texto de doble ancho.
+Con `parseArgs` la ayuda se escribe a mano. Este helper arma cada sección en dos columnas, distinguiendo cada papel con una paleta chica (títulos en acento y negrita, comandos en negrita, flags en acento, valores atenuados), y la apila si la terminal es angosta. `styleText` con `stream` omite los escapes cuando stdout no es una terminal o hay `NO_COLOR`; necesita Node 22.13 o posterior. Mide con `.length`: alcanza para nombres ASCII y descripciones en español, no para emojis ni texto de doble ancho.
 
 ```js
 import { styleText } from 'node:util';
 
-// El carácter del proyecto: reemplazar estos valores, solo muestran la forma. Un color por papel: dos no se repiten.
-const HELP_STYLES = { title: ['bold', 'green'], command: 'cyan', flag: 'yellow', value: 'dim' };
+// El carácter del proyecto: reemplazar estos valores, solo muestran la forma. Un acento más negrita y atenuación: ningún papel se confunde con otro.
+const HELP_ACCENT = 'green';
+const HELP_STYLES = { title: ['bold', HELP_ACCENT], command: 'bold', flag: HELP_ACCENT, value: 'dim' };
 const HELP_INDENT = 2;
 const HELP_GAP = 2;
 const MIN_DESCRIPTION_COLUMNS = 24;
