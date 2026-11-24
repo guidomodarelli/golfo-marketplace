@@ -941,6 +941,7 @@ bash "$skill_dir/scripts/normalize-instructions.sh" --stack "$stack"
 
 sync_claude_settings "$skill_dir/assets/common/settings.json"
 sync_codex_hooks "$skill_dir/assets/codex/hooks.json"
+sync_antigravity_hooks "$skill_dir/assets/antigravity/hooks.json"
 
 finalize_arguments=(finalize --project . --skill-dir "$skill_dir" --plan "$plan_file")
 if ! finalize_report="$(python3 "$state_script" "${finalize_arguments[@]}")"; then

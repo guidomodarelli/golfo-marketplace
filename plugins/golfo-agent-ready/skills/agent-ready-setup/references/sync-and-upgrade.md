@@ -121,6 +121,22 @@ La proyección automática de assets:
   de git. No imprime nada salvo avisos, porque Claude agrega la salida al prompt.
 - Combina el template con `.claude/settings.json` como JSON, preservando campos
   custom y reportando settings inválidos.
+- Con `antigravity` entre los providers, combina `assets/antigravity/hooks.json` con
+  `.agents/hooks.json` (`merge-antigravity-hooks.py`). Antigravity agrupa sus hooks por
+  nombre: el apply es dueño del nombre `agent-ready`, que reemplaza entero, y preserva
+  los demás nombres del proyecto. Un JSON inválido es un conflicto y el archivo no se
+  toca. Sin Antigravity, el nombre `agent-ready` sale, y un archivo que solo tenía ese
+  nombre se borra. Declara dos hooks:
+  - `SessionStart`: `sync-marketplace.sh --provider antigravity`, con el upgrade del
+    marketplace salteado (Antigravity no tiene marketplace de plugins).
+  - `PostToolUse` con el matcher `write_to_file|replace_file_content|multi_replace_file_content`:
+    `check-harness-consistency.sh`, que revisa la raíz de la rule o skill editada.
+    Antigravity manda en stdin `{"toolCall": {"name", "args"}}` y nombra el archivo en
+    `args.TargetFile` o `args.AbsolutePath`. Un `PostToolUse` de Antigravity responde un
+    objeto JSON sin campo para darle contexto al modelo: el hook imprime `{}`, deja el
+    reporte en stderr y los hallazgos quedan en la caché para `agent-ready status` y `plan`.
+  Los hooks de aprendizaje (`learning-hook.sh`) no se proyectan todavía en Antigravity: le
+  devuelven contexto al agente, y Antigravity lo pide en otra forma (`injectSteps`).
 - Normaliza `CLAUDE.md` raíz y anidados, incluido `.claude/CLAUDE.md`, mediante
   `scripts/normalize-instructions.sh`; crea o actualiza únicamente el `AGENTS.md`
   hermano cuando puede preservar el contenido sin ambigüedad.

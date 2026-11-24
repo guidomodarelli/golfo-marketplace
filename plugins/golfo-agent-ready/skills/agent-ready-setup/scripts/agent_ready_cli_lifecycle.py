@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import sys
 
+import agent_ready_antigravity_hooks as antigravity_hooks
 from agent_ready_cli_common import (
     CLI_NAME,
     EXIT_CANCELLED,
@@ -50,7 +51,8 @@ PROBE_TIMEOUT_SECONDS = 30
 PYTHON_VERSION_PATTERN = re.compile(r"Python (\d+)\.(\d+)")
 HOOK_SCRIPTS_DIRECTORY = ".agents/hooks/"
 # Where each provider reads the hooks that an apply merges.
-PROVIDER_HOOK_FILES = {"claude": ".claude/settings.json", "codex": ".codex/hooks.json"}
+PROVIDER_HOOK_FILES = {"claude": ".claude/settings.json", "codex": ".codex/hooks.json",
+                       ANTIGRAVITY_PROVIDER: antigravity_hooks.HOOKS_RELATIVE_PATH}
 # The CLI of each provider, and the name doctor shows for it.
 PROVIDER_COMMANDS = {"claude": "claude", "codex": "codex", ANTIGRAVITY_PROVIDER: "agy"}
 PROVIDER_NAMES = {"claude": "Claude Code (claude)", "codex": "Codex (codex)", ANTIGRAVITY_PROVIDER: "Antigravity (agy)"}
@@ -274,12 +276,16 @@ def hook_handlers(document):
             for handler in group["hooks"] if isinstance(handler, dict) and isinstance(handler.get("command"), str)]
 
 
-def present_hook_handlers(path):
-    """The hook handlers of a provider file, or None when it cannot be read."""
+def present_hook_handlers(path, provider=None):
+    """The hook handlers of a provider file, or None when it cannot be read. Antigravity keys its hooks by
+    name: they are read in the shape of the others (agent_ready_antigravity_hooks.as_claude_hooks)."""
     try:
-        return set(hook_handlers(read_json_file(path, "provider settings")))
+        document = read_json_file(path, "provider settings")
     except StateError:
         return None
+    if provider == ANTIGRAVITY_PROVIDER:
+        document = antigravity_hooks.as_claude_hooks(document)
+    return set(hook_handlers(document))
 
 
 def hook_scripts(commands):
@@ -297,12 +303,15 @@ def check_hooks(project, providers):
         return [check("hooks", CHECK_SKIPPED, "agent-ready-setup is not applied in this repository",
                       f"{CLI_NAME} init sets it up")]
     templates = dict(settings_templates(SKILL_ROOT))
+    templates[antigravity_hooks.HOOKS_RELATIVE_PATH] = os.path.join(SKILL_ROOT, *antigravity_hooks.TEMPLATE_RELATIVE_PATH.split("/"))
     checks = []
-    # Antigravity gets no hooks yet (providers.json, hooks: none).
-    for provider in [provider for provider in providers if provider in PROVIDER_HOOK_FILES]:
+    for provider in providers:
         destination = PROVIDER_HOOK_FILES[provider]
-        expected = hook_handlers(read_json_file(templates[destination], "agent-ready hooks template"))
-        present = present_hook_handlers(os.path.join(project, destination))
+        template = read_json_file(templates[destination], "agent-ready hooks template")
+        if provider == ANTIGRAVITY_PROVIDER:
+            template = antigravity_hooks.as_claude_hooks(template)
+        expected = hook_handlers(template)
+        present = present_hook_handlers(os.path.join(project, destination), provider)
         commands = [command for _, _, command in expected]
         missing_scripts = [script for script in hook_scripts(commands) if not os.path.isfile(os.path.join(project, script))]
         if present is None:

@@ -36,7 +36,7 @@
         "skills": { "support": "native", "mechanism": ".agents/skills" },
         "agents": { "support": "native", "mechanism": ".agents/agents subagents" },
         "commands": { "support": "adapted", "mechanism": "skill adapter in .agents/skills; not a slash command" },
-        "hooks": { "support": "none", "mechanism": "not projected yet" },
+        "hooks": { "support": "adapted", "mechanism": ".agents/hooks.json, the agent-ready hook name merged: sync at SessionStart and the consistency review after an edit" },
         "mcp": { "support": "native", "mechanism": ".agents/mcp_config.json for the pack and browser servers; remote ones with serverUrl" }
       }
     }

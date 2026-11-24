@@ -680,3 +680,69 @@ sync_codex_hooks() {
   fi
   rm -f -- "$staged_hooks" "$destination_snapshot"
 }
+
+# True when the manifest lists Antigravity among the providers of the repository (an optional one).
+antigravity_selected() {
+  python3 - <<'PY'
+import json, sys
+try:
+    with open(".agents/agent-ready.json", encoding="utf-8") as manifest_file:
+        providers = json.load(manifest_file).get("providers") or []
+except (OSError, ValueError, AttributeError):
+    providers = []
+sys.exit(0 if "antigravity" in providers else 1)
+PY
+}
+
+# Antigravity reads its hooks from .agents/hooks.json, keyed by a hook name. The apply owns the name
+# agent-ready (merge-antigravity-hooks.py replaces it whole from the template) and keeps every other
+# one. With Antigravity among the providers the managed name is written; without it, it leaves, and a
+# file that only held it is removed. Invalid hooks are a conflict, never rewritten.
+# Arguments: the template. Consumers define sync_file, record_conflict and record_removed.
+sync_antigravity_hooks() {
+  local template="$1"
+  local destination="$SHARED_DIR/hooks.json"
+  local staged_hooks
+  local destination_snapshot
+  local -a merge_arguments
+  local merge_status=0
+
+  if [[ -L "$destination" || ( -e "$destination" && ! -f "$destination" ) ]]; then
+    record_conflict "$destination is a symlink or non-file; Antigravity hooks preserved"
+    return 0
+  fi
+  if antigravity_selected; then
+    merge_arguments=("$template")
+  elif [[ -e "$destination" ]]; then
+    merge_arguments=(--remove)
+  else
+    return 0
+  fi
+
+  staged_hooks="$(mktemp "${TMPDIR:-/tmp}/agent-ready-antigravity-hooks.XXXXXX")"
+  destination_snapshot="$(mktemp "${TMPDIR:-/tmp}/agent-ready-current-antigravity-hooks.XXXXXX")"
+  if [[ -e "$destination" ]]; then
+    cp -- "$destination" "$destination_snapshot"
+  else
+    rm -f -- "$destination_snapshot"
+  fi
+  python3 "$ASSET_SYNC_SKILL_DIR/scripts/merge-antigravity-hooks.py" "${merge_arguments[@]}" \
+    "$destination_snapshot" > "$staged_hooks" || merge_status=$?
+  if [[ "$merge_status" -eq 3 ]]; then
+    # No managed hooks to take out: the project's file stays byte for byte.
+    :
+  elif [[ "$merge_status" -ne 0 ]]; then
+    record_conflict "Antigravity hooks contain invalid configuration; original file preserved"
+  elif [[ -s "$staged_hooks" ]]; then
+    if [[ -e "$destination_snapshot" ]]; then
+      sync_file "$staged_hooks" "$destination" "$template" "$destination_snapshot"
+    else
+      sync_file "$staged_hooks" "$destination" "$template" absent
+    fi
+  elif [[ -e "$destination" ]] && cmp -s -- "$destination" "$destination_snapshot"; then
+    # Only the managed hooks were left: the file goes with them.
+    rm -f -- "$destination"
+    record_removed "$destination"
+  fi
+  rm -f -- "$staged_hooks" "$destination_snapshot"
+}

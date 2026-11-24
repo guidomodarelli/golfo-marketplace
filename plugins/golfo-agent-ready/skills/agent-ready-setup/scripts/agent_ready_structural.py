@@ -250,9 +250,8 @@ def parity_report(project_root, skill_dir, plan, configuration, with_user=True):
         scoped = sum(1 for rule in rules if not loaded_at_start(rule["text"]))
         views = parity.provider_views(len(rules), scoped, plan["entries"])
         report["views"] = {provider: view for provider, view in views.items() if provider in providers}
-        # Only Claude Code and Codex get hooks (providers.json): Antigravity has none to compare yet.
-        if {parity.PROVIDER_CLAUDE, parity.PROVIDER_CODEX} <= set(providers):
-            report["hookDifferences"] = parity.hook_differences(project_root, skill_dir, with_user)
+        hook_providers = [provider for provider in PROVIDER_VIEW_ORDER if provider in providers]
+        report["hookDifferences"] = parity.hook_differences(project_root, skill_dir, with_user, hook_providers)
     if configuration.value(PROVIDER_PARITY_ENABLED_KEY) and parity.PROVIDER_ANTIGRAVITY in providers:
         report["antigravityDropped"] = antigravity_dropped_rules(project_root, plan)
     if configuration.value(ENVIRONMENT_CONFLICTS_ENABLED_KEY):

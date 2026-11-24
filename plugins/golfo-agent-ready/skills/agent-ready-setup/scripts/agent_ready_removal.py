@@ -15,6 +15,7 @@ import agent_ready_content
 import agent_ready_learning_schedule as learning_schedule
 import agent_ready_nested as nested
 import agent_ready_pack_clis as pack_clis
+import agent_ready_antigravity_hooks as antigravity_hooks
 import agent_ready_pack_mcp as pack_mcp
 import agent_ready_rule_triggers as rule_triggers
 from agent_ready_actions import ACTION_DROP, ACTION_RETIRE_CONFLICT, LINKED_PARENT_REASON, classify_retired
@@ -358,9 +359,28 @@ def settings_without_managed_entries(project_root, destination, template_path):
     return current, without_managed_entries(current, template)
 
 
+def antigravity_hooks_removal_entries(project_root):
+    """The managed hook name leaves .agents/hooks.json; the project's names stay."""
+    destination = antigravity_hooks.HOOKS_RELATIVE_PATH
+    local = local_state(os.path.join(project_root, destination))
+    if local in (LOCAL_ABSENT, LOCAL_NOT_A_FILE):
+        return []
+    if local == LOCAL_SYMLINK:
+        return [removal_entry(destination, REMOVAL_KEEP, "a symlink; remove its agent-ready hooks by hand", "settings")]
+    try:
+        current = antigravity_hooks.read(os.path.join(project_root, *destination.split("/")))
+    except antigravity_hooks.HooksError:
+        return [removal_entry(destination, REMOVAL_KEEP, "invalid JSON; remove its agent-ready hooks by hand", "settings")]
+    if antigravity_hooks.MANAGED_GROUP not in current:
+        return []
+    if not antigravity_hooks.without_managed(current):
+        return [removal_entry(destination, REMOVAL_REMOVE, "only holds agent-ready hooks", "settings", local)]
+    return [removal_entry(destination, REMOVAL_EDIT, "removes the agent-ready hooks; the project's stay", "settings", local)]
+
+
 def settings_removal_entries(project_root, skill_dir):
     """Managed hooks and permissions leave the merged JSON files; custom entries stay."""
-    entries = []
+    entries = antigravity_hooks_removal_entries(project_root)
     for destination, template_path in settings_templates(skill_dir):
         local = local_state(os.path.join(project_root, destination))
         if local in (LOCAL_ABSENT, LOCAL_NOT_A_FILE):
@@ -683,6 +703,8 @@ def apply_removal_entry(project_root, skill_dir, entry, report):
         with open(path, encoding="utf-8", newline="") as file_handle:
             current = file_handle.read()
         write_text_atomically(path, without_instruction_blocks(current, entry.get("blocks", [])))
+    elif entry["path"] == antigravity_hooks.HOOKS_RELATIVE_PATH:
+        write_text_atomically(path, antigravity_hooks.serialize(antigravity_hooks.without_managed(antigravity_hooks.read(path))))
     else:
         template_path = dict(settings_templates(skill_dir))[entry["path"]]
         write_text_atomically(path, serialize_settings(settings_without_managed_entries(project_root, entry["path"], template_path)[1]))

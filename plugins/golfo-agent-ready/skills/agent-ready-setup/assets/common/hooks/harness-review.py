@@ -53,6 +53,11 @@ CONFLICTS_CHECK_TIMEOUT_SECONDS = 120
 RUN_ARGUMENTS_FILE_THROUGH_BASH = ('arguments=(); while IFS= read -r -d "" argument; do arguments+=("$argument"); '
                                    'done < "$1"; exec "${arguments[@]}"')
 FIND_THROUGH_BASH = 'command -v "$0" >/dev/null 2>&1'
+# Antigravity sends the tool call of a PostToolUse as {"toolCall": {"name", "args"}}; its edit tools name
+# the file in one of these arguments.
+ANTIGRAVITY_TOOL_CALL_KEY = "toolCall"
+ANTIGRAVITY_EDIT_TOOLS = ("write_to_file", "replace_file_content", "multi_replace_file_content")
+ANTIGRAVITY_PATH_ARGUMENTS = ("TargetFile", "AbsolutePath")
 ARGUMENTS_FILE_NAME = "arguments"
 
 
@@ -140,8 +145,22 @@ def load_review_cache():
     return module
 
 
+def antigravity_paths(payload):
+    """Edited paths of an Antigravity edit tool: the file arguments of its toolCall."""
+    tool_call = payload.get(ANTIGRAVITY_TOOL_CALL_KEY)
+    if not isinstance(tool_call, dict) or tool_call.get("name") not in ANTIGRAVITY_EDIT_TOOLS:
+        return []
+    arguments = tool_call.get("args")
+    if not isinstance(arguments, dict):
+        return []
+    return [arguments[key] for key in ANTIGRAVITY_PATH_ARGUMENTS if isinstance(arguments.get(key), str)]
+
+
 def payload_paths(payload):
-    """Edited paths of a Claude Write or Edit, or of the file headers of a Codex apply_patch."""
+    """Edited paths of a Claude Write or Edit, of the file headers of a Codex apply_patch, or of an
+    Antigravity edit tool."""
+    if isinstance(payload, dict) and ANTIGRAVITY_TOOL_CALL_KEY in payload:
+        return antigravity_paths(payload)
     if not isinstance(payload, dict) or not isinstance(payload.get("tool_input"), dict):
         return []
     tool_input = payload["tool_input"]
@@ -158,7 +177,9 @@ def payload_paths(payload):
 
 
 def provider_of(payload):
-    """Codex edits arrive as apply_patch, Claude edits as Write or Edit."""
+    """Antigravity edits arrive as a toolCall, Codex edits as apply_patch, Claude edits as Write or Edit."""
+    if isinstance(payload, dict) and ANTIGRAVITY_TOOL_CALL_KEY in payload:
+        return "antigravity"
     return "codex" if isinstance(payload, dict) and payload.get("tool_name") == "apply_patch" else "claude"
 
 
@@ -490,6 +511,17 @@ def main():
         payload = json.loads(sys.stdin.read())
     except ValueError:
         return 0
+    if provider_of(payload) == "antigravity":
+        # A PostToolUse hook of Antigravity answers with a JSON object and has no field for context: the
+        # report goes to stderr, which Antigravity shows as the output of the hook, and the findings stay
+        # in the review cache for agent-ready status and plan.
+        report = io.StringIO()
+        with contextlib.redirect_stdout(report):
+            status = review_edit(arguments.bash, payload)
+        if report.getvalue().strip():
+            print(report.getvalue().strip(), file=sys.stderr)
+        print("{}")
+        return status
     if provider_of(payload) != "codex":
         return review_edit(arguments.bash, payload)
     report = io.StringIO()
