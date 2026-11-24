@@ -95,7 +95,15 @@ def yaml_value(value):
 def render_markdown_view(text, fields):
     """The template with its portable keys replaced by ``fields`` (tools, model) of one provider."""
     header, body = split(text)
-    kept = [line for line in header if key_of(line) not in PORTABLE_KEYS + VIEW_KEYS]
+    kept = []
+    replacing = False
+    for line in header:
+        if replacing and (line[:1] in (" ", "\t", "-") or not line.strip()):
+            # A continuation of the replaced field: the items of a block sequence or a folded value.
+            continue
+        replacing = key_of(line) in PORTABLE_KEYS + VIEW_KEYS
+        if not replacing:
+            kept.append(line)
     extra = [f"{key}: {yaml_value(fields[key])}" for key in VIEW_KEYS if key in fields]
     return "\n".join([FRONTMATTER_FENCE] + kept + extra + [FRONTMATTER_FENCE] + body)
 

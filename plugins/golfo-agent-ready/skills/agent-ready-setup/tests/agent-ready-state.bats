@@ -1391,3 +1391,28 @@ frontmatter_line() {
   [[ "$output" == *"agents/odd-reviewer.md: access is 'readonly'; it must be one of read-only, edit, full"* ]]
   [ ! -e .agents/agents ]
 }
+
+@test "a subagent that gains access replaces its previous Claude view, and a block sequence of tools is replaced whole" {
+  copy_skill
+  printf '%s\n' '---' 'name: late-reviewer' 'description: Revisa.' 'tools:' '  - Read' '  - Bash' '---' 'Body.' \
+    > "$content_dir/stacks/node/agents/late-reviewer.md"
+  run_bootstrap_with "$source_copy" --stack node
+  [ "$status" -eq 0 ]
+  [ -L .claude/agents/late-reviewer.md ] || [ .claude/agents/late-reviewer.md -ef .agents/agents/late-reviewer.md ]
+
+  printf '%s\n' '---' 'name: late-reviewer' 'description: Revisa.' 'tools:' '  - Read' '  - Bash' 'access: read-only' '---' 'Body.' \
+    > "$content_dir/stacks/node/agents/late-reviewer.md"
+  run_bootstrap_with "$source_copy"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"never applied by agent-ready-setup"* ]]
+  [ ! -L .claude/agents/late-reviewer.md ]
+  [ "$(frontmatter_line .claude/agents/late-reviewer.md tools)" = 'tools: Read, Grep, Glob' ]
+  [[ "$(frontmatter_line .agents/agents/late-reviewer.md tools)" == 'tools: ["view_file"'* ]]
+  # The items of the replaced sequence leave with it.
+  ! grep -Fq -- '- Bash' .claude/agents/late-reviewer.md
+  ! grep -Fq -- '- Bash' .agents/agents/late-reviewer.md
+
+  run_bootstrap_with "$source_copy" --plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Summary: no changes"* ]]
+}
