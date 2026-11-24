@@ -34,6 +34,8 @@ VIEW_CLAUDE = "claude"
 VIEW_CODEX = "codex"
 # The keys of the frontmatter of a view that the mapping writes; any other key of the template stays.
 VIEW_KEYS = ("tools", "model")
+# The view key each portable key decides: a template that declares only one of them keeps the other field.
+VIEW_KEY_OF = {ACCESS_KEY: "tools", MODEL_TIER_KEY: "model"}
 
 
 def split(text):
@@ -92,8 +94,12 @@ def yaml_value(value):
     return str(value)
 
 
-def render_markdown_view(text, fields):
-    """The template with its portable keys replaced by ``fields`` (tools, model) of one provider."""
+def render_markdown_view(text, fields, declared):
+    """The template with its portable keys replaced by ``fields`` (tools, model) of one provider.
+
+    Only the view keys a declared portable key decides are replaced: with model-tier alone, a tools field
+    of the template stays, and with access alone, its model stays."""
+    replaced_keys = PORTABLE_KEYS + tuple(VIEW_KEY_OF[key] for key in declared)
     header, body = split(text)
     kept = []
     replacing = False
@@ -101,10 +107,10 @@ def render_markdown_view(text, fields):
         if replacing and (line[:1] in (" ", "\t", "-") or not line.strip()):
             # A continuation of the replaced field: the items of a block sequence or a folded value.
             continue
-        replacing = key_of(line) in PORTABLE_KEYS + VIEW_KEYS
+        replacing = key_of(line) in replaced_keys
         if not replacing:
             kept.append(line)
-    extra = [f"{key}: {yaml_value(fields[key])}" for key in VIEW_KEYS if key in fields]
+    extra = [f"{key}: {yaml_value(fields[key])}" for key in VIEW_KEYS if key in fields and key in replaced_keys]
     return "\n".join([FRONTMATTER_FENCE] + kept + extra + [FRONTMATTER_FENCE] + body)
 
 
@@ -114,7 +120,7 @@ def render_view(skill_dir, text, origin, provider):
     declared = metadata(text, origin)
     if not declared:
         return None
-    return render_markdown_view(text, view_fields(skill_dir, provider, declared))
+    return render_markdown_view(text, view_fields(skill_dir, provider, declared), declared)
 
 
 def limitations(skill_dir, declared):

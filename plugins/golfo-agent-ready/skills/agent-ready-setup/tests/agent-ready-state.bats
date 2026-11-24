@@ -1416,3 +1416,17 @@ frontmatter_line() {
   [ "$status" -eq 0 ]
   [[ "$output" == *"Summary: no changes"* ]]
 }
+
+@test "a subagent that declares only model-tier keeps its own tools, and one that declares only access keeps its model" {
+  copy_skill
+  printf '%s\n' '---' 'name: tier-reviewer' 'description: Revisa.' 'tools: Read, Grep' 'model-tier: fast' '---' 'Body.' \
+    > "$content_dir/stacks/node/agents/tier-reviewer.md"
+  printf '%s\n' '---' 'name: access-reviewer' 'description: Revisa.' 'model: sonnet' 'access: read-only' '---' 'Body.' \
+    > "$content_dir/stacks/node/agents/access-reviewer.md"
+  run_bootstrap_with "$source_copy" --stack node
+  [ "$status" -eq 0 ]
+  [ "$(frontmatter_line .claude/agents/tier-reviewer.md tools)" = 'tools: Read, Grep' ]
+  [ "$(frontmatter_line .claude/agents/tier-reviewer.md model)" = 'model: haiku' ]
+  [ "$(frontmatter_line .claude/agents/access-reviewer.md model)" = 'model: sonnet' ]
+  [ "$(frontmatter_line .claude/agents/access-reviewer.md tools)" = 'tools: Read, Grep, Glob' ]
+}

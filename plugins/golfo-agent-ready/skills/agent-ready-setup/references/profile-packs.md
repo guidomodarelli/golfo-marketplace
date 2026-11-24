@@ -82,7 +82,8 @@ cada provider nombra sus herramientas y modelos distinto:
 Con alguna de las dos, el motor renderiza una vista por provider: `.agents/agents/<nombre>.md` (la que lee
 Antigravity) con sus `tools` y `model`, `.claude/agents/<nombre>.md` como archivo propio en lugar de una vista
 de la anterior, y `.codex/agents/<nombre>.toml`. El mapeo vive en `assets/providers.json`
-(`agentMetadata`), no en el código. Sin ninguna de las dos, el subagente se proyecta como siempre: copia,
+(`agentMetadata`), no en el código. Cada clave reemplaza solo su campo: con `model-tier` solo, el `tools`
+que ya tenga el template queda, y con `access` solo, su `model`. Sin ninguna de las dos, el subagente se proyecta como siempre: copia,
 vista de Claude y TOML. Un valor fuera de su lista frena el apply antes de escribir, nombrando el archivo, y
 `plan` avisa lo que un provider no puede cumplir: Codex mantiene el sandbox de la sesión que arranca al
 subagente, así que uno `read-only` puede igual editar archivos.
