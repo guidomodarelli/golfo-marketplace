@@ -1121,7 +1121,7 @@ plan_text() {
   printf '{"ci": {"provider": "github"}}\n' > .agents/agent-ready.json
   run env -u CLAUDE_CONFIG_DIR HOME="$test_root/home" python3 "$skill_dir/scripts/agent-ready-state.py" plan --project "$project_dir" --skill-dir "$skill_dir" --profiles node
   [ "$status" -eq 0 ]
-  [[ "$output" == *"Providers: Claude Code sees "*" rules ("*" only for their paths)"*"; Codex sees "*" rules in AGENTS.md and "*" skills"* ]]
+  [[ "$output" == *"Providers: Claude Code sees "*" rules ("*" only for their paths)"*"; Codex sees "*" rules in AGENTS.md, "*" skills and "*" subagents"* ]]
   [[ "$output" == *"~ claude runs the PostToolUse hook \`npm run lint\` (.claude/settings.json) and codex does not"* ]]
   [[ "$output" == *"~ .github/workflows/own.yml already runs the Agent Ready check; the managed .github/workflows/agent-ready.yml runs it again"* ]]
   # The golfo-agent-ready hooks of each provider match, except the ones declared for one provider.
