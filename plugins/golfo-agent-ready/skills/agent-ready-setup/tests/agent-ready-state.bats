@@ -670,7 +670,7 @@ EOF2
 @test "unknown profiles are rejected with the catalog, and a selection without a stack applies" {
   run_bootstrap_with "$skill_dir" --profiles cobol
   [ "$status" -ne 0 ]
-  [[ "$output" == *"unknown profile 'cobol'; available profiles: android, browser, business-flows, go, java, learning, memory-engram, nextjs, nextjs-app-router, node, react, software-development"* ]]
+  [[ "$output" == *"unknown profile 'cobol'; available profiles: android, browser, business-flows, documents, go, java, learning, memory-engram, nextjs, nextjs-app-router, node, orchestration, react, software-development"* ]]
 
   run_bootstrap_with "$skill_dir" --profiles browser
   [ "$status" -eq 0 ]
@@ -710,7 +710,8 @@ EOF
   for stack in react node; do
     cmp -s ".agents/rules/$stack-security.md" "$content_pack/stacks/$stack/rules/$stack-security.md"
     cmp -s ".agents/rules/$stack-testing.md" "$content_pack/stacks/$stack/rules/$stack-testing.md"
-    cmp -s ".agents/agents/$stack-perf-analyzer.md" "$content_pack/stacks/$stack/agents/$stack-perf-analyzer.md"
+    # The perf analyzer declares access and model-tier: its view is rendered, not a copy.
+    grep -qx "name: $stack-perf-analyzer" ".agents/agents/$stack-perf-analyzer.md"
     cmp -s ".agents/commands/$stack-review-pr.md" "$content_pack/stacks/$stack/commands/$stack-review-pr.md"
     grep -Fq ".agents/rules/$stack-security.md" AGENTS.md
     [ "$(lock_value "lock['assets']['.agents/rules/$stack-security.md']['profile']")" = "$stack" ]
@@ -862,8 +863,18 @@ EOF
   [ "$(lock_value 'lock["primaryStack"]')" = "android" ]
   [ "$(lock_value 'lock["profileOrder"]')" = "['software-development', 'android']" ]
   for asset in rules/android-coding-style.md rules/android-security.md rules/android-testing.md agents/android-perf-analyzer.md agents/android-security-scanner.md commands/android-review-pr.md; do
-    cmp -s ".agents/$asset" "$content_pack/stacks/android/$asset"
-    [ -L ".claude/$asset" ] || [ ".claude/$asset" -ef ".agents/$asset" ]
+    case "$asset" in
+      agents/*)
+        # The subagents declare access or model-tier: each provider gets a rendered file.
+        agent_name="${asset#agents/}"
+        grep -qx "name: ${agent_name%.md}" ".agents/$asset"
+        grep -qx "name: ${agent_name%.md}" ".claude/$asset"
+        ;;
+      *)
+        cmp -s ".agents/$asset" "$content_pack/stacks/android/$asset"
+        [ -L ".claude/$asset" ] || [ ".claude/$asset" -ef ".agents/$asset" ]
+        ;;
+    esac
   done
   grep -Fq -- '- Read and follow `.agents/rules/android-coding-style.md`.' AGENTS.md
   [ ! -e .mcp.json ]
