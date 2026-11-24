@@ -508,7 +508,7 @@
     },
     {
       "id": "help-two-columns-colored",
-      "description": "La ayuda pone todo lo que tiene descripción en dos columnas, pinta comandos y flags con colores distintos y sale sin color a un pipe.",
+      "description": "La ayuda pone todo lo que tiene descripción en dos columnas, distingue comandos y flags con la paleta chica (acento, negrita o color) y sale sin color a un pipe.",
       "input": "Tengo un script bash deploy.sh con subcomandos (plan, apply) y flags (--env, --region, --dry-run). Hoy --help imprime una sola línea de uso en texto plano. Mejorá el --help.",
       "assertions": [
         {
@@ -518,13 +518,13 @@
         },
         {
           "type": "regex",
-          "pattern": "(subcomando|comando|command).{0,80}(color|cian|cyan|36m)|(color|cian|cyan|36m).{0,80}(subcomando|comando|command)",
-          "description": "Pinta los comandos"
+          "pattern": "(subcomando|comando|command).{0,80}(color|cian|cyan|negrita|bold|acento|accent|\\[1m|;1m|3[0-9]m)|(color|cian|cyan|negrita|bold|acento|accent|\\[1m|;1m|3[0-9]m).{0,80}(subcomando|comando|command)",
+          "description": "Destaca los comandos con negrita, acento o color"
         },
         {
           "type": "regex",
-          "pattern": "(flag|opci[oó]n|option).{0,80}(otro color|color distinto|different color|amarill|yellow|33m)|(amarill|yellow|33m).{0,80}(flag|opci[oó]n|option)",
-          "description": "Pinta las flags con otro color"
+          "pattern": "(flag|opci[oó]n|option).{0,80}(acento|accent|otro color|color distinto|different color|otro estilo|estilo distinto|amarill|yellow|verde|green|3[0-9]m)|(acento|accent|amarill|yellow|verde|green|3[0-9]m).{0,80}(flag|opci[oó]n|option)",
+          "description": "Distingue las flags de los comandos con el acento u otro estilo"
         },
         {
           "type": "regex",
