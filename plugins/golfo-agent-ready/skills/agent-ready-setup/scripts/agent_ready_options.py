@@ -14,7 +14,9 @@ DETECTION_WORKSPACES_KEY = "detection.workspaces"
 NESTED_ENABLED_KEY = "nested.enabled"
 NESTED_TARGETS_KEY = "nested.targets"
 NESTED_CODEX_INDEX_KEY = "nested.codexIndex"
+CLAUDE_PROVIDER = "claude"
 CODEX_PROVIDER = "codex"
+ANTIGRAVITY_PROVIDER = "antigravity"
 SOURCES_ENABLED_KEY = "sources.enabled"
 SOURCES_PACKS_KEY = "sources.packs"
 SOURCES_GOLFO_REF_KEY = "sources.golfo.ref"
@@ -67,4 +69,7 @@ UPDATES_PINNED = "pinned"
 UPDATE_MODES = (UPDATES_AUTO, UPDATES_PINNED)
 CI_WARN = "warn"
 CI_PROVIDER_NONE = "none"
-SUPPORTED_PROVIDERS = ("claude", "codex")
+SUPPORTED_PROVIDERS = (CLAUDE_PROVIDER, CODEX_PROVIDER, ANTIGRAVITY_PROVIDER)
+# Providers that load only the root AGENTS.md (plus the ones down to the folder they start in, for
+# Codex), so the root one carries the index of the nested ones (agent_ready_nested.index_content).
+NESTED_INDEX_PROVIDERS = (CODEX_PROVIDER, ANTIGRAVITY_PROVIDER)

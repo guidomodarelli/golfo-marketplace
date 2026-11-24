@@ -12,7 +12,7 @@
 #
 # Usage:
 #   bash bootstrap.sh --skill-dir <path> [--profiles <a,b> | --stack <stack>]
-#     [--provider <claude|codex>] [--updates <pinned|auto>] [--update-source <name>]... [--update-to <ref>]
+#     [--provider <claude|codex|antigravity>] [--updates <pinned|auto>] [--update-source <name>]... [--update-to <ref>]
 #     [--plan | --status | --config] [--offline] [--json]
 #
 # Without --profiles or --stack, the profiles come from .agents/agent-ready.json
@@ -103,7 +103,7 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --provider)
-      [[ $# -ge 2 && -n "${2:-}" ]] || { echo "ERROR: --provider requires claude or codex" >&2; exit 1; }
+      [[ $# -ge 2 && -n "${2:-}" ]] || { echo "ERROR: --provider requires claude, codex or antigravity" >&2; exit 1; }
       PROVIDER="$2"
       shift 2
       ;;
@@ -232,9 +232,9 @@ if [[ -z "$PROVIDER" ]]; then
 fi
 
 case "$PROVIDER" in
-  claude|codex) ;;
+  claude|codex|antigravity) ;;
   *)
-    echo "ERROR: Unsupported provider '$PROVIDER'. Expected claude or codex." >&2
+    echo "ERROR: Unsupported provider '$PROVIDER'. Expected claude, codex or antigravity." >&2
     exit 1
     ;;
 esac
@@ -364,6 +364,11 @@ upgrade_marketplace() {
 
   if runs_from_checkout; then
     echo "[marketplace-bootstrap] El motor corre desde un checkout ($REQUESTED_SKILL_DIR); se omite el upgrade del marketplace del usuario."
+    return 0
+  fi
+
+  if [[ "$PROVIDER" == "antigravity" ]]; then
+    echo "[marketplace-bootstrap] Antigravity no tiene un marketplace de plugins que actualizar; se usa el source instalado de $SKILL_NAME."
     return 0
   fi
 

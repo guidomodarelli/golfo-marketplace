@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "golfo-planning",
-  "version": "0.129.0",
+  "version": "0.129.1",
   "description": "Skills de planificación y producto para cualquier herramienta: issues, specs listos para implementar y chequeo de funcionalidades contra el código.",
   "author": {
     "name": "Guido Modarelli"

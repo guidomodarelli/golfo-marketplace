@@ -227,21 +227,39 @@ def extract_result(text):
     candidates.append(parsed)
     if isinstance(parsed, dict):
         candidates.append(parsed.get("structured_output"))
-        result = parsed.get("result")
-        if isinstance(result, str):
-            try:
-                candidates.append(json.loads(result))
-            except ValueError:
-                pass
+        # Claude Code puts the text answer in result, Antigravity (agy) in response.
+        for answer in (parsed.get("result"), parsed.get("response")):
+            if isinstance(answer, str):
+                try:
+                    candidates.append(json.loads(answer))
+                except ValueError:
+                    pass
     for candidate in candidates:
         if isinstance(candidate, dict) and isinstance(candidate.get("findings"), list):
             return candidate
     return None
 
 
+def provider_command(provider):
+    """The CLI a provider runs as (review-cache.py, PROVIDER_COMMANDS): agy for Antigravity."""
+    return load_review_cache().PROVIDER_COMMANDS.get(provider, provider)
+
+
 def provider_available(bash, provider):
     """True when the Bash of the hook finds the provider CLI."""
-    return subprocess.run([bash, "-c", FIND_THROUGH_BASH, provider], check=False).returncode == 0
+    return subprocess.run([bash, "-c", FIND_THROUGH_BASH, provider_command(provider)], check=False).returncode == 0
+
+
+def antigravity_command(model, effort, prompt, schema):
+    """agy in headless mode (-p), plan mode so it does not edit, with the JSON envelope and the schema; the
+    model and effort go only when they are not the account's own (review-cache.py, PROVIDER_DEFAULT_SETTING)."""
+    default = load_review_cache().PROVIDER_DEFAULT_SETTING
+    command = ["agy", "-p", prompt, "--mode", "plan", "--output-format", "json", "--json-schema", json.dumps(schema)]
+    if model != default:
+        command += ["--model", model]
+    if effort != default:
+        command += ["--effort", effort]
+    return command
 
 
 def run_through_bash(bash, command, scratch, documents_text, working_directory, environment=None):
@@ -276,6 +294,10 @@ def run_provider(bash, provider, model, effort, documents_text, working_director
                 return None
             with open(result_path, encoding="utf-8", errors="replace") as result_file:
                 return extract_result(result_file.read())
+        if provider == "antigravity":
+            completed = run_through_bash(bash, antigravity_command(model, effort, prompt, schema), scratch,
+                                         documents_text, working_directory)
+            return extract_result(completed.stdout) if completed.returncode == 0 else None
         environment = {name: value for name, value in os.environ.items() if name != "CLAUDECODE"}
         completed = run_through_bash(
             bash, ["claude", "-p", prompt, "--model", model, "--effort", effort, "--output-format", "json",

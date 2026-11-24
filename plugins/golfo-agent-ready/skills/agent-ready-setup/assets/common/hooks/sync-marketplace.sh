@@ -73,7 +73,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --provider|-p)
       if [[ $# -lt 2 || -z "${2:-}" ]]; then
-        printf 'ERROR: %s requires claude or codex\n' "$1" >&2
+        printf 'ERROR: %s requires claude, codex or antigravity\n' "$1" >&2
         exit 1
       fi
       if [[ -n "$provider" ]]; then
@@ -83,7 +83,7 @@ while [[ $# -gt 0 ]]; do
       provider="$2"
       shift 2
       ;;
-    claude|codex)
+    claude|codex|antigravity)
       if [[ -n "$provider" ]]; then
         printf 'ERROR: provider argument does not accept extra values\n' >&2
         exit 1
@@ -131,7 +131,7 @@ if [[ -z "$provider" ]]; then
 fi
 
 case "$provider" in
-  claude|codex) ;;
+  claude|codex|antigravity) ;;
   *)
     printf 'ERROR: unsupported marketplace provider: %s\n' "$provider" >&2
     exit 1
@@ -180,12 +180,17 @@ is_marketplace_upgrade_recent() {
   [[ -n "$(find "$marketplace_upgrade_stamp" -mmin "-$MARKETPLACE_UPGRADE_INTERVAL_MINUTES" -print 2>/dev/null)" ]]
 }
 
+# Antigravity has no plugin marketplace to refresh, and a local Codex marketplace has nothing to download.
 is_marketplace_upgrade_unsupported() {
-  [[ "$provider" == "codex" ]] && is_codex_local_marketplace
+  [[ "$provider" == "antigravity" ]] || { [[ "$provider" == "codex" ]] && is_codex_local_marketplace; }
 }
 
 report_local_marketplace_upgrade_skip() {
-  echo "[marketplace-sync] $MARKETPLACE_NAME es un marketplace Codex local; se omite el upgrade y se usa su source configurado."
+  if [[ "$provider" == "antigravity" ]]; then
+    echo "[marketplace-sync] Antigravity no tiene un marketplace de plugins que actualizar; se usa el source instalado de $SKILL_NAME."
+  else
+    echo "[marketplace-sync] $MARKETPLACE_NAME es un marketplace Codex local; se omite el upgrade y se usa su source configurado."
+  fi
 }
 
 # Each provider refreshes its own marketplace snapshot through its CLI.

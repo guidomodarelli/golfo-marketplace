@@ -230,11 +230,14 @@ def parity_report(project_root, skill_dir, plan, configuration, with_user=True):
     """
     report = {}
     providers = configuration.value(PROVIDERS_KEY)
-    if configuration.value(PROVIDER_PARITY_ENABLED_KEY) and {parity.PROVIDER_CLAUDE, parity.PROVIDER_CODEX} <= set(providers):
+    if configuration.value(PROVIDER_PARITY_ENABLED_KEY) and len(set(providers)) > 1:
         rules, _ = projected_rules(project_root, plan)
         scoped = sum(1 for rule in rules if not loaded_at_start(rule["text"]))
-        report["views"] = parity.provider_views(len(rules), scoped, plan["entries"])
-        report["hookDifferences"] = parity.hook_differences(project_root, skill_dir, with_user)
+        views = parity.provider_views(len(rules), scoped, plan["entries"])
+        report["views"] = {provider: view for provider, view in views.items() if provider in providers}
+        # Only Claude Code and Codex get hooks (providers.json): Antigravity has none to compare yet.
+        if {parity.PROVIDER_CLAUDE, parity.PROVIDER_CODEX} <= set(providers):
+            report["hookDifferences"] = parity.hook_differences(project_root, skill_dir, with_user)
     if configuration.value(ENVIRONMENT_CONFLICTS_ENABLED_KEY):
         report["environment"] = parity.environment_variables(plan.get("packToolDeclarations", []), project_root)
     if configuration.value(CI_JOB_CONFLICTS_ENABLED_KEY):
@@ -309,15 +312,28 @@ def print_competing_tools(findings):
         write_line(paint(line, "warning", sys.stdout) if line.lstrip().startswith(("!", "~")) else line)
 
 
+# The order in which plan names what each provider sees.
+PROVIDER_VIEW_ORDER = (parity.PROVIDER_CLAUDE, parity.PROVIDER_CODEX, parity.PROVIDER_ANTIGRAVITY)
+PROVIDER_VIEW_NAMES = {parity.PROVIDER_CLAUDE: "Claude Code", parity.PROVIDER_CODEX: "Codex",
+                       parity.PROVIDER_ANTIGRAVITY: "Antigravity"}
+
+
+def provider_view_text(provider, view):
+    """What one provider sees, as a clause of the Providers line of plan."""
+    name = PROVIDER_VIEW_NAMES[provider]
+    if provider == parity.PROVIDER_CLAUDE:
+        return (f"{name} sees {view['rules']} rules ({view['rulesForPathsOnly']} only for their paths), "
+                f"{view['skills']} skills, {view['subagents']} subagents and {view['commands']} commands")
+    return f"{name} sees {view['rules']} rules in AGENTS.md, {view['skills']} skills and {view['subagents']} subagents"
+
+
 def parity_report_lines(report):
     """What each provider sees, and one line per hook, variable or CI job that collides."""
     lines = []
     views = report.get("views")
     if views:
-        claude, codex = views[parity.PROVIDER_CLAUDE], views[parity.PROVIDER_CODEX]
-        lines.append(f"Providers: Claude Code sees {claude['rules']} rules ({claude['rulesForPathsOnly']} only for their "
-                     f"paths), {claude['skills']} skills, {claude['subagents']} subagents and {claude['commands']} commands; "
-                     f"Codex sees {codex['rules']} rules in AGENTS.md, {codex['skills']} skills and {codex['subagents']} subagents")
+        lines.append("Providers: " + "; ".join(provider_view_text(provider, views[provider])
+                                               for provider in PROVIDER_VIEW_ORDER if provider in views))
     for difference in report.get("hookDifferences", []):
         lines.append(f"  ~ {difference['provider']} runs the {difference['event']} hook `{difference['command']}` "
                      f"({difference['file']}) and {difference['missing']} does not")

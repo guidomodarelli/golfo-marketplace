@@ -86,6 +86,7 @@ from agent_ready_manifest import (
 )
 from agent_ready_merged_files import claude_proxy_drift, merged_file_changes
 from agent_ready_options import (
+    ANTIGRAVITY_PROVIDER,
     CONFLICTS_BLOCK_KEY,
     CONFLICTS_ENABLED_KEY,
     DETECTION_ENABLED_KEY,
@@ -402,7 +403,8 @@ def global_effects(plan, skip_marketplace_upgrade, tools_enabled):
     if BROWSER_TOOL_NAME in plan["tools"]:
         if tools_enabled:
             effects.append(("user-cache", "install or reuse browser tools under ~/.local/share/agent-ready-setup/browser-tools (profile browser)"))
-            effects.append(("project", "register browser MCP servers in .mcp.json and .codex/config.toml"))
+            effects.append(("project", "register browser MCP servers in .mcp.json and .codex/config.toml "
+                                       "(and .agents/mcp_config.json with antigravity among the providers)"))
         else:
             effects.append(("none", f"browser tools are selected but {TOOLS_ENABLED_KEY}: false skips them"))
     effects.append(("repository-config", "register a git config hook only if .claude views fall back to hard links"))
@@ -412,7 +414,8 @@ def global_effects(plan, skip_marketplace_upgrade, tools_enabled):
 def requirements(provider, skip_marketplace_upgrade, tools):
     """Commands the apply needs, with availability on this machine."""
     needed = [("git", "projection runs inside a Git worktree"), ("bash", "projection scripts")]
-    if not skip_marketplace_upgrade and provider in SUPPORTED_PROVIDERS:
+    # Antigravity has no plugin marketplace: its apply refreshes nothing first.
+    if not skip_marketplace_upgrade and provider in SUPPORTED_PROVIDERS and provider != ANTIGRAVITY_PROVIDER:
         needed.append((provider, "marketplace upgrade before projecting"))
     if BROWSER_TOOL_NAME in tools:
         needed.append(("node", "browser tools (profile browser)"))

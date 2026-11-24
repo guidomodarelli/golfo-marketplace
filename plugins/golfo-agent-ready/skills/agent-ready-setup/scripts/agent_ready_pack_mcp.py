@@ -1,5 +1,6 @@
 """Registration of the MCP servers that profile packs declare, in the project configuration of each
-provider: ``.mcp.json`` for Claude Code and ``.codex/config.toml`` for Codex.
+provider: ``.mcp.json`` for Claude Code, ``.codex/config.toml`` for Codex and ``.agents/mcp_config.json`` for
+Antigravity.
 
 Only an apply registers, and only a server the security policy allows (agent_ready_pack_tools.py).
 Ownership follows the lock: a server whose name the lock records is managed, so it is replaced or
@@ -27,13 +28,18 @@ except ImportError:  # Python before 3.11: the conflicts are found in the text i
 
 PROVIDER_CLAUDE = "claude"
 PROVIDER_CODEX = "codex"
+PROVIDER_ANTIGRAVITY = "antigravity"
 CLAUDE_CONFIG_RELATIVE_PATH = ".mcp.json"
+ANTIGRAVITY_CONFIG_RELATIVE_PATH = ".agents/mcp_config.json"
 CODEX_CONFIG_RELATIVE_PATH = ".codex/config.toml"
 CLAUDE_SERVERS_KEY = "mcpServers"
 CODEX_SERVERS_KEY = "mcp_servers"
 CLAUDE_HTTP_TYPE = "http"
-# The hash of the .mcp.json entry an apply wrote: the stable marker of a managed Claude entry.
+# The hash of the entry an apply wrote: the stable marker of a managed entry of a JSON configuration.
 CLAUDE_ENTRY_FIELD = "claudeEntrySha256"
+ANTIGRAVITY_ENTRY_FIELD = "antigravityEntrySha256"
+# Antigravity names the URL of a remote (Streamable HTTP) server serverUrl.
+ANTIGRAVITY_URL_KEY = "serverUrl"
 CODEX_BLOCK_START = "# BEGIN AGENT-READY PACK MCP SERVERS"
 CODEX_BLOCK_END = "# END AGENT-READY PACK MCP SERVERS"
 CODEX_BLOCK_NOTE = "# Managed by agent-ready-setup from the profile packs; change the pack, not these lines."
@@ -83,6 +89,14 @@ def claude_entry(server):
     return entry
 
 
+def antigravity_entry(server):
+    """The .agents/mcp_config.json entry: the one of .mcp.json, with serverUrl for a remote server and no type."""
+    entry = claude_entry(server)
+    if "url" in entry:
+        entry = {ANTIGRAVITY_URL_KEY: entry["url"], **({"headers": entry["headers"]} if "headers" in entry else {})}
+    return entry
+
+
 def read_regular_file(project_root, relative):
     """The text of a project configuration, or None when it does not exist.
 
@@ -107,23 +121,24 @@ def entry_digest(entry):
     return hashlib.sha256(json.dumps(entry, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
 
 
-def sync_claude(project_root, desired, previous):
-    """Write the managed servers into .mcp.json; returns (registered, removed, conflicts).
+def sync_json_servers(project_root, desired, previous, relative, to_entry, entry_field):
+    """Write the managed servers into the mcpServers of a JSON configuration; returns (registered, removed, conflicts).
 
-    An entry is managed while it is exactly what the last apply wrote (the hash the lock keeps): one
-    the user changed under the same name is theirs from then on, and is never replaced or deleted.
+    An entry is managed while it is exactly what the last apply wrote (the hash the lock keeps in
+    ``entry_field``): one the user changed under the same name is theirs from then on, and is never
+    replaced or deleted.
     """
-    path = os.path.join(project_root, CLAUDE_CONFIG_RELATIVE_PATH)
-    original = read_regular_file(project_root, CLAUDE_CONFIG_RELATIVE_PATH)
+    path = os.path.join(project_root, *relative.split("/"))
+    original = read_regular_file(project_root, relative)
     try:
         document = json.loads(original) if original and original.strip() else {}
     except ValueError as invalid:
-        raise RegistrationError(f"{CLAUDE_CONFIG_RELATIVE_PATH} is not valid JSON, so its MCP servers were not changed") from invalid
+        raise RegistrationError(f"{relative} is not valid JSON, so its MCP servers were not changed") from invalid
     if not isinstance(document, dict) or not isinstance(document.get(CLAUDE_SERVERS_KEY, {}), dict):
-        raise RegistrationError(f"{CLAUDE_CONFIG_RELATIVE_PATH} has no object of {CLAUDE_SERVERS_KEY}, so it was not changed")
+        raise RegistrationError(f"{relative} has no object of {CLAUDE_SERVERS_KEY}, so it was not changed")
     servers = document.get(CLAUDE_SERVERS_KEY, {})
     managed = {name for name, entry in previous.items()
-               if name in servers and entry.get(CLAUDE_ENTRY_FIELD) == entry_digest(servers[name])}
+               if name in servers and entry.get(entry_field) == entry_digest(servers[name])}
     registered, removed, conflicts = [], [], []
     for name in sorted(managed):
         if name not in desired:
@@ -131,10 +146,10 @@ def sync_claude(project_root, desired, previous):
             removed.append(name)
     for name, item in sorted(desired.items()):
         if name in servers and name not in managed:
-            conflicts.append(f"{name}: {CLAUDE_CONFIG_RELATIVE_PATH} already has a server with that name, which belongs "
+            conflicts.append(f"{name}: {relative} already has a server with that name, which belongs "
                              "to the project; rename one of them")
             continue
-        servers[name] = claude_entry(item["server"])
+        servers[name] = to_entry(item["server"])
         registered.append(name)
     if servers:
         document[CLAUDE_SERVERS_KEY] = servers
@@ -142,6 +157,18 @@ def sync_claude(project_root, desired, previous):
         document.pop(CLAUDE_SERVERS_KEY, None)
     write_or_remove(path, original, json.dumps(document, indent=2, ensure_ascii=False) + "\n" if document else None)
     return registered, removed, conflicts
+
+
+def sync_claude(project_root, desired, previous):
+    """Write the managed servers into .mcp.json; returns (registered, removed, conflicts)."""
+    return sync_json_servers(project_root, desired, previous, CLAUDE_CONFIG_RELATIVE_PATH, claude_entry,
+                             CLAUDE_ENTRY_FIELD)
+
+
+def sync_antigravity(project_root, desired, previous):
+    """Write the managed servers into .agents/mcp_config.json; returns (registered, removed, conflicts)."""
+    return sync_json_servers(project_root, desired, previous, ANTIGRAVITY_CONFIG_RELATIVE_PATH, antigravity_entry,
+                             ANTIGRAVITY_ENTRY_FIELD)
 
 
 def write_or_remove(path, original, text):
@@ -263,8 +290,12 @@ def sync_codex(project_root, desired, previous):
 # Apply and remove
 # ---------------------------------------------------------------------------
 
-PROVIDER_SYNC = {PROVIDER_CLAUDE: sync_claude, PROVIDER_CODEX: sync_codex}
-PROVIDER_FILES = {PROVIDER_CLAUDE: CLAUDE_CONFIG_RELATIVE_PATH, PROVIDER_CODEX: CODEX_CONFIG_RELATIVE_PATH}
+PROVIDER_SYNC = {PROVIDER_CLAUDE: sync_claude, PROVIDER_CODEX: sync_codex, PROVIDER_ANTIGRAVITY: sync_antigravity}
+PROVIDER_FILES = {PROVIDER_CLAUDE: CLAUDE_CONFIG_RELATIVE_PATH, PROVIDER_CODEX: CODEX_CONFIG_RELATIVE_PATH,
+                  PROVIDER_ANTIGRAVITY: ANTIGRAVITY_CONFIG_RELATIVE_PATH}
+# The JSON configurations keep the hash of the entry they wrote, to tell it from one the user changed.
+PROVIDER_ENTRY_FIELDS = {PROVIDER_CLAUDE: (CLAUDE_ENTRY_FIELD, claude_entry),
+                         PROVIDER_ANTIGRAVITY: (ANTIGRAVITY_ENTRY_FIELD, antigravity_entry)}
 
 
 def register(project_root, report, previous, providers, user_duplicates=None):
@@ -294,9 +325,15 @@ def register(project_root, report, previous, providers, user_duplicates=None):
             registered, removed, conflicts = PROVIDER_SYNC[provider](project_root, wanted, before)
         except (RegistrationError, OSError) as problem:
             result["failed"].append(str(problem))
-            # Nothing changed for this provider: what the lock had stays recorded.
+            # Nothing changed for this provider: what the lock had stays recorded, its ownership hash
+            # included, also when another provider already added the entry in this run.
             for name in before:
-                result["lock"].setdefault(name, dict(previous[name], providers=[]))["providers"].append(provider)
+                entry = result["lock"].setdefault(name, dict(previous[name], providers=[]))
+                if provider in PROVIDER_ENTRY_FIELDS:
+                    field = PROVIDER_ENTRY_FIELDS[provider][0]
+                    if field in previous[name]:
+                        entry[field] = previous[name][field]
+                entry["providers"].append(provider)
             continue
         result["registered"][PROVIDER_FILES[provider]] = registered
         result["removed"][PROVIDER_FILES[provider]] = removed
@@ -306,8 +343,9 @@ def register(project_root, report, previous, providers, user_duplicates=None):
             entry = result["lock"].setdefault(name, {"source": item["source"], "profile": item["profile"],
                                                      "sha256": declaration_digest(item["server"]), "providers": []})
             entry["providers"].append(provider)
-            if provider == PROVIDER_CLAUDE:
-                entry[CLAUDE_ENTRY_FIELD] = entry_digest(claude_entry(item["server"]))
+            if provider in PROVIDER_ENTRY_FIELDS:
+                field, to_entry = PROVIDER_ENTRY_FIELDS[provider]
+                entry[field] = entry_digest(to_entry(item["server"]))
     for entry in result["lock"].values():
         entry["providers"] = sorted(set(entry["providers"]))
     return result

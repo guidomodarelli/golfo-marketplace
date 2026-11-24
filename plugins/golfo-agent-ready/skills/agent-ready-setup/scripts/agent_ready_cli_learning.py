@@ -22,7 +22,7 @@ import agent_ready_rules
 from agent_ready_cli_common import EXIT_OK, SCRIPT_DIRECTORY, find_repository_root
 from agent_ready_common import StateError, serialize_json, write_text_atomically
 from agent_ready_config import resolve_configuration
-from agent_ready_options import CONTEXT_BUDGET_ENABLED_KEY, CONTEXT_BUDGET_RULES_BYTES_KEY
+from agent_ready_options import CONTEXT_BUDGET_ENABLED_KEY, CONTEXT_BUDGET_RULES_BYTES_KEY, SUPPORTED_PROVIDERS
 
 LEARNING_ENABLED_KEY = "learning.enabled"
 LEARNING_MODE_KEY = "learning.mode"
@@ -40,7 +40,7 @@ LEARNING_REORGANIZE_AUTO_KEY = "learning.reorganize.auto"
 LEARNING_REORGANIZE_MAX_LINES_KEY = "learning.reorganize.maxRuleLines"
 LEARNING_REORGANIZE_INTERVAL_KEY = "learning.reorganize.minIntervalDays"
 CLI_PATH = os.path.join(SCRIPT_DIRECTORY, "agent-ready")
-PROVIDERS = ("claude", "codex")
+PROVIDERS = SUPPORTED_PROVIDERS
 SUMMARY_LOG_LINES = 5
 SUMMARY_CANDIDATES = 5
 MAX_STATEMENT_CHARS_KEY = "rules.maxStatementChars"

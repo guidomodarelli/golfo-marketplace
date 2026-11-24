@@ -762,3 +762,50 @@ SH
   plan_tools
   [[ "$(decision_of cli acme)" == *"blocked security.checks.signature: the source acme lives in this repository and has no revision of its own to verify"* ]]
 }
+
+@test "with antigravity among the providers a pack server goes to .agents/mcp_config.json, remote ones with serverUrl" {
+  add_remote_server
+  write_manifest '{"profiles": ["acme/kafka-interno"], "providers": ["claude", "antigravity"], "sources": {"packs": [{"name": "acme", "source": "git+https://packs.example.invalid/acme#main"}]}}'
+  run_cli trust add acme
+  run_cli apply
+  [ "$status" -eq 0 ]
+  assert_json .agents/mcp_config.json 'data["mcpServers"]["acme-docs"] == {"command": "acme", "args": ["mcp"], "env": {"ACME_TOKEN": "${ACME_TOKEN}"}}'
+  assert_json .agents/mcp_config.json 'data["mcpServers"]["acme-remote"] == {"serverUrl": "https://mcp.example.invalid/acme", "headers": {"Authorization": "Bearer ${ACME_TOKEN}", "X-Api-Key": "${ACME_KEY}"}}'
+  assert_json .agents/agent-ready.lock.json 'data["mcpServers"]["acme-docs"]["providers"] == ["antigravity", "claude"]'
+  # Codex is not a provider of this repository: its configuration gets nothing.
+  [ ! -e .codex/config.toml ]
+
+  # A server of the project with the same name is preserved; dropping Antigravity removes only the managed ones.
+  python3 - <<'PY'
+import json
+path = ".agents/mcp_config.json"
+data = json.load(open(path, encoding="utf-8"))
+data["mcpServers"]["own"] = {"command": "own-server"}
+json.dump(data, open(path, "w", encoding="utf-8"), indent=2)
+PY
+  write_manifest '{"profiles": ["acme/kafka-interno"], "providers": ["claude"], "sources": {"packs": [{"name": "acme", "source": "git+https://packs.example.invalid/acme#main"}]}}'
+  run_cli apply
+  [ "$status" -eq 0 ]
+  assert_json .agents/mcp_config.json 'data["mcpServers"] == {"own": {"command": "own-server"}}'
+}
+
+@test "a provider configuration that cannot be read keeps its ownership in the lock while another provider registers" {
+  write_manifest '{"profiles": ["acme/kafka-interno"], "providers": ["claude", "antigravity"], "sources": {"packs": [{"name": "acme", "source": "git+https://packs.example.invalid/acme#main"}]}}'
+  run_cli trust add acme
+  run_cli apply
+  [ "$status" -eq 0 ]
+  cp .mcp.json "$test_root/mcp-applied.json"
+  claude_hash="$(python3 -c 'import json; print(json.load(open(".agents/agent-ready.lock.json"))["mcpServers"]["acme-docs"]["claudeEntrySha256"])')"
+
+  printf '%s\n' '{ not json' > .mcp.json
+  run_cli apply
+  [ "$status" -eq 0 ]
+  assert_json .agents/agent-ready.lock.json "data['mcpServers']['acme-docs']['claudeEntrySha256'] == '$claude_hash'"
+
+  # Once .mcp.json is fixed, its server is still the managed one: no conflict, nothing duplicated.
+  cp "$test_root/mcp-applied.json" .mcp.json
+  run_cli apply
+  [ "$status" -eq 0 ]
+  [[ "$stderr" != *"already has a server with that name"* ]]
+  cmp -s .mcp.json "$test_root/mcp-applied.json"
+}

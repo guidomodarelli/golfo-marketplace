@@ -40,6 +40,12 @@ MANAGED_COMMAND_FRAGMENT = "/agent-ready-setup/browser-tools/"
 BROWSER_METADATA_PATH = ".agents/browser-tools.json"
 # Same path as agent-ready-state.py: `agent-ready remove` deletes it last.
 AGENT_READY_LOCK_PATH = ".agents/agent-ready.lock.json"
+AGENT_READY_MANIFEST_PATH = ".agents/agent-ready.json"
+ANTIGRAVITY_PROVIDER = "antigravity"
+ANTIGRAVITY_SERVERS_PATH = ".agents/mcp_config.json"
+ANTIGRAVITY_USER_SERVERS_PATH = Path(".gemini/config/mcp_config.json")
+# Providers whose project servers live in a JSON file (mcpServers); the rest edit TOML.
+JSON_PROVIDERS = ("Claude", "Antigravity")
 # Fixed per-user install location; project registrations reach it through $HOME.
 TOOLS_HOME_RELATIVE_PATH = Path(".local/share/agent-ready-setup/browser-tools")
 # Generated launchers keep machine-specific paths out of project configuration.
@@ -334,7 +340,8 @@ def portable_servers(provider):
             # Claude expands ${VAR} in .mcp.json commands.
             servers[name] = {"command": f"${{HOME}}/{launcher}"}
         else:
-            # Codex does not expand variables in commands, so a shell resolves $HOME.
+            # Codex does not expand variables in commands, and Antigravity documents no expansion,
+            # so a shell resolves $HOME.
             servers[name] = {"command": "sh", "args": ["-c", f'exec "$HOME/{launcher}"']}
     return servers
 
@@ -371,7 +378,7 @@ def pending_servers(desired, project_servers, other_servers):
 
 def write_project_servers(provider, destination, original, config, key, pending, allow_dependency_install):
     """Add or refresh managed servers while preserving every other project setting."""
-    if provider == "Claude":
+    if provider in JSON_PROVIDERS:
         servers = config.setdefault(key, {})
         for name, server in pending.items():
             entry = servers.setdefault(name, {})
@@ -395,6 +402,16 @@ def write_project_servers(provider, destination, original, config, key, pending,
         updated = editor.dumps(document)
         tomllib.loads(updated)
     atomic_write(destination, updated, original)
+
+
+def selects_antigravity(project):
+    """True when the manifest of the project lists Antigravity among its providers (an optional one)."""
+    try:
+        manifest = json.loads((project / AGENT_READY_MANIFEST_PATH).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    providers = manifest.get("providers") if isinstance(manifest, dict) else None
+    return isinstance(providers, list) and ANTIGRAVITY_PROVIDER in providers
 
 
 def is_set_up(project):
@@ -427,10 +444,14 @@ def register_servers(project, binaries, browser, allow_dependency_install=True):
     codex_user_path = Path(os.environ.get("CODEX_HOME", str(user_home() / ".codex"))) / "config.toml"
     failures = []
     toml_editor_missing = None
-    for provider, destination, user_path, parser, key in (
+    targets = [
         ("Claude", project / ".mcp.json", claude_user_path, json.loads, "mcpServers"),
         ("Codex", project / ".codex/config.toml", codex_user_path, tomllib.loads, "mcp_servers"),
-    ):
+    ]
+    if selects_antigravity(project):
+        targets.append(("Antigravity", project / ANTIGRAVITY_SERVERS_PATH, user_home() / ANTIGRAVITY_USER_SERVERS_PATH,
+                        json.loads, "mcpServers"))
+    for provider, destination, user_path, parser, key in targets:
         try:
             original, config = read_config(destination, parser)
             project_servers = server_map(config, key, destination)
@@ -483,7 +504,7 @@ def unregister_provider(provider, destination, parser, key):
     managed = [name for name, server in servers.items() if is_managed_server(server)]
     if not managed:
         return None
-    if provider == "Claude":
+    if provider in JSON_PROVIDERS:
         for name in managed:
             del config[key][name]
         if not config[key]:
@@ -532,6 +553,7 @@ def unregister_servers(project):
         for provider, relative_path, parser, key in (
             ("Claude", ".mcp.json", json.loads, "mcpServers"),
             ("Codex", ".codex/config.toml", tomllib.loads, "mcp_servers"),
+            ("Antigravity", ANTIGRAVITY_SERVERS_PATH, json.loads, "mcpServers"),
         ):
             destination = project / relative_path
             if not destination.exists():

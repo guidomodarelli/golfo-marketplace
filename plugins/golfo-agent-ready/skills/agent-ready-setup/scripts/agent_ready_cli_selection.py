@@ -7,6 +7,7 @@ and without one it needs its flags. Data goes to stdout; questions and progress 
 """
 
 import os
+import shutil
 import subprocess
 import sys
 
@@ -16,6 +17,7 @@ from agent_ready_cli_common import (
     EXIT_SOURCE_UNAVAILABLE,
     SKILL_ROOT,
     STATE_SCRIPT,
+    SUPPORTED_PROVIDERS,
     UPDATE_MODES,
     UsageError,
     apply_selection,
@@ -29,10 +31,12 @@ from agent_ready_cli_common import (
 from agent_ready_common import ProfileError, StateError, serialize_json, write_text_atomically
 from agent_ready_config import LAYER_PROJECT, PROJECT_CONFIG_RELATIVE_PATH
 from agent_ready_options import (
+    ANTIGRAVITY_PROVIDER,
     CI_PROVIDER_KEY,
     DETECTION_ENABLED_KEY,
     EXCLUDED_DEFAULTS_KEY,
     PROFILES_KEY,
+    PROVIDERS_KEY,
     SOURCES_ENABLED_KEY,
     UPDATES_FROM_LOCK_KEY,
     UPDATES_MODE_KEY,
@@ -352,6 +356,50 @@ def detection_hint(arguments, defaults, suggestions):
     return hint
 
 
+# The CLI of Antigravity: on PATH, someone of the team uses it.
+ANTIGRAVITY_COMMAND = "agy"
+
+
+def provider_names(text):
+    """The providers of a comma separated answer, in order and without repeats."""
+    names = []
+    for name in (part.strip() for part in text.split(",")):
+        if name and name not in names:
+            names.append(name)
+    return names
+
+
+def validate_providers(text):
+    """None when every name of the answer is a supported provider and there is at least one."""
+    names = provider_names(text)
+    unknown = [name for name in names if name not in SUPPORTED_PROVIDERS]
+    if unknown:
+        return f"unknown provider {', '.join(unknown)}; answer some of {', '.join(SUPPORTED_PROVIDERS)}"
+    return None if names else "answer at least one provider"
+
+
+def default_providers(configuration, provider):
+    """The providers the wizard proposes: the configured ones, plus Antigravity when it runs this
+    command or agy is on PATH (someone of the team uses it)."""
+    names = list(configuration.value(PROVIDERS_KEY))
+    if ANTIGRAVITY_PROVIDER not in names and (provider == ANTIGRAVITY_PROVIDER or shutil.which(ANTIGRAVITY_COMMAND)):
+        names.append(ANTIGRAVITY_PROVIDER)
+    return names
+
+
+def write_providers(arguments, providers):
+    """Write providers into the project layer and say whether it changed."""
+    arguments.layer = LAYER_PROJECT
+
+    def change(schema, document):
+        previous = document.get(PROVIDERS_KEY)
+        document[PROVIDERS_KEY] = list(providers)
+        return previous != list(providers)
+
+    path, changed = write_layer(arguments, change)
+    sys.stderr.write(f"{PROVIDERS_KEY}={','.join(providers)} {'set' if changed else 'already set'} in {path}.\n")
+
+
 def command_init(arguments):
     """First setup of a repository: choose the profiles, write the manifest and apply."""
     if selected_profiles(arguments.project_root) is not None:
@@ -402,10 +450,18 @@ def command_init(arguments):
         )
         asked = True
     ci_provider = arguments.ci_provider
+    providers = arguments.providers
+    if providers:
+        error = validate_providers(providers)
+        if error:
+            raise UsageError(f"--providers: {error}")
     if full_wizard:
         configuration = engine().configuration_of(arguments.project_root)
         updates = ask_text(f"Updates ({'|'.join(UPDATE_MODES)})", configuration.value(UPDATES_MODE_KEY),
                            lambda answer: None if answer in UPDATE_MODES else f"answer one of {', '.join(UPDATE_MODES)}")
+        if providers is None:
+            providers = ask_text(f"Agents of the team, comma separated ({'|'.join(SUPPORTED_PROVIDERS)})",
+                                 ",".join(default_providers(configuration, provider)), validate_providers)
         # Only once: a repository that already chose its CI provider, none included, is not asked again.
         if ci_provider is None and not configuration.value(CI_PROVIDER_KEY):
             ci_provider = ask_ci_provider(arguments.project_root)
@@ -419,8 +475,11 @@ def command_init(arguments):
     if asked:
         command = [CLI_NAME, "init", "--profiles", profiles] + (["--updates", updates] if updates else [])
         command += ["--ci-provider", ci_provider] if ci_provider else []
+        command += ["--providers", ",".join(provider_names(providers))] if providers else []
         command += (["--project", arguments.project] if arguments.project != "." else []) + ["--provider", provider, "--yes"]
         sys.stderr.write(f"Equivalent command: {equivalent_command(command)}\n")
+    if providers:
+        write_providers(arguments, provider_names(providers))
     if ci_provider:
         # After the last answer: the apply below creates the files of the provider.
         write_ci_provider(arguments, ci_provider)
@@ -477,5 +536,8 @@ def register(subparsers, new_subparser):
     init.add_argument("--ci-provider", choices=ci_providers(),
                       help=f"{CI_PROVIDER_KEY}: the CI files to manage (asked in the full wizard, the detected one first; "
                            "default: none chosen yet, so nothing is created)")
+    init.add_argument("--providers", help=f"{PROVIDERS_KEY}: the agents of the team, comma separated "
+                                         f"({', '.join(SUPPORTED_PROVIDERS)}; asked in the full wizard, with "
+                                         "antigravity when agy is on PATH; default: claude,codex)")
     init.add_argument("-y", "--yes", action="store_true", help="apply without asking for confirmation")
     init.add_argument("--no-input", action="store_true", help="never ask; fail with exit 2 naming the missing flags")

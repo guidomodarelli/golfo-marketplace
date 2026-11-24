@@ -1,7 +1,7 @@
 {
   "name": "golfo-kit",
   "description": "Núcleo de los plugins golfo: skills para trabajar con agentes (optimizar skills, profundizar prompts, máxima ambición, portabilidad entre agentes). El setup Agent Ready vive en golfo-agent-ready y las demás skills en los plugins golfo-* por plataforma y tecnología.",
-  "version": "0.133.0",
+  "version": "0.133.1",
   "author": {
     "name": "Guido Modarelli"
   },

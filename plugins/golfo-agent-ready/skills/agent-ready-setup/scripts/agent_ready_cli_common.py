@@ -20,7 +20,7 @@ from agent_ready_config import (
     user_config_path,
     validate_layer,
 )
-from agent_ready_options import SOURCES_ENABLED_KEY, SOURCES_PACKS_KEY, WORKSPACES_KEY
+from agent_ready_options import SOURCES_ENABLED_KEY, SOURCES_PACKS_KEY, SUPPORTED_PROVIDERS, WORKSPACES_KEY
 from agent_ready_packs import FULL_COMMIT, SOURCE_TYPE_GIT, parse_profile_sources
 
 CLI_NAME = "agent-ready"
@@ -35,7 +35,6 @@ RESOLVED_STACK_PREFIX = "Stack: "
 RESOLVED_STACK_DIRECTORY_PREFIX = "Resolved stack directory: "
 STACK_DIRECTORY_VARIABLE = "AGENT_READY_SETUP_STACK_DIR"
 PROVIDER_VARIABLE = "AGENT_READY_SETUP_ACTIVE_PROVIDER"
-SUPPORTED_PROVIDERS = ("claude", "codex")
 UPDATE_MODES = ("auto", "pinned")
 # Hermes exports these to stop Git Bash from translating paths, but the scripts hand POSIX
 # paths to native Windows Python, which needs that translation.
