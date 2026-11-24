@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "golfo-web",
-  "version": "0.130.0",
+  "version": "0.130.1",
   "description": "Skills exclusivas de desarrollo web, para cualquier framework: medición y optimización de rendimiento web, HTML semántico y accesibilidad, CSS responsive mobile-first y manuales de usuario con capturas del navegador.",
   "author": {
     "name": "Guido Modarelli"
