@@ -17,6 +17,10 @@ activo antes de proyectar assets o adquirir lock local.
 `~/.codex/config.toml` declara `source_type = "local"` para `golfo-marketplace`
 (lo que registra `codex plugin marketplace add "$PWD/golfo-marketplace"`),
 `bootstrap.sh` y el hook omiten el upgrade y resuelven assets desde ese `source`.
+`bootstrap.sh` también lo omite cuando el motor corre desde un checkout, fuera de `~/.claude`,
+`$CODEX_HOME`, `CLAUDE_PLUGIN_ROOT` y las carpetas de Hermes: ese motor se usa tal cual y el contenido sale
+de `sources.golfo`, así que el upgrade no cambiaría nada de la corrida y solo reemplazaría el clon del
+marketplace de la máquina. `AGENT_READY_SETUP_UPGRADE_FROM_CHECKOUT=1` lo hace igual.
 El hook canónico `.agents/hooks/sync-marketplace.sh` ejecuta el upgrade salvo que
 haya uno exitoso de menos de 60 minutos para el mismo provider (marca en
 `${XDG_CACHE_HOME:-~/.cache}/agent-ready-setup/marketplace-upgrade-<provider>.stamp`,
@@ -102,7 +106,8 @@ La proyección automática de assets:
   las registradas, las de assets borrados. Mientras existan vistas por hard link
   registra en la config local de git el hook `hook.agent-ready-relink`
   (`post-index-change`), que corre `.agents/hooks/relink-hard-link-views.sh` después
-  de reset, stash, cherry-pick, revert o abortar un merge o rebase. Al ser un hook
+  de reset, stash, cherry-pick, revert o abortar un merge o rebase. En una rama
+  sin ese script, como una anterior a la adopción, el hook sale en silencio. Al ser un hook
   por config convive con `core.hooksPath` (husky, lefthook) y con hooks propios sin
   tocarlos. Si la versión de git no soporta hooks por config, instala el archivo
   `.git/hooks/post-index-change`; con `core.hooksPath` o un hook propio no lo pisa

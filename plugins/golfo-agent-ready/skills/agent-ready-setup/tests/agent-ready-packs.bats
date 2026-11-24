@@ -355,6 +355,33 @@ PY
   [[ "$output" == *"only works on an apply or a --plan"* ]]
 }
 
+@test "update --to moves the pin of a source pinned to a commit, and without --to says how" {
+  git init -q
+  publish_pack_repository acme
+  first_commit="$pack_commit"
+  write_manifest acme/kafka-interno "acme=git+https://packs.example.invalid/acme#$first_commit"
+  run_bootstrap
+  [ "$status" -eq 0 ]
+  advance_pack_repository
+
+  run env PATH="$fake_bin:$PATH" python3 -B "$skill_dir/scripts/agent-ready" update acme
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"pinned to a full commit, so it has no newer revision"*"update acme --to"* ]]
+
+  run env PATH="$fake_bin:$PATH" python3 -B "$skill_dir/scripts/agent-ready" update acme --to "$pack_commit" --dry-run
+  [ "$status" -eq 2 ]
+  [ "$(json_value .agents/agent-ready.json 'data["sources"]["packs"][0]["source"]')" = "git+https://packs.example.invalid/acme#$first_commit" ]
+
+  run env PATH="$fake_bin:$PATH" python3 -B "$skill_dir/scripts/agent-ready" update acme --to "$pack_commit"
+  [ "$status" -eq 0 ]
+  [ "$(json_value .agents/agent-ready.json 'data["sources"]["packs"][0]["source"]')" = "git+https://packs.example.invalid/acme#$pack_commit" ]
+  [ "$(lock_value 'data["profileSources"]["acme"]["resolvedCommit"]')" = "$pack_commit" ]
+
+  run env PATH="$fake_bin:$PATH" python3 -B "$skill_dir/scripts/agent-ready" update acme --to "not a ref"
+  [ "$status" -eq 2 ]
+  [ "$(json_value .agents/agent-ready.json 'data["sources"]["packs"][0]["source"]')" = "git+https://packs.example.invalid/acme#$pack_commit" ]
+}
+
 @test "plan shows the differences from the lock and what a new revision would change" {
   publish_pack_repository acme
   write_manifest acme/kafka-interno "acme=git+https://packs.example.invalid/acme#$pack_commit"

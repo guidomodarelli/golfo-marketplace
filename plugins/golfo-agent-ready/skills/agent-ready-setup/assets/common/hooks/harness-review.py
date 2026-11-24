@@ -9,6 +9,8 @@ editing a rule twice never reviews the rest again.
 
 import importlib.util
 import argparse
+import contextlib
+import io
 import json
 import os
 import re
@@ -20,7 +22,7 @@ import types
 
 CHECK = "harness-consistency"
 # Bump when the prompt or the schema changes: it is part of every cache key.
-CHECK_VERSION = 4
+CHECK_VERSION = 5
 # The kinds of finding of a contradiction, and the one of two rules that say the same thing in other words
 # (reviews.redundancy.enabled), which is only asked for when the key is on.
 CONFLICT_KINDS = ("contradiction", "inconsistency")
@@ -37,6 +39,9 @@ RULES_DIRECTORY = "rules"
 SKILLS_DIRECTORY = "skills"
 SKILL_FILE_NAME = "SKILL.md"
 LOG_PREFIX = "[harness-check]"
+# Codex ignores the plain stdout of a PostToolUse hook: it only reads this JSON field, so the findings reach
+# the model there. Claude Code keeps reading the plain lines.
+CODEX_HOOK_EVENT = "PostToolUse"
 # The structural conflicts after an edit: the engine decides which changed paths are their inputs.
 CONFLICTS_CHECK_FILE_NAME = "check-conflicts.sh"
 CONFLICTS_CHECK_TIMEOUT_SECONDS = 120
@@ -157,11 +162,16 @@ def provider_of(payload):
     return "codex" if isinstance(payload, dict) and payload.get("tool_name") == "apply_patch" else "claude"
 
 
+def forward_slashes(path):
+    """The path with Windows separators as forward slashes, as a Claude edit on Windows names it."""
+    return path.replace("\\", "/")
+
+
 def harness_roots(paths):
     """Roots whose rules or skills an edit touched, as the hook always detected them. An edit of an
     AGENTS.md reviews it against the rules and skills of .agents/, where the managed ones live."""
     roots = set()
-    for path in paths:
+    for path in map(forward_slashes, paths):
         if re.search(r"(^|/)\.claude/(rules/|skills/|CLAUDE\.md$)", path):
             roots.add(".claude")
         if re.search(r"(^|/)\.agents/(rules/|skills/)", path) or INSTRUCTIONS_PATTERN.search(path):
@@ -201,6 +211,7 @@ def documents(project_root, root):
 
 def project_relative(project_root, path):
     """The edited path relative to the project, or None outside it."""
+    path = forward_slashes(path)
     absolute = path if os.path.isabs(path) else os.path.join(project_root, path)
     relative = os.path.relpath(os.path.normpath(absolute), project_root).replace(os.sep, "/")
     return None if relative.startswith("../") or relative == ".." else relative
@@ -307,6 +318,16 @@ def finding_pair(finding, left, rights, texts):
     return rights[0][1]
 
 
+def reported(finding, pair, kinds):
+    """Whether a finding of a pair is one to show: a kind the review asked for, and no redundancy with an
+    AGENTS.md. What the project wrote there is its own, so a line that repeats a rule is not to delete."""
+    if finding.get("kind", CONFLICT_KINDS[1]) not in kinds:
+        return False
+    cache_module = load_review_cache()
+    return not (finding.get("kind") == REDUNDANCY_KIND
+                and any(cache_module.is_instructions_name(cache_module.document_path(name)) for name in pair))
+
+
 def review_pairs(bash, provider, model, effort, pairs, texts, working_directory, redundancy=False):
     """Findings of each pair, or None when the provider gave no valid answer. ``redundancy`` also asks for
     two rules that say the same thing (reviews.redundancy.enabled)."""
@@ -325,9 +346,11 @@ def review_pairs(bash, provider, model, effort, pairs, texts, working_directory,
     for finding in result["findings"]:
         number = finding.get("pair") if isinstance(finding, dict) else None
         # A kind the review did not ask for (redundancy with the key off) is not reported.
-        if isinstance(number, int) and 1 <= number <= len(groups) and finding.get("kind", CONFLICT_KINDS[1]) in kinds:
+        if isinstance(number, int) and 1 <= number <= len(groups):
             left, rights = groups[number - 1]
             pair = finding_pair(finding, left, rights, texts)
+            if not reported(finding, pair, kinds):
+                continue
             findings[pair].append({"files": list(pair), "lines": [str(line) for line in finding.get("lines", [])],
                                    "kind": str(finding.get("kind", "inconsistency")), "text": str(finding.get("text", ""))})
     return findings
@@ -445,6 +468,19 @@ def main():
         payload = json.loads(sys.stdin.read())
     except ValueError:
         return 0
+    if provider_of(payload) != "codex":
+        return review_edit(arguments.bash, payload)
+    report = io.StringIO()
+    with contextlib.redirect_stdout(report):
+        status = review_edit(arguments.bash, payload)
+    if report.getvalue().strip():
+        print(json.dumps({"hookSpecificOutput": {"hookEventName": CODEX_HOOK_EVENT,
+                                                 "additionalContext": report.getvalue().strip()}}, ensure_ascii=False))
+    return status
+
+
+def review_edit(bash, payload):
+    """Review what one edit changed and print the result as lines; main decides how they reach the agent."""
     paths = payload_paths(payload)
     if not paths:
         return 0
@@ -456,11 +492,11 @@ def main():
     changed = {relative for relative in (project_relative(project_root, path) for path in paths) if relative}
     provider = provider_of(payload)
     # The structural checks are cheap and need no provider CLI: they run on every edit of an input.
-    report_structural_conflicts(arguments.bash, provider, project_root, changed)
+    report_structural_conflicts(bash, provider, project_root, changed)
     roots = harness_roots(paths)
     if not roots:
         return 0
-    if not provider_available(arguments.bash, provider):
+    if not provider_available(bash, provider):
         print(f"{LOG_PREFIX} {provider} CLI is not available; consistency check skipped.", file=sys.stderr)
         return 0
     cache_module = load_review_cache()
@@ -470,7 +506,7 @@ def main():
         return 0
     engine = cache_module.engine_version(project_root)
     for root in roots:
-        review_root(arguments.bash, cache_module, cache, project_root, root, changed, provider, engine)
+        review_root(bash, cache_module, cache, project_root, root, changed, provider, engine)
     return 0
 
 

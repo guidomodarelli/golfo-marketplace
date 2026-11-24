@@ -142,7 +142,7 @@ publish_pack_repository() {
   [[ "$stderr" == *"is not inside a Git repository"* ]]
 
   cd "$project_dir"
-  run --separate-stderr env -u AGENT_READY_SETUP_ACTIVE_PROVIDER PATH="$fake_bin:$PATH" python3 "$cli" plan --offline
+  run --separate-stderr env -u AGENT_READY_SETUP_ACTIVE_PROVIDER -u CLAUDECODE -u CODEX_SESSION_ID -u CODEX_THREAD_ID PATH="$fake_bin:$PATH" python3 "$cli" plan --offline
   [ "$status" -eq 2 ]
   [[ "$stderr" == *"pass --provider claude|codex"* ]]
 }
@@ -294,6 +294,8 @@ publish_pack_repository() {
   [ "$status" -eq 2 ]
   [ -z "$output" ]
   [[ "$stderr" == *"missing --profiles <a,b> (or --stack <s>) and --yes; there is no terminal to ask"* ]]
+  # The error names the init the detection proposes, so a script or an agent can run it as is.
+  [[ "$stderr" == *"the detection proposes: agent-ready init --profiles react"*"--yes"* ]]
   [ "$(tree_fingerprint)" = "$before" ]
 
   run --separate-stderr env PATH="$fake_bin:$PATH" python3 "$cli" init --profiles nope --yes < /dev/null
@@ -314,6 +316,37 @@ publish_pack_repository() {
   run_cli init --profiles node --yes
   [ "$status" -eq 2 ]
   [[ "$stderr" == *"this repository is already set up"* ]]
+}
+
+@test "init gives an AGENTS.md the project already had the managed block and keeps its lines" {
+  printf '# Trama\n\nInstall dependencies with bun.\n' > AGENTS.md
+
+  run_cli init --profiles node --yes < /dev/null
+
+  [ "$status" -eq 0 ]
+  [ "$(grep -cx '<!-- BEGIN AGENT-READY MANAGED -->' AGENTS.md)" -eq 1 ]
+  [ "$(grep -cx '<!-- END AGENT-READY MANAGED -->' AGENTS.md)" -eq 1 ]
+  grep -Fxq 'Install dependencies with bun.' AGENTS.md
+}
+
+@test "profiles list marks what the detection proposes and takes --provider, and apply takes --yes" {
+  printf '%s\n' '{"dependencies": {"react": "19.0.0"}}' > package.json
+
+  run_cli profiles list --json --provider claude
+  [ "$status" -eq 0 ]
+  [ "$(json_value "$output" '"react" in [row["name"] for row in data if row["detected"] and not row["selected"]]')" = True ]
+
+  run_cli profiles list
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"+ react "* ]]
+  [[ "$stderr" == *"+ proposed by the detection of this repository"* ]]
+
+  run_cli init --profiles react --yes < /dev/null
+  [ "$status" -eq 0 ]
+  run_cli apply --yes
+  [ "$status" -eq 0 ]
+  run_cli profiles list
+  [[ "$output" == *"* react "* ]]
 }
 
 @test "profiles list, add and remove validate the selection against the catalog before writing" {
@@ -771,7 +804,7 @@ PY
   [ "$status" -eq 0 ]
   git add -A && git commit -qm "agent ready"
   git config hook.agent-ready-relink.event post-index-change
-  git config hook.agent-ready-relink.command "sh .agents/hooks/relink-hard-link-views.sh"
+  git config hook.agent-ready-relink.command "test ! -f .agents/hooks/relink-hard-link-views.sh || sh .agents/hooks/relink-hard-link-views.sh"
   git worktree add -q "$test_root/linked"
 
   cd "$test_root/linked"
@@ -779,7 +812,7 @@ PY
   [[ "$(json_value "$output" '[entry["reason"] for entry in data["entries"] if entry["kind"] == "git-config"]')" == *"shared with the worktree"* ]]
   run_cli remove --yes < /dev/null
   [ "$status" -eq 0 ]
-  [ "$(git config --get hook.agent-ready-relink.command)" = "sh .agents/hooks/relink-hard-link-views.sh" ]
+  [ "$(git config --get hook.agent-ready-relink.command)" = "test ! -f .agents/hooks/relink-hard-link-views.sh || sh .agents/hooks/relink-hard-link-views.sh" ]
 
   cd "$project_dir"
   run_cli remove --yes < /dev/null

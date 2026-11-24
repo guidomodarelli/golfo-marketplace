@@ -42,7 +42,8 @@ from agent_ready_cli_common import (
     write_layer,
 )
 from agent_ready_common import StateError, serialize_json
-from agent_ready_config import LAYER_PROJECT, ConfigurationError, format_value, load_schema, parse_text_value
+from agent_ready_config import LAYER_PROJECT, PROJECT_CONFIG_RELATIVE_PATH, ConfigurationError, format_value, load_schema, parse_text_value
+from agent_ready_packs import SOURCE_TYPE_GIT, parse_profile_sources
 from agent_ready_options import SOURCES_ENABLED_KEY, UPDATES_PRESET_KEY
 from agent_ready_cli_ci import register as register_ci_commands
 from agent_ready_cli_learning import register as register_learning_commands
@@ -112,6 +113,33 @@ def command_apply(arguments):
     return apply_selection(arguments, provider, extra)
 
 
+# Separates the URL of a Git source from its revision, as in git+https://host/pack#v2.
+REVISION_SEPARATOR = "#"
+
+
+def repin_source(arguments, name, ref):
+    """Point the Git source ``name`` of the manifest at ``ref``, validated as every declaration is."""
+    arguments.layer = LAYER_PROJECT
+
+    def change(schema, document):
+        for entry in document.get("sources", {}).get("packs", []):
+            if entry.get("name") == name:
+                # The revision is the "ref" of the entry or the #fragment of its URL, whichever it uses.
+                if "ref" in entry:
+                    entry["ref"] = ref
+                else:
+                    entry["source"] = f"{entry['source'].partition(REVISION_SEPARATOR)[0]}{REVISION_SEPARATOR}{ref}"
+                try:
+                    parse_profile_sources([entry], PROJECT_CONFIG_RELATIVE_PATH)
+                except StateError as invalid_source:
+                    raise UsageError(f"--to {ref}: {invalid_source}") from invalid_source
+                return True
+        raise UsageError(f"the manifest does not declare the source '{name}'; it comes from another layer")
+
+    path, _ = write_layer(arguments, change)
+    sys.stderr.write(f"Source '{name}' now pinned to {ref} in {path}.\n")
+
+
 def command_update(arguments):
     """Adopt the latest revision of some sources, or of every declared one, and of the content (golfo).
 
@@ -131,7 +159,20 @@ def command_update(arguments):
     names = arguments.sources or [CONTENT_SOURCE_NAME] + [
         name for name, declaration in sorted(declarations.items()) if follows_a_ref(declaration)]
     provider = resolve_provider(arguments.provider)
-    extra = update_source_arguments(names) + (["--update-to", arguments.to] if arguments.to else [])
+    to_ref = arguments.to
+    pinned = [name for name in packs if declarations[name]["type"] == SOURCE_TYPE_GIT and not follows_a_ref(declarations[name])]
+    if pinned:
+        # A source pinned to a commit has no newer revision of its own: --to moves the pin in the manifest,
+        # and the apply below adopts it like any other revision the manifest names.
+        if not to_ref:
+            raise UsageError(f"profile source '{pinned[0]}' is pinned to a full commit, so it has no newer revision; "
+                             f"move the pin with {CLI_NAME} update {pinned[0]} --to <commit|tag|branch>")
+        if arguments.dry_run:
+            raise UsageError(f"--dry-run cannot preview moving the pin of '{pinned[0]}': moving it writes the manifest; "
+                             f"run {CLI_NAME} update {pinned[0]} --to {to_ref}, and git diff shows the change")
+        repin_source(arguments, pinned[0], to_ref)
+        names, to_ref = [], None
+    extra = update_source_arguments(names) + (["--update-to", to_ref] if to_ref else [])
     if arguments.dry_run:
         return run_bash(bootstrap_command(provider, "--plan", *extra), arguments.project_root)
     return apply_selection(arguments, provider, extra)
@@ -361,6 +402,8 @@ def build_parser():
     add_selection(apply_parser)
     apply_parser.add_argument("--updates", choices=UPDATE_MODES, help="write updates.mode into the manifest (auto removes it)")
     apply_parser.add_argument("-n", "--dry-run", action="store_true", help="show the plan instead of applying")
+    # apply never asks; the flag lets a script pass the same confirmation to init and apply.
+    apply_parser.add_argument("-y", "--yes", action="store_true", help="accepted as in init: apply never asks for confirmation")
     apply_parser.add_argument("--from-lock", action="store_true",
                               help="apply exactly the lock: its selection and the revision of every source, or fail before writing")
     apply_parser.add_argument("--recheck", action="store_true",

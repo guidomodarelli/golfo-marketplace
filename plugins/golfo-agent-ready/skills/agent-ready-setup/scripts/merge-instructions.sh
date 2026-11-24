@@ -103,9 +103,11 @@ Review rules:
 - You may only delete whole lines from project_content. Never add, reword,
   reorder, merge, or shorten lines. Every non-blank line you return must be
   identical to a line of the input project content.
-- Delete a line only when it is redundant: repeated elsewhere in the project
-  content, or already stated (literally or with equivalent meaning) by the
-  managed block or by a rule.
+- Delete a line only when the managed block already states it (literally or
+  with equivalent meaning): the engine writes that block, so the line repeats
+  the engine. The project owns every other line: keep a line that a rule also
+  states, and keep lines that resemble other project lines. The rules are only
+  there to find conflicts.
 - Keep project-specific content that nothing else states: description,
   stack, commands, architecture, ownership, domain constraints, and any
   instruction that is stricter or more specific than a rule.
@@ -115,7 +117,7 @@ Review rules:
 - Delete headings that become empty after their content is removed.
 - $layout_instruction
 - removed lists every deleted line (quoted) with the reason, for example
-  "<line> — covered by .agents/rules/node-testing.md".
+  "<line> — stated by the managed block".
 - project_content must be complete Markdown, not a patch, summary, or code
   fence. reason briefly summarizes the review.
 

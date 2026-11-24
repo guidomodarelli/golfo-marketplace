@@ -46,8 +46,10 @@ después de aplicar el bloque literal con `scripts/apply-managed-block.sh` (un
 2. Envía al provider activo el bloque, el contenido completo de cada rule y el
    contenido del proyecto (con el bloque sustituido por
    `<!-- AGENT-READY MANAGED BLOCK -->`), todo como datos no confiables. La IA
-   solo puede borrar líneas redundantes fuera del bloque: repetidas en el propio
-   contenido o ya cubiertas por el bloque o por una rule.
+   solo puede borrar las líneas de fuera del bloque que el bloque ya dice, porque
+   repiten lo que escribe el motor. Las demás son del proyecto y quedan, aunque una
+   rule diga lo mismo o se parezcan a otra línea propia: las rules solo sirven para
+   encontrar contradicciones.
 3. Rechaza la revisión si agrega, reescribe o reordena líneas, pierde el
    placeholder, devuelve bloques cercados o reintroduce marcadores. En ese caso,
    o si el provider falla, aplica solo el bloque literal sin tocar el contenido

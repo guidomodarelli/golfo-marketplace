@@ -59,6 +59,8 @@ source "$BOOTSTRAP_SCRIPTS_DIRECTORY/bootstrap-asset-projection.sh"
 
 # shellcheck disable=SC2034
 readonly MARKETPLACE_NAME="golfo-marketplace"
+# Same value as MISSING_PREREQUISITE_EXIT_CODE in setup-browser-tools.py.
+readonly BROWSER_MISSING_PREREQUISITE_EXIT_CODE=4
 readonly SKILL_NAME="agent-ready-setup"
 # Codex resolves its user home from CODEX_HOME; config, snapshot and cache follow it.
 readonly CODEX_HOME_DIRECTORY="${CODEX_HOME:-$HOME/.codex}"
@@ -326,9 +328,31 @@ OFFLINE_ARGUMENTS=()
 
 validate_provider_roots
 
+# True when the engine runs from a checkout of the marketplace, outside every agent home. That engine
+# is used as it is (resolve_skill_dir) and the content comes from sources.golfo, so refreshing the
+# marketplace of the user changes nothing this run reads: it only replaces a clone of the machine.
+# AGENT_READY_SETUP_UPGRADE_FROM_CHECKOUT=1 refreshes it anyway.
+runs_from_checkout() {
+  local agent_home
+
+  [[ "${AGENT_READY_SETUP_UPGRADE_FROM_CHECKOUT:-0}" == 1 ]] && return 1
+  for agent_home in "$HOME/.claude" "$CODEX_HOME_DIRECTORY" "${CLAUDE_PLUGIN_ROOT:-}" "${HERMES_HOME:-}" "$HOME/.hermes"; do
+    [[ -n "$agent_home" ]] || continue
+    if [[ "$REQUESTED_SKILL_DIR" == "$agent_home" || "$REQUESTED_SKILL_DIR" == "$agent_home/"* ]]; then
+      return 1
+    fi
+  done
+  return 0
+}
+
 # Each provider refreshes its own marketplace snapshot through its CLI.
 upgrade_marketplace() {
   local -a upgrade_command
+
+  if runs_from_checkout; then
+    echo "[marketplace-bootstrap] El motor corre desde un checkout ($REQUESTED_SKILL_DIR); se omite el upgrade del marketplace del usuario."
+    return 0
+  fi
 
   if [[ "$PROVIDER" == "codex" ]] && is_codex_local_marketplace; then
     echo "[marketplace-bootstrap] $MARKETPLACE_NAME es un marketplace Codex local; se omite el upgrade y se usa su source configurado."
@@ -582,6 +606,11 @@ if [[ "$TOOLS_ENABLED" != true ]]; then
   printf 'Browser installation skipped by tools.enabled: false\n'
 elif [[ ",$RESOLVED_TOOLS," == *",browser,"* ]]; then
   python3 "$SKILL_DIR/scripts/setup-browser-tools.py" --project "$PWD" || browser_setup_status=$?
+  # A machine without Node.js 24+ and npm is a warning, not a failed apply: setup-browser-tools.py
+  # already said what is missing, and the next apply or session installs the tools once it exists.
+  if [[ "$browser_setup_status" -eq "$BROWSER_MISSING_PREREQUISITE_EXIT_CODE" ]]; then
+    browser_setup_status=0
+  fi
 else
   printf 'Browser installation skipped: no selected profile needs browser tools\n'
 fi
@@ -590,6 +619,11 @@ fi
 printf '\nStack: %s\n' "${STACK:-none}"
 printf 'Profiles: %s\n' "$RESOLVED_PROFILES"
 printf 'Providers: Claude Code + Codex-compatible shared tree\n'
+# Hard-link views are committed as whole files: every rule and skill of .agents/ reaches the repository
+# twice. Symlinks are a few bytes each, so the report says how to get them.
+if [[ -s "$(hard_link_views_manifest)" ]]; then
+  printf 'Vistas de .claude: copias por hard link, porque esta máquina no crea symlinks; en Git duplican cada rule y skill de .agents/. Con symlinks (en Windows, el modo desarrollador y git config core.symlinks true) cada vista pesa unos bytes.\n'
+fi
 # Stable line the agent reads to run follow-up scripts from the resolved source: the engine, which
 # composes the content of the lock again (resolve_content_skill_directory in stack-directory.sh).
 printf 'Resolved %s source: %s\n' "$SKILL_NAME" "$ENGINE_SKILL_DIR"

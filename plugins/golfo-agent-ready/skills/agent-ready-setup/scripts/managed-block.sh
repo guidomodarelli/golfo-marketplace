@@ -27,7 +27,7 @@ MERGE_LOCK_DIRECTORY=".agents/.agent-ready-instructions.lock"
 REVIEW_CACHE_SCRIPT="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)/assets/common/hooks/review-cache.py"
 readonly INSTRUCTIONS_CHECK="instructions"
 # Bump when the review prompt or its schema changes: it is part of every cache key.
-readonly INSTRUCTIONS_CHECK_VERSION=2
+readonly INSTRUCTIONS_CHECK_VERSION=3
 # An AGENTS.md created from the template needs no review, whatever the provider.
 readonly TEMPLATE_REVIEWER="template"
 # Where fcntl is missing (Windows), AGENTS.md writers coordinate through this file in the git dir.

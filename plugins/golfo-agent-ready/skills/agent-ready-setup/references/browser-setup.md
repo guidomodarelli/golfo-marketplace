@@ -1,7 +1,10 @@
 # Browser setup
 
 Bootstrap ejecuta `scripts/setup-browser-tools.py` después de proyectar assets.
-Requiere Python 3.11+, Node.js 24+ y npm; no actualiza runtimes ni usa sudo.
+Requiere Python 3.11+, Node.js 24+ y npm; no actualiza runtimes ni usa sudo. Sin Node.js 24+ con
+npm, el setup del navegador termina con el código 4: bootstrap lo informa como aviso y el apply sale con 0,
+porque el resto quedó aplicado. Pasa en un proyecto que corre sobre Bun en una máquina sin Node; el próximo
+apply, o la próxima sesión, instala las herramientas cuando Node esté.
 Reutiliza `tomlkit` disponible para preservar TOML, o lo instala mediante pip en
 directorio privado `browser-tools/python` según `scripts/requirements-browser.txt`;
 pip solo hace falta si esa dependencia no está disponible. No instala paquetes

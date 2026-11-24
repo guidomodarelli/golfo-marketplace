@@ -506,7 +506,8 @@ def download_declared_sources(declarations, locked_sources, update_names, config
         if name not in known:
             raise ProfileError(f"--update-source {name}: the manifest does not declare that source")
         if known[name]["type"] == SOURCE_TYPE_GIT and FULL_COMMIT.fullmatch(known[name]["requestedRef"]):
-            raise ProfileError(f"profile source '{name}' is pinned to a full commit; edit its revision in the manifest to change it")
+            raise ProfileError(f"profile source '{name}' is pinned to a full commit; move the pin with "
+                               f"agent-ready update {name} --to <commit|tag|branch>")
     pins = {}
     for declaration in declarations:
         if declaration["type"] != SOURCE_TYPE_GIT:
