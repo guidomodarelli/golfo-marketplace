@@ -525,6 +525,11 @@ EOF
   [ "$(lock_value '".codex/agents/node-security-scanner.toml" in lock["assets"]')" = "False" ]
 }
 
+# The TOML checks read the file with tomllib, which Python has from 3.11.
+require_tomllib() {
+  python3 -c 'import tomllib' 2>/dev/null || skip "reading TOML needs Python 3.11+"
+}
+
 # One key of the TOML of a native Codex subagent, as Python's TOML parser reads it.
 codex_agent_value() {
   python3 -c 'import sys, tomllib; sys.stdout.write(tomllib.load(open(sys.argv[1], "rb"))[sys.argv[2]])' "$1" "$2"
@@ -536,6 +541,7 @@ subagent_body() {
 }
 
 @test "each subagent becomes a native Codex subagent with valid TOML, and no skill adapter" {
+  require_tomllib
   run_bootstrap_with "$skill_dir" --stack react
   [ "$status" -eq 0 ]
   for agent in a11y-reviewer lint-reviewer react-perf-analyzer react-security-scanner test-reviewer; do
@@ -555,6 +561,7 @@ subagent_body() {
 }
 
 @test "the TOML of a subagent keeps quotes, backslashes and triple quotes of its text exactly" {
+  require_tomllib
   copy_skill
   cat > "$content_dir/stacks/node/agents/tricky-reviewer.md" <<'EOF'
 ---
@@ -574,6 +581,7 @@ EOF
 }
 
 @test "a trailing YAML comment in the frontmatter is not part of the name or the description" {
+  require_tomllib
   copy_skill
   cat > "$content_dir/stacks/node/agents/commented-reviewer.md" <<'EOF'
 ---
@@ -626,7 +634,7 @@ EOF
   [[ "$output" == *".codex/agents/test-reviewer.toml"* ]]
   cmp -s .codex/agents/test-reviewer.toml "$test_root/ours.toml"
   [ "$(lock_value "lock['assets']['.codex/agents/test-reviewer.toml']['state']")" = "conflict" ]
-  [ "$(codex_agent_value .codex/agents/a11y-reviewer.toml name)" = "a11y-reviewer" ]
+  grep -Fxq 'name = "a11y-reviewer"' .codex/agents/a11y-reviewer.toml
 }
 
 @test "without a lockfile the first apply adopts existing managed files once" {
