@@ -1,3 +1,7 @@
+---
+trigger: always_on
+---
+
 # Internal Kafka client
 
 - Use `@acme/kafka` to produce and consume messages; do not create a Kafka client by hand.

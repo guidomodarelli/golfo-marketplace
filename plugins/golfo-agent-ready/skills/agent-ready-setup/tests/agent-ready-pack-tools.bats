@@ -809,3 +809,14 @@ PY
   [[ "$stderr" != *"already has a server with that name"* ]]
   cmp -s .mcp.json "$test_root/mcp-applied.json"
 }
+
+@test "agent-ready conflicts --pack fails on a rule of the pack that Antigravity would drop" {
+  printf '%s\n' '# Acme without trigger' '' '<!-- rule id=acme-untriggered/one -->' '- Use the Acme client.' \
+    > "$pack_repository/profiles/base/rules/acme-untriggered.md"
+  cd "$pack_repository"
+  run_cli conflicts --pack . --offline
+  [ "$status" -eq 6 ]
+  [[ "$output" == *"Antigravity drops .agents/rules/acme-untriggered.md (acme/base): it has no frontmatter with a trigger"* ]]
+  # The rules of the content the pack builds on are not the author's: only the pack's own are listed.
+  [[ "$output" != *"Antigravity drops .agents/rules/language-consistency.md"* ]]
+}

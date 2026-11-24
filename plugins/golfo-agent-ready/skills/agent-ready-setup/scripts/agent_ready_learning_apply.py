@@ -13,6 +13,7 @@ import unicodedata
 
 import agent_ready_identity as identity
 import agent_ready_learning as learning
+import agent_ready_rule_triggers as rule_triggers
 import agent_ready_rules
 from agent_ready_common import ProfileError, StateError, write_text_atomically
 from agent_ready_lockfile import read_lock, was_applied
@@ -29,12 +30,15 @@ SKILL_FILE_NAME = "SKILL.md"
 LEARNED_RULE_PREFIX = "learned/"
 # The personal rules of each person (#169): one file per person, never projected for the others.
 PERSONAL_RULES_DIRECTORY = "learned/users"
-PERSONAL_RULES_HEADER = ("# Personal rules\n\nRules the agent learned from one person, for that person only "
+# Antigravity loads a rule only with a trigger in its frontmatter (agent_ready_rule_triggers).
+ALWAYS_ON_FRONTMATTER = (f"{rule_triggers.FRONTMATTER_FENCE}\n" + "".join(f"{line}\n" for line in rule_triggers.trigger_lines([]))
+                         + f"{rule_triggers.FRONTMATTER_FENCE}\n")
+PERSONAL_RULES_HEADER = (ALWAYS_ON_FRONTMATTER + "# Personal rules\n\nRules the agent learned from one person, for that person only "
                          "(agent-ready learn --scope personal, references/collaboration.md of agent-ready-setup). "
                          "The start of a session gives them to that person; they win over a rule of the team "
                          "with the same key, unless that rule is locked.\n")
 SLUG_WORDS = 5
-LEARNED_RULES_HEADER = ("# Learned\n\nRules the agent learned from the instructions of the user "
+LEARNED_RULES_HEADER = (ALWAYS_ON_FRONTMATTER + "# Learned\n\nRules the agent learned from the instructions of the user "
                         "(agent-ready learn, references/learning.md of agent-ready-setup).\n")
 LOG_HEADER = "# Learning log\n\nWhat the agent learned, changed or replaced, and from which instruction.\n\n"
 WORD = re.compile(r"[a-z0-9]+")
@@ -158,7 +162,8 @@ def learned_file(project_root, paths):
         return LEARNED_RULES_RELATIVE_PATH, LEARNED_RULES_HEADER
     slug = "-".join(word for glob in sorted(paths) for word in WORD.findall(glob.lower())) or "scoped"
     globs = "".join(f'  - "{glob}"\n' for glob in sorted(paths))
-    header = (f"{FRONTMATTER_FENCE}\npaths:\n{globs}{FRONTMATTER_FENCE}\n# Learned for {', '.join(sorted(paths))}\n\n"
+    triggers = "".join(f"{line}\n" for line in rule_triggers.trigger_lines(sorted(paths)))
+    header = (f"{FRONTMATTER_FENCE}\n{triggers}paths:\n{globs}{FRONTMATTER_FENCE}\n# Learned for {', '.join(sorted(paths))}\n\n"
               "Rules the agent learned from the instructions of the user (agent-ready learn, references/learning.md "
               "of agent-ready-setup).\n")
     suffix = ""

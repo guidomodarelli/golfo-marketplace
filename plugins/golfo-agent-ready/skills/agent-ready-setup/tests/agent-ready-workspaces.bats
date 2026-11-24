@@ -178,7 +178,7 @@ lock_value() {
   [ "$status" -eq 0 ]
   rule=.agents/rules/workspaces/apps/web/react-style.md
   [ -f "$rule" ]
-  [ "$(sed -n '1,3p' "$rule" | tr '\n' '|')" = '---|paths:|  - "apps/web/**"|' ]
+  [ "$(sed -n '1,5p' "$rule" | tr '\n' '|')" = '---|trigger: glob|globs: "apps/web/**"|paths:|  - "apps/web/**"|' ]
   [ -e .claude/rules/workspaces/apps/web/react-style.md ]
   # A rule with a frontmatter keeps it and gains paths:.
   grep -qx '  testRunner: vitest' .agents/rules/workspaces/apps/web/react-testing.md
@@ -454,4 +454,60 @@ lock_value() {
   [ "$status" -eq 2 ]
   [[ "$stderr" == *"the selection does not have 'react'"* ]]
   [ "$(cat .agents/agent-ready.json)" = "$before" ]
+}
+
+@test "Antigravity: the rules of a workspace carry trigger glob, and .agents/rules.json reaches their folder and the project's nested ones" {
+  write_manifest '{"profiles": ["node"], "providers": ["claude", "antigravity"], "workspaces": [{"path": "apps/web", "profiles": ["react"]}]}'
+  mkdir -p .agents/rules/area .agents/rules/learned/users/ana
+  printf '%s\n' '---' 'trigger: always_on' '---' '# Area' > .agents/rules/area/payments.md
+  printf '%s\n' '---' 'trigger: always_on' '---' '# Ana' > .agents/rules/learned/users/ana/learned.md
+  run_cli apply
+  [ "$status" -eq 0 ]
+  rule=.agents/rules/workspaces/apps/web/react-security.md
+  sed -n '1,4p' "$rule" | grep -Fxq 'trigger: glob'
+  sed -n '1,4p' "$rule" | grep -Fxq 'globs: "apps/web/**"'
+  grep -Fxq '  - "apps/web/**"' "$rule"
+  python3 -c 'import json; data = json.load(open(".agents/rules.json")); assert data == {"entries": [{"path": ".agents/rules/area"}, {"path": ".agents/rules/workspaces/apps/web"}]}, data'
+  [[ "$stderr" == *"Antigravity rule folders in .agents/rules.json: .agents/rules/area, .agents/rules/workspaces/apps/web"* ]]
+  [ "$(lock_value 'lock["rulesIndex"]["sha256"] != ""')" = "True" ]
+
+  # A rule of the project Antigravity would drop is named by plan.
+  printf '%s\n' '# Team notes' '' '- Keep the changelog short.' > .agents/rules/team-notes.md
+  run_cli plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Antigravity drops .agents/rules/team-notes.md (project): it has no frontmatter with a trigger"* ]]
+  [[ "$output" != *"Antigravity drops .agents/rules/learned/users"* ]]
+
+  # Without Antigravity among the providers the managed index goes away; remove leaves a project's own.
+  write_manifest '{"profiles": ["node"], "providers": ["claude"], "workspaces": [{"path": "apps/web", "profiles": ["react"]}]}'
+  run_cli apply
+  [ "$status" -eq 0 ]
+  [ ! -e .agents/rules.json ]
+  printf '%s\n' '{"entries": [{"path": "../shared-rules"}]}' > .agents/rules.json
+  write_manifest '{"profiles": ["node"], "providers": ["claude", "antigravity"], "workspaces": [{"path": "apps/web", "profiles": ["react"]}]}'
+  run_cli apply
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *".agents/rules.json belongs to the project, so it was not changed"* ]]
+  grep -Fq '../shared-rules' .agents/rules.json
+}
+
+@test "Antigravity: a project rules.json equal to the generated one is never adopted, and a quoted trigger with a comment is valid" {
+  write_manifest '{"profiles": ["node"], "providers": ["claude", "antigravity"], "workspaces": [{"path": "apps/web", "profiles": ["react"]}]}'
+  mkdir -p .agents
+  printf '%s\n' '{' '  "entries": [' '    {' '      "path": ".agents/rules/workspaces/apps/web"' '    }' '  ]' '}' > .agents/rules.json
+  cp .agents/rules.json "$test_root/own-rules.json"
+  mkdir -p .agents/rules
+  printf '%s\n' '---' 'trigger: "always_on" # every file' '---' '# Quoted' > .agents/rules/quoted.md
+  run_cli apply
+  [ "$status" -eq 0 ]
+  cmp -s .agents/rules.json "$test_root/own-rules.json"
+  [ "$(lock_value '"rulesIndex" in lock')" = "False" ]
+  run_cli plan
+  [[ "$output" != *"Antigravity drops .agents/rules/quoted.md"* ]]
+
+  # Turning Antigravity off leaves the project's file where it is.
+  write_manifest '{"profiles": ["node"], "providers": ["claude"], "workspaces": [{"path": "apps/web", "profiles": ["react"]}]}'
+  run_cli apply
+  [ "$status" -eq 0 ]
+  cmp -s .agents/rules.json "$test_root/own-rules.json"
 }

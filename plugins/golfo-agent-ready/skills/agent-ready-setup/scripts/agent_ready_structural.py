@@ -12,6 +12,7 @@ import agent_ready_blocks as managed_blocks
 import agent_ready_conflicts as conflicts_review
 import agent_ready_pack_mcp as pack_mcp
 import agent_ready_pack_tools as pack_tools
+import agent_ready_rule_triggers as rule_triggers
 import agent_ready_parity as parity
 import agent_ready_repo_facts as repo_facts
 import agent_ready_rules as atomic_rules
@@ -223,6 +224,20 @@ def print_repo_reality(findings):
         write_line(paint(line, "warning", sys.stdout) if line.lstrip().startswith(("!", "~")) else line)
 
 
+def antigravity_dropped_rules(project_root, plan):
+    """[{path, profile, problem}] of the rules after the apply that Antigravity reads (the first level of
+    .agents/rules/ and the folders of .agents/rules.json) but drops for their frontmatter
+    (agent_ready_rule_triggers.trigger_problem). The personal rules of each person stay out."""
+    rules, _ = projected_rules(project_root, plan)
+    reachable = set(rule_triggers.loaded_rule_files([rule["path"] for rule in rules]))
+    dropped = []
+    for rule in rules:
+        problem = rule_triggers.trigger_problem(rule["text"]) if rule["path"] in reachable else None
+        if problem:
+            dropped.append({"path": rule["path"], "profile": rule["profile"], "problem": problem})
+    return dropped
+
+
 def parity_report(project_root, skill_dir, plan, configuration, with_user=True):
     """What each provider sees and the variables and CI jobs that collide. Read-only.
 
@@ -238,6 +253,8 @@ def parity_report(project_root, skill_dir, plan, configuration, with_user=True):
         # Only Claude Code and Codex get hooks (providers.json): Antigravity has none to compare yet.
         if {parity.PROVIDER_CLAUDE, parity.PROVIDER_CODEX} <= set(providers):
             report["hookDifferences"] = parity.hook_differences(project_root, skill_dir, with_user)
+    if configuration.value(PROVIDER_PARITY_ENABLED_KEY) and parity.PROVIDER_ANTIGRAVITY in providers:
+        report["antigravityDropped"] = antigravity_dropped_rules(project_root, plan)
     if configuration.value(ENVIRONMENT_CONFLICTS_ENABLED_KEY):
         report["environment"] = parity.environment_variables(plan.get("packToolDeclarations", []), project_root)
     if configuration.value(CI_JOB_CONFLICTS_ENABLED_KEY):
@@ -334,6 +351,9 @@ def parity_report_lines(report):
     if views:
         lines.append("Providers: " + "; ".join(provider_view_text(provider, views[provider])
                                                for provider in PROVIDER_VIEW_ORDER if provider in views))
+    for rule in report.get("antigravityDropped", []):
+        lines.append(f"  ~ Antigravity drops {rule['path']} ({rule['profile']}): {rule['problem']}; start it with a "
+                     f"frontmatter with trigger: always_on, or trigger: glob and globs: for some files")
     for difference in report.get("hookDifferences", []):
         lines.append(f"  ~ {difference['provider']} runs the {difference['event']} hook `{difference['command']}` "
                      f"({difference['file']}) and {difference['missing']} does not")

@@ -23,6 +23,7 @@ import json
 import os
 import re
 
+import agent_ready_rule_triggers as rule_triggers
 from agent_ready_common import ProfileError, is_link
 from agent_ready_nested import folder_problem, is_folder, is_ignored
 
@@ -438,8 +439,9 @@ def scoped_rule_text(text, workspace_path, rule):
     """The rule with paths: limited to the workspace, so Claude Code loads it only for its files.
 
     A rule without frontmatter gets one with paths: <workspace>/**, a frontmatter without paths: gets
-    the key, and the patterns a rule already has stay, under the workspace. The rest of the
-    frontmatter and the body stay as they are.
+    the key, and the patterns a rule already has stay, under the workspace. Antigravity gets the same
+    patterns as trigger: glob with globs (agent_ready_rule_triggers). The rest of the frontmatter and
+    the body stay as they are.
     """
     lines = text.replace("\r\n", "\n").split("\n")
     if lines and lines[0].strip() == FRONTMATTER_FENCE and FRONTMATTER_FENCE in [line.strip() for line in lines[1:]]:
@@ -459,7 +461,8 @@ def scoped_rule_text(text, workspace_path, rule):
             raise ProfileError(f"rule {rule}: the pattern {pattern!r} of paths: does not stay inside the repository")
     scoped = [f"{workspace_path}/{pattern[2:] if pattern.startswith('./') else pattern}" for pattern in patterns]
     paths = [f"{PATHS_KEY}:"] + [f"  - {quoted(pattern)}" for pattern in scoped]
-    return "\n".join([FRONTMATTER_FENCE] + before + paths + after + [FRONTMATTER_FENCE] + body)
+    header = rule_triggers.with_trigger_lines(before + paths + after, scoped)
+    return "\n".join([FRONTMATTER_FENCE] + header + [FRONTMATTER_FENCE] + body)
 
 
 def scoped_references(text, rule_workspaces):

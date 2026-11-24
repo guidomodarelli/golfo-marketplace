@@ -1,3 +1,7 @@
+---
+trigger: always_on
+---
+
 # Acme conventions
 
 - Name every internal service with the `acme-` prefix.
