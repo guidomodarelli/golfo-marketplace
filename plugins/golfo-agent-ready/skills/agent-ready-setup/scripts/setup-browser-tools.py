@@ -51,6 +51,9 @@ SERVER_FIELDS = ("command", "args", "env")
 REQUIRED_EXECUTABLES = ("chrome-devtools-mcp", "playwright-mcp", "agent-browser", "playwright")
 # Tells the sync hook that no usable or adoptable installation exists, so a full install is needed.
 NO_INSTALLATION_EXIT_CODE = 3
+# The machine lacks what the browser tools run on (Node.js 24+ and npm). bootstrap.sh reports it as a
+# warning: the rest of the apply is done, and a project that runs on Bun or another runtime still applies.
+MISSING_PREREQUISITE_EXIT_CODE = 4
 
 
 def user_home():
@@ -173,13 +176,17 @@ def locate_chromium(prefix):
     ], "locate Chromium", capture=True))
 
 
+class MissingPrerequisiteError(RuntimeError):
+    """The machine has no Node.js 24+ with npm, which the browser tools need whatever the project runs on."""
+
+
 def install_tools(install_root, versions):
     """Reuse pinned packages and download Chromium only when absent."""
     if not shutil.which("node") or not shutil.which("npm"):
-        raise RuntimeError("Browser setup requires Node.js 24+ and npm; assets remain installed")
+        raise MissingPrerequisiteError("they need Node.js 24+ and npm on this machine")
     node_version = run_command(["node", "--version"], "check Node.js", capture=True)
     if int(node_version.lstrip("v").split(".")[0]) < 24:
-        raise RuntimeError("Browser setup requires Node.js 24+; Node.js was not upgraded")
+        raise MissingPrerequisiteError(f"they need Node.js 24+ and this machine has {node_version}")
     prefix = pinned_install_prefix(install_root, versions)
     binaries = prefix / "node_modules/.bin"
     if not is_pinned_install_complete(prefix, versions):
@@ -560,6 +567,10 @@ def main():
             register_servers(arguments.project, binaries, browser)
         print("Browser setup complete. Restart provider and trust project MCPs when required. cua remains host-provided.", file=sys.stderr)
         return 0
+    except MissingPrerequisiteError as error:
+        print(f"Browser tools not installed: {error}; the rest is applied. Install them and run agent-ready apply "
+              "again, or drop the browser profile.", file=sys.stderr)
+        return MISSING_PREREQUISITE_EXIT_CODE
     except (OSError, RuntimeError, ValueError) as error:
         print(f"Browser setup incomplete: {error}", file=sys.stderr)
         return 1

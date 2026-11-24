@@ -447,8 +447,22 @@ def matches_files(project_root, entry):
     return bool(files) and file_hashes(project_root, files, entry.get("check")) == files
 
 
+def file_identity(path):
+    """What changes whenever the file is written (an atomic write replaces it), or None when it is absent."""
+    try:
+        status = os.stat(path)
+    except OSError:
+        return None
+    return status.st_ino, status.st_mtime_ns, status.st_size
+
+
 class ReviewCache:
-    """Reads and writes the review cache of one repository."""
+    """Reads and writes the review cache of one repository.
+
+    One hook reviews thousands of pairs, and the cache can weigh megabytes: the parsed files are kept while
+    they stay the same file on disk, so a batch of lookups decodes each one once. A write of another process
+    replaces the file, which reads it again.
+    """
 
     def __init__(self, project_root, settings=None):
         """``settings`` are the effective reviews options when the engine resolved them; the hooks
@@ -458,9 +472,27 @@ class ReviewCache:
         self.path = cache_path(project_root)
         self.shared_path = os.path.join(self.project_root, SHARED_CACHE_RELATIVE_PATH)
         self.overrides = settings
+        self.parsed = {}
+
+    def remembered(self, path, load):
+        """``load()`` of ``path``, parsed again only when the file changed since the last time."""
+        identity = file_identity(path) if path else None
+        known = self.parsed.get(path)
+        if identity is not None and known is not None and known[0] == identity:
+            return known[1]
+        data = load()
+        if identity is None:
+            self.parsed.pop(path, None)
+        else:
+            self.parsed[path] = (identity, data)
+        return data
 
     def read(self):
-        """The whole cache; an absent or unreadable file is an empty one."""
+        """The whole cache as last parsed; callers that change it go through load under the lock."""
+        return self.remembered(self.path, self.load)
+
+    def load(self):
+        """The whole cache, read from disk; an absent or unreadable file is an empty one."""
         empty = {"schemaVersion": SCHEMA_VERSION, "settings": {}, "entries": {}}
         if not self.path:
             return empty
@@ -515,6 +547,10 @@ class ReviewCache:
         return None
 
     def read_shared(self):
+        """The shared cache as last parsed; store_shared, which changes it, goes through load_shared."""
+        return self.remembered(self.shared_path, self.load_shared)
+
+    def load_shared(self):
         """{unit: entry} of the versioned shared cache; empty when it is absent, unreadable or of another schema."""
         try:
             with open(self.shared_path, encoding="utf-8") as file_handle:
@@ -554,7 +590,7 @@ class ReviewCache:
             return
         stamped = {unit: dict(entry, checkedAt=entry.get("checkedAt") or now_text()) for unit, entry in records.items()}
         with self.locked():
-            data = self.read()
+            data = self.load()
             data["entries"].update(stamped)
             # What was just reviewed is current, even when a reviewed rule comes from the
             # template and the repository has no copy of it yet.
@@ -567,7 +603,7 @@ class ReviewCache:
         """Add ``records`` to the versioned shared cache; entries of files gone from this checkout leave it."""
         os.makedirs(os.path.dirname(self.shared_path), exist_ok=True)
         with directory_lock(os.path.join(self.project_root, SHARED_CACHE_LOCK_RELATIVE_PATH)):
-            entries = self.read_shared()
+            entries = self.load_shared()
             entries.update(records)
             for unit, entry in list(entries.items()):
                 names = entry.get("files", {})
@@ -586,7 +622,7 @@ class ReviewCache:
         if self.settings() == settings:
             return
         with self.locked():
-            data = self.read()
+            data = self.load()
             data["settings"][self.worktree] = settings
             self.prune(data)
             self.write(data)

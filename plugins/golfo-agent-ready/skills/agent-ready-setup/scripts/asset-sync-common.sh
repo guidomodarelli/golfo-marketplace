@@ -319,9 +319,11 @@ AGENT_READY_GIT_HOOK_MARKER="# agent-ready-setup: relinks .claude hard-link view
 
 # Config-based hook (git config hook.<name>.event) that relinks hard-link views. Git runs it
 # next to the hooks of core.hooksPath (husky, lefthook) or .git/hooks, without touching them.
+# The config is shared by every branch, so the command exits quietly on a branch without the
+# relink script (one from before the adoption, for example).
 AGENT_READY_GIT_HOOK_NAME="agent-ready-relink"
 AGENT_READY_GIT_HOOK_EVENT="post-index-change"
-AGENT_READY_GIT_HOOK_COMMAND="sh .agents/hooks/relink-hard-link-views.sh"
+AGENT_READY_GIT_HOOK_COMMAND="test ! -f .agents/hooks/relink-hard-link-views.sh || sh .agents/hooks/relink-hard-link-views.sh"
 
 # True when git runs hooks defined in config. Probed once per run in a scratch repository,
 # because the feature depends on the git version.

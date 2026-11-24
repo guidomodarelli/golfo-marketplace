@@ -480,6 +480,16 @@ class BrowserToolsTests(unittest.TestCase):
             browser_setup.atomic_write(destination, "replacement", "old-snapshot")
         self.assertEqual(destination.read_text(), "updated-by-user")
 
+    def test_should_report_a_machine_without_node_as_a_missing_prerequisite(self):
+        # A PATH without node or npm, as on a machine that runs the project on Bun: the apply goes on.
+        empty_path = self.root / "empty-path"
+        empty_path.mkdir()
+        with patch.dict(os.environ, {"PATH": str(empty_path)}), \
+                patch.object(sys, "argv", ["setup-browser-tools.py", "--project", str(self.project)]):
+            status = browser_setup.main()
+        self.assertEqual(status, browser_setup.MISSING_PREREQUISITE_EXIT_CODE)
+        self.assertFalse((self.project / ".mcp.json").exists())
+
     def test_should_reject_old_node_before_installing(self):
         # Mock only our external-command boundary to avoid changing host runtimes
         # or downloading packages. A separate real smoke test exercises npm/MCP.

@@ -131,13 +131,13 @@ explícito fuera del cache conservan prioridad para desarrollo local.
 | `agent-ready conflicts [--offline] [--json]` | todos los conflictos entre los perfiles, sin escribir; sale con `6` si hay alguno (`references/structural-conflicts.md`, «Todos los conflictos juntos») |
 | `agent-ready conflicts --pack <dir>` | desde el repo de un pack: cada profile contra la base del contenido (golfo) y sus `requires`, para el CI del pack (`references/structural-conflicts.md`, «Para autores de packs») |
 | `agent-ready check [--offline] [--json]` | el chequeo de CI, con sus códigos `0`, `4`, `5`, `6` (conflictos con `ci.conflicts`) y `2` |
-| `agent-ready apply [--profiles a,b \| --stack s] [--updates auto\|pinned] [--recheck] [--dry-run]` | el Step 3 completo; `--recheck` vuelve a revisar `AGENTS.md` con IA aunque la caché tenga la revisión |
+| `agent-ready apply [--profiles a,b \| --stack s] [--updates auto\|pinned] [--recheck] [--dry-run] [--yes]` | el Step 3 completo; `--recheck` vuelve a revisar `AGENTS.md` con IA aunque la caché tenga la revisión. `--yes` se acepta como en `init`, pero `apply` nunca pregunta |
 | `agent-ready apply --from-lock [--dry-run]` | aplica exactamente el lock (selección, revisiones y sha256) o falla antes de escribir nombrando la fuente; ver «Apply reproducible» en [profiles-and-lockfile.md](references/profiles-and-lockfile.md) |
-| `agent-ready update [<fuente>...] [--to <ref>] [--dry-run]` | adopta la última revisión de esas fuentes (o de todas) y del contenido (`golfo`); `--to` elige la revisión de una sola, `golfo` incluido ([references/updates.md](references/updates.md), «El contenido»). `--dry-run` muestra además la versión actual y la nueva, el changelog y los cambios `breaking` («Compatibilidad declarada» en [references/profile-packs.md](references/profile-packs.md)) |
+| `agent-ready update [<fuente>...] [--to <ref>] [--dry-run]` | adopta la última revisión de esas fuentes (o de todas) y del contenido (`golfo`); `--to` elige la revisión de una sola, `golfo` incluido ([references/updates.md](references/updates.md), «El contenido»). En una fuente fijada a un commit, `--to` mueve el pin del manifest. `--dry-run` muestra además la versión actual y la nueva, el changelog y los cambios `breaking` («Compatibilidad declarada» en [references/profile-packs.md](references/profile-packs.md)) |
 | `agent-ready config explain\|get\|set\|unset` | la configuración efectiva por capas ([references/configuration.md](references/configuration.md)) |
 | `agent-ready preset [delivered\|none]` | elige un preset con una sola clave o los lista; `delivered` deja una solución entregada estable hasta que alguien decida actualizarla ([references/stable-delivery.md](references/stable-delivery.md)) |
 | `agent-ready init [--profiles a,b \| --stack s] [--updates m] [--ci-provider p] [--yes] [--no-input]` | primera configuración: detecta, pregunta lo que falta si hay terminal (también el proveedor de CI) y aplica |
-| `agent-ready profiles list\|add\|remove` | la selección del manifest, validada contra el catálogo; después, `apply` |
+| `agent-ready profiles list\|add\|remove` | la selección del manifest, validada contra el catálogo; después, `apply`. `list` marca con `*` los elegidos y con `+` los que propone la detección |
 | `agent-ready workspaces list\|add\|remove` | los workspaces de un monorepo, validados antes de escribir; `list` muestra los que sugiere la detección y `add` sin profiles toma el stack que detecta en la carpeta; después, `apply` ([references/profiles.md](references/profiles.md), «Workspaces») |
 | `agent-ready sources list\|add\|remove` | las fuentes de packs del manifest; `add` además la trae a la caché |
 | `agent-ready doctor [--offline] [--json]` | revisa Git, Bash, Python, la CLI del provider, la configuración, las fuentes, el motor que piden el contenido y cada pack (`minEngine`) y los hooks, y dice cómo arreglar lo que falta |
@@ -270,16 +270,18 @@ Para revisar antes de aplicar, correr primero el mismo comando con `--dry-run`.
 python3 "$SKILL_DIR/scripts/agent-ready" apply
 ```
 
-`agent-ready apply` corre `scripts/bootstrap.sh` (upgrade del marketplace, proyección, lockfile y
-manifest) y después `scripts/merge-instructions.sh` desde la fuente que el upgrade resolvió, con el
+`agent-ready apply` corre `scripts/bootstrap.sh` (upgrade del marketplace, salvo con el motor de un
+checkout, proyección, lockfile y manifest) y después `scripts/merge-instructions.sh` desde la fuente que el upgrade resolvió, con el
 stack primario que reportó (`Resolved agent-ready-setup source:` y `Stack:` en stderr): el path
 anterior puede no existir después del upgrade. Si la proyección falla, no alinea `AGENTS.md`.
 
 El provider sale de `--provider` y, si no se pasa, como en `resolve-provider.sh`, que respeta `AGENT_READY_SETUP_ACTIVE_PROVIDER` cuando vale
 `claude` o `codex`; si no existe, infiere provider desde `SKILL_DIR` bajo
 `$HOME/.claude/`, `$HOME/.codex/` o `CLAUDE_PLUGIN_ROOT`; bajo una instalación de
-Hermes, toma el único CLI de provider en `PATH` y falla si hay dos o ninguno. Para
-rutas fuera de instalación reconocible, termina con error y exige provider explícito.
+Hermes, toma el único CLI de provider en `PATH` y falla si hay dos o ninguno. Fuera de una
+instalación reconocible (un checkout del marketplace) toma el agente de la sesión: `CLAUDECODE=1` es
+Claude y `CODEX_SESSION_ID` o `CODEX_THREAD_ID` es Codex. Si están los dos, porque una sesión arrancó
+desde la otra, o ninguno, termina con error y exige provider explícito.
 
 El script actualiza assets compartidos gestionados bajo `.agents/`, crea o
 conserva symlinks relativos (o hard links, donde no hay symlinks) para assets

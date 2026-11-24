@@ -71,6 +71,17 @@ resolve_hermes_provider() {
   esac
 }
 
+# A skill run from a checkout (a clone of the marketplace) is in no provider directory: the
+# provider is then the agent of the session, from the variables it exports. A session started
+# from another one inherits its variables, so with both it is ambiguous and nothing is printed.
+resolve_session_provider() {
+  local -a session_providers=()
+  [[ "${CLAUDECODE:-}" == "1" ]] && session_providers+=(claude)
+  [[ -n "${CODEX_SESSION_ID:-}" || -n "${CODEX_THREAD_ID:-}" ]] && session_providers+=(codex)
+  [[ "${#session_providers[@]}" -eq 1 ]] || return 1
+  printf '%s\n' "${session_providers[0]}"
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --skill-dir)
@@ -114,6 +125,8 @@ elif [[ -n "${CLAUDE_PLUGIN_ROOT:-}" && ( "$skill_dir" == "$CLAUDE_PLUGIN_ROOT" 
   printf '%s\n' "claude"
 elif is_inside_hermes_home; then
   resolve_hermes_provider || exit 1
+elif session_provider="$(resolve_session_provider)"; then
+  printf '%s\n' "$session_provider"
 else
   printf 'ERROR: could not infer provider from skill directory: %s; set AGENT_READY_SETUP_ACTIVE_PROVIDER or pass --provider\n' "$skill_dir" >&2
   exit 1

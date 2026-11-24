@@ -63,7 +63,7 @@ CLI_RELATIVE_PATH = os.path.join("scripts", "agent-ready")
 # Same values as asset-sync-common.sh, which writes them.
 HARD_LINK_VIEWS_MANIFEST = ".claude/.agent-ready-hard-link-views"
 GIT_HOOK_SECTION = "hook.agent-ready-relink"
-GIT_HOOK_COMMAND = "sh .agents/hooks/relink-hard-link-views.sh"
+GIT_HOOK_COMMAND = "test ! -f .agents/hooks/relink-hard-link-views.sh || sh .agents/hooks/relink-hard-link-views.sh"
 GIT_HOOK_FILE_NAME = "post-index-change"
 GIT_HOOK_MARKER = "# agent-ready-setup: relinks .claude hard-link views detached by git."
 # Same place as review-cache.py, which writes it: the info directory every worktree shares.

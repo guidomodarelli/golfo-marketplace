@@ -258,6 +258,19 @@ PY
   [ ! -e "$(cache_file)" ]
 }
 
+@test "a line of AGENTS.md that repeats a rule is never a redundancy: the file belongs to the project" {
+  printf '%s\n' '# Project' 'Never mock dependencies.' > AGENTS.md
+  # Pair 1 is .agents/rules/style.md with AGENTS.md: the rule file sorts first.
+  printf '%s\n' '{"findings": [{"pair": 1, "lines": ["Never mock dependencies.", "Never mock dependencies."], "kind": "redundancy", "text": "AGENTS.md repeats style.md; delete the line."}]}' > "$FAKE_RESPONSE"
+
+  run_hook AGENTS.md
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"[harness-check] .agents modified"* ]]
+  [[ "$output" != *"redundancy:"* ]]
+  [[ "$output" == *"No contradictions found."* ]]
+}
+
 @test "the hook reports two rules that say the same thing as a redundancy, and asks for none with the key off" {
   printf '# Style\nMock every dependency you test.\n' > .agents/rules/style.md
   printf '%s\n' '{"findings": [{"pair": 1, "lines": ["Mock every dependency you test.", "Mock every dependency."], "kind": "redundancy", "text": "Both rules ask to mock dependencies; keep testing.md."}]}' > "$FAKE_RESPONSE"
@@ -491,6 +504,67 @@ PY
   run env PATH="$only_codex" "$BASH" "$hook" <<< "$payload"
   [ "$status" -eq 0 ]
   [[ "$output" == *"codex CLI is not available; consistency check skipped."* ]]
+}
+
+@test "a Codex edit returns the findings as additionalContext, the only output Codex reads" {
+  printf '%s\n' '{"findings": [{"pair": 1, "lines": ["Never mock dependencies.", "Mock every dependency."], "kind": "contradiction", "text": "Mocks are both required and forbidden."}]}' > "$FAKE_RESPONSE"
+  payload='{"tool_name":"apply_patch","tool_input":{"command":"*** Update File: .agents/rules/testing.md"}}'
+
+  run --separate-stderr env PATH="$fake_bin:$PATH" bash "$hook" <<< "$payload"
+
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s' "$output" | jq -r '.hookSpecificOutput.hookEventName')" = PostToolUse ]
+  context="$(printf '%s' "$output" | jq -r '.hookSpecificOutput.additionalContext')"
+  [[ "$context" == *"[harness-check] .agents modified"* ]]
+  [[ "$context" == *"Mocks are both required and forbidden."* ]]
+}
+
+@test "a Claude edit keeps printing plain lines" {
+  run --separate-stderr env PATH="$fake_bin:$PATH" bash "$hook" <<< "$(edit_payload .agents/rules/testing.md)"
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == "[harness-check] .agents modified"* ]]
+}
+
+@test "an edit named with Windows separators is reviewed" {
+  # jq writes the JSON escapes: the payload names the path as a Windows session sends it.
+  payload="$(jq -cn --arg path '.agents\rules\testing.md' '{tool_input: {file_path: $path}}')"
+  [[ "$payload" == *'\\rules\\'* ]]
+  run env PATH="$fake_bin:$PATH" bash "$hook" <<< "$payload"
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"[harness-check] .agents modified"* ]]
+  [ "$(calls)" -eq 1 ]
+}
+
+@test "a batch of lookups decodes a large cache once and still sees what another process stores" {
+  git -c user.email=tests@example.invalid -c user.name=Tests commit -q --allow-empty -m init
+  run python3 -B - "$skill_dir" <<'PY'
+import importlib.util, os, sys, time
+spec = importlib.util.spec_from_file_location("review_cache", os.path.join(sys.argv[1], "assets/common/hooks/review-cache.py"))
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+contents = {".agents/rules/testing.md": "a", ".agents/rules/style.md": "b"}
+def entry(number):
+    key = f"key-{number}"
+    return module.entry_for("harness-consistency", 4, "claude", "model", "engine", contents, key,
+                            module.VERDICT_CONSISTENT, [], extra={"padding": "x" * 1000})
+# Thousands of pairs of about a kilobyte each, as the rules of a real project leave them.
+module.ReviewCache(".").store({f"unit-{number}": entry(number) for number in range(4000)})
+reader = module.ReviewCache(".")
+started = time.monotonic()
+hits = sum(reader.lookup(f"unit-{number}", f"key-{number}") is not None for number in range(4000))
+elapsed = time.monotonic() - started
+assert hits == 4000, hits
+# Decoding the file on every lookup took about a quarter of a second each: 4000 would take minutes.
+assert elapsed < 20, elapsed
+assert reader.lookup("unit-new", "key-new") is None
+module.ReviewCache(".").store({"unit-new": entry("new")})
+assert reader.lookup("unit-new", "key-new") is not None
+print("ok")
+PY
+  [ "$status" -eq 0 ]
+  [ "$output" = ok ]
 }
 
 @test "an entry stays while another worktree still has its files" {

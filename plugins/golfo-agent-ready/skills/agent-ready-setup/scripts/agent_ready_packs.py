@@ -505,8 +505,11 @@ def download_declared_sources(declarations, locked_sources, update_names, config
     for name in update_names:
         if name not in known:
             raise ProfileError(f"--update-source {name}: the manifest does not declare that source")
-        if known[name]["type"] == SOURCE_TYPE_GIT and FULL_COMMIT.fullmatch(known[name]["requestedRef"]):
-            raise ProfileError(f"profile source '{name}' is pinned to a full commit; edit its revision in the manifest to change it")
+        # Only an explicit revision moves a source pinned to a commit: agent-ready update moves the pin of the
+        # manifest to it first, so both name the same revision.
+        if known[name]["type"] == SOURCE_TYPE_GIT and FULL_COMMIT.fullmatch(known[name]["requestedRef"]) and not to_ref:
+            raise ProfileError(f"profile source '{name}' is pinned to a full commit; move the pin with "
+                               f"agent-ready update {name} --to <commit|tag|branch>")
     pins = {}
     for declaration in declarations:
         if declaration["type"] != SOURCE_TYPE_GIT:

@@ -82,24 +82,33 @@ def profile_names(text):
 # profiles list|add|remove
 # ---------------------------------------------------------------------------
 
+# Markers of profiles list: the selection of the manifest, and what the detection proposes on top.
+SELECTED_MARKER = "*"
+DETECTED_MARKER = "+"
+
+
 def command_profiles_list(arguments):
     """Every profile the repository can select, with its kind, source and whether it is selected."""
     catalog = engine().load_effective_catalog(arguments.project_root, content_root(arguments.project_root))
     selected = set(selected_profiles(arguments.project_root) or [])
+    defaults, suggestions = detected_defaults(catalog, arguments.project_root)
+    detected = set(defaults) | set(suggestions)
     rows = []
     # The CI profiles are not selectable: agent-ready ci setup picks them through ci.provider.
     for name in selectable_profile_names(catalog):
         profile = catalog["profiles"][name]
         source = name.split(NAMESPACE_SEPARATOR, 1)[0] if NAMESPACE_SEPARATOR in name else GOLFO_SOURCE_LABEL
-        rows.append({"name": name, "kind": profile.get("kind"), "source": source,
-                     "selected": name in selected, "description": profile.get("description", "")})
+        rows.append({"name": name, "kind": profile.get("kind"), "source": source, "selected": name in selected,
+                     "detected": name in detected, "description": profile.get("description", "")})
     if arguments.json:
         sys.stdout.write(serialize_json(rows))
         return EXIT_OK
     width = max(len(row["name"]) for row in rows)
     for row in rows:
-        marker = "*" if row["selected"] else " "
+        marker = SELECTED_MARKER if row["selected"] else DETECTED_MARKER if row["detected"] else " "
         sys.stdout.write(f"{marker} {row['name']:<{width}}  {row['kind']:<10}  {row['source']:<10}  {row['description']}\n")
+    if any(row["detected"] and not row["selected"] for row in rows):
+        sys.stderr.write(f"{SELECTED_MARKER} selected, {DETECTED_MARKER} proposed by the detection of this repository.\n")
     unavailable = [name for name, source in catalog.get("sources", {}).items() if source["state"] != "available"]
     if unavailable:
         sys.stderr.write(f"Not in the cache yet, so their profiles are missing: {', '.join(unavailable)}. "
@@ -331,6 +340,18 @@ def detected_defaults(catalog, project_root):
     return defaults, suggestions
 
 
+def detection_hint(arguments, defaults, suggestions):
+    """What the detection proposes, as the init to run, for an init that cannot ask."""
+    if arguments.profiles or not defaults:
+        return ""
+    command = [CLI_NAME, "init", "--profiles", ",".join(defaults), "--yes"]
+    command += ["--project", arguments.project] if arguments.project != "." else []
+    hint = f"; the detection proposes: {equivalent_command(command)}"
+    if suggestions:
+        hint += f" (capabilities you may add: {', '.join(suggestions)})"
+    return hint
+
+
 def command_init(arguments):
     """First setup of a repository: choose the profiles, write the manifest and apply."""
     if selected_profiles(arguments.project_root) is not None:
@@ -354,10 +375,11 @@ def command_init(arguments):
     if not arguments.yes:
         missing.append("--yes")
     asked = False
-    if missing and not can_prompt(arguments.no_input):
-        raise UsageError(f"missing {' and '.join(missing)}; there is no terminal to ask")
-
     defaults, suggestions = detected_defaults(catalog, arguments.project_root)
+    if missing and not can_prompt(arguments.no_input):
+        raise UsageError(f"missing {' and '.join(missing)}; there is no terminal to ask"
+                         + detection_hint(arguments, defaults, suggestions))
+
     updates = arguments.updates
     full_wizard = not arguments.profiles and not arguments.updates
     if not arguments.profiles and not defaults:
@@ -418,8 +440,9 @@ def register(subparsers, new_subparser):
     profiles = new_subparser(subparsers, "profiles", "List and change the profiles the repository selects.",
                              "  agent-ready profiles list\n  agent-ready profiles add business-flows", None, with_project=False)
     profile_actions = profiles.add_subparsers(dest="profiles_command", metavar="<action>", required=True)
-    listing = new_subparser(profile_actions, "list", "Every profile available, with * on the selected ones.",
-                            "  agent-ready profiles list --json", command_profiles_list)
+    listing = new_subparser(profile_actions, "list",
+                            "Every profile available, with * on the selected ones and + on the ones the detection proposes.",
+                            "  agent-ready profiles list --json", command_profiles_list, needs_provider=True)
     listing.add_argument("--json", action="store_true", help="print the list as JSON on stdout")
     for name, summary, handler in (("add", "Add profiles to the selection of the manifest.", command_profiles_add),
                                    ("remove", "Remove profiles from the selection of the manifest.", command_profiles_remove)):

@@ -24,6 +24,8 @@ setup() {
   # Tests choose the Codex home explicitly; an inherited CODEX_HOME would
   # redirect config, snapshot and cache lookups away from the fixture HOME.
   unset CODEX_HOME
+  # The tests run the engine of this checkout and check the marketplace upgrade it would do installed.
+  export AGENT_READY_SETUP_UPGRADE_FROM_CHECKOUT=1
   # Fake provider CLIs keep the marketplace upgrade offline and never start a real provider.
   for provider_cli in claude codex; do
     cat > "$fake_bin/$provider_cli" <<'EOF'
@@ -1655,13 +1657,70 @@ EOF
 
 # bats test_tags=area:cli
 @test "bootstrap rejects ambiguous skill path without provider override" {
-  run env -u AGENT_READY_SETUP_ACTIVE_PROVIDER PATH="$test_root/bin:$PATH" \
+  run env -u AGENT_READY_SETUP_ACTIVE_PROVIDER -u CLAUDECODE -u CODEX_SESSION_ID -u CODEX_THREAD_ID PATH="$test_root/bin:$PATH" \
     bash "$skill_dir/scripts/bootstrap.sh" \
     --stack node --skill-dir "$skill_dir"
 
   [ "$status" -ne 0 ]
   [[ "$output" == *"could not infer provider from skill directory"* ]]
   [ ! -e AGENTS.md ]
+}
+
+# bats test_tags=area:cli
+@test "a skill run from a checkout takes the provider of the session" {
+  run env -u AGENT_READY_SETUP_ACTIVE_PROVIDER -u CODEX_SESSION_ID -u CODEX_THREAD_ID CLAUDECODE=1 \
+    bash "$skill_dir/scripts/resolve-provider.sh" --skill-dir "$skill_dir"
+  [ "$status" -eq 0 ]
+  [ "$output" = claude ]
+
+  run env -u AGENT_READY_SETUP_ACTIVE_PROVIDER -u CLAUDECODE -u CODEX_SESSION_ID CODEX_THREAD_ID=thread \
+    bash "$skill_dir/scripts/resolve-provider.sh" --skill-dir "$skill_dir"
+  [ "$status" -eq 0 ]
+  [ "$output" = codex ]
+
+  # A Claude Code started from Codex sees both: the session does not say which one runs the setup.
+  run env -u AGENT_READY_SETUP_ACTIVE_PROVIDER CLAUDECODE=1 CODEX_THREAD_ID=thread \
+    bash "$skill_dir/scripts/resolve-provider.sh" --skill-dir "$skill_dir"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"could not infer provider from skill directory"* ]]
+}
+
+# bats test_tags=area:marketplace-upgrade
+@test "an engine run from a checkout leaves the marketplace of the user alone" {
+  invocation_log="$test_root/marketplace-invocation.log"
+  cat > "$test_root/bin/claude" <<'EOF'
+#!/bin/bash
+printf '%s %s\n' "${0##*/}" "$*" >> "$MARKETPLACE_INVOCATION_LOG"
+EOF
+  chmod +x "$test_root/bin/claude"
+
+  MARKETPLACE_INVOCATION_LOG="$invocation_log" AGENT_READY_SETUP_UPGRADE_FROM_CHECKOUT=0 run_bootstrap react
+
+  [ "$status" -eq 0 ]
+  ! grep -Fq 'marketplace update' "$invocation_log" 2>/dev/null
+  [[ "$output" == *"El motor corre desde un checkout"*"se omite el upgrade del marketplace del usuario."* ]]
+  [ -f .agents/hooks/sync-marketplace.sh ]
+}
+
+# bats test_tags=area:marketplace-upgrade
+@test "an installed engine named by its native Windows path still upgrades the marketplace" {
+  command -v cygpath >/dev/null 2>&1 || skip "requiere cygpath (Git Bash en Windows)"
+  installed_skill_dir="$HOME/.claude/plugins/cache/golfo-marketplace/golfo-agent-ready/1.0.0/skills/agent-ready-setup"
+  mkdir -p "$installed_skill_dir"
+  cp -R "$skill_dir/." "$installed_skill_dir/"
+  invocation_log="$test_root/marketplace-invocation.log"
+  cat > "$test_root/bin/claude" <<'EOF'
+#!/bin/bash
+printf '%s %s\n' "${0##*/}" "$*" >> "$MARKETPLACE_INVOCATION_LOG"
+EOF
+  chmod +x "$test_root/bin/claude"
+
+  MARKETPLACE_INVOCATION_LOG="$invocation_log" AGENT_READY_SETUP_UPGRADE_FROM_CHECKOUT=0 \
+    run env PATH="$test_root/bin:$PATH" bash "$installed_skill_dir/scripts/bootstrap.sh" \
+    --stack react --skill-dir "$(cygpath -w "$installed_skill_dir")" --provider claude
+
+  grep -Fq 'claude plugin marketplace update golfo-marketplace' "$invocation_log"
+  [[ "$output" != *"El motor corre desde un checkout"* ]]
 }
 
 # bats test_tags=area:marketplace-upgrade
@@ -3095,13 +3154,30 @@ commit_agents_and_detach_security_rule() {
   run_bootstrap react
   [ "$status" -eq 0 ]
   [ "$(git config --get hook.agent-ready-relink.event)" = "post-index-change" ]
-  [ "$(git config --get hook.agent-ready-relink.command)" = "sh .agents/hooks/relink-hard-link-views.sh" ]
+  [ "$(git config --get hook.agent-ready-relink.command)" = "test ! -f .agents/hooks/relink-hard-link-views.sh || sh .agents/hooks/relink-hard-link-views.sh" ]
   [ ! -e "$(git rev-parse --git-path hooks)/post-index-change" ]
+  # The views weigh as much as the assets in Git: the report says how to make them links.
+  [[ "$output" == *"Vistas de .claude: copias por hard link"*"core.symlinks true"* ]]
 
   commit_agents_and_detach_security_rule
 
   [ .claude/rules/react-security.md -ef .agents/rules/react-security.md ]
   ! grep -Fxq 'Project addition.' .claude/rules/react-security.md
+}
+
+# bats test_tags=area:relink-hook
+@test "config-based relink hook exits quietly on a branch without the relink script" {
+  disable_symlinks
+  run_bootstrap react
+  [ "$status" -eq 0 ]
+  [ -n "$(git config --get hook.agent-ready-relink.command)" ]
+  # The hook lives in the repository config, shared by every branch; this one predates the adoption.
+  rm -f .agents/hooks/relink-hard-link-views.sh
+
+  run git hook run post-index-change -- 0 0
+
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
 }
 
 # bats test_tags=area:relink-hook

@@ -44,6 +44,8 @@ del proyecto, una `key` común para unirlas. Es un aviso, nunca un fallo:
 
 - **No frena ni falla:** `conflicts.block` no frena el apply que la trae, y `agent-ready check` y
   `agent-ready conflicts` la listan aparte sin cambiar su código de salida.
+- **Nunca con un `AGENTS.md`:** lo que el proyecto escribió ahí es suyo, así que una línea que repite una
+  rule no es un aviso. Las contradicciones con `AGENTS.md` se siguen informando.
 - **Misma caché y mismas decisiones:** sale de la misma llamada al provider que las contradicciones, se
   guarda en la entrada del par y se acepta o descarta con `agent-ready review` (sección 6).
 - **Apagada:** el prompt no la pide y ningún reporte la muestra. La clave entra en la versión del chequeo,
