@@ -242,7 +242,9 @@ por nombre con namespace (`acme/kafka-interno`). Un pack agrega capabilities, bu
 tecnologías que golfo-agent-ready no tiene (`beam/elixir` en `assets/examples/elixir-stack-pack/`), con su detección
 y su sección de `AGENTS.md`. Un repo sin código usa el mismo mecanismo: `assets/examples/estudio-juridico-pack/`
 publica un stack de dominio que se detecta por carpetas (`actas/**`) y una capability con rules y una
-skill para redactar actas, sin `software-development`.
+skill para redactar actas, sin `software-development`. `assets/examples/estudio-contable-pack/` suma
+subagentes con `access` y `model-tier` y un roster que reparte la revisión de un cierre con la capability
+`orchestration`.
 Leer [references/profile-packs.md](references/profile-packs.md)
 para declarar una fuente, explicar una colisión o un `Evaluation incomplete`;
 `assets/examples/acme-profile-pack/` es un pack mínimo. Para publicar un pack con CLIs, servidores MCP o

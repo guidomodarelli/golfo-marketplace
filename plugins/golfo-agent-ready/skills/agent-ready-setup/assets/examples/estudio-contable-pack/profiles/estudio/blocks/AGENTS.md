@@ -1,0 +1,4 @@
+<!-- Managed by agent-ready-setup: this section is replaced on every sync. Add project instructions outside it. -->
+## Estudio contable
+
+Este repositorio guarda el trabajo contable del estudio en Markdown y CSV, sin código. Cada cliente tiene su carpeta: `extractos/<cliente>/<año>-<mes>.csv` para los extractos bancarios, `liquidaciones/<cliente>/<año>-<mes>/` para las liquidaciones y `cierres/<cliente>/<año>-<mes>.md` para el cierre mensual. Sus reglas están en la lista de arriba (`.agents/rules/contable-datos-personales.md` y `.agents/rules/contable-formato-reportes.md`). La skill `conciliar-extracto` concilia un extracto con los registros, `preparar-cierre-mensual` arma el cierre y `revisar-cierre` lo hace revisar por los subagentes `auditor-contable` e `investigador-normativo` antes de entregarlo.

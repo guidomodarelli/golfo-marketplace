@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "name": "estudio-contable",
+  "version": "1.0.0",
+  "profiles": {
+    "estudio": {
+      "kind": "stack",
+      "description": "Repositorio de un estudio contable: liquidaciones, extractos y cierres en Markdown y CSV, sin código. Se detecta por las carpetas liquidaciones/ y extractos/.",
+      "assets": "profiles/estudio",
+      "defaults": [
+        "estudio-contable/contabilidad",
+        "learning"
+      ],
+      "detect": {
+        "signals": [
+          {
+            "type": "glob",
+            "patterns": [
+              "liquidaciones/**",
+              "extractos/**"
+            ]
+          }
+        ]
+      }
+    },
+    "contabilidad": {
+      "kind": "capability",
+      "requires": [
+        "orchestration"
+      ],
+      "description": "Trabajo contable del estudio: datos personales y formato de reportes, las skills conciliar-extracto, preparar-cierre-mensual y revisar-cierre, y los subagentes auditor-contable e investigador-normativo.",
+      "assets": "profiles/contabilidad"
+    }
+  }
+}

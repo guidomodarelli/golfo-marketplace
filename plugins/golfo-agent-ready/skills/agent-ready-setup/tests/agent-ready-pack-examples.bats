@@ -343,3 +343,99 @@ add_legal_pack() {
   [ -f .agents/rules/actas-formato.md ]
   ! grep -q 'AGENT-READY MANAGED: estudio-juridico' AGENTS.md
 }
+
+# A copy of the estudio-contable example as a path source, projected for the three providers.
+add_accounting_pack() {
+  mkdir -p agent-packs .agents
+  cp -R "$examples/estudio-contable-pack" agent-packs/estudio-contable
+  write_manifest '{"providers": ["claude", "codex", "antigravity"], "sources": {"packs": [{"name": "estudio-contable", "source": "path:./agent-packs/estudio-contable"}]}}'
+}
+
+# The accounting example requires the orchestration capability of the content. A content release
+# without it (the ref of the tests may predate it) gets a minimal one in a copy, so the test checks the
+# pack and not the version of the content.
+use_content_with_orchestration() {
+  copy_content_pack
+  [ -d "$content_dir/profiles/orchestration" ] && return 0
+  mkdir -p "$content_dir/profiles/orchestration/skills/orchestrate-agents"
+  printf '%s\n' '---' 'name: orchestrate-agents' 'description: Dispatches a task to the subagents of a roster and consolidates one report.' '---' \
+    'Read the roster, dispatch each subagent, consolidate.' \
+    > "$content_dir/profiles/orchestration/skills/orchestrate-agents/SKILL.md"
+  python3 - "$content_dir/agent-ready-pack.json" <<'PY'
+import json, sys
+path = sys.argv[1]
+catalog = json.load(open(path, encoding="utf-8"))
+catalog["profiles"]["orchestration"] = {"kind": "capability", "description": "Orchestrate a roster of subagents.",
+                                        "assets": "profiles/orchestration"}
+json.dump(catalog, open(path, "w", encoding="utf-8"), indent=2)
+PY
+}
+
+@test "the accounting example pack: its subagents, skills and roster reach Claude Code, Codex and Antigravity with their metadata" {
+  rm package.json
+  mkdir -p liquidaciones/cliente-a/2026-03
+  printf '%s\n' '# Recibos de marzo' > liquidaciones/cliente-a/2026-03/recibos.md
+  use_content_with_orchestration
+  add_accounting_pack
+
+  run python3 "$skill_dir/scripts/agent-ready-state.py" detect --project . --skill-dir "$skill_dir"
+  [ "$status" -eq 0 ]
+  [[ "${lines[0]}" == "Stack: estudio-contable/estudio" ]]
+
+  run_cli plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Claude Code sees"*"2 subagents"*"; Codex sees"*"and 2 subagents; Antigravity sees"*"and 2 subagents"* ]]
+  # Every subagent of the roster is installed: no structural conflict for it.
+  [[ "$output" != *"names .agents/agents/"* ]]
+  # What Codex cannot enforce for the read-only auditor only informs.
+  [[ "$output" == *".agents/agents/auditor-contable.md: Codex keeps the sandbox of the session"* ]]
+
+  run_cli apply
+  [ "$status" -eq 0 ]
+  [ "$(python3 -c 'import json; print(json.load(open(".agents/agent-ready.lock.json"))["profileOrder"])' | tr -d '\r')" = "['estudio-contable/estudio', 'orchestration', 'estudio-contable/contabilidad', 'learning']" ]
+  grep -qx '<!-- BEGIN AGENT-READY MANAGED: estudio-contable/estudio -->' AGENTS.md
+  for rule in contable-datos-personales contable-formato-reportes; do
+    grep -qx 'trigger: always_on' ".agents/rules/$rule.md"
+  done
+  for skill in conciliar-extracto preparar-cierre-mensual revisar-cierre; do
+    [ -f ".agents/skills/$skill/SKILL.md" ]
+    [ -f ".agents/skills/$skill/evals/eval-config.json" ]
+  done
+  # The roster runs the procedure of the content's orchestration capability.
+  [ -f .agents/skills/orchestrate-agents/SKILL.md ]
+  grep -q '.agents/skills/orchestrate-agents/SKILL.md' .agents/skills/revisar-cierre/SKILL.md
+  # A repository without code: none of software-development.
+  [ ! -e .agents/rules/lint-gate.md ]
+
+  # auditor-contable: access read-only and model-tier deep, rendered by provider.
+  grep -qx 'tools: Read, Grep, Glob' .claude/agents/auditor-contable.md
+  grep -qx 'model: opus' .claude/agents/auditor-contable.md
+  grep -q '"view_file"' .agents/agents/auditor-contable.md
+  ! grep -q 'run_command' .agents/agents/auditor-contable.md
+  grep -qx 'model: pro' .agents/agents/auditor-contable.md
+  grep -qx 'name = "auditor-contable"' .codex/agents/auditor-contable.toml
+  grep -qx 'model_reasoning_effort = "high"' .codex/agents/auditor-contable.toml
+  # investigador-normativo: only model-tier balanced, so every provider keeps all its tools.
+  grep -qx 'model: sonnet' .claude/agents/investigador-normativo.md
+  ! grep -q '^tools:' .claude/agents/investigador-normativo.md
+  grep -qx 'model: inherit' .agents/agents/investigador-normativo.md
+  ! grep -q '^tools:' .agents/agents/investigador-normativo.md
+  grep -qx 'model_reasoning_effort = "medium"' .codex/agents/investigador-normativo.toml
+}
+
+@test "the accounting example pack: conflicts --pack passes, and fails once the roster names a subagent it does not publish" {
+  use_content_with_orchestration
+  publish_example estudio-contable-pack https://git.example.invalid/estudio-contable
+  cd "$pack_repository"
+
+  run_cli conflicts --pack . --offline
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"estudio-contable/estudio: no conflicts"* ]]
+  [[ "$output" == *"estudio-contable/contabilidad: no conflicts"* ]]
+
+  git rm -q profiles/contabilidad/agents/auditor-contable.md
+  git commit -qm "without the auditor"
+  run_cli conflicts --pack . --offline
+  [ "$status" -eq 6 ]
+  [[ "$output" == *".agents/skills/revisar-cierre/SKILL.md (estudio-contable/contabilidad) names .agents/agents/auditor-contable.md, which no selected profile publishes and the project does not have"* ]]
+}

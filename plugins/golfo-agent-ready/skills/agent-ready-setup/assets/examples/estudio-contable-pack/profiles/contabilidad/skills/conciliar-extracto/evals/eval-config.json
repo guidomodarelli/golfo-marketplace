@@ -1,0 +1,56 @@
+{
+  "schema_version": 2,
+  "skill": "conciliar-extracto",
+  "description": "Evalúa que la skill concilie un extracto contra los registros, encuentre la diferencia y respete el formato y los datos personales.",
+  "test_cases": [
+    {
+      "id": "diferencia-de-un-movimiento",
+      "description": "Encuentra el movimiento del extracto que no está en los registros, con el formato de importes y la cuenta enmascarada en el cuerpo.",
+      "input": "Conciliá el extracto de marzo 2026 de Cliente A. extractos/cliente-a/2026-03.csv: 2026-03-02 Transferencia recibida 150000,00; 2026-03-10 Comisión bancaria -1200,00; 2026-03-15 Pago proveedor -50000,00. Saldo inicial 10000,00, saldo final 108800,00. Registros en liquidaciones/cliente-a/2026-03/: 2026-03-02 cobro 150000,00 y 2026-03-15 pago proveedor 50000,00. La cuenta es la 0011223344. No ejecutes comandos: mostrá la ruta y el contenido del reporte.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "cierres/cliente-a/2026-03-conciliacion.md",
+          "description": "Escribe el reporte en la ruta de la convención",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "1\\.200,00",
+          "description": "Señala la comisión de $ 1.200,00 como diferencia, con el formato de importes",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "## Pendientes",
+          "description": "Termina con la sección de pendientes"
+        },
+        {
+          "type": "contains",
+          "value": "****3344",
+          "description": "En el cuerpo nombra la cuenta por sus últimos cuatro dígitos"
+        }
+      ]
+    },
+    {
+      "id": "falta-el-extracto",
+      "description": "Sin el extracto, lo pide en vez de inventar movimientos.",
+      "input": "Conciliá el banco de abril 2026 de Cliente B. Todavía no subí el extracto; los registros están en liquidaciones/cliente-b/2026-04/. No ejecutes comandos.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "extractos/cliente-b/2026-04|[Ee]xtracto",
+          "description": "Nombra el extracto que falta",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "[Ff]alta|[Nn]ecesito|[Pp]as[aá]me|[Ss]ub[ií]|no (est[aá]|tengo)",
+          "description": "Lo pide en vez de conciliar sin él",
+          "critical": true
+        }
+      ],
+      "control": "Pedir el dato que falta en vez de inventarlo es el comportamiento por defecto del modelo; el caso cuida que la skill no lo empeore."
+    }
+  ]
+}

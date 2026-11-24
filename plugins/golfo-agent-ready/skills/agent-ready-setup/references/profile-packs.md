@@ -104,7 +104,9 @@ lanza otros por defecto. En el pack oficial la aporta la capability `orchestrati
 cada profile aporta solo su roster: una tabla con el archivo `.agents/agents/<nombre>.md` de cada subagente.
 `plan`, `conflicts`, `check` y `conflicts --pack` marcan un archivo de `.agents/` que nombra un subagente que
 ningún profile seleccionado publica y el proyecto no tiene ([structural-conflicts.md](structural-conflicts.md),
-sección 5).
+sección 5). `assets/examples/estudio-contable-pack/` es el caso completo fuera del software: un auditor
+`read-only` para la revisión independiente, un investigador con contexto aislado y la skill `revisar-cierre`
+como roster, con la capability `orchestration` en `requires`.
 
 **Stacks de un pack.** Un profile `kind: stack` de un pack es un stack primario como los del contenido,
 para una tecnología que el contenido no tiene (un lenguaje, un DSL propio). `assets/examples/elixir-stack-pack/`
