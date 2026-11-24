@@ -176,20 +176,27 @@ marketplace_upgrade_stamp="${XDG_CACHE_HOME:-$HOME/.cache}/agent-ready-setup/mar
 
 is_marketplace_upgrade_recent() {
   [[ "$force_marketplace_upgrade" -eq 0 ]] || return 1
+  # The stamp lives in the cache and the snapshot elsewhere: without the snapshot, the upgrade is due.
+  [[ -d "$(marketplace_snapshot_root "$provider")" ]] || return 1
   [[ -f "$marketplace_upgrade_stamp" && ! -L "$marketplace_upgrade_stamp" ]] || return 1
   [[ -n "$(find "$marketplace_upgrade_stamp" -mmin "-$MARKETPLACE_UPGRADE_INTERVAL_MINUTES" -print 2>/dev/null)" ]]
 }
 
-# Antigravity has no plugin marketplace to refresh, and a local Codex marketplace has nothing to download.
+# A local Codex marketplace has nothing to download.
 is_marketplace_upgrade_unsupported() {
-  [[ "$provider" == "antigravity" ]] || { [[ "$provider" == "codex" ]] && is_codex_local_marketplace; }
+  [[ "$provider" == "codex" ]] && is_codex_local_marketplace
 }
 
 report_local_marketplace_upgrade_skip() {
+  echo "[marketplace-sync] $MARKETPLACE_NAME es un marketplace Codex local; se omite el upgrade y se usa su source configurado."
+}
+
+# The command the marketplace upgrade of this provider needs: Antigravity clones it with Git.
+marketplace_upgrade_command() {
   if [[ "$provider" == "antigravity" ]]; then
-    echo "[marketplace-sync] Antigravity no tiene un marketplace de plugins que actualizar; se usa el source instalado de $SKILL_NAME."
+    printf '%s\n' git
   else
-    echo "[marketplace-sync] $MARKETPLACE_NAME es un marketplace Codex local; se omite el upgrade y se usa su source configurado."
+    printf '%s\n' "$provider"
   fi
 }
 
@@ -197,6 +204,8 @@ report_local_marketplace_upgrade_skip() {
 run_marketplace_upgrade() {
   if [[ "$provider" == "claude" ]]; then
     claude plugin marketplace update "$MARKETPLACE_NAME"
+  elif [[ "$provider" == "antigravity" ]]; then
+    update_antigravity_marketplace
   else
     codex plugin marketplace upgrade "$MARKETPLACE_NAME"
   fi
@@ -260,8 +269,8 @@ refresh_missing_asset_sync_helper() {
   if is_marketplace_upgrade_unsupported; then
     report_local_marketplace_upgrade_skip
   else
-    if ! command -v "$provider" >/dev/null 2>&1; then
-      printf 'ERROR: se requiere la CLI de %s para descargar %s\n' "$provider" "$ASSET_SYNC_HELPER_PATH" >&2
+    if ! command -v "$(marketplace_upgrade_command)" >/dev/null 2>&1; then
+      printf 'ERROR: se requiere la CLI de %s para descargar %s\n' "$(marketplace_upgrade_command)" "$ASSET_SYNC_HELPER_PATH" >&2
       return 1
     fi
     if ! run_marketplace_upgrade; then

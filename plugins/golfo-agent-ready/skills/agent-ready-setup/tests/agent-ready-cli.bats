@@ -2167,6 +2167,17 @@ PY
   run_cli apply --provider antigravity
   [ "$status" -eq 0 ]
   cmp -s .agents/hooks.json "$test_root/hooks-applied.json"
+  run_cli plan --provider antigravity --offline
+  [[ "$output" == *".agents/hooks.json: managed entries are current"* ]]
+
+  # A deleted or edited managed hook is drift that plan and check report, as for the other providers.
+  rm .agents/hooks.json
+  run_cli plan --provider antigravity --offline
+  [[ "$output" == *".agents/hooks.json: created from the template"* ]]
+  run_cli check --offline
+  [ "$status" -ne 0 ]
+  [[ "$output$stderr" == *".agents/hooks.json: created from the template"* ]]
+  cp "$test_root/hooks-applied.json" .agents/hooks.json
 
   # A hook the project runs in Claude Code and Codex but not in Antigravity.
   python3 - <<'PY'

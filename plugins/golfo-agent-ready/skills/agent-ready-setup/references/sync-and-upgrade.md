@@ -127,8 +127,11 @@ La proyección automática de assets:
   los demás nombres del proyecto. Un JSON inválido es un conflicto y el archivo no se
   toca. Sin Antigravity, el nombre `agent-ready` sale, y un archivo que solo tenía ese
   nombre se borra. Declara dos hooks:
-  - `SessionStart`: `sync-marketplace.sh --provider antigravity`, con el upgrade del
-    marketplace salteado (Antigravity no tiene marketplace de plugins).
+  - `SessionStart`: `sync-marketplace.sh --provider antigravity`. Antigravity no tiene
+    marketplace de plugins: el snapshot es un clon superficial del repositorio del marketplace en
+    `${XDG_DATA_HOME:-~/.local/share}/agent-ready-setup/marketplaces/golfo-marketplace`, que el
+    upgrade clona la primera vez (así una máquina sin ninguna instalación también se sincroniza) y
+    después lleva a la cabeza remota. Un sello reciente no saltea el upgrade si falta el clon.
   - `PostToolUse` con el matcher `write_to_file|replace_file_content|multi_replace_file_content`:
     `check-harness-consistency.sh`, que revisa la raíz de la rule o skill editada.
     Antigravity manda en stdin `{"toolCall": {"name", "args"}}` y nombra el archivo en

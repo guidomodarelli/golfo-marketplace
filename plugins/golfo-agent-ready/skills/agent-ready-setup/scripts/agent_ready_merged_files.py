@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 
+import agent_ready_antigravity_hooks as antigravity_hooks
 import agent_ready_nested as nested
 from agent_ready_actions import ACTION_CONFLICT, ACTION_CREATE, ACTION_UNCHANGED, ACTION_UPDATE
 from agent_ready_common import bash_executable, run_quiet, sha256_of_file
@@ -19,6 +20,8 @@ from agent_ready_layout import (
     MANAGED_BLOCK_START,
     RENDERER_RELATIVE_PATH,
 )
+from agent_ready_manifest import configuration_of
+from agent_ready_options import ANTIGRAVITY_PROVIDER, PROVIDERS_KEY
 from agent_ready_profiles import load_effective_catalog
 from agent_ready_source_identity import agents_template_path
 
@@ -132,7 +135,38 @@ def merged_file_changes_from(project_root, skill_dir, plan, catalog, stack_root)
             changes.append((destination, ACTION_UNCHANGED, "managed entries are current"))
         else:
             changes.append((destination, ACTION_UPDATE, "managed entries change; custom entries are preserved"))
+    antigravity_change = antigravity_hooks_change(project_root, skill_dir)
+    if antigravity_change:
+        changes.append(antigravity_change)
     return changes
+
+
+def antigravity_hooks_change(project_root, skill_dir):
+    """What the projection does to .agents/hooks.json (sync_antigravity_hooks of asset-sync-common.sh), or None.
+
+    With Antigravity among the providers the managed hook name is merged in; without it, the name
+    leaves a file that has it. The preview reads the same module the merge helper runs."""
+    destination = antigravity_hooks.HOOKS_RELATIVE_PATH
+    current_path = os.path.join(project_root, *destination.split("/"))
+    selected = ANTIGRAVITY_PROVIDER in configuration_of(project_root).value(PROVIDERS_KEY)
+    if not selected and not os.path.isfile(current_path):
+        return None
+    try:
+        current = antigravity_hooks.read(current_path)
+    except antigravity_hooks.HooksError:
+        return (destination, ACTION_CONFLICT, "invalid JSON; it is preserved")
+    if not selected:
+        if antigravity_hooks.MANAGED_GROUP not in current:
+            return None
+        return (destination, ACTION_UPDATE, "Antigravity is no longer a provider: the agent-ready hooks leave")
+    if not os.path.isfile(current_path):
+        return (destination, ACTION_CREATE, "created from the template")
+    template = antigravity_hooks.read(os.path.join(skill_dir, *antigravity_hooks.TEMPLATE_RELATIVE_PATH.split("/")))
+    with open(current_path, encoding="utf-8") as file_handle:
+        current_text = file_handle.read()
+    if antigravity_hooks.serialize(antigravity_hooks.merged(current, template)) == current_text:
+        return (destination, ACTION_UNCHANGED, "managed entries are current")
+    return (destination, ACTION_UPDATE, "managed entries change; custom entries are preserved")
 
 
 def claude_proxy_drift(project_root, skill_dir):

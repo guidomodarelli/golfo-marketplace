@@ -3384,3 +3384,43 @@ provider_cli_path() {
   [ "$status" -eq 0 ]
   [ "$output" = "claude" ]
 }
+
+# bats test_tags=area:sync-hook
+@test "on a machine with only Antigravity, the committed sync hook clones the marketplace and projects" {
+  run_bootstrap node
+  [ "$status" -eq 0 ]
+  printf '%s\n' '{"profiles": ["node"], "providers": ["claude", "antigravity"]}' > .agents/agent-ready.json
+
+  # A recent upgrade stamp of another session does not stand in for a missing snapshot.
+  mkdir -p "$XDG_CACHE_HOME/agent-ready-setup" && touch "$XDG_CACHE_HOME/agent-ready-setup/marketplace-upgrade-antigravity.stamp"
+  # The marketplace repository, with this engine, served from a local path in place of GitHub. The data
+  # home is short: Windows tools still stop at 260 characters, and the clone holds deep paths.
+  marketplace="$test_root/marketplace-repository"
+  mkdir -p "$marketplace/plugins/golfo-agent-ready/skills"
+  cp -R "$skill_dir" "$marketplace/plugins/golfo-agent-ready/skills/agent-ready-setup"
+  cp -R "$skill_dir/../../.claude-plugin" "$marketplace/plugins/golfo-agent-ready/.claude-plugin"
+  git -C "$marketplace" -c init.defaultBranch=main init -q
+  git -C "$marketplace" add -A
+  git -C "$marketplace" -c user.name=Test -c user.email=test@example.invalid commit -qm marketplace
+  fresh_home="$test_root/fresh-home"
+  mkdir -p "$fresh_home"
+  printf '[url "%s"]\n\tinsteadOf = https://github.com/guidomodarelli/golfo-marketplace\n' \
+    "$(cd "$marketplace" && (pwd -W 2>/dev/null || pwd))" > "$test_root/fresh-gitconfig"
+
+  run env -u AGENT_READY_SETUP_SKILL_DIR -u CLAUDE_PLUGIN_ROOT HOME="$fresh_home" XDG_DATA_HOME="$test_root/d" \
+    GIT_CONFIG_GLOBAL="$test_root/fresh-gitconfig" PATH="$fake_bin:$PATH" \
+    bash .agents/hooks/sync-marketplace.sh --provider antigravity
+  [ "$status" -eq 0 ]
+  [ -f "$test_root/d/agent-ready-setup/marketplaces/golfo-marketplace/plugins/golfo-agent-ready/skills/agent-ready-setup/SKILL.md" ]
+  [[ "$output" == *"Using agent-ready-setup marketplace snapshot"* ]]
+  python3 -c 'import json; data = json.load(open(".agents/hooks.json")); assert "agent-ready" in data, data'
+
+  # The next session moves the clone to the remote head instead of cloning again.
+  printf '%s\n' '# moved' >> "$marketplace/plugins/golfo-agent-ready/skills/agent-ready-setup/references/updates.md"
+  git -C "$marketplace" -c user.name=Test -c user.email=test@example.invalid commit -qam moved
+  run env -u AGENT_READY_SETUP_SKILL_DIR -u CLAUDE_PLUGIN_ROOT HOME="$fresh_home" XDG_DATA_HOME="$test_root/d" \
+    GIT_CONFIG_GLOBAL="$test_root/fresh-gitconfig" AGENT_READY_SETUP_FORCE_UPGRADE=1 PATH="$fake_bin:$PATH" \
+    bash .agents/hooks/sync-marketplace.sh --provider antigravity
+  [ "$status" -eq 0 ]
+  grep -Fxq '# moved' "$test_root/d/agent-ready-setup/marketplaces/golfo-marketplace/plugins/golfo-agent-ready/skills/agent-ready-setup/references/updates.md"
+}
