@@ -199,6 +199,20 @@ Providers: Claude Code sees 20 rules (0 only for their paths), 5 skills, 5 subag
 | `conflicts.environment.enabled` | `true` | `false` no compara las variables de entorno |
 | `conflicts.ciJobs.enabled` | `true` | `false` no busca jobs de CI duplicados |
 
+### Subagentes que un roster nombra y nadie instala
+
+Una skill o un command que orquesta subagentes los nombra por su archivo, `.agents/agents/<nombre>.md` (el
+roster). Si ningún profile seleccionado publica ese subagente y el proyecto tampoco lo tiene, el orquestador
+despacha a nada. Sin IA, cada archivo gestionado de `.agents/` se revisa contra los subagentes que quedan después
+del apply, los gestionados y los del proyecto:
+
+```text
+  ! .agents/skills/acme-orchestrate/SKILL.md (acme/base) names .agents/agents/acme-auditor.md, which no selected profile publishes and the project does not have
+```
+
+Es un conflicto estructural: sale en `plan`, `conflicts`, `check` y `conflicts --pack`. Se arregla publicando el
+subagente en el profile, sumando a la selección el profile que lo trae o corrigiendo el nombre del roster.
+
 ## 6. Skills que compiten
 
 Dos skills que hacen el mismo trabajo, con descripciones que se pisan («crear un endpoint»),
@@ -237,7 +251,8 @@ AI review findings:
   ! [a1b2c3] .agents/rules/acme-team.md <-> .agents/rules/verify-changes.md: … 
 ```
 
-- **Estructurales:** sin IA, los de las secciones 2 a 5 y las herramientas que compiten. Lo que solo
+- **Estructurales:** sin IA, los de las secciones 2 a 5 (incluidos los subagentes que un roster nombra y nadie
+  instala) y las herramientas que compiten. Lo que solo
   informa (el presupuesto de contexto, qué ve cada provider, los servidores que quedan para el usuario,
   un dato que el catálogo no conoce) no cuenta como conflicto.
 - **De IA:** las contradicciones entre rules ([ai-reviews.md](ai-reviews.md), sección 7) y las skills que compiten (sección 6), de

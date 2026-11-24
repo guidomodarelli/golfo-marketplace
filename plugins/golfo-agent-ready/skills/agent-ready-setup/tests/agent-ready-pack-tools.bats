@@ -820,3 +820,43 @@ PY
   # The rules of the content the pack builds on are not the author's: only the pack's own are listed.
   [[ "$output" != *"Antigravity drops .agents/rules/language-consistency.md"* ]]
 }
+
+@test "agent-ready conflicts --pack fails on a roster that names a subagent no profile publishes" {
+  mkdir -p "$pack_repository/profiles/base/skills/acme-orchestrate" "$pack_repository/profiles/base/agents"
+  printf '%s\n' '---' 'name: acme-checker' 'description: Revisa los contratos de Acme.' 'access: read-only' '---' 'Check.' \
+    > "$pack_repository/profiles/base/agents/acme-checker.md"
+  printf '%s\n' '---' 'name: acme-orchestrate' 'description: Reparte una revisión de Acme entre sus subagentes.' '---' \
+    '| Agent | File |' '|---|---|' '| Checker | `.agents/agents/acme-checker.md` |' '| Auditor | `.agents/agents/acme-auditor.md` |' \
+    > "$pack_repository/profiles/base/skills/acme-orchestrate/SKILL.md"
+  cd "$pack_repository"
+  run_cli conflicts --pack . --offline
+  [ "$status" -eq 6 ]
+  [[ "$output" == *".agents/skills/acme-orchestrate/SKILL.md (acme/base) names .agents/agents/acme-auditor.md, which no selected profile publishes and the project does not have"* ]]
+  # The subagent the profile publishes is no conflict.
+  [[ "$output" != *"names .agents/agents/acme-checker.md"* ]]
+
+  # Once the profile publishes it, the roster resolves.
+  printf '%s\n' '---' 'name: acme-auditor' 'description: Audita Acme.' '---' 'Audit.' \
+    > "$pack_repository/profiles/base/agents/acme-auditor.md"
+  run_cli conflicts --pack . --offline
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"names .agents/agents/"* ]]
+  # What Codex cannot enforce for a read-only subagent only informs: it is no conflict of the pack.
+  [[ "$output" == *"acme/base: no conflicts"* ]]
+}
+
+@test "agent-ready plan of a consumer lists a roster subagent the selection does not install, and the project's own one counts" {
+  mkdir -p "$pack_repository/profiles/base/skills/acme-orchestrate"
+  printf '%s\n' '---' 'name: acme-orchestrate' 'description: Reparte una revisión de Acme.' '---' \
+    '| Auditor | `.agents/agents/acme-auditor.md` |' > "$pack_repository/profiles/base/skills/acme-orchestrate/SKILL.md"
+  git -C "$pack_repository" add -A
+  git -C "$pack_repository" commit -qm roster
+  run_cli plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"names .agents/agents/acme-auditor.md, which no selected profile publishes"* ]]
+  mkdir -p .agents/agents
+  printf '%s\n' '---' 'name: acme-auditor' 'description: El del proyecto.' '---' 'Audit.' > .agents/agents/acme-auditor.md
+  run_cli plan
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"names .agents/agents/acme-auditor.md"* ]]
+}

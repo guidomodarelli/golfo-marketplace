@@ -88,6 +88,24 @@ vista de Claude y TOML. Un valor fuera de su lista frena el apply antes de escri
 `plan` avisa lo que un provider no puede cumplir: Codex mantiene el sandbox de la sesión que arranca al
 subagente, así que uno `read-only` puede igual editar archivos.
 
+**Subagente o skill.** Un rol de oficina (abogado, contador, ventas) o una forma de trabajar es un profile con
+rules y skills: corre en la sesión principal, con su contexto y sus herramientas. Un subagente se justifica solo
+por una de estas razones:
+
+- **Contexto aislado:** la tarea lee mucho (un diff grande, un expediente) y solo tiene que devolver la conclusión.
+- **Permisos restringidos:** tiene que poder leer sin poder escribir (`access: read-only`).
+- **Revisión independiente:** su juicio no debe arrastrar el razonamiento de quien hizo el trabajo.
+- **Paralelismo o modelo distinto:** varias revisiones a la vez, o una barata (`model-tier: fast`) junto a una
+  profunda.
+
+Si ninguna aplica, es una skill. La orquestación (partir la tarea, despachar a cada subagente, consolidar y
+resolver contradicciones) corre en la sesión principal, porque en Claude Code, Codex y Antigravity un subagente no
+lanza otros por defecto. En el pack oficial la aporta la capability `orchestration` (skill `orchestrate-agents`) y
+cada profile aporta solo su roster: una tabla con el archivo `.agents/agents/<nombre>.md` de cada subagente.
+`plan`, `conflicts`, `check` y `conflicts --pack` marcan un archivo de `.agents/` que nombra un subagente que
+ningún profile seleccionado publica y el proyecto no tiene ([structural-conflicts.md](structural-conflicts.md),
+sección 5).
+
 **Stacks de un pack.** Un profile `kind: stack` de un pack es un stack primario como los del contenido,
 para una tecnología que el contenido no tiene (un lenguaje, un DSL propio). `assets/examples/elixir-stack-pack/`
 publica `beam/elixir`:
