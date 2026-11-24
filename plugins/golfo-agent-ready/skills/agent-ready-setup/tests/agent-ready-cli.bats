@@ -2216,4 +2216,11 @@ PY
   run_cli apply --provider antigravity
   [[ "$stderr$output" == *"Antigravity hooks contain invalid configuration; original file preserved"* ]]
   grep -Fxq '{ not json' .agents/hooks.json
+
+  # A folder where the file goes is a conflict for plan too, never an error.
+  rm .agents/hooks.json
+  mkdir .agents/hooks.json
+  run_cli plan --provider antigravity --offline
+  [ "$status" -eq 0 ]
+  [[ "$output" == *".agents/hooks.json: not a regular file; it is preserved"* ]]
 }

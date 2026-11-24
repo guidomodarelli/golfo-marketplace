@@ -149,6 +149,9 @@ def antigravity_hooks_change(project_root, skill_dir):
     destination = antigravity_hooks.HOOKS_RELATIVE_PATH
     current_path = os.path.join(project_root, *destination.split("/"))
     selected = ANTIGRAVITY_PROVIDER in configuration_of(project_root).value(PROVIDERS_KEY)
+    if os.path.lexists(current_path) and (os.path.islink(current_path) or not os.path.isfile(current_path)):
+        # The projection leaves a symlink or a folder there as it is (sync_antigravity_hooks).
+        return (destination, ACTION_CONFLICT, "not a regular file; it is preserved")
     if not selected and not os.path.isfile(current_path):
         return None
     try:
