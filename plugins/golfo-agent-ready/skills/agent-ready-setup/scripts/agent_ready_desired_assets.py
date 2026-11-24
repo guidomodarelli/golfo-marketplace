@@ -8,6 +8,7 @@ import shutil
 import tempfile
 
 import agent_ready_blocks as managed_blocks
+import agent_ready_codex_agents as codex_agents
 import agent_ready_nested as nested
 import agent_ready_workspaces as workspace_selection
 from agent_ready_common import (
@@ -47,7 +48,8 @@ def destinations_for_template(relative_path, is_stack_root):
 
     Mirrors project_asset_tree in bootstrap-asset-projection.sh and project_assets in
     sync-marketplace.sh. Merged files (settings.json) and the AGENTS.md
-    template are handled separately and return no verbatim destination.
+    template are handled separately and return no verbatim destination, and the native Codex
+    subagent a subagent produces is rendered, not copied (rendered_destinations).
     """
     if relative_path in (AGENTS_TEMPLATE_NAME, AGENTS_SKELETON_NAME, CLAUDE_SETTINGS_TEMPLATE_NAME):
         return []
@@ -62,12 +64,33 @@ def destinations_for_template(relative_path, is_stack_root):
         destinations.append(".codex/.mcp.json")
     top_directory = relative_path.split("/", 1)[0]
     if relative_path.endswith(".md") and "/" in relative_path:
-        if top_directory in ("agents", "commands") or (
+        # A command reaches Codex as a skill of the same name; a subagent as a native one.
+        if top_directory == "commands" or (
             top_directory == "skills" and relative_path.count("/") == 1
         ):
             skill_name = os.path.basename(relative_path)[: -len(".md")]
             destinations.append(f".agents/skills/{skill_name}/SKILL.md")
     return destinations
+
+
+CODEX_AGENTS_CACHE = "codex-agents"
+
+
+def rendered_destinations(relative_path, source_path):
+    """[(destination, rendered path, sha256)] of the files a template produces with other bytes than its own.
+
+    A subagent (agents/<name>.md) produces its native Codex subagent, .codex/agents/<name>.toml
+    (agent_ready_codex_agents). The text is kept in the per-user cache by its sha256, so the plan and
+    the projection compare the same bytes.
+    """
+    if not codex_agents.is_subagent_template(relative_path):
+        return []
+    text = codex_agents.render_codex_agent_file(source_path, os.path.basename(relative_path))
+    sha256 = sha256_of_text(text)
+    rendered_path = skill_cache_directory(CODEX_AGENTS_CACHE, sha256 + codex_agents.CODEX_AGENT_SUFFIX)
+    if not os.path.isfile(rendered_path):
+        write_text_atomically(rendered_path, text)
+    return [(codex_agents.codex_agent_destination(relative_path), rendered_path, sha256)]
 
 
 def template_origin(skill_dir, catalog, profile_name, absolute_path):
@@ -144,8 +167,8 @@ def workspace_shared_texts(skill_dir, catalog, workspaces, workspace_profiles, w
 def desired_assets(skill_dir, catalog, resolved, workspace_rules=None, workspace_profiles=(), shared_texts=None):
     """Map every managed destination to its template, owning profile and hash.
 
-    Two templates cannot share a destination, including the skill adapters generated
-    for Codex and paths that differ only by case, which collide on Windows and macOS.
+    Two templates cannot share a destination, including the skill adapters generated for
+    Codex, the native Codex subagents rendered from the subagents and paths that differ only by case, which collide on Windows and macOS.
     ``workspace_rules`` (workspace_rule_files) adds the rules of the workspaces, each with the
     workspace it belongs to, and ``workspace_profiles`` the skills, subagents and commands of the
     profiles only workspaces select, once for the repository (is_workspace_shared_asset), with the text
@@ -170,9 +193,13 @@ def desired_assets(skill_dir, catalog, resolved, workspace_rules=None, workspace
             if is_overridden(overridden, profile_name, relative_path):
                 continue
             source_path, sha256 = shared_texts.get((profile_name, relative_path)) or (absolute_path, None)
-            for destination in destinations_for_template(relative_path, is_stack_root):
+            sha256 = sha256 or sha256_of_file(absolute_path)
+            outputs = [(destination, source_path, sha256)
+                       for destination in destinations_for_template(relative_path, is_stack_root)]
+            outputs += rendered_destinations(relative_path, source_path)
+            for destination, output_path, output_sha256 in outputs:
                 previous = destinations_by_folded_name.setdefault(destination.casefold(), destination)
-                if previous in assets and assets[previous]["sourcePath"] != source_path:
+                if previous in assets and assets[previous]["sourcePath"] != output_path:
                     raise ProfileError(
                         f"profiles '{assets[previous]['profile']}' and '{profile_name}' both write {destination}; "
                         "nothing was written. Rename one of the assets"
@@ -180,8 +207,8 @@ def desired_assets(skill_dir, catalog, resolved, workspace_rules=None, workspace
                 assets[destination] = {
                     "profile": profile_name,
                     "source": template_origin(skill_dir, catalog, profile_name, absolute_path),
-                    "sourcePath": source_path,
-                    "sha256": sha256 or sha256_of_file(absolute_path),
+                    "sourcePath": output_path,
+                    "sha256": output_sha256,
                 }
     for tree_path, entry in sorted((workspace_rules or {}).items()):
         destination = ".agents/" + tree_path

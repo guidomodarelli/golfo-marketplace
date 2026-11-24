@@ -12,6 +12,7 @@ import re
 
 import agent_ready_pack_tools as pack_tools
 import agent_ready_settings_conflicts as settings_conflicts
+from agent_ready_codex_agents import CODEX_AGENT_SUFFIX, CODEX_AGENTS_DIRECTORY
 
 PROVIDER_CLAUDE = "claude"
 PROVIDER_CODEX = "codex"
@@ -36,6 +37,7 @@ RULES_PREFIX = ".agents/rules/"
 SKILLS_PREFIX = ".agents/skills/"
 AGENTS_PREFIX = ".agents/agents/"
 COMMANDS_PREFIX = ".agents/commands/"
+CODEX_AGENTS_PREFIX = CODEX_AGENTS_DIRECTORY + "/"
 
 
 def provider_views(rule_count, scoped_rule_count, entries):
@@ -44,16 +46,20 @@ def provider_views(rule_count, scoped_rule_count, entries):
     ``rule_count`` counts the rules after the apply, ``scoped_rule_count`` those with paths:, and
     ``entries`` are the plan entries. Claude Code reads
     the rules as .claude/rules and loads those with paths: only for matching files; Codex lists every
-    rule in AGENTS.md. Subagents and commands reach Codex as skills of the same name.
+    rule in AGENTS.md. Subagents reach Codex as native subagents (.codex/agents/<name>.toml) and
+    commands as skills of the same name.
     """
     written = [entry["destination"] for entry in entries if entry.get("sha256")]
     skills = {path.split("/")[2] for path in written if path.startswith(SKILLS_PREFIX) and path.endswith("/SKILL.md")}
     agents = {os.path.basename(path)[:-3] for path in written if path.startswith(AGENTS_PREFIX) and path.endswith(".md")}
     commands = {os.path.basename(path)[:-3] for path in written if path.startswith(COMMANDS_PREFIX) and path.endswith(".md")}
+    codex_agents = {os.path.basename(path)[:-len(CODEX_AGENT_SUFFIX)] for path in written
+                    if path.startswith(CODEX_AGENTS_PREFIX) and path.endswith(CODEX_AGENT_SUFFIX)}
     return {
-        PROVIDER_CLAUDE: {"rules": rule_count, "rulesForPathsOnly": scoped_rule_count, "skills": len(skills - agents - commands),
+        PROVIDER_CLAUDE: {"rules": rule_count, "rulesForPathsOnly": scoped_rule_count, "skills": len(skills - commands),
                           "subagents": len(agents), "commands": len(commands)},
-        PROVIDER_CODEX: {"rules": rule_count, "rulesForPathsOnly": 0, "skills": len(skills | agents | commands)},
+        PROVIDER_CODEX: {"rules": rule_count, "rulesForPathsOnly": 0, "skills": len(skills | commands),
+                         "subagents": len(codex_agents)},
     }
 
 

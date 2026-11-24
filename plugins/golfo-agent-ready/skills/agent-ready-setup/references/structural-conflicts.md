@@ -57,12 +57,14 @@ con `paths:` o a skills, que se cargan solo cuando hacen falta. El aviso no fren
 configuración del usuario y nunca la escribe.
 
 - **Sombra:** una skill, un subagente o un comando de un profile con el mismo nombre que uno del
-  usuario (`~/.claude/skills`, `~/.claude/agents`, `~/.claude/commands`, `~/.agents/skills`) o de un
+  usuario (`~/.claude/skills`, `~/.claude/agents`, `~/.claude/commands`, `~/.agents/skills`,
+  `$CODEX_HOME/agents`) o de un
   plugin instalado. Cada provider aplica su precedencia en silencio, y `plan` dice cuál gana:
   - Claude Code usa la skill o el comando del usuario antes que el del proyecto; los de un plugin
     tienen namespace (`/plugin:skill`), así que se cargan los dos.
   - Claude Code usa el subagente del proyecto antes que el del usuario y el de un plugin.
-  - Codex lista las dos skills, sin un orden documentado.
+  - Codex lista las dos skills, sin un orden documentado; tampoco documenta cuál gana entre un
+    subagente del proyecto (`.codex/agents`) y uno del usuario (`$CODEX_HOME/agents`) del mismo nombre.
 - **Servidores MCP del usuario:** un servidor de un pack que el usuario ya registró para todos los
   proyectos (`~/.claude.json`, `config.toml` de Codex), aunque tenga otro nombre. Cuenta como el
   mismo solo si hace exactamente lo mismo: igual URL, paquete (sin contar la versión) o comando con
@@ -172,8 +174,8 @@ Tres chequeos más de `agent-ready plan`, sin IA y sin escribir nada.
 
 - **Paridad entre providers** (con los dos en `providers`): `plan` dice qué ve cada uno. Claude Code
   lee las rules como `.claude/rules` y carga las que tienen `paths:` solo al tocar esos archivos;
-  Codex lista todas en `AGENTS.md`. Los subagentes y los comandos le llegan a Codex como skills del
-  mismo nombre. Avisa de un hook que corre en un provider y no en el otro: los de golfo-agent-ready (salvo
+  Codex lista todas en `AGENTS.md`. Los subagentes le llegan a Codex como subagentes nativos
+  (`.codex/agents/<nombre>.toml`) y los comandos como skills del mismo nombre. Avisa de un hook que corre en un provider y no en el otro: los de golfo-agent-ready (salvo
   los declarados propios de uno, como el relink de las vistas de `.claude`) y los del proyecto en
   `.claude/settings.json` contra `.codex/hooks.json`.
 - **Variables de entorno:** una variable que piden los servidores MCP de dos fuentes distintas, o
@@ -183,7 +185,7 @@ Tres chequeos más de `agent-ready plan`, sin IA y sin escribir nada.
   ya corre el chequeo de Agent Ready se informa, para no correrlo dos veces.
 
 ```text
-Providers: Claude Code sees 20 rules (0 only for their paths), 5 skills, 5 subagents and 1 commands; Codex sees 20 rules in AGENTS.md and 11 skills
+Providers: Claude Code sees 20 rules (0 only for their paths), 5 skills, 5 subagents and 1 commands; Codex sees 20 rules in AGENTS.md, 6 skills and 5 subagents
   ~ claude runs the PostToolUse hook `npm run lint` (.claude/settings.json) and codex does not
   ~ .github/workflows/own.yml already runs the Agent Ready check; the managed .github/workflows/agent-ready.yml runs it again
 ```

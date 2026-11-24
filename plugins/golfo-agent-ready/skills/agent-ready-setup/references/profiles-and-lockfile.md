@@ -220,9 +220,19 @@ informa el resultado de la actualización anterior:
 ## 5. Providers y capacidades
 
 `assets/providers.json` declara qué soporta cada provider y cómo se adapta cada
-tipo de asset; `status` lo imprime. En Codex, `agents/` y `commands/` son
-adapters de skill en `.agents/skills/`, no subagentes ni comandos nativos, y
-las rules llegan por la lista del bloque gestionado de `AGENTS.md`.
+tipo de asset; `status` lo imprime. En Codex, cada `agents/<nombre>.md` es un
+subagente nativo en `.codex/agents/<nombre>.toml` y cada `commands/<nombre>.md` un adapter
+de skill en `.agents/skills/` (Codex no tiene comandos de proyecto); las rules llegan por la
+lista del bloque gestionado de `AGENTS.md`.
+
+El TOML de un subagente es un asset derivado: no es una copia del template, sino su render
+(`name` y `description` del frontmatter, `developer_instructions` con el cuerpo, más una línea
+de comentario que pide editar el `.md`). El lock guarda el sha256 del TOML generado, así que
+ownership, `--plan`, `status`, `remove` y el retiro lo tratan como a cualquier otro asset
+gestionado: una edición a mano aparece en el plan y el apply la pisa; un TOML que el proyecto
+escribió con ese nombre antes de que un apply lo gestione se preserva como conflicto. Un
+subagente sin frontmatter, sin `name` o `description` de una línea, o con un `name` distinto del
+nombre de su archivo frena el apply antes de escribir.
 
 El hook de consistencia (`check-harness-consistency.sh`) revisa con la CLI del
 provider que editó, así que un entorno solo-Codex no necesita el binario de Claude.

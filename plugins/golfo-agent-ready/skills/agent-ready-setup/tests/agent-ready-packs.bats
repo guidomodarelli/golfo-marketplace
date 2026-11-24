@@ -625,8 +625,8 @@ EOF
 
 @test "collisions in the adapter destinations and by letter case are rejected" {
   copy_example_pack
-  mkdir -p "$pack_dir/profiles/base/agents" "$pack_dir/profiles/kafka-interno/commands"
-  printf '# Agent\n' > "$pack_dir/profiles/base/agents/acme-shared.md"
+  mkdir -p "$pack_dir/profiles/base/skills" "$pack_dir/profiles/kafka-interno/commands"
+  printf '# Skill\n' > "$pack_dir/profiles/base/skills/acme-shared.md"
   printf '# Command\n' > "$pack_dir/profiles/kafka-interno/commands/acme-shared.md"
   write_manifest acme/kafka-interno "acme=path:../acme-pack"
   before="$(tree_fingerprint)"
@@ -635,7 +635,18 @@ EOF
   [[ "$output" == *"both write .agents/skills/acme-shared/SKILL.md"* ]]
   [ "$(tree_fingerprint)" = "$before" ]
 
-  rm -rf "$pack_dir/profiles/base/agents" "$pack_dir/profiles/kafka-interno/commands"
+  # Two subagents of one name in different folders both render .codex/agents/<name>.toml.
+  rm -rf "$pack_dir/profiles/base/skills" "$pack_dir/profiles/kafka-interno/commands"
+  mkdir -p "$pack_dir/profiles/base/agents" "$pack_dir/profiles/kafka-interno/agents/kafka"
+  printf -- '---\nname: acme-shared\ndescription: Revisa.\n---\nBase.\n' > "$pack_dir/profiles/base/agents/acme-shared.md"
+  printf -- '---\nname: acme-shared\ndescription: Revisa.\n---\nKafka.\n' > "$pack_dir/profiles/kafka-interno/agents/kafka/acme-shared.md"
+  before="$(tree_fingerprint)"
+  run_bootstrap
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"both write .codex/agents/acme-shared.toml"* ]]
+  [ "$(tree_fingerprint)" = "$before" ]
+
+  rm -rf "$pack_dir/profiles/base/agents" "$pack_dir/profiles/kafka-interno/agents"
   printf '# Upper\n' > "$pack_dir/profiles/base/rules/ACME-KAFKA.md"
   before="$(tree_fingerprint)"
   run_bootstrap

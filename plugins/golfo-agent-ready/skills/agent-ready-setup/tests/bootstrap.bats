@@ -481,7 +481,8 @@ PY
   assert_claude_view .claude/commands/react-review-pr.md
   [ -f .agents/agents/react-security-scanner.md ]
   [ -f .agents/commands/react-review-pr.md ]
-  [ -f .agents/skills/react-security-scanner/SKILL.md ]
+  [ -f .codex/agents/react-security-scanner.toml ]
+  [ ! -e .agents/skills/react-security-scanner ]
   [ -f .agents/skills/react-review-pr/SKILL.md ]
   [ ! -e .claude/mcp.json ]
   [ ! -e .codex/.mcp.json ]
@@ -854,7 +855,7 @@ EOF
 }
 
 # bats test_tags=area:adapters
-@test "Claude registers each agent and command once while Codex keeps its adapter" {
+@test "Claude registers each agent and command once while Codex gets native subagents and the command adapter" {
   source_dir="$test_root/dynamic-skill"
   cp -R "$skill_dir" "$source_dir"
   cat > "$source_dir/scripts/merge-instructions.sh" <<'EOF'
@@ -870,9 +871,20 @@ EOF
   for workflow in agents/a11y-reviewer agents/lint-reviewer agents/react-perf-analyzer agents/react-security-scanner agents/test-reviewer commands/react-review-pr; do
     workflow_name="${workflow#*/}"
     assert_claude_view ".claude/$workflow.md"
-    [ -f ".agents/skills/$workflow_name/SKILL.md" ]
     [ ! -e ".claude/skills/$workflow_name" ]
+    case "$workflow" in
+      agents/*)
+        python3 -c 'import sys, tomllib; assert tomllib.load(open(sys.argv[1], "rb"))["name"] == sys.argv[2]' \
+          ".codex/agents/$workflow_name.toml" "$workflow_name"
+        [ ! -e ".agents/skills/$workflow_name" ]
+        ;;
+      *) [ -f ".agents/skills/$workflow_name/SKILL.md" ] ;;
+    esac
   done
+  # The sync renders the same bytes the apply wrote: the plan has nothing to update.
+  run env PATH="$test_root/bin:$PATH" bash "$skill_dir/scripts/bootstrap.sh" --skill-dir "$skill_dir" --provider claude --plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Summary: no changes"* ]]
   assert_claude_view .claude/skills/component-creation/SKILL.md
 }
 
@@ -949,9 +961,9 @@ EOF
   [ "$status" -eq 0 ]
   assert_claude_view .claude/skills/draft-record/SKILL.md "../../../.agents/skills/draft-record/SKILL.md"
   assert_claude_view .claude/skills/draft-record/references/template.md
-  # The Codex adapter of a Claude agent stays without a view.
-  [ -f .agents/skills/a11y-reviewer/SKILL.md ]
-  [ ! -e .claude/skills/a11y-reviewer ]
+  # The Codex adapter of a Claude command stays without a view.
+  [ -f .agents/skills/react-review-pr/SKILL.md ]
+  [ ! -e .claude/skills/react-review-pr ]
 
   # A Claude skill someone wrote with the name of a project skill is theirs: preserved and reported.
   mkdir -p .agents/skills/team-notes .claude/skills/team-notes
