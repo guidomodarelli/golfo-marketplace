@@ -13,6 +13,7 @@ import agent_ready_conflicts as conflicts_review
 import agent_ready_pack_mcp as pack_mcp
 import agent_ready_pack_tools as pack_tools
 import agent_ready_agent_metadata as agent_metadata
+import agent_ready_agent_references as agent_references
 import agent_ready_rule_triggers as rule_triggers
 import agent_ready_parity as parity
 import agent_ready_repo_facts as repo_facts
@@ -53,6 +54,8 @@ CONTEXT_LARGEST_PROFILES = 3
 # The entry point that registers the browser MCP servers; its SERVER_ALIASES is their roster.
 BROWSER_SETUP_RELATIVE_PATH = "scripts/setup-browser-tools.py"
 RULES_DESTINATION_PREFIX = ".agents/rules/"
+# The sections of the parity report that inform and are no conflict (structural_conflict_lines).
+PARITY_INFORMATION_KEYS = ("views", "agentLimitations")
 # The owner the reports give to the rules the project wrote itself.
 PROJECT_RULES_PROFILE = "project"
 
@@ -518,6 +521,7 @@ def structural_conflicts(project_root, skill_dir, plan, catalog, configuration, 
     if configuration.value(RULES_ENABLED_KEY):
         report["ruleKeys"] = rule_key_report(project_root, plan)
     report["parity"] = parity_report(project_root, skill_dir, plan, configuration, with_user=with_machine)
+    report["missingAgents"] = agent_references.missing_agents(project_root, plan)
     if configuration.value(COMPETING_TOOLS_ENABLED_KEY):
         report["competingTools"] = pack_tools.competing_tools(plan.get("packToolDeclarations", []), catalog)
     report["settingsConflicts"] = settings_conflicts.report(
@@ -528,11 +532,15 @@ def structural_conflicts(project_root, skill_dir, plan, catalog, configuration, 
 
 def structural_conflict_lines(report):
     """One line per structural conflict. What only informs is left out: the context budget, what each
-    provider sees, the servers left to the user and an assumption the catalog cannot check."""
+    provider sees, what a provider cannot enforce for a subagent, the servers left to the user and an
+    assumption the catalog cannot check."""
     lines = machine_report_lines({"shadowed": (report.get("machine") or {}).get("shadowed", [])})
     lines += repo_reality_lines([finding for finding in report.get("repoReality", []) if not finding.get("unknown")])
     lines += rule_key_lines(report.get("ruleKeys", []))
     lines += settings_conflicts_lines(report.get("settingsConflicts") or {})
-    lines += parity_report_lines({key: value for key, value in (report.get("parity") or {}).items() if key != "views"})
+    # What each provider sees and what a provider cannot enforce for a subagent only inform.
+    lines += parity_report_lines({key: value for key, value in (report.get("parity") or {}).items()
+                                  if key not in PARITY_INFORMATION_KEYS})
     lines += competing_tools_lines(report.get("competingTools") or [])
+    lines += agent_references.missing_agent_lines(report.get("missingAgents") or [])
     return lines

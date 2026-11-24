@@ -7,6 +7,7 @@ import os
 import shutil
 import sys
 
+import agent_ready_agent_references as agent_references
 import agent_ready_blocks as managed_blocks
 import agent_ready_conflicts as conflicts_review
 import agent_ready_learning_customized as learning_customized
@@ -791,6 +792,8 @@ def print_plan(project_root, skill_dir, plan, provider, skip_marketplace_upgrade
     print_settings_conflicts(plan.get("settingsConflicts", {}))
     print_parity_report(plan.get("parity", {}))
     print_competing_tools(plan.get("competingTools", []))
+    for line in agent_references.missing_agent_lines(plan.get("missingAgents", [])):
+        write_line(paint(line, "warning", stream))
     print_competing_skills(plan.get("competingSkills"))
     write_line(f"Source:   {describe_source(plan['source'])}")
     write_line(f"Lock:     {describe_source(plan['lockedSource']) if plan['hasLock'] else 'none (first apply creates it)'}")
