@@ -301,7 +301,11 @@ project_asset_tree() {
         skills/*/*.md)
           sync_file "$file" "$SHARED_DIR/$relative"
           ;;
-        agents/*.md|commands/*.md|skills/*.md)
+        agents/*.md)
+          sync_file "$file" "$SHARED_DIR/$relative"
+          project_codex_agent "$BOOTSTRAP_SCRIPTS_DIRECTORY/render-codex-agent.py" "$file" "${relative##*/}"
+          ;;
+        commands/*.md|skills/*.md)
           sync_file "$file" "$SHARED_DIR/$relative"
           skill_name="${relative##*/}"
           skill_name="${skill_name%.md}"

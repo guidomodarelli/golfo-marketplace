@@ -86,8 +86,12 @@ La proyección automática de assets:
 - Copia adapters `SKILL.md` bajo `.agents/skills/` byte a byte desde su
   template, sin reescribir frontmatter: providers eligen skills según
   `description`, por lo que el template es la única fuente.
+- Genera `.codex/agents/<nombre>.toml` desde cada `agents/<nombre>.md` con
+  `render-codex-agent.py`, el mismo código con el que el plan calcula su sha256, así que el
+  sync y el apply escriben los mismos bytes.
 - En `.claude/`, agents y commands se registran una sola vez (`.claude/agents/`,
-  `.claude/commands/`); su adapter en `.agents/skills/` queda solo para Codex.
+  `.claude/commands/`); el adapter de un command en `.agents/skills/` queda solo para Codex,
+  y un agent le llega a Codex como subagente nativo, sin adapter.
   El sync elimina vistas `.claude/skills/<nombre>/` gestionadas que dupliquen un
   agent o command y preserva y reporta contenido custom.
 - Claude Code carga `.claude/rules/` automáticamente; el bloque gestionado de

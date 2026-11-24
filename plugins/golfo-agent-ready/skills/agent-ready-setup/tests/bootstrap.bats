@@ -481,7 +481,8 @@ PY
   assert_claude_view .claude/commands/react-review-pr.md
   [ -f .agents/agents/react-security-scanner.md ]
   [ -f .agents/commands/react-review-pr.md ]
-  [ -f .agents/skills/react-security-scanner/SKILL.md ]
+  [ -f .codex/agents/react-security-scanner.toml ]
+  [ ! -e .agents/skills/react-security-scanner ]
   [ -f .agents/skills/react-review-pr/SKILL.md ]
   [ ! -e .claude/mcp.json ]
   [ ! -e .codex/.mcp.json ]
@@ -497,7 +498,8 @@ PY
   cmp -s .codex/hooks.json "$skill_dir/assets/codex/hooks.json"
   cmp -s .agents/hooks/check-harness-consistency.sh "$skill_dir/assets/common/hooks/check-harness-consistency.sh"
   [ ! -f .claude/CLAUDE.md ]
-  [ ! -d .codex/agents ]
+  # Only subagents become native Codex subagents: a command keeps its skill adapter.
+  [ ! -e .codex/agents/react-review-pr.toml ]
   for rule_file in cross-engine.md react-style.md language-consistency.md lint-gate.md lodash.md no-unnecessary-mocks.md react-security.md react-testing.md user-facing-feedback.md; do
     grep -Fq -- "- Read and follow \`.agents/rules/$rule_file\`." AGENTS.md
   done
@@ -833,7 +835,14 @@ EOF
           cmp -s ".claude/$relative" "$template"
           ;;
       esac
-      cmp -s ".agents/skills/$skill_name/SKILL.md" "$template"
+      case "$relative" in
+        agents/*)
+          # A subagent reaches Codex as a native subagent, not as a skill adapter.
+          [ -f ".codex/agents/$skill_name.toml" ]
+          [ ! -e ".agents/skills/$skill_name" ]
+          ;;
+        *) cmp -s ".agents/skills/$skill_name/SKILL.md" "$template" ;;
+      esac
     done < <(find "$content_pack/stacks/$stack" -type f \( -path '*/skills/*/SKILL.md' -o -path '*/agents/*.md' -o -path '*/commands/*.md' \))
     cd "$project_dir"
   done
@@ -854,7 +863,7 @@ EOF
 }
 
 # bats test_tags=area:adapters
-@test "Claude registers each agent and command once while Codex keeps its adapter" {
+@test "Claude registers each agent and command once while Codex gets native subagents and the command adapter" {
   source_dir="$test_root/dynamic-skill"
   cp -R "$skill_dir" "$source_dir"
   cat > "$source_dir/scripts/merge-instructions.sh" <<'EOF'
@@ -870,14 +879,25 @@ EOF
   for workflow in agents/a11y-reviewer agents/lint-reviewer agents/react-perf-analyzer agents/react-security-scanner agents/test-reviewer commands/react-review-pr; do
     workflow_name="${workflow#*/}"
     assert_claude_view ".claude/$workflow.md"
-    [ -f ".agents/skills/$workflow_name/SKILL.md" ]
     [ ! -e ".claude/skills/$workflow_name" ]
+    case "$workflow" in
+      agents/*)
+        python3 -c 'import sys, tomllib; assert tomllib.load(open(sys.argv[1], "rb"))["name"] == sys.argv[2]' \
+          ".codex/agents/$workflow_name.toml" "$workflow_name"
+        [ ! -e ".agents/skills/$workflow_name" ]
+        ;;
+      *) [ -f ".agents/skills/$workflow_name/SKILL.md" ] ;;
+    esac
   done
+  # The sync renders the same bytes the apply wrote: the plan has nothing to update.
+  run env PATH="$test_root/bin:$PATH" bash "$skill_dir/scripts/bootstrap.sh" --skill-dir "$skill_dir" --provider claude --plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Summary: no changes"* ]]
   assert_claude_view .claude/skills/component-creation/SKILL.md
 }
 
 # bats test_tags=area:adapters
-@test "sync removes duplicate Claude skill views of agents and commands, even when edited" {
+@test "sync removes duplicate Claude skill views of commands, even when edited" {
   skip_without_symlinks
   source_dir="$test_root/dynamic-skill"
   cp -R "$skill_dir" "$source_dir"
@@ -887,17 +907,46 @@ exit 0
 EOF
   run_bootstrap react
   [ "$status" -eq 0 ]
-  mkdir -p .claude/skills/a11y-reviewer .claude/skills/lint-reviewer
-  ln -s ../../../.agents/skills/a11y-reviewer/SKILL.md .claude/skills/a11y-reviewer/SKILL.md
-  printf '%s\n' '# Custom lint skill' > .claude/skills/lint-reviewer/SKILL.md
+  mkdir -p .claude/skills/react-review-pr
+  ln -s ../../../.agents/skills/react-review-pr/SKILL.md .claude/skills/react-review-pr/SKILL.md
 
   run_marketplace_sync "$source_dir/assets/common/hooks/sync-marketplace.sh" "$source_dir"
 
   [ "$status" -eq 0 ]
-  [ ! -e .claude/skills/a11y-reviewer ]
+  [ ! -e .claude/skills/react-review-pr ]
   [[ "$output" == *"Removed duplicate Claude views:"* ]]
-  [ ! -e .claude/skills/lint-reviewer ]
-  [[ "$output" == *"  - .claude/skills/lint-reviewer/SKILL.md"* ]]
+
+  mkdir -p .claude/skills/react-review-pr
+  printf '%s\n' '# Custom review skill' > .claude/skills/react-review-pr/SKILL.md
+  run_marketplace_sync "$source_dir/assets/common/hooks/sync-marketplace.sh" "$source_dir"
+
+  [ "$status" -eq 0 ]
+  [ ! -e .claude/skills/react-review-pr ]
+  [[ "$output" == *"  - .claude/skills/react-review-pr/SKILL.md"* ]]
+}
+
+# bats test_tags=area:adapters
+@test "a skill and a subagent of the same name keep the Claude view of the skill" {
+  source_dir="$test_root/dynamic-skill"
+  cp -R "$skill_dir" "$source_dir"
+  cat > "$source_dir/scripts/merge-instructions.sh" <<'EOF'
+#!/bin/bash
+exit 0
+EOF
+  copy_content_pack
+  mkdir -p "$content_dir/stacks/react/skills/test-reviewer"
+  printf -- '---\nname: test-reviewer\ndescription: Review tests as a skill.\n---\n# Skill\n' \
+    > "$content_dir/stacks/react/skills/test-reviewer/SKILL.md"
+
+  run_bootstrap react
+  [ "$status" -eq 0 ]
+  assert_claude_view .claude/skills/test-reviewer/SKILL.md
+  assert_claude_view .claude/agents/test-reviewer.md
+  [ -f .codex/agents/test-reviewer.toml ]
+
+  run_marketplace_sync "$source_dir/assets/common/hooks/sync-marketplace.sh" "$source_dir"
+  [ "$status" -eq 0 ]
+  assert_claude_view .claude/skills/test-reviewer/SKILL.md
 }
 
 # bats test_tags=area:claude-views
@@ -949,9 +998,9 @@ EOF
   [ "$status" -eq 0 ]
   assert_claude_view .claude/skills/draft-record/SKILL.md "../../../.agents/skills/draft-record/SKILL.md"
   assert_claude_view .claude/skills/draft-record/references/template.md
-  # The Codex adapter of a Claude agent stays without a view.
-  [ -f .agents/skills/a11y-reviewer/SKILL.md ]
-  [ ! -e .claude/skills/a11y-reviewer ]
+  # The Codex adapter of a Claude command stays without a view.
+  [ -f .agents/skills/react-review-pr/SKILL.md ]
+  [ ! -e .claude/skills/react-review-pr ]
 
   # A Claude skill someone wrote with the name of a project skill is theirs: preserved and reported.
   mkdir -p .agents/skills/team-notes .claude/skills/team-notes
@@ -2653,11 +2702,13 @@ EOF
   cp "$skill_dir/scripts/render-instruction-template.sh" "$source_dir/scripts/render-instruction-template.sh"
   cp "$skill_dir/scripts/merge-managed-settings.py" "$source_dir/scripts/merge-managed-settings.py"
   cp "$skill_dir/scripts/run-detached.py" "$source_dir/scripts/run-detached.py"
+  cp "$skill_dir/scripts/render-codex-agent.py" "$source_dir/scripts/render-codex-agent.py"
   printf '%s\n' '{"settings":"updated"}' > "$source_dir/assets/common/settings.json"
   printf '%s\n' '{"hooks":"updated"}' > "$source_dir/assets/codex/hooks.json"
   printf '%s\n' '#!/bin/bash' > "$source_dir/assets/common/hooks/check-harness-consistency.sh"
   printf '%s\n' '# updated coding style' > "$minimal_content/stacks/go/rules/go-coding-style.md"
-  printf '%s\n' '# security scanner' > "$minimal_content/stacks/go/agents/go-security-scanner.md"
+  printf '%s\n' '---' 'name: go-security-scanner' 'description: Scan for security issues.' '---' '# security scanner' \
+    > "$minimal_content/stacks/go/agents/go-security-scanner.md"
   printf '%s\n' '# review command' > "$minimal_content/stacks/go/commands/go-review-pr.md"
   cat > "$minimal_content/stacks/go/skills/deploy-helper/SKILL.md" <<'EOF'
 ---
@@ -2713,6 +2764,10 @@ EOF
   cmp -s .agents/hooks/check-harness-consistency.sh "$source_dir/assets/common/hooks/check-harness-consistency.sh"
   cmp -s .agents/rules/go-coding-style.md "$minimal_content/stacks/go/rules/go-coding-style.md"
   cmp -s .agents/agents/go-security-scanner.md "$minimal_content/stacks/go/agents/go-security-scanner.md"
+  python3 -c 'import sys, tomllib; assert tomllib.load(open(sys.argv[1], "rb"))["developer_instructions"] == "# security scanner\n"' \
+    .codex/agents/go-security-scanner.toml
+  codex_agent_mode="$(python3 -c 'import os, stat, sys; print(format(stat.S_IMODE(os.stat(sys.argv[1]).st_mode), "o"))' .codex/agents/go-security-scanner.toml)"
+  [ "$codex_agent_mode" = "644" ] || [ "$codex_agent_mode" = "666" ]
   cmp -s .agents/commands/go-review-pr.md "$minimal_content/stacks/go/commands/go-review-pr.md"
   grep -Fq '# Deploy helper' .agents/skills/deploy-helper/SKILL.md
   adapter_mode="$(python3 -c 'import os, stat, sys; print(format(stat.S_IMODE(os.stat(sys.argv[1]).st_mode), "o"))' .agents/skills/deploy-helper/SKILL.md)"

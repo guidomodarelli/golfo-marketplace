@@ -41,7 +41,9 @@ operación. El bootstrap distribuye assets según responsabilidad:
   sin Modo de desarrollador ni shell elevada) o el repo tiene `core.symlinks=false`, las
   vistas son hard links al mismo archivo y nunca copias; ver `references/sync-and-upgrade.md`.
 - `.codex/`: bridge provider-specific para hooks Codex (`hooks.json`, junto a
-  configuración de proyecto) y para MCP (`.mcp.json`) cuando el stack publica un
+  configuración de proyecto), para los subagentes nativos de Codex (`agents/<nombre>.toml`,
+  generado desde cada `.agents/agents/<nombre>.md`: `name` y `description` del frontmatter,
+  `developer_instructions` con el cuerpo) y para MCP (`.mcp.json`) cuando el stack publica un
   `mcp.json`; hoy ningún stack lo publica.
 - `.github/pull_request_template.md`: bloque gestionado de `software-development` con descripción,
   tipo de cambio, pruebas manuales y secciones opcionales de API y revisión, desde

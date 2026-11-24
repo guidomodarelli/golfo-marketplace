@@ -21,7 +21,7 @@
         "instructions": { "support": "native", "mechanism": "AGENTS.md, including nested AGENTS.md files" },
         "rules": { "support": "adapted", "mechanism": "listed in the AGENTS.md managed block; Codex reads each file" },
         "skills": { "support": "native", "mechanism": ".agents/skills" },
-        "agents": { "support": "adapted", "mechanism": "skill adapter in .agents/skills; not a native subagent" },
+        "agents": { "support": "native", "mechanism": ".codex/agents/*.toml custom agents rendered from .agents/agents" },
         "commands": { "support": "adapted", "mechanism": "skill adapter in .agents/skills; not a slash command" },
         "hooks": { "support": "native", "mechanism": ".codex/hooks.json" },
         "mcp": { "support": "native", "mechanism": ".codex/.mcp.json when a profile publishes mcp.json" }

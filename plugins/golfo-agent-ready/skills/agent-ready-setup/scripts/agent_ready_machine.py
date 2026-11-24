@@ -2,7 +2,7 @@
 of the same name, and MCP servers the user registered for every project.
 
 Read-only: it reads the user's provider configuration (``~/.claude``, ``~/.claude.json``,
-``~/.agents/skills``, ``$CODEX_HOME/config.toml``) and never writes it. Paths in the findings are
+``~/.agents/skills``, ``$CODEX_HOME/agents``, ``$CODEX_HOME/config.toml``) and never writes it. Paths in the findings are
 written from ``~`` so no path of this machine ends up in a report.
 
 Precedence, from the provider documentation:
@@ -12,6 +12,8 @@ Precedence, from the provider documentation:
 * Claude Code, subagents: project wins over user, and user over plugin.
 * Codex, skills: repository ``.agents/skills`` and ``~/.agents/skills`` are not merged; both appear
   in the selector and no order is documented.
+* Codex, subagents: custom agents of the project (``.codex/agents``) and of the user
+  (``$CODEX_HOME/agents``) with the same name have no documented order either.
 """
 
 import json
@@ -19,6 +21,7 @@ import os
 import re
 
 import agent_ready_pack_mcp as pack_mcp
+from agent_ready_codex_agents import CODEX_AGENT_SUFFIX
 
 try:
     import tomllib
@@ -32,6 +35,8 @@ PROVIDER_CLAUDE = "claude"
 PROVIDER_CODEX = "codex"
 CLAUDE_USER_SERVERS_FILE = ".claude.json"
 CODEX_CONFIG_FILE = "config.toml"
+# Where Codex reads the personal custom agents of the user, inside its directory (codex_home).
+CODEX_USER_AGENTS_DIRECTORY = "agents"
 INSTALLED_PLUGINS_RELATIVE_PATH = os.path.join("plugins", "installed_plugins.json")
 PLUGIN_SCOPE_USER = "user"
 PLUGIN_SCOPE_PROJECT = "project"
@@ -105,8 +110,8 @@ def read_json(path):
         return None
 
 
-def names_in(directory, kind):
-    """{name: path} of the skills (folders with SKILL.md) or the .md files of a directory."""
+def names_in(directory, kind, suffix=".md"):
+    """{name: path} of the skills (folders with SKILL.md) or the files with ``suffix`` of a directory."""
     found = {}
     if not os.path.isdir(directory):
         return found
@@ -115,8 +120,8 @@ def names_in(directory, kind):
         if kind == KIND_SKILL:
             if os.path.isfile(os.path.join(path, "SKILL.md")):
                 found[entry] = path
-        elif entry.endswith(".md") and os.path.isfile(path):
-            found[entry[:-len(".md")]] = path
+        elif entry.endswith(suffix) and os.path.isfile(path):
+            found[entry[:-len(suffix)]] = path
     return found
 
 
@@ -177,12 +182,13 @@ def shadowed_assets(project_root, entries):
     """
     profiles = {entry["destination"]: entry["profile"] for entry in entries if entry.get("sha256")}
     assets = project_assets(profiles)
-    # A subagent or a command reaches Codex as a skill adapter of the same name, so the skill entry
-    # of that name is the same asset and is not reported twice.
-    adapters = {name for kind, name in assets if kind != KIND_SKILL}
+    # A command reaches Codex as a skill adapter of the same name, so the skill entry of that name is
+    # the same asset and is not reported twice. A subagent reaches it as a native one (.codex/agents).
+    adapters = {name for kind, name in assets if kind == KIND_COMMAND}
     user_claude = {kind: names_in(os.path.join(claude_home(), directory), kind)
                    for kind, directory in CLAUDE_KIND_DIRECTORIES.items()}
     user_codex_skills = names_in(os.path.join(user_home(), ".agents", "skills"), KIND_SKILL)
+    user_codex_agents = names_in(os.path.join(codex_home(), CODEX_USER_AGENTS_DIRECTORY), KIND_AGENT, CODEX_AGENT_SUFFIX)
     plugins = [(plugin, {kind: names_in(os.path.join(path, directory), kind)
                          for kind, directory in CLAUDE_KIND_DIRECTORIES.items()})
                for plugin, path in installed_plugins(project_root)]
@@ -202,9 +208,10 @@ def shadowed_assets(project_root, entries):
                                      "machine": home_display(plugin_names[machine_kind][name]),
                                      "winner": CLAUDE_PROJECT_OVER_PLUGIN if kind == KIND_AGENT
                                      else CLAUDE_BOTH_NAMESPACED.format(plugin=plugin, name=name)})
-        if name in user_codex_skills:
+        user_codex = user_codex_agents if kind == KIND_AGENT else user_codex_skills
+        if name in user_codex:
             findings.append({"kind": kind, "name": name, "profile": profile, "provider": PROVIDER_CODEX,
-                             "machine": home_display(user_codex_skills[name]), "winner": CODEX_BOTH_LISTED})
+                             "machine": home_display(user_codex[name]), "winner": CODEX_BOTH_LISTED})
     return findings
 
 

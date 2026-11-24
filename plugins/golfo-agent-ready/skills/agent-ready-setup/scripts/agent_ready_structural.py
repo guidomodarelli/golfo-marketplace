@@ -317,7 +317,7 @@ def parity_report_lines(report):
         claude, codex = views[parity.PROVIDER_CLAUDE], views[parity.PROVIDER_CODEX]
         lines.append(f"Providers: Claude Code sees {claude['rules']} rules ({claude['rulesForPathsOnly']} only for their "
                      f"paths), {claude['skills']} skills, {claude['subagents']} subagents and {claude['commands']} commands; "
-                     f"Codex sees {codex['rules']} rules in AGENTS.md and {codex['skills']} skills")
+                     f"Codex sees {codex['rules']} rules in AGENTS.md, {codex['skills']} skills and {codex['subagents']} subagents")
     for difference in report.get("hookDifferences", []):
         lines.append(f"  ~ {difference['provider']} runs the {difference['event']} hook `{difference['command']}` "
                      f"({difference['file']}) and {difference['missing']} does not")

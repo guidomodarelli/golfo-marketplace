@@ -130,7 +130,8 @@ Después, «Semantic conflicts» lista lo que la actualización contradice de la
 **Validación antes de escribir.** Al resolver se validan el schema, las dependencias, los ciclos, los
 conflictos y los nombres de fuente duplicados. También se rechazan estas colisiones de destino:
 entre un pack y Golfo, entre dos packs, entre profiles de un mismo pack, en los destinos que generan
-los adaptadores (`agents/x.md` y `commands/x.md` producen el mismo `.agents/skills/x/SKILL.md`) y entre
+los adaptadores (`skills/x.md` y `commands/x.md` producen el mismo `.agents/skills/x/SKILL.md`), en los
+subagentes de Codex (`agents/x.md` y `agents/otra/x.md` producen el mismo `.codex/agents/x.toml`) y entre
 paths que solo difieren en mayúsculas. El namespace no evita una colisión de archivos. Los assets deben
 quedar dentro del pack, sin symlinks, y un destino no puede pasar por un directorio enlazado del
 proyecto. Cualquiera de estos errores frena el apply antes de modificar el repositorio.

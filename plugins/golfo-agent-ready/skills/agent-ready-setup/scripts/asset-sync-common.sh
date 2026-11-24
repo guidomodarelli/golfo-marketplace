@@ -457,9 +457,36 @@ replace_with_claude_view() {
   record_updated "$destination -> managed view"
 }
 
-# Claude registers agents and commands natively from .claude/agents and
-# .claude/commands. A .claude/skills view of their Codex adapter would register
-# the same workflow twice. The name belongs to agent-ready-setup, so the view is
+# Codex reads a native subagent from .codex/agents/<name>.toml. The TOML is rendered from the
+# subagent template (render-codex-agent.py, the same code the plan hashes with), staged in a
+# temporary file and written with sync_file, so ownership, backups and conflicts work as for any
+# other managed asset. Arguments: the renderer, the template and its file name under agents/.
+# Consumers define sync_file and record_conflict, and CODEX_DIR.
+project_codex_agent() {
+  local renderer="$1"
+  local source="$2"
+  local file_name="$3"
+  local destination="$CODEX_DIR/agents/${file_name%.md}.toml"
+  local rendered
+
+  if ! rendered="$(mktemp "${TMPDIR:-/tmp}/agent-ready-codex-agent.XXXXXX")"; then
+    record_conflict "could not stage $destination; it was not changed"
+    return 0
+  fi
+  if ! python3 "$renderer" --source "$source" --name "$file_name" --output "$rendered"; then
+    rm -f -- "$rendered"
+    record_conflict "$destination: agents/$file_name cannot become a Codex subagent; it was not changed"
+    return 0
+  fi
+  chmod 644 -- "$rendered" 2>/dev/null || true
+  sync_file "$rendered" "$destination"
+  rm -f -- "$rendered"
+}
+
+# Claude registers commands natively from .claude/commands. A .claude/skills
+# view of their Codex adapter would register the same workflow twice. A
+# subagent has no adapter, so a .claude/skills view of its name belongs to a
+# skill and stays. The name belongs to agent-ready-setup, so the view is
 # removed even when it was edited; only non-regular paths are left for manual
 # review. Consumers define record_removed.
 remove_claude_skill_view() {
@@ -469,7 +496,7 @@ remove_claude_skill_view() {
 
   [[ -e "$view_path" || -L "$view_path" ]] || return 0
   if [[ ! -L "$view_path" && ! -f "$view_path" ]]; then
-    record_conflict "$view_path duplicates Claude agent or command $skill_name but is not a regular file; preserved"
+    record_conflict "$view_path duplicates Claude command $skill_name but is not a regular file; preserved"
     return 0
   fi
   if ! rm -f -- "$view_path"; then
@@ -521,7 +548,7 @@ project_rule_claude_views() {
 # Skills the repository adds under .agents/skills/ (a skill the agent learned,
 # or one the team wrote) get a Claude view of every file, so Claude finds them
 # like the skills of a profile. A skill an apply wrote is left alone: its view,
-# or the absence of one for the Codex adapter of an agent or command, is the
+# or the absence of one for the Codex adapter of a command, is the
 # projection's. Views of a deleted project skill are pruned.
 # Arguments: the asset roots of this projection. Consumers define link_claude_asset and record_removed.
 project_skill_claude_views() {
@@ -535,7 +562,7 @@ project_skill_claude_views() {
 
   [[ -d "$SHARED_DIR/skills" && ! -L "$SHARED_DIR/skills" ]] || return 0
   # Managed: what the lock records, and what the asset roots of this projection publish as a skill
-  # (skills/<name>/, skills/<name>.md) or as the Codex adapter of an agent or a command. The lock alone
+  # (skills/<name>/, skills/<name>.md) or as the Codex adapter of a command. The lock alone
   # is not enough: the first apply projects before it writes the lock.
   managed_skills="$(python3 - "$SHARED_DIR/agent-ready.lock.json" "$SHARED_DIR/skills/" "$@" <<'PY'
 import json, os, sys
@@ -547,7 +574,7 @@ except (OSError, ValueError):
 prefix = sys.argv[2]
 names = {path[len(prefix):].split("/")[0] for path in assets if path.startswith(prefix)}
 for root in sys.argv[3:]:
-    for folder in ("skills", "agents", "commands"):
+    for folder in ("skills", "commands"):
         try:
             entries = os.listdir(os.path.join(root, folder))
         except OSError:

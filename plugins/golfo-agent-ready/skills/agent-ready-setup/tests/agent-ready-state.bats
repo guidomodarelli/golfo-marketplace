@@ -504,7 +504,7 @@ EOF
   run_bootstrap_with "$source_copy" --stack node
   [ "$status" -eq 0 ]
   [ -f .agents/agents/node-perf-analyzer.md ]
-  [ -f .agents/skills/node-perf-analyzer/SKILL.md ]
+  [ -f .codex/agents/node-perf-analyzer.toml ]
   printf '%s\n' 'edited locally' >> .agents/agents/node-security-scanner.md
   rm "$content_dir/stacks/node/agents/node-perf-analyzer.md" "$content_dir/stacks/node/agents/node-security-scanner.md"
 
@@ -515,12 +515,126 @@ EOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"Retired managed assets:"* ]]
   [ ! -e .agents/agents/node-perf-analyzer.md ]
-  [ ! -e .agents/skills/node-perf-analyzer ]
+  [ ! -e .codex/agents/node-perf-analyzer.toml ]
   [ ! -e .claude/agents/node-perf-analyzer.md ]
   [ ! -e .agents/agents/node-security-scanner.md ]
   [ ! -e .claude/agents/node-security-scanner.md ]
   [ "$(lock_value '".agents/agents/node-perf-analyzer.md" in lock["assets"]')" = "False" ]
   [ "$(lock_value '".agents/agents/node-security-scanner.md" in lock["assets"]')" = "False" ]
+  [ "$(lock_value '".codex/agents/node-perf-analyzer.toml" in lock["assets"]')" = "False" ]
+  [ "$(lock_value '".codex/agents/node-security-scanner.toml" in lock["assets"]')" = "False" ]
+}
+
+# The TOML checks read the file with tomllib, which Python has from 3.11.
+require_tomllib() {
+  python3 -c 'import tomllib' 2>/dev/null || skip "reading TOML needs Python 3.11+"
+}
+
+# One key of the TOML of a native Codex subagent, as Python's TOML parser reads it.
+codex_agent_value() {
+  python3 -c 'import sys, tomllib; sys.stdout.write(tomllib.load(open(sys.argv[1], "rb"))[sys.argv[2]])' "$1" "$2"
+}
+
+# The body of a Markdown subagent: what follows its frontmatter, without the blank lines around it.
+subagent_body() {
+  python3 -c 'import sys; text = open(sys.argv[1], encoding="utf-8").read().replace("\r\n", "\n"); sys.stdout.write(text.split("\n---\n", 1)[1].strip("\n") + "\n")' "$1"
+}
+
+@test "each subagent becomes a native Codex subagent with valid TOML, and no skill adapter" {
+  require_tomllib
+  run_bootstrap_with "$skill_dir" --stack react
+  [ "$status" -eq 0 ]
+  for agent in a11y-reviewer lint-reviewer react-perf-analyzer react-security-scanner test-reviewer; do
+    [ "$(codex_agent_value ".codex/agents/$agent.toml" name)" = "$agent" ]
+    [ -n "$(codex_agent_value ".codex/agents/$agent.toml" description)" ]
+    [ "$(codex_agent_value ".codex/agents/$agent.toml" developer_instructions)" = "$(subagent_body ".agents/agents/$agent.md")" ]
+    [ ! -e ".agents/skills/$agent" ]
+    [ "$(lock_value "lock['assets']['.codex/agents/$agent.toml']['state']")" = "applied" ]
+  done
+  # A command still reaches Codex as a skill of the same name.
+  [ -f .agents/skills/react-review-pr/SKILL.md ]
+
+  run_bootstrap_with "$skill_dir" --plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Codex sees "*" 6 skills and 5 subagents"* ]]
+  [[ "$output" == *"Summary: no changes"* ]]
+}
+
+@test "the TOML of a subagent keeps quotes, backslashes and triple quotes of its text exactly" {
+  require_tomllib
+  copy_skill
+  cat > "$content_dir/stacks/node/agents/tricky-reviewer.md" <<'EOF'
+---
+name: tricky-reviewer
+description: "Revisa \"comillas\" y C:\\rutas: todo"
+---
+
+# Tricky
+Una ruta C:\temp\nuevo y tres comillas """ en el medio.
+Termina con comilla "
+EOF
+
+  run_bootstrap_with "$source_copy" --stack node
+  [ "$status" -eq 0 ]
+  [ "$(codex_agent_value .codex/agents/tricky-reviewer.toml description)" = 'Revisa "comillas" y C:\rutas: todo' ]
+  [ "$(codex_agent_value .codex/agents/tricky-reviewer.toml developer_instructions)" = "$(subagent_body .agents/agents/tricky-reviewer.md)" ]
+}
+
+@test "a trailing YAML comment in the frontmatter is not part of the name or the description" {
+  require_tomllib
+  copy_skill
+  cat > "$content_dir/stacks/node/agents/commented-reviewer.md" <<'EOF'
+---
+name: commented-reviewer # must match the file name
+description: 'Revisa lo que haga falta' # quoted, then a comment
+---
+Body.
+EOF
+
+  run_bootstrap_with "$source_copy" --stack node
+  [ "$status" -eq 0 ]
+  [ "$(codex_agent_value .codex/agents/commented-reviewer.toml name)" = "commented-reviewer" ]
+  [ "$(codex_agent_value .codex/agents/commented-reviewer.toml description)" = "Revisa lo que haga falta" ]
+}
+
+@test "a subagent whose name is not its file name stops the apply before writing" {
+  copy_skill
+  printf '%s\n' '---' 'name: other-name' 'description: Revisa.' '---' 'Body.' > "$content_dir/stacks/node/agents/misnamed.md"
+
+  run_bootstrap_with "$source_copy" --stack node
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"agents/misnamed.md: the subagent is named 'other-name'; it must be 'misnamed'"* ]]
+  [ ! -e .codex/agents ]
+}
+
+@test "a hand edit of a managed Codex subagent shows in the plan and the apply restores it" {
+  run_bootstrap_with "$skill_dir" --stack react
+  [ "$status" -eq 0 ]
+  cp .codex/agents/test-reviewer.toml "$test_root/applied.toml"
+  printf '%s\n' '# edited by hand' >> .codex/agents/test-reviewer.toml
+
+  run_bootstrap_with "$skill_dir" --plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *".codex/agents/test-reviewer.toml"*"overwrites local changes since the last apply"* ]]
+  [[ "$output" == *"-# edited by hand"* ]]
+
+  run_bootstrap_with "$skill_dir"
+  [ "$status" -eq 0 ]
+  cmp -s .codex/agents/test-reviewer.toml "$test_root/applied.toml"
+}
+
+@test "a Codex subagent the project wrote is preserved as a conflict, never overwritten" {
+  run_bootstrap_with "$skill_dir" --stack node
+  [ "$status" -eq 0 ]
+  mkdir -p .codex/agents
+  printf '%s\n' 'name = "test-reviewer"' 'description = "Ours."' 'developer_instructions = "Ours."' > .codex/agents/test-reviewer.toml
+  cp .codex/agents/test-reviewer.toml "$test_root/ours.toml"
+
+  run_bootstrap_with "$skill_dir" --profiles node,react
+  [[ "$output" == *".codex/agents/test-reviewer.toml"* ]]
+  cmp -s .codex/agents/test-reviewer.toml "$test_root/ours.toml"
+  [ "$(lock_value "lock['assets']['.codex/agents/test-reviewer.toml']['state']")" = "conflict" ]
+  grep -Fxq 'name = "a11y-reviewer"' .codex/agents/a11y-reviewer.toml
 }
 
 @test "without a lockfile the first apply adopts existing managed files once" {
@@ -1007,7 +1121,7 @@ plan_text() {
   printf '{"ci": {"provider": "github"}}\n' > .agents/agent-ready.json
   run env -u CLAUDE_CONFIG_DIR HOME="$test_root/home" python3 "$skill_dir/scripts/agent-ready-state.py" plan --project "$project_dir" --skill-dir "$skill_dir" --profiles node
   [ "$status" -eq 0 ]
-  [[ "$output" == *"Providers: Claude Code sees "*" rules ("*" only for their paths)"*"; Codex sees "*" rules in AGENTS.md and "*" skills"* ]]
+  [[ "$output" == *"Providers: Claude Code sees "*" rules ("*" only for their paths)"*"; Codex sees "*" rules in AGENTS.md, "*" skills and "*" subagents"* ]]
   [[ "$output" == *"~ claude runs the PostToolUse hook \`npm run lint\` (.claude/settings.json) and codex does not"* ]]
   [[ "$output" == *"~ .github/workflows/own.yml already runs the Agent Ready check; the managed .github/workflows/agent-ready.yml runs it again"* ]]
   # The golfo-agent-ready hooks of each provider match, except the ones declared for one provider.
