@@ -1,0 +1,49 @@
+{
+  "schema_version": 2,
+  "skill": "preparar-cierre-mensual",
+  "description": "Evalúa que la skill arme el cierre con sus secciones y no complete de memoria un vencimiento que no figura en los registros.",
+  "test_cases": [
+    {
+      "id": "cierre-con-sus-secciones",
+      "description": "Arma el cierre en la ruta de la convención, con las secciones del cierre.",
+      "input": "Prepará el cierre de marzo 2026 de Cliente A. La conciliación ya está en cierres/cliente-a/2026-03-conciliacion.md: saldo final $ 108.800,00, una diferencia por comisión bancaria de $ 1.200,00. Los registros del cliente traen el vencimiento de IVA del 2026-04-20. No ejecutes comandos: mostrá la ruta y el contenido del cierre.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "cierres/cliente-a/2026-03.md",
+          "description": "Escribe el cierre en la ruta de la convención",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "## Vencimientos del mes siguiente",
+          "description": "Incluye la sección de vencimientos",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "## Pendientes",
+          "description": "Incluye la sección de pendientes"
+        },
+        {
+          "type": "contains",
+          "value": "2026-04-20",
+          "description": "Toma el vencimiento de los registros"
+        }
+      ]
+    },
+    {
+      "id": "vencimiento-sin-registro",
+      "description": "Un vencimiento que no figura en los registros queda a verificar en vez de completarse de memoria.",
+      "input": "Prepará el cierre de marzo 2026 de Cliente C. La conciliación está en cierres/cliente-c/2026-03-conciliacion.md y cierra sin diferencias. Es monotributista y en sus registros no hay ninguna fecha de vencimiento. No ejecutes comandos: mostrá el contenido del cierre.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "\\[a verificar\\]",
+          "description": "Deja el vencimiento a verificar",
+          "critical": true
+        }
+      ]
+    }
+  ]
+}

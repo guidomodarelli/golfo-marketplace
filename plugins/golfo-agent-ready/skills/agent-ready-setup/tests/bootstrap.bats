@@ -477,7 +477,9 @@ PY
   [ -f .agents/skills/react-act-test-fixes/SKILL.md ]
   assert_claude_view .claude/skills/react-act-test-fixes/SKILL.md "../../../.agents/skills/react-act-test-fixes/SKILL.md"
   [ -f .agents/skills/react-act-test-fixes/evals/eval-config.json ]
-  assert_claude_view .claude/agents/react-security-scanner.md
+  # The scanner declares model-tier deep: Claude gets its own rendered file, not a view.
+  [ -f .claude/agents/react-security-scanner.md ]
+  grep -qx 'model: opus' .claude/agents/react-security-scanner.md
   assert_claude_view .claude/commands/react-review-pr.md
   [ -f .agents/agents/react-security-scanner.md ]
   [ -f .agents/commands/react-review-pr.md ]
@@ -831,8 +833,15 @@ EOF
         *)
           skill_name="${relative##*/}"
           skill_name="${skill_name%.md}"
-          cmp -s ".agents/$relative" "$template"
-          cmp -s ".claude/$relative" "$template"
+          if [[ "$relative" == agents/* ]] && grep -qE '^(access|model-tier):' "$template"; then
+            # A subagent with portable metadata gets a rendered view per provider, not a copy
+            # (agent-ready-packs.bats checks the rendering).
+            grep -qx "name: $skill_name" ".agents/$relative"
+            grep -qx "name: $skill_name" ".claude/$relative"
+          else
+            cmp -s ".agents/$relative" "$template"
+            cmp -s ".claude/$relative" "$template"
+          fi
           ;;
       esac
       case "$relative" in
@@ -878,15 +887,20 @@ EOF
 
   for workflow in agents/a11y-reviewer agents/lint-reviewer agents/react-perf-analyzer agents/react-security-scanner agents/test-reviewer commands/react-review-pr; do
     workflow_name="${workflow#*/}"
-    assert_claude_view ".claude/$workflow.md"
     [ ! -e ".claude/skills/$workflow_name" ]
     case "$workflow" in
       agents/*)
+        # The review agents declare model-tier (and some access): Claude gets its own rendered file.
+        grep -qx "name: $workflow_name" ".claude/$workflow.md"
+        grep -q '^model: ' ".claude/$workflow.md"
         python3 -c 'import sys, tomllib; assert tomllib.load(open(sys.argv[1], "rb"))["name"] == sys.argv[2]' \
           ".codex/agents/$workflow_name.toml" "$workflow_name"
         [ ! -e ".agents/skills/$workflow_name" ]
         ;;
-      *) [ -f ".agents/skills/$workflow_name/SKILL.md" ] ;;
+      *)
+        assert_claude_view ".claude/$workflow.md"
+        [ -f ".agents/skills/$workflow_name/SKILL.md" ]
+        ;;
     esac
   done
   # The sync renders the same bytes the apply wrote: the plan has nothing to update.
@@ -941,7 +955,8 @@ EOF
   run_bootstrap react
   [ "$status" -eq 0 ]
   assert_claude_view .claude/skills/test-reviewer/SKILL.md
-  assert_claude_view .claude/agents/test-reviewer.md
+  # The subagent declares access read-only: Claude gets its own rendered file, not a view.
+  grep -qx 'tools: Read, Grep, Glob' .claude/agents/test-reviewer.md
   [ -f .codex/agents/test-reviewer.toml ]
 
   run_marketplace_sync "$source_dir/assets/common/hooks/sync-marketplace.sh" "$source_dir"
@@ -2699,6 +2714,8 @@ EOF
   cp "$skill_dir/scripts/agent-ready-state.py" "$source_dir/scripts/agent-ready-state.py"
   cp "$skill_dir/scripts/"agent_ready_*.py "$source_dir/scripts/"
   cp -R "$skill_dir/assets/config" "$source_dir/assets/config"
+  # The subagents of the content declare access and model-tier, rendered from its agentMetadata.
+  cp "$skill_dir/assets/providers.json" "$source_dir/assets/providers.json"
   cp "$skill_dir/scripts/render-instruction-template.sh" "$source_dir/scripts/render-instruction-template.sh"
   cp "$skill_dir/scripts/merge-managed-settings.py" "$source_dir/scripts/merge-managed-settings.py"
   cp "$skill_dir/scripts/run-detached.py" "$source_dir/scripts/run-detached.py"
@@ -2822,6 +2839,8 @@ EOF
   cp "$skill_dir/scripts/agent-ready-state.py" "$source_dir/scripts/agent-ready-state.py"
   cp "$skill_dir/scripts/"agent_ready_*.py "$source_dir/scripts/"
   cp -R "$skill_dir/assets/config" "$source_dir/assets/config"
+  # The subagents of the content declare access and model-tier, rendered from its agentMetadata.
+  cp "$skill_dir/assets/providers.json" "$source_dir/assets/providers.json"
   cp "$skill_dir/scripts/merge-managed-settings.py" "$source_dir/scripts/merge-managed-settings.py"
   # The go stack publishes a rule, so the sync renders its Claude view.
   cp "$skill_dir/scripts/render-instruction-template.sh" "$source_dir/scripts/render-instruction-template.sh"

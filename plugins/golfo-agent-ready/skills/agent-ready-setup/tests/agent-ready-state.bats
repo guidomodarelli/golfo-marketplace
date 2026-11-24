@@ -670,7 +670,7 @@ EOF2
 @test "unknown profiles are rejected with the catalog, and a selection without a stack applies" {
   run_bootstrap_with "$skill_dir" --profiles cobol
   [ "$status" -ne 0 ]
-  [[ "$output" == *"unknown profile 'cobol'; available profiles: android, browser, business-flows, go, java, learning, memory-engram, nextjs, nextjs-app-router, node, react, software-development"* ]]
+  [[ "$output" == *"unknown profile 'cobol'; available profiles: android, browser, business-flows, documents, go, java, learning, memory-engram, nextjs, nextjs-app-router, node, orchestration, react, software-development"* ]]
 
   run_bootstrap_with "$skill_dir" --profiles browser
   [ "$status" -eq 0 ]
@@ -710,7 +710,8 @@ EOF
   for stack in react node; do
     cmp -s ".agents/rules/$stack-security.md" "$content_pack/stacks/$stack/rules/$stack-security.md"
     cmp -s ".agents/rules/$stack-testing.md" "$content_pack/stacks/$stack/rules/$stack-testing.md"
-    cmp -s ".agents/agents/$stack-perf-analyzer.md" "$content_pack/stacks/$stack/agents/$stack-perf-analyzer.md"
+    # The perf analyzer declares access and model-tier: its view is rendered, not a copy.
+    grep -qx "name: $stack-perf-analyzer" ".agents/agents/$stack-perf-analyzer.md"
     cmp -s ".agents/commands/$stack-review-pr.md" "$content_pack/stacks/$stack/commands/$stack-review-pr.md"
     grep -Fq ".agents/rules/$stack-security.md" AGENTS.md
     [ "$(lock_value "lock['assets']['.agents/rules/$stack-security.md']['profile']")" = "$stack" ]
@@ -862,8 +863,18 @@ EOF
   [ "$(lock_value 'lock["primaryStack"]')" = "android" ]
   [ "$(lock_value 'lock["profileOrder"]')" = "['software-development', 'android']" ]
   for asset in rules/android-coding-style.md rules/android-security.md rules/android-testing.md agents/android-perf-analyzer.md agents/android-security-scanner.md commands/android-review-pr.md; do
-    cmp -s ".agents/$asset" "$content_pack/stacks/android/$asset"
-    [ -L ".claude/$asset" ] || [ ".claude/$asset" -ef ".agents/$asset" ]
+    case "$asset" in
+      agents/*)
+        # The subagents declare access or model-tier: each provider gets a rendered file.
+        agent_name="${asset#agents/}"
+        grep -qx "name: ${agent_name%.md}" ".agents/$asset"
+        grep -qx "name: ${agent_name%.md}" ".claude/$asset"
+        ;;
+      *)
+        cmp -s ".agents/$asset" "$content_pack/stacks/android/$asset"
+        [ -L ".claude/$asset" ] || [ ".claude/$asset" -ef ".agents/$asset" ]
+        ;;
+    esac
   done
   grep -Fq -- '- Read and follow `.agents/rules/android-coding-style.md`.' AGENTS.md
   [ ! -e .mcp.json ]
@@ -1378,6 +1389,8 @@ frontmatter_line() {
   copy_skill
   printf '%s\n' '---' 'name: deep-reviewer' 'description: Revisa a fondo.' 'access: full' 'model-tier: deep' '---' 'Body.' \
     > "$content_dir/stacks/node/agents/deep-reviewer.md"
+  printf '%s\n' '---' 'name: plain-reviewer' 'description: Revisa sin metadatos.' '---' 'Body.' \
+    > "$content_dir/stacks/node/agents/plain-reviewer.md"
   run_bootstrap_with "$source_copy" --stack node
   [ "$status" -eq 0 ]
   [ "$(frontmatter_line .claude/agents/deep-reviewer.md model)" = 'model: opus' ]
@@ -1385,9 +1398,10 @@ frontmatter_line() {
   [ "$(frontmatter_line .agents/agents/deep-reviewer.md model)" = 'model: pro' ]
   [[ "$(frontmatter_line .agents/agents/deep-reviewer.md tools)" == *'"run_command"'* ]]
   [ "$(codex_agent_value .codex/agents/deep-reviewer.toml model_reasoning_effort)" = high ]
-  # The subagents of the pack declare nothing: copy, view and TOML of part A.
-  cmp -s .agents/agents/node-perf-analyzer.md "$content_dir/stacks/node/agents/node-perf-analyzer.md"
-  [ -L .claude/agents/node-perf-analyzer.md ] || [ .claude/agents/node-perf-analyzer.md -ef .agents/agents/node-perf-analyzer.md ]
+  # A subagent that declares nothing: copy, view and TOML of part A.
+  cmp -s .agents/agents/plain-reviewer.md "$content_dir/stacks/node/agents/plain-reviewer.md"
+  [ -L .claude/agents/plain-reviewer.md ] || [ .claude/agents/plain-reviewer.md -ef .agents/agents/plain-reviewer.md ]
+  [ -f .codex/agents/plain-reviewer.toml ]
 }
 
 @test "an access or model-tier outside its values stops the apply before writing, naming the file" {

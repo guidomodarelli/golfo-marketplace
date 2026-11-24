@@ -519,7 +519,8 @@ EOF
 
   [ "$status" -eq 0 ]
   grep -Fq '<rule path=".agents/rules/node-security.md">' "$test_root/provider-prompt.log"
-  grep -Fq "$(sed -n '1p' "$content_pack/stacks/node/rules/node-security.md")" "$test_root/provider-prompt.log"
+  # The heading of the rule: its first line is the trigger frontmatter that Antigravity needs.
+  grep -Fq -- "$(grep -m1 '^# ' "$content_pack/stacks/node/rules/node-security.md")" "$test_root/provider-prompt.log"
   grep -Fq '# Existing project instructions' "$test_root/provider-prompt.log"
   grep -Fq '<!-- BEGIN AGENT-READY MANAGED -->' "$test_root/provider-prompt.log"
   ! grep -Fq '{{AGENT_READY_' "$test_root/provider-prompt.log"
@@ -972,6 +973,8 @@ EOF
   cp "$skill_dir/scripts/agent-ready-state.py" "$source_dir/scripts/agent-ready-state.py"
   cp "$skill_dir/scripts/"agent_ready_*.py "$source_dir/scripts/"
   cp -R "$skill_dir/assets/config" "$source_dir/assets/config"
+  # The subagents of the content declare access and model-tier, rendered from its agentMetadata.
+  cp "$skill_dir/assets/providers.json" "$source_dir/assets/providers.json"
   cp "$skill_dir/scripts/merge-managed-settings.py" "$source_dir/scripts/merge-managed-settings.py"
   # The stacks of the content pack publish rules, so the sync renders their Claude views.
   cp "$skill_dir/scripts/render-instruction-template.sh" "$source_dir/scripts/render-instruction-template.sh"
@@ -1037,6 +1040,8 @@ EOF
   cp "$skill_dir/scripts/agent-ready-state.py" "$source_dir/scripts/agent-ready-state.py"
   cp "$skill_dir/scripts/"agent_ready_*.py "$source_dir/scripts/"
   cp -R "$skill_dir/assets/config" "$source_dir/assets/config"
+  # The subagents of the content declare access and model-tier, rendered from its agentMetadata.
+  cp "$skill_dir/assets/providers.json" "$source_dir/assets/providers.json"
   cp "$skill_dir/scripts/merge-managed-settings.py" "$source_dir/scripts/merge-managed-settings.py"
   # The stacks of the content pack publish rules, so the sync renders their Claude views.
   cp "$skill_dir/scripts/render-instruction-template.sh" "$source_dir/scripts/render-instruction-template.sh"

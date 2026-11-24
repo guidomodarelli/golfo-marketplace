@@ -1,0 +1,50 @@
+{
+  "schema_version": 2,
+  "skill": "revisar-cierre",
+  "description": "Evalúa que la skill despache el cierre a los subagentes del roster según su condición y consolide un solo informe.",
+  "test_cases": [
+    {
+      "id": "roster-con-punto-a-verificar",
+      "description": "Con un punto a verificar, despacha al auditor y al investigador normativo.",
+      "input": "Revisá el cierre de marzo 2026 de Cliente A (cierres/cliente-a/2026-03.md) antes de mandarlo. Tiene un vencimiento de Ingresos Brutos marcado [a verificar]. No ejecutes comandos ni lances subagentes: decí a qué subagentes despacharías, qué le pasás a cada uno y cómo sería el informe.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "auditor-contable",
+          "description": "Despacha al auditor contable",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "investigador-normativo",
+          "description": "Despacha al investigador por el punto a verificar",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "[Cc]onsolid",
+          "description": "Consolida un solo informe"
+        }
+      ]
+    },
+    {
+      "id": "sin-puntos-a-verificar",
+      "description": "Sin puntos a verificar ni normas en juego, despacha solo al auditor.",
+      "input": "Revisá el cierre de febrero 2026 de Cliente B (cierres/cliente-b/2026-02.md). No tiene nada [a verificar] ni vencimientos que dependan de una norma. No ejecutes comandos ni lances subagentes: decí a qué subagentes despacharías y por qué.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "auditor-contable",
+          "description": "Despacha al auditor contable",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "[Ii]nvestigador.{0,80}([Nn]o |[Ss]in |[Oo]mit|[Ss]alt|[Nn]o cubierto)|([Nn]o |[Ss]in |[Oo]mit|[Ss]alt).{0,80}[Ii]nvestigador",
+          "description": "No despacha al investigador normativo",
+          "critical": true
+        }
+      ]
+    }
+  ]
+}
