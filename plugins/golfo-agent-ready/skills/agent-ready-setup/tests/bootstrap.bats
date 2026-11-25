@@ -65,6 +65,14 @@ teardown() {
   rm -rf "$test_root"
 }
 
+# A copy of the engine inside a plugin folder with its manifests, like an installed release: the engine
+# reads its version there, and a copy without one stops before reverting a repository a versioned engine set up.
+copy_engine_plugin() {
+  mkdir -p "$1"
+  cp -R "$skill_dir"/. "$1"/
+  cp -R "$skill_dir/../../.claude-plugin" "$skill_dir/../../.codex-plugin" "$(dirname "$(dirname "$1")")"/
+}
+
 run_bootstrap() {
   local stack="$1"
   shift
@@ -183,8 +191,8 @@ skip_without_symlinks() {
 
 # bats test_tags=area:session-start
 @test "SessionStart sync migrates browser MCP registrations from the existing installation" {
-  source_dir="$test_root/browser-skill"
-  cp -R "$skill_dir" "$source_dir"
+  source_dir="$test_root/browser-skill/skills/agent-ready-setup"
+  copy_engine_plugin "$source_dir"
   # Isolate the provider-backed instruction review so no real provider CLI writes into HOME,
   # and keep the background installer from detaching a real setup run during the test.
   cat > "$source_dir/scripts/merge-instructions.sh" <<'EOF'
@@ -223,8 +231,8 @@ EOF
 
 # bats test_tags=area:session-start
 @test "SessionStart sync starts the background browser install when no installation exists" {
-  source_dir="$test_root/background-skill"
-  cp -R "$skill_dir" "$source_dir"
+  source_dir="$test_root/background-skill/skills/agent-ready-setup"
+  copy_engine_plugin "$source_dir"
   # Isolate the provider-backed review and record the background installer call instead of installing.
   cat > "$source_dir/scripts/merge-instructions.sh" <<'EOF'
 #!/bin/bash
@@ -913,8 +921,8 @@ EOF
 # bats test_tags=area:adapters
 @test "sync removes duplicate Claude skill views of commands, even when edited" {
   skip_without_symlinks
-  source_dir="$test_root/dynamic-skill"
-  cp -R "$skill_dir" "$source_dir"
+  source_dir="$test_root/dynamic-skill/skills/agent-ready-setup"
+  copy_engine_plugin "$source_dir"
   cat > "$source_dir/scripts/merge-instructions.sh" <<'EOF'
 #!/bin/bash
 exit 0
@@ -966,8 +974,8 @@ EOF
 
 # bats test_tags=area:claude-views
 @test "sync links project rules for Claude and prunes views of deleted ones" {
-  source_dir="$test_root/dynamic-skill"
-  cp -R "$skill_dir" "$source_dir"
+  source_dir="$test_root/dynamic-skill/skills/agent-ready-setup"
+  copy_engine_plugin "$source_dir"
   cat > "$source_dir/scripts/merge-instructions.sh" <<'EOF'
 #!/bin/bash
 exit 0
@@ -996,8 +1004,8 @@ EOF
 
 # bats test_tags=area:claude-views
 @test "sync and apply give the project's own skills a Claude view, never the managed adapters, and prune deleted ones" {
-  source_dir="$test_root/dynamic-skill"
-  cp -R "$skill_dir" "$source_dir"
+  source_dir="$test_root/dynamic-skill/skills/agent-ready-setup"
+  copy_engine_plugin "$source_dir"
   cat > "$source_dir/scripts/merge-instructions.sh" <<'EOF'
 #!/bin/bash
 exit 0
@@ -1047,8 +1055,8 @@ EOF
 
 # bats test_tags=area:adapters
 @test "sync hook replaces placeholder adapter descriptions from older projections" {
-  source_dir="$test_root/dynamic-skill"
-  cp -R "$skill_dir" "$source_dir"
+  source_dir="$test_root/dynamic-skill/skills/agent-ready-setup"
+  copy_engine_plugin "$source_dir"
   cat > "$source_dir/scripts/merge-instructions.sh" <<'EOF'
 #!/bin/bash
 exit 0
@@ -2010,8 +2018,8 @@ EOF
   [ "$status" -eq 0 ]
   [ ! -e .claude/hooks ]
 
-  source_dir="$test_root/updated-agent-ready"
-  cp -R "$skill_dir"/. "$source_dir"/
+  source_dir="$test_root/updated-agent-ready/skills/agent-ready-setup"
+  copy_engine_plugin "$source_dir"
   jq '.hooks.SessionStart[0].matcher = "changed"' \
     "$source_dir/assets/common/settings.json" > "$test_root/settings.json"
   mv "$test_root/settings.json" "$source_dir/assets/common/settings.json"

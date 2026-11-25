@@ -10,7 +10,8 @@ can declare, all optional:
 - ``changes``: the changelog, ``[{"version", "summary", "breaking"?}]``.
 
 An engine below ``minEngine``, or one that does not know the ``schemaVersion``, stops before
-anything is written and says which plugin version to install.
+anything is written and says which plugin version to install. So does an engine older than the one that
+wrote the lock (``generator.version``), or one without a readable version in a repository whose lock has one.
 """
 
 import re
@@ -90,6 +91,26 @@ def require_engine(label, catalog, engine_version, supported_schema):
         raise EngineRequirementError(f"{label} needs the agent-ready-setup engine {minimum} or newer, and this installation "
                                      f"runs {ENGINE_PLUGIN} {engine_version}: install the {ENGINE_PLUGIN} plugin {minimum} "
                                      "or newer and run it again; nothing was changed", required_version=minimum)
+
+
+def require_engine_not_older_than_lock(lock, engine_version):
+    """Stop before writing when the lock was written by a newer engine than this one, or this one has no version.
+
+    An older engine (a stale checkout, a copied skill folder) projects its own assets over the ones the
+    newer engine wrote and reverts them; without a readable version it cannot prove it is not older.
+    """
+    locked_version = ((lock or {}).get("generator") or {}).get("version")
+    locked_key = semver_key(locked_version)
+    if locked_key is None:
+        return
+    engine_key = semver_key(engine_version)
+    if engine_key is not None and engine_key >= locked_key:
+        return
+    running = f"{ENGINE_PLUGIN} {engine_version}" if engine_key else f"a {ENGINE_PLUGIN} of unknown version"
+    raise EngineRequirementError(f"this repository was set up by {ENGINE_PLUGIN} {locked_version}, and this installation "
+                                 f"runs {running}, which would revert its files: install the {ENGINE_PLUGIN} plugin "
+                                 f"{locked_version} or newer and run it again; nothing was changed",
+                                 required_version=locked_version)
 
 
 def changes_between(changes, current, new):

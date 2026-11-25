@@ -156,8 +156,12 @@ def write_text_if_changed(path, text):
 
 
 def plugin_version(skill_dir):
-    """Version of the plugin manifest that ships the skill, if present."""
-    plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(skill_dir)))
+    """Version of the plugin manifest that ships the skill, if present.
+
+    The skill can be reached through a symlink (``~/.claude/skills/agent-ready-setup`` pointing at a
+    checkout, as Local Testing in the repository AGENTS.md sets it up): the manifest is next to its target.
+    """
+    plugin_root = os.path.dirname(os.path.dirname(os.path.realpath(skill_dir)))
     for manifest in (".claude-plugin/plugin.json", ".codex-plugin/plugin.json", "plugin.json"):
         manifest_path = os.path.join(plugin_root, manifest)
         if os.path.isfile(manifest_path):

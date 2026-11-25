@@ -1035,6 +1035,31 @@ PY
   [ "$(tree_fingerprint)" = "$before" ]
 }
 
+@test "an engine without a readable version stops before reverting a repository a versioned engine set up" {
+  # A copy of the skill outside its plugin folder has no manifest: it cannot prove it is not older.
+  cp -R "$skill_dir" "$test_root/stale-skill"
+  run_bootstrap --stack node
+  [ "$status" -eq 0 ]
+  [ "$(lock_value 'data["generator"]["version"]')" != "None" ]
+  before="$(tree_fingerprint)"
+
+  run env PATH="$fake_bin:$PATH" bash "$test_root/stale-skill/scripts/bootstrap.sh" --skill-dir "$test_root/stale-skill" \
+    --provider claude --stack node
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"this repository was set up by golfo-agent-ready"* ]]
+  [[ "$output" == *"runs a golfo-agent-ready of unknown version, which would revert its files"* ]]
+  [ "$(tree_fingerprint)" = "$before" ]
+}
+
+@test "an engine reached through a symlink reads the version of the plugin it points at" {
+  ln -s "$skill_dir" "$test_root/linked-skill"
+
+  run env PATH="$fake_bin:$PATH" bash "$test_root/linked-skill/scripts/bootstrap.sh" --skill-dir "$test_root/linked-skill" \
+    --provider claude --stack node
+  [ "$status" -eq 0 ]
+  [ "$(lock_value 'data["generator"]["version"]')" != "None" ]
+}
+
 @test "a pack with a catalog schema this engine does not know asks for a newer plugin" {
   publish_pack_repository acme
   set_pack_catalog_fields '{"schemaVersion": 2}'
