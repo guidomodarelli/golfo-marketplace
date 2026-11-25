@@ -155,13 +155,18 @@ def write_text_if_changed(path, text):
     write_text_atomically(path, text)
 
 
-def plugin_version(skill_dir):
-    """Version of the plugin manifest that ships the skill, if present.
+def plugin_root_of(skill_dir):
+    """Folder of the plugin that ships the skill, two levels up.
 
     The skill can be reached through a symlink (``~/.claude/skills/agent-ready-setup`` pointing at a
-    checkout, as Local Testing in the repository AGENTS.md sets it up): the manifest is next to its target.
+    checkout, as Local Testing in the repository AGENTS.md sets it up): its plugin is the one of the target.
     """
-    plugin_root = os.path.dirname(os.path.dirname(os.path.realpath(skill_dir)))
+    return os.path.dirname(os.path.dirname(os.path.realpath(skill_dir)))
+
+
+def plugin_version(skill_dir):
+    """Version of the plugin manifest that ships the skill, if present."""
+    plugin_root = plugin_root_of(skill_dir)
     for manifest in (".claude-plugin/plugin.json", ".codex-plugin/plugin.json", "plugin.json"):
         manifest_path = os.path.join(plugin_root, manifest)
         if os.path.isfile(manifest_path):
