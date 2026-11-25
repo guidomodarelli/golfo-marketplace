@@ -34,7 +34,10 @@ contenido), `source.origin` (repositorio del que se puede volver a descargar), `
 la que vino) y `source.contentDigest`,
 que identifica el contenido exacto (assets, templates fusionados y plantillas de
 instrucciones) aunque no haya revisión git. `generator.version` es la versión del
-motor que proyectó. Cada fuente de `profileSources` guarda además su `version`, si el
+motor que proyectó: un motor más viejo, o uno sin versión legible (una copia de la skill fuera de su
+carpeta de plugin), falla en el plan, el apply y el sync antes de escribir, porque revertiría lo que
+proyectó el más nuevo, y dice qué versión del plugin instalar. A una skill a la que se llega por un
+symlink se le lee el manifiesto del plugin al que apunta. Cada fuente de `profileSources` guarda además su `version`, si el
 catálogo la declara. Por asset guarda `profile`,
 `source`, `sha256` aplicado y `state` (`applied`, `conflict`, `failed`,
 `retired-preserved`), más `viewPreserved` cuando un archivo del proyecto ocupa su

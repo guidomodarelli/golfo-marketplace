@@ -9,6 +9,7 @@ import sys
 
 import agent_ready_agent_references as agent_references
 import agent_ready_blocks as managed_blocks
+import agent_ready_compatibility as compatibility
 import agent_ready_conflicts as conflicts_review
 import agent_ready_learning_customized as learning_customized
 import agent_ready_learning_promote as learning_promote
@@ -46,6 +47,7 @@ from agent_ready_common import (
     read_json_file,
     sha256_of_file,
 )
+from agent_ready_content import engine_version_of
 from agent_ready_desired_assets import (
     RENDERED_VIEW_SEPARATOR,
     desired_assets,
@@ -313,6 +315,7 @@ def compute_plan(project_root, skill_dir, catalog, profile_names):
                                         if entry["profile"] in workspace["own"] and not entry.get("workspace"))
     validate_pack_destinations(project_root, assets)
     lock = read_lock(project_root)
+    compatibility.require_engine_not_older_than_lock(lock, engine_version_of(skill_dir))
     locked_assets = lock["assets"] if lock else {}
     entries = []
     for destination, desired_entry in sorted(assets.items()):

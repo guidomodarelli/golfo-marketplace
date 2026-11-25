@@ -31,6 +31,7 @@ from agent_ready_common import (
     KEBAB_CASE_NAME,
     ProfileError,
     StateError,
+    plugin_root_of,
     plugin_version,
     read_json_file,
 )
@@ -133,10 +134,6 @@ class ContentPendingError(ProfileError):
 def composed_root():
     """Per-user directory of composed skill directories, beside the pack cache, never in a project."""
     return os.path.join(os.path.dirname(pack_cache_root()), COMPOSED_DIRECTORY_NAME)
-
-
-def plugin_root_of(skill_dir):
-    return os.path.dirname(os.path.dirname(os.path.abspath(skill_dir)))
 
 
 def declaration_of(configuration):

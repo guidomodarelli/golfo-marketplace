@@ -1035,6 +1035,44 @@ PY
   [ "$(tree_fingerprint)" = "$before" ]
 }
 
+@test "an engine without a readable version stops before reverting a repository a versioned engine set up" {
+  # A copy of the skill outside its plugin folder has no manifest: it cannot prove it is not older.
+  cp -R "$skill_dir" "$test_root/stale-skill"
+  run_bootstrap --stack node
+  [ "$status" -eq 0 ]
+  [ "$(lock_value 'data["generator"]["version"]')" != "None" ]
+  before="$(tree_fingerprint)"
+
+  run env PATH="$fake_bin:$PATH" bash "$test_root/stale-skill/scripts/bootstrap.sh" --skill-dir "$test_root/stale-skill" \
+    --provider claude --stack node
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"this repository was set up by golfo-agent-ready"* ]]
+  [[ "$output" == *"runs a golfo-agent-ready of unknown version, which would revert its files"* ]]
+  [ "$(tree_fingerprint)" = "$before" ]
+}
+
+@test "an engine reached through a symlink reads the version of the plugin it points at, also after a bump" {
+  plugin_copy="$test_root/plugin-copy"
+  mkdir -p "$plugin_copy/skills/agent-ready-setup"
+  cp -R "$skill_dir"/. "$plugin_copy/skills/agent-ready-setup"/
+  cp -R "$skill_dir/../../.claude-plugin" "$skill_dir/../../.codex-plugin" "$plugin_copy"/
+  ln -s "$plugin_copy/skills/agent-ready-setup" "$test_root/linked-skill"
+  run env PATH="$fake_bin:$PATH" bash "$test_root/linked-skill/scripts/bootstrap.sh" --skill-dir "$test_root/linked-skill" \
+    --provider claude --stack node
+  [ "$status" -eq 0 ]
+  [ "$(lock_value 'data["generator"]["version"]')" = "$(json_value "$plugin_copy/.claude-plugin/plugin.json" 'data["version"]')" ]
+
+  # A bump of only the manifests is a new engine: the composed content is not reused with the old version.
+  for manifest in "$plugin_copy/.claude-plugin/plugin.json" "$plugin_copy/.codex-plugin/plugin.json"; do
+    jq '.version = "99.0.0"' "$manifest" > "$test_root/manifest.json"
+    mv "$test_root/manifest.json" "$manifest"
+  done
+  run env PATH="$fake_bin:$PATH" bash "$test_root/linked-skill/scripts/bootstrap.sh" --skill-dir "$test_root/linked-skill" \
+    --provider claude --stack node
+  [ "$status" -eq 0 ]
+  [ "$(lock_value 'data["generator"]["version"]')" = "99.0.0" ]
+}
+
 @test "a pack with a catalog schema this engine does not know asks for a newer plugin" {
   publish_pack_repository acme
   set_pack_catalog_fields '{"schemaVersion": 2}'
