@@ -1523,7 +1523,7 @@
         },
         {
           "type": "regex",
-          "pattern": "(\\(b\\)|Claude finished|menci[oó]n)[^\\n]{0,160}(no (es|son|cuenta|lo trato)|ignor|descart)",
+          "pattern": "(\\(b\\)|Claude finished|menci[oó]n).{0,160}(no (es|son|cuenta|lo trato)|ignor|descart)",
           "description": "Descarta la respuesta a la mención `@claude`"
         },
         {
