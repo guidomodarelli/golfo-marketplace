@@ -1,6 +1,6 @@
 ---
 name: async-operation-error-handling
-description: Diseña, implementa y revisa manejo de errores para operaciones asíncronas distribuidas en cualquier dominio y stack —batch/chunks, mutations parciales, jobs, polling, reanudación, retries, estados terminales, cancelación y fallos upstream— atravesando service/adapter, API/BFF, client y UI o worker. Usar siempre cuando una operación pueda aceptar solo parte del trabajo, crear runs/jobs, terminar con resultados mixtos, fallar después de una respuesta parcial, reintentarse o necesitar preservar progreso; también cuando se deba evitar duplicación, clasificar upstream, sanitizar DTOs o traducir errores a copy localizado. Aplicar incluso si la solicitud menciona solo timeout, partial success, polling, retry, chunk failure, terminal status o error mapping.
+description: Diseña, implementa y revisa manejo de errores para operaciones asíncronas distribuidas en cualquier dominio y stack —batch/chunks, mutations parciales, jobs, polling, reanudación, retries, estados terminales, cancelación y fallos upstream— atravesando service/adapter, API/BFF, client y UI o worker. Usar siempre (con `~/.work`, solo a pedido) cuando una operación pueda aceptar solo parte del trabajo, crear runs/jobs, terminar con resultados mixtos, fallar después de una respuesta parcial, reintentarse o necesitar preservar progreso; también cuando se deba evitar duplicación, clasificar upstream, sanitizar DTOs o traducir errores a copy localizado. Aplicar incluso si la solicitud menciona solo timeout, partial success, polling, retry, chunk failure, terminal status o error mapping.
 license: MIT
 metadata:
   version: "1.1.0"
@@ -12,6 +12,10 @@ metadata:
 ---
 
 # Async Operation Error Handling
+
+## Gate de máquina de trabajo (`~/.work`)
+
+Primer paso, antes de leer cualquier referencia: aplicar el gate de [`references/work-machine-gate.md`](../../references/work-machine-gate.md). Con `~/.work` esta skill corre solo a pedido. Cuenta como pedido explícito, por ejemplo, «manejá el éxito parcial de este batch» o «agregale reintentos y reanudación a este job»; tocar un job o un polling por otro motivo, no.
 
 ## Objetivo
 

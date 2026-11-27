@@ -18,7 +18,7 @@ Collect the information required to draft and apply a high-quality commit messag
 
 - Focus only on understanding the current uncommitted changes.
 - Analyze and commit only staged changes when staged changes exist.
-- If there are no staged changes, analyze all current uncommitted changes and stage them with «git add -A» before commit.
+- If there are no staged changes, stage by path only the files that the current session changed («git add <path>»); never use «git add -A», «git add .» or «git commit -a». Changes that were already uncommitted when the session started, or that another session made, stay unstaged unless the user names them or explicitly asks to include them; list them in the final message. If a file mixes both, stage only this session's hunks or ask.
 - Do not propose new code changes.
 - Do not execute destructive commands.
 - Do not run typecheck, lint, build, tests, coverage or other quality gates as
@@ -56,9 +56,16 @@ Collect the information required to draft and apply a high-quality commit messag
 - If commitlint defines `body-max-line-length`, wrap body lines within that limit.
 - If commitlint defines `subject-case`, format the subject to match that rule.
 - Only omit the type prefix when no repository commitlint rule requires it.
-- Do not include issue numbers in the title or description.
-- Use imperative mood for the commit title and body where applicable.
-  Examples: «add feature», «fix bug», «update docs».
+- Language: write the message in the language that the user's global rules set
+  for commits; when they set none, match the repository history. A language
+  that the repository requires explicitly (commitlint, a contributing guide or
+  its AGENTS.md) wins. Type prefixes such as «feat:» stay as commitlint defines them.
+- Never invent issue numbers and keep them out of the title. When the change
+  implements a specific issue that the user or the task named, end the
+  description with «Closes #<n>» on its own line.
+- Use imperative mood for the commit title and body where applicable, or the
+  form the repository history uses. Examples: «add feature», «fix bug»,
+  «agrega la validación».
 - If referring to identifiers, use «identifier».
 - When mentioning functions or variables, wrap their names with «...».
   Example: «update function «myFunction» to handle edge cases».

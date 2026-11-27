@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "skill": "generate-commit-messages",
-  "description": "Evalúa la redacción y aplicación de commits: respeto de la configuración de commitlint, alcance limitado a lo stageado o `git add -A` cuando no hay nada stageado, formato de identificadores con «...», escape de variables con `$` y aviso explícito de tests no validados sin correr quality gates.",
+  "description": "Evalúa la redacción y aplicación de commits: respeto de la configuración de commitlint, alcance limitado a lo stageado o, cuando no hay nada stageado, a los archivos de la sesión stageados por path (nunca `git add -A`), formato de identificadores con «...», escape de variables con `$` y aviso explícito de tests no validados sin correr quality gates.",
   "test_cases": [
     {
       "id": "conventional-commitlint-staged-only",
@@ -36,14 +36,24 @@
       ]
     },
     {
-      "id": "no-staged-changes-stage-all",
-      "description": "Sin cambios stageados ni commitlint, stagea todo con `git add -A`, commitea sin pedir confirmación e incluye una descripción con razones e impacto.",
-      "input": "Usando generate-commit-messages: no hay nada stageado. En el working tree renombré la función `parseAmount` a `parseCurrencyAmount` en `src/utils/money.js` y actualicé sus tres llamadas en `src/checkout/`. El repo no tiene configuración de commitlint. Commiteá los cambios actuales. No ejecutes ni edites nada: describí los comandos que correrías en orden y el mensaje completo del commit.",
+      "id": "no-staged-changes-stage-session-files",
+      "description": "Sin cambios stageados ni commitlint, stagea por path solo los archivos de la sesión (nunca `git add -A`), deja afuera un archivo que ya estaba modificado, commitea sin pedir confirmación e incluye una descripción con razones e impacto.",
+      "input": "Usando generate-commit-messages: no hay nada stageado. En esta sesión renombré la función `parseAmount` a `parseCurrencyAmount` en `src/utils/money.js` y actualicé sus tres llamadas en `src/checkout/`. `notes.md` ya estaba modificado antes de que empezara la sesión. El repo no tiene configuración de commitlint. Commiteá los cambios de la sesión. No ejecutes ni edites nada: describí los comandos que correrías en orden y el mensaje completo del commit.",
       "assertions": [
         {
-          "type": "contains",
-          "value": "git add -A",
-          "description": "Stagea todos los cambios con git add -A cuando no hay nada stageado"
+          "type": "regex",
+          "pattern": "git add [^\\n]*src/(utils|checkout)",
+          "description": "Stagea por path los archivos que cambió la sesión"
+        },
+        {
+          "type": "not_contains_any",
+          "values": ["git add -A", "git add .\n", "git add . ", "git commit -a", "git commit -am"],
+          "description": "No stagea todo el árbol de trabajo"
+        },
+        {
+          "type": "regex",
+          "pattern": "notes\\.md.*(no |fuera|exclu|sin stagear|unstaged|not |ajeno)|(no |fuera|exclu|sin stagear|unstaged|not |ajeno).*notes\\.md",
+          "description": "Deja fuera el archivo que ya estaba modificado antes de la sesión"
         },
         {
           "type": "contains",

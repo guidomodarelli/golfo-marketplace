@@ -1,6 +1,6 @@
 ---
 name: claude-autofix-loop
-description: "Lanza el loop que auto-fixea los hallazgos de Claude (claude[bot], el workflow Claude Code Review de anthropics/claude-code-action con el plugin code-review) en un PR: fix en clone efímero, push, closeout del hilo, nueva ronda con el propio push, timeout y reintento del run, y merge sin preguntar tras el gate de CI. Usa el flujo centralizado de codex-autofix-loop con el perfil de revisor `claude`, sin copiarlo. Usar cuando pidan /claude-autofix-loop, «fixeá los comentarios de Claude en el PR», «loop de Claude para el PR N», un link a un comentario de claude[bot] con `## Code review`, o al abrir un PR en un repo cuyo revisor es ese workflow. Para comentarios de Codex usar codex-autofix-loop; para cerrar un solo comentario, codex-comment-closeout. Use when the user asks to auto-fix or loop over claude[bot] code review comments on a pull request."
+description: "Lanza el loop que auto-fixea los hallazgos de Claude (claude[bot], el workflow Claude Code Review de anthropics/claude-code-action con el plugin code-review) en un PR: fix en clone efímero, push, closeout del hilo, nueva ronda con el propio push, timeout y reintento del run, y merge sin preguntar tras el gate de CI. Usa el flujo centralizado de codex-autofix-loop con el perfil de revisor `claude`, sin copiarlo. Usar cuando pidan /claude-autofix-loop, «fixeá los comentarios de Claude en el PR», «loop de Claude para el PR N», un link a un comentario de claude[bot] con `## Code review`, o al abrir un PR en un repo cuyo revisor es ese workflow (con `~/.work`, solo a pedido). Para comentarios de Codex usar codex-autofix-loop; para cerrar un solo comentario, codex-comment-closeout. Use when the user asks to auto-fix or loop over claude[bot] code review comments on a pull request."
 license: MIT
 metadata:
   version: "1.0.0"
@@ -16,6 +16,10 @@ Punto de entrada para el loop de auto-fix sobre los hallazgos de **Claude** (`cl
 no vive acá: es el de [`codex-autofix-loop`](../codex-autofix-loop/SKILL.md) con el **perfil de revisor
 `claude`**. Así triage, fan-out, closeout, topes de rondas, gate de CI y merge tienen una sola fuente, y
 un cambio al flujo llega a los dos revisores a la vez.
+
+## Gate de máquina de trabajo (`~/.work`)
+
+Primer paso, antes de leer cualquier referencia: aplicar el gate de [`references/work-machine-gate.md`](../../references/work-machine-gate.md). Con `~/.work` esta skill corre solo a pedido. Es el mismo gate de `codex-autofix-loop`: con `~/.work` el loop se lanza solo a pedido («fixeá los comentarios de Claude en el PR 12») y no mergea si el usuario no pidió el merge.
 
 ## Flujo
 

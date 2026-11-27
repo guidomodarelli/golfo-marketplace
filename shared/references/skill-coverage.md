@@ -1,10 +1,11 @@
 # Cobertura incremental de skills (`skill-coverage`)
 
-Fuente única del protocolo con el que una skill de los plugins golfo consulta qué cubrió antes, decide si repetir el análisis y registra la cobertura que acredita. Para las skills integradas el protocolo es **obligatorio**: si el repositorio no tiene registro o ninguna unidad cubre el código tocado, la skill los crea, y una ejecución que termina sin `record` exitoso por unidad cierra **incompleta**. Las skills integradas (`ui-ux-flow-patterns`, `measured-performance-optimization`, `optimistic-action-mutations`, `nextjs-route-ui-boundaries`) solo agregan sus reglas propias y remiten acá.
+Fuente única del protocolo con el que una skill de los plugins golfo consulta qué cubrió antes, decide si repetir el análisis y registra la cobertura que acredita. Para las skills integradas el protocolo es **obligatorio**, salvo en la [máquina del trabajo](#máquina-del-trabajo): si el repositorio no tiene registro o ninguna unidad cubre el código tocado, la skill los crea, y una ejecución que termina sin `record` exitoso por unidad cierra **incompleta**. Las skills integradas (`ui-ux-flow-patterns`, `measured-performance-optimization`, `optimistic-action-mutations`, `nextjs-route-ui-boundaries`) solo agregan sus reglas propias y remiten acá.
 
 ## Contenido
 
 - [Qué resuelve](#qué-resuelve)
+- [Máquina del trabajo](#máquina-del-trabajo)
 - [Dónde vive cada cosa](#dónde-vive-cada-cosa)
 - [Cómo invocar el CLI](#cómo-invocar-el-cli)
 - [Protocolo de una skill](#protocolo-de-una-skill)
@@ -22,6 +23,10 @@ Fuente única del protocolo con el que una skill de los plugins golfo consulta q
 ## Qué resuelve
 
 Cada skill que revisa una funcionalidad deja una cobertura **verificable** sobre una **unidad funcional** (normalmente un subflujo: "Crear proveedor", "Aprobar solicitud"): qué código revisó (fingerprint por símbolo), en qué commit, con qué versión y definición de la skill, con qué evidencia y con qué limitaciones. Al volver a invocarla, la skill sabe si la cobertura sigue vigente, qué cambió desde entonces y qué alcance mínimo tiene que revisar. Nada se marca verificado sin la evidencia que exige su política.
+
+## Máquina del trabajo
+
+En una máquina marcada con `~/.work` (ver [`work-machine-gate.md`](work-machine-gate.md)) el registro no se crea, porque agrega archivos al repositorio que nadie pidió. Si el repositorio ya tiene `.golfo/skill-coverage/`, la skill lo consulta y registra como en cualquier máquina. Si no lo tiene, no corre `init`, `add-unit` ni `discover --write`, no cierra incompleta por eso y deja la cobertura en el reporte final: qué unidad revisó, con qué resultado y qué quedó pendiente. Esta excepción prevalece sobre el «obligatorio» de este protocolo y de cada skill integrada.
 
 ## Dónde vive cada cosa
 
@@ -56,7 +61,7 @@ El CLI no depende del agente: funciona igual en Claude Code, Codex y Hermes con 
 
 ## Protocolo de una skill
 
-1. **Identificar la unidad y crearla si falta.** `affected --changed --skill <skill>` (cambios staged, unstaged y untracked) o `affected --paths <archivo>...` devuelve las unidades cuyo código incluye esos archivos. Un pedido puede tocar varias unidades: el protocolo corre por cada una. Si el repositorio no tiene registro o ninguna unidad cubre el código tocado, crearlos es parte de la skill, no una sugerencia:
+1. **Identificar la unidad y crearla si falta.** `affected --changed --skill <skill>` (cambios staged, unstaged y untracked) o `affected --paths <archivo>...` devuelve las unidades cuyo código incluye esos archivos. Un pedido puede tocar varias unidades: el protocolo corre por cada una. Si el repositorio no tiene registro o ninguna unidad cubre el código tocado, crearlos es parte de la skill, no una sugerencia (salvo en la [máquina del trabajo](#máquina-del-trabajo)):
    1. `init` crea `.golfo/skill-coverage/` con su `config.json` y su `.gitignore` (también lo hacen `add-unit` y `discover --write`).
    2. En páginas de Next.js App Router, `discover --scope <carpeta> --write` propone y guarda unidades; revisá las creadas y ajustá a mano sus límites, nombres e ids según [Unidades funcionales](#unidades-funcionales) (son definiciones, no evidencia).
    3. Para el resto (APIs, jobs, webhooks, backend, UI fuera de páginas del App Router o lo que `discover` no propuso), `add-unit --id <id> --kind <kind> --module <m> [--page <p>] [--section <s>] --subflow <s> --entry <path[:symbol]>...` crea la unidad validada contra el schema.

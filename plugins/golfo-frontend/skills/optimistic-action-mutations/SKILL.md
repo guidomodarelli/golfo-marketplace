@@ -1,6 +1,6 @@
 ---
 name: optimistic-action-mutations
-description: 'Optimistic UI y ciclo de vida de acciones. INVOCAR SIEMPRE, sin pedido explícito, al crear, modificar, corregir o refactorizar cualquier flujo de UI o su lógica en cualquier stack (pantallas, formularios, botones, handlers, hooks, caché, consultas/refetch y endpoints que alimentan esa UI), aunque no pidan optimismo. Revisar estado inicial, carga, GET/POST/PATCH/DELETE, envío, guardado, toggle, selección, reintento, reenvío de SMS/OTP, reset, cancelar, deshacer, éxito, error, timeout, offline, duplicación, concurrencia, rollback y reconciliación. Decidir entre actualización optimista, estado pending y confirmación por servidor; no anticipar éxito en pagos, autenticación, permisos ni acciones irreversibles. Registrar siempre la cobertura por subflujo con skill-coverage (crear registro y unidad si faltan) y complementar ui-ux-flow-patterns. No en tareas sin UI ni flujo de usuario.'
+description: 'Optimistic UI y ciclo de vida de acciones. INVOCAR SIEMPRE, sin pedido explícito (con `~/.work`, solo a pedido), al crear, modificar, corregir o refactorizar cualquier flujo de UI o su lógica en cualquier stack (pantallas, formularios, botones, handlers, hooks, caché, consultas/refetch y endpoints que alimentan esa UI), aunque no pidan optimismo. Revisar estado inicial, carga, GET/POST/PATCH/DELETE, envío, guardado, toggle, selección, reintento, reenvío de SMS/OTP, reset, cancelar, deshacer, éxito, error, timeout, offline, duplicación, concurrencia, rollback y reconciliación. Decidir entre actualización optimista, estado pending y confirmación por servidor; no anticipar éxito en pagos, autenticación, permisos ni acciones irreversibles. Registrar siempre la cobertura por subflujo con skill-coverage (crear registro y unidad si faltan, salvo con `~/.work`) y complementar ui-ux-flow-patterns. No en tareas sin UI ni flujo de usuario.'
 license: MIT
 metadata:
   version: "1.2.0"
@@ -15,9 +15,13 @@ metadata:
 
 Cada acción de una UI tiene un ciclo de vida: el usuario la dispara, la UI responde, el servidor decide y la UI se reconcilia con esa decisión. Esta skill revisa ese ciclo en cada operación que un cambio toca y elige, para cada una, cuánto puede adelantarse la UI sin mentir: actualizar ya y reconciliar (optimistic), mostrar que se está procesando sin afirmar el resultado (pending-first) o esperar la respuesta del servidor (server-confirmed). No convierte todo en optimistic: se asegura de que ninguna acción relevante quede sin evaluar.
 
+## Gate de máquina de trabajo (`~/.work`)
+
+Primer paso, antes de leer cualquier referencia: aplicar el gate de [`references/work-machine-gate.md`](../../references/work-machine-gate.md). Con `~/.work` esta skill corre solo a pedido. Cuenta como pedido explícito, por ejemplo, «hacé optimista este toggle» o «revisá el ciclo de vida de este formulario»; cambiar un botón o un handler por otro motivo, no.
+
 ## Invocación automática
 
-La descripción pide cargarla en cada cambio de un flujo de UI. Es una instrucción al agente, no una garantía: el runtime decide qué skills carga y ningún texto lo vuelve determinístico. Por eso esta sección define qué hacer una vez cargada, para que el costo sea proporcional al cambio.
+La descripción pide cargarla en cada cambio de un flujo de UI, salvo con `~/.work` (ver el gate de arriba). Es una instrucción al agente, no una garantía: el runtime decide qué skills carga y ningún texto lo vuelve determinístico. Por eso esta sección define qué hacer una vez cargada, para que el costo sea proporcional al cambio.
 
 - **Activación.** Cualquier creación, modificación, corrección o refactor de un flujo de UI o de la lógica que lo alimenta (handler, hook, caché, query, route handler, server action, contrato de API que una pantalla consume), aunque el pedido no mencione optimismo. Que el cambio "solo agregue un botón" no la deja afuera: ese botón es una operación nueva con su propio ciclo de vida.
 - **Evaluación.** Listar las operaciones que el cambio agrega o toca (lecturas, mutaciones, operaciones prolongadas) y las transiciones afectadas. Solo esas: una pantalla que el cambio no toca no se vuelve a auditar.
@@ -41,7 +45,7 @@ Un cambio mínimo produce una evaluación mínima. **No en**: jobs, migraciones,
 
 ## Cobertura incremental
 
-Obligatorio en cada ejecución, haya o no registro: seguí el [protocolo de cobertura](../../references/skill-coverage.md#protocolo-de-una-skill) con `--skill optimistic-action-mutations` en cada unidad funcional que toque el trabajo, incluido su paso 1 cuando falta el registro o la unidad (crearlos es parte de la skill; proponer `discover` no alcanza) y el [cierre incompleto](../../references/skill-coverage.md#cierre-incompleto-o-bloqueado) cuando no se puede registrar. Nunca inventar cobertura ni evidencia. El registro decide **cuánto** trabajo repetir, nunca **si** cargar la skill: la activación de arriba manda siempre.
+Obligatorio en cada ejecución, haya o no registro (con `~/.work` vale la excepción de [Máquina del trabajo](../../references/skill-coverage.md#máquina-del-trabajo)): seguí el [protocolo de cobertura](../../references/skill-coverage.md#protocolo-de-una-skill) con `--skill optimistic-action-mutations` en cada unidad funcional que toque el trabajo, incluido su paso 1 cuando falta el registro o la unidad (crearlos es parte de la skill; proponer `discover` no alcanza) y el [cierre incompleto](../../references/skill-coverage.md#cierre-incompleto-o-bloqueado) cuando no se puede registrar. Nunca inventar cobertura ni evidencia. El registro decide **cuánto** trabajo repetir, nunca **si** cargar la skill: la activación de arriba manda siempre.
 
 - **Decisión de `check`.** `skip`: la cobertura verificada sigue vigente para el resto de la unidad, pero lo que vos agregás o tocás se evalúa igual. `incremental`: solo el alcance que lista `check` (cada parte con su foco: handler, render, contrato del servidor, configuración de tiempos) más su contexto necesario. `full`: el inventario completo de operaciones de la unidad. Un pedido de auditoría completa usa `check --force-full`.
 - **Modo de `begin`** igual al que usaste: `lightweight`, `incremental` o `full`.

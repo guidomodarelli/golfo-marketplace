@@ -1,7 +1,7 @@
 {
   "name": "golfo-frontend",
   "description": "Skills de frontend para cualquier tecnología de UI (web, mobile nativo o React): qué mostrar en cada estado de un flujo, optimistic UI y ciclo de vida de acciones, y propuestas visuales de UI.",
-  "version": "0.129.1",
+  "version": "0.130.0",
   "author": {
     "name": "Guido Modarelli"
   },

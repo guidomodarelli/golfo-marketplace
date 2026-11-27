@@ -1,6 +1,6 @@
 {
   "name": "golfo-git",
-  "version": "0.129.2",
+  "version": "0.130.0",
   "description": "Skills de Git que sirven con cualquier host (GitHub, GitLab u otro): worktrees hermanos, mensajes de commit, fixes en clones efímeros, loop de review y fix, y grafos del flujo de un cambio.",
   "author": {
     "name": "Guido Modarelli",

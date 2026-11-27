@@ -1,6 +1,6 @@
 ---
 name: codex-autofix-loop
-description: "Lanza y opera el loop que auto-fixea los comentarios de un revisor bot en un PR, Codex (chatgpt-codex-connector[bot], default) o Claude (claude[bot], perfil `claude`): clone efímero → fix → push → closeout del hilo, o `@codex fix` en el hilo (modos `codex`/`auto`), con dedup por PR, tope de rondas, timeout por ronda, guard de auto-cancelación y merge sin preguntar ni esperar revisión humana tras el gate de CI, también al terminar la última ronda. Lanzarlo solo, sin que lo pidan, apenas el agente abre un PR con `gh pr create`. Adapta la espera a cada agente (Monitor en Claude Code, watcher en Hermes o Codex, o una ronda por invocación). Para un solo comentario alcanza con `codex-comment-closeout`. Use when the user asks to relaunch/start the Codex or Claude auto-fix loop for a PR, right after the agent opens a pull request (gh pr create) even if nobody asked, set up reviewer comment auto-fixing, mentions docs/codex-autofix-loop.md, processed-PR.json, or the codex-autofix workflow."
+description: "Lanza y opera el loop que auto-fixea los comentarios de un revisor bot en un PR, Codex (chatgpt-codex-connector[bot], default) o Claude (claude[bot], perfil `claude`): clone efímero → fix → push → closeout del hilo, o `@codex fix` en el hilo (modos `codex`/`auto`), con dedup por PR, tope de rondas, timeout por ronda, guard de auto-cancelación y merge sin preguntar ni esperar revisión humana tras el gate de CI, también al terminar la última ronda. Lanzarlo solo, sin que lo pidan (con `~/.work`, solo a pedido), apenas el agente abre un PR con `gh pr create`. Adapta la espera a cada agente (Monitor en Claude Code, watcher en Hermes o Codex, o una ronda por invocación). Para un solo comentario alcanza con `codex-comment-closeout`. Use when the user asks to start the Codex or Claude auto-fix loop for a PR, right after the agent opens a pull request (gh pr create) even if nobody asked, set up reviewer comment auto-fixing, mentions docs/codex-autofix-loop.md, processed-PR.json, or the codex-autofix workflow."
 license: MIT
 metadata:
   version: "1.9.0"
@@ -43,6 +43,10 @@ Cubre **tres fuentes** de comentarios de Codex:
 1. **Inline** (`pulls/{pr}/comments`): atados a un `path` + `line`; closeout = 👍 + reply en el hilo + resolver el hilo.
 2. **Generales** (`issues/{pr}/comments`): comentarios sueltos del PR; closeout = 👍 + reply.
 3. **Review-body de primer nivel** (`pulls/{pr}/reviews`, anchor `#pullrequestreview-…`): el resumen que Codex postea al enviar una review. Se procesa **solo cuando el body trae una sugerencia accionable real** (no un mero resumen). Closeout = 👍 + **quote reply** (citando el body). Cuando el review-body **y todos sus comments inline** quedan resueltos, se **minimiza la review con estado `RESOLVED`** (queda oculta/colapsada). `PullRequestReview` implementa `Reactable` y `Minimizable`, así que reacción y minimize van por GraphQL sobre su `node_id`.
+
+## Gate de máquina de trabajo (`~/.work`)
+
+Primer paso, antes de leer cualquier referencia: aplicar el gate de [`references/work-machine-gate.md`](../../references/work-machine-gate.md). Con `~/.work` esta skill corre solo a pedido. Cubre el arranque automático al abrir un PR y el merge sin preguntar. Con `~/.work` el loop se lanza solo a pedido («lanzá el loop de Codex en el PR 12», «fixeá los comentarios de Codex»), y aun así no mergea si el usuario no pidió el merge: al terminar, reporta que el PR quedó listo para mergear.
 
 ## Perfiles de revisor
 
@@ -291,7 +295,7 @@ modo desactiva se reporta al cierre en `Limitaciones del agente`.
 
 ## Arranque automático al abrir un PR
 
-Cada vez que el agente abre un PR con `gh pr create`, lanzá este loop para ese PR **en el
+Con `~/.work` este arranque no corre (ver «Gate de máquina de trabajo» arriba). Sin `~/.work`, cada vez que el agente abre un PR con `gh pr create`, lanzá este loop para ese PR **en el
 mismo turno, sin preguntar ni esperar a que alguien lo pida**. Vale para cualquier flujo:
 `feature-branch-pr`, `stacked-pr`, un release o un fix en otro repo. Así ningún PR queda
 esperando la review de Codex sin nadie que procese sus comentarios.
