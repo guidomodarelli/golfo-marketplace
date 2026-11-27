@@ -1,0 +1,22 @@
+[
+  {"query":"confirmá los cambios del árbol de trabajo con un mensaje razonable, el repo tiene commitlint con config-conventional así que fijate el formato","should_trigger":true},
+  {"query":"ya terminé el refactor de `src/billing/invoice.ts` y sus tests, haceme el commit con un buen mensaje","should_trigger":true},
+  {"query":"write a commit message for what I have staged right now and commit it. it's the fix for the null check in `parseHeaders` that was crashing the webhook worker","should_trigger":true},
+  {"query":"commiteá todo menos el `.env.local`, que lo toqué yo a mano para probar contra staging","should_trigger":true},
+  {"query":"necesito el mensaje de commit en español para los cambios del hook `scripts/git-hooks/pre-commit`, siguiendo el estilo del historial del repo, y después commitealo","should_trigger":true},
+  {"query":"git commit with a decent message pls, I changed the retry/backoff logic in `workers/sync.py` and updated `tests/test_sync.py`","should_trigger":true},
+  {"query":"hacé el commit de lo que cambiaste en esta sesión, pero sin incluir mis cambios en `docs/notes.md` que estaban de antes","should_trigger":true},
+  {"query":"corré /generate-commit-messages sobre lo que está stageado, solo eso, lo del README dejalo afuera","should_trigger":true},
+  {"query":"commiteá mis cambios también, los de `config/settings.json`, junto con lo que hiciste vos del endpoint de health","should_trigger":true},
+  {"query":"guardá esto en git con un mensaje que explique por qué cambiamos el timeout de 30s a 90s en `api/client.go`, es para el issue #418","should_trigger":true},
+  {"query":"abrí un PR contra develop con estos cambios y completá la descripción con la plantilla de siempre","should_trigger":false},
+  {"query":"squasheá los últimos 3 commits de `feature/payments-retry` en uno solo antes de que lo revisen","should_trigger":false},
+  {"query":"explicame qué cambió entre `v2.3.0` y `v2.4.0` leyendo el git log, quiero saber si se tocó la autenticación","should_trigger":false},
+  {"query":"configurá commitlint con config-conventional y husky en este repo para que rechace los mensajes de commit que no cumplan","should_trigger":false},
+  {"query":"revisá el diff de mi rama contra develop y decime si hay bugs o algo raro antes de que lo commitee","should_trigger":false},
+  {"query":"generá el CHANGELOG de la versión 1.8.0 a partir de los commits desde el último tag, agrupado por feat y fix","should_trigger":false},
+  {"query":"hacé un git stash de lo que tengo sin commitear y cambiá a la rama `hotfix/login-timeout`","should_trigger":false},
+  {"query":"revertí el commit `a1b2c3d` que rompió el build de main y pusheá el revert","should_trigger":false},
+  {"query":"write a git pre-commit hook that blocks any commit containing `console.log` in files under `src/`","should_trigger":false},
+  {"query":"resolvé los conflictos del rebase sobre main en `src/api/client.ts` y seguí con el rebase","should_trigger":false}
+]

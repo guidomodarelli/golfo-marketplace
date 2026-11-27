@@ -123,7 +123,7 @@
       "assertions": [
         {
           "type": "regex",
-          "pattern": "MAX_VISIBLE_ITEMS[^\\n]*=>[^\\n]*(local|FeedList|se queda|mantener|permanece)",
+          "pattern": "MAX_VISIBLE_ITEMS.*=>.*(local|FeedList|se queda|mantener|permanece)",
           "description": "Deja MAX_VISIBLE_ITEMS local en FeedList.ts"
         },
         {
@@ -150,7 +150,7 @@
         },
         {
           "type": "regex",
-          "pattern": "ORDER_QTY_EXCEEDED[^\\n]*=>",
+          "pattern": "ORDER_QTY_EXCEEDED.*=>",
           "description": "Clasifica el código de error como parte del procedimiento"
         },
         {

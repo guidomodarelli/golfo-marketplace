@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "skill": "generate-commit-messages",
-  "description": "Evalúa la redacción y aplicación de commits: respeto de la configuración de commitlint, alcance limitado a lo stageado o, cuando no hay nada stageado, a los archivos de la sesión stageados por path (nunca `git add -A`), formato de identificadores con «...», escape de variables con `$` y aviso explícito de tests no validados sin correr quality gates.",
+  "description": "Evalúa la redacción y aplicación de commits: respeto de la configuración de commitlint, alcance limitado a lo stageado o, cuando no hay nada stageado, a los archivos de la sesión stageados por path (nunca `git add -A`), archivos ajenos solo cuando el usuario los nombra o, ante «todo», tras una única pregunta, formato de identificadores con «...», escape de variables con `$` y aviso explícito de tests no validados sin correr quality gates.",
   "test_cases": [
     {
       "id": "conventional-commitlint-staged-only",
@@ -42,12 +42,12 @@
       "assertions": [
         {
           "type": "regex",
-          "pattern": "git add [^\\n]*src/(utils|checkout)",
+          "pattern": "git add .*src/(utils|checkout)",
           "description": "Stagea por path los archivos que cambió la sesión"
         },
         {
           "type": "not_contains_any",
-          "values": ["git add -A", "git add .\n", "git add . ", "git commit -a", "git commit -am"],
+          "values": ["^[[:space:]]*git add -A", "^[[:space:]]*git add \\.[[:space:]]*$", "^[[:space:]]*git add \\. ", "^[[:space:]]*git commit -a"],
           "description": "No stagea todo el árbol de trabajo"
         },
         {
@@ -84,12 +84,12 @@
       "assertions": [
         {
           "type": "regex",
-          "pattern": "config\\.local\\.json[^\\n]*\\?|¿[^\\n]*config\\.local\\.json",
+          "pattern": "config\\.local\\.json.*\\?|¿.*config\\.local\\.json",
           "description": "Pregunta si incluye el archivo ajeno y lo nombra en la pregunta"
         },
         {
           "type": "not_contains_any",
-          "values": ["git add -A", "git add .\n", "git add . ", "git commit -a", "git commit -am"],
+          "values": ["^[[:space:]]*git add -A", "^[[:space:]]*git add \\.[[:space:]]*$", "^[[:space:]]*git add \\. ", "^[[:space:]]*git commit -a"],
           "description": "No stagea todo el árbol de trabajo"
         }
       ]
@@ -138,7 +138,7 @@
         },
         {
           "type": "not_contains_any",
-          "values": ["git add -A", "git add .\n", "git add . ", "git commit -a", "git commit -am"],
+          "values": ["^[[:space:]]*git add -A", "^[[:space:]]*git add \\.[[:space:]]*$", "^[[:space:]]*git add \\. ", "^[[:space:]]*git commit -a"],
           "description": "No stagea todo el árbol de trabajo"
         }
       ]
@@ -150,7 +150,7 @@
       "assertions": [
         {
           "type": "regex",
-          "pattern": "git add [^\\n]*src/api/client\\.ts",
+          "pattern": "git add .*src/api/client\\.ts",
           "description": "Stagea por path el archivo de la sesión"
         },
         {
@@ -160,7 +160,7 @@
         },
         {
           "type": "not_contains_any",
-          "values": ["git add -A", "git add .\n", "git add . ", "git commit -a", "git commit -am", "¿Incluyo", "¿Querés que incluya", "Should I include"],
+          "values": ["^[[:space:]]*git add -A", "^[[:space:]]*git add \\.[[:space:]]*$", "^[[:space:]]*git add \\. ", "^[[:space:]]*git commit -a", "¿Incluyo", "¿Querés que incluya", "Should I include"],
           "description": "No stagea todo el árbol ni pregunta, porque nadie puede contestar"
         }
       ]
@@ -172,7 +172,7 @@
       "assertions": [
         {
           "type": "regex",
-          "pattern": "git add [^\\n]*src/cart/total\\.ts",
+          "pattern": "git add .*src/cart/total\\.ts",
           "description": "Stagea por path el archivo de la sesión"
         },
         {
@@ -182,8 +182,35 @@
         },
         {
           "type": "not_contains_any",
-          "values": ["git add -A", "git add .\n", "git add . ", "git commit -a", "git commit -am", "¿Incluyo", "¿Querés que incluya", "¿Querés que commitee", "¿Confirmás", "Should I include", "Do you want me to commit"],
+          "values": ["^[[:space:]]*git add -A", "^[[:space:]]*git add \\.[[:space:]]*$", "^[[:space:]]*git add \\. ", "^[[:space:]]*git commit -a", "¿Incluyo", "¿Querés que incluya", "¿Querés que commitee", "¿Confirmás", "Should I include", "Do you want me to commit"],
           "description": "No stagea todo el árbol ni pregunta, porque no hay archivos ajenos"
+        }
+      ]
+    },
+    {
+      "id": "named-foreign-file-enters-without-asking",
+      "description": "Cuando el usuario nombra un archivo que ya estaba modificado antes de la sesión, lo incluye en el commit sin preguntar y lo stagea por path junto con el archivo de la sesión.",
+      "input": "Usando generate-commit-messages: no hay nada stageado. En esta sesión agregué el endpoint de salud en `src/server/health.ts`. `config/settings.json` ya estaba modificado antes de que empezara la sesión, con un cambio mío. El repo no tiene commitlint. Commiteá los cambios de la sesión e incluí también `config/settings.json`. No ejecutes ni edites nada: describí los comandos que correrías en orden y el mensaje completo del commit.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "git add .*config/settings\\.json",
+          "description": "Stagea por path el archivo ajeno que nombró el usuario"
+        },
+        {
+          "type": "regex",
+          "pattern": "git add .*src/server/health\\.ts",
+          "description": "Stagea por path el archivo de la sesión"
+        },
+        {
+          "type": "contains",
+          "value": "git commit",
+          "description": "Aplica el commit directamente"
+        },
+        {
+          "type": "not_contains_any",
+          "values": ["^[[:space:]]*git add -A", "^[[:space:]]*git add \\.[[:space:]]*$", "^[[:space:]]*git add \\. ", "^[[:space:]]*git commit -a", "¿Incluyo", "¿Querés que incluya", "¿Querés que commitee", "¿Confirmás", "Should I include", "Do you want me to commit"],
+          "description": "No stagea todo el árbol ni pregunta, porque el usuario ya nombró el archivo"
         }
       ]
     }
