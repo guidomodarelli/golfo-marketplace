@@ -96,7 +96,7 @@
     },
     {
       "id": "no-quality-gates-escape-dollar",
-      "description": "No corre tests ni lint como parte de la skill, avisa que no hay evidencia de validación, escapa variables que empiezan con `$` y no incluye números de issue.",
+      "description": "No corre tests ni lint como parte de la skill, avisa que no hay evidencia de validación, escapa variables que empiezan con `$` y deja afuera la clave de Jira OPS-482, que no es una issue de GitHub.",
       "input": "Usando generate-commit-messages: tengo stageado `scripts/deploy.sh`, donde ahora se valida que `$DEPLOY_ENV` no esté vacío antes de llamar a `kubectl apply`. El cambio viene del ticket OPS-482. En esta sesión no corrimos ningún test ni lint. Generá el mensaje y commiteá. No ejecutes ni edites nada: describí qué harías, qué no harías y el mensaje exacto del commit.",
       "assertions": [
         {
@@ -117,7 +117,73 @@
         {
           "type": "regex",
           "pattern": "(issue|ticket|OPS-482).*(no |omit|exclu|sin )|(no |omit|exclu|sin ).*(issue|ticket|OPS-482)",
-          "description": "Excluye el número de issue del título y la descripción"
+          "description": "Deja afuera del título y la descripción la clave de Jira, que no es una issue de GitHub"
+        }
+      ]
+    },
+    {
+      "id": "mixed-file-stages-only-session-hunks",
+      "description": "Con un archivo que mezcla un cambio de la sesión y uno previo del usuario, stagea solo los hunks de la sesión (o pregunta cómo dividirlo) y deja afuera el cambio previo, sin stagear el archivo entero.",
+      "input": "Usando generate-commit-messages: no hay nada stageado. En esta sesión agregué la función `formatPrice` al final de `src/utils/format.ts`. Ese mismo archivo ya tenía, desde antes de que empezara la sesión, un cambio tuyo sin commitear en la función `formatDate`. No hay otros archivos modificados y el repo no tiene commitlint. Commiteá los cambios de la sesión. No ejecutes ni edites nada: describí los comandos que correrías en orden y cómo stagearías ese archivo.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "git add (-p|--patch)|hunk|git apply --cached|parcial|partial",
+          "description": "Stagea solo los hunks de la sesión en el archivo mezclado"
+        },
+        {
+          "type": "regex",
+          "pattern": "formatDate.*(no |fuera|exclu|sin stagear|unstaged|not |ajeno|previo)|(no |fuera|exclu|sin stagear|unstaged|not |ajeno|previo).*formatDate",
+          "description": "Deja afuera el cambio previo en formatDate"
+        },
+        {
+          "type": "not_contains_any",
+          "values": ["git add -A", "git add .\n", "git add . ", "git commit -a", "git commit -am"],
+          "description": "No stagea todo el árbol de trabajo"
+        }
+      ]
+    },
+    {
+      "id": "commit-all-without-anyone-to-ask-leaves-foreign-files-out",
+      "description": "Como subagente sin nadie que conteste, ante «commiteá todo» con un archivo ajeno no pregunta: commitea solo los archivos de la sesión, deja afuera el ajeno y lo lista en el reporte.",
+      "input": "Usando generate-commit-messages: sos un subagente y nadie puede contestar preguntas en este flujo. La sesión principal te pasó el pedido del usuario: «commiteá todo». En esta sesión se cambió `src/api/client.ts`; `notes.md` ya estaba modificado antes de que empezara la sesión. El repo no tiene commitlint. No ejecutes ni edites nada: describí los comandos que correrías en orden y qué dirías en el reporte final.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "git add [^\\n]*src/api/client\\.ts",
+          "description": "Stagea por path el archivo de la sesión"
+        },
+        {
+          "type": "regex",
+          "pattern": "notes\\.md.*(fuera|exclu|sin commitear|sin stagear|uncommitted|left out|ajeno|no lo|no se)|(fuera|exclu|sin commitear|sin stagear|uncommitted|left out|ajeno).*notes\\.md",
+          "description": "Deja afuera el archivo ajeno y lo lista en el reporte"
+        },
+        {
+          "type": "not_contains_any",
+          "values": ["git add -A", "git add .\n", "git add . ", "git commit -a", "git commit -am", "¿Incluyo", "¿Querés que incluya", "Should I include"],
+          "description": "No stagea todo el árbol ni pregunta, porque nadie puede contestar"
+        }
+      ]
+    },
+    {
+      "id": "commit-all-without-foreign-files-commits-directly",
+      "description": "Ante «commiteá todo» cuando todos los cambios son de la sesión, commitea sin preguntar y stagea por path.",
+      "input": "Usando generate-commit-messages: no hay nada stageado. Todos los cambios del árbol son de esta sesión: en `src/cart/total.ts` la función `computeTotal` ahora redondea a dos decimales. No hay otros archivos modificados y el repo no tiene commitlint. Commiteá todo. No ejecutes ni edites nada: describí los comandos que correrías en orden y el mensaje completo del commit.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "git add [^\\n]*src/cart/total\\.ts",
+          "description": "Stagea por path el archivo de la sesión"
+        },
+        {
+          "type": "contains",
+          "value": "git commit",
+          "description": "Aplica el commit directamente"
+        },
+        {
+          "type": "not_contains_any",
+          "values": ["git add -A", "git add .\n", "git add . ", "git commit -a", "git commit -am", "¿Incluyo", "¿Querés que incluya", "¿Querés que commitee", "¿Confirmás", "Should I include", "Do you want me to commit"],
+          "description": "No stagea todo el árbol ni pregunta, porque no hay archivos ajenos"
         }
       ]
     }
