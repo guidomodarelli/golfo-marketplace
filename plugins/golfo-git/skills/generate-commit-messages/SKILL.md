@@ -62,8 +62,10 @@ Collect the information required to draft and apply a high-quality commit messag
   that the repository requires explicitly (commitlint, a contributing guide or
   its AGENTS.md) wins. Type prefixes such as «feat:» stay as commitlint defines them.
 - Never invent issue numbers and keep them out of the title. When the change
-  implements a specific issue that the user or the task named, end the
-  description with «Closes #<n>» on its own line.
+  implements a specific GitHub issue that the user or the task named, end the
+  description with «Closes #<n>» on its own line. Ticket keys from other
+  trackers (for example a Jira key such as «OPS-482») stay out of the message
+  unless the repository's conventions require them.
 - Use imperative mood for the commit title and body where applicable, or the
   form the repository history uses. Examples: «add feature», «fix bug»,
   «agrega la validación».
