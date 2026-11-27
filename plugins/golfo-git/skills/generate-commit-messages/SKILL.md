@@ -44,7 +44,7 @@ Collect the information required to draft and apply a high-quality commit messag
 
 ## Apply Step
 
-- Run «git commit» without asking for confirmation. The only question this skill may ask is the scope one for «all» requests described in Scope; it is never a confirmation of the message.
+- Run «git commit» without asking for confirmation of the generated message. The scope questions described in Scope stay allowed: whether to include the user's files on an «all» request, and how to split a file that mixes both; none of them confirms the message.
 
 ## Style Constraints
 

@@ -79,7 +79,7 @@
     },
     {
       "id": "commit-all-asks-about-foreign-files",
-      "description": "Ante «commiteá todo» con un archivo que ya estaba modificado antes de la sesión, pregunta una sola vez si lo incluye, listándolo, en vez de sumarlo o dejarlo afuera en silencio.",
+      "description": "Ante «commiteá todo» con un archivo que ya estaba modificado antes de la sesión, pregunta una sola vez si lo incluye, listándolo, en vez de sumarlo o dejarlo afuera en silencio. Es una pregunta de alcance, no una confirmación del mensaje.",
       "input": "Usando generate-commit-messages: no hay nada stageado. En esta sesión agregué validación de email en `src/forms/validateEmail.ts`. `config.local.json` ya estaba modificado antes de que empezara la sesión. El repo no tiene commitlint. Commiteá todo. No ejecutes ni edites nada: describí qué harías antes de commitear y qué le dirías al usuario.",
       "assertions": [
         {
