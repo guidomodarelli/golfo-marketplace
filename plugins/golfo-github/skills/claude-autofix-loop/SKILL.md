@@ -19,7 +19,7 @@ un cambio al flujo llega a los dos revisores a la vez.
 
 ## Gate de máquina de trabajo (`~/.work`)
 
-Primer paso, antes de leer cualquier referencia: aplicar el gate de [`references/work-machine-gate.md`](../../references/work-machine-gate.md). Con `~/.work` esta skill corre solo a pedido. Es el mismo gate de `codex-autofix-loop`: con `~/.work` el loop se lanza solo a pedido («fixeá los comentarios de Claude en el PR 12») y no mergea si el usuario no pidió el merge.
+Primer paso, antes de leer cualquier referencia: aplicar el gate de [`references/work-machine-gate.md`](../../references/work-machine-gate.md). Con `~/.work` esta skill corre solo a pedido. Es el mismo gate de `codex-autofix-loop`: con `~/.work` el loop se lanza solo a pedido («fixeá los comentarios de Claude en el PR 12») y no mergea si el usuario no pidió el merge. Esa autorización la fija el paso 0-quater de «Cómo relanzarlo» de `codex-autofix-loop` en cada lanzamiento, aunque el pedido sea explícito.
 
 ## Flujo
 
@@ -36,7 +36,8 @@ Primer paso, antes de leer cualquier referencia: aplicar el gate de [`references
    ack, review terminada, fallida y limpia, fuentes de hallazgos, severidad, modos de fix) y gana
    sobre el texto de Codex en esos puntos; todo lo demás se sigue como dice el loop.
 4. **Lanzalo** con «Cómo relanzarlo» de `codex-autofix-loop`, fijando `{{REVIEWER}}` = `claude` en el
-   paso 0-ter, sin preguntar el tope ni el método de merge (pasos 0 y 0-bis). Con el perfil `claude`:
+   paso 0-ter, sin preguntar el tope, el método ni la autorización de merge (pasos 0, 0-bis y
+   0-quater). Con el perfil `claude`:
    - Estado en `.codex-autofix/processed-claude-<PR>.json` y monitor `Monitor claude-autofix PR #<PR>`.
    - `{{FIX_MODE}}` = `local`.
    - Cierre de cada hallazgo con `closeout.sh … --reviewer claude` (skill `codex-comment-closeout`).

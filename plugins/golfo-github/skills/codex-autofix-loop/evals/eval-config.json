@@ -1532,6 +1532,70 @@
           "description": "Cierra con el closeout del perfil claude"
         }
       ]
+    },
+    {
+      "id": "work-machine-launch-without-merge-request-disables-merge",
+      "description": "Al lanzar el loop a pedido en una máquina con `~/.work`, comprueba `~/.work` aunque el pedido sea explícito y, como el usuario no pidió el merge, fija `MERGE_ALLOWED` en `false` y lo persiste en `mergeAllowed` del estado.",
+      "input": "Usando codex-autofix-loop: estoy en la máquina del trabajo (existe `~/.work`) y te pido «fixeá los comentarios de Codex en el PR 42 de `acme/widgets`». No dije nada sobre mergear. No ejecutes nada: describí cómo lanzás el loop, qué valor le das a la autorización de merge y qué queda en `.codex-autofix/processed-42.json`.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "(test -e|Test-Path)[^.]{0,20}.work",
+          "description": "Comprueba `~/.work` al lanzar aunque el pedido sea explícito"
+        },
+        {
+          "type": "regex",
+          "pattern": "MERGE_ALLOWED[^.]{0,40}false|mergeAllowed[^.]{0,20}false",
+          "description": "Fija la autorización de merge en `false`"
+        },
+        {
+          "type": "contains",
+          "value": "mergeAllowed",
+          "description": "Persiste la autorización en el estado del PR"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "\"mergeAllowed\":true",
+            "\"mergeAllowed\": true"
+          ],
+          "description": "No autoriza el merge sin que el usuario lo pida"
+        }
+      ]
+    },
+    {
+      "id": "merge-not-allowed-clean-review-reports-ready",
+      "description": "Con `mergeAllowed: false`, review limpia del head y CI verde, no corre `gh pr merge`: avisa en una línea que el PR quedó listo para mergear y auto-cancela el loop.",
+      "input": "Usando codex-autofix-loop: el loop corre en Claude Code para el PR #42 de `acme/widgets`. El JSON tiene `mergeAllowed: false` porque lo lancé en la máquina del trabajo sin pedir el merge. El resumen de Codex marca `code_review.status` = `completed` sin hallazgos para el head actual, no quedan hallazgos abiertos ni ids en `inFlight` y `gh pr checks` da todo verde. No ejecutes nada, describí qué harías en esta vuelta.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "(no|sin|nunca) (mergeo|mergear|mergea|hago (el )?merge|corro `?gh pr merge|ejecuto `?gh pr merge)|sin mergear",
+          "description": "No mergea aunque la review esté limpia y la CI verde"
+        },
+        {
+          "type": "regex",
+          "pattern": "listo para mergear",
+          "description": "Avisa que el PR quedó listo para mergear"
+        },
+        {
+          "type": "regex",
+          "pattern": "auto-?cancel|CronDelete|cancel[oa]?r? el loop|corto el loop|detengo el loop",
+          "description": "Auto-cancela el loop"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "así que mergeo",
+            "entonces mergeo",
+            "procedo a mergear",
+            "procedo con el merge",
+            "mergeo el PR ahora",
+            "PR #42 mergeado"
+          ],
+          "description": "No mergea ni anuncia el PR como mergeado"
+        }
+      ]
     }
   ]
 }
