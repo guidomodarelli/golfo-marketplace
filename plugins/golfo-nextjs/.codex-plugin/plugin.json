@@ -1,6 +1,6 @@
 {
   "name": "golfo-nextjs",
-  "version": "0.129.1",
+  "version": "0.130.0",
   "description": "Skills exclusivas de Next.js App Router: loading y error boundaries, layouts, Suspense y división entre server y client components.",
   "author": {
     "name": "Guido Modarelli",

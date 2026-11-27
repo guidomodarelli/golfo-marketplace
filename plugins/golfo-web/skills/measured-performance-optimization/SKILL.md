@@ -1,6 +1,6 @@
 ---
 name: measured-performance-optimization
-description: 'Mide y optimiza rendimiento web: app lenta, Core Web Vitals, bundle, renders (también con react-scan o react-doctor vía golfo-lint), caching, N+1, memoria que crece o leaks, SSR lento o TTFB alto, long tasks o main thread bloqueado, event loop de Node trabado, listas o DOM grande y jobs periódicos que releen toda una ventana en cada corrida. Usar también sin pedido explícito al crear un flujo nuevo o sumarle a uno existente requests, llamadas, queries o pasos nuevos; no en refactors, fixes ni cambios de copy o estilos que no agregan carga.'
+description: 'Mide y optimiza rendimiento web: app lenta, Core Web Vitals, bundle, renders (también con react-scan o react-doctor vía golfo-lint), caching, N+1, memoria que crece o leaks, SSR lento o TTFB alto, long tasks o main thread bloqueado, event loop de Node trabado, listas o DOM grande y jobs periódicos que releen toda una ventana en cada corrida. Usar también sin pedido explícito (con `~/.work`, solo a pedido) al crear un flujo nuevo o sumarle a uno existente requests, llamadas, queries o pasos nuevos; no en refactors, fixes ni cambios de copy o estilos que no agregan carga.'
 license: MIT
 metadata:
   version: "1.7.0"
@@ -14,6 +14,10 @@ metadata:
 # Measured Performance Optimization
 
 Optimiza una aplicación web de punta a punta (frontend, red, backend y base de datos) con una sola regla central: **toda optimización se mide antes y después**. Un cambio sin medición previa no se puede atribuir, y uno sin medición posterior puede empeorar las cosas sin que nadie lo note: optimizaciones razonables en teoría (memoizar, cachear, partir chunks) a veces suman costo o rompen el flujo.
+
+## Gate de máquina de trabajo (`~/.work`)
+
+Primer paso, antes de leer cualquier referencia: aplicar el gate de [`references/work-machine-gate.md`](../../references/work-machine-gate.md). Con `~/.work` esta skill corre solo a pedido. El gate cubre solo la activación sin pedido (crear un flujo o sumarle requests, llamadas, queries o pasos). Un pedido de rendimiento, como «la app está lenta», «mejorá el LCP» o «hay un leak de memoria», es pedido explícito.
 
 ## Cuándo usar otra skill
 
@@ -60,7 +64,7 @@ Si no se puede medir, no bloquear la entrega de la funcionalidad: la detención 
 
 ## Cobertura incremental
 
-Obligatorio en cada ejecución, haya o no registro: seguí el [protocolo de cobertura](../../references/skill-coverage.md#protocolo-de-una-skill) con `--skill measured-performance-optimization` en cada unidad funcional del flujo medido, incluido su paso 1 cuando falta el registro o la unidad (crearlos es parte de la skill; proponer `discover` no alcanza) y el [cierre incompleto](../../references/skill-coverage.md#cierre-incompleto-o-bloqueado) cuando no se puede registrar. Nunca inventar cobertura ni evidencia. El registro evita volver a medir lo que no cambió de carga; nunca reemplaza la medición. Un endpoint, job o query sin página usa `add-unit --kind api|job|backend`.
+Obligatorio en cada ejecución, haya o no registro (con `~/.work` vale la excepción de [Máquina del trabajo](../../references/skill-coverage.md#máquina-del-trabajo)): seguí el [protocolo de cobertura](../../references/skill-coverage.md#protocolo-de-una-skill) con `--skill measured-performance-optimization` en cada unidad funcional del flujo medido, incluido su paso 1 cuando falta el registro o la unidad (crearlos es parte de la skill; proponer `discover` no alcanza) y el [cierre incompleto](../../references/skill-coverage.md#cierre-incompleto-o-bloqueado) cuando no se puede registrar. Nunca inventar cobertura ni evidencia. El registro evita volver a medir lo que no cambió de carga; nunca reemplaza la medición. Un endpoint, job o query sin página usa `add-unit --kind api|job|backend`.
 
 - **Cuándo consultar.** Al empezar, `check` dice si la unidad tiene cobertura y cuál es su revisión base (`baseline.commit`, que sirve como "antes" si sigue en el historial y la medición no se registró sobre cambios sin commitear; el alcance sugerido lo aclara). En la invocación automática por funcionalidad nueva, volvé a correr `check` después de implementar: lista la carga agregada por parte (`+1 requests`, `+2 awaited steps`, paquete nuevo) y es tu inventario del paso 1.
 - **Qué significa cada decisión.** `skip`: desde la última medición solo hubo cambios que no agregan carga (copy, estilos, tipos, refactors) o ninguno; no se vuelve a medir. `incremental`: medí el **flujo completo** antes y después en condiciones comparables, enfocado en la carga que lista `check`; ser incremental reduce qué investigar, no qué medir. `full`: aplicá el flujo obligatorio completo; un flujo nuevo usa `full` con su costo absoluto. Un pedido explícito de auditoría o de optimización completa usa `check --force-full`.

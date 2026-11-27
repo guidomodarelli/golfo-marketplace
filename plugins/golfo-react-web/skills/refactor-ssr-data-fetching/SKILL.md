@@ -1,6 +1,6 @@
 ---
 name: refactor-ssr-data-fetching
-description: Prioriza acceso a backend/upstream desde server-side en aplicaciones React SSR y dirige requests posteriores a interacción mediante middle-end/BFF same-origin. Usar al implementar, modificar, revisar o depurar loaders, hooks server, getServerSideProps, Server Actions, route handlers BFF, caché server, llamadas upstream, filtros, búsquedas, paginación, polling, refetches o mutations, incluso si pedido solo dice “agregar llamada API”. No usar para CSR puro sin boundary server/BFF ni para estados loading/error sin decisión de arquitectura de red.
+description: Prioriza acceso a backend/upstream desde server-side en aplicaciones React SSR y dirige requests posteriores a interacción mediante middle-end/BFF same-origin. Usar (con `~/.work`, solo a pedido) al implementar, modificar, revisar o depurar loaders, hooks server, getServerSideProps, Server Actions, route handlers BFF, caché server, llamadas upstream, filtros, búsquedas, paginación, polling, refetches o mutations, incluso si pedido solo dice “agregar llamada API”. No usar para CSR puro sin boundary server/BFF ni para estados loading/error sin decisión de arquitectura de red.
 license: MIT
 metadata:
   version: "1.0.0"
@@ -12,6 +12,10 @@ metadata:
 ---
 
 # React SSR y BFF Data Fetching
+
+## Gate de máquina de trabajo (`~/.work`)
+
+Primer paso, antes de leer cualquier referencia: aplicar el gate de [`references/work-machine-gate.md`](../../references/work-machine-gate.md). Con `~/.work` esta skill corre solo a pedido. Cuenta como pedido explícito, por ejemplo, «mové este fetch al server» o «armá el BFF para esta búsqueda»; agregar una llamada a la API como parte de otro cambio, no.
 
 ## Invariante de routing
 

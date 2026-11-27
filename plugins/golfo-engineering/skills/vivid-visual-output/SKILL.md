@@ -1,6 +1,6 @@
 ---
 name: vivid-visual-output
-description: "Usar siempre al escribir o cambiar código cuya salida mira una persona, aunque el pedido solo hable de la lógica: pantallas, páginas y reportes HTML, rediseños de UI, componentes de React, Vue u otro framework (una tarjeta, una tabla, un formulario), scripts y CLI con salida en terminal (Node, PowerShell, bash, zsh...), instaladores, wizards, menús, reportes y tareas largas. Hace que se vea muy lindo y con vida (color, tablas, listas, animación), con un piso de calidad y sin imponer estética. En todo componente o pantalla, cargarla junto con ui-ux-flow-patterns: esa decide qué muestra cada estado; esta, cómo se ve. Cubre degradación de color (NO_COLOR, CI, pipes), ancho, spinner, cursor, design tokens, temas, mobile, contraste AA y prefers-reduced-motion. Solo aplica cuando la tarea escribe código: no para responder preguntas ni explicar, y no en backend, migraciones, librerías o tests, ni al sumar una salida que consume otro programa (JSON para jq, datos por pipe, logs estructurados), aunque sea en un CLI."
+description: "Usar siempre (con `~/.work`, solo a pedido) al escribir o cambiar código cuya salida mira una persona, aunque el pedido solo hable de la lógica: pantallas, páginas y reportes HTML, rediseños de UI, componentes de React, Vue u otro framework (una tarjeta, una tabla, un formulario), scripts y CLI con salida en terminal, instaladores, wizards, menús, reportes y tareas largas. Hace que se vea muy lindo y con vida (color, tablas, listas, animación), con un piso de calidad y sin imponer estética. En todo componente o pantalla, cargarla junto con ui-ux-flow-patterns: esa decide qué muestra cada estado; esta, cómo se ve. Cubre degradación de color (NO_COLOR, CI, pipes), ancho, spinner, cursor, design tokens, temas, mobile, contraste AA y prefers-reduced-motion. Solo aplica cuando la tarea escribe código: no para responder preguntas ni explicar, y no en backend, migraciones, librerías o tests, ni al sumar una salida que consume otro programa (JSON para jq, datos por pipe, logs estructurados), aunque sea en un CLI."
 license: MIT
 metadata:
   version: "1.6.0"
@@ -16,6 +16,10 @@ metadata:
 Lo visual tiene que dar gusto: color con intención, tablas alineadas, listas claras y movimiento que acompaña. Esta skill no impone una estética. Fija un piso de calidad y deja libre todo lo demás, gradientes y truecolor incluidos.
 
 Lo aburrido no cumple. Lo lindo que se rompe en un pipe, a 40 columnas o en tema oscuro, tampoco.
+
+## Gate de máquina de trabajo (`~/.work`)
+
+Primer paso, antes de leer cualquier referencia: aplicar el gate de [`references/work-machine-gate.md`](../../references/work-machine-gate.md). Con `~/.work` esta skill corre solo a pedido. Cuenta como pedido explícito, por ejemplo, «mejorá cómo se ve esta salida» o «dale color y vida a este reporte», y también cargarla desde `interactive-cli-design` o `ui-ux-flow-patterns` cuando el usuario pidió esa skill; cambiar la lógica de una pantalla o de un script, no.
 
 ## Flujo
 

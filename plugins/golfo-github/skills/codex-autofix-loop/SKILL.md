@@ -1,6 +1,6 @@
 ---
 name: codex-autofix-loop
-description: "Lanza y opera el loop que auto-fixea los comentarios de un revisor bot en un PR, Codex (chatgpt-codex-connector[bot], default) o Claude (claude[bot], perfil `claude`): clone efímero → fix → push → closeout del hilo, o `@codex fix` en el hilo (modos `codex`/`auto`), con dedup por PR, tope de rondas, timeout por ronda, guard de auto-cancelación y merge sin preguntar ni esperar revisión humana tras el gate de CI, también al terminar la última ronda. Lanzarlo solo, sin que lo pidan, apenas el agente abre un PR con `gh pr create`. Adapta la espera a cada agente (Monitor en Claude Code, watcher en Hermes o Codex, o una ronda por invocación). Para un solo comentario alcanza con `codex-comment-closeout`. Use when the user asks to relaunch/start the Codex or Claude auto-fix loop for a PR, right after the agent opens a pull request (gh pr create) even if nobody asked, set up reviewer comment auto-fixing, mentions docs/codex-autofix-loop.md, processed-PR.json, or the codex-autofix workflow."
+description: "Lanza y opera el loop que auto-fixea los comentarios de un revisor bot en un PR, Codex (chatgpt-codex-connector[bot], default) o Claude (claude[bot], perfil `claude`): clone efímero → fix → push → closeout del hilo, o `@codex fix` en el hilo (modos `codex`/`auto`), con dedup por PR, tope de rondas, timeout por ronda, guard de auto-cancelación y merge sin preguntar ni esperar revisión humana tras el gate de CI, también al terminar la última ronda. Lanzarlo solo, sin que lo pidan (con `~/.work`, solo a pedido), apenas el agente abre un PR con `gh pr create`. Adapta la espera a cada agente (Monitor en Claude Code, watcher en Hermes o Codex, o una ronda por invocación). Para un solo comentario alcanza con `codex-comment-closeout`. Use when the user asks to start the Codex or Claude auto-fix loop for a PR, right after the agent opens a pull request (gh pr create) even if nobody asked, set up reviewer comment auto-fixing, mentions docs/codex-autofix-loop.md, processed-PR.json, or the codex-autofix workflow."
 license: MIT
 metadata:
   version: "1.9.0"
@@ -43,6 +43,10 @@ Cubre **tres fuentes** de comentarios de Codex:
 1. **Inline** (`pulls/{pr}/comments`): atados a un `path` + `line`; closeout = 👍 + reply en el hilo + resolver el hilo.
 2. **Generales** (`issues/{pr}/comments`): comentarios sueltos del PR; closeout = 👍 + reply.
 3. **Review-body de primer nivel** (`pulls/{pr}/reviews`, anchor `#pullrequestreview-…`): el resumen que Codex postea al enviar una review. Se procesa **solo cuando el body trae una sugerencia accionable real** (no un mero resumen). Closeout = 👍 + **quote reply** (citando el body). Cuando el review-body **y todos sus comments inline** quedan resueltos, se **minimiza la review con estado `RESOLVED`** (queda oculta/colapsada). `PullRequestReview` implementa `Reactable` y `Minimizable`, así que reacción y minimize van por GraphQL sobre su `node_id`.
+
+## Gate de máquina de trabajo (`~/.work`)
+
+Primer paso, antes de leer cualquier referencia: aplicar el gate de [`references/work-machine-gate.md`](../../references/work-machine-gate.md). Con `~/.work` esta skill corre solo a pedido. Cubre el arranque automático al abrir un PR. Con `~/.work` el loop se lanza solo a pedido («lanzá el loop de Codex en el PR 12», «fixeá los comentarios de Codex»), y aun así no mergea si el usuario no pidió el merge. Ese límite no sale de este gate, que ante un pedido explícito no comprueba `~/.work`: lo fija el paso 0-quater de «Cómo relanzarlo» en cada lanzamiento, como `{{MERGE_ALLOWED}}`, y lo persiste en el estado del PR para que llegue a cada vuelta del loop. Todo merge de esta skill (review limpia, corte por convergencia, tope de rondas y tope de solo tests) lo necesita; sin él, el loop avisa que el PR quedó listo para mergear y se auto-cancela.
 
 ## Perfiles de revisor
 
@@ -256,8 +260,10 @@ aviso. Por eso, en ese caso:
 **Sin espera de revisión humana:** el loop no frena el merge para que una persona
 apruebe, sin importar qué archivos toque el PR ni el tamaño del diff. Los únicos
 requisitos para mergear son la review limpia de Codex (o el corte por convergencia, el
-tope de solo tests o el fin de la última ronda) y el GATE DE CI. Ningún merge del loop
-se consulta con el usuario. Si el repo tiene branch protection que exige una aprobación, `gh pr merge`
+tope de solo tests o el fin de la última ronda), el GATE DE CI y el merge autorizado
+(`{{MERGE_ALLOWED}}` = `true`, paso 0-quater de «Cómo relanzarlo»). Ningún merge del loop
+se consulta con el usuario: sin autorización, el loop avisa que el PR quedó listo para
+mergear y se auto-cancela. Si el repo tiene branch protection que exige una aprobación, `gh pr merge`
 falla y el loop lo trata como cualquier merge fallido: avisa el motivo una vez y reintenta.
 
 ## Modo de fix: subagente local o `@codex fix`
@@ -291,7 +297,7 @@ modo desactiva se reporta al cierre en `Limitaciones del agente`.
 
 ## Arranque automático al abrir un PR
 
-Cada vez que el agente abre un PR con `gh pr create`, lanzá este loop para ese PR **en el
+Con `~/.work` este arranque no corre (ver «Gate de máquina de trabajo» arriba). Sin `~/.work`, cada vez que el agente abre un PR con `gh pr create`, lanzá este loop para ese PR **en el
 mismo turno, sin preguntar ni esperar a que alguien lo pida**. Vale para cualquier flujo:
 `feature-branch-pr`, `stacked-pr`, un release o un fix en otro repo. Así ningún PR queda
 esperando la review de Codex sin nadie que procese sus comentarios.
@@ -348,12 +354,22 @@ No lo lances, y decí en una línea por qué, cuando:
    - Con el perfil elegido, completá sus valores derivados: `{{REVIEWER_NAME}}` (`Codex` o
      `Claude`), `{{REVIEWER_BOT}}`, `{{STATE_FILE}}` y `{{MONITOR_LABEL}}` (tabla del perfil) y, con
      `claude`, `{{CLAUDE_REVIEW_WORKFLOW}}`. Leé el archivo del perfil si no es `codex`.
+0-quater. Definí `{{MERGE_ALLOWED}}` (`true` o `false`), también **sin preguntar**. Comprobá
+   `~/.work` con un solo comando de lectura (`test -e ~/.work` en bash o zsh, `Test-Path ~/.work`
+   en PowerShell) en cada lanzamiento, también cuando el loop se pidió de forma explícita: el
+   gate de máquina de trabajo no lo comprueba ante un pedido explícito, y sin este dato el loop
+   programado mergearía en una máquina de trabajo aunque nadie lo haya pedido.
+   - Sin `~/.work` (el comando corrió y confirmó que no está): `true`.
+   - Con `~/.work`, o si no se puede comprobar: `true` solo si el usuario pidió mergear este PR de
+     forma explícita (en el pedido que lanza o relanza el loop, o antes en la misma conversación;
+     por ejemplo «fixeá los comentarios de Codex y mergeá el PR 12»); si no, `false`. Lanzar el
+     loop o pedir que fixee no es pedir el merge.
 1. Reemplazá los placeholders del prompt de `references/prompt-template.md` (`{{OWNER}}`, `{{REPO}}`,
-   `{{PR}}`, `{{BRANCH}}`, `{{MERGE_FLAG}}` y los del perfil) por los del PR objetivo.
+   `{{PR}}`, `{{BRANCH}}`, `{{MERGE_FLAG}}`, `{{MERGE_ALLOWED}}` y los del perfil) por los del PR objetivo.
 2. Inicializá el estado de dedup del PR en `{{STATE_FILE}}` (vacío procesa todo el backlog; con ids
    ya cargados procesa solo los nuevos):
    ```
-   {{STATE_FILE}}  ->  {"pr":{{PR}},"processedCommentIds":[],"inFlight":{},"codexAttempts":{},"delegationReplyIds":[],"reviewRounds":0,"testOnlyRounds":0,"testOnlyHeadSha":null,"lastReviewedSha":null,"reviewRequestedAt":null,"reviewTimeoutRetries":0,"reviewTimedOut":false,"finalMergePending":false,"awaitingUser":null,"outcomes":{}}
+   {{STATE_FILE}}  ->  {"pr":{{PR}},"processedCommentIds":[],"inFlight":{},"codexAttempts":{},"delegationReplyIds":[],"reviewRounds":0,"testOnlyRounds":0,"testOnlyHeadSha":null,"lastReviewedSha":null,"reviewRequestedAt":null,"reviewTimeoutRetries":0,"reviewTimedOut":false,"finalMergePending":false,"awaitingUser":null,"mergeAllowed":{{MERGE_ALLOWED}},"outcomes":{}}
    ```
    (`inFlight` registra los comentarios que tienen un subagente o un pedido
    `@codex fix` trabajando; `codexAttempts` cuenta los pedidos a Codex por comment id;
@@ -369,14 +385,17 @@ No lo lances, y decí en una línea por qué, cuando:
    volvió a vencer o la review volvió a fallar (ver «Timeout de ronda»); `finalMergePending` queda en `true`
    cuando terminó la última ronda permitida y solo falta el merge final (ver «Tope de
    rondas»); `awaitingUser` es `{reason, since}` mientras el loop espera una decisión del
-   usuario y `null` el resto del tiempo (ver «Esperando al usuario»); `outcomes` es el registro de
+   usuario y `null` el resto del tiempo (ver «Esperando al usuario»); `mergeAllowed` es el
+   `{{MERGE_ALLOWED}}` del último lanzamiento (paso 0-quater) y, en `false`, ninguna vuelta mergea
+   (regla «MERGE NO AUTORIZADO» del prompt); `outcomes` es el registro de
    findings de la política de convergencia: `id -> {result, severity, round, path, sha?, reason?}`,
    con `result` en `fixed`, `rejected`, `pre-existing`, `nit-skipped`, `edge-case` o
    `failed`. Si falta alguna clave, el loop la trata como vacía o `0`.)
    Si el archivo ya existe (relanzar), conservalo. Solo si trae `reviewTimedOut: true`,
    ponelo en `false` y `reviewTimeoutRetries` en `0`: el loop se había auto-cancelado por el
    «Timeout de ronda» y relanzarlo es pedir un reintento más. Si trae `awaitingUser`, ponelo en
-   `null`: relanzar es la respuesta del usuario.
+   `null`: relanzar es la respuesta del usuario. Escribí siempre `mergeAllowed` con el
+   `{{MERGE_ALLOWED}}` de este lanzamiento, aunque el archivo ya traiga otro valor.
    (`.codex-autofix/` está gitignored: es estado de runtime, no se commitea.)
 3. Lanzá el loop pegando el prompt con el intervalo `{{INTERVAL}}`:
    ```
@@ -420,6 +439,10 @@ No lo lances, y decí en una línea por qué, cuando:
 >   cuando el pedido no indica otro.
 > - `{{MERGE_FLAG}}` = `--squash`, `--merge` o `--rebase`, el que permiten el repo y las reglas
 >   de la rama base (paso 0-bis de «Cómo relanzarlo»).
+> - `{{MERGE_ALLOWED}}` = `true` o `false` — si el loop puede mergear (paso 0-quater de «Cómo
+>   relanzarlo»): `true` sin `~/.work`; con `~/.work`, solo si el usuario pidió el merge. Queda
+>   persistido en `mergeAllowed` del JSON; en `false`, cada camino de merge del prompt avisa que
+>   el PR quedó listo y se auto-cancela en vez de mergear.
 > - `{{MAX_REVIEW_ROUNDS}}` = el que indica el pedido o, si no indica ninguno,
 >   `{{DEFAULT_MAX_REVIEW_ROUNDS}}` (paso 0 de «Cómo relanzarlo»): un entero positivo o
 >   `sin límite` — `@codex review` que el loop puede postear antes de cortar por falta de
@@ -459,7 +482,8 @@ solo; (c) cuando termina la última ronda permitida (`{{MAX_REVIEW_ROUNDS}}`): a
 mergea sin preguntar tras el gate de CI; (d) cuando se alcanzan
 `{{MAX_TEST_ONLY_ROUNDS}}` rondas seguidas que solo corrigen tests y el PR se mergea tras el
 gate de CI; (e) cuando la review de una ronda vence por segunda vez o vuelve a terminar
-`failed` (ver «Timeout de ronda»): ahí avisa y corta **sin mergear**. La review limpia se reconoce por el estado JSON del resumen de Codex
+`failed` (ver «Timeout de ronda»): ahí avisa y corta **sin mergear**. Con `{{MERGE_ALLOWED}}` =
+`false`, en (b), (c) y (d) tampoco mergea: avisa que el PR quedó listo para mergear y corta igual. La review limpia se reconoce por el estado JSON del resumen de Codex
 (`<!-- codex-review-state:v1 {...} -->` sin hallazgos) o, en el formato viejo, por el
 texto "Codex Review: Didn't find any major issues" (ver paso 5-bis).
 

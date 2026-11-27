@@ -18,6 +18,10 @@
       "plugins": ["golfo-frontend", "golfo-nextjs", "golfo-web"]
     },
     {
+      "source": "references/work-machine-gate.md",
+      "plugins": ["golfo-cli", "golfo-engineering", "golfo-frontend", "golfo-github", "golfo-javascript", "golfo-nextjs", "golfo-react-web", "golfo-web"]
+    },
+    {
       "source": "tools/skill-coverage",
       "exclude": ["tests"],
       "plugins": ["golfo-frontend", "golfo-nextjs", "golfo-web"]

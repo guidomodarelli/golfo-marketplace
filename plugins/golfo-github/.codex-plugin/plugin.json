@@ -1,6 +1,6 @@
 {
   "name": "golfo-github",
-  "version": "0.142.1",
+  "version": "0.143.0",
   "description": "Skills exclusivas de GitHub: pull requests y su descripción, stacked PRs, comentarios inline y los loops que auto-fixean los comentarios de Codex y Claude. No aplican a GitLab ni a otros hosts.",
   "author": {
     "name": "Guido Modarelli",

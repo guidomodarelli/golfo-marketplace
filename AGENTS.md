@@ -25,6 +25,12 @@ For local development, skills symlink into each provider's own skills folder (`~
    - Optional fields: `license`, `compatibility` (at most 500 characters), `metadata` (string keys to string values, so lists such as `tags` are written as a comma-separated string) and `allowed-tools` (experimental).
 
    Portable runtimes such as Hermes silently drop a skill whose `name` or `description` breaks these limits. `pnpm validate-portable-plugins` enforces `name` and `description` in CI; the other constraints are checked in review. If the specification changes, it wins over this summary.
+6. **Never run on your own on a work machine (`~/.work`).** The user marks work machines with a `~/.work` file or directory in their home. A skill that activates without an explicit request (its description says it loads on its own when some kind of code is touched, or it launches itself after another action such as opening a PR) must not run automatically there:
+   - it applies the gate in [`shared/references/work-machine-gate.md`](shared/references/work-machine-gate.md) as its first step, through the plugin's copy (`../../references/work-machine-gate.md`), with one or two examples of what counts as an explicit request for that skill;
+   - its description says «(con `~/.work`, solo a pedido)» next to the automatic trigger;
+   - its plugin carries the reference through `shared/shared-files.json`.
+
+   Skills that only run when the user asks for exactly their task need no gate. No skill commits, pushes, opens a PR, launches a review loop or merges on its own initiative: it does so when the user asked or the agent's global rules say so, and never on its own initiative when `~/.work` exists (section «Cierres que publican» of the same reference). Review every new or changed skill against this rule.
 
 ## Conventions
 

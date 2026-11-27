@@ -135,7 +135,7 @@ When the change affects the UI but no image could be captured from the real app,
 
 ## Title
 
-Single line, descriptive, English-friendly subject. Example: `Add user status sidebar element to detail views`. Use it only as the PR title; do not repeat it inside the body.
+Single line, descriptive subject in Spanish, like the body; keep code, paths and identifier names as they are. A language that the repository requires explicitly for titles (a contributing guide, its AGENTS.md or a title check in CI) wins. Example: `Agrega el estado del usuario a la barra lateral de las vistas de detalle`. Use it only as the PR title; do not repeat it inside the body.
 
 ## Change types
 

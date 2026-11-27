@@ -1,6 +1,6 @@
 ---
 name: interactive-cli-design
-description: "Diseña e implementa CLIs con flags y modo interactivo: decide el modo según argumentos, TTY y CI, fija las flags mínimas (--help, --version, --no-input y las condicionales), da paridad entre cada flag y su pregunta, elige el widget según el dato (confirm, radio, lista con búsqueda, multiselect, input, secreto) y cierra exit codes, stdout/stderr y Ctrl+C, con modo agente (Claude Code, Codex) y salida --json, verificando en una pseudoconsola real. Usar siempre, sin pedido explícito, al crear o modificar un CLI, subcomando, script con argumentos, wizard, instalador o menú que reciba o pregunte datos, en Node, Python, Go, Rust, bash, zsh o PowerShell, aunque el pedido solo diga agregar un flag, «que pregunte si falta un dato», «hacelo interactivo» o «que lo pueda usar un agente». Siempre carga vivid-visual-output, dueña de cómo se ve la salida (color, spinner, tablas): retocar solo eso no dispara esta skill. Tampoco en TUIs de pantalla completa, scripts sin entradas ni slash commands de agentes."
+description: "Diseña e implementa CLIs con flags y modo interactivo: decide el modo según argumentos, TTY y CI, fija las flags mínimas (--help, --version, --no-input y las condicionales), da paridad entre cada flag y su pregunta, elige el widget según el dato (confirm, radio, lista con búsqueda, multiselect, input, secreto) y cierra exit codes, stdout/stderr y Ctrl+C, con modo agente y salida --json, verificando en una pseudoconsola real. Usar siempre, sin pedido explícito (con `~/.work`, solo a pedido), al crear o modificar un CLI, subcomando, script con argumentos, wizard, instalador o menú que reciba o pregunte datos, en Node, Python, Go, Rust, bash, zsh o PowerShell, aunque el pedido solo diga agregar un flag, «que pregunte si falta un dato», «hacelo interactivo» o «que lo pueda usar un agente». Siempre carga vivid-visual-output, dueña de cómo se ve la salida (color, spinner, tablas): retocar solo eso no dispara esta skill. Tampoco en TUIs de pantalla completa, scripts sin entradas ni slash commands de agentes."
 license: MIT
 metadata:
   version: "1.7.0"
@@ -14,6 +14,10 @@ metadata:
 # Interactive CLI Design
 
 Un CLI increíble sirve a dos públicos con el mismo comando: a una persona le pregunta lo que falta, y a un script nunca lo deja colgado. Esta skill fija ese contrato y lo prueba en una pseudoconsola real, porque un prompt que funciona por pipe no prueba nada.
+
+## Gate de máquina de trabajo (`~/.work`)
+
+Primer paso, antes de leer cualquier referencia: aplicar el gate de [`references/work-machine-gate.md`](../../references/work-machine-gate.md). Con `~/.work` esta skill corre solo a pedido. Cuenta como pedido explícito, por ejemplo, «hacé interactivo este CLI» o «que el script pregunte lo que falta y tenga `--no-input`»; sumarle un flag a un script como parte de otro cambio, no.
 
 ## Flujo
 
