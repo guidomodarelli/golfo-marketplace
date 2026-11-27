@@ -128,8 +128,8 @@
         },
         {
           "type": "regex",
-          "pattern": "(ú|u)nico (uso|consumidor|m(ó|o)dulo)|un solo (uso|consumidor|m(ó|o)dulo)|single (use|consumer)",
-          "description": "Justifica que tiene un solo consumidor y ya tiene nombre"
+          "pattern": "(ú|u)nico (uso|consumidor|m(ó|o)dulo|lugar|archivo)|un solo (uso|consumidor|m(ó|o)dulo|lugar|archivo)|ning(ú|u)n otr[oa] (m(ó|o)dulo|consumidor|archivo|capa|lugar)|(solo|s(ó|o)lamente) (la|lo) (usa|consume)|se usa (solo|s(ó|o)lamente|(ú|u)nicamente) en|single (use|consumer)|only (used|consumer|one consumer)|used only in|no other (module|consumer|file)",
+          "description": "Justifica que tiene un solo consumidor y ya tiene nombre, también con formas equivalentes como «ningún otro módulo la usa» o «solo la usa FeedList»"
         },
         {
           "type": "regex",
