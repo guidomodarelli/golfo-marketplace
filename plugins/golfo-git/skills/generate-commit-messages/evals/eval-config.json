@@ -78,6 +78,23 @@
       ]
     },
     {
+      "id": "commit-all-asks-about-foreign-files",
+      "description": "Ante «commiteá todo» con un archivo que ya estaba modificado antes de la sesión, pregunta una sola vez si lo incluye, listándolo, en vez de sumarlo o dejarlo afuera en silencio. Es una pregunta de alcance, no una confirmación del mensaje.",
+      "input": "Usando generate-commit-messages: no hay nada stageado. En esta sesión agregué validación de email en `src/forms/validateEmail.ts`. `config.local.json` ya estaba modificado antes de que empezara la sesión. El repo no tiene commitlint. Commiteá todo. No ejecutes ni edites nada: describí qué harías antes de commitear y qué le dirías al usuario.",
+      "assertions": [
+        {
+          "type": "regex",
+          "pattern": "config\\.local\\.json[^\\n]*\\?|¿[^\\n]*config\\.local\\.json",
+          "description": "Pregunta si incluye el archivo ajeno y lo nombra en la pregunta"
+        },
+        {
+          "type": "not_contains_any",
+          "values": ["git add -A", "git add .\n", "git add . ", "git commit -a", "git commit -am"],
+          "description": "No stagea todo el árbol de trabajo"
+        }
+      ]
+    },
+    {
       "id": "no-quality-gates-escape-dollar",
       "description": "No corre tests ni lint como parte de la skill, avisa que no hay evidencia de validación, escapa variables que empiezan con `$` y no incluye números de issue.",
       "input": "Usando generate-commit-messages: tengo stageado `scripts/deploy.sh`, donde ahora se valida que `$DEPLOY_ENV` no esté vacío antes de llamar a `kubectl apply`. El cambio viene del ticket OPS-482. En esta sesión no corrimos ningún test ni lint. Generá el mensaje y commiteá. No ejecutes ni edites nada: describí qué harías, qué no harías y el mensaje exacto del commit.",

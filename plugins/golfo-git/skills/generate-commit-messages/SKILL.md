@@ -18,7 +18,8 @@ Collect the information required to draft and apply a high-quality commit messag
 
 - Focus only on understanding the current uncommitted changes.
 - Analyze and commit only staged changes when staged changes exist.
-- If there are no staged changes, stage by path only the files that the current session changed («git add <path>»); never use «git add -A», «git add .» or «git commit -a». Changes that were already uncommitted when the session started, or that another session made, stay unstaged unless the user names them or explicitly asks to include them; list them in the final message. If a file mixes both, stage only this session's hunks or ask.
+- If there are no staged changes, stage by path only the files that the current session changed («git add <path>»); never use «git add -A», «git add .» or «git commit -a». Changes that were already uncommitted when the session started, or that another session made, belong to the user: they stay unstaged unless the user names them or asks for their own changes («commit my changes», «include mine too»). If a file mixes both, stage only this session's hunks or ask.
+- When the request says «all», «everything», «todo» or «the working tree changes» and such files exist, ask once before committing whether to include them too, listing them. Without them, commit without asking. When nobody can answer (a subagent or an automated flow), leave them out. In every case, list the files left out in the final message.
 - Do not propose new code changes.
 - Do not execute destructive commands.
 - Do not run typecheck, lint, build, tests, coverage or other quality gates as
@@ -43,7 +44,7 @@ Collect the information required to draft and apply a high-quality commit messag
 
 ## Apply Step
 
-- Run «git commit» without asking for confirmation.
+- Run «git commit» without asking for confirmation of the generated message. The scope questions described in Scope stay allowed: whether to include the user's files on an «all» request, and how to split a file that mixes both; none of them confirms the message.
 
 ## Style Constraints
 
