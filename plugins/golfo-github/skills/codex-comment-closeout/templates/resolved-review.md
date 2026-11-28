@@ -4,4 +4,6 @@
 
 **Qué cambió:** {{resumen}}
 
+**Verificación:** {{verificacion}}
+
 <sub>🤖 Fix automático en respuesta a esta review de {{revisor}} · [run]({{run_url}})</sub>

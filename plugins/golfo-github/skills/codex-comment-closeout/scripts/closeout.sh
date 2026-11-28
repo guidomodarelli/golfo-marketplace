@@ -5,12 +5,15 @@
 #
 # Usage:
 #   closeout.sh --repo OWNER/REPO --pr N --comment ID --kind inline|general|review
-#               --variant resolved|no-change|failed [--sha SHA] [--summary TEXT] [--reason TEXT]
-#               [--review-node-id NODE_ID] [--reviewer codex|claude]
+#               --variant resolved|no-change|failed [--sha SHA] [--summary TEXT] [--verification TEXT]
+#               [--reason TEXT] [--review-node-id NODE_ID] [--reviewer codex|claude]
 #
 #   --reviewer           the bot whose comment is closed (default codex); it names the bot in the footer.
-#   --variant resolved   needs --sha (full commit sha) and --summary; waits until that commit is in the
-#                        PR head before publishing, so the link never points to a commit GitHub hides.
+#   --variant resolved   needs --sha (full commit sha), --summary and --verification; waits until that
+#                        commit is in the PR head before publishing, so the link never points to a commit
+#                        GitHub hides. --verification names the automated check that fails without the fix
+#                        (a regression test, a lint rule, a pre-push or CI check, an e2e spec) or says
+#                        «no aplica: <motivo>».
 #   --variant no-change  takes --reason (one line); reacts 👎 and resolves an inline thread.
 #   --variant failed     no reaction and no resolution.
 #   --kind review        a review body: needs --review-node-id; the reply quotes the review body.
@@ -29,7 +32,7 @@ readonly TEMPLATE_DIRECTORY
 wait_attempts="${CLOSEOUT_WAIT_ATTEMPTS:-12}"
 wait_seconds="${CLOSEOUT_WAIT_SECONDS:-5}"
 
-repo="" pr="" comment="" kind="" variant="" sha="" summary="" reason="" review_node_id=""
+repo="" pr="" comment="" kind="" variant="" sha="" summary="" verification="" reason="" review_node_id=""
 reviewer="$DEFAULT_REVIEWER"
 
 fail() { printf 'closeout: %s\n' "$1" >&2; exit "${2:-$EXIT_FAILURE}"; }
@@ -43,6 +46,7 @@ while [ $# -gt 0 ]; do
     --variant) variant="${2:-}"; shift 2 ;;
     --sha) sha="${2:-}"; shift 2 ;;
     --summary) summary="${2:-}"; shift 2 ;;
+    --verification) verification="${2:-}"; shift 2 ;;
     --reason) reason="${2:-}"; shift 2 ;;
     --review-node-id) review_node_id="${2:-}"; shift 2 ;;
     --reviewer) reviewer="${2:-}"; shift 2 ;;
@@ -61,6 +65,8 @@ case "$reviewer" in
 esac
 if [ "$variant" = "resolved" ]; then
   [ -n "$sha" ] && [ -n "$summary" ] || fail "--variant resolved needs --sha and --summary" "$EXIT_USAGE"
+  # A fixed finding says which automated check keeps it from coming back, or why none applies.
+  [ -n "$verification" ] || fail "--variant resolved needs --verification: the check that fails without the fix (test, lint rule, pre-push or CI check, e2e spec), or 'no aplica: <motivo>'" "$EXIT_USAGE"
 fi
 if [ "$kind" = "review" ] && [ -z "$review_node_id" ]; then fail "--kind review needs --review-node-id" "$EXIT_USAGE"; fi
 
@@ -97,12 +103,13 @@ build_body() {
     quote=$(gh api "repos/$repo/pulls/$pr/reviews/$comment" --jq .body)
   fi
   CLOSEOUT_SHORT_SHA="${sha:0:$SHORT_SHA_LENGTH}" CLOSEOUT_COMMIT_URL="https://github.com/$repo/commit/$sha" \
-    CLOSEOUT_SUMMARY="$summary" CLOSEOUT_REASON="$reason" CLOSEOUT_QUOTE="$quote" CLOSEOUT_RUN_URL="${CLOSEOUT_RUN_URL:-}" \
+    CLOSEOUT_SUMMARY="$summary" CLOSEOUT_VERIFICATION="$verification" CLOSEOUT_REASON="$reason" CLOSEOUT_QUOTE="$quote" CLOSEOUT_RUN_URL="${CLOSEOUT_RUN_URL:-}" \
     CLOSEOUT_REVIEWER_NAME="$reviewer_name" \
     awk '
       BEGIN {
         values["sha_corto"] = ENVIRON["CLOSEOUT_SHORT_SHA"]; values["commit_url"] = ENVIRON["CLOSEOUT_COMMIT_URL"]
         values["resumen"] = ENVIRON["CLOSEOUT_SUMMARY"]; values["motivo"] = ENVIRON["CLOSEOUT_REASON"]
+        values["verificacion"] = ENVIRON["CLOSEOUT_VERIFICATION"]
         values["run_url"] = ENVIRON["CLOSEOUT_RUN_URL"]; values["revisor"] = ENVIRON["CLOSEOUT_REVIEWER_NAME"]
       }
       # One left-to-right pass over the template line: an inserted value is never scanned again, so a
@@ -124,6 +131,7 @@ build_body() {
         if (ENVIRON["CLOSEOUT_RUN_URL"] == "") { run = index(line, " · [run]({{run_url}})"); if (run > 0) line = substr(line, 1, run - 1) substr(line, run + length(" · [run]({{run_url}})")) }
         if (index(line, "{{resumen}}") && ENVIRON["CLOSEOUT_SUMMARY"] == "") { skip_blank = 1; next }
         if (index(line, "{{motivo}}") && ENVIRON["CLOSEOUT_REASON"] == "") { skip_blank = 1; next }
+        if (index(line, "{{verificacion}}") && ENVIRON["CLOSEOUT_VERIFICATION"] == "") { skip_blank = 1; next }
         if (skip_blank && line == "") { skip_blank = 0; next }
         skip_blank = 0
         if (index(line, "{{body_review_citado}}")) {

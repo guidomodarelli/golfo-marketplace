@@ -3,7 +3,7 @@ name: codex-autofix-loop
 description: "Lanza y opera el loop que auto-fixea los comentarios de un revisor bot en un PR, Codex (chatgpt-codex-connector[bot], default) o Claude (claude[bot], perfil `claude`): clone efímero → fix → push → closeout del hilo, o `@codex fix` en el hilo (modos `codex`/`auto`), con dedup por PR, tope de rondas, timeout por ronda, guard de auto-cancelación y merge sin preguntar ni esperar revisión humana tras el gate de CI, también al terminar la última ronda. Lanzarlo solo, sin que lo pidan (con `~/.work`, solo a pedido), apenas el agente abre un PR con `gh pr create`. Adapta la espera a cada agente (Monitor en Claude Code, watcher en Hermes o Codex, o una ronda por invocación). Para un solo comentario alcanza con `codex-comment-closeout`. Use when the user asks to start the Codex or Claude auto-fix loop for a PR, right after the agent opens a pull request (gh pr create) even if nobody asked, set up reviewer comment auto-fixing, mentions docs/codex-autofix-loop.md, processed-PR.json, or the codex-autofix workflow."
 license: MIT
 metadata:
-  version: "1.9.0"
+  version: "1.10.0"
   author: "Guido Modarelli"
   category: "code-review"
   tags: "code-review, codex, claude, pull-request, autofix, convergence"
@@ -120,6 +120,15 @@ prompt):
 apariciones del mismo patrón **dentro del diff del PR** (no solo la línea señalada), sin
 tocar código fuera del PR ni sumar casos de borde vecinos. Así Codex no vuelve a marcar el
 mismo patrón, una línea por ronda.
+
+**Verificación del hallazgo.** Cada fix vuelve con la verificación automatizada que falla
+sin él y cubre ese tipo de error (un test de regresión, una regla de lint, un chequeo de
+pre-push o de CI, o un spec e2e), o con `no aplica: <motivo>` cuando el hallazgo no admite
+una. El subagente la agrega en el mismo commit del fix cuando el tipo de error es nuevo y
+el proyecto tiene la rule `review-feedback-promotion.md` (que también dice dónde se
+registra); si ya existe una que lo cubre, la nombra. El cierre la publica en la línea
+«Verificación» de `codex-comment-closeout` (`closeout.sh --verification`) y `outcomes`
+la guarda en `verification`.
 
 Ante la duda entre «borde razonable» y «rebuscado», mirá el costo: si el fix es chico,
 local y testeable, hacelo; si exige rediseño, dependencias nuevas o tocar varios
@@ -388,7 +397,7 @@ No lo lances, y decí en una línea por qué, cuando:
    usuario y `null` el resto del tiempo (ver «Esperando al usuario»); `mergeAllowed` es el
    `{{MERGE_ALLOWED}}` del último lanzamiento (paso 0-quater) y, en `false`, ninguna vuelta mergea
    (regla «MERGE NO AUTORIZADO» del prompt); `outcomes` es el registro de
-   findings de la política de convergencia: `id -> {result, severity, round, path, sha?, reason?}`,
+   findings de la política de convergencia: `id -> {result, severity, round, path, sha?, verification?, reason?}`,
    con `result` en `fixed`, `rejected`, `pre-existing`, `nit-skipped`, `edge-case` o
    `failed`. Si falta alguna clave, el loop la trata como vacía o `0`.)
    Si el archivo ya existe (relanzar), conservalo. Solo si trae `reviewTimedOut: true`,

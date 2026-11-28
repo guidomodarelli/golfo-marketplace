@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "skill": "codex-autofix-loop",
-  "description": "Evalúa el tope de rondas de solo tests del loop de auto-fix de Codex: `testOnlyRounds` cuenta rondas consecutivas cuyo rango `lastReviewedSha..HEAD` solo toca tests o evals, se resetea a 0 ante cualquier archivo fuera de esos patrones, y al llegar a 3 no pide otro `@codex review`, pasa el gate de CI y mergea con squash, reintentando en las vueltas siguientes si la CI está pendiente o el merge falla, aunque `MAX_REVIEW_ROUNDS` esté subido. También evalúa el tope general de rondas: al lanzar el loop no pregunta nada y usa 3 rondas por defecto, salvo que el pedido indique otro tope, y con `sin límite` no corta por rondas. Además evalúa que, al terminar la última ronda permitida, el loop no pide otra review y mergea sin preguntar tras el gate de CI (reintentando con `finalMergePending` si la CI está pendiente), y que se lanza solo al abrir un PR hacia la rama de integración, salvo capas intermedias de un stack. Por último evalúa el timeout de ronda: si Codex no publica la review de `lastReviewedSha` a tiempo, repostea `@codex review` una vez sin consumir el tope de rondas, al segundo vencimiento avisa y se auto-cancela sin mergear, y relanzar le da a la ronda un reintento más. También evalúa la review `failed`: cuenta como una review que no llegó, usa el mismo reintento, se auto-cancela sin mergear si vuelve a fallar y no confunde el estado viejo del resumen con una falla nueva. Con el perfil de revisor `claude`, evalúa que no postea `@codex review` (el push pide la ronda), reintenta un run fallido con `gh run rerun`, mergea tras una review limpia silenciosa y solo trata como hallazgos los inline de `claude[bot]`.",
+  "description": "Evalúa el tope de rondas de solo tests del loop de auto-fix de Codex: `testOnlyRounds` cuenta rondas consecutivas cuyo rango `lastReviewedSha..HEAD` solo toca tests o evals, se resetea a 0 ante cualquier archivo fuera de esos patrones, y al llegar a 3 no pide otro `@codex review`, pasa el gate de CI y mergea con squash, reintentando en las vueltas siguientes si la CI está pendiente o el merge falla, aunque `MAX_REVIEW_ROUNDS` esté subido. También evalúa el tope general de rondas: al lanzar el loop no pregunta nada y usa 3 rondas por defecto, salvo que el pedido indique otro tope, y con `sin límite` no corta por rondas. Además evalúa que, al terminar la última ronda permitida, el loop no pide otra review y mergea sin preguntar tras el gate de CI (reintentando con `finalMergePending` si la CI está pendiente), y que se lanza solo al abrir un PR hacia la rama de integración, salvo capas intermedias de un stack. Por último evalúa el timeout de ronda: si Codex no publica la review de `lastReviewedSha` a tiempo, repostea `@codex review` una vez sin consumir el tope de rondas, al segundo vencimiento avisa y se auto-cancela sin mergear, y relanzar le da a la ronda un reintento más. También evalúa la review `failed`: cuenta como una review que no llegó, usa el mismo reintento, se auto-cancela sin mergear si vuelve a fallar y no confunde el estado viejo del resumen con una falla nueva. Con el perfil de revisor `claude`, evalúa que no postea `@codex review` (el push pide la ronda), reintenta un run fallido con `gh run rerun`, mergea tras una review limpia silenciosa y solo trata como hallazgos los inline de `claude[bot]`. También evalúa que el cierre de un hallazgo fixeado publica la verificación automatizada que lo cubre (la que devolvió el subagente) con `--verification` y la guarda en `outcomes`.",
   "test_cases": [
     {
       "id": "third-test-only-round-merges",
@@ -1594,6 +1594,36 @@
             "PR #42 mergeado"
           ],
           "description": "No mergea ni anuncia el PR como mergeado"
+        }
+      ]
+    },
+    {
+      "id": "fixed-finding-closeout-carries-verification",
+      "description": "Cuando un subagente vuelve con el sha y el test de regresión que agregó para un tipo de error nuevo, el cierre pasa esa verificación a closeout.sh y la registra en outcomes.",
+      "input": "Usando codex-autofix-loop: estoy operando el loop sobre el PR #42 de `acme/widgets`. El subagente del grupo del comentario inline 5501 de Codex (un handler que tragaba el error de la base y respondía 200) volvió con éxito: pusheó el commit `fedcba9876543210fedcba9876543210fedcba98` con el fix y un test de regresión nuevo, `tests/orders-handler.test.ts`, que falla sin el fix. No ejecutes nada: decí exactamente cómo cerrás ese comentario y qué escribís en el archivo de estado.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "closeout.sh",
+          "description": "Cierra con el script de codex-comment-closeout",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "--verification",
+          "description": "Pasa la verificación al cierre",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "tests/orders-handler.test.ts",
+          "description": "La verificación nombra el test de regresión que devolvió el subagente",
+          "critical": true
+        },
+        {
+          "type": "regex",
+          "pattern": "verification[^.]{0,80}(tests/orders-handler|test de regresi|regression)|outcomes[^.]{0,120}verification",
+          "description": "Guarda la verificación en `outcomes`"
         }
       ]
     }

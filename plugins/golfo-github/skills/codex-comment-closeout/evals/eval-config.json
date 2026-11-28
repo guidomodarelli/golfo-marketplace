@@ -6,12 +6,37 @@
     {
       "id": "resolved-inline-uses-closeout-script",
       "description": "Cierra un hallazgo inline ya fixeado con el script, la variante Resuelto y el sha completo.",
-      "input": "Usando codex-comment-closeout: en el PR #12 de acme/docs, el comentario inline 4401 de Codex ya está resuelto por el commit 0123456789abcdef0123456789abcdef01234567, que pusheaste hace unos segundos. El fix hace que el enlace copiado use la URL pública. No ejecutes nada: decí exactamente cómo lo cerrás.",
+      "input": "Usando codex-comment-closeout: en el PR #12 de acme/docs, el comentario inline 4401 de Codex ya está resuelto por el commit 0123456789abcdef0123456789abcdef01234567, que pusheaste hace unos segundos. El fix hace que el enlace copiado use la URL pública y agregaste el test de regresión `tests/share-link.test.ts`, que falla sin el fix. No ejecutes nada: decí exactamente cómo lo cerrás.",
       "assertions": [
-        { "type": "contains", "value": "closeout.sh", "description": "Usa el script de cierre" },
-        { "type": "contains", "value": "--variant resolved", "description": "Elige la variante Resuelto" },
-        { "type": "contains", "value": "0123456789abcdef0123456789abcdef01234567", "description": "Pasa el sha completo" },
-        { "type": "contains_any", "values": ["head del PR", "esté en el head", "espera"], "description": "Sabe que el script espera el commit en el head" }
+        {
+          "type": "contains",
+          "value": "closeout.sh",
+          "description": "Usa el script de cierre"
+        },
+        {
+          "type": "contains",
+          "value": "--variant resolved",
+          "description": "Elige la variante Resuelto"
+        },
+        {
+          "type": "contains",
+          "value": "0123456789abcdef0123456789abcdef01234567",
+          "description": "Pasa el sha completo"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "head del PR",
+            "esté en el head",
+            "espera"
+          ],
+          "description": "Sabe que el script espera el commit en el head"
+        },
+        {
+          "type": "contains",
+          "value": "--verification",
+          "description": "Pasa la verificación que cubre el hallazgo"
+        }
       ]
     },
     {
@@ -19,10 +44,76 @@
       "description": "Un borde rebuscado se cierra como Sin cambios, con 👎 y motivo, sin presentarlo como falla del flujo.",
       "input": "Usando codex-comment-closeout: el comentario general 777 de Codex en el PR #12 de acme/docs pide soportar rutas de checkout con %VAR% pasando por un shim .cmd. Lo evaluaste y es un caso rebuscado que no vas a fixear. No ejecutes nada: decí cómo lo cerrás y qué reacción lleva.",
       "assertions": [
-        { "type": "contains_any", "values": ["--variant no-change", "Sin cambios"], "description": "Elige la variante Sin cambios" },
-        { "type": "contains_any", "values": ["👎", "-1", "THUMBS_DOWN"], "description": "Reacciona con 👎" },
-        { "type": "contains_any", "values": ["--reason", "Motivo"], "description": "Incluye el motivo" },
-        { "type": "not_contains_any", "values": ["No pude aplicar el fix"], "description": "No lo presenta como falla del flujo" }
+        {
+          "type": "contains_any",
+          "values": [
+            "--variant no-change",
+            "Sin cambios"
+          ],
+          "description": "Elige la variante Sin cambios"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "👎",
+            "-1",
+            "THUMBS_DOWN"
+          ],
+          "description": "Reacciona con 👎"
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "--reason",
+            "Motivo"
+          ],
+          "description": "Incluye el motivo"
+        },
+        {
+          "type": "not_contains_any",
+          "values": [
+            "No pude aplicar el fix"
+          ],
+          "description": "No lo presenta como falla del flujo"
+        }
+      ]
+    },
+    {
+      "id": "resolved-without-automatable-check-says-why",
+      "description": "Al cerrar como Resuelto un hallazgo que no admite verificación automatizada, publica la línea Verificación con «no aplica» y su motivo en vez de omitirla.",
+      "input": "Usando codex-comment-closeout: en el PR #12 de acme/docs, el comentario inline 4402 de Codex marcaba una falta de ortografía en el texto de un aviso. Lo corregiste en el commit 89abcdef0123456789abcdef0123456789abcdef, ya pusheado. No agregaste ningún test. No ejecutes nada: decí exactamente cómo lo cerrás.",
+      "assertions": [
+        {
+          "type": "contains",
+          "value": "--variant resolved",
+          "description": "Elige la variante Resuelto",
+          "critical": true
+        },
+        {
+          "type": "contains",
+          "value": "--verification",
+          "description": "Pasa la verificación del cierre",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "no aplica",
+            "No aplica"
+          ],
+          "description": "Dice que no aplica una verificación automatizada",
+          "critical": true
+        },
+        {
+          "type": "contains_any",
+          "values": [
+            "ortograf",
+            "redacción",
+            "texto",
+            "copy"
+          ],
+          "description": "Da el motivo: es un cambio de texto sin comportamiento"
+        }
       ]
     }
   ]
