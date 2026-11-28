@@ -38,7 +38,7 @@ FAKE_GH
 }
 
 @test "closes an inline comment as resolved: 👍, template reply with the commit and resolved thread" {
-  run bash "$CLOSEOUT" --repo acme/docs --pr 7 --comment 55 --kind inline --variant resolved --sha "$SHA" --summary "el enlace usa la URL pública."
+  run bash "$CLOSEOUT" --repo acme/docs --pr 7 --comment 55 --kind inline --variant resolved --sha "$SHA" --summary "el enlace usa la URL pública." --verification "test de regresión \`tests/share-link.test.ts\`, falla sin el fix."
 
   [ "$status" -eq 0 ]
   [[ "$output" == *"closeout: comment 55 resolved reply=900 resolved=true"* ]]
@@ -47,11 +47,12 @@ FAKE_GH
   published=$(cat "$FAKE_DIR/published")
   [[ "$published" == '✅ **Resuelto** en [`abcdef1`](https://github.com/acme/docs/commit/'"$SHA"').'* ]]
   [[ "$published" == *'**Qué cambió:** el enlace usa la URL pública.'* ]]
+  [[ "$published" == *'**Verificación:** test de regresión `tests/share-link.test.ts`, falla sin el fix.'* ]]
   [[ "$published" == *'<sub>🤖 Fix automático en respuesta a este comentario de Codex</sub>' ]]
 }
 
 @test "names Claude in the footer when the closed comment comes from the Claude reviewer" {
-  run bash "$CLOSEOUT" --repo acme/docs --pr 7 --comment 55 --kind inline --variant resolved --sha "$SHA" --summary "fix" --reviewer claude
+  run bash "$CLOSEOUT" --repo acme/docs --pr 7 --comment 55 --kind inline --variant resolved --sha "$SHA" --summary "fix" --verification "no aplica: test" --reviewer claude
 
   [ "$status" -eq 0 ]
   published=$(cat "$FAKE_DIR/published")
@@ -70,7 +71,7 @@ FAKE_GH
 @test "waits until the commit reaches the PR head before replying" {
   printf 'behind\nbehind\nidentical\n' > "$FAKE_DIR/compare"
 
-  run bash "$CLOSEOUT" --repo acme/docs --pr 7 --comment 55 --kind inline --variant resolved --sha "$SHA" --summary "fix"
+  run bash "$CLOSEOUT" --repo acme/docs --pr 7 --comment 55 --kind inline --variant resolved --sha "$SHA" --summary "fix" --verification "no aplica: test"
 
   [ "$status" -eq 0 ]
   [ "$(grep -c 'compare/' "$FAKE_DIR/calls")" -eq 3 ]
@@ -79,7 +80,7 @@ FAKE_GH
 @test "fails without replying when the commit never reaches the PR head" {
   printf 'behind\n' > "$FAKE_DIR/compare"
 
-  run bash "$CLOSEOUT" --repo acme/docs --pr 7 --comment 55 --kind inline --variant resolved --sha "$SHA" --summary "fix"
+  run bash "$CLOSEOUT" --repo acme/docs --pr 7 --comment 55 --kind inline --variant resolved --sha "$SHA" --summary "fix" --verification "no aplica: test"
 
   [ "$status" -eq 1 ]
   [[ "$output" == *"commit abcdef1 is not in the head of PR #7 after 3 attempts"* ]]
@@ -108,7 +109,7 @@ FAKE_GH
 @test "edits a reply whose published body lost the template instead of posting another" {
   touch "$FAKE_DIR/mangle"
 
-  run bash "$CLOSEOUT" --repo acme/docs --pr 7 --comment 55 --kind inline --variant resolved --sha "$SHA" --summary "fix"
+  run bash "$CLOSEOUT" --repo acme/docs --pr 7 --comment 55 --kind inline --variant resolved --sha "$SHA" --summary "fix" --verification "no aplica: test"
 
   [ "$status" -eq 0 ]
   grep -q 'api -X PATCH repos/acme/docs/pulls/comments/900' "$FAKE_DIR/calls"
@@ -116,11 +117,31 @@ FAKE_GH
 }
 
 @test "rejects incomplete usage before calling GitHub" {
-  run bash "$CLOSEOUT" --repo acme/docs --pr 7 --comment 55 --kind inline --variant resolved --summary "fix"
+  run bash "$CLOSEOUT" --repo acme/docs --pr 7 --comment 55 --kind inline --variant resolved --summary "fix" --verification "no aplica: test"
 
   [ "$status" -eq 2 ]
   [[ "$output" == *"--variant resolved needs --sha and --summary"* ]]
   [ ! -s "$FAKE_DIR/calls" ]
+}
+
+@test "rejects a resolved closeout that does not say which check covers the finding" {
+  run bash "$CLOSEOUT" --repo acme/docs --pr 7 --comment 55 --kind inline --variant resolved --sha "$SHA" --summary "fix"
+
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"--variant resolved needs --verification"* ]]
+  [[ "$output" == *"no aplica: <motivo>"* ]]
+  [ ! -s "$FAKE_DIR/calls" ]
+}
+
+@test "publishes why no automated check applies when the closeout says so" {
+  run bash "$CLOSEOUT" --repo acme/docs --pr 7 --comment 55 --kind inline --variant resolved --sha "$SHA" --summary "corrige el texto del aviso." --verification "no aplica: cambio de redacción sin comportamiento que automatizar."
+
+  [ "$status" -eq 0 ]
+  [[ "$(cat "$FAKE_DIR/published")" == *$'**Qué cambió:** corrige el texto del aviso.
+
+**Verificación:** no aplica: cambio de redacción sin comportamiento que automatizar.
+
+<sub>'* ]]
 }
 
 @test "renders the reply from the skill templates, so editing a template changes what is published" {
@@ -155,7 +176,7 @@ FAKE_GH
 @test "fails before publishing anything when no review thread holds the comment" {
   : > "$FAKE_DIR/threads"
 
-  run bash "$CLOSEOUT" --repo acme/docs --pr 7 --comment 55 --kind inline --variant resolved --sha "$SHA" --summary "fix"
+  run bash "$CLOSEOUT" --repo acme/docs --pr 7 --comment 55 --kind inline --variant resolved --sha "$SHA" --summary "fix" --verification "no aplica: test"
 
   [ "$status" -eq 1 ]
   [[ "$output" == *"no review thread holds comment 55 in PR #7 (repo acme/docs); nothing was published"* ]]
@@ -178,8 +199,9 @@ FAKE_GH
   [ "$status" -eq 0 ]
   [[ "$(cat "$FAKE_DIR/published")" == *'**Motivo:** El placeholder {{motivo}} ya se completa y {{run_url}} queda igual.'* ]]
 
-  run timeout 10 bash "$CLOSEOUT" --repo acme/docs --pr 7 --comment 55 --kind inline --variant resolved --sha "$SHA" --summary 'el texto {{resumen}} y {{sha_corto}} no se reemplazan.'
+  run timeout 10 bash "$CLOSEOUT" --repo acme/docs --pr 7 --comment 55 --kind inline --variant resolved --sha "$SHA" --summary 'el texto {{resumen}} y {{sha_corto}} no se reemplazan.' --verification 'no aplica: {{verificacion}} queda literal.'
 
   [ "$status" -eq 0 ]
   [[ "$(cat "$FAKE_DIR/published")" == *'**Qué cambió:** el texto {{resumen}} y {{sha_corto}} no se reemplazan.'* ]]
+  [[ "$(cat "$FAKE_DIR/published")" == *'**Verificación:** no aplica: {{verificacion}} queda literal.'* ]]
 }
