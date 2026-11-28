@@ -158,6 +158,9 @@ def main():
         merge_managed_template(settings, template, allow_nested_template_match),
         sys.stdout,
         indent=2,
+        # The template keeps accents literal; escaping them here would make a settings file with
+        # custom entries differ from the merge preview of the check while the managed entries match.
+        ensure_ascii=False,
     )
     sys.stdout.write("\n")
     return 0
