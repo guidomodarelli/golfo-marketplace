@@ -485,3 +485,29 @@ PY
   [ "$status" -eq 0 ]
   [[ "$output" == *"No conflicts between the profiles"* ]]
 }
+
+@test "check accepts a Claude settings with custom entries and literal accents, and apply keeps the accents" {
+  run_cli apply
+  [ "$status" -eq 0 ]
+  python3 - <<'PY'
+import json
+path = ".claude/settings.json"
+with open(path, encoding="utf-8") as settings_file:
+    settings = json.load(settings_file)
+# A custom key keeps the file on the merge path without a hook that the other providers lack.
+settings["customSetting"] = "Revisando la sesión…"
+with open(path, "w", encoding="utf-8", newline="\n") as settings_file:
+    json.dump(settings, settings_file, indent=2, ensure_ascii=False)
+    settings_file.write("\n")
+PY
+  cp .claude/settings.json "$test_root/settings-before.json"
+
+  run_cli check --offline
+  [ "$status" -eq 0 ]
+
+  run_cli apply
+  [ "$status" -eq 0 ]
+  cmp .claude/settings.json "$test_root/settings-before.json"
+  grep -q 'Revisando la sesión…' .claude/settings.json
+  grep -q 'configuración Agent Ready' .claude/settings.json
+}

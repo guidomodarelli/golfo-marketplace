@@ -342,7 +342,7 @@ def without_managed_entries(document, template):
 
 def serialize_settings(document):
     """Settings in the format merge-managed-settings.py writes them."""
-    return json.dumps(document, indent=2) + "\n"
+    return json.dumps(document, indent=2, ensure_ascii=False) + "\n"
 
 
 def settings_without_managed_entries(project_root, destination, template_path):
